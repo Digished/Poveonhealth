@@ -23,6 +23,7 @@ model Lab {
   requests   Request[]
 
   @@map("labs")
+  @@schema("public")
 }
 
 // Links Supabase Auth users to labs
@@ -35,6 +36,7 @@ model LabUser {
   lab        Lab      @relation(fields: [lab_id], references: [id], onDelete: Cascade)
 
   @@map("lab_users")
+  @@schema("public")
 }
 
 // Platform administrators
@@ -44,6 +46,7 @@ model AdminUser {
   created_at DateTime @default(now())
 
   @@map("admin_users")
+  @@schema("public")
 }
 
 // Doctor-submitted lab test requests
@@ -69,4 +72,5 @@ model Request {
   lab           Lab       @relation(fields: [lab_id], references: [id])
 
   @@map("requests")
+  @@schema("public")
 }
