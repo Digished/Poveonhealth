@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { z } from "zod";
-import { createServerClient, createAdminClient } from "@/lib/supabase/server";
+import { createServerClient } from "@/lib/supabase/server";
+import { prisma } from "@/lib/prisma";
 import { resend, FROM_ADDRESS } from "@/lib/email/resend";
 import { doctorPatientArrived } from "@/lib/email/templates";
 
@@ -22,11 +23,9 @@ export async function POST(request: NextRequest) {
 
     const { code } = parsed.data;
 
-    // Authenticate the calling user (must be a logged-in lab user)
+    // Authenticate the lab user
     const authClient = await createServerClient();
-    const {
-      data: { user },
-    } = await authClient.auth.getUser();
+    const { data: { user } } = await authClient.auth.getUser();
 
     if (!user) {
       return NextResponse.json(
@@ -35,14 +34,10 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    const adminClient = createAdminClient();
-
-    // Get the lab_id for this authenticated user
-    const { data: labUser } = await adminClient
-      .from("lab_users")
-      .select("lab_id")
-      .eq("user_id", user.id)
-      .single();
+    // Get this user's lab_id
+    const labUser = await prisma.labUser.findUnique({
+      where: { user_id: user.id },
+    });
 
     if (!labUser) {
       return NextResponse.json(
@@ -51,20 +46,11 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    // Look up the request by code (without lab filter first)
-    const { data: req, error: reqError } = await adminClient
-      .from("requests")
-      .select("*, labs(name, addresses)")
-      .eq("code", code)
-      .maybeSingle();
-
-    if (reqError) {
-      console.error("Request lookup error:", reqError);
-      return NextResponse.json(
-        { success: false, error: "Database error" },
-        { status: 500 }
-      );
-    }
+    // Look up the request by code
+    const req = await prisma.request.findUnique({
+      where: { code },
+      include: { lab: { select: { name: true, addresses: true } } },
+    });
 
     if (!req) {
       return NextResponse.json(
@@ -73,44 +59,34 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    // Check if this code belongs to the lab that's querying it
+    // Verify code belongs to this lab
     if (req.lab_id !== labUser.lab_id) {
       return NextResponse.json(
-        {
-          success: false,
-          error: "This request does not belong to your laboratory.",
-        },
+        { success: false, error: "This request does not belong to your laboratory." },
         { status: 403 }
       );
     }
 
-    // If the request is still incoming, move it to "seen"
+    // Move incoming → seen and notify doctor
     if (req.status === "incoming") {
-      await adminClient
-        .from("requests")
-        .update({ status: "seen", seen_at: new Date().toISOString() })
-        .eq("id", req.id);
-
-      // Notify referring doctor that patient has arrived
-      const labName =
-        (req.labs as { name: string } | null)?.name ?? "the laboratory";
+      await prisma.request.update({
+        where: { id: req.id },
+        data: { status: "seen", seen_at: new Date() },
+      });
 
       await resend.emails.send({
         from: FROM_ADDRESS,
         to: req.doctor_email,
-        subject: `Patient Arrived — ${req.patient_name} is at ${labName}`,
+        subject: `Patient Arrived — ${req.patient_name} is at ${req.lab.name}`,
         html: doctorPatientArrived({
           doctorName: req.doctor_name,
           patientName: req.patient_name,
-          labName,
+          labName: req.lab.name,
           code: req.code,
         }),
       });
 
-      return NextResponse.json({
-        success: true,
-        request: { ...req, status: "seen" },
-      });
+      return NextResponse.json({ success: true, request: { ...req, status: "seen" } });
     }
 
     return NextResponse.json({ success: true, request: req });

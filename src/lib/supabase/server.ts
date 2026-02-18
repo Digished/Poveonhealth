@@ -3,8 +3,9 @@ import { cookies } from "next/headers";
 import { createClient as createSupabaseClient } from "@supabase/supabase-js";
 
 /**
- * Creates a Supabase client for use in Server Components and Route Handlers.
- * Uses the user's session cookie — respects RLS.
+ * Supabase client for Server Components and Route Handlers.
+ * Uses the user's session cookie — for AUTH operations only.
+ * All database queries go through Prisma (src/lib/prisma.ts).
  */
 export async function createServerClient() {
   const cookieStore = await cookies();
@@ -32,8 +33,9 @@ export async function createServerClient() {
 }
 
 /**
- * Admin/service role client — BYPASSES RLS.
- * Only use in server-side API routes after manual authorization checks.
+ * Admin Supabase client using the service role key.
+ * Used ONLY for auth admin operations (createUser, deleteUser).
+ * Never use for database queries — use Prisma instead.
  */
 export function createAdminClient() {
   return createSupabaseClient(

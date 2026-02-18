@@ -14,6 +14,7 @@ import { format } from "date-fns";
 import { createClient } from "@/lib/supabase/client";
 import { useRouter } from "next/navigation";
 
+
 interface LabDashboardProps {
   labName: string;
   labId: string;
@@ -57,22 +58,17 @@ export function LabDashboard({ labName, labId }: LabDashboardProps) {
     else setLoading(true);
 
     try {
-      const supabase = createClient();
-      const { data, error } = await supabase
-        .from("requests")
-        .select("*, labs(name, addresses)")
-        .eq("lab_id", labId)
-        .order("created_at", { ascending: false });
-
-      if (error) throw error;
-      setRequests(data ?? []);
+      const res = await fetch("/api/lab/requests");
+      const data = await res.json();
+      if (!data.success) throw new Error(data.error);
+      setRequests(data.requests ?? []);
     } catch {
       toast.error("Failed to load requests");
     } finally {
       setLoading(false);
       setRefreshing(false);
     }
-  }, [labId]);
+  }, []);
 
   useEffect(() => {
     fetchRequests();

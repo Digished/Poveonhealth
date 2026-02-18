@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { z } from "zod";
-import { createServerClient, createAdminClient } from "@/lib/supabase/server";
+import { createServerClient } from "@/lib/supabase/server";
+import { prisma } from "@/lib/prisma";
 import { resend, FROM_ADDRESS } from "@/lib/email/resend";
 import { doctorTestsCompleted } from "@/lib/email/templates";
 
@@ -23,11 +24,9 @@ export async function POST(request: NextRequest) {
 
     const { requestId, status } = parsed.data;
 
-    // Authenticate user
+    // Authenticate lab user
     const authClient = await createServerClient();
-    const {
-      data: { user },
-    } = await authClient.auth.getUser();
+    const { data: { user } } = await authClient.auth.getUser();
 
     if (!user) {
       return NextResponse.json(
@@ -36,14 +35,9 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    const adminClient = createAdminClient();
-
-    // Get the lab_id for this user
-    const { data: labUser } = await adminClient
-      .from("lab_users")
-      .select("lab_id")
-      .eq("user_id", user.id)
-      .single();
+    const labUser = await prisma.labUser.findUnique({
+      where: { user_id: user.id },
+    });
 
     if (!labUser) {
       return NextResponse.json(
@@ -52,14 +46,13 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    // Fetch the request to verify ownership
-    const { data: req, error: fetchError } = await adminClient
-      .from("requests")
-      .select("*, labs(name)")
-      .eq("id", requestId)
-      .single();
+    // Fetch the request and verify ownership
+    const req = await prisma.request.findUnique({
+      where: { id: requestId },
+      include: { lab: { select: { name: true } } },
+    });
 
-    if (fetchError || !req) {
+    if (!req) {
       return NextResponse.json(
         { success: false, error: "Request not found" },
         { status: 404 }
@@ -73,7 +66,7 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    // Validate status transition
+    // Validate status transition: incoming → seen → done
     const validTransitions: Record<string, string[]> = {
       incoming: ["seen"],
       seen: ["done"],
@@ -82,29 +75,19 @@ export async function POST(request: NextRequest) {
 
     if (!validTransitions[req.status]?.includes(status)) {
       return NextResponse.json(
-        {
-          success: false,
-          error: `Cannot transition from "${req.status}" to "${status}"`,
-        },
+        { success: false, error: `Cannot transition from "${req.status}" to "${status}"` },
         { status: 400 }
       );
     }
 
-    // Build update payload
-    const updatePayload: Record<string, string> = { status };
-    if (status === "seen") updatePayload.seen_at = new Date().toISOString();
-    if (status === "done") updatePayload.completed_at = new Date().toISOString();
+    const updateData: Record<string, unknown> = { status };
+    if (status === "seen") updateData.seen_at = new Date();
+    if (status === "done") updateData.completed_at = new Date();
 
-    await adminClient
-      .from("requests")
-      .update(updatePayload)
-      .eq("id", requestId);
+    await prisma.request.update({ where: { id: requestId }, data: updateData });
 
-    // When marked done, notify the referring doctor
+    // Notify doctor when tests are done
     if (status === "done") {
-      const labName =
-        (req.labs as { name: string } | null)?.name ?? "the laboratory";
-
       await resend.emails.send({
         from: FROM_ADDRESS,
         to: req.doctor_email,
@@ -112,7 +95,7 @@ export async function POST(request: NextRequest) {
         html: doctorTestsCompleted({
           doctorName: req.doctor_name,
           patientName: req.patient_name,
-          labName,
+          labName: req.lab.name,
           code: req.code,
         }),
       });

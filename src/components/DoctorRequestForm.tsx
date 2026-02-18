@@ -45,14 +45,9 @@ export function DoctorRequestForm() {
   const [result, setResult] = useState<CreateRequestResponse | null>(null);
 
   useEffect(() => {
-    fetch(`${process.env.NEXT_PUBLIC_SUPABASE_URL}/rest/v1/labs?select=id,name,prefix,addresses,email&order=name`, {
-      headers: {
-        apikey: process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
-        Authorization: `Bearer ${process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!}`,
-      },
-    })
+    fetch("/api/labs")
       .then((r) => r.json())
-      .then((data: Lab[]) => setLabs(data ?? []))
+      .then((data) => setLabs(data.labs ?? []))
       .catch(() => toast.error("Failed to load laboratories"))
       .finally(() => setLabsLoading(false));
   }, []);

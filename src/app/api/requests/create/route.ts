@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { z } from "zod";
-import { createAdminClient } from "@/lib/supabase/server";
+import { prisma } from "@/lib/prisma";
 import { generateUniqueCode } from "@/lib/code-generator";
 import { resend, FROM_ADDRESS } from "@/lib/email/resend";
 import {
@@ -8,9 +8,6 @@ import {
   patientRequestCode,
 } from "@/lib/email/templates";
 
-// =============================================================================
-// INPUT VALIDATION SCHEMA
-// =============================================================================
 const CreateRequestSchema = z.object({
   patient_name: z.string().min(2).max(200),
   dob: z.string().regex(/^\d{4}-\d{2}-\d{2}$/, "Invalid date format"),
@@ -28,9 +25,8 @@ const CreateRequestSchema = z.object({
 export async function POST(request: NextRequest) {
   try {
     const body = await request.json();
-
-    // Validate input
     const parsed = CreateRequestSchema.safeParse(body);
+
     if (!parsed.success) {
       return NextResponse.json(
         { success: false, error: "Invalid request data", details: parsed.error.flatten() },
@@ -39,65 +35,50 @@ export async function POST(request: NextRequest) {
     }
 
     const data = parsed.data;
-    const supabase = createAdminClient();
 
-    // Fetch the selected lab (and verify it exists)
-    const { data: lab, error: labError } = await supabase
-      .from("labs")
-      .select("id, name, prefix, addresses")
-      .eq("id", data.lab_id)
-      .single();
-
-    if (labError || !lab) {
+    // Verify the selected lab exists
+    const lab = await prisma.lab.findUnique({ where: { id: data.lab_id } });
+    if (!lab) {
       return NextResponse.json(
         { success: false, error: "Selected laboratory not found" },
         { status: 404 }
       );
     }
 
-    // Generate a unique code tied to this lab
+    // Generate a unique code for this lab
     const code = await generateUniqueCode(
       lab.prefix,
       async (candidate) => {
-        const { data: existing } = await supabase
-          .from("requests")
-          .select("id")
-          .eq("code", candidate)
-          .maybeSingle();
+        const existing = await prisma.request.findUnique({
+          where: { code: candidate },
+          select: { id: true },
+        });
         return !!existing;
       }
     );
 
-    // Insert the request record
-    const { error: insertError } = await supabase.from("requests").insert({
-      code,
-      lab_id: data.lab_id,
-      patient_name: data.patient_name,
-      dob: data.dob,
-      sex: data.sex,
-      address: data.address,
-      patient_email: data.patient_email || null,
-      doctor_name: data.doctor_name,
-      doctor_email: data.doctor_email,
-      doctor_phone: data.doctor_phone || null,
-      diagnosis: data.diagnosis || null,
-      tests: data.tests,
-      status: "incoming",
+    // Insert the request
+    await prisma.request.create({
+      data: {
+        code,
+        lab_id: data.lab_id,
+        patient_name: data.patient_name,
+        dob: new Date(data.dob),
+        sex: data.sex,
+        address: data.address,
+        patient_email: data.patient_email || null,
+        doctor_name: data.doctor_name,
+        doctor_email: data.doctor_email,
+        doctor_phone: data.doctor_phone || null,
+        diagnosis: data.diagnosis || null,
+        tests: data.tests,
+        status: "incoming",
+      },
     });
 
-    if (insertError) {
-      console.error("Insert error:", insertError);
-      return NextResponse.json(
-        { success: false, error: "Failed to create request" },
-        { status: 500 }
-      );
-    }
+    const labAddresses = (lab.addresses as string[]) ?? [];
 
-    const labAddresses: string[] = Array.isArray(lab.addresses)
-      ? lab.addresses
-      : [];
-
-    // Send confirmation email to doctor
+    // Email doctor
     await resend.emails.send({
       from: FROM_ADDRESS,
       to: data.doctor_email,
@@ -112,7 +93,7 @@ export async function POST(request: NextRequest) {
       }),
     });
 
-    // Send code to patient if email provided
+    // Email patient if email provided
     if (data.patient_email) {
       await resend.emails.send({
         from: FROM_ADDRESS,
@@ -131,10 +112,7 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({
       success: true,
       code,
-      lab: {
-        name: lab.name,
-        addresses: labAddresses,
-      },
+      lab: { name: lab.name, addresses: labAddresses },
     });
   } catch (error) {
     console.error("Create request error:", error);
