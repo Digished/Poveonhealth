@@ -1,0 +1,70 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider  = "postgresql"
+  url       = env("DATABASE_URL")
+  directUrl = env("DIRECT_URL")
+}
+
+// Registered laboratories
+model Lab {
+  id         String    @id @default(uuid())
+  name       String
+  prefix     String    @unique
+  addresses  Json      @default("[]")
+  email      String    @unique
+  created_at DateTime  @default(now())
+
+  lab_users  LabUser[]
+  requests   Request[]
+
+  @@map("labs")
+}
+
+// Links Supabase Auth users to labs
+model LabUser {
+  id         String   @id @default(uuid())
+  user_id    String   @unique
+  lab_id     String
+  created_at DateTime @default(now())
+
+  lab        Lab      @relation(fields: [lab_id], references: [id], onDelete: Cascade)
+
+  @@map("lab_users")
+}
+
+// Platform administrators
+model AdminUser {
+  id         String   @id @default(uuid())
+  user_id    String   @unique
+  created_at DateTime @default(now())
+
+  @@map("admin_users")
+}
+
+// Doctor-submitted lab test requests
+model Request {
+  id            String    @id @default(uuid())
+  code          String    @unique
+  lab_id        String
+  patient_name  String
+  dob           DateTime  @db.Date
+  sex           String
+  address       String
+  patient_email String?
+  doctor_name   String
+  doctor_email  String
+  doctor_phone  String?
+  diagnosis     String?
+  tests         String
+  status        String    @default("incoming")
+  created_at    DateTime  @default(now())
+  seen_at       DateTime?
+  completed_at  DateTime?
+
+  lab           Lab       @relation(fields: [lab_id], references: [id])
+
+  @@map("requests")
+}
