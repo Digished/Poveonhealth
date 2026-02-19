@@ -11,10 +11,10 @@ async function verifyAdmin() {
   return adminRecord ? user : null;
 }
 
-// PATCH /api/admin/labs/[id] — edit a lab (name, addresses, phones, hidden)
+// PATCH /api/admin/labs/[id] — edit a lab (name, address, phones, hidden)
 const PatchSchema = z.object({
   name: z.string().min(2).max(200).optional(),
-  addresses: z.array(z.string().min(1)).optional(),
+  address: z.string().min(1).max(500).optional(),
   phones: z.array(z.string().min(1)).optional(),
   hidden: z.boolean().optional(),
 });

@@ -186,7 +186,7 @@ export function LabDashboard({ labName, labId: _labId, labLogoUrl }: LabDashboar
               value={codeInput}
               onChange={(e) => setCodeInput(e.target.value)}
               onKeyDown={(e) => e.key === "Enter" && handleRetrieve()}
-              className="bg-white/10 border-white/20 text-white placeholder-slate-400 font-mono"
+              className="bg-white border-slate-200 text-slate-800 placeholder-slate-300 font-mono"
             />
             <Button onClick={handleRetrieve} loading={retrieving} className="shrink-0">
               <Search className="w-4 h-4" />

@@ -13,7 +13,7 @@ model Lab {
   id         String    @id @default(uuid())
   name       String
   prefix     String    @unique
-  addresses  Json      @default("[]")
+  address    String    @default("")
   phones     Json      @default("[]")
   email      String    @unique
   logo_url   String?

@@ -76,7 +76,7 @@ export async function POST(request: NextRequest) {
       },
     });
 
-    const labAddresses = (lab.addresses as string[]) ?? [];
+    const labAddress = lab.address ?? "";
     const labPhones = (lab.phones as string[]) ?? [];
 
     // Email doctor
@@ -89,7 +89,7 @@ export async function POST(request: NextRequest) {
         patientName: data.patient_name,
         code,
         labName: lab.name,
-        labAddresses,
+        labAddress,
         tests: data.tests,
       }),
     });
@@ -104,7 +104,7 @@ export async function POST(request: NextRequest) {
           patientName: data.patient_name,
           code,
           labName: lab.name,
-          labAddresses,
+          labAddress,
           doctorName: data.doctor_name,
         }),
       });
@@ -113,7 +113,7 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({
       success: true,
       code,
-      lab: { name: lab.name, addresses: labAddresses, phones: labPhones },
+      lab: { name: lab.name, address: labAddress, phones: labPhones },
     });
   } catch (error) {
     console.error("Create request error:", error);

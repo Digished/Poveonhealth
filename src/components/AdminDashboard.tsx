@@ -5,7 +5,7 @@ import { toast } from "react-hot-toast";
 import {
   Plus, FlaskConical, BarChart3, List, LogOut,
   Building2, Trash2, Eye, EyeOff, RefreshCw, X, Pencil,
-  Phone, Upload, Check,
+  Phone, Upload, Check, MapPin,
 } from "lucide-react";
 import { Button } from "@/components/ui/Button";
 import { Input, Textarea } from "@/components/ui/Input";
@@ -16,6 +16,9 @@ import { createClient } from "@/lib/supabase/client";
 import { useRouter } from "next/navigation";
 
 type AdminTab = "metrics" | "requests" | "labs";
+
+// Shared white input class for dark-background modals
+const whiteInput = "bg-white border-slate-200 text-slate-800 placeholder-slate-300";
 
 export function AdminDashboard() {
   const router = useRouter();
@@ -271,11 +274,11 @@ export function AdminDashboard() {
                       </div>
                     </div>
                     <p className="text-xs text-slate-400 mb-1">{lab.email}</p>
-                    {(lab.addresses as string[]).map((addr, i) => (
-                      <p key={i} className="text-xs text-slate-500 flex items-start gap-1 mt-0.5">
-                        <span className="text-slate-600">•</span>{addr}
+                    {lab.address && (
+                      <p className="text-xs text-slate-500 flex items-start gap-1 mt-0.5">
+                        <MapPin className="w-3 h-3 text-slate-600 mt-0.5 shrink-0" />{lab.address}
                       </p>
-                    ))}
+                    )}
                     {(lab.phones as string[]).length > 0 && (lab.phones as string[]).map((ph, i) => (
                       <p key={i} className="text-xs text-slate-500 flex items-center gap-1 mt-0.5">
                         <Phone className="w-3 h-3 text-slate-600 shrink-0" />{ph}
@@ -333,7 +336,7 @@ export function AdminDashboard() {
 function CreateLabModal({ onClose, onSuccess }: { onClose: () => void; onSuccess: () => void }) {
   const [name, setName] = useState("");
   const [email, setEmail] = useState("");
-  const [addresses, setAddresses] = useState("");
+  const [address, setAddress] = useState("");
   const [phones, setPhones] = useState("");
   const [tempPassword, setTempPassword] = useState("");
   const [showPassword, setShowPassword] = useState(false);
@@ -342,10 +345,9 @@ function CreateLabModal({ onClose, onSuccess }: { onClose: () => void; onSuccess
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
-    const addressList = addresses.split("\n").map((a) => a.trim()).filter(Boolean);
     const phoneList = phones.split("\n").map((p) => p.trim()).filter(Boolean);
-    if (!name.trim() || !email.trim() || addressList.length === 0) {
-      toast.error("Name, email and at least one address are required");
+    if (!name.trim() || !email.trim() || !address.trim()) {
+      toast.error("Name, email and address are required");
       return;
     }
     setLoading(true);
@@ -353,7 +355,7 @@ function CreateLabModal({ onClose, onSuccess }: { onClose: () => void; onSuccess
       const res = await fetch("/api/admin/create-lab", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ name: name.trim(), email: email.trim(), addresses: addressList, phones: phoneList, tempPassword: tempPassword.trim() || undefined }),
+        body: JSON.stringify({ name: name.trim(), email: email.trim(), address: address.trim(), phones: phoneList, tempPassword: tempPassword.trim() || undefined }),
       });
       const data = await res.json();
       if (data.success) {
@@ -393,15 +395,30 @@ function CreateLabModal({ onClose, onSuccess }: { onClose: () => void; onSuccess
           </div>
         ) : (
           <form onSubmit={handleSubmit} className="p-5 space-y-4">
-            <Input label="Laboratory Name" required placeholder="e.g. Lagos General Hospital Lab" value={name} onChange={(e) => setName(e.target.value)} className="bg-white/10 border-white/20 text-white placeholder-slate-400" />
-            <Input label="Lab Login Email" type="email" required placeholder="lab@hospital.com" value={email} onChange={(e) => setEmail(e.target.value)} className="bg-white/10 border-white/20 text-white placeholder-slate-400" />
-            <Textarea label="Lab Addresses" required placeholder={"12 Victoria Island, Lagos\n45 Broad Street"} hint="One address per line" rows={3} value={addresses} onChange={(e) => setAddresses(e.target.value)} className="bg-white/10 border-white/20 text-white placeholder-slate-400" />
-            <Textarea label="Contact Phone Numbers" placeholder={"+234 800 000 0000\n+234 801 000 0001"} hint="One per line (optional)" rows={2} value={phones} onChange={(e) => setPhones(e.target.value)} className="bg-white/10 border-white/20 text-white placeholder-slate-400" />
+            <div>
+              <label className="text-sm font-medium text-slate-300 block mb-1">Laboratory Name <span className="text-red-400">*</span></label>
+              <input className={`w-full rounded-xl border px-4 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-medical-500 ${whiteInput}`} placeholder="e.g. Lagos General Hospital Lab" value={name} onChange={(e) => setName(e.target.value)} required />
+            </div>
+            <div>
+              <label className="text-sm font-medium text-slate-300 block mb-1">Lab Login Email <span className="text-red-400">*</span></label>
+              <input type="email" className={`w-full rounded-xl border px-4 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-medical-500 ${whiteInput}`} placeholder="lab@hospital.com" value={email} onChange={(e) => setEmail(e.target.value)} required />
+            </div>
+            <div>
+              <label className="text-sm font-medium text-slate-300 block mb-1">Lab Address <span className="text-red-400">*</span></label>
+              <input className={`w-full rounded-xl border px-4 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-medical-500 ${whiteInput}`} placeholder="12 Victoria Island, Lagos" value={address} onChange={(e) => setAddress(e.target.value)} required />
+            </div>
+            <div>
+              <label className="text-sm font-medium text-slate-300 block mb-1">Contact Phone Numbers <span className="text-xs text-slate-500">(optional)</span></label>
+              <textarea rows={2} className={`w-full rounded-xl border px-4 py-2.5 text-sm resize-none focus:outline-none focus:ring-2 focus:ring-medical-500 ${whiteInput}`} placeholder={"+234 800 000 0000\n+234 801 000 0001"} value={phones} onChange={(e) => setPhones(e.target.value)} />
+              <p className="text-xs text-slate-500 mt-1">One per line</p>
+            </div>
             <div className="relative">
-              <Input label="Temporary Password" type={showPassword ? "text" : "password"} placeholder="Leave blank to auto-generate" hint="Min 8 characters" value={tempPassword} onChange={(e) => setTempPassword(e.target.value)} className="bg-white/10 border-white/20 text-white placeholder-slate-400 pr-10" />
-              <button type="button" onClick={() => setShowPassword((v) => !v)} className="absolute right-3 top-[34px] text-slate-400 hover:text-slate-200">
+              <label className="text-sm font-medium text-slate-300 block mb-1">Temporary Password <span className="text-xs text-slate-500">(optional)</span></label>
+              <input type={showPassword ? "text" : "password"} className={`w-full rounded-xl border px-4 py-2.5 pr-10 text-sm focus:outline-none focus:ring-2 focus:ring-medical-500 ${whiteInput}`} placeholder="Leave blank to auto-generate" value={tempPassword} onChange={(e) => setTempPassword(e.target.value)} />
+              <button type="button" onClick={() => setShowPassword((v) => !v)} className="absolute right-3 top-[34px] text-slate-400 hover:text-slate-600">
                 {showPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
               </button>
+              <p className="text-xs text-slate-500 mt-1">Min 8 characters</p>
             </div>
             <div className="flex gap-3 pt-2">
               <Button type="button" variant="secondary" fullWidth onClick={onClose}>Cancel</Button>
@@ -419,7 +436,7 @@ function CreateLabModal({ onClose, onSuccess }: { onClose: () => void; onSuccess
 // =============================================================================
 function EditLabModal({ lab, onClose, onSuccess }: { lab: Lab; onClose: () => void; onSuccess: () => void }) {
   const [name, setName] = useState(lab.name);
-  const [addresses, setAddresses] = useState((lab.addresses as string[]).join("\n"));
+  const [address, setAddress] = useState(lab.address);
   const [phones, setPhones] = useState((lab.phones as string[]).join("\n"));
   const [loading, setLoading] = useState(false);
   const [uploadingLogo, setUploadingLogo] = useState(false);
@@ -448,10 +465,9 @@ function EditLabModal({ lab, onClose, onSuccess }: { lab: Lab; onClose: () => vo
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
-    const addressList = addresses.split("\n").map((a) => a.trim()).filter(Boolean);
     const phoneList = phones.split("\n").map((p) => p.trim()).filter(Boolean);
-    if (!name.trim() || addressList.length === 0) {
-      toast.error("Name and at least one address are required");
+    if (!name.trim() || !address.trim()) {
+      toast.error("Name and address are required");
       return;
     }
     setLoading(true);
@@ -459,7 +475,7 @@ function EditLabModal({ lab, onClose, onSuccess }: { lab: Lab; onClose: () => vo
       const res = await fetch(`/api/admin/labs/${lab.id}`, {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ name: name.trim(), addresses: addressList, phones: phoneList }),
+        body: JSON.stringify({ name: name.trim(), address: address.trim(), phones: phoneList }),
       });
       const data = await res.json();
       if (data.success) {
@@ -483,9 +499,18 @@ function EditLabModal({ lab, onClose, onSuccess }: { lab: Lab; onClose: () => vo
           <button onClick={onClose} className="p-1.5 rounded-lg hover:bg-white/10 text-slate-400 transition-colors"><X className="w-4 h-4" /></button>
         </div>
         <form onSubmit={handleSubmit} className="p-5 space-y-4">
-          <Input label="Laboratory Name" required value={name} onChange={(e) => setName(e.target.value)} className="bg-white/10 border-white/20 text-white placeholder-slate-400" />
-          <Textarea label="Addresses" required hint="One per line" rows={3} value={addresses} onChange={(e) => setAddresses(e.target.value)} className="bg-white/10 border-white/20 text-white placeholder-slate-400" />
-          <Textarea label="Contact Phone Numbers" hint="One per line (optional)" rows={2} value={phones} onChange={(e) => setPhones(e.target.value)} className="bg-white/10 border-white/20 text-white placeholder-slate-400" />
+          <div>
+            <label className="text-sm font-medium text-slate-300 block mb-1">Laboratory Name <span className="text-red-400">*</span></label>
+            <input className={`w-full rounded-xl border px-4 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-medical-500 ${whiteInput}`} value={name} onChange={(e) => setName(e.target.value)} required />
+          </div>
+          <div>
+            <label className="text-sm font-medium text-slate-300 block mb-1">Address <span className="text-red-400">*</span></label>
+            <input className={`w-full rounded-xl border px-4 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-medical-500 ${whiteInput}`} placeholder="Lab street address" value={address} onChange={(e) => setAddress(e.target.value)} required />
+          </div>
+          <div>
+            <label className="text-sm font-medium text-slate-300 block mb-1">Contact Phone Numbers <span className="text-xs text-slate-500">(optional, one per line)</span></label>
+            <textarea rows={2} className={`w-full rounded-xl border px-4 py-2.5 text-sm resize-none focus:outline-none focus:ring-2 focus:ring-medical-500 ${whiteInput}`} value={phones} onChange={(e) => setPhones(e.target.value)} />
+          </div>
 
           <div>
             <p className="text-sm font-medium text-slate-300 mb-2">Lab Logo</p>

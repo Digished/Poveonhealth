@@ -7,7 +7,7 @@ import { Button } from "@/components/ui/Button";
 interface SuccessScreenProps {
   code: string;
   labName: string;
-  labAddresses: string[];
+  labAddress: string;
   labPhones?: string[];
   onReset: () => void;
 }
@@ -15,7 +15,7 @@ interface SuccessScreenProps {
 export function SuccessScreen({
   code,
   labName,
-  labAddresses,
+  labAddress,
   labPhones = [],
   onReset,
 }: SuccessScreenProps) {
@@ -95,14 +95,10 @@ export function SuccessScreen({
             Destination Laboratory
           </h3>
           <p className="font-semibold text-medical-700 mb-2">{labName}</p>
-          {labAddresses.length > 0 && (
-            <div className="space-y-1">
-              {labAddresses.map((addr, i) => (
-                <div key={i} className="flex items-start gap-2">
-                  <MapPin className="w-4 h-4 text-slate-400 mt-0.5 shrink-0" />
-                  <p className="text-sm text-slate-600">{addr}</p>
-                </div>
-              ))}
+          {labAddress && (
+            <div className="flex items-start gap-2 mt-1">
+              <MapPin className="w-4 h-4 text-slate-400 mt-0.5 shrink-0" />
+              <p className="text-sm text-slate-600">{labAddress}</p>
             </div>
           )}
           {labPhones.length > 0 && (

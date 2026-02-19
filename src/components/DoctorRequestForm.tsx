@@ -1,10 +1,11 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import { toast } from "react-hot-toast";
 import {
   FlaskConical, User, MapPin, Phone, Stethoscope,
   TestTube2, ChevronRight, ChevronLeft, Building2, Check,
+  Search, X, PhoneCall,
 } from "lucide-react";
 import { Button } from "@/components/ui/Button";
 import { Input, Textarea, Select } from "@/components/ui/Input";
@@ -52,6 +53,181 @@ function SummaryRow({ label, value, capitalize }: { label: string; value: string
     <div className="flex justify-between text-xs gap-4">
       <span className="text-slate-500 shrink-0">{label}</span>
       <span className={`text-slate-700 font-medium text-right ${capitalize ? "capitalize" : ""}`}>{value || "—"}</span>
+    </div>
+  );
+}
+
+// Searchable lab picker
+function LabSearch({
+  labs,
+  loading,
+  value,
+  onChange,
+  error,
+}: {
+  labs: Lab[];
+  loading: boolean;
+  value: string;
+  onChange: (labId: string) => void;
+  error?: string;
+}) {
+  const [query, setQuery] = useState("");
+  const [open, setOpen] = useState(false);
+  const containerRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    function handler(e: MouseEvent) {
+      if (containerRef.current && !containerRef.current.contains(e.target as Node)) {
+        setOpen(false);
+      }
+    }
+    document.addEventListener("mousedown", handler);
+    return () => document.removeEventListener("mousedown", handler);
+  }, []);
+
+  const selectedLab = labs.find((l) => l.id === value);
+
+  const filtered = query.trim()
+    ? labs.filter(
+        (l) =>
+          l.name.toLowerCase().includes(query.toLowerCase()) ||
+          l.address.toLowerCase().includes(query.toLowerCase())
+      )
+    : labs;
+
+  function select(lab: Lab) {
+    onChange(lab.id);
+    setQuery("");
+    setOpen(false);
+  }
+
+  function clear() {
+    onChange("");
+    setQuery("");
+  }
+
+  return (
+    <div ref={containerRef} className="flex flex-col gap-1">
+      <label className="text-sm font-medium text-slate-700">
+        Destination Laboratory <span className="text-red-500">*</span>
+      </label>
+      <div className="relative">
+        {selectedLab ? (
+          <div className="w-full rounded-xl border border-medical-300 bg-medical-50 px-4 py-2.5 flex items-center justify-between">
+            <div className="flex items-center gap-2 min-w-0">
+              {selectedLab.logo_url ? (
+                <img src={selectedLab.logo_url} alt={selectedLab.name} className="w-6 h-6 rounded-md object-cover shrink-0" />
+              ) : (
+                <Building2 className="w-4 h-4 text-medical-600 shrink-0" />
+              )}
+              <span className="text-sm font-medium text-medical-800 truncate">{selectedLab.name}</span>
+            </div>
+            <button
+              type="button"
+              onClick={clear}
+              className="p-0.5 rounded hover:bg-medical-100 text-medical-400 hover:text-medical-700 shrink-0 ml-2"
+            >
+              <X className="w-3.5 h-3.5" />
+            </button>
+          </div>
+        ) : (
+          <div className="relative">
+            <Search className="absolute left-3.5 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400 pointer-events-none" />
+            <input
+              type="text"
+              placeholder={loading ? "Loading laboratories…" : "Search by lab name or address…"}
+              value={query}
+              disabled={loading}
+              onChange={(e) => { setQuery(e.target.value); setOpen(true); }}
+              onFocus={() => setOpen(true)}
+              className="w-full rounded-xl border border-slate-200 bg-white px-4 py-2.5 pl-10 text-slate-800 placeholder-slate-300 text-sm focus:outline-none focus:ring-2 focus:ring-medical-500 focus:border-medical-400 disabled:opacity-60"
+            />
+          </div>
+        )}
+        {open && !selectedLab && (
+          <div className="absolute z-20 top-full mt-1.5 w-full bg-white border border-slate-200 rounded-xl shadow-lg overflow-auto max-h-64">
+            {filtered.length === 0 ? (
+              <div className="px-4 py-3 text-sm text-slate-400 text-center">No labs found</div>
+            ) : (
+              filtered.map((lab) => (
+                <button
+                  key={lab.id}
+                  type="button"
+                  onClick={() => select(lab)}
+                  className="w-full text-left px-4 py-3 hover:bg-medical-50 transition-colors border-b border-slate-50 last:border-0"
+                >
+                  <div className="flex items-center gap-2.5">
+                    {lab.logo_url ? (
+                      <img src={lab.logo_url} alt={lab.name} className="w-7 h-7 rounded-lg object-cover shrink-0" />
+                    ) : (
+                      <div className="w-7 h-7 rounded-lg bg-medical-100 flex items-center justify-center shrink-0">
+                        <Building2 className="w-4 h-4 text-medical-600" />
+                      </div>
+                    )}
+                    <div className="min-w-0">
+                      <p className="text-sm font-semibold text-slate-800 truncate">{lab.name}</p>
+                      {lab.address && (
+                        <p className="text-xs text-slate-400 truncate flex items-center gap-1 mt-0.5">
+                          <MapPin className="w-3 h-3 shrink-0" />{lab.address}
+                        </p>
+                      )}
+                    </div>
+                  </div>
+                </button>
+              ))
+            )}
+          </div>
+        )}
+      </div>
+      {error && <p className="text-xs text-red-600 font-medium">{error}</p>}
+    </div>
+  );
+}
+
+// Floating action button to call the lab — appears on step 2
+function LabCallFAB({ lab }: { lab: Lab | undefined }) {
+  const [open, setOpen] = useState(false);
+  const phones = lab?.phones as string[] | undefined;
+  if (!lab || !phones || phones.length === 0) return null;
+
+  if (phones.length === 1) {
+    return (
+      <a
+        href={`tel:${phones[0]}`}
+        className="fixed bottom-6 right-6 z-30 w-14 h-14 bg-medical-600 hover:bg-medical-700 text-white rounded-full shadow-2xl flex items-center justify-center transition-colors"
+        title={`Call ${lab.name}`}
+      >
+        <PhoneCall className="w-6 h-6" />
+      </a>
+    );
+  }
+
+  return (
+    <div className="fixed bottom-6 right-6 z-30">
+      {open && (
+        <div className="mb-3 bg-white rounded-2xl shadow-xl border border-slate-100 overflow-hidden min-w-[200px] animate-slide-up">
+          <p className="text-xs font-semibold text-slate-400 px-4 pt-3 pb-1 uppercase tracking-wider">
+            Call {lab.name}
+          </p>
+          {phones.map((ph, i) => (
+            <a
+              key={i}
+              href={`tel:${ph}`}
+              onClick={() => setOpen(false)}
+              className="flex items-center gap-2 px-4 py-2.5 hover:bg-medical-50 text-medical-700 text-sm font-medium"
+            >
+              <Phone className="w-4 h-4" />{ph}
+            </a>
+          ))}
+        </div>
+      )}
+      <button
+        onClick={() => setOpen((v) => !v)}
+        className="w-14 h-14 bg-medical-600 hover:bg-medical-700 text-white rounded-full shadow-2xl flex items-center justify-center transition-colors"
+        title={`Call ${lab.name}`}
+      >
+        <PhoneCall className="w-6 h-6" />
+      </button>
     </div>
   );
 }
@@ -135,7 +311,7 @@ export function DoctorRequestForm() {
       <SuccessScreen
         code={result.code!}
         labName={result.lab?.name ?? ""}
-        labAddresses={result.lab?.addresses ?? []}
+        labAddress={result.lab?.address ?? ""}
         labPhones={result.lab?.phones ?? []}
         onReset={() => { setResult(null); setForm(INITIAL); setStep(1); }}
       />
@@ -143,21 +319,45 @@ export function DoctorRequestForm() {
   }
 
   const selectedLab = labs.find((l) => l.id === form.lab_id);
-  const labOptions = labs.map((l) => ({ value: l.id, label: l.name }));
 
   return (
     <div className="animate-fade-in">
-      {/* Header */}
+      {/* Header — swaps to lab branding once a lab is selected */}
       <div className="text-center mb-8">
-        <div className="inline-flex items-center justify-center w-16 h-16 bg-medical-600 rounded-2xl mb-4 shadow-lg">
-          <FlaskConical className="w-8 h-8 text-white" />
-        </div>
-        <h1 className="text-3xl font-bold text-slate-800 mb-2 tracking-tight">
-          Laboratory Request
-        </h1>
-        <p className="text-slate-500 text-base max-w-md mx-auto">
-          Submit a lab test request for your patient. No account required.
-        </p>
+        {selectedLab ? (
+          <div className="space-y-2 animate-fade-in">
+            {selectedLab.logo_url ? (
+              <img
+                src={selectedLab.logo_url}
+                alt={selectedLab.name}
+                className="w-16 h-16 rounded-2xl object-cover mx-auto shadow-lg"
+              />
+            ) : (
+              <div className="inline-flex items-center justify-center w-16 h-16 bg-medical-100 rounded-2xl border border-medical-200">
+                <Building2 className="w-8 h-8 text-medical-600" />
+              </div>
+            )}
+            <h1 className="text-2xl font-bold text-slate-800 tracking-tight">{selectedLab.name}</h1>
+            {selectedLab.address && (
+              <p className="text-slate-500 text-sm flex items-center justify-center gap-1.5">
+                <MapPin className="w-3.5 h-3.5 shrink-0" />
+                {selectedLab.address}
+              </p>
+            )}
+          </div>
+        ) : (
+          <>
+            <div className="inline-flex items-center justify-center w-16 h-16 bg-medical-600 rounded-2xl mb-4 shadow-lg">
+              <FlaskConical className="w-8 h-8 text-white" />
+            </div>
+            <h1 className="text-3xl font-bold text-slate-800 mb-2 tracking-tight">
+              Laboratory Request
+            </h1>
+            <p className="text-slate-500 text-base max-w-md mx-auto">
+              Submit a lab test request for your patient. No account required.
+            </p>
+          </>
+        )}
       </div>
 
       {/* Step indicator */}
@@ -201,25 +401,29 @@ export function DoctorRequestForm() {
               <Building2 className="w-4 h-4 text-medical-600" />
               Select Laboratory
             </h2>
-            <Select
-              label="Destination Laboratory"
-              required
+            <LabSearch
+              labs={labs}
+              loading={labsLoading}
               value={form.lab_id}
-              onChange={(e) => set("lab_id", e.target.value)}
-              placeholder={labsLoading ? "Loading laboratories…" : "Select a laboratory"}
-              options={labOptions}
-              disabled={labsLoading}
+              onChange={(id) => set("lab_id", id)}
               error={errors.lab_id}
             />
             {selectedLab && (
               <div className="bg-medical-50 border border-medical-100 rounded-xl p-4 space-y-2">
-                <p className="text-sm font-semibold text-medical-800">{selectedLab.name}</p>
-                {selectedLab.addresses.map((addr, i) => (
-                  <p key={i} className="text-xs text-medical-600 flex items-start gap-1.5">
-                    <MapPin className="w-3 h-3 mt-0.5 shrink-0" />{addr}
+                <div className="flex items-center gap-2">
+                  {selectedLab.logo_url ? (
+                    <img src={selectedLab.logo_url} alt={selectedLab.name} className="w-8 h-8 rounded-lg object-cover" />
+                  ) : (
+                    <Building2 className="w-4 h-4 text-medical-600" />
+                  )}
+                  <p className="text-sm font-semibold text-medical-800">{selectedLab.name}</p>
+                </div>
+                {selectedLab.address && (
+                  <p className="text-xs text-medical-600 flex items-start gap-1.5">
+                    <MapPin className="w-3 h-3 mt-0.5 shrink-0" />{selectedLab.address}
                   </p>
-                ))}
-                {selectedLab.phones.length > 0 && selectedLab.phones.map((ph, i) => (
+                )}
+                {(selectedLab.phones as string[]).map((ph, i) => (
                   <p key={i} className="text-xs text-medical-600 flex items-center gap-1.5">
                     <Phone className="w-3 h-3 shrink-0" />{ph}
                   </p>
@@ -396,6 +600,9 @@ export function DoctorRequestForm() {
       <p className="text-center text-xs text-slate-400 mt-4">
         By submitting, you confirm you are authorised to request these tests on behalf of the patient.
       </p>
+
+      {/* Floating call button — shown on step 2 when selected lab has phone numbers */}
+      {step === 2 && <LabCallFAB lab={selectedLab} />}
     </div>
   );
 }

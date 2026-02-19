@@ -9,7 +9,7 @@ export interface Lab {
   id: string;
   name: string;
   prefix: string;
-  addresses: string[];
+  address: string;
   phones: string[];
   email: string;
   logo_url: string | null;
@@ -45,7 +45,7 @@ export interface LabRequest {
   // Joined field from labs table
   labs?: {
     name: string;
-    addresses: string[];
+    address: string;
   };
 }
 
@@ -67,7 +67,7 @@ export interface CreateRequestPayload {
 export interface CreateRequestResponse {
   success: boolean;
   code?: string;
-  lab?: Pick<Lab, "name" | "addresses" | "phones">;
+  lab?: Pick<Lab, "name" | "address" | "phones">;
   error?: string;
 }
 
@@ -89,7 +89,7 @@ export interface UpdateStatusPayload {
 export interface CreateLabPayload {
   name: string;
   email: string;
-  addresses: string[];
+  address: string;
   phones: string[];
   tempPassword: string;
 }
