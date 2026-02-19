@@ -4,7 +4,6 @@ import { prisma } from "@/lib/prisma";
 
 export async function GET(request: NextRequest) {
   try {
-    // Authenticate and verify admin
     const authClient = await createServerClient();
     const { data: { user } } = await authClient.auth.getUser();
 
@@ -29,7 +28,8 @@ export async function GET(request: NextRequest) {
       ...(status ? { status } : {}),
     };
 
-    const [requests, total, allRequests] = await Promise.all([
+    // Paginated requests + efficient aggregate counts in parallel
+    const [requests, total, incomingCount, seenCount, doneCount, byLabCounts] = await Promise.all([
       prisma.request.findMany({
         where,
         include: { lab: { select: { name: true, addresses: true } } },
@@ -38,31 +38,35 @@ export async function GET(request: NextRequest) {
         take: limit,
       }),
       prisma.request.count({ where }),
-      prisma.request.findMany({
-        select: { status: true, lab_id: true, lab: { select: { name: true } } },
-      }),
+      prisma.request.count({ where: { status: "incoming" } }),
+      prisma.request.count({ where: { status: "seen" } }),
+      prisma.request.count({ where: { status: "done" } }),
+      prisma.request.groupBy({ by: ["lab_id"], _count: { id: true } }),
     ]);
 
-    // Aggregate metrics
-    const byStatus = { incoming: 0, seen: 0, done: 0 };
-    const byLabMap: Record<string, { lab_name: string; total: number }> = {};
+    const labIds = byLabCounts.map((l) => l.lab_id);
+    const labs = await prisma.lab.findMany({
+      where: { id: { in: labIds } },
+      select: { id: true, name: true },
+    });
+    const labNameMap = Object.fromEntries(labs.map((l) => [l.id, l.name]));
 
-    for (const r of allRequests) {
-      byStatus[r.status as keyof typeof byStatus]++;
-      if (!byLabMap[r.lab_id]) {
-        byLabMap[r.lab_id] = { lab_name: r.lab?.name ?? r.lab_id, total: 0 };
-      }
-      byLabMap[r.lab_id].total++;
-    }
-
-    const byLab = Object.entries(byLabMap).map(([lab_id, v]) => ({ lab_id, ...v }));
+    const byLab = byLabCounts
+      .map((l) => ({ lab_id: l.lab_id, lab_name: labNameMap[l.lab_id] ?? l.lab_id, total: l._count.id }))
+      .sort((a, b) => b.total - a.total);
 
     return NextResponse.json({
       success: true,
       requests,
       total,
       page,
-      metrics: { total: allRequests.length, ...byStatus, byLab },
+      metrics: {
+        total: incomingCount + seenCount + doneCount,
+        incoming: incomingCount,
+        seen: seenCount,
+        done: doneCount,
+        byLab,
+      },
     });
   } catch (error) {
     console.error("Admin requests error:", error);

@@ -20,7 +20,7 @@ export default async function LabDashboardPage() {
   const adminClient = createAdminClient();
   const { data: labUser } = await adminClient
     .from("lab_users")
-    .select("lab_id, labs(id, name)")
+    .select("lab_id, labs(id, name, logo_url)")
     .eq("user_id", user.id)
     .single();
 
@@ -28,12 +28,13 @@ export default async function LabDashboardPage() {
     redirect("/lab-login");
   }
 
-  const lab = labUser.labs as unknown as { id: string; name: string } | null;
+  const lab = labUser.labs as unknown as { id: string; name: string; logo_url: string | null } | null;
 
   return (
     <LabDashboard
       labName={lab?.name ?? "Laboratory"}
       labId={labUser.lab_id}
+      labLogoUrl={lab?.logo_url ?? null}
     />
   );
 }

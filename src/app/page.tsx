@@ -1,6 +1,5 @@
 import { DoctorRequestForm } from "@/components/DoctorRequestForm";
 import { FlaskConical, Shield, Clock, Mail } from "lucide-react";
-import Link from "next/link";
 
 export default function HomePage() {
   return (
@@ -15,20 +14,7 @@ export default function HomePage() {
             <span className="font-bold text-medical-700 text-lg">Poveon</span>
             <span className="text-xs text-slate-400 font-medium hidden sm:inline">Health</span>
           </div>
-          <div className="flex items-center gap-2 text-sm">
-            <Link
-              href="/lab-login"
-              className="px-3 py-1.5 rounded-lg text-slate-600 hover:text-medical-700 hover:bg-medical-50 transition-colors font-medium"
-            >
-              Lab Login
-            </Link>
-            <Link
-              href="/admin-login"
-              className="px-3 py-1.5 rounded-lg text-slate-500 hover:text-slate-700 hover:bg-slate-100 transition-colors text-xs"
-            >
-              Admin
-            </Link>
-          </div>
+          <div className="flex items-center gap-2 text-sm" />
         </div>
       </nav>
 

@@ -1,20 +1,22 @@
 "use client";
 
 import { useState } from "react";
-import { CheckCircle, Copy, Check, MapPin, RotateCcw, FlaskConical } from "lucide-react";
+import { CheckCircle, Copy, Check, MapPin, Phone, RotateCcw, FlaskConical } from "lucide-react";
 import { Button } from "@/components/ui/Button";
 
 interface SuccessScreenProps {
   code: string;
   labName: string;
-  labAddresses: string[];
+  labAddress: string;
+  labPhones?: string[];
   onReset: () => void;
 }
 
 export function SuccessScreen({
   code,
   labName,
-  labAddresses,
+  labAddress,
+  labPhones = [],
   onReset,
 }: SuccessScreenProps) {
   const [copied, setCopied] = useState(false);
@@ -93,12 +95,19 @@ export function SuccessScreen({
             Destination Laboratory
           </h3>
           <p className="font-semibold text-medical-700 mb-2">{labName}</p>
-          {labAddresses.length > 0 && (
-            <div className="space-y-1">
-              {labAddresses.map((addr, i) => (
-                <div key={i} className="flex items-start gap-2">
-                  <MapPin className="w-4 h-4 text-slate-400 mt-0.5 shrink-0" />
-                  <p className="text-sm text-slate-600">{addr}</p>
+          {labAddress && (
+            <div className="flex items-start gap-2 mt-1">
+              <MapPin className="w-4 h-4 text-slate-400 mt-0.5 shrink-0" />
+              <p className="text-sm text-slate-600">{labAddress}</p>
+            </div>
+          )}
+          {labPhones.length > 0 && (
+            <div className="space-y-1 mt-2 pt-2 border-t border-slate-100">
+              <p className="text-xs font-medium text-slate-500 mb-1">Contact Numbers</p>
+              {labPhones.map((ph, i) => (
+                <div key={i} className="flex items-center gap-2">
+                  <Phone className="w-4 h-4 text-slate-400 shrink-0" />
+                  <a href={`tel:${ph}`} className="text-sm text-medical-600 hover:underline font-medium">{ph}</a>
                 </div>
               ))}
             </div>
