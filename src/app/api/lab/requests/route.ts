@@ -37,7 +37,7 @@ export async function GET() {
 
     const requests = await prisma.request.findMany({
       where: { lab_id: labUser.lab_id },
-      include: { lab: { select: { name: true, addresses: true } } },
+      include: { lab: { select: { name: true, address: true } } },
       orderBy: { created_at: "desc" },
     });
 

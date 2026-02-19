@@ -32,7 +32,7 @@ export async function GET(request: NextRequest) {
     const [requests, total, incomingCount, seenCount, doneCount, byLabCounts] = await Promise.all([
       prisma.request.findMany({
         where,
-        include: { lab: { select: { name: true, addresses: true } } },
+        include: { lab: { select: { name: true, address: true } } },
         orderBy: { created_at: "desc" },
         skip,
         take: limit,

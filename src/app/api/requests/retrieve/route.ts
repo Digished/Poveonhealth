@@ -49,7 +49,7 @@ export async function POST(request: NextRequest) {
     // Look up the request by code
     const req = await prisma.request.findUnique({
       where: { code },
-      include: { lab: { select: { name: true, addresses: true } } },
+      include: { lab: { select: { name: true, address: true } } },
     });
 
     if (!req) {
