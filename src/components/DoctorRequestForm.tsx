@@ -601,8 +601,8 @@ export function DoctorRequestForm() {
         By submitting, you confirm you are authorised to request these tests on behalf of the patient.
       </p>
 
-      {/* Floating call button — shown on step 2 when selected lab has phone numbers */}
-      {step === 2 && <LabCallFAB lab={selectedLab} />}
+      {/* Floating call button — shown on steps 2+ when selected lab has phone numbers */}
+      {step >= 2 && <LabCallFAB lab={selectedLab} />}
     </div>
   );
 }

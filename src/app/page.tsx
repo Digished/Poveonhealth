@@ -12,7 +12,6 @@ export default function HomePage() {
               <FlaskConical className="w-4.5 h-4.5 text-white w-[18px] h-[18px]" />
             </div>
             <span className="font-bold text-medical-700 text-lg">Poveon</span>
-            <span className="text-xs text-slate-400 font-medium hidden sm:inline">Health</span>
           </div>
           <div className="flex items-center gap-2 text-sm" />
         </div>
