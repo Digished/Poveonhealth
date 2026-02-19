@@ -10,7 +10,10 @@ export interface Lab {
   name: string;
   prefix: string;
   addresses: string[];
+  phones: string[];
   email: string;
+  logo_url: string | null;
+  hidden: boolean;
   created_at: string;
 }
 
@@ -28,7 +31,7 @@ export interface LabRequest {
   patient_name: string;
   dob: string;
   sex: Sex;
-  address: string;
+  address: string | null;
   patient_email: string | null;
   doctor_name: string;
   doctor_email: string;
@@ -51,7 +54,7 @@ export interface CreateRequestPayload {
   patient_name: string;
   dob: string;
   sex: Sex;
-  address: string;
+  address?: string;
   patient_email?: string;
   doctor_name: string;
   doctor_email: string;
@@ -64,7 +67,7 @@ export interface CreateRequestPayload {
 export interface CreateRequestResponse {
   success: boolean;
   code?: string;
-  lab?: Pick<Lab, "name" | "addresses">;
+  lab?: Pick<Lab, "name" | "addresses" | "phones">;
   error?: string;
 }
 
@@ -87,6 +90,7 @@ export interface CreateLabPayload {
   name: string;
   email: string;
   addresses: string[];
+  phones: string[];
   tempPassword: string;
 }
 

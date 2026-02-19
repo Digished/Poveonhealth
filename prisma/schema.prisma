@@ -14,7 +14,10 @@ model Lab {
   name       String
   prefix     String    @unique
   addresses  Json      @default("[]")
+  phones     Json      @default("[]")
   email      String    @unique
+  logo_url   String?
+  hidden     Boolean   @default(false)
   created_at DateTime  @default(now())
 
   lab_users  LabUser[]
@@ -52,7 +55,7 @@ model Request {
   patient_name  String
   dob           DateTime  @db.Date
   sex           String
-  address       String
+  address       String?
   patient_email String?
   doctor_name   String
   doctor_email  String

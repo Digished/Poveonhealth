@@ -12,7 +12,7 @@ const CreateRequestSchema = z.object({
   patient_name: z.string().min(2).max(200),
   dob: z.string().regex(/^\d{4}-\d{2}-\d{2}$/, "Invalid date format"),
   sex: z.enum(["male", "female"]),
-  address: z.string().min(5).max(500),
+  address: z.string().max(500).optional().or(z.literal("")),
   patient_email: z.string().email().optional().or(z.literal("")),
   doctor_name: z.string().min(2).max(200),
   doctor_email: z.string().email(),
@@ -65,7 +65,7 @@ export async function POST(request: NextRequest) {
         patient_name: data.patient_name,
         dob: new Date(data.dob),
         sex: data.sex,
-        address: data.address,
+        address: data.address || null,
         patient_email: data.patient_email || null,
         doctor_name: data.doctor_name,
         doctor_email: data.doctor_email,
@@ -77,6 +77,7 @@ export async function POST(request: NextRequest) {
     });
 
     const labAddresses = (lab.addresses as string[]) ?? [];
+    const labPhones = (lab.phones as string[]) ?? [];
 
     // Email doctor
     await resend.emails.send({
@@ -112,7 +113,7 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({
       success: true,
       code,
-      lab: { name: lab.name, addresses: labAddresses },
+      lab: { name: lab.name, addresses: labAddresses, phones: labPhones },
     });
   } catch (error) {
     console.error("Create request error:", error);
