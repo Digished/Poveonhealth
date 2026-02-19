@@ -28,7 +28,7 @@ export default async function LabDashboardPage() {
     redirect("/lab-login");
   }
 
-  const lab = labUser.labs as { id: string; name: string } | null;
+  const lab = labUser.labs as unknown as { id: string; name: string } | null;
 
   return (
     <LabDashboard
