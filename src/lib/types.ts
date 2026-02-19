@@ -10,6 +10,7 @@ export interface Lab {
   name: string;
   prefix: string;
   address: string;
+  description: string;
   phones: string[];
   email: string;
   logo_url: string | null;

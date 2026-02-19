@@ -12,7 +12,7 @@ import { Input, Textarea } from "@/components/ui/Input";
 import { StatusBadge, Badge } from "@/components/ui/Badge";
 import type { Lab, LabRequest, AdminMetrics } from "@/lib/types";
 import { format } from "date-fns";
-import { createClient } from "@/lib/supabase/client";
+import { createClient } from "@/lib/supabase/client"; // still used for auth sign-out
 import { useRouter } from "next/navigation";
 
 type AdminTab = "metrics" | "requests" | "labs";
@@ -33,8 +33,14 @@ export function AdminDashboard() {
   const [togglingId, setTogglingId] = useState<string | null>(null);
 
   const fetchLabs = useCallback(async () => {
-    const res = await createClient().from("labs").select("*").order("name");
-    if (!res.error) setLabs((res.data ?? []) as Lab[]);
+    try {
+      const res = await fetch("/api/admin/labs");
+      const data = await res.json();
+      if (data.success) setLabs(data.labs ?? []);
+      else toast.error(data.error ?? "Failed to load labs");
+    } catch {
+      toast.error("Failed to load labs");
+    }
   }, []);
 
   const fetchData = useCallback(async () => {
@@ -337,11 +343,32 @@ function CreateLabModal({ onClose, onSuccess }: { onClose: () => void; onSuccess
   const [name, setName] = useState("");
   const [email, setEmail] = useState("");
   const [address, setAddress] = useState("");
+  const [description, setDescription] = useState("");
   const [phones, setPhones] = useState("");
   const [tempPassword, setTempPassword] = useState("");
   const [showPassword, setShowPassword] = useState(false);
   const [loading, setLoading] = useState(false);
   const [createdPassword, setCreatedPassword] = useState("");
+  const [createdLabId, setCreatedLabId] = useState("");
+  const [uploadingLogo, setUploadingLogo] = useState(false);
+  const [logoUploaded, setLogoUploaded] = useState(false);
+  const fileRef = useRef<HTMLInputElement>(null);
+
+  async function handleUploadLogo(file: File) {
+    setUploadingLogo(true);
+    try {
+      const fd = new FormData();
+      fd.append("logo", file);
+      const res = await fetch(`/api/admin/labs/${createdLabId}/logo`, { method: "POST", body: fd });
+      const data = await res.json();
+      if (data.success) { setLogoUploaded(true); toast.success("Logo uploaded!"); }
+      else toast.error(data.error ?? "Upload failed");
+    } catch {
+      toast.error("Network error");
+    } finally {
+      setUploadingLogo(false);
+    }
+  }
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
@@ -355,11 +382,12 @@ function CreateLabModal({ onClose, onSuccess }: { onClose: () => void; onSuccess
       const res = await fetch("/api/admin/create-lab", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ name: name.trim(), email: email.trim(), address: address.trim(), phones: phoneList, tempPassword: tempPassword.trim() || undefined }),
+        body: JSON.stringify({ name: name.trim(), email: email.trim(), address: address.trim(), description: description.trim() || undefined, phones: phoneList, tempPassword: tempPassword.trim() || undefined }),
       });
       const data = await res.json();
       if (data.success) {
         setCreatedPassword(data.tempPassword);
+        setCreatedLabId(data.lab.id);
         toast.success(`Lab "${name}" created!`);
       } else {
         toast.error(data.error ?? "Failed to create lab");
@@ -391,6 +419,16 @@ function CreateLabModal({ onClose, onSuccess }: { onClose: () => void; onSuccess
               <p className="text-xs text-amber-400 font-semibold mb-1">Temporary Password</p>
               <p className="font-mono text-lg text-amber-300 font-bold">{createdPassword}</p>
             </div>
+            <div>
+              <p className="text-sm font-medium text-slate-300 mb-2">Lab Logo <span className="text-xs text-slate-500">(optional)</span></p>
+              <input ref={fileRef} type="file" accept="image/jpeg,image/png,image/webp" className="hidden"
+                onChange={(e) => { const file = e.target.files?.[0]; if (file) handleUploadLogo(file); }} />
+              <button type="button" onClick={() => fileRef.current?.click()} disabled={uploadingLogo || logoUploaded}
+                className="flex items-center gap-2 px-3 py-2 rounded-lg bg-white/10 hover:bg-white/15 text-slate-300 text-sm transition-colors disabled:opacity-60">
+                {uploadingLogo ? <RefreshCw className="w-4 h-4 animate-spin" /> : logoUploaded ? <Check className="w-4 h-4 text-emerald-400" /> : <Upload className="w-4 h-4" />}
+                {uploadingLogo ? "Uploading…" : logoUploaded ? "Logo uploaded!" : "Upload Logo"}
+              </button>
+            </div>
             <Button fullWidth onClick={onSuccess}>Done</Button>
           </div>
         ) : (
@@ -406,6 +444,10 @@ function CreateLabModal({ onClose, onSuccess }: { onClose: () => void; onSuccess
             <div>
               <label className="text-sm font-medium text-slate-300 block mb-1">Lab Address <span className="text-red-400">*</span></label>
               <input className={`w-full rounded-xl border px-4 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-medical-500 ${whiteInput}`} placeholder="12 Victoria Island, Lagos" value={address} onChange={(e) => setAddress(e.target.value)} required />
+            </div>
+            <div>
+              <label className="text-sm font-medium text-slate-300 block mb-1">Description <span className="text-xs text-slate-500">(optional)</span></label>
+              <textarea rows={2} className={`w-full rounded-xl border px-4 py-2.5 text-sm resize-none focus:outline-none focus:ring-2 focus:ring-medical-500 ${whiteInput}`} placeholder="e.g. Specialist diagnostic lab offering 200+ tests" value={description} onChange={(e) => setDescription(e.target.value)} />
             </div>
             <div>
               <label className="text-sm font-medium text-slate-300 block mb-1">Contact Phone Numbers <span className="text-xs text-slate-500">(optional)</span></label>
@@ -437,6 +479,7 @@ function CreateLabModal({ onClose, onSuccess }: { onClose: () => void; onSuccess
 function EditLabModal({ lab, onClose, onSuccess }: { lab: Lab; onClose: () => void; onSuccess: () => void }) {
   const [name, setName] = useState(lab.name);
   const [address, setAddress] = useState(lab.address);
+  const [description, setDescription] = useState(lab.description ?? "");
   const [phones, setPhones] = useState((lab.phones as string[]).join("\n"));
   const [loading, setLoading] = useState(false);
   const [uploadingLogo, setUploadingLogo] = useState(false);
@@ -475,7 +518,7 @@ function EditLabModal({ lab, onClose, onSuccess }: { lab: Lab; onClose: () => vo
       const res = await fetch(`/api/admin/labs/${lab.id}`, {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ name: name.trim(), address: address.trim(), phones: phoneList }),
+        body: JSON.stringify({ name: name.trim(), address: address.trim(), description: description.trim(), phones: phoneList }),
       });
       const data = await res.json();
       if (data.success) {
@@ -506,6 +549,10 @@ function EditLabModal({ lab, onClose, onSuccess }: { lab: Lab; onClose: () => vo
           <div>
             <label className="text-sm font-medium text-slate-300 block mb-1">Address <span className="text-red-400">*</span></label>
             <input className={`w-full rounded-xl border px-4 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-medical-500 ${whiteInput}`} placeholder="Lab street address" value={address} onChange={(e) => setAddress(e.target.value)} required />
+          </div>
+          <div>
+            <label className="text-sm font-medium text-slate-300 block mb-1">Description <span className="text-xs text-slate-500">(optional)</span></label>
+            <textarea rows={2} className={`w-full rounded-xl border px-4 py-2.5 text-sm resize-none focus:outline-none focus:ring-2 focus:ring-medical-500 ${whiteInput}`} placeholder="e.g. Specialist diagnostic lab offering 200+ tests" value={description} onChange={(e) => setDescription(e.target.value)} />
           </div>
           <div>
             <label className="text-sm font-medium text-slate-300 block mb-1">Contact Phone Numbers <span className="text-xs text-slate-500">(optional, one per line)</span></label>

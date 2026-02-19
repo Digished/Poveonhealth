@@ -338,6 +338,9 @@ export function DoctorRequestForm() {
               </div>
             )}
             <h1 className="text-2xl font-bold text-slate-800 tracking-tight">{selectedLab.name}</h1>
+            {selectedLab.description && (
+              <p className="text-slate-500 text-sm max-w-sm mx-auto">{selectedLab.description}</p>
+            )}
             {selectedLab.address && (
               <p className="text-slate-500 text-sm flex items-center justify-center gap-1.5">
                 <MapPin className="w-3.5 h-3.5 shrink-0" />

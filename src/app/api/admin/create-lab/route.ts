@@ -10,6 +10,7 @@ const CreateLabSchema = z.object({
   name: z.string().min(2).max(200),
   email: z.string().email(),
   address: z.string().min(3).max(500),
+  description: z.string().max(1000).optional(),
   phones: z.array(z.string().min(1)).optional(),
   tempPassword: z.string().min(8).max(100).optional(),
 });
@@ -46,7 +47,7 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    const { name, email, address, phones } = parsed.data;
+    const { name, email, address, description, phones } = parsed.data;
     const tempPassword = parsed.data.tempPassword ?? generateTempPassword();
 
     // Derive a unique prefix
@@ -67,7 +68,7 @@ export async function POST(request: NextRequest) {
     let newLab: { id: string; name: string; prefix: string; email: string };
     try {
       newLab = await prisma.lab.create({
-        data: { name, prefix, address, email, ...(phones ? { phones } : {}) },
+        data: { name, prefix, address, email, ...(description ? { description } : {}), ...(phones ? { phones } : {}) },
         select: { id: true, name: true, prefix: true, email: true },
       });
     } catch (err: unknown) {
