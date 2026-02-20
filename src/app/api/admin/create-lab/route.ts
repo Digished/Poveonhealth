@@ -118,7 +118,7 @@ export async function POST(request: NextRequest) {
     await resend.emails.send({
       from: FROM_ADDRESS,
       to: email,
-      subject: "Welcome to Poveon Health — Lab Account Created",
+      subject: "Welcome to Poveon — Lab Account Created",
       html: labAccountCreated({ labName: name, email, tempPassword, loginUrl }),
     });
 

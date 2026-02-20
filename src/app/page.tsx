@@ -54,7 +54,7 @@ export default function HomePage() {
       {/* Footer */}
       <footer className="border-t border-white/60 bg-white/40 backdrop-blur-sm py-6">
         <div className="max-w-6xl mx-auto px-4 flex flex-col sm:flex-row items-center justify-between gap-2 text-xs text-slate-400">
-          <span>© {new Date().getFullYear()} Poveon Health. All rights reserved.</span>
+          <span>© {new Date().getFullYear()} Poveon. All rights reserved.</span>
           <span>Secure lab request platform</span>
         </div>
       </footer>

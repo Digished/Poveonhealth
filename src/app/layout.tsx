@@ -3,12 +3,12 @@ import { Toaster } from "react-hot-toast";
 import "./globals.css";
 
 export const metadata: Metadata = {
-  title: "Poveon Health — Lab Request Platform",
+  title: "Poveon — Lab Request Platform",
   description:
     "A secure platform for doctors to send laboratory test requests to labs without requiring login.",
   keywords: ["laboratory", "lab request", "medical", "health", "doctor"],
   openGraph: {
-    title: "Poveon Health",
+    title: "Poveon",
     description: "Seamless lab test requests for healthcare professionals",
     type: "website",
   },

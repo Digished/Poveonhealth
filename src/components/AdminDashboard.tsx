@@ -120,7 +120,7 @@ export function AdminDashboard() {
               <FlaskConical className="w-5 h-5 text-white" />
             </div>
             <div>
-              <h1 className="font-bold text-white text-sm">Poveon Health</h1>
+              <h1 className="font-bold text-white text-sm">Poveon</h1>
               <p className="text-xs text-blue-300">Admin Dashboard</p>
             </div>
           </div>

@@ -3,7 +3,7 @@ import { createServerClient, createAdminClient } from "@/lib/supabase/server";
 import { AdminDashboard } from "@/components/AdminDashboard";
 
 export const metadata = {
-  title: "Admin Dashboard — Poveon Health",
+  title: "Admin Dashboard — Poveon",
 };
 
 export default async function AdminPage() {

@@ -9,7 +9,7 @@ const base = (content: string) => `
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Poveon Health</title>
+  <title>Poveon</title>
 </head>
 <body style="margin:0;padding:0;background-color:#f0f7ff;font-family:Inter,'Helvetica Neue',Arial,sans-serif;">
   <table width="100%" cellpadding="0" cellspacing="0" style="background-color:#f0f7ff;padding:40px 20px;">
@@ -20,7 +20,7 @@ const base = (content: string) => `
           <tr>
             <td style="background:linear-gradient(135deg,#0259a0,#0270c3);border-radius:12px 12px 0 0;padding:32px 40px;text-align:center;">
               <h1 style="margin:0;color:#ffffff;font-size:24px;font-weight:700;letter-spacing:-0.5px;">
-                Poveon Health
+                Poveon
               </h1>
               <p style="margin:4px 0 0;color:#bae0fd;font-size:13px;">Laboratory Request Management</p>
             </td>
@@ -35,7 +35,7 @@ const base = (content: string) => `
           <tr>
             <td style="background:#f0f7ff;border:1px solid #e0effe;border-radius:0 0 12px 12px;padding:20px 40px;text-align:center;">
               <p style="margin:0;color:#6b7280;font-size:12px;">
-                © ${new Date().getFullYear()} Poveon Health. All rights reserved.<br>
+                © ${new Date().getFullYear()} Poveon. All rights reserved.<br>
                 This is an automated message. Please do not reply to this email.
               </p>
             </td>
@@ -229,7 +229,7 @@ export function doctorTestsCompleted({
     ${divider}
 
     <p style="margin:0;color:#6b7280;font-size:13px;">
-      Please contact the laboratory or your patient directly to arrange result collection. Thank you for using Poveon Health.
+      Please contact the laboratory or your patient directly to arrange result collection. Thank you for using Poveon.
     </p>
   `);
 }
@@ -249,9 +249,9 @@ export function labAccountCreated({
   loginUrl: string;
 }) {
   return base(`
-    <h2 style="margin:0 0 8px;color:#0259a0;font-size:20px;font-weight:700;">Welcome to Poveon Health</h2>
+    <h2 style="margin:0 0 8px;color:#0259a0;font-size:20px;font-weight:700;">Welcome to Poveon</h2>
     <p style="margin:0 0 24px;color:#4b5563;font-size:15px;">
-      Your laboratory has been registered on the Poveon Health platform.
+      Your laboratory has been registered on the Poveon platform.
       Use the credentials below to access your dashboard.
     </p>
 
