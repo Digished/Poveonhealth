@@ -67,6 +67,21 @@ export function LabDashboard({ labName, labId: _labId, labLogoUrl }: LabDashboar
 
   const tabRequests = requests.filter((r) => r.status === activeTab);
 
+  // Find a request that matches the code input as user types — auto-switch tab when found
+  const codeNormalized = codeInput.trim().toUpperCase();
+  const codeMatch = codeNormalized.length >= 3
+    ? requests.find((r) => r.code === codeNormalized || r.code.startsWith(codeNormalized))
+    : null;
+
+  // When a match is found in a different tab, switch to that tab automatically
+  useEffect(() => {
+    if (codeMatch && codeMatch.status !== activeTab) {
+      setActiveTab(codeMatch.status as RequestStatus);
+      setSelectedRequest(null);
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [codeMatch?.id]);
+
   async function handleRetrieve() {
     const code = codeInput.trim().toUpperCase();
     if (!code) return toast.error("Please enter a request code");
@@ -292,7 +307,9 @@ export function LabDashboard({ labName, labId: _labId, labLogoUrl }: LabDashboar
                       }
                     }}
                     className={`w-full text-left p-4 rounded-xl border transition-all ${
-                      selectedRequest?.id === req.id
+                      codeMatch?.id === req.id
+                        ? "bg-medical-900/60 border-medical-500/60 ring-2 ring-medical-500/40"
+                        : selectedRequest?.id === req.id
                         ? "bg-white/15 border-white/30"
                         : "bg-white/5 border-white/10 hover:bg-white/10"
                     }`}

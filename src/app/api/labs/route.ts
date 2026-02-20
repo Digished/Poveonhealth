@@ -1,6 +1,9 @@
 import { NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 
+// Never cache — labs list must always be fresh so newly added labs appear immediately
+export const dynamic = "force-dynamic";
+
 // Public endpoint — returns visible labs for the doctor form dropdown
 export async function GET() {
   try {

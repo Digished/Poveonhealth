@@ -79,36 +79,41 @@ export async function POST(request: NextRequest) {
     const labAddress = lab.address ?? "";
     const labPhones = (lab.phones as string[]) ?? [];
 
-    // Email doctor
-    await resend.emails.send({
-      from: FROM_ADDRESS,
-      to: data.doctor_email,
-      subject: `Lab Request Confirmed — Code: ${code}`,
-      html: doctorRequestConfirmation({
-        doctorName: data.doctor_name,
-        patientName: data.patient_name,
-        code,
-        labName: lab.name,
-        labAddress,
-        tests: data.tests,
-      }),
-    });
-
-    // Email patient if email provided
-    if (data.patient_email) {
-      await resend.emails.send({
+    // Send emails — failures are logged but never block the request response
+    const sends: Promise<void>[] = [
+      resend.emails.send({
         from: FROM_ADDRESS,
-        to: data.patient_email,
-        subject: `Your Lab Request Code — ${code}`,
-        html: patientRequestCode({
+        to: data.doctor_email,
+        subject: `Lab Request Confirmed — Code: ${code}`,
+        html: doctorRequestConfirmation({
+          doctorName: data.doctor_name,
           patientName: data.patient_name,
           code,
           labName: lab.name,
           labAddress,
-          doctorName: data.doctor_name,
+          tests: data.tests,
         }),
-      });
+      }).then(({ error }) => { if (error) console.error("[email] doctor confirmation:", JSON.stringify(error)); }),
+    ];
+
+    if (data.patient_email) {
+      sends.push(
+        resend.emails.send({
+          from: FROM_ADDRESS,
+          to: data.patient_email,
+          subject: `Your Lab Request Code — ${code}`,
+          html: patientRequestCode({
+            patientName: data.patient_name,
+            code,
+            labName: lab.name,
+            labAddress,
+            doctorName: data.doctor_name,
+          }),
+        }).then(({ error }) => { if (error) console.error("[email] patient code:", JSON.stringify(error)); })
+      );
     }
+
+    await Promise.all(sends).catch((e) => console.error("[email] send error:", e));
 
     return NextResponse.json({
       success: true,

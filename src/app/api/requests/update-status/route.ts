@@ -88,7 +88,7 @@ export async function POST(request: NextRequest) {
 
     // Notify doctor when tests are done
     if (status === "done") {
-      await resend.emails.send({
+      resend.emails.send({
         from: FROM_ADDRESS,
         to: req.doctor_email,
         subject: `Tests Completed — ${req.patient_name}`,
@@ -98,7 +98,8 @@ export async function POST(request: NextRequest) {
           labName: req.lab.name,
           code: req.code,
         }),
-      });
+      }).then(({ error }) => { if (error) console.error("[email] tests completed:", JSON.stringify(error)); })
+        .catch((e) => console.error("[email] tests completed error:", e));
     }
 
     return NextResponse.json({ success: true, status });

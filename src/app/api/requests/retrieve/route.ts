@@ -74,7 +74,7 @@ export async function POST(request: NextRequest) {
         data: { status: "seen", seen_at: new Date() },
       });
 
-      await resend.emails.send({
+      resend.emails.send({
         from: FROM_ADDRESS,
         to: req.doctor_email,
         subject: `Patient Arrived — ${req.patient_name} is at ${req.lab.name}`,
@@ -84,7 +84,8 @@ export async function POST(request: NextRequest) {
           labName: req.lab.name,
           code: req.code,
         }),
-      });
+      }).then(({ error }) => { if (error) console.error("[email] patient arrived:", JSON.stringify(error)); })
+        .catch((e) => console.error("[email] patient arrived error:", e));
 
       return NextResponse.json({ success: true, request: { ...req, status: "seen" } });
     }
