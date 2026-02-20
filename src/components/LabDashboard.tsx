@@ -4,7 +4,7 @@ import { useState, useEffect, useCallback } from "react";
 import { toast } from "react-hot-toast";
 import {
   Search, RefreshCw, CheckCircle, Clock, FlaskConical,
-  ChevronRight, Calendar, Stethoscope, LogOut, Eye, EyeOff, Phone,
+  ChevronRight, Calendar, Stethoscope, LogOut, Eye, EyeOff, Phone, X,
 } from "lucide-react";
 import { Button } from "@/components/ui/Button";
 import { Input } from "@/components/ui/Input";
@@ -41,6 +41,7 @@ export function LabDashboard({ labName, labId: _labId, labLogoUrl }: LabDashboar
   const [retrievedRequest, setRetrievedRequest] = useState<LabRequest | null>(null);
   const [updatingId, setUpdatingId] = useState<string | null>(null);
   const [selectedRequest, setSelectedRequest] = useState<LabRequest | null>(null);
+  const [mobileDetailOpen, setMobileDetailOpen] = useState(false);
 
   const fetchRequests = useCallback(async (showRefresh = false) => {
     if (showRefresh) setRefreshing(true);
@@ -284,7 +285,12 @@ export function LabDashboard({ labName, labId: _labId, labLogoUrl }: LabDashboar
                 tabRequests.map((req) => (
                   <button
                     key={req.id}
-                    onClick={() => setSelectedRequest(selectedRequest?.id === req.id ? null : req)}
+                    onClick={() => {
+                      setSelectedRequest(selectedRequest?.id === req.id ? null : req);
+                      if (selectedRequest?.id !== req.id) {
+                        setMobileDetailOpen(true);
+                      }
+                    }}
                     className={`w-full text-left p-4 rounded-xl border transition-all ${
                       selectedRequest?.id === req.id
                         ? "bg-white/15 border-white/30"
@@ -344,8 +350,8 @@ export function LabDashboard({ labName, labId: _labId, labLogoUrl }: LabDashboar
             </div>
           </div>
 
-          {/* Right: Detail panel */}
-          <div>
+          {/* Right: Detail panel (desktop only) */}
+          <div className="hidden lg:block">
             {selectedRequest ? (
               <div className="bg-white/5 backdrop-blur-md border border-white/10 rounded-2xl p-5 sticky top-24 animate-slide-up">
                 <div className="flex items-center justify-between mb-4">
@@ -456,6 +462,96 @@ export function LabDashboard({ labName, labId: _labId, labLogoUrl }: LabDashboar
             )}
           </div>
         </div>
+
+        {/* Mobile detail modal */}
+        {mobileDetailOpen && selectedRequest && (
+          <div className="fixed inset-0 z-40 lg:hidden flex items-end bg-black/60 backdrop-blur-sm">
+            <div className="w-full bg-slate-900 border-t border-white/10 rounded-t-2xl max-h-[90vh] overflow-y-auto animate-slide-up">
+              <div className="sticky top-0 bg-slate-900 border-b border-white/10 p-4 flex items-center justify-between">
+                <h3 className="font-semibold text-white">Request Details</h3>
+                <button onClick={() => setMobileDetailOpen(false)} className="p-1.5 rounded-lg hover:bg-white/10 text-slate-400 transition-colors">
+                  <X className="w-5 h-5" />
+                </button>
+              </div>
+              <div className="p-5 space-y-4 text-sm">
+                {selectedRequest.status !== "incoming" ? (
+                  <>
+                    <div>
+                      <p className="text-xs text-slate-500 font-medium mb-0.5">Code</p>
+                      <p className="font-mono font-bold text-medical-400">{selectedRequest.code}</p>
+                    </div>
+                    <div>
+                      <p className="text-xs text-slate-500 font-medium mb-0.5">Patient Name</p>
+                      <p className="text-slate-200">{selectedRequest.patient_name}</p>
+                    </div>
+                  </>
+                ) : null}
+                <div>
+                  <p className="text-xs text-slate-500 font-medium mb-0.5">Age / Sex</p>
+                  <p className="text-slate-200 capitalize">{calcAge(selectedRequest.dob)} yrs · {selectedRequest.sex}</p>
+                </div>
+                <div>
+                  <p className="text-xs text-slate-500 font-medium mb-0.5">Date of Birth</p>
+                  <p className="text-slate-200">{format(new Date(selectedRequest.dob), "dd MMM yyyy")}</p>
+                </div>
+                {selectedRequest.address && (
+                  <div>
+                    <p className="text-xs text-slate-500 font-medium mb-0.5">Address</p>
+                    <p className="text-slate-200">{selectedRequest.address}</p>
+                  </div>
+                )}
+                {selectedRequest.status !== "incoming" && selectedRequest.patient_email && (
+                  <div>
+                    <p className="text-xs text-slate-500 font-medium mb-0.5">Patient Email</p>
+                    <p className="text-slate-200">{selectedRequest.patient_email}</p>
+                  </div>
+                )}
+                <div className="border-t border-white/10 pt-3" />
+                {selectedRequest.status !== "incoming" && (
+                  <>
+                    <div>
+                      <p className="text-xs text-slate-500 font-medium mb-0.5">Referring Doctor</p>
+                      <p className="text-slate-200">{selectedRequest.doctor_name}</p>
+                    </div>
+                    <div>
+                      <p className="text-xs text-slate-500 font-medium mb-0.5">Doctor Email</p>
+                      <p className="text-slate-200">{selectedRequest.doctor_email}</p>
+                    </div>
+                  </>
+                )}
+                {selectedRequest.diagnosis && (
+                  <div>
+                    <p className="text-xs text-slate-500 font-medium mb-0.5">Diagnosis</p>
+                    <p className="text-slate-200">{selectedRequest.diagnosis}</p>
+                  </div>
+                )}
+                <div>
+                  <p className="text-xs text-slate-500 font-medium mb-0.5">Tests</p>
+                  <p className="text-slate-200 font-medium">{selectedRequest.tests}</p>
+                </div>
+                <div>
+                  <p className="text-xs text-slate-500 font-medium mb-0.5">Submitted</p>
+                  <p className="text-slate-200">{format(new Date(selectedRequest.created_at), "dd MMM yyyy HH:mm")}</p>
+                </div>
+                {selectedRequest.seen_at && (
+                  <div>
+                    <p className="text-xs text-slate-500 font-medium mb-0.5">Retrieved</p>
+                    <p className="text-slate-200">{format(new Date(selectedRequest.seen_at), "dd MMM yyyy HH:mm")}</p>
+                  </div>
+                )}
+                {selectedRequest.status === "seen" && (
+                  <div className="border-t border-white/10 pt-4">
+                    <Button variant="success" fullWidth loading={updatingId === selectedRequest.id} onClick={() => handleMarkDone(selectedRequest)}>
+                      <CheckCircle className="w-4 h-4" />
+                      Mark Tests as Done
+                    </Button>
+                    <p className="text-xs text-slate-400 text-center mt-2">Doctor will be notified by email</p>
+                  </div>
+                )}
+              </div>
+            </div>
+          </div>
+        )}
       </div>
     </div>
   );

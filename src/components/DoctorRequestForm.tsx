@@ -1,11 +1,11 @@
 "use client";
 
-import { useState, useEffect, useRef } from "react";
+import { useState, useEffect, useRef, useCallback } from "react";
 import { toast } from "react-hot-toast";
 import {
   FlaskConical, User, MapPin, Phone, Stethoscope,
   TestTube2, ChevronRight, ChevronLeft, Building2, Check,
-  Search, X, PhoneCall,
+  Search, X, PhoneCall, RefreshCw,
 } from "lucide-react";
 import { Button } from "@/components/ui/Button";
 import { Input, Textarea, Select } from "@/components/ui/Input";
@@ -64,12 +64,14 @@ function LabSearch({
   value,
   onChange,
   error,
+  onRefresh,
 }: {
   labs: Lab[];
   loading: boolean;
   value: string;
   onChange: (labId: string) => void;
   error?: string;
+  onRefresh?: () => void;
 }) {
   const [query, setQuery] = useState("");
   const [open, setOpen] = useState(false);
@@ -131,17 +133,30 @@ function LabSearch({
             </button>
           </div>
         ) : (
-          <div className="relative">
-            <Search className="absolute left-3.5 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400 pointer-events-none" />
-            <input
-              type="text"
-              placeholder={loading ? "Loading laboratories…" : "Search by lab name or address…"}
-              value={query}
-              disabled={loading}
-              onChange={(e) => { setQuery(e.target.value); setOpen(true); }}
-              onFocus={() => setOpen(true)}
-              className="w-full rounded-xl border border-slate-200 bg-white px-4 py-2.5 pl-10 text-slate-800 placeholder-slate-300 text-sm focus:outline-none focus:ring-2 focus:ring-medical-500 focus:border-medical-400 disabled:opacity-60"
-            />
+          <div className="relative flex items-center gap-2">
+            <div className="relative flex-1">
+              <Search className="absolute left-3.5 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400 pointer-events-none" />
+              <input
+                type="text"
+                placeholder={loading ? "Loading laboratories…" : "Search by lab name or address…"}
+                value={query}
+                disabled={loading}
+                onChange={(e) => { setQuery(e.target.value); setOpen(true); }}
+                onFocus={() => setOpen(true)}
+                className="w-full rounded-xl border border-slate-200 bg-white px-4 py-2.5 pl-10 text-slate-800 placeholder-slate-300 text-sm focus:outline-none focus:ring-2 focus:ring-medical-500 focus:border-medical-400 disabled:opacity-60"
+              />
+            </div>
+            {onRefresh && (
+              <button
+                type="button"
+                onClick={onRefresh}
+                disabled={loading}
+                className="p-2.5 rounded-lg border border-slate-200 hover:bg-slate-50 text-slate-600 hover:text-slate-800 transition-colors disabled:opacity-60 shrink-0"
+                title="Refresh labs"
+              >
+                <RefreshCw className={`w-4 h-4 ${loading ? "animate-spin" : ""}`} />
+              </button>
+            )}
           </div>
         )}
         {open && !selectedLab && (
@@ -241,13 +256,18 @@ export function DoctorRequestForm() {
   const [submitting, setSubmitting] = useState(false);
   const [result, setResult] = useState<CreateRequestResponse | null>(null);
 
-  useEffect(() => {
+  const fetchLabs = useCallback(() => {
+    setLabsLoading(true);
     fetch("/api/labs")
       .then((r) => r.json())
       .then((data) => setLabs(data.labs ?? []))
       .catch(() => toast.error("Failed to load laboratories"))
       .finally(() => setLabsLoading(false));
   }, []);
+
+  useEffect(() => {
+    fetchLabs();
+  }, [fetchLabs]);
 
   function set(field: keyof FormData, value: string) {
     setForm((prev) => ({ ...prev, [field]: value }));
@@ -410,6 +430,7 @@ export function DoctorRequestForm() {
               value={form.lab_id}
               onChange={(id) => set("lab_id", id)}
               error={errors.lab_id}
+              onRefresh={fetchLabs}
             />
             {selectedLab && (
               <div className="bg-medical-50 border border-medical-100 rounded-xl p-4 space-y-2">
