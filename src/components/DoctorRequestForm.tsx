@@ -238,10 +238,10 @@ function LabCallFAB({ lab }: { lab: Lab | undefined }) {
       )}
       <button
         onClick={() => setOpen((v) => !v)}
-        className="w-14 h-14 bg-medical-600 hover:bg-medical-700 text-white rounded-full shadow-2xl flex items-center justify-center transition-colors"
-        title={`Call ${lab.name}`}
+        className="w-14 h-14 bg-medical-600 hover:bg-medical-700 text-white rounded-full shadow-2xl flex items-center justify-center transition-all"
+        title={open ? "Close" : `Call ${lab.name}`}
       >
-        <PhoneCall className="w-6 h-6" />
+        {open ? <X className="w-6 h-6" /> : <PhoneCall className="w-6 h-6" />}
       </button>
     </div>
   );
