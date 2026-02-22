@@ -122,19 +122,17 @@ export function patientRequestCode({
   code,
   labName,
   labAddress,
-  doctorName,
 }: {
   patientName: string;
   code: string;
   labName: string;
   labAddress: string;
-  doctorName: string;
 }) {
   return base(`
     <h2 style="margin:0 0 8px;color:#0259a0;font-size:20px;font-weight:700;">Your Lab Test Request</h2>
     <p style="margin:0 0 24px;color:#4b5563;font-size:15px;">
       Dear ${patientName},<br><br>
-      Dr. ${doctorName} has sent a laboratory test request on your behalf to <strong>${labName}</strong>.
+      Your doctor has sent a laboratory test request on your behalf to <strong>${labName}</strong>.
       Please present the code below when you arrive at the laboratory.
     </p>
 
@@ -230,6 +228,126 @@ export function doctorTestsCompleted({
 
     <p style="margin:0;color:#6b7280;font-size:13px;">
       Please contact the laboratory or your patient directly to arrange result collection. Thank you for using Poveon.
+    </p>
+  `);
+}
+
+// =============================================================================
+// TEMPLATE: Doctor — Lab Results Available
+// =============================================================================
+export function labResultsDoctor({
+  doctorName,
+  patientName,
+  labName,
+  code,
+  resultLink,
+  hasAttachment,
+}: {
+  doctorName: string;
+  patientName: string;
+  labName: string;
+  code: string;
+  resultLink?: string;
+  hasAttachment?: boolean;
+}) {
+  const resultsSection = [
+    resultLink
+      ? `<div style="text-align:center;margin:24px 0;">
+          <a href="${resultLink}" style="display:inline-block;background:#0270c3;color:#ffffff;text-decoration:none;padding:14px 32px;border-radius:8px;font-weight:600;font-size:15px;">
+            View Results Online
+          </a>
+        </div>`
+      : "",
+    hasAttachment
+      ? `<div style="background:#f0fdf4;border:1px solid #bbf7d0;border-radius:8px;padding:12px 16px;margin:16px 0;display:flex;align-items:center;gap:8px;">
+          <p style="margin:0;color:#166534;font-size:14px;font-weight:500;">📎 Results are attached to this email as a PDF document.</p>
+        </div>`
+      : "",
+  ]
+    .filter(Boolean)
+    .join("");
+
+  return base(`
+    <h2 style="margin:0 0 8px;color:#059669;font-size:20px;font-weight:700;">Lab Results Available</h2>
+    <p style="margin:0 0 24px;color:#4b5563;font-size:15px;">
+      Dear Dr. ${doctorName},<br><br>
+      The laboratory results for your patient <strong>${patientName}</strong> are now available from <strong>${labName}</strong>.
+    </p>
+
+    ${divider}
+
+    ${label("Patient")}
+    ${value(patientName)}
+
+    ${label("Laboratory")}
+    ${value(labName)}
+
+    ${label("Request Code")}
+    ${value(`<span style="font-family:monospace;font-weight:700;">${code}</span>`)}
+
+    ${divider}
+
+    <h3 style="margin:0 0 12px;color:#059669;font-size:16px;font-weight:600;">Results</h3>
+
+    ${resultsSection}
+
+    ${divider}
+
+    <p style="margin:0;color:#6b7280;font-size:13px;">
+      Thank you for using Poveon.
+    </p>
+  `);
+}
+
+// =============================================================================
+// TEMPLATE: Patient — Lab Results Available
+// =============================================================================
+export function labResultsPatient({
+  patientName,
+  labName,
+  resultLink,
+  hasAttachment,
+}: {
+  patientName: string;
+  labName: string;
+  resultLink?: string;
+  hasAttachment?: boolean;
+}) {
+  const resultsSection = [
+    resultLink
+      ? `<div style="text-align:center;margin:24px 0;">
+          <a href="${resultLink}" style="display:inline-block;background:#0270c3;color:#ffffff;text-decoration:none;padding:14px 32px;border-radius:8px;font-weight:600;font-size:15px;">
+            View Your Results Online
+          </a>
+        </div>`
+      : "",
+    hasAttachment
+      ? `<div style="background:#f0fdf4;border:1px solid #bbf7d0;border-radius:8px;padding:12px 16px;margin:16px 0;">
+          <p style="margin:0;color:#166534;font-size:14px;font-weight:500;">📎 Your results are attached to this email as a PDF document.</p>
+        </div>`
+      : "",
+  ]
+    .filter(Boolean)
+    .join("");
+
+  return base(`
+    <h2 style="margin:0 0 8px;color:#059669;font-size:20px;font-weight:700;">Your Lab Results Are Ready</h2>
+    <p style="margin:0 0 24px;color:#4b5563;font-size:15px;">
+      Dear ${patientName},<br><br>
+      Your laboratory test results from <strong>${labName}</strong> are now available.
+      Please share these results with your doctor if you have not already done so.
+    </p>
+
+    ${divider}
+
+    <h3 style="margin:0 0 12px;color:#059669;font-size:16px;font-weight:600;">Results</h3>
+
+    ${resultsSection}
+
+    ${divider}
+
+    <p style="margin:0;color:#6b7280;font-size:13px;line-height:1.6;">
+      If you have any questions about your results, please contact your doctor or the laboratory directly.
     </p>
   `);
 }

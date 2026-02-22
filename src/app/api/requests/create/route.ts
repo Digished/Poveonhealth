@@ -107,7 +107,6 @@ export async function POST(request: NextRequest) {
             code,
             labName: lab.name,
             labAddress,
-            doctorName: data.doctor_name,
           }),
         }).then(({ error }) => { if (error) console.error("[email] patient code:", JSON.stringify(error)); })
       );

@@ -1,10 +1,11 @@
 "use client";
 
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, useRef } from "react";
 import { toast } from "react-hot-toast";
 import {
   Search, RefreshCw, CheckCircle, Clock, FlaskConical,
   ChevronRight, Calendar, Stethoscope, LogOut, Eye, EyeOff, Phone, X,
+  Link2, Paperclip, Send, SkipForward,
 } from "lucide-react";
 import { Button } from "@/components/ui/Button";
 import { Input } from "@/components/ui/Input";
@@ -42,6 +43,14 @@ export function LabDashboard({ labName, labId: _labId, labLogoUrl }: LabDashboar
   const [updatingId, setUpdatingId] = useState<string | null>(null);
   const [selectedRequest, setSelectedRequest] = useState<LabRequest | null>(null);
   const [mobileDetailOpen, setMobileDetailOpen] = useState(false);
+
+  // Results modal state
+  const [resultsModalRequest, setResultsModalRequest] = useState<LabRequest | null>(null);
+  const [resultLink, setResultLink] = useState("");
+  const [resultFile, setResultFile] = useState<File | null>(null);
+  const [patientEmailInput, setPatientEmailInput] = useState("");
+  const [sendingResults, setSendingResults] = useState(false);
+  const fileInputRef = useRef<HTMLInputElement>(null);
 
   const fetchRequests = useCallback(async (showRefresh = false) => {
     if (showRefresh) setRefreshing(true);
@@ -111,7 +120,21 @@ export function LabDashboard({ labName, labId: _labId, labLogoUrl }: LabDashboar
     }
   }
 
-  async function handleMarkDone(req: LabRequest) {
+  function openResultsModal(req: LabRequest) {
+    setResultsModalRequest(req);
+    setResultLink("");
+    setResultFile(null);
+    setPatientEmailInput("");
+    if (fileInputRef.current) fileInputRef.current.value = "";
+  }
+
+  function closeResultsModal() {
+    setResultsModalRequest(null);
+  }
+
+  async function handleSkipResults(req: LabRequest) {
+    // Close modal and send default notification to doctor
+    closeResultsModal();
     setUpdatingId(req.id);
     try {
       const res = await fetch("/api/requests/update-status", {
@@ -132,6 +155,37 @@ export function LabDashboard({ labName, labId: _labId, labLogoUrl }: LabDashboar
       toast.error("Network error");
     } finally {
       setUpdatingId(null);
+    }
+  }
+
+  async function handleSendResults() {
+    if (!resultsModalRequest) return;
+    setSendingResults(true);
+    try {
+      const fd = new FormData();
+      fd.append("requestId", resultsModalRequest.id);
+      if (resultLink.trim()) fd.append("resultLink", resultLink.trim());
+      if (resultFile) fd.append("resultFile", resultFile);
+      if (patientEmailInput.trim()) fd.append("patientEmail", patientEmailInput.trim());
+
+      const res = await fetch("/api/requests/send-results", {
+        method: "POST",
+        body: fd,
+      });
+      const data = await res.json();
+      if (data.success) {
+        toast.success("Results sent successfully.");
+        closeResultsModal();
+        await fetchRequests(true);
+        if (selectedRequest?.id === resultsModalRequest.id) setSelectedRequest(null);
+        if (retrievedRequest?.id === resultsModalRequest.id) setRetrievedRequest(null);
+      } else {
+        toast.error(data.error ?? "Failed to send results");
+      }
+    } catch {
+      toast.error("Network error");
+    } finally {
+      setSendingResults(false);
     }
   }
 
@@ -460,13 +514,13 @@ export function LabDashboard({ labName, labId: _labId, labLogoUrl }: LabDashboar
                       variant="success"
                       fullWidth
                       loading={updatingId === selectedRequest.id}
-                      onClick={() => handleMarkDone(selectedRequest)}
+                      onClick={() => openResultsModal(selectedRequest)}
                     >
                       <CheckCircle className="w-4 h-4" />
                       Mark Tests as Done
                     </Button>
                     <p className="text-xs text-slate-400 text-center mt-2">
-                      Doctor will be notified by email
+                      Send results to doctor &amp; patient
                     </p>
                   </div>
                 )}
@@ -479,6 +533,128 @@ export function LabDashboard({ labName, labId: _labId, labLogoUrl }: LabDashboar
             )}
           </div>
         </div>
+
+        {/* Results modal */}
+        {resultsModalRequest && (
+          <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center bg-black/60 backdrop-blur-sm px-0 sm:px-4">
+            <div className="w-full sm:max-w-lg bg-slate-900 border border-white/15 rounded-t-2xl sm:rounded-2xl max-h-[92vh] overflow-y-auto animate-slide-up">
+              {/* Modal header */}
+              <div className="sticky top-0 bg-slate-900 border-b border-white/10 p-4 flex items-start justify-between gap-3">
+                <div>
+                  <h3 className="font-semibold text-white text-base">Send Test Results</h3>
+                  <p className="text-xs text-slate-400 mt-0.5">
+                    {resultsModalRequest.patient_name} &middot; {resultsModalRequest.code}
+                  </p>
+                </div>
+                <button
+                  onClick={() => handleSkipResults(resultsModalRequest)}
+                  className="p-1.5 rounded-lg hover:bg-white/10 text-slate-400 hover:text-white transition-colors shrink-0"
+                  title="Skip — send default notification to doctor"
+                >
+                  <X className="w-5 h-5" />
+                </button>
+              </div>
+
+              <div className="p-5 space-y-5">
+                <p className="text-sm text-slate-300">
+                  Optionally attach results below before sending. They will be emailed to the doctor
+                  {resultsModalRequest.patient_email || patientEmailInput ? " and the patient" : ""}.
+                  If you skip, a default completion notification is sent to the doctor only.
+                </p>
+
+                {/* PDF upload */}
+                <div>
+                  <label className="flex items-center gap-1.5 text-xs font-semibold text-slate-400 uppercase tracking-wider mb-2">
+                    <Paperclip className="w-3.5 h-3.5" />
+                    PDF Attachment <span className="normal-case font-normal text-slate-500">(optional)</span>
+                  </label>
+                  <input
+                    ref={fileInputRef}
+                    type="file"
+                    accept="application/pdf"
+                    onChange={(e) => setResultFile(e.target.files?.[0] ?? null)}
+                    className="w-full text-sm text-slate-300 file:mr-3 file:py-2 file:px-4 file:rounded-lg file:border-0 file:bg-white/10 file:text-white file:font-medium hover:file:bg-white/20 file:cursor-pointer cursor-pointer bg-white/5 border border-white/10 rounded-xl px-3 py-2.5"
+                  />
+                  {resultFile && (
+                    <div className="mt-2 flex items-center justify-between bg-emerald-500/10 border border-emerald-500/20 rounded-lg px-3 py-2">
+                      <span className="text-xs text-emerald-300 truncate">{resultFile.name}</span>
+                      <button
+                        onClick={() => { setResultFile(null); if (fileInputRef.current) fileInputRef.current.value = ""; }}
+                        className="ml-2 text-slate-400 hover:text-white shrink-0"
+                      >
+                        <X className="w-3.5 h-3.5" />
+                      </button>
+                    </div>
+                  )}
+                </div>
+
+                {/* Result link */}
+                <div>
+                  <label className="flex items-center gap-1.5 text-xs font-semibold text-slate-400 uppercase tracking-wider mb-2">
+                    <Link2 className="w-3.5 h-3.5" />
+                    Result Link <span className="normal-case font-normal text-slate-500">(optional)</span>
+                  </label>
+                  <input
+                    type="url"
+                    placeholder="https://results.example.com/..."
+                    value={resultLink}
+                    onChange={(e) => setResultLink(e.target.value)}
+                    className="w-full bg-white/5 border border-white/10 rounded-xl px-4 py-3 text-sm text-white placeholder-slate-500 focus:outline-none focus:ring-2 focus:ring-medical-500/50 focus:border-medical-500/50 transition-colors"
+                  />
+                </div>
+
+                {/* Patient email (only if missing from record) */}
+                {!resultsModalRequest.patient_email && (
+                  <div>
+                    <label className="flex items-center gap-1.5 text-xs font-semibold text-slate-400 uppercase tracking-wider mb-2">
+                      Patient Email <span className="normal-case font-normal text-slate-500">(optional — no email on file)</span>
+                    </label>
+                    <input
+                      type="email"
+                      placeholder="patient@example.com"
+                      value={patientEmailInput}
+                      onChange={(e) => setPatientEmailInput(e.target.value)}
+                      className="w-full bg-white/5 border border-white/10 rounded-xl px-4 py-3 text-sm text-white placeholder-slate-500 focus:outline-none focus:ring-2 focus:ring-medical-500/50 focus:border-medical-500/50 transition-colors"
+                    />
+                    <p className="text-xs text-slate-500 mt-1.5">
+                      If provided, results will also be emailed to this patient.
+                    </p>
+                  </div>
+                )}
+
+                {/* No results notice */}
+                {!resultFile && !resultLink.trim() && (
+                  <div className="bg-amber-500/10 border border-amber-500/20 rounded-xl px-4 py-3">
+                    <p className="text-xs text-amber-300">
+                      No results attached yet. You can still send to notify the doctor, or skip to send the default notification.
+                    </p>
+                  </div>
+                )}
+
+                {/* Actions */}
+                <div className="flex flex-col gap-2 pt-1">
+                  <Button
+                    variant="success"
+                    fullWidth
+                    loading={sendingResults}
+                    onClick={handleSendResults}
+                  >
+                    <Send className="w-4 h-4" />
+                    {resultFile || resultLink.trim() ? "Send Results & Mark Done" : "Mark Done & Notify"}
+                  </Button>
+                  <button
+                    onClick={() => handleSkipResults(resultsModalRequest)}
+                    disabled={sendingResults}
+                    className="w-full flex items-center justify-center gap-2 px-4 py-2.5 rounded-xl text-sm font-medium text-slate-400 hover:text-white hover:bg-white/10 transition-colors disabled:opacity-50"
+                  >
+                    <SkipForward className="w-4 h-4" />
+                    Skip — send default notification to doctor only
+                  </button>
+                </div>
+              </div>
+            </div>
+          </div>
+        )}
 
         {/* Mobile detail modal */}
         {mobileDetailOpen && selectedRequest && (
@@ -558,11 +734,11 @@ export function LabDashboard({ labName, labId: _labId, labLogoUrl }: LabDashboar
                 )}
                 {selectedRequest.status === "seen" && (
                   <div className="border-t border-white/10 pt-4">
-                    <Button variant="success" fullWidth loading={updatingId === selectedRequest.id} onClick={() => handleMarkDone(selectedRequest)}>
+                    <Button variant="success" fullWidth loading={updatingId === selectedRequest.id} onClick={() => { setMobileDetailOpen(false); openResultsModal(selectedRequest); }}>
                       <CheckCircle className="w-4 h-4" />
                       Mark Tests as Done
                     </Button>
-                    <p className="text-xs text-slate-400 text-center mt-2">Doctor will be notified by email</p>
+                    <p className="text-xs text-slate-400 text-center mt-2">Send results to doctor &amp; patient</p>
                   </div>
                 )}
               </div>
