@@ -242,6 +242,7 @@ export function labResultsDoctor({
   code,
   resultLink,
   hasAttachment,
+  note,
 }: {
   doctorName: string;
   patientName: string;
@@ -249,6 +250,7 @@ export function labResultsDoctor({
   code: string;
   resultLink?: string;
   hasAttachment?: boolean;
+  note?: string;
 }) {
   const resultsSection = [
     resultLink
@@ -259,13 +261,21 @@ export function labResultsDoctor({
         </div>`
       : "",
     hasAttachment
-      ? `<div style="background:#f0fdf4;border:1px solid #bbf7d0;border-radius:8px;padding:12px 16px;margin:16px 0;display:flex;align-items:center;gap:8px;">
-          <p style="margin:0;color:#166534;font-size:14px;font-weight:500;">📎 Results are attached to this email as a PDF document.</p>
+      ? `<div style="background:#f0fdf4;border:1px solid #bbf7d0;border-radius:8px;padding:12px 16px;margin:16px 0;">
+          <p style="margin:0;color:#166534;font-size:14px;font-weight:500;">📎 Results are attached to this email as PDF document(s).</p>
         </div>`
       : "",
   ]
     .filter(Boolean)
     .join("");
+
+  const noteSection = note
+    ? `${divider}
+       <h3 style="margin:0 0 8px;color:#92400e;font-size:14px;font-weight:600;">Note from Laboratory</h3>
+       <div style="background:#fffbeb;border:1px solid #fde68a;border-radius:8px;padding:12px 16px;">
+         <p style="margin:0;color:#78350f;font-size:14px;line-height:1.6;">${note}</p>
+       </div>`
+    : "";
 
   return base(`
     <h2 style="margin:0 0 8px;color:#059669;font-size:20px;font-weight:700;">Lab Results Available</h2>
@@ -290,6 +300,8 @@ export function labResultsDoctor({
     <h3 style="margin:0 0 12px;color:#059669;font-size:16px;font-weight:600;">Results</h3>
 
     ${resultsSection}
+
+    ${noteSection}
 
     ${divider}
 

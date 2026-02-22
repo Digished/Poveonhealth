@@ -10,12 +10,25 @@ export async function POST(request: NextRequest) {
 
     const requestId = formData.get("requestId") as string | null;
     const resultLink = (formData.get("resultLink") as string | null)?.trim() || undefined;
+    const note = (formData.get("note") as string | null)?.trim() || undefined;
     const patientEmailOverride = (formData.get("patientEmail") as string | null)?.trim() || undefined;
-    const resultFile = formData.get("resultFile") as File | null;
+
+    // Support multiple files submitted under the key "resultFiles"
+    const rawFiles = formData.getAll("resultFiles");
+    const resultFiles = rawFiles.filter(
+      (f): f is File => f instanceof File && f.size > 0
+    );
 
     if (!requestId) {
       return NextResponse.json(
         { success: false, error: "requestId is required" },
+        { status: 400 }
+      );
+    }
+
+    if (resultFiles.length === 0 && !resultLink) {
+      return NextResponse.json(
+        { success: false, error: "At least one PDF attachment or a result link is required" },
         { status: 400 }
       );
     }
@@ -62,32 +75,31 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    if (req.status !== "seen") {
+    // Only "seen" and "done" requests can have results sent
+    if (req.status === "incoming") {
       return NextResponse.json(
-        { success: false, error: `Cannot send results: request status is "${req.status}"` },
+        { success: false, error: "Patient must be seen before results can be sent" },
         { status: 400 }
       );
     }
 
-    // Mark as done
-    await prisma.request.update({
-      where: { id: requestId },
-      data: { status: "done", completed_at: new Date() },
-    });
-
-    // Prepare file attachment if provided
-    let attachments: { filename: string; content: Buffer }[] | undefined;
-    if (resultFile && resultFile.size > 0) {
-      const arrayBuffer = await resultFile.arrayBuffer();
-      attachments = [
-        {
-          filename: resultFile.name || "lab-results.pdf",
-          content: Buffer.from(arrayBuffer),
-        },
-      ];
+    // Mark as done only if still in "seen" state
+    if (req.status === "seen") {
+      await prisma.request.update({
+        where: { id: requestId },
+        data: { status: "done", completed_at: new Date() },
+      });
     }
 
-    const hasAttachment = !!attachments;
+    // Build email attachments from uploaded PDFs
+    const attachments: { filename: string; content: Buffer }[] = await Promise.all(
+      resultFiles.map(async (f) => ({
+        filename: f.name || "lab-results.pdf",
+        content: Buffer.from(await f.arrayBuffer()),
+      }))
+    );
+
+    const hasAttachment = attachments.length > 0;
     const patientEmail = patientEmailOverride || req.patient_email || undefined;
 
     // Send to doctor
@@ -102,8 +114,9 @@ export async function POST(request: NextRequest) {
         code: req.code,
         resultLink,
         hasAttachment,
+        note,
       }),
-      ...(attachments ? { attachments } : {}),
+      ...(attachments.length > 0 ? { attachments } : {}),
     })
       .then(({ error }) => {
         if (error) console.error("[email] results to doctor:", JSON.stringify(error));
@@ -115,14 +128,14 @@ export async function POST(request: NextRequest) {
       resend.emails.send({
         from: FROM_ADDRESS,
         to: patientEmail,
-        subject: `Your Lab Results Are Ready`,
+        subject: "Your Lab Results Are Ready",
         html: labResultsPatient({
           patientName: req.patient_name,
           labName: req.lab.name,
           resultLink,
           hasAttachment,
         }),
-        ...(attachments ? { attachments } : {}),
+        ...(attachments.length > 0 ? { attachments } : {}),
       })
         .then(({ error }) => {
           if (error) console.error("[email] results to patient:", JSON.stringify(error));
@@ -130,7 +143,7 @@ export async function POST(request: NextRequest) {
         .catch((e) => console.error("[email] results to patient error:", e));
     }
 
-    return NextResponse.json({ success: true, status: "done" });
+    return NextResponse.json({ success: true, status: req.status === "seen" ? "done" : req.status });
   } catch (error) {
     console.error("Send results error:", error);
     return NextResponse.json(
