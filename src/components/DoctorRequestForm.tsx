@@ -9,6 +9,7 @@ import {
 } from "lucide-react";
 import { Button } from "@/components/ui/Button";
 import { Input, Textarea, Select } from "@/components/ui/Input";
+import { DobInput } from "@/components/DobInput";
 import { SuccessScreen } from "@/components/SuccessScreen";
 import type { Lab, CreateRequestResponse } from "@/lib/types";
 
@@ -515,12 +516,10 @@ export function DoctorRequestForm() {
               error={errors.patient_name}
             />
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-              <Input
-                label="Date of Birth"
-                type="date"
+              <DobInput
                 required
                 value={form.dob}
-                onChange={(e) => set("dob", e.target.value)}
+                onChange={(iso) => set("dob", iso)}
                 error={errors.dob}
               />
               <Select
@@ -659,7 +658,7 @@ export function DoctorRequestForm() {
               <p className="text-xs font-semibold text-slate-400 uppercase tracking-wider mb-3">Review</p>
               <SummaryRow label="Lab" value={selectedLab?.name ?? ""} />
               <SummaryRow label="Patient" value={form.patient_name} />
-              <SummaryRow label="Date of Birth" value={form.dob} />
+              <SummaryRow label="Date of Birth" value={form.dob ? form.dob.split("-").reverse().join(" / ") : ""} />
               <SummaryRow label="Sex" value={form.sex} capitalize />
               <SummaryRow label="Doctor" value={form.doctor_name} />
               <SummaryRow label="Doctor Email" value={form.doctor_email} />
