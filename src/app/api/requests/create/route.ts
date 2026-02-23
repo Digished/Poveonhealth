@@ -93,6 +93,7 @@ export async function POST(request: NextRequest) {
           code,
           labName: lab.name,
           labAddress,
+          labPhones,
           tests: data.tests,
         }),
       }).then(({ error }) => { if (error) console.error("[email] doctor confirmation:", JSON.stringify(error)); }),
@@ -109,6 +110,7 @@ export async function POST(request: NextRequest) {
             code,
             labName: lab.name,
             labAddress,
+            labPhones,
           }),
         }).then(({ error }) => { if (error) console.error("[email] patient code:", JSON.stringify(error)); })
       );

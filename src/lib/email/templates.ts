@@ -72,6 +72,7 @@ export function doctorRequestConfirmation({
   code,
   labName,
   labAddress,
+  labPhones,
   tests,
 }: {
   doctorName: string;
@@ -79,8 +80,12 @@ export function doctorRequestConfirmation({
   code: string;
   labName: string;
   labAddress: string;
+  labPhones: string[];
   tests: string;
 }) {
+  const phoneLines = labPhones.length
+    ? labPhones.map((p) => `<p style="margin:2px 0;color:#1e3a5f;font-size:15px;font-weight:500;">📞 ${p}</p>`).join("")
+    : "";
   return base(`
     <h2 style="margin:0 0 8px;color:#0259a0;font-size:20px;font-weight:700;">Lab Request Submitted</h2>
     <p style="margin:0 0 24px;color:#4b5563;font-size:15px;">
@@ -105,6 +110,7 @@ export function doctorRequestConfirmation({
     ${value(labName)}
 
     ${labAddress ? `${label("Lab Address")}${value(labAddress)}` : ""}
+    ${phoneLines ? `${label("Lab Phone")}${phoneLines}<p style="margin:0 0 16px;"></p>` : ""}
 
     ${divider}
 
@@ -122,12 +128,17 @@ export function patientRequestCode({
   code,
   labName,
   labAddress,
+  labPhones,
 }: {
   patientName: string;
   code: string;
   labName: string;
   labAddress: string;
+  labPhones: string[];
 }) {
+  const phoneLines = labPhones.length
+    ? labPhones.map((p) => `<p style="margin:2px 0;color:#1e3a5f;font-size:14px;">📞 ${p}</p>`).join("")
+    : "";
   return base(`
     <h2 style="margin:0 0 8px;color:#0259a0;font-size:20px;font-weight:700;">Your Lab Test Request</h2>
     <p style="margin:0 0 24px;color:#4b5563;font-size:15px;">
@@ -142,7 +153,9 @@ export function patientRequestCode({
 
     <h3 style="margin:0 0 12px;color:#0259a0;font-size:16px;font-weight:600;">Where to Go</h3>
     <p style="margin:0 0 8px;color:#4b5563;font-size:14px;font-weight:500;">${labName}</p>
-    ${labAddress ? `<p style="margin:0 0 16px;color:#1e3a5f;font-size:14px;">${labAddress}</p>` : ""}
+    ${labAddress ? `<p style="margin:0 0 6px;color:#1e3a5f;font-size:14px;">${labAddress}</p>` : ""}
+    ${phoneLines}
+    ${phoneLines ? `<p style="margin:0 0 16px;"></p>` : ""}
 
     ${divider}
 
