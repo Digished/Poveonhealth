@@ -549,35 +549,26 @@ export function DoctorRequestForm() {
                 <label className="text-sm font-medium text-slate-700">
                   Sex<span className="text-red-500 ml-0.5">*</span>
                 </label>
-                <div className="grid grid-cols-2 gap-2">
-                  <button
-                    type="button"
-                    onClick={() => set("sex", "male")}
-                    className={`flex flex-col items-center justify-center gap-2 py-4 rounded-xl border-2 transition-all ${
-                      form.sex === "male"
-                        ? "border-medical-400 bg-medical-50 text-medical-700"
-                        : errors.sex
-                        ? "border-red-300 bg-white/60 text-slate-500 hover:border-red-400"
-                        : "border-slate-200 bg-white/60 text-slate-500 hover:border-slate-300 hover:bg-slate-50"
-                    }`}
-                  >
-                    <MarsIcon className={`w-5 h-5 ${form.sex === "male" ? "text-medical-500" : errors.sex ? "text-red-400" : "text-slate-400"}`} />
-                    <span className="text-sm font-semibold">Male</span>
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => set("sex", "female")}
-                    className={`flex flex-col items-center justify-center gap-2 py-4 rounded-xl border-2 transition-all ${
-                      form.sex === "female"
-                        ? "border-rose-400 bg-rose-50 text-rose-700"
-                        : errors.sex
-                        ? "border-red-300 bg-white/60 text-slate-500 hover:border-red-400"
-                        : "border-slate-200 bg-white/60 text-slate-500 hover:border-slate-300 hover:bg-slate-50"
-                    }`}
-                  >
-                    <VenusIcon className={`w-5 h-5 ${form.sex === "female" ? "text-rose-500" : errors.sex ? "text-red-400" : "text-slate-400"}`} />
-                    <span className="text-sm font-semibold">Female</span>
-                  </button>
+                <div className="flex gap-2">
+                  {(["male", "female"] as const).map((s) => (
+                    <button
+                      key={s}
+                      type="button"
+                      onClick={() => set("sex", s)}
+                      className={`flex items-center gap-2 px-4 py-2.5 rounded-xl border-2 transition-all text-sm font-semibold ${
+                        form.sex === s
+                          ? "border-medical-400 bg-medical-50 text-medical-700"
+                          : errors.sex
+                          ? "border-red-300 bg-white/60 text-slate-500 hover:border-slate-300"
+                          : "border-slate-200 bg-white/60 text-slate-500 hover:border-slate-300 hover:bg-slate-50"
+                      }`}
+                    >
+                      {s === "male"
+                        ? <MarsIcon className={`w-4 h-4 ${form.sex === s ? "text-medical-500" : "text-slate-400"}`} />
+                        : <VenusIcon className={`w-4 h-4 ${form.sex === s ? "text-medical-500" : "text-slate-400"}`} />}
+                      {s.charAt(0).toUpperCase() + s.slice(1)}
+                    </button>
+                  ))}
                 </div>
                 {errors.sex && <p className="text-xs text-red-600 font-medium">{errors.sex}</p>}
               </div>
