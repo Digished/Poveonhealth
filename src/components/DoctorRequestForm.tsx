@@ -5,8 +5,30 @@ import { toast } from "react-hot-toast";
 import {
   FlaskConical, User, MapPin, Phone, Stethoscope,
   TestTube2, ChevronRight, ChevronLeft, Building2, Check,
-  Search, X, PhoneCall, RefreshCw, ChevronDown, Mail, Mars, Venus,
+  Search, X, PhoneCall, RefreshCw, ChevronDown, Mail,
 } from "lucide-react";
+
+function MarsIcon({ className }: { className?: string }) {
+  return (
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"
+      strokeLinecap="round" strokeLinejoin="round" className={className}>
+      <circle cx="10" cy="14" r="5" />
+      <line x1="14.5" y1="9.5" x2="21" y2="3" />
+      <polyline points="16 3 21 3 21 8" />
+    </svg>
+  );
+}
+
+function VenusIcon({ className }: { className?: string }) {
+  return (
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"
+      strokeLinecap="round" strokeLinejoin="round" className={className}>
+      <circle cx="12" cy="9" r="5" />
+      <line x1="12" y1="14" x2="12" y2="21" />
+      <line x1="9" y1="18" x2="15" y2="18" />
+    </svg>
+  );
+}
 import { Button } from "@/components/ui/Button";
 import { Input, Textarea, Select } from "@/components/ui/Input";
 import { DobInput } from "@/components/DobInput";
@@ -539,7 +561,7 @@ export function DoctorRequestForm() {
                         : "border-slate-200 bg-white/60 text-slate-500 hover:border-slate-300 hover:bg-slate-50"
                     }`}
                   >
-                    <Mars className={`w-5 h-5 ${form.sex === "male" ? "text-medical-500" : errors.sex ? "text-red-400" : "text-slate-400"}`} />
+                    <MarsIcon className={`w-5 h-5 ${form.sex === "male" ? "text-medical-500" : errors.sex ? "text-red-400" : "text-slate-400"}`} />
                     <span className="text-sm font-semibold">Male</span>
                   </button>
                   <button
@@ -553,7 +575,7 @@ export function DoctorRequestForm() {
                         : "border-slate-200 bg-white/60 text-slate-500 hover:border-slate-300 hover:bg-slate-50"
                     }`}
                   >
-                    <Venus className={`w-5 h-5 ${form.sex === "female" ? "text-rose-500" : errors.sex ? "text-red-400" : "text-slate-400"}`} />
+                    <VenusIcon className={`w-5 h-5 ${form.sex === "female" ? "text-rose-500" : errors.sex ? "text-red-400" : "text-slate-400"}`} />
                     <span className="text-sm font-semibold">Female</span>
                   </button>
                 </div>
