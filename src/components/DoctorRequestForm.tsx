@@ -5,7 +5,7 @@ import { toast } from "react-hot-toast";
 import {
   FlaskConical, User, MapPin, Phone, Stethoscope,
   TestTube2, ChevronRight, ChevronLeft, Building2, Check,
-  Search, X, PhoneCall, RefreshCw,
+  Search, X, PhoneCall, RefreshCw, ChevronDown,
 } from "lucide-react";
 import { Button } from "@/components/ui/Button";
 import { Input, Textarea, Select } from "@/components/ui/Input";
@@ -40,13 +40,15 @@ const INITIAL: FormData = {
   tests: "",
 };
 
+// Contact step removed — merged into Patient step as an expandable section
 const STEPS = [
   { title: "Laboratory", icon: Building2 },
   { title: "Patient", icon: User },
-  { title: "Contact", icon: Phone },
   { title: "Physician", icon: Stethoscope },
   { title: "Tests", icon: TestTube2 },
 ];
+
+const DOCTOR_STORAGE_KEY = "poveon_doctor_profile";
 
 function SummaryRow({ label, value, capitalize }: { label: string; value: string; capitalize?: boolean }) {
   return (
@@ -199,7 +201,7 @@ function LabSearch({
   );
 }
 
-// Floating action button to call the lab — appears on step 2
+// Floating action button to call the lab — appears on step 2+
 function LabCallFAB({ lab }: { lab: Lab | undefined }) {
   const [open, setOpen] = useState(false);
   const phones = lab?.phones as string[] | undefined;
@@ -255,6 +257,8 @@ export function DoctorRequestForm() {
   const [labsLoading, setLabsLoading] = useState(true);
   const [submitting, setSubmitting] = useState(false);
   const [result, setResult] = useState<CreateRequestResponse | null>(null);
+  const [contactOpen, setContactOpen] = useState(false);
+  const [savedProfile, setSavedProfile] = useState<{ name: string; email: string; phone: string } | null>(null);
 
   const fetchLabs = useCallback(() => {
     setLabsLoading(true);
@@ -269,9 +273,39 @@ export function DoctorRequestForm() {
     fetchLabs();
   }, [fetchLabs]);
 
+  // Load saved doctor profile from localStorage on mount
+  useEffect(() => {
+    try {
+      const raw = localStorage.getItem(DOCTOR_STORAGE_KEY);
+      if (raw) {
+        const profile = JSON.parse(raw) as { name: string; email: string; phone: string };
+        if (profile.name || profile.email) {
+          setSavedProfile(profile);
+          setForm((prev) => ({
+            ...prev,
+            doctor_name: profile.name || prev.doctor_name,
+            doctor_email: profile.email || prev.doctor_email,
+            doctor_phone: profile.phone || prev.doctor_phone,
+          }));
+        }
+      }
+    } catch { /* ignore storage errors */ }
+  }, []);
+
+  // Auto-open contact section if email field has a validation error
+  useEffect(() => {
+    if (errors.patient_email) setContactOpen(true);
+  }, [errors.patient_email]);
+
   function set(field: keyof FormData, value: string) {
     setForm((prev) => ({ ...prev, [field]: value }));
     if (errors[field]) setErrors((prev) => ({ ...prev, [field]: undefined }));
+  }
+
+  function clearDoctorProfile() {
+    try { localStorage.removeItem(DOCTOR_STORAGE_KEY); } catch { /* ignore */ }
+    setSavedProfile(null);
+    setForm((prev) => ({ ...prev, doctor_name: "", doctor_email: "", doctor_phone: "" }));
   }
 
   function validateStep(s: number): boolean {
@@ -281,22 +315,22 @@ export function DoctorRequestForm() {
       if (!form.patient_name.trim()) errs.patient_name = "Required";
       if (!form.dob) errs.dob = "Required";
       if (!form.sex) errs.sex = "Required";
+      if (form.patient_email && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(form.patient_email))
+        errs.patient_email = "Invalid email";
     }
-    if (s === 3 && form.patient_email && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(form.patient_email))
-      errs.patient_email = "Invalid email";
-    if (s === 4) {
+    if (s === 3) {
       if (!form.doctor_name.trim()) errs.doctor_name = "Required";
       if (!form.doctor_email.trim()) errs.doctor_email = "Required";
       else if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(form.doctor_email))
         errs.doctor_email = "Invalid email";
     }
-    if (s === 5 && !form.tests.trim()) errs.tests = "Required";
+    if (s === 4 && !form.tests.trim()) errs.tests = "Required";
     setErrors(errs);
     return Object.keys(errs).length === 0;
   }
 
   function handleNext() {
-    if (validateStep(step)) setStep((s) => Math.min(5, s + 1));
+    if (validateStep(step)) setStep((s) => Math.min(4, s + 1));
   }
 
   function handleBack() {
@@ -305,7 +339,7 @@ export function DoctorRequestForm() {
   }
 
   async function handleSubmit() {
-    if (!validateStep(5)) return;
+    if (!validateStep(4)) return;
     setSubmitting(true);
     try {
       const res = await fetch("/api/requests/create", {
@@ -315,6 +349,14 @@ export function DoctorRequestForm() {
       });
       const data: CreateRequestResponse = await res.json();
       if (data.success) {
+        // Persist doctor profile for next time
+        try {
+          localStorage.setItem(DOCTOR_STORAGE_KEY, JSON.stringify({
+            name: form.doctor_name,
+            email: form.doctor_email,
+            phone: form.doctor_phone,
+          }));
+        } catch { /* ignore storage errors */ }
         setResult(data);
       } else {
         toast.error(data.error ?? "Failed to submit request");
@@ -333,7 +375,7 @@ export function DoctorRequestForm() {
         labName={result.lab?.name ?? ""}
         labAddress={result.lab?.address ?? ""}
         labPhones={result.lab?.phones ?? []}
-        onReset={() => { setResult(null); setForm(INITIAL); setStep(1); }}
+        onReset={() => { setResult(null); setForm(INITIAL); setStep(1); setSavedProfile(null); }}
       />
     );
   }
@@ -457,7 +499,7 @@ export function DoctorRequestForm() {
           </div>
         )}
 
-        {/* Step 2: Patient Information */}
+        {/* Step 2: Patient Information + optional contact details */}
         {step === 2 && (
           <div className="space-y-4">
             <h2 className="flex items-center gap-2 text-base font-semibold text-slate-700 pb-3 border-b border-slate-100">
@@ -494,42 +536,73 @@ export function DoctorRequestForm() {
                 error={errors.sex}
               />
             </div>
+
+            {/* Expandable contact details */}
+            <div className="border border-slate-100 rounded-xl overflow-hidden">
+              <button
+                type="button"
+                onClick={() => setContactOpen((v) => !v)}
+                className="w-full flex items-center justify-between px-4 py-3 text-sm text-slate-500 hover:bg-slate-50 transition-colors"
+              >
+                <span className="flex items-center gap-2">
+                  <Phone className="w-3.5 h-3.5 text-slate-400" />
+                  {form.address || form.patient_email ? (
+                    <span className="font-medium text-slate-700">Contact details added</span>
+                  ) : (
+                    "Add contact details"
+                  )}
+                  <span className="text-xs text-slate-400">(optional)</span>
+                </span>
+                <ChevronDown className={`w-4 h-4 transition-transform ${contactOpen ? "rotate-180" : ""}`} />
+              </button>
+              {contactOpen && (
+                <div className="px-4 pb-4 pt-1 space-y-4 border-t border-slate-100 bg-slate-50/50">
+                  <Input
+                    label="Patient Address"
+                    placeholder="Home address"
+                    value={form.address}
+                    onChange={(e) => set("address", e.target.value)}
+                  />
+                  <Input
+                    label="Patient Email"
+                    type="email"
+                    placeholder="patient@example.com"
+                    hint="Patient will receive their request code by email"
+                    value={form.patient_email}
+                    onChange={(e) => set("patient_email", e.target.value)}
+                    error={errors.patient_email}
+                  />
+                </div>
+              )}
+            </div>
           </div>
         )}
 
-        {/* Step 3: Contact Details (all optional) */}
+        {/* Step 3: Referring Physician */}
         {step === 3 && (
-          <div className="space-y-4">
-            <h2 className="flex items-center gap-2 text-base font-semibold text-slate-700 pb-3 border-b border-slate-100">
-              <Phone className="w-4 h-4 text-medical-600" />
-              Patient Contact Details
-            </h2>
-            <p className="text-xs text-slate-400 -mt-1">All fields on this step are optional.</p>
-            <Input
-              label="Patient Address"
-              placeholder="Home address"
-              value={form.address}
-              onChange={(e) => set("address", e.target.value)}
-            />
-            <Input
-              label="Patient Email"
-              type="email"
-              placeholder="patient@example.com"
-              hint="Patient will receive their request code by email"
-              value={form.patient_email}
-              onChange={(e) => set("patient_email", e.target.value)}
-              error={errors.patient_email}
-            />
-          </div>
-        )}
-
-        {/* Step 4: Referring Physician */}
-        {step === 4 && (
           <div className="space-y-4">
             <h2 className="flex items-center gap-2 text-base font-semibold text-slate-700 pb-3 border-b border-slate-100">
               <Stethoscope className="w-4 h-4 text-medical-600" />
               Referring Physician
             </h2>
+
+            {/* Saved profile banner */}
+            {savedProfile && (
+              <div className="flex items-center justify-between bg-medical-50 border border-medical-100 rounded-xl px-4 py-2.5">
+                <p className="text-xs text-medical-700 flex items-center gap-1.5">
+                  <Check className="w-3.5 h-3.5 text-medical-600 shrink-0" />
+                  Pre-filled from your saved profile
+                </p>
+                <button
+                  type="button"
+                  onClick={clearDoctorProfile}
+                  className="text-xs text-slate-400 hover:text-slate-600 underline underline-offset-2 shrink-0 ml-3"
+                >
+                  Not you? Clear
+                </button>
+              </div>
+            )}
+
             <Input
               label="Doctor Name"
               required
@@ -558,8 +631,8 @@ export function DoctorRequestForm() {
           </div>
         )}
 
-        {/* Step 5: Clinical Details + Review */}
-        {step === 5 && (
+        {/* Step 4: Clinical Details + Review */}
+        {step === 4 && (
           <div className="space-y-4">
             <h2 className="flex items-center gap-2 text-base font-semibold text-slate-700 pb-3 border-b border-slate-100">
               <TestTube2 className="w-4 h-4 text-medical-600" />
@@ -603,7 +676,7 @@ export function DoctorRequestForm() {
             Back
           </Button>
         )}
-        {step < 5 ? (
+        {step < 4 ? (
           <Button onClick={handleNext} type="button">
             Continue
             <ChevronRight className="w-4 h-4" />
