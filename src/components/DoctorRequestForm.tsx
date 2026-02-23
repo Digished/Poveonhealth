@@ -5,7 +5,7 @@ import { toast } from "react-hot-toast";
 import {
   FlaskConical, User, MapPin, Phone, Stethoscope,
   TestTube2, ChevronRight, ChevronLeft, Building2, Check,
-  Search, X, PhoneCall, RefreshCw, ChevronDown, Mail,
+  Search, X, PhoneCall, RefreshCw, ChevronDown, Mail, Mars, Venus,
 } from "lucide-react";
 import { Button } from "@/components/ui/Button";
 import { Input, Textarea, Select } from "@/components/ui/Input";
@@ -522,18 +522,43 @@ export function DoctorRequestForm() {
                 onChange={(iso) => set("dob", iso)}
                 error={errors.dob}
               />
-              <Select
-                label="Sex"
-                required
-                value={form.sex}
-                onChange={(e) => set("sex", e.target.value)}
-                placeholder="Select sex"
-                options={[
-                  { value: "male", label: "Male" },
-                  { value: "female", label: "Female" },
-                ]}
-                error={errors.sex}
-              />
+              {/* Sex selector */}
+              <div className="flex flex-col gap-1">
+                <label className="text-sm font-medium text-slate-700">
+                  Sex<span className="text-red-500 ml-0.5">*</span>
+                </label>
+                <div className="grid grid-cols-2 gap-2">
+                  <button
+                    type="button"
+                    onClick={() => set("sex", "male")}
+                    className={`flex flex-col items-center justify-center gap-2 py-4 rounded-xl border-2 transition-all ${
+                      form.sex === "male"
+                        ? "border-medical-400 bg-medical-50 text-medical-700"
+                        : errors.sex
+                        ? "border-red-300 bg-white/60 text-slate-500 hover:border-red-400"
+                        : "border-slate-200 bg-white/60 text-slate-500 hover:border-slate-300 hover:bg-slate-50"
+                    }`}
+                  >
+                    <Mars className={`w-5 h-5 ${form.sex === "male" ? "text-medical-500" : errors.sex ? "text-red-400" : "text-slate-400"}`} />
+                    <span className="text-sm font-semibold">Male</span>
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => set("sex", "female")}
+                    className={`flex flex-col items-center justify-center gap-2 py-4 rounded-xl border-2 transition-all ${
+                      form.sex === "female"
+                        ? "border-rose-400 bg-rose-50 text-rose-700"
+                        : errors.sex
+                        ? "border-red-300 bg-white/60 text-slate-500 hover:border-red-400"
+                        : "border-slate-200 bg-white/60 text-slate-500 hover:border-slate-300 hover:bg-slate-50"
+                    }`}
+                  >
+                    <Venus className={`w-5 h-5 ${form.sex === "female" ? "text-rose-500" : errors.sex ? "text-red-400" : "text-slate-400"}`} />
+                    <span className="text-sm font-semibold">Female</span>
+                  </button>
+                </div>
+                {errors.sex && <p className="text-xs text-red-600 font-medium">{errors.sex}</p>}
+              </div>
             </div>
 
             {/* Expandable contact details */}
