@@ -40,8 +40,9 @@ interface FormData {
   patient_name: string;
   dob: string;
   sex: string;
-  address: string;
   patient_email: string;
+  address: string;
+  patient_phone: string;
   doctor_name: string;
   doctor_email: string;
   doctor_phone: string;
@@ -54,8 +55,9 @@ const INITIAL: FormData = {
   patient_name: "",
   dob: "",
   sex: "",
-  address: "",
   patient_email: "",
+  address: "",
+  patient_phone: "",
   doctor_name: "",
   doctor_email: "",
   doctor_phone: "",
@@ -315,11 +317,6 @@ export function DoctorRequestForm() {
     } catch { /* ignore storage errors */ }
   }, []);
 
-  // Auto-open contact section if email field has a validation error
-  useEffect(() => {
-    if (errors.patient_email) setContactOpen(true);
-  }, [errors.patient_email]);
-
   function set(field: keyof FormData, value: string) {
     setForm((prev) => ({ ...prev, [field]: value }));
     if (errors[field]) setErrors((prev) => ({ ...prev, [field]: undefined }));
@@ -574,8 +571,25 @@ export function DoctorRequestForm() {
               </div>
             </div>
 
-            {/* Expandable contact details */}
-            {form.address || form.patient_email ? (
+            {/* Patient Email — outside dropdown, recommended */}
+            <div className="flex flex-col gap-1">
+              <label htmlFor="patient_email" className="text-sm font-medium text-slate-700 flex items-center gap-2">
+                Patient Email
+                <span className="text-xs bg-amber-100 text-amber-700 px-2 py-0.5 rounded-full font-medium">Recommended</span>
+              </label>
+              <Input
+                id="patient_email"
+                type="email"
+                placeholder="patient@example.com"
+                hint="Patient will receive their request code & results by email"
+                value={form.patient_email}
+                onChange={(e) => set("patient_email", e.target.value)}
+                error={errors.patient_email}
+              />
+            </div>
+
+            {/* Expandable: Address & Phone */}
+            {form.address || form.patient_phone ? (
               <div className="border-2 border-emerald-200 bg-emerald-50/30 rounded-xl overflow-hidden">
                 <button
                   type="button"
@@ -584,7 +598,7 @@ export function DoctorRequestForm() {
                 >
                   <span className="flex items-center gap-2">
                     <Check className="w-4 h-4 text-emerald-500 shrink-0" />
-                    <span className="text-sm font-semibold text-slate-700">Contact details added</span>
+                    <span className="text-sm font-semibold text-slate-700">Additional details added</span>
                   </span>
                   <ChevronDown className={`w-4 h-4 text-emerald-500 transition-transform shrink-0 ${contactOpen ? "rotate-180" : ""}`} />
                 </button>
@@ -597,38 +611,33 @@ export function DoctorRequestForm() {
                       onChange={(e) => set("address", e.target.value)}
                     />
                     <Input
-                      label="Patient Email"
-                      type="email"
-                      placeholder="patient@example.com"
-                      hint="Patient will receive their request code & results by email"
-                      value={form.patient_email}
-                      onChange={(e) => set("patient_email", e.target.value)}
-                      error={errors.patient_email}
+                      label="Patient Phone"
+                      type="tel"
+                      placeholder="+1 555 000 0000"
+                      value={form.patient_phone}
+                      onChange={(e) => set("patient_phone", e.target.value)}
                     />
                   </div>
                 )}
               </div>
             ) : (
-              <div className="border-2 border-amber-200 bg-amber-50/40 rounded-xl overflow-hidden">
+              <div className="border-2 border-slate-200 bg-slate-50/40 rounded-xl overflow-hidden">
                 <button
                   type="button"
                   onClick={() => setContactOpen((v) => !v)}
-                  className="w-full flex items-center justify-between px-4 py-3.5 hover:bg-amber-50 transition-colors"
+                  className="w-full flex items-center justify-between px-4 py-3.5 hover:bg-slate-50 transition-colors"
                 >
                   <div className="flex items-start gap-3">
-                    <Mail className="w-4 h-4 text-amber-500 shrink-0 mt-0.5" />
+                    <Phone className="w-4 h-4 text-slate-400 shrink-0 mt-0.5" />
                     <div className="text-left">
-                      <div className="flex items-center gap-2 flex-wrap">
-                        <span className="text-sm font-semibold text-slate-700">Patient Contact Details</span>
-                        <span className="text-xs bg-amber-100 text-amber-700 px-2 py-0.5 rounded-full font-medium">Recommended</span>
-                      </div>
-                      <p className="text-xs text-slate-500 mt-0.5">Add email so the patient receives their code &amp; results directly</p>
+                      <span className="text-sm font-semibold text-slate-700">Address &amp; Phone</span>
+                      <p className="text-xs text-slate-400 mt-0.5">Optional — add patient address and phone number</p>
                     </div>
                   </div>
-                  <ChevronDown className={`w-4 h-4 text-amber-500 transition-transform shrink-0 ml-3 ${contactOpen ? "rotate-180" : ""}`} />
+                  <ChevronDown className={`w-4 h-4 text-slate-400 transition-transform shrink-0 ml-3 ${contactOpen ? "rotate-180" : ""}`} />
                 </button>
                 {contactOpen && (
-                  <div className="px-4 pb-4 pt-1 space-y-4 border-t border-amber-100 bg-amber-50/20">
+                  <div className="px-4 pb-4 pt-1 space-y-4 border-t border-slate-100 bg-slate-50/20">
                     <Input
                       label="Patient Address"
                       placeholder="Home address"
@@ -636,13 +645,11 @@ export function DoctorRequestForm() {
                       onChange={(e) => set("address", e.target.value)}
                     />
                     <Input
-                      label="Patient Email"
-                      type="email"
-                      placeholder="patient@example.com"
-                      hint="Patient will receive their request code & results by email"
-                      value={form.patient_email}
-                      onChange={(e) => set("patient_email", e.target.value)}
-                      error={errors.patient_email}
+                      label="Patient Phone"
+                      type="tel"
+                      placeholder="+1 555 000 0000"
+                      value={form.patient_phone}
+                      onChange={(e) => set("patient_phone", e.target.value)}
                     />
                   </div>
                 )}

@@ -34,6 +34,7 @@ export interface LabRequest {
   sex: Sex;
   address: string | null;
   patient_email: string | null;
+  patient_phone: string | null;
   doctor_name: string;
   doctor_email: string;
   doctor_phone: string | null;
@@ -57,6 +58,7 @@ export interface CreateRequestPayload {
   sex: Sex;
   address?: string;
   patient_email?: string;
+  patient_phone?: string;
   doctor_name: string;
   doctor_email: string;
   doctor_phone?: string;

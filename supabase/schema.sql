@@ -47,6 +47,7 @@ CREATE TABLE IF NOT EXISTS public.requests (
   sex            TEXT NOT NULL CHECK (sex IN ('male', 'female')),
   address        TEXT NOT NULL,
   patient_email  TEXT,
+  patient_phone  TEXT,
   doctor_name    TEXT NOT NULL,
   doctor_email   TEXT NOT NULL,
   doctor_phone   TEXT,

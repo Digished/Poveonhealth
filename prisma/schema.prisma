@@ -58,6 +58,7 @@ model Request {
   sex           String
   address       String?
   patient_email String?
+  patient_phone String?
   doctor_name   String
   doctor_email  String
   doctor_phone  String?

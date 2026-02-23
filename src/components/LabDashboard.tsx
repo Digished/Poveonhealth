@@ -327,9 +327,14 @@ export function LabDashboard({ labName, labId: _labId, labLogoUrl }: LabDashboar
                   <p className="text-white font-medium line-clamp-1">{retrievedRequest.tests}</p>
                 </div>
               </div>
-              {retrievedRequest.address && (
-                <p className="mt-2 text-xs text-slate-400">
-                  <span className="text-slate-500">Address: </span>{retrievedRequest.address}
+              {(retrievedRequest.address || retrievedRequest.patient_phone) && (
+                <p className="mt-2 text-xs text-slate-400 flex flex-wrap gap-x-4 gap-y-0.5">
+                  {retrievedRequest.address && (
+                    <span><span className="text-slate-500">Address: </span>{retrievedRequest.address}</span>
+                  )}
+                  {retrievedRequest.patient_phone && (
+                    <span><span className="text-slate-500">Phone: </span>{retrievedRequest.patient_phone}</span>
+                  )}
                 </p>
               )}
             </button>
@@ -486,6 +491,17 @@ export function LabDashboard({ labName, labId: _labId, labLogoUrl }: LabDashboar
                     )}
                     {selectedRequest.patient_email && (
                       <DetailRow label="Patient Email">{selectedRequest.patient_email}</DetailRow>
+                    )}
+                    {selectedRequest.patient_phone && (
+                      <DetailRow label="Patient Phone">
+                        <a
+                          href={`tel:${selectedRequest.patient_phone}`}
+                          className="text-blue-400 hover:underline flex items-center gap-1"
+                        >
+                          <Phone className="w-3 h-3" />
+                          {selectedRequest.patient_phone}
+                        </a>
+                      </DetailRow>
                     )}
                     <div className="border-t border-white/10 pt-3" />
                     <DetailRow label="Referring Doctor">{selectedRequest.doctor_name}</DetailRow>
@@ -782,7 +798,7 @@ export function LabDashboard({ labName, labId: _labId, labLogoUrl }: LabDashboar
                   <p className="text-xs text-slate-500 font-medium mb-0.5">Date of Birth</p>
                   <p className="text-slate-200">{format(new Date(selectedRequest.dob), "dd MMM yyyy")}</p>
                 </div>
-                {selectedRequest.address && (
+                {selectedRequest.status !== "incoming" && selectedRequest.address && (
                   <div>
                     <p className="text-xs text-slate-500 font-medium mb-0.5">Address</p>
                     <p className="text-slate-200">{selectedRequest.address}</p>
@@ -792,6 +808,14 @@ export function LabDashboard({ labName, labId: _labId, labLogoUrl }: LabDashboar
                   <div>
                     <p className="text-xs text-slate-500 font-medium mb-0.5">Patient Email</p>
                     <p className="text-slate-200">{selectedRequest.patient_email}</p>
+                  </div>
+                )}
+                {selectedRequest.status !== "incoming" && selectedRequest.patient_phone && (
+                  <div>
+                    <p className="text-xs text-slate-500 font-medium mb-0.5">Patient Phone</p>
+                    <a href={`tel:${selectedRequest.patient_phone}`} className="text-blue-400 hover:underline flex items-center gap-1 text-sm">
+                      <Phone className="w-3 h-3" />{selectedRequest.patient_phone}
+                    </a>
                   </div>
                 )}
                 <div className="border-t border-white/10 pt-3" />
