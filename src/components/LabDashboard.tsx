@@ -50,6 +50,7 @@ export function LabDashboard({ labName, labId: _labId, labLogoUrl }: LabDashboar
   const [resultFiles, setResultFiles] = useState<File[]>([]);
   const [resultNote, setResultNote] = useState("");
   const [patientEmailInput, setPatientEmailInput] = useState("");
+  const [patientEmailError, setPatientEmailError] = useState("");
   const [sendingResults, setSendingResults] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
@@ -127,11 +128,13 @@ export function LabDashboard({ labName, labId: _labId, labLogoUrl }: LabDashboar
     setResultFiles([]);
     setResultNote("");
     setPatientEmailInput("");
+    setPatientEmailError("");
     if (fileInputRef.current) fileInputRef.current.value = "";
   }
 
   function closeResultsModal() {
     setResultsModalRequest(null);
+    setPatientEmailError("");
   }
 
   function removeFile(index: number) {
@@ -170,6 +173,19 @@ export function LabDashboard({ labName, labId: _labId, labLogoUrl }: LabDashboar
     if (!resultsModalRequest) return;
     const hasContent = resultFiles.length > 0 || resultLink.trim().length > 0;
     if (!hasContent) return;
+    // Patient email is required when none is on file
+    if (!resultsModalRequest.patient_email) {
+      const email = patientEmailInput.trim();
+      if (!email) {
+        setPatientEmailError("Patient email is required to send results");
+        return;
+      }
+      if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
+        setPatientEmailError("Please enter a valid email address");
+        return;
+      }
+    }
+    setPatientEmailError("");
     setSendingResults(true);
     try {
       const fd = new FormData();
@@ -671,22 +687,33 @@ export function LabDashboard({ labName, labId: _labId, labLogoUrl }: LabDashboar
                     />
                   </div>
 
-                  {/* Patient email (only if missing from record) */}
+                  {/* Patient email — required when none is on file */}
                   {!resultsModalRequest.patient_email && (
                     <div>
                       <label className="flex items-center gap-1.5 text-xs font-semibold text-slate-400 uppercase tracking-wider mb-2">
-                        Patient Email <span className="normal-case font-normal text-slate-500">(optional — no email on file)</span>
+                        Patient Email <span className="text-red-400 ml-0.5">*</span>
                       </label>
                       <input
                         type="email"
                         placeholder="patient@example.com"
                         value={patientEmailInput}
-                        onChange={(e) => setPatientEmailInput(e.target.value)}
-                        className="w-full bg-white/5 border border-white/10 rounded-xl px-4 py-3 text-sm text-white placeholder-slate-500 focus:outline-none focus:ring-2 focus:ring-medical-500/50 focus:border-medical-500/50 transition-colors"
+                        onChange={(e) => {
+                          setPatientEmailInput(e.target.value);
+                          if (patientEmailError) setPatientEmailError("");
+                        }}
+                        className={`w-full bg-white/5 border rounded-xl px-4 py-3 text-sm text-white placeholder-slate-500 focus:outline-none focus:ring-2 transition-colors ${
+                          patientEmailError
+                            ? "border-red-500 focus:ring-red-500/50"
+                            : "border-white/10 focus:ring-medical-500/50 focus:border-medical-500/50"
+                        }`}
                       />
-                      <p className="text-xs text-slate-500 mt-1.5">
-                        If provided, results will also be emailed to this patient.
-                      </p>
+                      {patientEmailError ? (
+                        <p className="text-xs text-red-400 font-medium mt-1.5">{patientEmailError}</p>
+                      ) : (
+                        <p className="text-xs text-slate-500 mt-1.5">
+                          No email on file — required to send results to the patient.
+                        </p>
+                      )}
                     </div>
                   )}
 
