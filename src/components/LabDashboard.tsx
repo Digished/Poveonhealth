@@ -276,10 +276,21 @@ export function LabDashboard({ labName, labId: _labId, labLogoUrl }: LabDashboar
           </div>
 
           {retrievedRequest && (
-            <div className="mt-4 p-4 bg-emerald-500/10 border border-emerald-500/30 rounded-xl animate-slide-up">
-              <p className="text-xs text-emerald-400 font-semibold uppercase tracking-wider mb-3">
-                Patient Revealed
-              </p>
+            <button
+              className="mt-4 w-full text-left p-4 bg-emerald-500/10 border border-emerald-500/30 rounded-xl animate-slide-up hover:bg-emerald-500/20 hover:border-emerald-500/50 transition-all group"
+              onClick={() => {
+                setSelectedRequest(retrievedRequest);
+                setMobileDetailOpen(true);
+              }}
+            >
+              <div className="flex items-center justify-between mb-3">
+                <p className="text-xs text-emerald-400 font-semibold uppercase tracking-wider">
+                  Patient Revealed
+                </p>
+                <span className="text-xs text-emerald-600 group-hover:text-emerald-400 transition-colors flex items-center gap-1">
+                  View details <ChevronRight className="w-3 h-3" />
+                </span>
+              </div>
               <div className="grid grid-cols-2 md:grid-cols-4 gap-3 text-sm">
                 <div>
                   <p className="text-xs text-slate-400">Patient</p>
@@ -305,7 +316,7 @@ export function LabDashboard({ labName, labId: _labId, labLogoUrl }: LabDashboar
                   <span className="text-slate-500">Address: </span>{retrievedRequest.address}
                 </p>
               )}
-            </div>
+            </button>
           )}
         </div>
 
