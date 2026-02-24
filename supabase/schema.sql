@@ -37,27 +37,37 @@ CREATE TABLE IF NOT EXISTS public.admin_users (
   UNIQUE(user_id)
 );
 
--- Requests table: lab test requests submitted by doctors
+-- Requests table: lab test requests submitted by doctors/allied health professionals
 CREATE TABLE IF NOT EXISTS public.requests (
-  id             UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
-  code           TEXT NOT NULL UNIQUE,       -- e.g. "LABA-8X4K29Q"
-  lab_id         UUID NOT NULL REFERENCES public.labs(id),
-  patient_name   TEXT NOT NULL,
-  dob            DATE NOT NULL,
-  sex            TEXT NOT NULL CHECK (sex IN ('male', 'female')),
-  address        TEXT NOT NULL,
-  patient_email  TEXT,
-  patient_phone  TEXT,
-  doctor_name    TEXT NOT NULL,
-  doctor_email   TEXT NOT NULL,
-  doctor_phone   TEXT,
-  diagnosis      TEXT,
-  tests          TEXT NOT NULL,
-  status         TEXT NOT NULL DEFAULT 'incoming' CHECK (status IN ('incoming', 'seen', 'done')),
-  created_at     TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-  seen_at        TIMESTAMPTZ,
-  completed_at   TIMESTAMPTZ
+  id                     UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+  code                   TEXT NOT NULL UNIQUE,       -- e.g. "LABA-8X4K29Q"
+  lab_id                 UUID NOT NULL REFERENCES public.labs(id),
+  patient_name           TEXT NOT NULL,
+  dob                    DATE NOT NULL,
+  sex                    TEXT NOT NULL CHECK (sex IN ('male', 'female')),
+  address                TEXT NOT NULL,
+  patient_email          TEXT,
+  patient_phone          TEXT,
+  doctor_prefix          TEXT,                       -- e.g. "Dr.", "Nurse", "Pharm.", "CHEW", "PT"
+  doctor_name            TEXT NOT NULL,
+  doctor_email           TEXT NOT NULL,
+  doctor_phone           TEXT,
+  doctor_bank_name       TEXT,                       -- for referral payment processing
+  doctor_account_number  TEXT,
+  doctor_account_name    TEXT,
+  diagnosis              TEXT,
+  tests                  TEXT NOT NULL,
+  status                 TEXT NOT NULL DEFAULT 'incoming' CHECK (status IN ('incoming', 'seen', 'done')),
+  created_at             TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  seen_at                TIMESTAMPTZ,
+  completed_at           TIMESTAMPTZ
 );
+
+-- Migration: add new columns to existing requests table (run if table already exists)
+ALTER TABLE public.requests ADD COLUMN IF NOT EXISTS doctor_prefix TEXT;
+ALTER TABLE public.requests ADD COLUMN IF NOT EXISTS doctor_bank_name TEXT;
+ALTER TABLE public.requests ADD COLUMN IF NOT EXISTS doctor_account_number TEXT;
+ALTER TABLE public.requests ADD COLUMN IF NOT EXISTS doctor_account_name TEXT;
 
 -- =============================================================================
 -- INDEXES

@@ -43,9 +43,13 @@ interface FormData {
   patient_email: string;
   address: string;
   patient_phone: string;
+  doctor_prefix: string;
   doctor_name: string;
   doctor_email: string;
   doctor_phone: string;
+  doctor_bank_name: string;
+  doctor_account_number: string;
+  doctor_account_name: string;
   diagnosis: string;
   tests: string;
 }
@@ -58,18 +62,136 @@ const INITIAL: FormData = {
   patient_email: "",
   address: "",
   patient_phone: "",
+  doctor_prefix: "",
   doctor_name: "",
   doctor_email: "",
   doctor_phone: "",
+  doctor_bank_name: "",
+  doctor_account_number: "",
+  doctor_account_name: "",
   diagnosis: "",
   tests: "",
 };
+
+const PROFESSIONAL_PREFIXES = [
+  { value: "Dr.", label: "Dr. — Medical Doctor / Dentist" },
+  { value: "Prof.", label: "Prof. — Professor / Specialist" },
+  { value: "Nurse", label: "Nurse — Registered Nurse" },
+  { value: "Pharm.", label: "Pharm. — Pharmacist" },
+  { value: "CHEW", label: "CHEW — Community Health Extension Worker" },
+  { value: "CHO", label: "CHO — Community Health Officer" },
+  { value: "PT", label: "PT — Physiotherapist" },
+  { value: "OT", label: "OT — Occupational Therapist" },
+  { value: "Optom.", label: "Optom. — Optometrist" },
+  { value: "MW", label: "MW — Midwife" },
+  { value: "HO", label: "HO — House Officer" },
+  { value: "MO", label: "MO — Medical Officer" },
+  { value: "RN", label: "RN — Registered Nurse" },
+  { value: "DVM", label: "DVM — Veterinarian" },
+];
+
+function PrefixSelect({
+  value,
+  onChange,
+}: {
+  value: string;
+  onChange: (v: string) => void;
+}) {
+  const [open, setOpen] = useState(false);
+  const [query, setQuery] = useState("");
+  const containerRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    function handler(e: MouseEvent) {
+      if (containerRef.current && !containerRef.current.contains(e.target as Node)) {
+        setOpen(false);
+        setQuery("");
+      }
+    }
+    document.addEventListener("mousedown", handler);
+    return () => document.removeEventListener("mousedown", handler);
+  }, []);
+
+  const filtered = query.trim()
+    ? PROFESSIONAL_PREFIXES.filter((p) =>
+        p.value.toLowerCase().includes(query.toLowerCase()) ||
+        p.label.toLowerCase().includes(query.toLowerCase())
+      )
+    : PROFESSIONAL_PREFIXES;
+
+  const selected = PROFESSIONAL_PREFIXES.find((p) => p.value === value);
+
+  function select(v: string) {
+    onChange(v);
+    setOpen(false);
+    setQuery("");
+  }
+
+  function clear() {
+    onChange("");
+    setOpen(false);
+    setQuery("");
+  }
+
+  return (
+    <div ref={containerRef} className="flex flex-col gap-1">
+      <label className="text-sm font-medium text-slate-700">
+        Title / Prefix <span className="text-xs text-slate-400 font-normal">(optional)</span>
+      </label>
+      <div className="relative">
+        {selected ? (
+          <div className="w-full rounded-xl border border-medical-300 bg-medical-50 px-4 py-2.5 flex items-center justify-between">
+            <span className="text-sm font-semibold text-medical-800">{selected.value}</span>
+            <button
+              type="button"
+              onClick={clear}
+              className="p-0.5 rounded hover:bg-medical-100 text-medical-400 hover:text-medical-700 shrink-0 ml-2"
+            >
+              <X className="w-3.5 h-3.5" />
+            </button>
+          </div>
+        ) : (
+          <div className="relative">
+            <Search className="absolute left-3.5 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400 pointer-events-none" />
+            <input
+              type="text"
+              placeholder="Search title (Dr., Nurse, Pharm., CHEW…)"
+              value={query}
+              onChange={(e) => { setQuery(e.target.value); setOpen(true); }}
+              onFocus={() => setOpen(true)}
+              className="w-full rounded-xl border border-slate-200 bg-white px-4 py-2.5 pl-10 text-slate-800 placeholder-slate-300 text-sm focus:outline-none focus:ring-2 focus:ring-medical-500 focus:border-medical-400"
+            />
+          </div>
+        )}
+        {open && !selected && (
+          <div className="absolute z-20 top-full mt-1.5 w-full bg-white border border-slate-200 rounded-xl shadow-lg overflow-auto max-h-52">
+            {filtered.length === 0 ? (
+              <div className="px-4 py-3 text-sm text-slate-400 text-center">No match</div>
+            ) : (
+              filtered.map((p) => (
+                <button
+                  key={p.value}
+                  type="button"
+                  onClick={() => select(p.value)}
+                  className="w-full text-left px-4 py-2.5 hover:bg-medical-50 transition-colors border-b border-slate-50 last:border-0"
+                >
+                  <span className="text-sm font-semibold text-slate-800">{p.value}</span>
+                  <span className="text-xs text-slate-400 ml-2">{p.label.split("—")[1]?.trim()}</span>
+                </button>
+              ))
+            )}
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
 
 // Contact step removed — merged into Patient step as an expandable section
 const STEPS = [
   { title: "Laboratory", icon: Building2 },
   { title: "Patient", icon: User },
-  { title: "Physician", icon: Stethoscope },
+  { title: "Referrer", icon: Stethoscope },
   { title: "Tests", icon: TestTube2 },
 ];
 
@@ -283,7 +405,8 @@ export function DoctorRequestForm() {
   const [submitting, setSubmitting] = useState(false);
   const [result, setResult] = useState<CreateRequestResponse | null>(null);
   const [contactOpen, setContactOpen] = useState(false);
-  const [savedProfile, setSavedProfile] = useState<{ name: string; email: string; phone: string } | null>(null);
+  const [bankOpen, setBankOpen] = useState(false);
+  const [savedProfile, setSavedProfile] = useState<{ prefix: string; name: string; email: string; phone: string; bankName: string; accountNumber: string; accountName: string } | null>(null);
 
   const fetchLabs = useCallback(() => {
     setLabsLoading(true);
@@ -298,19 +421,23 @@ export function DoctorRequestForm() {
     fetchLabs();
   }, [fetchLabs]);
 
-  // Load saved doctor profile from localStorage on mount
+  // Load saved referrer profile from localStorage on mount
   useEffect(() => {
     try {
       const raw = localStorage.getItem(DOCTOR_STORAGE_KEY);
       if (raw) {
-        const profile = JSON.parse(raw) as { name: string; email: string; phone: string };
+        const profile = JSON.parse(raw) as { prefix: string; name: string; email: string; phone: string; bankName: string; accountNumber: string; accountName: string };
         if (profile.name || profile.email) {
           setSavedProfile(profile);
           setForm((prev) => ({
             ...prev,
+            doctor_prefix: profile.prefix || prev.doctor_prefix,
             doctor_name: profile.name || prev.doctor_name,
             doctor_email: profile.email || prev.doctor_email,
             doctor_phone: profile.phone || prev.doctor_phone,
+            doctor_bank_name: profile.bankName || prev.doctor_bank_name,
+            doctor_account_number: profile.accountNumber || prev.doctor_account_number,
+            doctor_account_name: profile.accountName || prev.doctor_account_name,
           }));
         }
       }
@@ -325,7 +452,16 @@ export function DoctorRequestForm() {
   function clearDoctorProfile() {
     try { localStorage.removeItem(DOCTOR_STORAGE_KEY); } catch { /* ignore */ }
     setSavedProfile(null);
-    setForm((prev) => ({ ...prev, doctor_name: "", doctor_email: "", doctor_phone: "" }));
+    setForm((prev) => ({
+      ...prev,
+      doctor_prefix: "",
+      doctor_name: "",
+      doctor_email: "",
+      doctor_phone: "",
+      doctor_bank_name: "",
+      doctor_account_number: "",
+      doctor_account_name: "",
+    }));
   }
 
   function validateStep(s: number): boolean {
@@ -369,12 +505,16 @@ export function DoctorRequestForm() {
       });
       const data: CreateRequestResponse = await res.json();
       if (data.success) {
-        // Persist doctor profile for next time
+        // Persist referrer profile for next time
         try {
           localStorage.setItem(DOCTOR_STORAGE_KEY, JSON.stringify({
+            prefix: form.doctor_prefix,
             name: form.doctor_name,
             email: form.doctor_email,
             phone: form.doctor_phone,
+            bankName: form.doctor_bank_name,
+            accountNumber: form.doctor_account_number,
+            accountName: form.doctor_account_name,
           }));
         } catch { /* ignore storage errors */ }
         setResult(data);
@@ -658,12 +798,12 @@ export function DoctorRequestForm() {
           </div>
         )}
 
-        {/* Step 3: Referring Physician */}
+        {/* Step 3: Referring Professional */}
         {step === 3 && (
           <div className="space-y-4">
             <h2 className="flex items-center gap-2 text-base font-semibold text-slate-700 pb-3 border-b border-slate-100">
               <Stethoscope className="w-4 h-4 text-medical-600" />
-              Referring Physician
+              Referring Professional
             </h2>
 
             {/* Saved profile banner */}
@@ -683,31 +823,113 @@ export function DoctorRequestForm() {
               </div>
             )}
 
+            <PrefixSelect
+              value={form.doctor_prefix}
+              onChange={(v) => set("doctor_prefix", v)}
+            />
             <Input
-              label="Doctor Name"
+              label="Full Name"
               required
-              placeholder="Dr. Firstname Lastname"
+              placeholder="Firstname Lastname"
               value={form.doctor_name}
               onChange={(e) => set("doctor_name", e.target.value)}
               error={errors.doctor_name}
             />
             <Input
-              label="Doctor Email"
+              label="Email"
               type="email"
               required
-              placeholder="doctor@hospital.com"
+              placeholder="you@hospital.com"
               hint="You will receive request updates here"
               value={form.doctor_email}
               onChange={(e) => set("doctor_email", e.target.value)}
               error={errors.doctor_email}
             />
             <Input
-              label="Doctor Phone"
+              label="Phone"
               type="tel"
               placeholder="+234 800 000 0000"
               value={form.doctor_phone}
               onChange={(e) => set("doctor_phone", e.target.value)}
             />
+
+            {/* Bank account details — collapsible, for payment processing */}
+            {form.doctor_bank_name || form.doctor_account_number || form.doctor_account_name ? (
+              <div className="border-2 border-emerald-200 bg-emerald-50/30 rounded-xl overflow-hidden">
+                <button
+                  type="button"
+                  onClick={() => setBankOpen((v) => !v)}
+                  className="w-full flex items-center justify-between px-4 py-3.5 hover:bg-emerald-50/50 transition-colors"
+                >
+                  <span className="flex items-center gap-2">
+                    <Check className="w-4 h-4 text-emerald-500 shrink-0" />
+                    <span className="text-sm font-semibold text-slate-700">Bank details added</span>
+                  </span>
+                  <ChevronDown className={`w-4 h-4 text-emerald-500 transition-transform shrink-0 ${bankOpen ? "rotate-180" : ""}`} />
+                </button>
+                {bankOpen && (
+                  <div className="px-4 pb-4 pt-1 space-y-3 border-t border-emerald-100 bg-emerald-50/20">
+                    <Input
+                      label="Bank Name"
+                      placeholder="e.g. First Bank, GTBank, Zenith…"
+                      value={form.doctor_bank_name}
+                      onChange={(e) => set("doctor_bank_name", e.target.value)}
+                    />
+                    <Input
+                      label="Account Number"
+                      placeholder="10-digit account number"
+                      value={form.doctor_account_number}
+                      onChange={(e) => set("doctor_account_number", e.target.value)}
+                    />
+                    <Input
+                      label="Account Name"
+                      placeholder="Name as it appears on bank account"
+                      value={form.doctor_account_name}
+                      onChange={(e) => set("doctor_account_name", e.target.value)}
+                    />
+                  </div>
+                )}
+              </div>
+            ) : (
+              <div className="border-2 border-slate-200 bg-slate-50/40 rounded-xl overflow-hidden">
+                <button
+                  type="button"
+                  onClick={() => setBankOpen((v) => !v)}
+                  className="w-full flex items-center justify-between px-4 py-3.5 hover:bg-slate-50 transition-colors"
+                >
+                  <div className="flex items-start gap-3">
+                    <Mail className="w-4 h-4 text-slate-400 shrink-0 mt-0.5" />
+                    <div className="text-left">
+                      <span className="text-sm font-semibold text-slate-700">Bank Account Details</span>
+                      <p className="text-xs text-slate-400 mt-0.5">Optional — for referral payment processing</p>
+                    </div>
+                  </div>
+                  <ChevronDown className={`w-4 h-4 text-slate-400 transition-transform shrink-0 ml-3 ${bankOpen ? "rotate-180" : ""}`} />
+                </button>
+                {bankOpen && (
+                  <div className="px-4 pb-4 pt-1 space-y-3 border-t border-slate-100 bg-slate-50/20">
+                    <Input
+                      label="Bank Name"
+                      placeholder="e.g. First Bank, GTBank, Zenith…"
+                      value={form.doctor_bank_name}
+                      onChange={(e) => set("doctor_bank_name", e.target.value)}
+                    />
+                    <Input
+                      label="Account Number"
+                      placeholder="10-digit account number"
+                      value={form.doctor_account_number}
+                      onChange={(e) => set("doctor_account_number", e.target.value)}
+                    />
+                    <Input
+                      label="Account Name"
+                      placeholder="Name as it appears on bank account"
+                      value={form.doctor_account_name}
+                      onChange={(e) => set("doctor_account_name", e.target.value)}
+                    />
+                  </div>
+                )}
+              </div>
+            )}
           </div>
         )}
 
@@ -741,8 +963,8 @@ export function DoctorRequestForm() {
               <SummaryRow label="Patient" value={form.patient_name} />
               <SummaryRow label="Date of Birth" value={form.dob ? form.dob.split("-").reverse().join(" / ") : ""} />
               <SummaryRow label="Sex" value={form.sex} capitalize />
-              <SummaryRow label="Doctor" value={form.doctor_name} />
-              <SummaryRow label="Doctor Email" value={form.doctor_email} />
+              <SummaryRow label="Referrer" value={[form.doctor_prefix, form.doctor_name].filter(Boolean).join(" ")} />
+              <SummaryRow label="Referrer Email" value={form.doctor_email} />
             </div>
           </div>
         )}

@@ -50,24 +50,28 @@ model AdminUser {
 
 // Doctor-submitted lab test requests
 model Request {
-  id            String    @id @default(uuid())
-  code          String    @unique
-  lab_id        String
-  patient_name  String
-  dob           DateTime  @db.Date
-  sex           String
-  address       String?
-  patient_email String?
-  patient_phone String?
-  doctor_name   String
-  doctor_email  String
-  doctor_phone  String?
-  diagnosis     String?
-  tests         String
-  status        String    @default("incoming")
-  created_at    DateTime  @default(now())
-  seen_at       DateTime?
-  completed_at  DateTime?
+  id                    String    @id @default(uuid())
+  code                  String    @unique
+  lab_id                String
+  patient_name          String
+  dob                   DateTime  @db.Date
+  sex                   String
+  address               String?
+  patient_email         String?
+  patient_phone         String?
+  doctor_prefix         String?
+  doctor_name           String
+  doctor_email          String
+  doctor_phone          String?
+  doctor_bank_name      String?
+  doctor_account_number String?
+  doctor_account_name   String?
+  diagnosis             String?
+  tests                 String
+  status                String    @default("incoming")
+  created_at            DateTime  @default(now())
+  seen_at               DateTime?
+  completed_at          DateTime?
 
   lab           Lab       @relation(fields: [lab_id], references: [id], onDelete: Cascade)
 

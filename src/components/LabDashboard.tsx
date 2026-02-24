@@ -319,8 +319,10 @@ export function LabDashboard({ labName, labId: _labId, labLogoUrl }: LabDashboar
                   </p>
                 </div>
                 <div>
-                  <p className="text-xs text-slate-400">Doctor</p>
-                  <p className="text-white font-medium">{retrievedRequest.doctor_name}</p>
+                  <p className="text-xs text-slate-400">Referrer</p>
+                  <p className="text-white font-medium">
+                    {[retrievedRequest.doctor_prefix, retrievedRequest.doctor_name].filter(Boolean).join(" ")}
+                  </p>
                 </div>
                 <div>
                   <p className="text-xs text-slate-400">Tests</p>
@@ -442,7 +444,7 @@ export function LabDashboard({ labName, labId: _labId, labLogoUrl }: LabDashboar
                             <div className="flex flex-wrap items-center gap-x-4 gap-y-1 text-xs text-slate-400">
                               <span className="flex items-center gap-1">
                                 <Stethoscope className="w-3 h-3" />
-                                {req.doctor_name}
+                                {[req.doctor_prefix, req.doctor_name].filter(Boolean).join(" ")}
                               </span>
                               <span className="flex items-center gap-1">
                                 <Calendar className="w-3 h-3" />
@@ -504,10 +506,12 @@ export function LabDashboard({ labName, labId: _labId, labLogoUrl }: LabDashboar
                       </DetailRow>
                     )}
                     <div className="border-t border-white/10 pt-3" />
-                    <DetailRow label="Referring Doctor">{selectedRequest.doctor_name}</DetailRow>
-                    <DetailRow label="Doctor Email">{selectedRequest.doctor_email}</DetailRow>
+                    <DetailRow label="Referring Professional">
+                      {[selectedRequest.doctor_prefix, selectedRequest.doctor_name].filter(Boolean).join(" ")}
+                    </DetailRow>
+                    <DetailRow label="Email">{selectedRequest.doctor_email}</DetailRow>
                     {selectedRequest.doctor_phone && (
-                      <DetailRow label="Doctor Phone">
+                      <DetailRow label="Phone">
                         <a
                           href={`tel:${selectedRequest.doctor_phone}`}
                           className="text-blue-400 hover:underline flex items-center gap-1"
@@ -516,6 +520,21 @@ export function LabDashboard({ labName, labId: _labId, labLogoUrl }: LabDashboar
                           {selectedRequest.doctor_phone}
                         </a>
                       </DetailRow>
+                    )}
+                    {(selectedRequest.doctor_bank_name || selectedRequest.doctor_account_number) && (
+                      <>
+                        <div className="border-t border-white/10 pt-3" />
+                        <p className="text-xs text-slate-500 font-semibold uppercase tracking-wider">Payment Details</p>
+                        {selectedRequest.doctor_bank_name && (
+                          <DetailRow label="Bank">{selectedRequest.doctor_bank_name}</DetailRow>
+                        )}
+                        {selectedRequest.doctor_account_number && (
+                          <DetailRow label="Account No.">{selectedRequest.doctor_account_number}</DetailRow>
+                        )}
+                        {selectedRequest.doctor_account_name && (
+                          <DetailRow label="Account Name">{selectedRequest.doctor_account_name}</DetailRow>
+                        )}
+                      </>
                     )}
                     <div className="border-t border-white/10 pt-3" />
                     {selectedRequest.diagnosis && (
@@ -822,13 +841,39 @@ export function LabDashboard({ labName, labId: _labId, labLogoUrl }: LabDashboar
                 {selectedRequest.status !== "incoming" && (
                   <>
                     <div>
-                      <p className="text-xs text-slate-500 font-medium mb-0.5">Referring Doctor</p>
-                      <p className="text-slate-200">{selectedRequest.doctor_name}</p>
+                      <p className="text-xs text-slate-500 font-medium mb-0.5">Referring Professional</p>
+                      <p className="text-slate-200">
+                        {[selectedRequest.doctor_prefix, selectedRequest.doctor_name].filter(Boolean).join(" ")}
+                      </p>
                     </div>
                     <div>
-                      <p className="text-xs text-slate-500 font-medium mb-0.5">Doctor Email</p>
+                      <p className="text-xs text-slate-500 font-medium mb-0.5">Email</p>
                       <p className="text-slate-200">{selectedRequest.doctor_email}</p>
                     </div>
+                    {(selectedRequest.doctor_bank_name || selectedRequest.doctor_account_number) && (
+                      <>
+                        <div className="border-t border-white/10 pt-2" />
+                        <p className="text-xs text-slate-500 font-semibold uppercase tracking-wider">Payment Details</p>
+                        {selectedRequest.doctor_bank_name && (
+                          <div>
+                            <p className="text-xs text-slate-500 font-medium mb-0.5">Bank</p>
+                            <p className="text-slate-200">{selectedRequest.doctor_bank_name}</p>
+                          </div>
+                        )}
+                        {selectedRequest.doctor_account_number && (
+                          <div>
+                            <p className="text-xs text-slate-500 font-medium mb-0.5">Account No.</p>
+                            <p className="text-slate-200 font-mono">{selectedRequest.doctor_account_number}</p>
+                          </div>
+                        )}
+                        {selectedRequest.doctor_account_name && (
+                          <div>
+                            <p className="text-xs text-slate-500 font-medium mb-0.5">Account Name</p>
+                            <p className="text-slate-200">{selectedRequest.doctor_account_name}</p>
+                          </div>
+                        )}
+                      </>
+                    )}
                   </>
                 )}
                 {selectedRequest.diagnosis && (

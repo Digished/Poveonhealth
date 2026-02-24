@@ -35,9 +35,13 @@ export interface LabRequest {
   address: string | null;
   patient_email: string | null;
   patient_phone: string | null;
+  doctor_prefix: string | null;
   doctor_name: string;
   doctor_email: string;
   doctor_phone: string | null;
+  doctor_bank_name: string | null;
+  doctor_account_number: string | null;
+  doctor_account_name: string | null;
   diagnosis: string | null;
   tests: string;
   status: RequestStatus;
@@ -59,9 +63,13 @@ export interface CreateRequestPayload {
   address?: string;
   patient_email?: string;
   patient_phone?: string;
+  doctor_prefix?: string;
   doctor_name: string;
   doctor_email: string;
   doctor_phone?: string;
+  doctor_bank_name?: string;
+  doctor_account_number?: string;
+  doctor_account_name?: string;
   diagnosis?: string;
   tests: string;
   lab_id: string;
