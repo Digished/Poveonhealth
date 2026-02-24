@@ -521,21 +521,6 @@ export function LabDashboard({ labName, labId: _labId, labLogoUrl }: LabDashboar
                         </a>
                       </DetailRow>
                     )}
-                    {(selectedRequest.doctor_bank_name || selectedRequest.doctor_account_number) && (
-                      <>
-                        <div className="border-t border-white/10 pt-3" />
-                        <p className="text-xs text-slate-500 font-semibold uppercase tracking-wider">Payment Details</p>
-                        {selectedRequest.doctor_bank_name && (
-                          <DetailRow label="Bank">{selectedRequest.doctor_bank_name}</DetailRow>
-                        )}
-                        {selectedRequest.doctor_account_number && (
-                          <DetailRow label="Account No.">{selectedRequest.doctor_account_number}</DetailRow>
-                        )}
-                        {selectedRequest.doctor_account_name && (
-                          <DetailRow label="Account Name">{selectedRequest.doctor_account_name}</DetailRow>
-                        )}
-                      </>
-                    )}
                     <div className="border-t border-white/10 pt-3" />
                     {selectedRequest.diagnosis && (
                       <DetailRow label="Diagnosis">{selectedRequest.diagnosis}</DetailRow>
@@ -850,30 +835,6 @@ export function LabDashboard({ labName, labId: _labId, labLogoUrl }: LabDashboar
                       <p className="text-xs text-slate-500 font-medium mb-0.5">Email</p>
                       <p className="text-slate-200">{selectedRequest.doctor_email}</p>
                     </div>
-                    {(selectedRequest.doctor_bank_name || selectedRequest.doctor_account_number) && (
-                      <>
-                        <div className="border-t border-white/10 pt-2" />
-                        <p className="text-xs text-slate-500 font-semibold uppercase tracking-wider">Payment Details</p>
-                        {selectedRequest.doctor_bank_name && (
-                          <div>
-                            <p className="text-xs text-slate-500 font-medium mb-0.5">Bank</p>
-                            <p className="text-slate-200">{selectedRequest.doctor_bank_name}</p>
-                          </div>
-                        )}
-                        {selectedRequest.doctor_account_number && (
-                          <div>
-                            <p className="text-xs text-slate-500 font-medium mb-0.5">Account No.</p>
-                            <p className="text-slate-200 font-mono">{selectedRequest.doctor_account_number}</p>
-                          </div>
-                        )}
-                        {selectedRequest.doctor_account_name && (
-                          <div>
-                            <p className="text-xs text-slate-500 font-medium mb-0.5">Account Name</p>
-                            <p className="text-slate-200">{selectedRequest.doctor_account_name}</p>
-                          </div>
-                        )}
-                      </>
-                    )}
                   </>
                 )}
                 {selectedRequest.diagnosis && (

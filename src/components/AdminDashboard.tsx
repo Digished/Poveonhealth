@@ -225,8 +225,13 @@ export function AdminDashboard() {
                       <tr key={req.id} className="hover:bg-white/5 transition-colors">
                         <td className="py-3 px-3"><span className="font-mono text-medical-400 text-xs">{req.code}</span></td>
                         <td className="py-3 px-3 text-white font-medium">{req.patient_name}</td>
-                        <td className="py-3 px-3 text-slate-300">
-                          {[req.doctor_prefix, req.doctor_name].filter(Boolean).join(" ")}
+                        <td className="py-3 px-3">
+                          <p className="text-slate-300">{[req.doctor_prefix, req.doctor_name].filter(Boolean).join(" ")}</p>
+                          {(req.doctor_bank_name || req.doctor_account_number) && (
+                            <p className="text-xs text-slate-500 mt-0.5">
+                              {[req.doctor_bank_name, req.doctor_account_number].filter(Boolean).join(" · ")}
+                            </p>
+                          )}
                         </td>
                         <td className="py-3 px-3 max-w-[180px]"><p className="text-slate-400 truncate">{req.tests}</p></td>
                         <td className="py-3 px-3 text-slate-300">{(req.labs as { name: string } | null)?.name ?? "—"}</td>
