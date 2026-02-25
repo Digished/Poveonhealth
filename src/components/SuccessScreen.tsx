@@ -40,7 +40,7 @@ export function SuccessScreen({
   }
 
   return (
-    <div className="animate-slide-up text-center">
+    <div className="animate-slide-up text-center pt-10 sm:pt-14">
       {/* Success icon */}
       <div className="flex justify-center mb-6">
         <div className="relative">
