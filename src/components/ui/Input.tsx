@@ -33,7 +33,7 @@ export const Input = forwardRef<HTMLInputElement, InputProps>(
           >
             {label}
             {props.required && (
-              <span className="text-red-500 ml-0.5">*</span>
+              <span className="inline-block w-1.5 h-1.5 rounded-full bg-amber-400 ml-1.5 align-middle" aria-label="required" />
             )}
           </label>
         )}
@@ -70,7 +70,7 @@ export const Textarea = forwardRef<HTMLTextAreaElement, TextareaProps>(
           >
             {label}
             {props.required && (
-              <span className="text-red-500 ml-0.5">*</span>
+              <span className="inline-block w-1.5 h-1.5 rounded-full bg-amber-400 ml-1.5 align-middle" aria-label="required" />
             )}
           </label>
         )}
@@ -118,7 +118,7 @@ export const Select = forwardRef<HTMLSelectElement, SelectProps>(
           >
             {label}
             {props.required && (
-              <span className="text-red-500 ml-0.5">*</span>
+              <span className="inline-block w-1.5 h-1.5 rounded-full bg-amber-400 ml-1.5 align-middle" aria-label="required" />
             )}
           </label>
         )}

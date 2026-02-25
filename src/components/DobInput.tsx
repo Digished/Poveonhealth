@@ -96,7 +96,7 @@ export function DobInput({ value, onChange, error, required }: DobInputProps) {
   return (
     <div className="flex flex-col gap-1">
       <label className="text-sm font-medium text-slate-700">
-        Date of Birth{required && <span className="text-red-500 ml-0.5">*</span>}
+        Date of Birth{required && <span className="inline-block w-1.5 h-1.5 rounded-full bg-amber-400 ml-1.5 align-middle" aria-label="required" />}
       </label>
       <input
         type="text"

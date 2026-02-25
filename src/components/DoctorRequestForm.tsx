@@ -263,7 +263,7 @@ function LabSearch({
   return (
     <div ref={containerRef} className="flex flex-col gap-1">
       <label className="text-sm font-medium text-slate-700">
-        Destination Laboratory <span className="text-red-500">*</span>
+        Destination Laboratory <span className="inline-block w-1.5 h-1.5 rounded-full bg-amber-400 ml-0.5 align-middle" aria-label="required" />
       </label>
       <div className="relative">
         {selectedLab ? (
@@ -623,12 +623,16 @@ export function DoctorRequestForm() {
   }
 
   function handleNext() {
-    if (validateStep(step)) setStep((s) => Math.min(4, s + 1));
+    if (validateStep(step)) {
+      setStep((s) => Math.min(4, s + 1));
+      window.scrollTo({ top: 0, behavior: "smooth" });
+    }
   }
 
   function handleBack() {
     setErrors({});
     setStep((s) => Math.max(1, s - 1));
+    window.scrollTo({ top: 0, behavior: "smooth" });
   }
 
   async function handleSubmit() {
@@ -682,7 +686,7 @@ export function DoctorRequestForm() {
   return (
     <div className="animate-fade-in">
       {/* Sticky header + step indicator */}
-      <div className="sticky top-14 z-10 -mx-4 px-4 pt-2 pb-4 bg-white/70 backdrop-blur-md border-b border-white/50">
+      <div className="sticky top-14 z-10 -mx-4 px-4 pt-5 pb-4 bg-white/70 backdrop-blur-md border-b border-white/50">
 
         {/* Header — swaps to lab branding once a lab is selected */}
         <div className="mb-4">
@@ -774,8 +778,8 @@ export function DoctorRequestForm() {
                 <div className="absolute -top-2 left-1/2 w-24 h-24 bg-indigo-100/40 rounded-full blur-2xl animate-float" style={{ animationDelay: "3.2s" }} />
               </div>
               <div className="flex items-center gap-3">
-                <div className="w-9 h-9 bg-medical-600 rounded-xl flex items-center justify-center shadow-md shrink-0">
-                  <FlaskConical className="w-[18px] h-[18px] text-white" />
+                <div className="w-9 h-9 rounded-xl flex items-center justify-center shadow-md shrink-0 bg-gradient-to-br from-slate-900 via-slate-800 to-indigo-900 ring-1 ring-white/10">
+                  <FlaskConical className="w-[18px] h-[18px] text-sky-300" />
                 </div>
                 <div>
                   <p className="text-sm font-semibold text-slate-700 leading-snug">
@@ -905,7 +909,7 @@ export function DoctorRequestForm() {
               {/* Sex selector */}
               <div className="flex flex-col gap-1">
                 <label className="text-sm font-medium text-slate-700">
-                  Sex<span className="text-red-500 ml-0.5">*</span>
+                  Sex<span className="inline-block w-1.5 h-1.5 rounded-full bg-amber-400 ml-1.5 align-middle" aria-label="required" />
                 </label>
                 <div className="flex gap-2">
                   {(["male", "female"] as const).map((s) => (

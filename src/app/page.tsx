@@ -16,7 +16,7 @@ export default function HomePage() {
         </div>
       </nav>
 
-      <main className="max-w-2xl mx-auto px-4 py-10 pb-20">
+      <main className="max-w-2xl mx-auto px-4 pb-20">
         <DoctorRequestForm />
         <TrustIndicators />
       </main>
