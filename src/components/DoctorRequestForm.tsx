@@ -6,6 +6,7 @@ import {
   FlaskConical, User, MapPin, Phone, Stethoscope,
   TestTube2, ChevronRight, ChevronLeft, Building2, Check,
   Search, X, PhoneCall, RefreshCw, ChevronDown, Mail,
+  Award, Info, Layers,
 } from "lucide-react";
 
 function MarsIcon({ className }: { className?: string }) {
@@ -238,11 +239,13 @@ function LabSearch({
 
   const selectedLab = labs.find((l) => l.id === value);
 
-  const filtered = query.trim()
+  const q = query.trim().toLowerCase();
+  const filtered = q
     ? labs.filter(
         (l) =>
-          l.name.toLowerCase().includes(query.toLowerCase()) ||
-          l.address.toLowerCase().includes(query.toLowerCase())
+          l.name.toLowerCase().includes(q) ||
+          l.address.toLowerCase().includes(q) ||
+          (l.service_categories as string[]).some((s) => s.toLowerCase().includes(q))
       )
     : labs;
 
@@ -287,7 +290,7 @@ function LabSearch({
               <Search className="absolute left-3.5 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400 pointer-events-none" />
               <input
                 type="text"
-                placeholder={loading ? "Loading laboratories…" : "Search by lab name or address…"}
+                placeholder={loading ? "Loading laboratories…" : "Search by name, location or service…"}
                 value={query}
                 disabled={loading}
                 onChange={(e) => { setQuery(e.target.value); setOpen(true); }}
@@ -328,12 +331,26 @@ function LabSearch({
                         <Building2 className="w-4 h-4 text-medical-600" />
                       </div>
                     )}
-                    <div className="min-w-0">
+                    <div className="min-w-0 flex-1">
                       <p className="text-sm font-semibold text-slate-800 truncate">{lab.name}</p>
                       {lab.address && (
                         <p className="text-xs text-slate-400 truncate flex items-center gap-1 mt-0.5">
                           <MapPin className="w-3 h-3 shrink-0" />{lab.address}
                         </p>
+                      )}
+                      {(lab.service_categories as string[]).length > 0 && (
+                        <div className="flex flex-wrap gap-1 mt-1.5">
+                          {(lab.service_categories as string[]).slice(0, 2).map((s) => (
+                            <span key={s} className="text-xs bg-medical-50 text-medical-600 border border-medical-100 px-1.5 py-0.5 rounded-md leading-tight">
+                              {s}
+                            </span>
+                          ))}
+                          {(lab.service_categories as string[]).length > 2 && (
+                            <span className="text-xs text-slate-400 px-0.5 leading-tight self-center">
+                              +{(lab.service_categories as string[]).length - 2} more
+                            </span>
+                          )}
+                        </div>
                       )}
                     </div>
                   </div>
@@ -396,6 +413,175 @@ function LabCallFAB({ lab }: { lab: Lab | undefined }) {
   );
 }
 
+// Full lab details modal — bottom sheet on mobile, centered dialog on desktop
+function LabDetailsModal({ lab, onClose }: { lab: Lab; onClose: () => void }) {
+  const services = lab.service_categories as string[];
+  const certs = lab.certifications as string[];
+  return (
+    <div
+      className="fixed inset-0 z-50 flex items-end sm:items-center justify-center bg-black/50 backdrop-blur-sm sm:p-4"
+      onClick={(e) => { if (e.target === e.currentTarget) onClose(); }}
+    >
+      <div className="bg-white w-full sm:max-w-lg rounded-t-3xl sm:rounded-2xl shadow-2xl max-h-[90vh] overflow-y-auto animate-slide-up">
+        {/* Drag handle visible on mobile */}
+        <div className="flex justify-center pt-3 pb-1 sm:hidden">
+          <div className="w-10 h-1 bg-slate-200 rounded-full" />
+        </div>
+
+        {/* Sticky header */}
+        <div className="sticky top-0 bg-white/95 backdrop-blur-sm px-5 pt-3 pb-4 flex items-center justify-between border-b border-slate-100">
+          <div className="flex items-center gap-3">
+            {lab.logo_url ? (
+              <img src={lab.logo_url} alt={lab.name} className="w-10 h-10 rounded-xl object-cover shadow-sm" />
+            ) : (
+              <div className="w-10 h-10 rounded-xl bg-medical-100 flex items-center justify-center shrink-0">
+                <Building2 className="w-5 h-5 text-medical-600" />
+              </div>
+            )}
+            <div>
+              <h2 className="font-bold text-slate-800 text-base leading-tight">{lab.name}</h2>
+              {lab.address && (
+                <p className="text-xs text-slate-500 flex items-center gap-1 mt-0.5">
+                  <MapPin className="w-3 h-3 shrink-0" />{lab.address}
+                </p>
+              )}
+            </div>
+          </div>
+          <button
+            onClick={onClose}
+            className="p-2 rounded-xl hover:bg-slate-100 text-slate-400 hover:text-slate-600 transition-colors shrink-0"
+            aria-label="Close"
+          >
+            <X className="w-4 h-4" />
+          </button>
+        </div>
+
+        {/* Body */}
+        <div className="px-5 py-5 space-y-6">
+          {lab.description && (
+            <p className="text-sm text-slate-600 leading-relaxed">{lab.description}</p>
+          )}
+
+          {/* Contact */}
+          {(lab.phones as string[]).length > 0 && (
+            <div>
+              <p className="text-xs font-semibold text-slate-400 uppercase tracking-wider mb-2.5">Contact</p>
+              <div className="flex flex-col gap-2">
+                {(lab.phones as string[]).map((ph, i) => (
+                  <a key={i} href={`tel:${ph}`}
+                    className="flex items-center gap-2 text-sm text-medical-700 font-medium hover:text-medical-900 transition-colors">
+                    <div className="w-7 h-7 rounded-lg bg-medical-50 flex items-center justify-center shrink-0">
+                      <Phone className="w-3.5 h-3.5 text-medical-500" />
+                    </div>
+                    {ph}
+                  </a>
+                ))}
+              </div>
+            </div>
+          )}
+
+          {/* Services */}
+          {services.length > 0 && (
+            <div>
+              <p className="text-xs font-semibold text-slate-400 uppercase tracking-wider mb-2.5 flex items-center gap-1.5">
+                <Layers className="w-3.5 h-3.5" /> Services Offered
+              </p>
+              <div className="flex flex-wrap gap-2">
+                {services.map((s) => (
+                  <span key={s} className="text-xs bg-medical-50 text-medical-700 border border-medical-100 px-3 py-1.5 rounded-full font-medium">
+                    {s}
+                  </span>
+                ))}
+              </div>
+            </div>
+          )}
+
+          {/* Certifications */}
+          {certs.length > 0 && (
+            <div className="pb-4">
+              <p className="text-xs font-semibold text-slate-400 uppercase tracking-wider mb-2.5 flex items-center gap-1.5">
+                <Award className="w-3.5 h-3.5" /> Certifications &amp; Accreditations
+              </p>
+              <div className="flex flex-wrap gap-2">
+                {certs.map((c) => (
+                  <span key={c} className="text-xs bg-amber-50 text-amber-700 border border-amber-100 px-3 py-1.5 rounded-full font-medium flex items-center gap-1.5">
+                    <Award className="w-3 h-3" />{c}
+                  </span>
+                ))}
+              </div>
+            </div>
+          )}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// Compact lab context strip shown at the top of steps 2-4
+function LabInfoBar({ lab, onViewMore }: { lab: Lab; onViewMore: () => void }) {
+  const services = lab.service_categories as string[];
+  const certs = lab.certifications as string[];
+  const SHOW_SERVICES = 3;
+  const SHOW_CERTS = 2;
+  const extraServices = services.length - SHOW_SERVICES;
+  const extraCerts = certs.length - SHOW_CERTS;
+
+  return (
+    <div className="bg-slate-50 border border-slate-100 rounded-xl px-4 py-3 space-y-2.5">
+      {/* Lab name row */}
+      <div className="flex items-center justify-between gap-2">
+        <div className="flex items-center gap-2 min-w-0">
+          {lab.logo_url ? (
+            <img src={lab.logo_url} alt={lab.name} className="w-5 h-5 rounded object-cover shrink-0" />
+          ) : (
+            <Building2 className="w-4 h-4 text-medical-600 shrink-0" />
+          )}
+          <span className="text-xs font-semibold text-slate-600 truncate">{lab.name}</span>
+        </div>
+        <button
+          type="button"
+          onClick={onViewMore}
+          className="flex items-center gap-1 text-xs text-medical-600 hover:text-medical-800 font-medium shrink-0 transition-colors"
+        >
+          <Info className="w-3 h-3" /> View details
+        </button>
+      </div>
+
+      {/* Services */}
+      {services.length > 0 && (
+        <div className="flex flex-wrap gap-1.5 items-center">
+          {services.slice(0, SHOW_SERVICES).map((s) => (
+            <span key={s} className="text-xs bg-medical-50 text-medical-700 border border-medical-100 px-2 py-0.5 rounded-full">
+              {s}
+            </span>
+          ))}
+          {extraServices > 0 && (
+            <button type="button" onClick={onViewMore} className="text-xs text-medical-500 hover:text-medical-700 font-medium transition-colors">
+              +{extraServices} more
+            </button>
+          )}
+        </div>
+      )}
+
+      {/* Certifications */}
+      {certs.length > 0 && (
+        <div className="flex flex-wrap gap-1.5 items-center">
+          {certs.slice(0, SHOW_CERTS).map((c) => (
+            <span key={c} className="text-xs bg-amber-50 text-amber-700 border border-amber-100 px-2 py-0.5 rounded-full flex items-center gap-1">
+              <Award className="w-2.5 h-2.5" />{c}
+            </span>
+          ))}
+          {extraCerts > 0 && (
+            <button type="button" onClick={onViewMore} className="text-xs text-amber-600 hover:text-amber-800 font-medium transition-colors">
+              +{extraCerts} more
+            </button>
+          )}
+        </div>
+      )}
+    </div>
+  );
+}
+
 export function DoctorRequestForm() {
   const [step, setStep] = useState(1);
   const [form, setForm] = useState<FormData>(INITIAL);
@@ -406,6 +592,7 @@ export function DoctorRequestForm() {
   const [result, setResult] = useState<CreateRequestResponse | null>(null);
   const [contactOpen, setContactOpen] = useState(false);
   const [bankOpen, setBankOpen] = useState(false);
+  const [labDetailsOpen, setLabDetailsOpen] = useState(false);
   const [savedProfile, setSavedProfile] = useState<{ prefix: string; name: string; email: string; phone: string; bankName: string; accountNumber: string; accountName: string } | null>(null);
 
   const fetchLabs = useCallback(() => {
@@ -635,25 +822,66 @@ export function DoctorRequestForm() {
               onRefresh={fetchLabs}
             />
             {selectedLab && (
-              <div className="bg-medical-50 border border-medical-100 rounded-xl p-4 space-y-2">
-                <div className="flex items-center gap-2">
+              <div className="rounded-2xl border border-medical-100 overflow-hidden">
+                {/* Lab identity row */}
+                <div className="bg-medical-50 px-4 pt-4 pb-3 flex items-start gap-3">
                   {selectedLab.logo_url ? (
-                    <img src={selectedLab.logo_url} alt={selectedLab.name} className="w-8 h-8 rounded-lg object-cover" />
+                    <img src={selectedLab.logo_url} alt={selectedLab.name} className="w-10 h-10 rounded-xl object-cover shrink-0 shadow-sm" />
                   ) : (
-                    <Building2 className="w-4 h-4 text-medical-600" />
+                    <div className="w-10 h-10 rounded-xl bg-medical-100 flex items-center justify-center shrink-0">
+                      <Building2 className="w-5 h-5 text-medical-600" />
+                    </div>
                   )}
-                  <p className="text-sm font-semibold text-medical-800">{selectedLab.name}</p>
+                  <div className="min-w-0">
+                    <p className="text-sm font-bold text-medical-900 leading-tight">{selectedLab.name}</p>
+                    {selectedLab.address && (
+                      <p className="text-xs text-medical-600 flex items-start gap-1 mt-1">
+                        <MapPin className="w-3 h-3 mt-0.5 shrink-0" />{selectedLab.address}
+                      </p>
+                    )}
+                    {(selectedLab.phones as string[]).length > 0 && (
+                      <div className="flex flex-wrap gap-x-3 mt-1">
+                        {(selectedLab.phones as string[]).map((ph, i) => (
+                          <a key={i} href={`tel:${ph}`} className="text-xs text-medical-600 flex items-center gap-1 hover:text-medical-800">
+                            <Phone className="w-3 h-3 shrink-0" />{ph}
+                          </a>
+                        ))}
+                      </div>
+                    )}
+                  </div>
                 </div>
-                {selectedLab.address && (
-                  <p className="text-xs text-medical-600 flex items-start gap-1.5">
-                    <MapPin className="w-3 h-3 mt-0.5 shrink-0" />{selectedLab.address}
-                  </p>
+
+                {/* Services */}
+                {(selectedLab.service_categories as string[]).length > 0 && (
+                  <div className="px-4 py-3 border-t border-medical-100 bg-white">
+                    <p className="text-xs font-semibold text-slate-400 uppercase tracking-wider mb-2 flex items-center gap-1.5">
+                      <Layers className="w-3 h-3" /> Services
+                    </p>
+                    <div className="flex flex-wrap gap-1.5">
+                      {(selectedLab.service_categories as string[]).map((s) => (
+                        <span key={s} className="text-xs bg-medical-50 text-medical-700 border border-medical-100 px-2.5 py-1 rounded-full font-medium">
+                          {s}
+                        </span>
+                      ))}
+                    </div>
+                  </div>
                 )}
-                {(selectedLab.phones as string[]).map((ph, i) => (
-                  <p key={i} className="text-xs text-medical-600 flex items-center gap-1.5">
-                    <Phone className="w-3 h-3 shrink-0" />{ph}
-                  </p>
-                ))}
+
+                {/* Certifications */}
+                {(selectedLab.certifications as string[]).length > 0 && (
+                  <div className="px-4 py-3 border-t border-medical-100 bg-white">
+                    <p className="text-xs font-semibold text-slate-400 uppercase tracking-wider mb-2 flex items-center gap-1.5">
+                      <Award className="w-3 h-3" /> Certifications
+                    </p>
+                    <div className="flex flex-wrap gap-1.5">
+                      {(selectedLab.certifications as string[]).map((c) => (
+                        <span key={c} className="text-xs bg-amber-50 text-amber-700 border border-amber-100 px-2.5 py-1 rounded-full font-medium">
+                          {c}
+                        </span>
+                      ))}
+                    </div>
+                  </div>
+                )}
               </div>
             )}
           </div>
@@ -666,6 +894,9 @@ export function DoctorRequestForm() {
               <User className="w-4 h-4 text-medical-600" />
               Patient Information
             </h2>
+            {selectedLab && (
+              <LabInfoBar lab={selectedLab} onViewMore={() => setLabDetailsOpen(true)} />
+            )}
             <Input
               label="Patient Full Name"
               required
@@ -805,6 +1036,9 @@ export function DoctorRequestForm() {
               <Stethoscope className="w-4 h-4 text-medical-600" />
               Referring Professional
             </h2>
+            {selectedLab && (
+              <LabInfoBar lab={selectedLab} onViewMore={() => setLabDetailsOpen(true)} />
+            )}
 
             {/* Saved profile banner */}
             {savedProfile && (
@@ -940,6 +1174,9 @@ export function DoctorRequestForm() {
               <TestTube2 className="w-4 h-4 text-medical-600" />
               Clinical Details
             </h2>
+            {selectedLab && (
+              <LabInfoBar lab={selectedLab} onViewMore={() => setLabDetailsOpen(true)} />
+            )}
             <Textarea
               label="Diagnosis / Clinical Notes"
               placeholder="Brief clinical summary or working diagnosis…"
@@ -1002,6 +1239,11 @@ export function DoctorRequestForm() {
 
       {/* Floating call button — shown on steps 2+ when selected lab has phone numbers */}
       {step >= 2 && <LabCallFAB lab={selectedLab} />}
+
+      {/* Lab details modal */}
+      {labDetailsOpen && selectedLab && (
+        <LabDetailsModal lab={selectedLab} onClose={() => setLabDetailsOpen(false)} />
+      )}
     </div>
   );
 }
