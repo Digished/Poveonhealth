@@ -938,7 +938,7 @@ function SearchableCheckboxGroup({
   };
 
   // Build flat filtered list with optional group headers
-  const rendered: { type: "group"; label: string } | { type: "item"; value: string }[] = [];
+  const rendered: ({ type: "group"; label: string } | { type: "item"; value: string })[] = [];
   if (groups) {
     for (const { group, items } of groups) {
       const filtered = items.filter((i) => i.toLowerCase().includes(q));
