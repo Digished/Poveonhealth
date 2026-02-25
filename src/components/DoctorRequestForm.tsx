@@ -519,16 +519,8 @@ function LabDetailsModal({ lab, onClose }: { lab: Lab; onClose: () => void }) {
 
 // Compact lab context strip shown at the top of steps 2-4
 function LabInfoBar({ lab, onViewMore }: { lab: Lab; onViewMore: () => void }) {
-  const services = (lab.service_categories as string[] | null) ?? [];
-  const certs = (lab.certifications as string[] | null) ?? [];
-  const SHOW_SERVICES = 3;
-  const SHOW_CERTS = 2;
-  const extraServices = services.length - SHOW_SERVICES;
-  const extraCerts = certs.length - SHOW_CERTS;
-
   return (
-    <div className="bg-slate-50 border border-slate-100 rounded-xl px-4 py-3 space-y-2.5">
-      {/* Lab name row */}
+    <div className="bg-slate-50 border border-slate-100 rounded-xl px-4 py-3">
       <div className="flex items-center justify-between gap-2">
         <div className="flex items-center gap-2 min-w-0">
           {lab.logo_url ? (
@@ -536,48 +528,23 @@ function LabInfoBar({ lab, onViewMore }: { lab: Lab; onViewMore: () => void }) {
           ) : (
             <Building2 className="w-4 h-4 text-medical-600 shrink-0" />
           )}
-          <span className="text-xs font-semibold text-slate-600 truncate">{lab.name}</span>
+          <div className="min-w-0">
+            <span className="text-xs font-semibold text-slate-600 truncate block">{lab.name}</span>
+            {lab.address && (
+              <span className="text-xs text-slate-400 flex items-center gap-1 mt-0.5">
+                <MapPin className="w-3 h-3 shrink-0" />{lab.address}
+              </span>
+            )}
+            <button
+              type="button"
+              onClick={onViewMore}
+              className="mt-0.5 text-xs text-medical-600 hover:text-medical-800 underline underline-offset-2 font-medium transition-colors"
+            >
+              View details
+            </button>
+          </div>
         </div>
-        <button
-          type="button"
-          onClick={onViewMore}
-          className="flex items-center gap-1 text-xs text-medical-600 hover:text-medical-800 font-medium shrink-0 transition-colors"
-        >
-          <Info className="w-3 h-3" /> View details
-        </button>
       </div>
-
-      {/* Services */}
-      {services.length > 0 && (
-        <div className="flex flex-wrap gap-1.5 items-center">
-          {services.slice(0, SHOW_SERVICES).map((s) => (
-            <span key={s} className="text-xs bg-medical-50 text-medical-700 border border-medical-100 px-2 py-0.5 rounded-full">
-              {s}
-            </span>
-          ))}
-          {extraServices > 0 && (
-            <button type="button" onClick={onViewMore} className="text-xs text-medical-500 hover:text-medical-700 font-medium transition-colors">
-              +{extraServices} more
-            </button>
-          )}
-        </div>
-      )}
-
-      {/* Certifications */}
-      {certs.length > 0 && (
-        <div className="flex flex-wrap gap-1.5 items-center">
-          {certs.slice(0, SHOW_CERTS).map((c) => (
-            <span key={c} className="text-xs bg-amber-50 text-amber-700 border border-amber-100 px-2 py-0.5 rounded-full flex items-center gap-1">
-              <Award className="w-2.5 h-2.5" />{c}
-            </span>
-          ))}
-          {extraCerts > 0 && (
-            <button type="button" onClick={onViewMore} className="text-xs text-amber-600 hover:text-amber-800 font-medium transition-colors">
-              +{extraCerts} more
-            </button>
-          )}
-        </div>
-      )}
     </div>
   );
 }
