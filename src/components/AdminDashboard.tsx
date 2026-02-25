@@ -1,11 +1,11 @@
 "use client";
 
-import { useState, useEffect, useCallback, useRef } from "react";
+import { useState, useEffect, useCallback, useRef, useMemo } from "react";
 import { toast } from "react-hot-toast";
 import {
   Plus, FlaskConical, BarChart3, List, LogOut,
   Building2, Trash2, Eye, EyeOff, RefreshCw, X, Pencil,
-  Phone, Upload, Check, MapPin,
+  Phone, Upload, Check, MapPin, Users, ChevronRight,
 } from "lucide-react";
 import { Button } from "@/components/ui/Button";
 import { Input, Textarea } from "@/components/ui/Input";
@@ -15,7 +15,17 @@ import { format } from "date-fns";
 import { createClient } from "@/lib/supabase/client"; // still used for auth sign-out
 import { useRouter } from "next/navigation";
 
-type AdminTab = "metrics" | "requests" | "labs";
+type AdminTab = "metrics" | "requests" | "referrals" | "labs";
+
+interface ReferralGroup {
+  key: string;
+  referrerName: string;
+  bankName: string | null;
+  accountNumber: string | null;
+  accountName: string | null;
+  requests: LabRequest[];
+  thisMonthCount: number;
+}
 
 // Shared white input class for dark-background modals
 const whiteInput = "bg-white border-slate-200 text-slate-800 placeholder-slate-300";
@@ -31,6 +41,8 @@ export function AdminDashboard() {
   const [editLab, setEditLab] = useState<Lab | null>(null);
   const [deletingId, setDeletingId] = useState<string | null>(null);
   const [togglingId, setTogglingId] = useState<string | null>(null);
+  const [deletingRequestId, setDeletingRequestId] = useState<string | null>(null);
+  const [selectedReferralGroup, setSelectedReferralGroup] = useState<ReferralGroup | null>(null);
 
   const fetchLabs = useCallback(async () => {
     try {
@@ -63,6 +75,53 @@ export function AdminDashboard() {
   }, [fetchLabs]);
 
   useEffect(() => { fetchData(); }, [fetchData]);
+
+  const referralGroups = useMemo<ReferralGroup[]>(() => {
+    const map = new Map<string, ReferralGroup>();
+    const now = new Date();
+    for (const req of requests) {
+      const key = req.doctor_account_number
+        ? `acc:${req.doctor_account_number}`
+        : `name:${[req.doctor_prefix, req.doctor_name].filter(Boolean).join(" ")}`;
+      const d = new Date(req.created_at);
+      const isThisMonth = d.getMonth() === now.getMonth() && d.getFullYear() === now.getFullYear();
+      const existing = map.get(key);
+      if (existing) {
+        existing.requests.push(req);
+        if (isThisMonth) existing.thisMonthCount++;
+      } else {
+        map.set(key, {
+          key,
+          referrerName: [req.doctor_prefix, req.doctor_name].filter(Boolean).join(" "),
+          bankName: req.doctor_bank_name,
+          accountNumber: req.doctor_account_number,
+          accountName: req.doctor_account_name,
+          requests: [req],
+          thisMonthCount: isThisMonth ? 1 : 0,
+        });
+      }
+    }
+    return Array.from(map.values()).sort((a, b) => b.requests.length - a.requests.length);
+  }, [requests]);
+
+  async function handleDeleteRequest(req: LabRequest) {
+    if (!confirm(`Delete request ${req.code} for "${req.patient_name}"? This permanently removes it from the lab dashboard too.`)) return;
+    setDeletingRequestId(req.id);
+    try {
+      const res = await fetch(`/api/admin/requests/${req.id}`, { method: "DELETE" });
+      const data = await res.json();
+      if (data.success) {
+        toast.success(`Request ${req.code} deleted`);
+        setRequests((prev: LabRequest[]) => prev.filter((r: LabRequest) => r.id !== req.id));
+      } else {
+        toast.error(data.error ?? "Failed to delete");
+      }
+    } catch {
+      toast.error("Network error");
+    } finally {
+      setDeletingRequestId(null);
+    }
+  }
 
   async function handleSignOut() {
     await createClient().auth.signOut();
@@ -141,6 +200,7 @@ export function AdminDashboard() {
           {[
             { key: "metrics" as AdminTab, label: "Metrics", icon: <BarChart3 className="w-4 h-4" /> },
             { key: "requests" as AdminTab, label: "All Requests", icon: <List className="w-4 h-4" /> },
+            { key: "referrals" as AdminTab, label: "Referrals", icon: <Users className="w-4 h-4" /> },
             { key: "labs" as AdminTab, label: "Labs", icon: <Building2 className="w-4 h-4" /> },
           ].map((tab) => (
             <button
@@ -215,7 +275,7 @@ export function AdminDashboard() {
                 <table className="w-full text-sm">
                   <thead>
                     <tr className="border-b border-white/10 text-left">
-                      {["Code", "Patient", "Doctor", "Tests", "Lab", "Status", "Date"].map((h) => (
+                      {["Code", "Patient", "Referred by", "Tests", "Lab", "Status", "Date", ""].map((h) => (
                         <th key={h} className="pb-3 px-3 text-xs text-slate-400 font-semibold uppercase tracking-wider">{h}</th>
                       ))}
                     </tr>
@@ -237,13 +297,80 @@ export function AdminDashboard() {
                         <td className="py-3 px-3 text-slate-300">{(req.labs as { name: string } | null)?.name ?? "—"}</td>
                         <td className="py-3 px-3"><StatusBadge status={req.status} /></td>
                         <td className="py-3 px-3 text-slate-400 whitespace-nowrap">{format(new Date(req.created_at), "dd MMM yy")}</td>
+                        <td className="py-3 px-3">
+                          <button
+                            onClick={() => handleDeleteRequest(req)}
+                            disabled={deletingRequestId === req.id}
+                            className="p-1.5 rounded-lg hover:bg-red-500/15 text-slate-600 hover:text-red-400 transition-colors disabled:opacity-40"
+                            title="Delete request"
+                          >
+                            <Trash2 className="w-3.5 h-3.5" />
+                          </button>
+                        </td>
                       </tr>
                     ))}
                     {requests.length === 0 && (
-                      <tr><td colSpan={7} className="py-16 text-center text-slate-400">No requests yet</td></tr>
+                      <tr><td colSpan={8} className="py-16 text-center text-slate-400">No requests yet</td></tr>
                     )}
                   </tbody>
                 </table>
+              </div>
+            )}
+          </div>
+        )}
+
+        {/* ── REFERRALS ── */}
+        {activeTab === "referrals" && (
+          <div className="animate-fade-in space-y-4">
+            <div className="flex items-center justify-between">
+              <div>
+                <h2 className="font-semibold text-white">Referral Tracking</h2>
+                <p className="text-xs text-slate-500 mt-0.5">Grouped by unique bank account</p>
+              </div>
+              <span className="text-xs text-slate-500 bg-white/5 px-3 py-1.5 rounded-full">{referralGroups.length} referrer{referralGroups.length !== 1 ? "s" : ""}</span>
+            </div>
+
+            {loading ? (
+              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+                {[...Array(6)].map((_, i) => (
+                  <div key={i} className="bg-white/5 border border-white/10 rounded-2xl p-5 animate-pulse h-32" />
+                ))}
+              </div>
+            ) : referralGroups.length === 0 ? (
+              <div className="text-center py-20 text-slate-500">No referrals yet</div>
+            ) : (
+              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+                {referralGroups.map((group) => (
+                  <button
+                    key={group.key}
+                    onClick={() => setSelectedReferralGroup(group)}
+                    className="bg-white/5 border border-white/10 hover:border-white/20 rounded-2xl p-5 text-left transition-all hover:bg-white/8 group"
+                  >
+                    <div className="flex items-start justify-between mb-3">
+                      <div className="w-9 h-9 bg-medical-700/40 rounded-xl flex items-center justify-center shrink-0">
+                        <Users className="w-4 h-4 text-medical-400" />
+                      </div>
+                      <ChevronRight className="w-4 h-4 text-slate-600 group-hover:text-slate-400 transition-colors mt-1" />
+                    </div>
+                    <p className="font-semibold text-white text-sm truncate">{group.referrerName || "—"}</p>
+                    {group.accountName && (
+                      <p className="text-xs text-slate-400 truncate mt-0.5">{group.accountName}</p>
+                    )}
+                    {group.bankName && (
+                      <p className="text-xs text-slate-500 truncate">{group.bankName}{group.accountNumber ? ` · ${group.accountNumber}` : ""}</p>
+                    )}
+                    <div className="flex items-center gap-3 mt-4 pt-3 border-t border-white/5">
+                      <div>
+                        <p className="text-2xl font-bold text-white">{group.requests.length}</p>
+                        <p className="text-xs text-slate-500">total</p>
+                      </div>
+                      <div className="border-l border-white/10 pl-3">
+                        <p className="text-2xl font-bold text-medical-400">{group.thisMonthCount}</p>
+                        <p className="text-xs text-slate-500">this month</p>
+                      </div>
+                    </div>
+                  </button>
+                ))}
               </div>
             )}
           </div>
@@ -338,6 +465,9 @@ export function AdminDashboard() {
       )}
       {editLab && (
         <EditLabModal lab={editLab} onClose={() => setEditLab(null)} onSuccess={() => { setEditLab(null); fetchLabs(); }} />
+      )}
+      {selectedReferralGroup && (
+        <ReferralDetailModal group={selectedReferralGroup} onClose={() => setSelectedReferralGroup(null)} />
       )}
     </div>
   );
@@ -598,6 +728,101 @@ function EditLabModal({ lab, onClose, onSuccess }: { lab: Lab; onClose: () => vo
             <Button type="submit" fullWidth loading={loading}>Save Changes</Button>
           </div>
         </form>
+      </div>
+    </div>
+  );
+}
+
+// =============================================================================
+// Referral Detail Modal
+// =============================================================================
+function ReferralDetailModal({ group, onClose }: { group: ReferralGroup; onClose: () => void }) {
+  const [monthFilter, setMonthFilter] = useState<string>("all");
+
+  // Build unique month options from the group's requests
+  const monthOptions = useMemo(() => {
+    const seen = new Set<string>();
+    const opts: { value: string; label: string }[] = [];
+    for (const req of group.requests) {
+      const d = new Date(req.created_at);
+      const val = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}`;
+      if (!seen.has(val)) {
+        seen.add(val);
+        opts.push({ value: val, label: format(d, "MMMM yyyy") });
+      }
+    }
+    return opts.sort((a, b) => b.value.localeCompare(a.value));
+  }, [group.requests]);
+
+  const filtered = useMemo(() => {
+    if (monthFilter === "all") return group.requests;
+    return group.requests.filter((r) => {
+      const d = new Date(r.created_at);
+      return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}` === monthFilter;
+    });
+  }, [group.requests, monthFilter]);
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm p-4">
+      <div className="bg-slate-900 border border-white/15 rounded-2xl w-full max-w-lg shadow-2xl animate-slide-up max-h-[90vh] flex flex-col">
+        {/* Header */}
+        <div className="flex items-start justify-between p-5 border-b border-white/10 shrink-0">
+          <div>
+            <h2 className="font-semibold text-white">{group.referrerName || "Unknown Referrer"}</h2>
+            {group.accountName && <p className="text-sm text-slate-400 mt-0.5">{group.accountName}</p>}
+            {group.bankName && (
+              <p className="text-xs text-slate-500 mt-0.5">
+                {group.bankName}{group.accountNumber ? ` · ${group.accountNumber}` : ""}
+              </p>
+            )}
+          </div>
+          <button onClick={onClose} className="p-1.5 rounded-lg hover:bg-white/10 text-slate-400 transition-colors mt-0.5">
+            <X className="w-4 h-4" />
+          </button>
+        </div>
+
+        {/* Stats bar */}
+        <div className="flex items-center gap-6 px-5 py-3 bg-white/3 border-b border-white/5 shrink-0">
+          <div>
+            <span className="text-lg font-bold text-white">{group.requests.length}</span>
+            <span className="text-xs text-slate-500 ml-1.5">total referrals</span>
+          </div>
+          <div>
+            <span className="text-lg font-bold text-medical-400">{group.thisMonthCount}</span>
+            <span className="text-xs text-slate-500 ml-1.5">this month</span>
+          </div>
+          {/* Month filter */}
+          <select
+            value={monthFilter}
+            onChange={(e) => setMonthFilter(e.target.value)}
+            className="ml-auto text-xs bg-white/8 border border-white/10 text-slate-300 rounded-lg px-2.5 py-1.5 focus:outline-none focus:ring-1 focus:ring-medical-500"
+          >
+            <option value="all">All months</option>
+            {monthOptions.map((o) => (
+              <option key={o.value} value={o.value}>{o.label}</option>
+            ))}
+          </select>
+        </div>
+
+        {/* Referral list */}
+        <div className="overflow-y-auto flex-1 p-4 space-y-2">
+          {filtered.length === 0 && (
+            <p className="text-center text-slate-500 py-10 text-sm">No referrals for this period</p>
+          )}
+          {filtered.map((req) => (
+            <div key={req.id} className="flex items-center gap-3 bg-white/5 border border-white/8 rounded-xl px-4 py-3">
+              <div className="flex-1 min-w-0">
+                <p className="text-sm text-white font-medium truncate">{req.patient_name}</p>
+                <p className="text-xs text-slate-500 mt-0.5 truncate">{req.tests}</p>
+              </div>
+              <div className="flex items-center gap-2 shrink-0">
+                <span className="font-mono text-xs text-medical-400">{req.code}</span>
+                <StatusBadge status={req.status} />
+                <span className="text-xs text-slate-600">{format(new Date(req.created_at), "dd MMM")}</span>
+              </div>
+            </div>
+          ))}
+        </div>
       </div>
     </div>
   );
