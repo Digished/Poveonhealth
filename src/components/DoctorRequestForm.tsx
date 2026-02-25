@@ -535,6 +535,48 @@ function LabInfoBar({ lab, onViewMore }: { lab: Lab; onViewMore: () => void }) {
   );
 }
 
+function LearnMoreModal({ onClose }: { onClose: () => void }) {
+  return (
+    <div
+      className="fixed inset-0 z-50 flex items-end sm:items-center justify-center p-4 animate-backdrop-in"
+      style={{ backgroundColor: "rgba(15,23,42,0.45)", backdropFilter: "blur(4px)" }}
+      onClick={onClose}
+    >
+      <div
+        className="w-full max-w-sm bg-white rounded-3xl shadow-2xl overflow-hidden animate-scale-in"
+        onClick={(e) => e.stopPropagation()}
+      >
+        <div className="bg-gradient-to-br from-medical-50 via-white to-sky-50 px-6 pt-6 pb-5 flex items-start gap-4">
+          <div className="w-12 h-12 rounded-2xl bg-medical-600 flex items-center justify-center shrink-0 shadow-md">
+            <FlaskConical className="w-6 h-6 text-white" />
+          </div>
+          <div className="flex-1">
+            <h3 className="text-lg font-bold text-slate-800">About Poveon</h3>
+            <p className="text-xs text-slate-400 mt-0.5">Secure lab request platform</p>
+          </div>
+          <button
+            onClick={onClose}
+            className="p-1.5 rounded-xl hover:bg-white/60 text-slate-400 hover:text-slate-600 transition-colors"
+          >
+            <X className="w-4 h-4" />
+          </button>
+        </div>
+        <div className="px-6 py-5 space-y-3">
+          <p className="text-sm text-slate-600 leading-relaxed">
+            Poveon lets licensed healthcare professionals send laboratory test requests directly to accredited labs — no account or login required.
+          </p>
+          <p className="text-sm text-slate-600 leading-relaxed">
+            Select your destination lab, enter your patient's details and your professional information, and submit. The lab is notified instantly and you receive email confirmation at every stage.
+          </p>
+          <p className="text-sm text-slate-400 leading-relaxed">
+            No faxes, no delays — fast, encrypted communication between clinicians and labs.
+          </p>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 export function DoctorRequestForm() {
   const [step, setStep] = useState(1);
   const [form, setForm] = useState<FormData>(INITIAL);
@@ -546,6 +588,7 @@ export function DoctorRequestForm() {
   const [contactOpen, setContactOpen] = useState(false);
   const [bankOpen, setBankOpen] = useState(false);
   const [labDetailsOpen, setLabDetailsOpen] = useState(false);
+  const [learnMoreOpen, setLearnMoreOpen] = useState(false);
   const [savedProfile, setSavedProfile] = useState<{ prefix: string; name: string; email: string; phone: string; bankName: string; accountNumber: string; accountName: string } | null>(null);
 
   const fetchLabs = useCallback(() => {
@@ -687,56 +730,67 @@ export function DoctorRequestForm() {
       {/* Header — swaps to lab branding once a lab is selected */}
       <div className="mb-8">
         {selectedLab ? (
-          <div className="relative overflow-hidden rounded-3xl border border-medical-100 bg-gradient-to-br from-medical-50 via-white to-sky-50 shadow-md animate-fade-in-up">
-            {/* Decorative blobs */}
-            <div className="absolute -top-10 -right-10 w-40 h-40 bg-medical-100/50 rounded-full blur-3xl pointer-events-none" />
-            <div className="absolute -bottom-8 -left-8 w-32 h-32 bg-sky-100/50 rounded-full blur-3xl pointer-events-none" />
-            <div className="relative px-6 pt-8 pb-6 text-center space-y-3">
+          <div className="relative overflow-hidden rounded-2xl border border-medical-100 bg-gradient-to-r from-medical-50 via-white to-sky-50 shadow-sm animate-fade-in-up">
+            <div className="absolute -top-6 -right-6 w-28 h-28 bg-medical-100/40 rounded-full blur-2xl pointer-events-none" />
+            <div className="relative px-4 py-3.5 flex items-center gap-3">
               {selectedLab.logo_url ? (
                 <img
                   src={selectedLab.logo_url}
                   alt={selectedLab.name}
-                  className="w-20 h-20 rounded-2xl object-cover mx-auto shadow-lg ring-4 ring-white"
+                  className="w-10 h-10 rounded-xl object-cover shrink-0 shadow-sm ring-2 ring-white"
                 />
               ) : (
-                <div className="inline-flex items-center justify-center w-20 h-20 bg-medical-100 rounded-2xl border border-medical-200 shadow-sm mx-auto">
-                  <Building2 className="w-10 h-10 text-medical-600" />
+                <div className="w-10 h-10 rounded-xl bg-medical-100 flex items-center justify-center shrink-0 border border-medical-200">
+                  <Building2 className="w-5 h-5 text-medical-600" />
                 </div>
               )}
-              <div>
-                <h1 className="text-2xl font-bold text-slate-800 tracking-tight">{selectedLab.name}</h1>
-                {selectedLab.description && (
-                  <p className="text-slate-500 text-sm max-w-sm mx-auto mt-1 leading-relaxed">{selectedLab.description}</p>
+              <div className="min-w-0 flex-1">
+                <p className="text-sm font-bold text-slate-800 leading-tight truncate">{selectedLab.name}</p>
+                {selectedLab.address && (
+                  <p className="text-xs text-slate-400 flex items-center gap-1 mt-0.5">
+                    <MapPin className="w-3 h-3 shrink-0 text-medical-300" />{selectedLab.address}
+                  </p>
+                )}
+                {step > 1 && (
+                  <button
+                    type="button"
+                    onClick={() => setLabDetailsOpen(true)}
+                    className="mt-1 text-xs text-medical-600 hover:text-medical-800 font-semibold underline underline-offset-2 transition-colors"
+                  >
+                    View details
+                  </button>
                 )}
               </div>
-              {selectedLab.address && (
-                <p className="text-slate-400 text-sm flex items-center justify-center gap-1.5">
-                  <MapPin className="w-3.5 h-3.5 shrink-0 text-medical-400" />
-                  {selectedLab.address}
-                </p>
-              )}
-              {step > 1 && (
-                <button
-                  type="button"
-                  onClick={() => setLabDetailsOpen(true)}
-                  className="inline-flex items-center gap-1.5 text-xs text-medical-600 hover:text-medical-800 font-semibold bg-medical-50 hover:bg-medical-100 border border-medical-200 px-3 py-1.5 rounded-full transition-colors"
-                >
-                  <Info className="w-3 h-3" /> View details
-                </button>
-              )}
             </div>
           </div>
         ) : (
-          <div className="text-center animate-fade-in">
-            <div className="inline-flex items-center justify-center w-16 h-16 bg-medical-600 rounded-2xl mb-4 shadow-lg animate-float">
-              <FlaskConical className="w-8 h-8 text-white" />
+          <div className="relative py-4 animate-fade-in">
+            {/* Subtle animated background blobs */}
+            <div className="absolute inset-0 overflow-hidden pointer-events-none -z-10">
+              <div className="absolute top-2 left-0 w-40 h-40 bg-medical-100/50 rounded-full blur-3xl animate-float" style={{ animationDelay: "0s" }} />
+              <div className="absolute top-0 right-4 w-32 h-32 bg-sky-100/60 rounded-full blur-3xl animate-float" style={{ animationDelay: "1.8s" }} />
+              <div className="absolute -top-2 left-1/2 w-24 h-24 bg-indigo-100/40 rounded-full blur-2xl animate-float" style={{ animationDelay: "3.2s" }} />
             </div>
-            <h1 className="text-3xl font-bold text-slate-800 mb-2 tracking-tight">
-              Laboratory Request
-            </h1>
-            <p className="text-slate-500 text-base max-w-md mx-auto">
-              Submit a lab test request for your patient. No account required.
-            </p>
+            <div className="flex items-center gap-3">
+              <div className="w-9 h-9 bg-medical-600 rounded-xl flex items-center justify-center shadow-md shrink-0">
+                <FlaskConical className="w-[18px] h-[18px] text-white" />
+              </div>
+              <div>
+                <p className="text-sm font-semibold text-slate-700 leading-snug">
+                  Submit a lab request for your patient.
+                </p>
+                <p className="text-xs text-slate-400 mt-0.5">
+                  No account needed.{" "}
+                  <button
+                    type="button"
+                    onClick={() => setLearnMoreOpen(true)}
+                    className="text-medical-600 hover:text-medical-800 font-semibold underline underline-offset-2 transition-colors"
+                  >
+                    Learn more
+                  </button>
+                </p>
+              </div>
+            </div>
           </div>
         )}
       </div>
@@ -751,10 +805,10 @@ export function DoctorRequestForm() {
           return (
             <div key={s.title} className="flex items-center flex-1">
               <div className="flex flex-col items-center">
-                <div className={`w-9 h-9 rounded-full flex items-center justify-center transition-all ${
-                  done ? "bg-medical-600 text-white" :
-                  active ? "bg-medical-600 text-white ring-4 ring-medical-100" :
-                  "bg-slate-100 text-slate-400"
+                <div className={`w-9 h-9 rounded-full flex items-center justify-center transition-all border-2 ${
+                  done ? "bg-medical-600 text-white border-medical-600" :
+                  active ? "bg-medical-600 text-white border-medical-400 ring-4 ring-medical-100/50" :
+                  "bg-white text-slate-400 border-slate-200"
                 }`}>
                   {done ? <Check className="w-4 h-4" /> : <Icon className="w-4 h-4" />}
                 </div>
@@ -1136,38 +1190,39 @@ export function DoctorRequestForm() {
         )}
       </div>
 
-      {/* Navigation */}
-      <div className={`flex gap-3 ${step === 1 ? "justify-end" : "justify-between"}`}>
-        {step > 1 && (
-          <Button variant="ghost" onClick={handleBack} type="button">
-            <ChevronLeft className="w-4 h-4" />
-            Back
-          </Button>
-        )}
-        {step < 4 ? (
-          <Button onClick={handleNext} type="button">
-            Continue
-            <ChevronRight className="w-4 h-4" />
-          </Button>
-        ) : (
-          <Button
-            onClick={handleSubmit}
-            loading={submitting}
-            size="lg"
-            className="shadow-xl shadow-medical-500/20"
-          >
-            <FlaskConical className="w-5 h-5" />
-            Generate Lab Request
-          </Button>
-        )}
+      {/* Sticky navigation bar */}
+      <div className="sticky bottom-0 z-10 -mx-4 px-4 pt-3 pb-4 bg-gradient-to-t from-sky-50 via-sky-50/95 to-transparent">
+        <div className={`flex gap-3 ${step === 1 ? "justify-end" : "justify-between"}`}>
+          {step > 1 && (
+            <Button variant="ghost" onClick={handleBack} type="button">
+              <ChevronLeft className="w-4 h-4" />
+              Back
+            </Button>
+          )}
+          {step < 4 ? (
+            <Button onClick={handleNext} type="button">
+              Continue
+              <ChevronRight className="w-4 h-4" />
+            </Button>
+          ) : (
+            <Button
+              onClick={handleSubmit}
+              loading={submitting}
+              size="lg"
+              className="shadow-xl shadow-medical-500/20"
+            >
+              <FlaskConical className="w-5 h-5" />
+              Generate Lab Request
+            </Button>
+          )}
+        </div>
+        <p className="text-center text-xs text-slate-400 mt-3 leading-relaxed">
+          By submitting, you confirm you are authorised to request these tests on behalf of the patient and receive the results.{" "}
+          <a href="/terms" className="underline hover:text-slate-600 transition-colors">Terms &amp; Conditions</a>
+          {" "}and{" "}
+          <a href="/privacy" className="underline hover:text-slate-600 transition-colors">Privacy Policy</a>.
+        </p>
       </div>
-
-      <p className="text-center text-xs text-slate-400 mt-4 leading-relaxed">
-        By submitting, you confirm you are authorised to request these tests on behalf of the patient and receive the results.{" "}
-        <a href="/terms" className="underline hover:text-slate-600 transition-colors">Terms &amp; Conditions</a>
-        {" "}and{" "}
-        <a href="/privacy" className="underline hover:text-slate-600 transition-colors">Privacy Policy</a>.
-      </p>
 
       {/* Floating call button — shown on steps 2+ when selected lab has phone numbers */}
       {step >= 2 && <LabCallFAB lab={selectedLab} />}
@@ -1176,6 +1231,9 @@ export function DoctorRequestForm() {
       {labDetailsOpen && selectedLab && (
         <LabDetailsModal lab={selectedLab} onClose={() => setLabDetailsOpen(false)} />
       )}
+
+      {/* Learn more modal */}
+      {learnMoreOpen && <LearnMoreModal onClose={() => setLearnMoreOpen(false)} />}
     </div>
   );
 }
