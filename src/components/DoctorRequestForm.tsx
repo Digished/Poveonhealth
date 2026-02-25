@@ -839,49 +839,15 @@ export function DoctorRequestForm() {
                         <MapPin className="w-3 h-3 mt-0.5 shrink-0" />{selectedLab.address}
                       </p>
                     )}
-                    {(((selectedLab.phones as string[] | null) ?? []).length > 0) && (
-                      <div className="flex flex-wrap gap-x-3 mt-1">
-                        {((selectedLab.phones as string[] | null) ?? []).map((ph, i) => (
-                          <a key={i} href={`tel:${ph}`} className="text-xs text-medical-600 flex items-center gap-1 hover:text-medical-800">
-                            <Phone className="w-3 h-3 shrink-0" />{ph}
-                          </a>
-                        ))}
-                      </div>
-                    )}
+                    <button
+                      type="button"
+                      onClick={() => setLabDetailsOpen(true)}
+                      className="mt-1.5 text-xs text-medical-600 hover:text-medical-800 underline underline-offset-2 font-medium"
+                    >
+                      View details
+                    </button>
                   </div>
                 </div>
-
-                {/* Services */}
-                {(((selectedLab.service_categories as string[] | null) ?? []).length > 0) && (
-                  <div className="px-4 py-3 border-t border-medical-100 bg-white">
-                    <p className="text-xs font-semibold text-slate-400 uppercase tracking-wider mb-2 flex items-center gap-1.5">
-                      <Layers className="w-3 h-3" /> Services
-                    </p>
-                    <div className="flex flex-wrap gap-1.5">
-                      {((selectedLab.service_categories as string[] | null) ?? []).map((s) => (
-                        <span key={s} className="text-xs bg-medical-50 text-medical-700 border border-medical-100 px-2.5 py-1 rounded-full font-medium">
-                          {s}
-                        </span>
-                      ))}
-                    </div>
-                  </div>
-                )}
-
-                {/* Certifications */}
-                {(((selectedLab.certifications as string[] | null) ?? []).length > 0) && (
-                  <div className="px-4 py-3 border-t border-medical-100 bg-white">
-                    <p className="text-xs font-semibold text-slate-400 uppercase tracking-wider mb-2 flex items-center gap-1.5">
-                      <Award className="w-3 h-3" /> Certifications
-                    </p>
-                    <div className="flex flex-wrap gap-1.5">
-                      {((selectedLab.certifications as string[] | null) ?? []).map((c) => (
-                        <span key={c} className="text-xs bg-amber-50 text-amber-700 border border-amber-100 px-2.5 py-1 rounded-full font-medium">
-                          {c}
-                        </span>
-                      ))}
-                    </div>
-                  </div>
-                )}
               </div>
             )}
           </div>
