@@ -7,6 +7,9 @@ export const metadata: Metadata = {
   description:
     "A secure platform for doctors to send laboratory test requests to labs without requiring login.",
   keywords: ["laboratory", "lab request", "medical", "health", "doctor"],
+  icons: {
+    icon: [{ url: "/logo.svg", type: "image/svg+xml" }],
+  },
   openGraph: {
     title: "Poveon",
     description: "Seamless lab test requests for healthcare professionals",

@@ -1,6 +1,6 @@
 import { DoctorRequestForm } from "@/components/DoctorRequestForm";
 import { TrustIndicators } from "@/components/TrustIndicators";
-import { FlaskConical } from "lucide-react";
+import { PoveonLogo } from "@/components/PoveonLogo";
 
 export default function HomePage() {
   return (
@@ -9,9 +9,7 @@ export default function HomePage() {
       <nav className="border-b border-white/80 bg-white/60 backdrop-blur-md sticky top-0 z-20">
         <div className="max-w-6xl mx-auto px-4 py-3 flex items-center justify-between">
           <div className="flex items-center gap-2.5">
-            <div className="w-8 h-8 bg-medical-600 rounded-xl flex items-center justify-center">
-              <FlaskConical className="w-[18px] h-[18px] text-white" />
-            </div>
+            <PoveonLogo className="w-8 h-8" />
             <span className="font-bold text-medical-700 text-lg">Poveon</span>
           </div>
           <div className="flex items-center gap-2 text-sm" />

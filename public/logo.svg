@@ -1,0 +1,21 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32" fill="none">
+  <!-- Rounded square background -->
+  <rect width="32" height="32" rx="8" fill="#0270c3"/>
+
+  <!-- Flask body -->
+  <path d="M13 6 L13 14 L8.5 21.5 Q7 25.5 9.5 27 Q11 28 16 28 Q21 28 22.5 27 Q25 25.5 23.5 21.5 L19 14 L19 6 Z"
+        fill="rgba(186,224,253,0.18)"
+        stroke="white" stroke-width="1.6" stroke-linejoin="round"/>
+
+  <!-- Neck cap -->
+  <line x1="11.5" y1="6" x2="20.5" y2="6" stroke="white" stroke-width="1.6" stroke-linecap="round"/>
+
+  <!-- Liquid fill -->
+  <path d="M9.5 23.5 Q8.5 26.5 9.5 27 Q11 28 16 28 Q21 28 22.5 27 Q23.5 26.5 22.5 23.5 Z"
+        fill="rgba(255,255,255,0.38)"/>
+
+  <!-- Bubbles -->
+  <circle cx="13.5" cy="25" r="1.1" fill="white" opacity="0.65"/>
+  <circle cx="18.2" cy="24.5" r="0.85" fill="white" opacity="0.5"/>
+  <circle cx="20.8" cy="25.8" r="0.65" fill="white" opacity="0.4"/>
+</svg>

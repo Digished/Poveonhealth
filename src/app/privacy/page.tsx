@@ -1,5 +1,6 @@
-import { FlaskConical, ArrowLeft } from "lucide-react";
+import { ArrowLeft } from "lucide-react";
 import Link from "next/link";
+import { PoveonLogo } from "@/components/PoveonLogo";
 
 export const metadata = {
   title: "Privacy Policy — Poveon",
@@ -11,9 +12,7 @@ export default function PrivacyPage() {
       <nav className="border-b border-white/80 bg-white/60 backdrop-blur-md sticky top-0 z-20">
         <div className="max-w-6xl mx-auto px-4 py-3 flex items-center gap-3">
           <Link href="/" className="flex items-center gap-2.5">
-            <div className="w-8 h-8 bg-medical-600 rounded-xl flex items-center justify-center">
-              <FlaskConical className="w-[18px] h-[18px] text-white" />
-            </div>
+            <PoveonLogo className="w-8 h-8" />
             <span className="font-bold text-medical-700 text-lg">Poveon</span>
           </Link>
         </div>

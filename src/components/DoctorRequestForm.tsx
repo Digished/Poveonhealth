@@ -351,53 +351,6 @@ function LabSearch({
   );
 }
 
-// Floating action button to call the lab — appears on step 2+
-function LabCallFAB({ lab }: { lab: Lab | undefined }) {
-  const [open, setOpen] = useState(false);
-  const phones = lab?.phones as string[] | undefined;
-  if (!lab || !phones || phones.length === 0) return null;
-
-  if (phones.length === 1) {
-    return (
-      <a
-        href={`tel:${phones[0]}`}
-        className="fixed bottom-6 right-6 z-30 w-14 h-14 bg-medical-600 hover:bg-medical-700 text-white rounded-full shadow-2xl flex items-center justify-center transition-colors"
-        title={`Call ${lab.name}`}
-      >
-        <PhoneCall className="w-6 h-6" />
-      </a>
-    );
-  }
-
-  return (
-    <div className="fixed bottom-6 right-6 z-30">
-      {open && (
-        <div className="mb-3 bg-white rounded-2xl shadow-xl border border-slate-100 overflow-hidden min-w-[200px] animate-slide-up">
-          <p className="text-xs font-semibold text-slate-400 px-4 pt-3 pb-1 uppercase tracking-wider">
-            Call {lab.name}
-          </p>
-          {phones.map((ph, i) => (
-            <a
-              key={i}
-              href={`tel:${ph}`}
-              onClick={() => setOpen(false)}
-              className="flex items-center gap-2 px-4 py-2.5 hover:bg-medical-50 text-medical-700 text-sm font-medium"
-            >
-              <Phone className="w-4 h-4" />{ph}
-            </a>
-          ))}
-        </div>
-      )}
-      <button
-        onClick={() => setOpen((v) => !v)}
-        className="w-14 h-14 bg-medical-600 hover:bg-medical-700 text-white rounded-full shadow-2xl flex items-center justify-center transition-all"
-        title={open ? "Close" : `Call ${lab.name}`}
-      >
-        {open ? <X className="w-6 h-6" /> : <PhoneCall className="w-6 h-6" />}
-      </button>
-    </div>
-  );
-}
 
 // Full lab details modal — bottom sheet on mobile, centered dialog on desktop
 function LabDetailsModal({ lab, onClose }: { lab: Lab; onClose: () => void }) {
@@ -589,6 +542,7 @@ export function DoctorRequestForm() {
   const [bankOpen, setBankOpen] = useState(false);
   const [labDetailsOpen, setLabDetailsOpen] = useState(false);
   const [learnMoreOpen, setLearnMoreOpen] = useState(false);
+  const [callOpen, setCallOpen] = useState(false);
   const [savedProfile, setSavedProfile] = useState<{ prefix: string; name: string; email: string; phone: string; bankName: string; accountNumber: string; accountName: string } | null>(null);
 
   const fetchLabs = useCallback(() => {
@@ -727,107 +681,156 @@ export function DoctorRequestForm() {
 
   return (
     <div className="animate-fade-in">
-      {/* Header — swaps to lab branding once a lab is selected */}
-      <div className="mb-8">
-        {selectedLab ? (
-          <div className="relative overflow-hidden rounded-2xl border border-medical-100 bg-gradient-to-r from-medical-50 via-white to-sky-50 shadow-sm animate-fade-in-up">
-            <div className="absolute -top-6 -right-6 w-28 h-28 bg-medical-100/40 rounded-full blur-2xl pointer-events-none" />
-            <div className="relative px-4 py-3.5 flex items-center gap-3">
-              {selectedLab.logo_url ? (
-                <img
-                  src={selectedLab.logo_url}
-                  alt={selectedLab.name}
-                  className="w-10 h-10 rounded-xl object-cover shrink-0 shadow-sm ring-2 ring-white"
-                />
-              ) : (
-                <div className="w-10 h-10 rounded-xl bg-medical-100 flex items-center justify-center shrink-0 border border-medical-200">
-                  <Building2 className="w-5 h-5 text-medical-600" />
-                </div>
-              )}
-              <div className="min-w-0 flex-1">
-                <p className="text-sm font-bold text-slate-800 leading-tight truncate">{selectedLab.name}</p>
-                {selectedLab.address && (
-                  <p className="text-xs text-slate-400 flex items-center gap-1 mt-0.5">
-                    <MapPin className="w-3 h-3 shrink-0 text-medical-300" />{selectedLab.address}
-                  </p>
-                )}
-                {step > 1 && (
-                  <button
-                    type="button"
-                    onClick={() => setLabDetailsOpen(true)}
-                    className="mt-1 text-xs text-medical-600 hover:text-medical-800 font-semibold underline underline-offset-2 transition-colors"
-                  >
-                    View details
-                  </button>
-                )}
-              </div>
-            </div>
-          </div>
-        ) : (
-          <div className="relative py-4 animate-fade-in">
-            {/* Subtle animated background blobs */}
-            <div className="absolute inset-0 overflow-hidden pointer-events-none -z-10">
-              <div className="absolute top-2 left-0 w-40 h-40 bg-medical-100/50 rounded-full blur-3xl animate-float" style={{ animationDelay: "0s" }} />
-              <div className="absolute top-0 right-4 w-32 h-32 bg-sky-100/60 rounded-full blur-3xl animate-float" style={{ animationDelay: "1.8s" }} />
-              <div className="absolute -top-2 left-1/2 w-24 h-24 bg-indigo-100/40 rounded-full blur-2xl animate-float" style={{ animationDelay: "3.2s" }} />
-            </div>
-            <div className="flex items-center gap-3">
-              <div className="w-9 h-9 bg-medical-600 rounded-xl flex items-center justify-center shadow-md shrink-0">
-                <FlaskConical className="w-[18px] h-[18px] text-white" />
-              </div>
-              <div>
-                <p className="text-sm font-semibold text-slate-700 leading-snug">
-                  Submit a lab request for your patient.
-                </p>
-                <p className="text-xs text-slate-400 mt-0.5">
-                  No account needed.{" "}
-                  <button
-                    type="button"
-                    onClick={() => setLearnMoreOpen(true)}
-                    className="text-medical-600 hover:text-medical-800 font-semibold underline underline-offset-2 transition-colors"
-                  >
-                    Learn more
-                  </button>
-                </p>
-              </div>
-            </div>
-          </div>
-        )}
-      </div>
+      {/* Sticky header + step indicator */}
+      <div className="sticky top-14 z-10 -mx-4 px-4 pt-2 pb-4 bg-white/70 backdrop-blur-md border-b border-white/50">
 
-      {/* Step indicator */}
-      <div className="flex items-center mb-8">
-        {STEPS.map((s, i) => {
-          const num = i + 1;
-          const done = num < step;
-          const active = num === step;
-          const Icon = s.icon;
-          return (
-            <div key={s.title} className="flex items-center flex-1">
-              <div className="flex flex-col items-center">
-                <div className={`w-9 h-9 rounded-full flex items-center justify-center transition-all border-2 ${
-                  done ? "bg-medical-600 text-white border-medical-600" :
-                  active ? "bg-medical-600 text-white border-medical-400 ring-4 ring-medical-100/50" :
-                  "bg-white text-slate-400 border-slate-200"
-                }`}>
-                  {done ? <Check className="w-4 h-4" /> : <Icon className="w-4 h-4" />}
+        {/* Header — swaps to lab branding once a lab is selected */}
+        <div className="mb-4">
+          {selectedLab ? (() => {
+            const phones = (selectedLab.phones as string[] | null) ?? [];
+            return (
+              <div className="relative overflow-hidden rounded-2xl border border-medical-100 bg-gradient-to-r from-medical-50 via-white to-sky-50 shadow-sm animate-fade-in-up">
+                <div className="absolute -top-6 -right-6 w-28 h-28 bg-medical-100/40 rounded-full blur-2xl pointer-events-none" />
+                <div className="relative px-4 py-3 flex items-center gap-3">
+                  {selectedLab.logo_url ? (
+                    <img
+                      src={selectedLab.logo_url}
+                      alt={selectedLab.name}
+                      className="w-10 h-10 rounded-xl object-cover shrink-0 shadow-sm ring-2 ring-white"
+                    />
+                  ) : (
+                    <div className="w-10 h-10 rounded-xl bg-medical-100 flex items-center justify-center shrink-0 border border-medical-200">
+                      <Building2 className="w-5 h-5 text-medical-600" />
+                    </div>
+                  )}
+                  <div className="min-w-0 flex-1">
+                    <p className="text-sm font-bold text-slate-800 leading-tight truncate">{selectedLab.name}</p>
+                    {selectedLab.address && (
+                      <p className="text-xs text-slate-400 flex items-start gap-1 mt-0.5">
+                        <MapPin className="w-3 h-3 shrink-0 text-medical-300 mt-0.5" />{selectedLab.address}
+                      </p>
+                    )}
+                    {step > 1 && (
+                      <button
+                        type="button"
+                        onClick={() => setLabDetailsOpen(true)}
+                        className="mt-1 text-xs text-medical-600 hover:text-medical-800 font-semibold underline underline-offset-2 transition-colors"
+                      >
+                        View details
+                      </button>
+                    )}
+                  </div>
+                  {/* Call button */}
+                  {phones.length > 0 && (
+                    <div className="relative shrink-0">
+                      {phones.length === 1 ? (
+                        <a
+                          href={`tel:${phones[0]}`}
+                          className="w-9 h-9 rounded-xl bg-medical-600 hover:bg-medical-700 text-white flex items-center justify-center shadow-sm transition-colors"
+                          title={`Call ${selectedLab.name}`}
+                        >
+                          <PhoneCall className="w-4 h-4" />
+                        </a>
+                      ) : (
+                        <>
+                          <button
+                            type="button"
+                            onClick={() => setCallOpen((v) => !v)}
+                            className="w-9 h-9 rounded-xl bg-medical-600 hover:bg-medical-700 text-white flex items-center justify-center shadow-sm transition-colors"
+                            title={callOpen ? "Close" : `Call ${selectedLab.name}`}
+                          >
+                            {callOpen ? <X className="w-4 h-4" /> : <PhoneCall className="w-4 h-4" />}
+                          </button>
+                          {callOpen && (
+                            <div className="absolute right-0 top-full mt-1.5 bg-white rounded-2xl shadow-xl border border-slate-100 overflow-hidden min-w-[180px] z-20 animate-slide-up">
+                              <p className="text-xs font-semibold text-slate-400 px-4 pt-3 pb-1 uppercase tracking-wider">
+                                Call {selectedLab.name}
+                              </p>
+                              {phones.map((ph, i) => (
+                                <a
+                                  key={i}
+                                  href={`tel:${ph}`}
+                                  onClick={() => setCallOpen(false)}
+                                  className="flex items-center gap-2 px-4 py-2.5 hover:bg-medical-50 text-medical-700 text-sm font-medium"
+                                >
+                                  <Phone className="w-3.5 h-3.5" />{ph}
+                                </a>
+                              ))}
+                            </div>
+                          )}
+                        </>
+                      )}
+                    </div>
+                  )}
                 </div>
-                <p className={`text-xs mt-1 font-medium hidden sm:block whitespace-nowrap ${
-                  active ? "text-medical-600" : done ? "text-slate-500" : "text-slate-400"
-                }`}>
-                  {s.title}
-                </p>
               </div>
-              {i < STEPS.length - 1 && (
-                <div className={`flex-1 h-0.5 mx-2 mb-4 rounded transition-all ${done ? "bg-medical-400" : "bg-slate-200"}`} />
-              )}
+            );
+          })() : (
+            <div className="relative py-2 animate-fade-in">
+              {/* Subtle animated background blobs */}
+              <div className="absolute inset-0 overflow-hidden pointer-events-none -z-10">
+                <div className="absolute top-2 left-0 w-40 h-40 bg-medical-100/50 rounded-full blur-3xl animate-float" style={{ animationDelay: "0s" }} />
+                <div className="absolute top-0 right-4 w-32 h-32 bg-sky-100/60 rounded-full blur-3xl animate-float" style={{ animationDelay: "1.8s" }} />
+                <div className="absolute -top-2 left-1/2 w-24 h-24 bg-indigo-100/40 rounded-full blur-2xl animate-float" style={{ animationDelay: "3.2s" }} />
+              </div>
+              <div className="flex items-center gap-3">
+                <div className="w-9 h-9 bg-medical-600 rounded-xl flex items-center justify-center shadow-md shrink-0">
+                  <FlaskConical className="w-[18px] h-[18px] text-white" />
+                </div>
+                <div>
+                  <p className="text-sm font-semibold text-slate-700 leading-snug">
+                    Submit a lab request for your patient.
+                  </p>
+                  <p className="text-xs text-slate-400 mt-0.5">
+                    No account needed.{" "}
+                    <button
+                      type="button"
+                      onClick={() => setLearnMoreOpen(true)}
+                      className="text-medical-600 hover:text-medical-800 font-semibold underline underline-offset-2 transition-colors"
+                    >
+                      Learn more
+                    </button>
+                  </p>
+                </div>
+              </div>
             </div>
-          );
-        })}
+          )}
+        </div>
+
+        {/* Step indicator */}
+        <div className="flex items-center">
+          {STEPS.map((s, i) => {
+            const num = i + 1;
+            const done = num < step;
+            const active = num === step;
+            const Icon = s.icon;
+            return (
+              <div key={s.title} className="flex items-center flex-1">
+                <div className="flex flex-col items-center">
+                  <div className={`w-9 h-9 rounded-full flex items-center justify-center transition-all border-2 ${
+                    done ? "bg-medical-600 text-white border-medical-600" :
+                    active ? "bg-medical-600 text-white border-medical-400 ring-4 ring-medical-100/50" :
+                    "bg-white text-slate-400 border-slate-200"
+                  }`}>
+                    {done ? <Check className="w-4 h-4" /> : <Icon className="w-4 h-4" />}
+                  </div>
+                  <p className={`text-xs mt-1 font-medium hidden sm:block whitespace-nowrap ${
+                    active ? "text-medical-600" : done ? "text-slate-500" : "text-slate-400"
+                  }`}>
+                    {s.title}
+                  </p>
+                </div>
+                {i < STEPS.length - 1 && (
+                  <div className={`flex-1 h-0.5 mx-2 mb-4 rounded transition-all ${done ? "bg-medical-400" : "bg-slate-200"}`} />
+                )}
+              </div>
+            );
+          })}
+        </div>
       </div>
 
       {/* Step content */}
-      <div className="glass-card p-6 mb-5">
+      <div className="glass-card p-6 mt-6 mb-5">
 
         {/* Step 1: Choose Lab */}
         {step === 1 && (
@@ -1190,42 +1193,38 @@ export function DoctorRequestForm() {
         )}
       </div>
 
-      {/* Sticky navigation bar */}
-      <div className="sticky bottom-0 z-10 -mx-4 px-4 pt-3 pb-4 bg-gradient-to-t from-sky-50 via-sky-50/95 to-transparent">
-        <div className={`flex gap-3 ${step === 1 ? "justify-end" : "justify-between"}`}>
-          {step > 1 && (
-            <Button variant="ghost" onClick={handleBack} type="button">
-              <ChevronLeft className="w-4 h-4" />
-              Back
-            </Button>
-          )}
-          {step < 4 ? (
-            <Button onClick={handleNext} type="button">
-              Continue
-              <ChevronRight className="w-4 h-4" />
-            </Button>
-          ) : (
-            <Button
-              onClick={handleSubmit}
-              loading={submitting}
-              size="lg"
-              className="shadow-xl shadow-medical-500/20"
-            >
-              <FlaskConical className="w-5 h-5" />
-              Generate Lab Request
-            </Button>
-          )}
-        </div>
-        <p className="text-center text-xs text-slate-400 mt-3 leading-relaxed">
-          By submitting, you confirm you are authorised to request these tests on behalf of the patient and receive the results.{" "}
-          <a href="/terms" className="underline hover:text-slate-600 transition-colors">Terms &amp; Conditions</a>
-          {" "}and{" "}
-          <a href="/privacy" className="underline hover:text-slate-600 transition-colors">Privacy Policy</a>.
-        </p>
+      {/* Navigation */}
+      <div className={`flex gap-3 mt-4 ${step === 1 ? "justify-end" : "justify-between"}`}>
+        {step > 1 && (
+          <Button variant="ghost" onClick={handleBack} type="button">
+            <ChevronLeft className="w-4 h-4" />
+            Back
+          </Button>
+        )}
+        {step < 4 ? (
+          <Button onClick={handleNext} type="button">
+            Continue
+            <ChevronRight className="w-4 h-4" />
+          </Button>
+        ) : (
+          <Button
+            onClick={handleSubmit}
+            loading={submitting}
+            size="lg"
+            className="shadow-xl shadow-medical-500/20"
+          >
+            <FlaskConical className="w-5 h-5" />
+            Generate Lab Request
+          </Button>
+        )}
       </div>
 
-      {/* Floating call button — shown on steps 2+ when selected lab has phone numbers */}
-      {step >= 2 && <LabCallFAB lab={selectedLab} />}
+      <p className="text-center text-xs text-slate-400 mt-4 leading-relaxed">
+        By submitting, you confirm you are authorised to request these tests on behalf of the patient and receive the results.{" "}
+        <a href="/terms" className="underline hover:text-slate-600 transition-colors">Terms &amp; Conditions</a>
+        {" "}and{" "}
+        <a href="/privacy" className="underline hover:text-slate-600 transition-colors">Privacy Policy</a>.
+      </p>
 
       {/* Lab details modal */}
       {labDetailsOpen && selectedLab && (
