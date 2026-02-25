@@ -245,7 +245,7 @@ function LabSearch({
         (l) =>
           l.name.toLowerCase().includes(q) ||
           l.address.toLowerCase().includes(q) ||
-          (l.service_categories as string[]).some((s) => s.toLowerCase().includes(q))
+          ((l.service_categories as string[] | null) ?? []).some((s) => s.toLowerCase().includes(q))
       )
     : labs;
 
@@ -338,16 +338,16 @@ function LabSearch({
                           <MapPin className="w-3 h-3 shrink-0" />{lab.address}
                         </p>
                       )}
-                      {(lab.service_categories as string[]).length > 0 && (
+                      {(((lab.service_categories as string[] | null) ?? []).length > 0) && (
                         <div className="flex flex-wrap gap-1 mt-1.5">
-                          {(lab.service_categories as string[]).slice(0, 2).map((s) => (
+                          {((lab.service_categories as string[] | null) ?? []).slice(0, 2).map((s) => (
                             <span key={s} className="text-xs bg-medical-50 text-medical-600 border border-medical-100 px-1.5 py-0.5 rounded-md leading-tight">
                               {s}
                             </span>
                           ))}
-                          {(lab.service_categories as string[]).length > 2 && (
+                          {((lab.service_categories as string[] | null) ?? []).length > 2 && (
                             <span className="text-xs text-slate-400 px-0.5 leading-tight self-center">
-                              +{(lab.service_categories as string[]).length - 2} more
+                              +{((lab.service_categories as string[] | null) ?? []).length - 2} more
                             </span>
                           )}
                         </div>
@@ -415,8 +415,8 @@ function LabCallFAB({ lab }: { lab: Lab | undefined }) {
 
 // Full lab details modal — bottom sheet on mobile, centered dialog on desktop
 function LabDetailsModal({ lab, onClose }: { lab: Lab; onClose: () => void }) {
-  const services = lab.service_categories as string[];
-  const certs = lab.certifications as string[];
+  const services = (lab.service_categories as string[] | null) ?? [];
+  const certs = (lab.certifications as string[] | null) ?? [];
   return (
     <div
       className="fixed inset-0 z-50 flex items-end sm:items-center justify-center bg-black/50 backdrop-blur-sm sm:p-4"
@@ -463,11 +463,11 @@ function LabDetailsModal({ lab, onClose }: { lab: Lab; onClose: () => void }) {
           )}
 
           {/* Contact */}
-          {(lab.phones as string[]).length > 0 && (
+          {(((lab.phones as string[] | null) ?? []).length > 0) && (
             <div>
               <p className="text-xs font-semibold text-slate-400 uppercase tracking-wider mb-2.5">Contact</p>
               <div className="flex flex-col gap-2">
-                {(lab.phones as string[]).map((ph, i) => (
+                {((lab.phones as string[] | null) ?? []).map((ph, i) => (
                   <a key={i} href={`tel:${ph}`}
                     className="flex items-center gap-2 text-sm text-medical-700 font-medium hover:text-medical-900 transition-colors">
                     <div className="w-7 h-7 rounded-lg bg-medical-50 flex items-center justify-center shrink-0">
@@ -519,8 +519,8 @@ function LabDetailsModal({ lab, onClose }: { lab: Lab; onClose: () => void }) {
 
 // Compact lab context strip shown at the top of steps 2-4
 function LabInfoBar({ lab, onViewMore }: { lab: Lab; onViewMore: () => void }) {
-  const services = lab.service_categories as string[];
-  const certs = lab.certifications as string[];
+  const services = (lab.service_categories as string[] | null) ?? [];
+  const certs = (lab.certifications as string[] | null) ?? [];
   const SHOW_SERVICES = 3;
   const SHOW_CERTS = 2;
   const extraServices = services.length - SHOW_SERVICES;
@@ -839,9 +839,9 @@ export function DoctorRequestForm() {
                         <MapPin className="w-3 h-3 mt-0.5 shrink-0" />{selectedLab.address}
                       </p>
                     )}
-                    {(selectedLab.phones as string[]).length > 0 && (
+                    {(((selectedLab.phones as string[] | null) ?? []).length > 0) && (
                       <div className="flex flex-wrap gap-x-3 mt-1">
-                        {(selectedLab.phones as string[]).map((ph, i) => (
+                        {((selectedLab.phones as string[] | null) ?? []).map((ph, i) => (
                           <a key={i} href={`tel:${ph}`} className="text-xs text-medical-600 flex items-center gap-1 hover:text-medical-800">
                             <Phone className="w-3 h-3 shrink-0" />{ph}
                           </a>
@@ -852,13 +852,13 @@ export function DoctorRequestForm() {
                 </div>
 
                 {/* Services */}
-                {(selectedLab.service_categories as string[]).length > 0 && (
+                {(((selectedLab.service_categories as string[] | null) ?? []).length > 0) && (
                   <div className="px-4 py-3 border-t border-medical-100 bg-white">
                     <p className="text-xs font-semibold text-slate-400 uppercase tracking-wider mb-2 flex items-center gap-1.5">
                       <Layers className="w-3 h-3" /> Services
                     </p>
                     <div className="flex flex-wrap gap-1.5">
-                      {(selectedLab.service_categories as string[]).map((s) => (
+                      {((selectedLab.service_categories as string[] | null) ?? []).map((s) => (
                         <span key={s} className="text-xs bg-medical-50 text-medical-700 border border-medical-100 px-2.5 py-1 rounded-full font-medium">
                           {s}
                         </span>
@@ -868,13 +868,13 @@ export function DoctorRequestForm() {
                 )}
 
                 {/* Certifications */}
-                {(selectedLab.certifications as string[]).length > 0 && (
+                {(((selectedLab.certifications as string[] | null) ?? []).length > 0) && (
                   <div className="px-4 py-3 border-t border-medical-100 bg-white">
                     <p className="text-xs font-semibold text-slate-400 uppercase tracking-wider mb-2 flex items-center gap-1.5">
                       <Award className="w-3 h-3" /> Certifications
                     </p>
                     <div className="flex flex-wrap gap-1.5">
-                      {(selectedLab.certifications as string[]).map((c) => (
+                      {((selectedLab.certifications as string[] | null) ?? []).map((c) => (
                         <span key={c} className="text-xs bg-amber-50 text-amber-700 border border-amber-100 px-2.5 py-1 rounded-full font-medium">
                           {c}
                         </span>
