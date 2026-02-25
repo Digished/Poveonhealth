@@ -723,6 +723,15 @@ export function DoctorRequestForm() {
                 {selectedLab.address}
               </p>
             )}
+            {step > 1 && (
+              <button
+                type="button"
+                onClick={() => setLabDetailsOpen(true)}
+                className="text-xs text-medical-600 hover:text-medical-800 underline underline-offset-2 font-medium transition-colors"
+              >
+                View details
+              </button>
+            )}
           </div>
         ) : (
           <>
@@ -827,9 +836,7 @@ export function DoctorRequestForm() {
               <User className="w-4 h-4 text-medical-600" />
               Patient Information
             </h2>
-            {selectedLab && (
-              <LabInfoBar lab={selectedLab} onViewMore={() => setLabDetailsOpen(true)} />
-            )}
+
             <Input
               label="Patient Full Name"
               required
@@ -969,9 +976,7 @@ export function DoctorRequestForm() {
               <Stethoscope className="w-4 h-4 text-medical-600" />
               Referring Professional
             </h2>
-            {selectedLab && (
-              <LabInfoBar lab={selectedLab} onViewMore={() => setLabDetailsOpen(true)} />
-            )}
+
 
             {/* Saved profile banner */}
             {savedProfile && (
@@ -1107,9 +1112,7 @@ export function DoctorRequestForm() {
               <TestTube2 className="w-4 h-4 text-medical-600" />
               Clinical Details
             </h2>
-            {selectedLab && (
-              <LabInfoBar lab={selectedLab} onViewMore={() => setLabDetailsOpen(true)} />
-            )}
+
             <Textarea
               label="Diagnosis / Clinical Notes"
               placeholder="Brief clinical summary or working diagnosis…"
