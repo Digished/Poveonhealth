@@ -9,15 +9,26 @@ export function PoveonLogo({ className }: { className?: string }) {
       {/* Dark background */}
       <rect width="32" height="32" rx="8" fill="#0f172a" />
 
-      {/* P — vertical stem */}
-      <rect x="11" y="7" width="4" height="19" rx="1.5" fill="white" />
+      {/* Flask body — outline only, no fill */}
+      <path
+        d="M13 7 L13 13 L7.5 23 Q6.5 27 9 28 L23 28 Q25.5 27 24.5 23 L19 13 L19 7"
+        stroke="white"
+        strokeWidth="1.8"
+        strokeLinejoin="round"
+        strokeLinecap="round"
+      />
 
-      {/* P — bowl: perfect right semicircle, center (15,13), r=6 */}
-      {/* M15 7 → arc clockwise to (15,19), chord=12=diameter → exact semicircle */}
-      <path d="M15 7 A6 6 0 0 1 15 19 Z" fill="white" />
+      {/* Neck cap */}
+      <line
+        x1="11" y1="7" x2="21" y2="7"
+        stroke="white" strokeWidth="1.8" strokeLinecap="round"
+      />
 
-      {/* Sky-blue accent bar — underline beneath the stem */}
-      <rect x="11" y="28" width="10" height="2" rx="1" fill="#0ea5e9" />
+      {/* Liquid level — sky-blue accent line inside the body */}
+      <line
+        x1="9" y1="21" x2="23" y2="21"
+        stroke="#0ea5e9" strokeWidth="1.5" strokeLinecap="round"
+      />
     </svg>
   );
 }

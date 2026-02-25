@@ -2,12 +2,13 @@
   <!-- Dark background -->
   <rect width="32" height="32" rx="8" fill="#0f172a"/>
 
-  <!-- P — vertical stem -->
-  <rect x="11" y="7" width="4" height="19" rx="1.5" fill="white"/>
+  <!-- Flask body — outline only -->
+  <path d="M13 7 L13 13 L7.5 23 Q6.5 27 9 28 L23 28 Q25.5 27 24.5 23 L19 13 L19 7"
+        stroke="white" stroke-width="1.8" stroke-linejoin="round" stroke-linecap="round"/>
 
-  <!-- P — bowl: right semicircle, r=6, top at (15,7), bottom at (15,19) -->
-  <path d="M15 7 A6 6 0 0 1 15 19 Z" fill="white"/>
+  <!-- Neck cap -->
+  <line x1="11" y1="7" x2="21" y2="7" stroke="white" stroke-width="1.8" stroke-linecap="round"/>
 
-  <!-- Sky-blue accent underline bar -->
-  <rect x="11" y="28" width="10" height="2" rx="1" fill="#0ea5e9"/>
+  <!-- Liquid level — sky-blue accent -->
+  <line x1="9" y1="21" x2="23" y2="21" stroke="#0ea5e9" stroke-width="1.5" stroke-linecap="round"/>
 </svg>

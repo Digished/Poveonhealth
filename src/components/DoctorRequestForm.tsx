@@ -811,21 +811,25 @@ export function DoctorRequestForm() {
             return (
               <div key={s.title} className="flex items-center flex-1">
                 <div className="flex flex-col items-center">
-                  <div className={`w-9 h-9 rounded-full flex items-center justify-center transition-all border-2 ${
-                    done ? "bg-medical-600 text-white border-medical-600" :
-                    active ? "bg-medical-600 text-white border-medical-400 ring-4 ring-medical-100/50" :
-                    "bg-white text-slate-400 border-slate-200"
+                  <div className={`rounded-full flex items-center justify-center transition-all border-2 ${
+                    done
+                      ? "w-7 h-7 bg-slate-700 text-white border-slate-700"
+                      : active
+                      ? "w-8 h-8 bg-slate-900 text-white border-slate-800 ring-4 ring-slate-900/10"
+                      : "w-7 h-7 bg-white text-slate-300 border-slate-200"
                   }`}>
-                    {done ? <Check className="w-4 h-4" /> : <Icon className="w-4 h-4" />}
+                    {done
+                      ? <Check className="w-3 h-3" />
+                      : <Icon className={active ? "w-3.5 h-3.5" : "w-3 h-3"} />}
                   </div>
-                  <p className={`text-xs mt-1 font-medium hidden sm:block whitespace-nowrap ${
-                    active ? "text-medical-600" : done ? "text-slate-500" : "text-slate-400"
+                  <p className={`text-xs mt-1 hidden sm:block whitespace-nowrap ${
+                    active ? "font-semibold text-slate-800" : done ? "font-medium text-slate-500" : "font-medium text-slate-400"
                   }`}>
                     {s.title}
                   </p>
                 </div>
                 {i < STEPS.length - 1 && (
-                  <div className={`flex-1 h-0.5 mx-2 mb-4 rounded transition-all ${done ? "bg-medical-400" : "bg-slate-200"}`} />
+                  <div className={`flex-1 h-0.5 mx-2 mb-4 rounded transition-all ${done ? "bg-slate-400" : "bg-slate-200"}`} />
                 )}
               </div>
             );
