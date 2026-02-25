@@ -10,16 +10,18 @@ datasource db {
 
 // Registered laboratories
 model Lab {
-  id         String    @id @default(uuid())
-  name       String
-  prefix     String    @unique
-  address    String    @default("")
-  phones     Json      @default("[]")
-  email      String    @unique
-  description String   @default("")
-  logo_url   String?
-  hidden     Boolean   @default(false)
-  created_at DateTime  @default(now())
+  id                  String    @id @default(uuid())
+  name                String
+  prefix              String    @unique
+  address             String    @default("")
+  phones              Json      @default("[]")
+  email               String    @unique
+  description         String    @default("")
+  logo_url            String?
+  hidden              Boolean   @default(false)
+  service_categories  Json      @default("[]")
+  certifications      Json      @default("[]")
+  created_at          DateTime  @default(now())
 
   lab_users  LabUser[]
   requests   Request[]

@@ -18,6 +18,8 @@ const PatchSchema = z.object({
   description: z.string().max(1000).optional(),
   phones: z.array(z.string().min(1)).optional(),
   hidden: z.boolean().optional(),
+  service_categories: z.array(z.string()).optional(),
+  certifications: z.array(z.string()).optional(),
 });
 
 export async function PATCH(

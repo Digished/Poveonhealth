@@ -16,11 +16,12 @@ export default async function LabDashboardPage() {
     redirect("/lab-login");
   }
 
-  // Fetch this lab's info
   const adminClient = createAdminClient();
   const { data: labUser } = await adminClient
     .from("lab_users")
-    .select("lab_id, labs(id, name, logo_url)")
+    .select(
+      "lab_id, labs(id, name, logo_url, address, description, phones, service_categories, certifications)"
+    )
     .eq("user_id", user.id)
     .single();
 
@@ -28,13 +29,29 @@ export default async function LabDashboardPage() {
     redirect("/lab-login");
   }
 
-  const lab = labUser.labs as unknown as { id: string; name: string; logo_url: string | null } | null;
+  const lab = labUser.labs as unknown as {
+    id: string;
+    name: string;
+    logo_url: string | null;
+    address: string;
+    description: string;
+    phones: string[];
+    service_categories: string[];
+    certifications: string[];
+  } | null;
 
   return (
     <LabDashboard
-      labName={lab?.name ?? "Laboratory"}
-      labId={labUser.lab_id}
-      labLogoUrl={lab?.logo_url ?? null}
+      lab={{
+        id: lab?.id ?? labUser.lab_id,
+        name: lab?.name ?? "Laboratory",
+        logo_url: lab?.logo_url ?? null,
+        address: lab?.address ?? "",
+        description: lab?.description ?? "",
+        phones: (lab?.phones as string[]) ?? [],
+        service_categories: (lab?.service_categories as string[]) ?? [],
+        certifications: (lab?.certifications as string[]) ?? [],
+      }}
     />
   );
 }

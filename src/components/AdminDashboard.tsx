@@ -11,6 +11,7 @@ import { Button } from "@/components/ui/Button";
 import { Input, Textarea } from "@/components/ui/Input";
 import { StatusBadge, Badge } from "@/components/ui/Badge";
 import type { Lab, LabRequest, AdminMetrics } from "@/lib/types";
+import { SERVICE_CATEGORIES, LAB_CERTIFICATIONS } from "@/lib/constants";
 import { format } from "date-fns";
 import { createClient } from "@/lib/supabase/client"; // still used for auth sign-out
 import { useRouter } from "next/navigation";
@@ -469,6 +470,29 @@ export function AdminDashboard() {
                         <Phone className="w-3 h-3 text-slate-600 shrink-0" />{ph}
                       </p>
                     ))}
+                    {(lab.service_categories as string[]).length > 0 && (
+                      <div className="mt-3">
+                        <p className="text-xs text-slate-600 mb-1.5">Services</p>
+                        <div className="flex flex-wrap gap-1">
+                          {(lab.service_categories as string[]).slice(0, 4).map((c) => (
+                            <span key={c} className="text-xs bg-medical-900/50 text-medical-300 border border-medical-800/40 px-2 py-0.5 rounded-full">{c}</span>
+                          ))}
+                          {(lab.service_categories as string[]).length > 4 && (
+                            <span className="text-xs text-slate-500 px-1">+{(lab.service_categories as string[]).length - 4} more</span>
+                          )}
+                        </div>
+                      </div>
+                    )}
+                    {(lab.certifications as string[]).length > 0 && (
+                      <div className="mt-2">
+                        <p className="text-xs text-slate-600 mb-1.5">Certifications</p>
+                        <div className="flex flex-wrap gap-1">
+                          {(lab.certifications as string[]).map((c) => (
+                            <span key={c} className="text-xs bg-amber-900/20 text-amber-400 border border-amber-800/30 px-2 py-0.5 rounded-full">{c}</span>
+                          ))}
+                        </div>
+                      </div>
+                    )}
                     <p className="text-xs text-slate-600 mt-3">Added {format(new Date(lab.created_at), "dd MMM yyyy")}</p>
 
                     <div className="flex items-center gap-2 mt-4 pt-3 border-t border-white/5">
@@ -663,6 +687,8 @@ function EditLabModal({ lab, onClose, onSuccess }: { lab: Lab; onClose: () => vo
   const [address, setAddress] = useState(lab.address);
   const [description, setDescription] = useState(lab.description ?? "");
   const [phones, setPhones] = useState((lab.phones as string[]).join("\n"));
+  const [selectedCategories, setSelectedCategories] = useState<string[]>((lab.service_categories as string[]) ?? []);
+  const [selectedCerts, setSelectedCerts] = useState<string[]>((lab.certifications as string[]) ?? []);
   const [loading, setLoading] = useState(false);
   const [uploadingLogo, setUploadingLogo] = useState(false);
   const [logoUploaded, setLogoUploaded] = useState(false);
@@ -700,7 +726,7 @@ function EditLabModal({ lab, onClose, onSuccess }: { lab: Lab; onClose: () => vo
       const res = await fetch(`/api/admin/labs/${lab.id}`, {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ name: name.trim(), address: address.trim(), description: description.trim(), phones: phoneList }),
+        body: JSON.stringify({ name: name.trim(), address: address.trim(), description: description.trim(), phones: phoneList, service_categories: selectedCategories, certifications: selectedCerts }),
       });
       const data = await res.json();
       if (data.success) {
@@ -740,6 +766,19 @@ function EditLabModal({ lab, onClose, onSuccess }: { lab: Lab; onClose: () => vo
             <label className="text-sm font-medium text-slate-300 block mb-1">Contact Phone Numbers <span className="text-xs text-slate-500">(optional, one per line)</span></label>
             <textarea rows={2} className={`w-full rounded-xl border px-4 py-2.5 text-sm resize-none focus:outline-none focus:ring-2 focus:ring-medical-500 ${whiteInput}`} value={phones} onChange={(e) => setPhones(e.target.value)} />
           </div>
+
+          <SearchableCheckboxGroup
+            label="Service Categories"
+            groups={SERVICE_CATEGORIES}
+            selected={selectedCategories}
+            onChange={setSelectedCategories}
+          />
+          <SearchableCheckboxGroup
+            label="Certifications"
+            flatItems={LAB_CERTIFICATIONS}
+            selected={selectedCerts}
+            onChange={setSelectedCerts}
+          />
 
           <div>
             <p className="text-sm font-medium text-slate-300 mb-2">Lab Logo</p>
@@ -871,6 +910,94 @@ function ReferralDetailModal({ group, onClose }: { group: ReferralGroup; onClose
           ))}
         </div>
       </div>
+    </div>
+  );
+}
+
+// =============================================================================
+// Searchable Checkbox Group — used in EditLabModal
+// =============================================================================
+function SearchableCheckboxGroup({
+  label,
+  groups,
+  flatItems,
+  selected,
+  onChange,
+}: {
+  label: string;
+  groups?: { group: string; items: string[] }[];
+  flatItems?: string[];
+  selected: string[];
+  onChange: (v: string[]) => void;
+}) {
+  const [search, setSearch] = useState("");
+  const q = search.toLowerCase();
+
+  const toggle = (item: string) => {
+    onChange(selected.includes(item) ? selected.filter((s) => s !== item) : [...selected, item]);
+  };
+
+  // Build flat filtered list with optional group headers
+  const rendered: { type: "group"; label: string } | { type: "item"; value: string }[] = [];
+  if (groups) {
+    for (const { group, items } of groups) {
+      const filtered = items.filter((i) => i.toLowerCase().includes(q));
+      if (filtered.length) {
+        rendered.push({ type: "group", label: group });
+        filtered.forEach((i) => rendered.push({ type: "item", value: i }));
+      }
+    }
+  } else if (flatItems) {
+    flatItems.filter((i) => i.toLowerCase().includes(q)).forEach((i) => rendered.push({ type: "item", value: i }));
+  }
+
+  return (
+    <div>
+      <label className="text-sm font-medium text-slate-300 block mb-1">
+        {label}
+        {selected.length > 0 && (
+          <span className="ml-2 text-xs text-medical-400 font-normal">{selected.length} selected</span>
+        )}
+      </label>
+      <input
+        type="text"
+        placeholder={`Search ${label.toLowerCase()}…`}
+        value={search}
+        onChange={(e) => setSearch(e.target.value)}
+        className={`w-full rounded-xl border px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-medical-500 mb-2 ${whiteInput}`}
+      />
+      <div className="max-h-44 overflow-y-auto bg-white border border-slate-200 rounded-xl divide-y divide-slate-100">
+        {rendered.length === 0 && (
+          <p className="text-xs text-slate-400 text-center py-4">No matches</p>
+        )}
+        {rendered.map((entry, i) =>
+          entry.type === "group" ? (
+            <p key={i} className="text-xs font-semibold text-slate-500 uppercase tracking-wider px-3 py-1.5 bg-slate-50 sticky top-0">
+              {entry.label}
+            </p>
+          ) : (
+            <label key={entry.value} className="flex items-center gap-2.5 px-3 py-2 hover:bg-slate-50 cursor-pointer">
+              <input
+                type="checkbox"
+                checked={selected.includes(entry.value)}
+                onChange={() => toggle(entry.value)}
+                className="accent-blue-600 w-4 h-4 shrink-0"
+              />
+              <span className="text-sm text-slate-700">{entry.value}</span>
+            </label>
+          )
+        )}
+      </div>
+      {selected.length > 0 && (
+        <div className="flex flex-wrap gap-1 mt-2">
+          {selected.map((s) => (
+            <span key={s} className="flex items-center gap-1 text-xs bg-medical-900/60 text-medical-300 border border-medical-800/40 px-2 py-0.5 rounded-full">
+              {s}
+              <button type="button" onClick={() => toggle(s)} className="hover:text-white ml-0.5">×</button>
+            </span>
+          ))}
+        </div>
+      )}
     </div>
   );
 }

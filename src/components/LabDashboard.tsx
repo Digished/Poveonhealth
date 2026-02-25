@@ -5,20 +5,28 @@ import { toast } from "react-hot-toast";
 import {
   Search, RefreshCw, CheckCircle, Clock, FlaskConical,
   ChevronRight, Calendar, Stethoscope, LogOut, Eye, EyeOff, Phone, X,
-  Link2, Paperclip, Send, SkipForward,
+  Link2, Paperclip, Send, SkipForward, UserCircle, MapPin, Shield, Layers,
 } from "lucide-react";
 import { Button } from "@/components/ui/Button";
 import { Input } from "@/components/ui/Input";
 import { StatusBadge } from "@/components/ui/Badge";
 import type { LabRequest, RequestStatus } from "@/lib/types";
+import { SERVICE_CATEGORIES } from "@/lib/constants";
 import { format, differenceInYears } from "date-fns";
 import { createClient } from "@/lib/supabase/client";
 import { useRouter } from "next/navigation";
 
 interface LabDashboardProps {
-  labName: string;
-  labId: string;
-  labLogoUrl?: string | null;
+  lab: {
+    id: string;
+    name: string;
+    logo_url: string | null;
+    address: string;
+    description: string;
+    phones: string[];
+    service_categories: string[];
+    certifications: string[];
+  };
 }
 
 const TABS: { key: RequestStatus; label: string; icon: React.ReactNode }[] = [
@@ -31,7 +39,8 @@ function calcAge(dob: string): number {
   return differenceInYears(new Date(), new Date(dob));
 }
 
-export function LabDashboard({ labName, labId: _labId, labLogoUrl }: LabDashboardProps) {
+export function LabDashboard({ lab }: LabDashboardProps) {
+  const { name: labName, logo_url: labLogoUrl } = lab;
   const router = useRouter();
   const [activeTab, setActiveTab] = useState<RequestStatus>("incoming");
   const [requests, setRequests] = useState<LabRequest[]>([]);
@@ -43,6 +52,7 @@ export function LabDashboard({ labName, labId: _labId, labLogoUrl }: LabDashboar
   const [updatingId, setUpdatingId] = useState<string | null>(null);
   const [selectedRequest, setSelectedRequest] = useState<LabRequest | null>(null);
   const [mobileDetailOpen, setMobileDetailOpen] = useState(false);
+  const [profileOpen, setProfileOpen] = useState(false);
 
   // Results modal state
   const [resultsModalRequest, setResultsModalRequest] = useState<LabRequest | null>(null);
@@ -258,11 +268,18 @@ export function LabDashboard({ labName, labId: _labId, labLogoUrl }: LabDashboar
               <RefreshCw className={`w-4 h-4 ${refreshing ? "animate-spin" : ""}`} />
             </button>
             <button
+              onClick={() => setProfileOpen(true)}
+              className="p-2 rounded-lg hover:bg-white/10 transition-colors text-slate-400 hover:text-white"
+              title="Lab Profile"
+            >
+              <UserCircle className="w-4 h-4" />
+            </button>
+            <button
               onClick={handleSignOut}
               className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg hover:bg-white/10 transition-colors text-slate-400 hover:text-white text-sm"
             >
               <LogOut className="w-4 h-4" />
-              Sign Out
+              <span className="hidden sm:inline">Sign Out</span>
             </button>
           </div>
         </div>
@@ -770,6 +787,102 @@ export function LabDashboard({ labName, labId: _labId, labLogoUrl }: LabDashboar
             </div>
           );
         })()}
+
+        {/* Lab Profile modal */}
+        {profileOpen && (
+          <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center bg-black/60 backdrop-blur-sm px-0 sm:px-4">
+            <div className="w-full sm:max-w-lg bg-slate-900 border border-white/15 rounded-t-2xl sm:rounded-2xl max-h-[92vh] overflow-y-auto animate-slide-up">
+              {/* Header */}
+              <div className="sticky top-0 bg-slate-900 border-b border-white/10 p-4 flex items-center justify-between">
+                <h3 className="font-semibold text-white">Lab Profile</h3>
+                <button onClick={() => setProfileOpen(false)} className="p-1.5 rounded-lg hover:bg-white/10 text-slate-400 transition-colors">
+                  <X className="w-5 h-5" />
+                </button>
+              </div>
+
+              <div className="p-5 space-y-5">
+                {/* Identity */}
+                <div className="flex items-center gap-4">
+                  {labLogoUrl ? (
+                    <img src={labLogoUrl} alt={labName} className="w-16 h-16 rounded-2xl object-cover border border-white/10 shrink-0" />
+                  ) : (
+                    <div className="w-16 h-16 bg-medical-700/50 rounded-2xl flex items-center justify-center shrink-0">
+                      <FlaskConical className="w-8 h-8 text-medical-400" />
+                    </div>
+                  )}
+                  <div>
+                    <h2 className="font-bold text-white text-lg leading-tight">{labName}</h2>
+                    {lab.description && <p className="text-sm text-slate-400 mt-1 leading-relaxed">{lab.description}</p>}
+                  </div>
+                </div>
+
+                {/* Contact */}
+                {(lab.address || lab.phones.length > 0) && (
+                  <div className="bg-white/5 border border-white/8 rounded-xl p-4 space-y-2">
+                    <p className="text-xs text-slate-500 font-semibold uppercase tracking-wider mb-3">Contact</p>
+                    {lab.address && (
+                      <div className="flex items-start gap-2 text-sm text-slate-300">
+                        <MapPin className="w-4 h-4 text-slate-500 mt-0.5 shrink-0" />
+                        <span>{lab.address}</span>
+                      </div>
+                    )}
+                    {lab.phones.map((ph, i) => (
+                      <div key={i} className="flex items-center gap-2 text-sm">
+                        <Phone className="w-4 h-4 text-slate-500 shrink-0" />
+                        <a href={`tel:${ph}`} className="text-blue-400 hover:underline">{ph}</a>
+                      </div>
+                    ))}
+                  </div>
+                )}
+
+                {/* Service Categories */}
+                {lab.service_categories.length > 0 && (
+                  <div>
+                    <div className="flex items-center gap-2 mb-3">
+                      <Layers className="w-4 h-4 text-slate-500" />
+                      <p className="text-xs text-slate-500 font-semibold uppercase tracking-wider">Services Offered</p>
+                    </div>
+                    {SERVICE_CATEGORIES.map(({ group, items }) => {
+                      const active = items.filter((i) => lab.service_categories.includes(i));
+                      if (!active.length) return null;
+                      return (
+                        <div key={group} className="mb-3">
+                          <p className="text-xs text-slate-600 font-medium mb-1.5">{group}</p>
+                          <div className="flex flex-wrap gap-1.5">
+                            {active.map((s) => (
+                              <span key={s} className="text-xs bg-medical-900/50 text-medical-300 border border-medical-800/40 px-2.5 py-1 rounded-full">{s}</span>
+                            ))}
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
+                )}
+
+                {/* Certifications */}
+                {lab.certifications.length > 0 && (
+                  <div>
+                    <div className="flex items-center gap-2 mb-3">
+                      <Shield className="w-4 h-4 text-amber-500" />
+                      <p className="text-xs text-slate-500 font-semibold uppercase tracking-wider">Certifications & Accreditations</p>
+                    </div>
+                    <div className="flex flex-wrap gap-1.5">
+                      {lab.certifications.map((c) => (
+                        <span key={c} className="flex items-center gap-1.5 text-xs bg-amber-900/20 text-amber-400 border border-amber-800/30 px-2.5 py-1 rounded-full">
+                          <Shield className="w-3 h-3" />{c}
+                        </span>
+                      ))}
+                    </div>
+                  </div>
+                )}
+
+                {lab.service_categories.length === 0 && lab.certifications.length === 0 && !lab.address && lab.phones.length === 0 && (
+                  <p className="text-center text-slate-500 text-sm py-6">No additional profile information yet.</p>
+                )}
+              </div>
+            </div>
+          </div>
+        )}
 
         {/* Mobile detail modal */}
         {mobileDetailOpen && selectedRequest && (

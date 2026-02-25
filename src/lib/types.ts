@@ -15,6 +15,8 @@ export interface Lab {
   email: string;
   logo_url: string | null;
   hidden: boolean;
+  service_categories: string[];
+  certifications: string[];
   created_at: string;
 }
 
