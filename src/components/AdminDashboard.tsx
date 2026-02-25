@@ -189,30 +189,32 @@ export function AdminDashboard() {
             </button>
             <button onClick={handleSignOut} className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg hover:bg-white/10 text-slate-400 hover:text-white text-sm transition-colors">
               <LogOut className="w-4 h-4" />
-              Sign Out
+              <span className="hidden sm:inline">Sign Out</span>
             </button>
           </div>
         </div>
       </header>
 
-      <div className="max-w-7xl mx-auto px-4 py-8">
-        <div className="flex gap-1 mb-8 bg-white/5 rounded-xl p-1 w-fit">
-          {[
-            { key: "metrics" as AdminTab, label: "Metrics", icon: <BarChart3 className="w-4 h-4" /> },
-            { key: "requests" as AdminTab, label: "All Requests", icon: <List className="w-4 h-4" /> },
-            { key: "referrals" as AdminTab, label: "Referrals", icon: <Users className="w-4 h-4" /> },
-            { key: "labs" as AdminTab, label: "Labs", icon: <Building2 className="w-4 h-4" /> },
-          ].map((tab) => (
-            <button
-              key={tab.key}
-              onClick={() => setActiveTab(tab.key)}
-              className={`flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-medium transition-all ${
-                activeTab === tab.key ? "bg-white/15 text-white" : "text-slate-400 hover:text-white"
-              }`}
-            >
-              {tab.icon}{tab.label}
-            </button>
-          ))}
+      <div className="max-w-7xl mx-auto px-4 py-5 md:py-8">
+        <div className="overflow-x-auto -mx-4 px-4 mb-6 md:mb-8">
+          <div className="flex gap-1 bg-white/5 rounded-xl p-1 w-max">
+            {[
+              { key: "metrics" as AdminTab, label: "Metrics", icon: <BarChart3 className="w-4 h-4" /> },
+              { key: "requests" as AdminTab, label: "All Requests", icon: <List className="w-4 h-4" /> },
+              { key: "referrals" as AdminTab, label: "Referrals", icon: <Users className="w-4 h-4" /> },
+              { key: "labs" as AdminTab, label: "Labs", icon: <Building2 className="w-4 h-4" /> },
+            ].map((tab) => (
+              <button
+                key={tab.key}
+                onClick={() => setActiveTab(tab.key)}
+                className={`flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-medium transition-all shrink-0 ${
+                  activeTab === tab.key ? "bg-white/15 text-white" : "text-slate-400 hover:text-white"
+                }`}
+              >
+                {tab.icon}{tab.label}
+              </button>
+            ))}
+          </div>
         </div>
 
         {/* ── METRICS ── */}
@@ -244,7 +246,7 @@ export function AdminDashboard() {
                   <div className="space-y-3">
                     {metrics.byLab.map((lab) => (
                       <div key={lab.lab_id} className="flex items-center gap-3">
-                        <p className="text-sm text-white min-w-[180px] truncate">{lab.lab_name}</p>
+                        <p className="text-sm text-white flex-1 min-w-0 truncate">{lab.lab_name}</p>
                         <div className="flex-1 bg-white/10 rounded-full h-2 overflow-hidden">
                           <div className="h-full bg-medical-500 rounded-full" style={{ width: `${metrics.total ? (lab.total / metrics.total) * 100 : 0}%` }} />
                         </div>
@@ -271,50 +273,93 @@ export function AdminDashboard() {
                 ))}
               </div>
             ) : (
-              <div className="overflow-x-auto">
-                <table className="w-full text-sm">
-                  <thead>
-                    <tr className="border-b border-white/10 text-left">
-                      {["Code", "Patient", "Referred by", "Tests", "Lab", "Status", "Date", ""].map((h) => (
-                        <th key={h} className="pb-3 px-3 text-xs text-slate-400 font-semibold uppercase tracking-wider">{h}</th>
-                      ))}
-                    </tr>
-                  </thead>
-                  <tbody className="divide-y divide-white/5">
-                    {requests.map((req) => (
-                      <tr key={req.id} className="hover:bg-white/5 transition-colors">
-                        <td className="py-3 px-3"><span className="font-mono text-medical-400 text-xs">{req.code}</span></td>
-                        <td className="py-3 px-3 text-white font-medium">{req.patient_name}</td>
-                        <td className="py-3 px-3">
-                          <p className="text-slate-300">{[req.doctor_prefix, req.doctor_name].filter(Boolean).join(" ")}</p>
-                          {(req.doctor_bank_name || req.doctor_account_number) && (
-                            <p className="text-xs text-slate-500 mt-0.5">
-                              {[req.doctor_bank_name, req.doctor_account_number].filter(Boolean).join(" · ")}
-                            </p>
-                          )}
-                        </td>
-                        <td className="py-3 px-3 max-w-[180px]"><p className="text-slate-400 truncate">{req.tests}</p></td>
-                        <td className="py-3 px-3 text-slate-300">{(req.labs as { name: string } | null)?.name ?? "—"}</td>
-                        <td className="py-3 px-3"><StatusBadge status={req.status} /></td>
-                        <td className="py-3 px-3 text-slate-400 whitespace-nowrap">{format(new Date(req.created_at), "dd MMM yy")}</td>
-                        <td className="py-3 px-3">
+              <>
+                {/* Mobile card layout */}
+                <div className="md:hidden space-y-2">
+                  {requests.map((req) => (
+                    <div key={req.id} className="bg-white/5 border border-white/8 rounded-xl p-4">
+                      <div className="flex items-start justify-between gap-2 mb-2">
+                        <div className="min-w-0">
+                          <p className="font-medium text-white truncate">{req.patient_name}</p>
+                          <span className="font-mono text-medical-400 text-xs">{req.code}</span>
+                        </div>
+                        <div className="flex items-center gap-1.5 shrink-0">
+                          <StatusBadge status={req.status} />
                           <button
                             onClick={() => handleDeleteRequest(req)}
                             disabled={deletingRequestId === req.id}
                             className="p-1.5 rounded-lg hover:bg-red-500/15 text-slate-600 hover:text-red-400 transition-colors disabled:opacity-40"
-                            title="Delete request"
                           >
                             <Trash2 className="w-3.5 h-3.5" />
                           </button>
-                        </td>
+                        </div>
+                      </div>
+                      <p className="text-xs text-slate-400 truncate">
+                        <span className="text-slate-600">Ref: </span>
+                        {[req.doctor_prefix, req.doctor_name].filter(Boolean).join(" ")}
+                      </p>
+                      {(req.doctor_bank_name || req.doctor_account_number) && (
+                        <p className="text-xs text-slate-500 truncate mt-0.5">
+                          {[req.doctor_bank_name, req.doctor_account_number].filter(Boolean).join(" · ")}
+                        </p>
+                      )}
+                      <div className="flex items-center justify-between mt-2">
+                        <p className="text-xs text-slate-500 truncate flex-1">{(req.labs as { name: string } | null)?.name ?? "—"}</p>
+                        <p className="text-xs text-slate-600 shrink-0 ml-2">{format(new Date(req.created_at), "dd MMM yy")}</p>
+                      </div>
+                    </div>
+                  ))}
+                  {requests.length === 0 && (
+                    <div className="py-16 text-center text-slate-400">No requests yet</div>
+                  )}
+                </div>
+
+                {/* Desktop table */}
+                <div className="hidden md:block overflow-x-auto">
+                  <table className="w-full text-sm">
+                    <thead>
+                      <tr className="border-b border-white/10 text-left">
+                        {["Code", "Patient", "Referred by", "Tests", "Lab", "Status", "Date", ""].map((h) => (
+                          <th key={h} className="pb-3 px-3 text-xs text-slate-400 font-semibold uppercase tracking-wider">{h}</th>
+                        ))}
                       </tr>
-                    ))}
-                    {requests.length === 0 && (
-                      <tr><td colSpan={8} className="py-16 text-center text-slate-400">No requests yet</td></tr>
-                    )}
-                  </tbody>
-                </table>
-              </div>
+                    </thead>
+                    <tbody className="divide-y divide-white/5">
+                      {requests.map((req) => (
+                        <tr key={req.id} className="hover:bg-white/5 transition-colors">
+                          <td className="py-3 px-3"><span className="font-mono text-medical-400 text-xs">{req.code}</span></td>
+                          <td className="py-3 px-3 text-white font-medium">{req.patient_name}</td>
+                          <td className="py-3 px-3">
+                            <p className="text-slate-300">{[req.doctor_prefix, req.doctor_name].filter(Boolean).join(" ")}</p>
+                            {(req.doctor_bank_name || req.doctor_account_number) && (
+                              <p className="text-xs text-slate-500 mt-0.5">
+                                {[req.doctor_bank_name, req.doctor_account_number].filter(Boolean).join(" · ")}
+                              </p>
+                            )}
+                          </td>
+                          <td className="py-3 px-3 max-w-[180px]"><p className="text-slate-400 truncate">{req.tests}</p></td>
+                          <td className="py-3 px-3 text-slate-300">{(req.labs as { name: string } | null)?.name ?? "—"}</td>
+                          <td className="py-3 px-3"><StatusBadge status={req.status} /></td>
+                          <td className="py-3 px-3 text-slate-400 whitespace-nowrap">{format(new Date(req.created_at), "dd MMM yy")}</td>
+                          <td className="py-3 px-3">
+                            <button
+                              onClick={() => handleDeleteRequest(req)}
+                              disabled={deletingRequestId === req.id}
+                              className="p-1.5 rounded-lg hover:bg-red-500/15 text-slate-600 hover:text-red-400 transition-colors disabled:opacity-40"
+                              title="Delete request"
+                            >
+                              <Trash2 className="w-3.5 h-3.5" />
+                            </button>
+                          </td>
+                        </tr>
+                      ))}
+                      {requests.length === 0 && (
+                        <tr><td colSpan={8} className="py-16 text-center text-slate-400">No requests yet</td></tr>
+                      )}
+                    </tbody>
+                  </table>
+                </div>
+              </>
             )}
           </div>
         )}
@@ -383,7 +428,7 @@ export function AdminDashboard() {
               <h2 className="font-semibold text-white">Registered Laboratories ({labs.length})</h2>
               <Button onClick={() => setShowCreateLab(true)}>
                 <Plus className="w-4 h-4" />
-                Add Laboratory
+                <span className="hidden sm:inline">Add Laboratory</span>
               </Button>
             </div>
 
@@ -782,7 +827,7 @@ function ReferralDetailModal({ group, onClose }: { group: ReferralGroup; onClose
         </div>
 
         {/* Stats bar */}
-        <div className="flex items-center gap-6 px-5 py-3 bg-white/3 border-b border-white/5 shrink-0">
+        <div className="flex flex-wrap items-center gap-x-6 gap-y-2 px-5 py-3 bg-white/3 border-b border-white/5 shrink-0">
           <div>
             <span className="text-lg font-bold text-white">{group.requests.length}</span>
             <span className="text-xs text-slate-500 ml-1.5">total referrals</span>
@@ -810,15 +855,17 @@ function ReferralDetailModal({ group, onClose }: { group: ReferralGroup; onClose
             <p className="text-center text-slate-500 py-10 text-sm">No referrals for this period</p>
           )}
           {filtered.map((req) => (
-            <div key={req.id} className="flex items-center gap-3 bg-white/5 border border-white/8 rounded-xl px-4 py-3">
-              <div className="flex-1 min-w-0">
+            <div key={req.id} className="bg-white/5 border border-white/8 rounded-xl px-4 py-3">
+              <div className="flex items-start justify-between gap-2 mb-1">
                 <p className="text-sm text-white font-medium truncate">{req.patient_name}</p>
-                <p className="text-xs text-slate-500 mt-0.5 truncate">{req.tests}</p>
-              </div>
-              <div className="flex items-center gap-2 shrink-0">
-                <span className="font-mono text-xs text-medical-400">{req.code}</span>
                 <StatusBadge status={req.status} />
-                <span className="text-xs text-slate-600">{format(new Date(req.created_at), "dd MMM")}</span>
+              </div>
+              <div className="flex items-center justify-between gap-2">
+                <p className="text-xs text-slate-500 truncate flex-1">{req.tests}</p>
+                <div className="flex items-center gap-2 shrink-0">
+                  <span className="font-mono text-xs text-medical-400">{req.code}</span>
+                  <span className="text-xs text-slate-600">{format(new Date(req.created_at), "dd MMM")}</span>
+                </div>
               </div>
             </div>
           ))}
