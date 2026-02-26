@@ -540,6 +540,7 @@ export function DoctorRequestForm() {
   const [result, setResult] = useState<CreateRequestResponse | null>(null);
   const [contactOpen, setContactOpen] = useState(false);
   const [bankOpen, setBankOpen] = useState(false);
+  const [bankSkipped, setBankSkipped] = useState(false);
   const [labDetailsOpen, setLabDetailsOpen] = useState(false);
   const [learnMoreOpen, setLearnMoreOpen] = useState(false);
   const [callOpen, setCallOpen] = useState(false);
@@ -616,6 +617,11 @@ export function DoctorRequestForm() {
       if (!form.doctor_email.trim()) errs.doctor_email = "Required";
       else if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(form.doctor_email))
         errs.doctor_email = "Invalid email";
+      if (!bankSkipped) {
+        if (!form.doctor_bank_name.trim()) errs.doctor_bank_name = "Required";
+        if (!form.doctor_account_number.trim()) errs.doctor_account_number = "Required";
+        if (!form.doctor_account_name.trim()) errs.doctor_account_name = "Required";
+      }
     }
     if (s === 4 && !form.tests.trim()) errs.tests = "Required";
     setErrors(errs);
@@ -1083,8 +1089,21 @@ export function DoctorRequestForm() {
               onChange={(e) => set("doctor_phone", e.target.value)}
             />
 
-            {/* Bank account details — collapsible, for payment processing */}
-            {form.doctor_bank_name || form.doctor_account_number || form.doctor_account_name ? (
+            {/* Bank account details */}
+            {bankSkipped ? (
+              /* Skipped state — compact strip */
+              <div className="flex items-center justify-between px-4 py-3 rounded-xl bg-slate-50 border border-slate-200">
+                <p className="text-xs text-slate-500 font-medium">Bank details skipped</p>
+                <button
+                  type="button"
+                  onClick={() => setBankSkipped(false)}
+                  className="text-xs text-medical-600 hover:text-medical-800 font-semibold transition-colors"
+                >
+                  + Add details
+                </button>
+              </div>
+            ) : form.doctor_bank_name || form.doctor_account_number || form.doctor_account_name ? (
+              /* Filled state — green collapsible */
               <div className="border-2 border-emerald-200 bg-emerald-50/30 rounded-xl overflow-hidden">
                 <button
                   type="button"
@@ -1099,65 +1118,62 @@ export function DoctorRequestForm() {
                 </button>
                 {bankOpen && (
                   <div className="px-4 pb-4 pt-1 space-y-3 border-t border-emerald-100 bg-emerald-50/20">
-                    <Input
-                      label="Bank Name"
-                      placeholder="e.g. First Bank, GTBank, Zenith…"
-                      value={form.doctor_bank_name}
-                      onChange={(e) => set("doctor_bank_name", e.target.value)}
-                    />
-                    <Input
-                      label="Account Number"
-                      placeholder="10-digit account number"
-                      value={form.doctor_account_number}
-                      onChange={(e) => set("doctor_account_number", e.target.value)}
-                    />
-                    <Input
-                      label="Account Name"
-                      placeholder="Name as it appears on bank account"
-                      value={form.doctor_account_name}
-                      onChange={(e) => set("doctor_account_name", e.target.value)}
-                    />
+                    <Input label="Bank Name" placeholder="e.g. First Bank, GTBank, Zenith…" value={form.doctor_bank_name} onChange={(e) => set("doctor_bank_name", e.target.value)} />
+                    <Input label="Account Number" placeholder="10-digit account number" value={form.doctor_account_number} onChange={(e) => set("doctor_account_number", e.target.value)} />
+                    <Input label="Account Name" placeholder="Name as it appears on bank account" value={form.doctor_account_name} onChange={(e) => set("doctor_account_name", e.target.value)} />
                   </div>
                 )}
               </div>
             ) : (
-              <div className="border-2 border-slate-200 bg-slate-50/40 rounded-xl overflow-hidden">
-                <button
-                  type="button"
-                  onClick={() => setBankOpen((v) => !v)}
-                  className="w-full flex items-center justify-between px-4 py-3.5 hover:bg-slate-50 transition-colors"
-                >
-                  <div className="flex items-start gap-3">
-                    <Mail className="w-4 h-4 text-slate-400 shrink-0 mt-0.5" />
-                    <div className="text-left">
-                      <span className="text-sm font-semibold text-slate-700">Bank Account Details</span>
-                      <p className="text-xs text-slate-400 mt-0.5">Optional — for referral payment processing</p>
-                    </div>
+              /* Default state — fields open, required, with skip link */
+              <div className="rounded-xl border-2 border-slate-200 overflow-hidden">
+                <div className="px-4 py-3 border-b border-slate-100 bg-slate-50/50 flex items-center justify-between">
+                  <div className="flex items-center gap-2">
+                    <span className="text-sm font-semibold text-slate-700">Bank Account Details</span>
+                    <span className="inline-block w-1.5 h-1.5 rounded-full bg-amber-400 align-middle" aria-label="required" />
                   </div>
-                  <ChevronDown className={`w-4 h-4 text-slate-400 transition-transform shrink-0 ml-3 ${bankOpen ? "rotate-180" : ""}`} />
-                </button>
-                {bankOpen && (
-                  <div className="px-4 pb-4 pt-1 space-y-3 border-t border-slate-100 bg-slate-50/20">
-                    <Input
-                      label="Bank Name"
-                      placeholder="e.g. First Bank, GTBank, Zenith…"
-                      value={form.doctor_bank_name}
-                      onChange={(e) => set("doctor_bank_name", e.target.value)}
-                    />
-                    <Input
-                      label="Account Number"
-                      placeholder="10-digit account number"
-                      value={form.doctor_account_number}
-                      onChange={(e) => set("doctor_account_number", e.target.value)}
-                    />
-                    <Input
-                      label="Account Name"
-                      placeholder="Name as it appears on bank account"
-                      value={form.doctor_account_name}
-                      onChange={(e) => set("doctor_account_name", e.target.value)}
-                    />
-                  </div>
-                )}
+                  <span className="text-xs text-slate-400">For referral payment</span>
+                </div>
+                <div className="px-4 py-4 space-y-3">
+                  <Input
+                    label="Bank Name"
+                    required
+                    placeholder="e.g. First Bank, GTBank, Zenith…"
+                    value={form.doctor_bank_name}
+                    onChange={(e) => set("doctor_bank_name", e.target.value)}
+                    error={errors.doctor_bank_name}
+                  />
+                  <Input
+                    label="Account Number"
+                    required
+                    placeholder="10-digit account number"
+                    value={form.doctor_account_number}
+                    onChange={(e) => set("doctor_account_number", e.target.value)}
+                    error={errors.doctor_account_number}
+                  />
+                  <Input
+                    label="Account Name"
+                    required
+                    placeholder="Name as it appears on bank account"
+                    value={form.doctor_account_name}
+                    onChange={(e) => set("doctor_account_name", e.target.value)}
+                    error={errors.doctor_account_name}
+                  />
+                </div>
+                <div className="px-4 pb-3 border-t border-slate-100">
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setBankSkipped(true);
+                      set("doctor_bank_name", "");
+                      set("doctor_account_number", "");
+                      set("doctor_account_name", "");
+                    }}
+                    className="text-xs text-slate-400 hover:text-slate-600 transition-colors underline underline-offset-2"
+                  >
+                    Skip — I'll settle payment another way
+                  </button>
+                </div>
               </div>
             )}
           </div>
