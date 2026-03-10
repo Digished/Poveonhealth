@@ -6,6 +6,7 @@ import {
   Search, RefreshCw, CheckCircle, Clock, FlaskConical,
   ChevronRight, Calendar, Stethoscope, LogOut, Eye, EyeOff, Phone, X,
   Link2, Paperclip, Send, SkipForward, UserCircle, MapPin, Shield, Layers,
+  Users, CreditCard, Filter, ChevronDown,
 } from "lucide-react";
 import { Button } from "@/components/ui/Button";
 import { Input } from "@/components/ui/Input";
@@ -15,6 +16,20 @@ import { SERVICE_CATEGORIES } from "@/lib/constants";
 import { format, differenceInYears } from "date-fns";
 import { createClient } from "@/lib/supabase/client";
 import { useRouter } from "next/navigation";
+
+interface ReferralDoctor {
+  doctor_name: string;
+  doctor_email: string;
+  doctor_prefix: string | null;
+  doctor_phone: string | null;
+  doctor_bank_name: string | null;
+  doctor_account_number: string | null;
+  doctor_account_name: string | null;
+  total_referrals: number;
+  months: Record<string, number>;
+  tests: string[];
+  last_referral: string;
+}
 
 interface LabDashboardProps {
   lab: {
@@ -28,6 +43,8 @@ interface LabDashboardProps {
     certifications: string[];
   };
   isOwner?: boolean;
+  roleName?: string;
+  canViewReferrals?: boolean;
 }
 
 const TABS: { key: RequestStatus; label: string; icon: React.ReactNode }[] = [
@@ -40,9 +57,10 @@ function calcAge(dob: string): number {
   return differenceInYears(new Date(), new Date(dob));
 }
 
-export function LabDashboard({ lab, isOwner = false }: LabDashboardProps) {
+export function LabDashboard({ lab, isOwner = false, roleName = "Lab Owner", canViewReferrals = false }: LabDashboardProps) {
   const { name: labName, logo_url: labLogoUrl } = lab;
   const router = useRouter();
+  const [mainView, setMainView] = useState<"requests" | "referrals">("requests");
   const [activeTab, setActiveTab] = useState<RequestStatus>("incoming");
   const [requests, setRequests] = useState<LabRequest[]>([]);
   const [loading, setLoading] = useState(true);
@@ -56,6 +74,15 @@ export function LabDashboard({ lab, isOwner = false }: LabDashboardProps) {
   const [profileOpen, setProfileOpen] = useState(false);
   const [teamMembers, setTeamMembers] = useState<{ id: string; email: string; role: { name: string }; last_sign_in_at: string | null }[]>([]);
   const [teamLoading, setTeamLoading] = useState(false);
+
+  // Referrals state
+  const [referrals, setReferrals] = useState<ReferralDoctor[]>([]);
+  const [referralsLoading, setReferralsLoading] = useState(false);
+  const [referralMonthFilter, setReferralMonthFilter] = useState("");
+  const [referralTestFilter, setReferralTestFilter] = useState("");
+  const [availableMonths, setAvailableMonths] = useState<string[]>([]);
+  const [availableTests, setAvailableTests] = useState<string[]>([]);
+  const [expandedDoctor, setExpandedDoctor] = useState<string | null>(null);
 
   // Results modal state
   const [resultsModalRequest, setResultsModalRequest] = useState<LabRequest | null>(null);
@@ -83,11 +110,36 @@ export function LabDashboard({ lab, isOwner = false }: LabDashboardProps) {
     }
   }, []);
 
+  const fetchReferrals = useCallback(async () => {
+    setReferralsLoading(true);
+    try {
+      const params = new URLSearchParams();
+      if (referralMonthFilter) params.set("month", referralMonthFilter);
+      if (referralTestFilter) params.set("test", referralTestFilter);
+      const res = await fetch(`/api/lab/referrals?${params}`);
+      const data = await res.json();
+      if (!data.success) throw new Error(data.error);
+      setReferrals(data.referrals ?? []);
+      setAvailableMonths(data.available_months ?? []);
+      setAvailableTests(data.available_tests ?? []);
+    } catch {
+      toast.error("Failed to load referrals");
+    } finally {
+      setReferralsLoading(false);
+    }
+  }, [referralMonthFilter, referralTestFilter]);
+
   useEffect(() => {
     fetchRequests();
     const interval = setInterval(() => fetchRequests(true), 30_000);
     return () => clearInterval(interval);
   }, [fetchRequests]);
+
+  useEffect(() => {
+    if (mainView === "referrals" && (isOwner || canViewReferrals)) {
+      fetchReferrals();
+    }
+  }, [mainView, fetchReferrals, isOwner, canViewReferrals]);
 
   const tabRequests = requests.filter((r) => r.status === activeTab);
 
@@ -257,8 +309,8 @@ export function LabDashboard({ lab, isOwner = false }: LabDashboardProps) {
               </div>
             )}
             <div>
-              <h1 className="font-bold text-white text-sm leading-none">Poveon</h1>
-              <p className="text-xs text-blue-300 mt-0.5">{labName}</p>
+              <h1 className="font-bold text-white text-sm leading-none">{labName}</h1>
+              <p className="text-xs text-blue-300 mt-0.5">{roleName}</p>
             </div>
           </div>
           <div className="flex items-center gap-2">
@@ -301,6 +353,236 @@ export function LabDashboard({ lab, isOwner = false }: LabDashboardProps) {
       </header>
 
       <div className="max-w-6xl mx-auto px-4 py-8">
+        {/* Top-level navigation: Requests / Referrals */}
+        {(isOwner || canViewReferrals) && (
+          <div className="flex gap-1 mb-6 bg-white/5 rounded-xl p-1 w-fit">
+            <button
+              onClick={() => setMainView("requests")}
+              className={`flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-medium transition-all ${
+                mainView === "requests"
+                  ? "bg-white/15 text-white shadow-sm"
+                  : "text-slate-400 hover:text-slate-200"
+              }`}
+            >
+              <FlaskConical className="w-4 h-4" />
+              Requests
+            </button>
+            <button
+              onClick={() => setMainView("referrals")}
+              className={`flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-medium transition-all ${
+                mainView === "referrals"
+                  ? "bg-white/15 text-white shadow-sm"
+                  : "text-slate-400 hover:text-slate-200"
+              }`}
+            >
+              <Users className="w-4 h-4" />
+              Referrals
+            </button>
+          </div>
+        )}
+
+        {/* Referrals view */}
+        {mainView === "referrals" && (
+          <div>
+            {/* Filters */}
+            <div className="flex flex-wrap gap-3 mb-6">
+              <div className="flex items-center gap-2 bg-white/5 border border-white/10 rounded-xl px-3 py-2">
+                <Filter className="w-4 h-4 text-slate-400 shrink-0" />
+                <select
+                  value={referralMonthFilter}
+                  onChange={(e) => setReferralMonthFilter(e.target.value)}
+                  className="bg-transparent text-sm text-slate-200 outline-none cursor-pointer min-w-[120px]"
+                >
+                  <option value="" className="bg-slate-800">All months</option>
+                  {availableMonths.map((m) => {
+                    const [year, month] = m.split("-");
+                    const label = new Date(Number(year), Number(month) - 1).toLocaleDateString("en-GB", { month: "long", year: "numeric" });
+                    return <option key={m} value={m} className="bg-slate-800">{label}</option>;
+                  })}
+                </select>
+              </div>
+              <div className="flex items-center gap-2 bg-white/5 border border-white/10 rounded-xl px-3 py-2">
+                <Search className="w-4 h-4 text-slate-400 shrink-0" />
+                <select
+                  value={referralTestFilter}
+                  onChange={(e) => setReferralTestFilter(e.target.value)}
+                  className="bg-transparent text-sm text-slate-200 outline-none cursor-pointer min-w-[140px]"
+                >
+                  <option value="" className="bg-slate-800">All tests</option>
+                  {availableTests.map((t) => (
+                    <option key={t} value={t} className="bg-slate-800">{t}</option>
+                  ))}
+                </select>
+              </div>
+              {(referralMonthFilter || referralTestFilter) && (
+                <button
+                  onClick={() => { setReferralMonthFilter(""); setReferralTestFilter(""); }}
+                  className="flex items-center gap-1.5 px-3 py-2 text-sm text-slate-400 hover:text-white rounded-xl hover:bg-white/10 transition-colors"
+                >
+                  <X className="w-3.5 h-3.5" />
+                  Clear
+                </button>
+              )}
+            </div>
+
+            {referralsLoading ? (
+              <div className="text-center py-20 text-slate-400">
+                <RefreshCw className="w-8 h-8 mx-auto mb-3 animate-spin opacity-50" />
+                <p>Loading referrals…</p>
+              </div>
+            ) : referrals.length === 0 ? (
+              <div className="text-center py-20 text-slate-400">
+                <Users className="w-10 h-10 mx-auto mb-3 opacity-30" />
+                <p className="font-medium">No referrals found</p>
+                <p className="text-sm mt-1 text-slate-500">Referrals appear here once patients have been seen</p>
+              </div>
+            ) : (
+              <>
+                {/* Desktop table */}
+                <div className="hidden md:block overflow-x-auto rounded-2xl border border-white/10">
+                  <table className="w-full text-sm">
+                    <thead>
+                      <tr className="border-b border-white/10 bg-white/5">
+                        <th className="text-left px-4 py-3 text-xs font-semibold text-slate-400 uppercase tracking-wider">Doctor</th>
+                        <th className="text-left px-4 py-3 text-xs font-semibold text-slate-400 uppercase tracking-wider">Tests Referred</th>
+                        <th className="text-center px-4 py-3 text-xs font-semibold text-slate-400 uppercase tracking-wider">Total</th>
+                        <th className="text-left px-4 py-3 text-xs font-semibold text-slate-400 uppercase tracking-wider">Bank Details</th>
+                        <th className="text-left px-4 py-3 text-xs font-semibold text-slate-400 uppercase tracking-wider">Last Referral</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-white/5">
+                      {referrals.map((doc) => (
+                        <tr key={doc.doctor_email} className="hover:bg-white/5 transition-colors">
+                          <td className="px-4 py-4">
+                            <p className="font-semibold text-white">
+                              {[doc.doctor_prefix, doc.doctor_name].filter(Boolean).join(" ")}
+                            </p>
+                            <p className="text-xs text-slate-400 mt-0.5">{doc.doctor_email}</p>
+                            {doc.doctor_phone && (
+                              <a href={`tel:${doc.doctor_phone}`} className="text-xs text-blue-400 hover:underline flex items-center gap-1 mt-0.5">
+                                <Phone className="w-3 h-3" />{doc.doctor_phone}
+                              </a>
+                            )}
+                          </td>
+                          <td className="px-4 py-4">
+                            <div className="flex flex-wrap gap-1 max-w-xs">
+                              {doc.tests.slice(0, 4).map((t) => (
+                                <span key={t} className="text-xs bg-medical-900/50 text-medical-300 border border-medical-800/30 px-2 py-0.5 rounded-full">{t}</span>
+                              ))}
+                              {doc.tests.length > 4 && (
+                                <span className="text-xs text-slate-500">+{doc.tests.length - 4} more</span>
+                              )}
+                            </div>
+                          </td>
+                          <td className="px-4 py-4 text-center">
+                            <span className="text-xl font-bold text-white">{doc.total_referrals}</span>
+                          </td>
+                          <td className="px-4 py-4">
+                            {doc.doctor_bank_name || doc.doctor_account_number ? (
+                              <div className="flex items-start gap-2">
+                                <CreditCard className="w-4 h-4 text-emerald-400 shrink-0 mt-0.5" />
+                                <div>
+                                  {doc.doctor_bank_name && <p className="text-white font-medium text-xs">{doc.doctor_bank_name}</p>}
+                                  {doc.doctor_account_number && <p className="font-mono text-xs text-slate-300">{doc.doctor_account_number}</p>}
+                                  {doc.doctor_account_name && <p className="text-xs text-slate-400">{doc.doctor_account_name}</p>}
+                                </div>
+                              </div>
+                            ) : (
+                              <span className="text-xs text-slate-600 italic">No bank details</span>
+                            )}
+                          </td>
+                          <td className="px-4 py-4 text-xs text-slate-400">
+                            {new Date(doc.last_referral).toLocaleDateString("en-GB", { day: "numeric", month: "short", year: "numeric" })}
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+
+                {/* Mobile cards */}
+                <div className="md:hidden space-y-3">
+                  {referrals.map((doc) => (
+                    <div key={doc.doctor_email} className="bg-white/5 border border-white/10 rounded-2xl overflow-hidden">
+                      <button
+                        className="w-full text-left px-4 py-4 flex items-start justify-between gap-3"
+                        onClick={() => setExpandedDoctor(expandedDoctor === doc.doctor_email ? null : doc.doctor_email)}
+                      >
+                        <div className="flex-1 min-w-0">
+                          <div className="flex items-center gap-2 mb-1">
+                            <p className="font-semibold text-white truncate">
+                              {[doc.doctor_prefix, doc.doctor_name].filter(Boolean).join(" ")}
+                            </p>
+                            <span className="shrink-0 text-xs font-bold bg-medical-900/50 text-medical-300 border border-medical-800/30 px-2 py-0.5 rounded-full">
+                              {doc.total_referrals} refs
+                            </span>
+                          </div>
+                          <p className="text-xs text-slate-400 truncate">{doc.doctor_email}</p>
+                        </div>
+                        <ChevronDown className={`w-4 h-4 text-slate-400 shrink-0 mt-1 transition-transform ${expandedDoctor === doc.doctor_email ? "rotate-180" : ""}`} />
+                      </button>
+
+                      {expandedDoctor === doc.doctor_email && (
+                        <div className="border-t border-white/10 px-4 py-4 space-y-4">
+                          {doc.doctor_phone && (
+                            <div>
+                              <p className="text-xs text-slate-500 font-medium mb-1">Phone</p>
+                              <a href={`tel:${doc.doctor_phone}`} className="text-blue-400 hover:underline text-sm flex items-center gap-1">
+                                <Phone className="w-3 h-3" />{doc.doctor_phone}
+                              </a>
+                            </div>
+                          )}
+                          <div>
+                            <p className="text-xs text-slate-500 font-medium mb-1.5">Tests Referred</p>
+                            <div className="flex flex-wrap gap-1.5">
+                              {doc.tests.map((t) => (
+                                <span key={t} className="text-xs bg-medical-900/50 text-medical-300 border border-medical-800/30 px-2 py-0.5 rounded-full">{t}</span>
+                              ))}
+                            </div>
+                          </div>
+                          <div>
+                            <p className="text-xs text-slate-500 font-medium mb-1.5">Bank Details</p>
+                            {doc.doctor_bank_name || doc.doctor_account_number ? (
+                              <div className="bg-white/5 rounded-xl p-3 flex items-start gap-2">
+                                <CreditCard className="w-4 h-4 text-emerald-400 shrink-0 mt-0.5" />
+                                <div>
+                                  {doc.doctor_bank_name && <p className="text-white font-medium text-sm">{doc.doctor_bank_name}</p>}
+                                  {doc.doctor_account_number && <p className="font-mono text-sm text-slate-200">{doc.doctor_account_number}</p>}
+                                  {doc.doctor_account_name && <p className="text-xs text-slate-400">{doc.doctor_account_name}</p>}
+                                </div>
+                              </div>
+                            ) : (
+                              <p className="text-sm text-slate-500 italic">No bank details provided</p>
+                            )}
+                          </div>
+                          <div>
+                            <p className="text-xs text-slate-500 font-medium mb-1">Monthly Breakdown</p>
+                            <div className="flex flex-wrap gap-2">
+                              {Object.entries(doc.months).sort((a, b) => b[0].localeCompare(a[0])).map(([ym, count]) => {
+                                const [year, month] = ym.split("-");
+                                const label = new Date(Number(year), Number(month) - 1).toLocaleDateString("en-GB", { month: "short", year: "numeric" });
+                                return (
+                                  <span key={ym} className="text-xs bg-white/10 text-slate-300 px-2 py-1 rounded-lg">
+                                    {label}: <span className="font-bold text-white">{count}</span>
+                                  </span>
+                                );
+                              })}
+                            </div>
+                          </div>
+                          <p className="text-xs text-slate-500">Last referral: {new Date(doc.last_referral).toLocaleDateString("en-GB", { day: "numeric", month: "long", year: "numeric" })}</p>
+                        </div>
+                      )}
+                    </div>
+                  ))}
+                </div>
+              </>
+            )}
+          </div>
+        )}
+
+        {/* Requests view */}
+        {mainView === "requests" && (
+        <div>
         {/* Code reveal section */}
         <div className="bg-white/5 backdrop-blur-md border border-white/10 rounded-2xl p-5 mb-8">
           <h2 className="text-sm font-semibold text-slate-300 mb-1 uppercase tracking-wider">
@@ -930,8 +1212,11 @@ export function LabDashboard({ lab, isOwner = false }: LabDashboardProps) {
           </div>
         )}
 
+        </div>
+        )} {/* end mainView === "requests" */}
+
         {/* Mobile detail modal */}
-        {mobileDetailOpen && selectedRequest && (
+        {mainView === "requests" && mobileDetailOpen && selectedRequest && (
           <div className="fixed inset-0 z-40 lg:hidden flex items-end bg-black/60 backdrop-blur-sm">
             <div className="w-full bg-slate-900 border-t border-white/10 rounded-t-2xl max-h-[90vh] overflow-y-auto animate-slide-up">
               <div className="sticky top-0 bg-slate-900 border-b border-white/10 p-4 flex items-center justify-between">

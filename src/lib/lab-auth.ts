@@ -10,6 +10,7 @@ export interface LabPermissions {
   can_send_results:    boolean;
   can_manage_team:     boolean;
   can_manage_api_keys: boolean;
+  can_view_referrals:  boolean;
 }
 
 /** Full permissions — granted to the lab owner (LabUser) and API keys */
@@ -20,6 +21,7 @@ export const FULL_PERMISSIONS: LabPermissions = {
   can_send_results:    true,
   can_manage_team:     true,
   can_manage_api_keys: true,
+  can_view_referrals:  true,
 };
 
 export interface LabAuthResult {
@@ -70,6 +72,7 @@ export async function getLabAuth(request: NextRequest): Promise<LabAuthResult | 
                 can_send_results:    true,
                 can_manage_team:     true,
                 can_manage_api_keys: true,
+                can_view_referrals:  true,
               },
             },
           },

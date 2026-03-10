@@ -1,11 +1,11 @@
 export const dynamic = "force-dynamic";
 import { NextRequest, NextResponse } from "next/server";
 import { z } from "zod";
-import { createServerClient } from "@/lib/supabase/server";
 import { prisma } from "@/lib/prisma";
 import { resend, labSender } from "@/lib/email/resend";
 import { doctorPatientArrived } from "@/lib/email/templates";
 import { logApiCall } from "@/lib/api-logger";
+import { getLabAuth } from "@/lib/lab-auth";
 
 const RetrieveSchema = z.object({
   code: z.string().min(1).max(50).transform((s) => s.trim().toUpperCase()),
@@ -26,25 +26,17 @@ export async function POST(request: NextRequest) {
 
     const { code } = parsed.data;
 
-    // Authenticate the lab user
-    const authClient = await createServerClient();
-    const { data: { user } } = await authClient.auth.getUser();
-
-    if (!user) {
+    // Authenticate lab user/member/API key
+    const auth = await getLabAuth(request);
+    if (!auth) {
       return NextResponse.json(
         { success: false, error: "Authentication required" },
         { status: 401 }
       );
     }
-
-    // Get this user's lab_id
-    const labUser = await prisma.labUser.findUnique({
-      where: { user_id: user.id },
-    });
-
-    if (!labUser) {
+    if (!auth.permissions.can_mark_seen) {
       return NextResponse.json(
-        { success: false, error: "Lab user record not found" },
+        { success: false, error: "You do not have permission to retrieve patients" },
         { status: 403 }
       );
     }
@@ -63,7 +55,7 @@ export async function POST(request: NextRequest) {
     }
 
     // Verify code belongs to this lab
-    if (req.lab_id !== labUser.lab_id) {
+    if (req.lab_id !== auth.lab_id) {
       return NextResponse.json(
         { success: false, error: "This request does not belong to your laboratory." },
         { status: 403 }

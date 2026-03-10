@@ -64,6 +64,7 @@ export interface LabRole {
   can_send_results: boolean;
   can_manage_team: boolean;
   can_manage_api_keys: boolean;
+  can_view_referrals: boolean;
   created_at: string;
   _count?: { members: number };
 }

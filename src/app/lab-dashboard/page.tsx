@@ -18,6 +18,8 @@ export default async function LabDashboardPage() {
 
   // Look up the lab based on role type
   let labId: string | null = null;
+  let roleName = "Lab Owner";
+  let canViewReferrals = true;
 
   if (role === "lab") {
     const labUser = await prisma.labUser.findUnique({
@@ -29,9 +31,14 @@ export default async function LabDashboardPage() {
     // lab_member — look up via LabMember table
     const member = await prisma.labMember.findUnique({
       where: { user_id: user.id },
-      select: { lab_id: true },
+      select: {
+        lab_id: true,
+        role: { select: { name: true, can_view_referrals: true } },
+      },
     });
     labId = member?.lab_id ?? null;
+    roleName = member?.role.name ?? "Member";
+    canViewReferrals = member?.role.can_view_referrals ?? false;
   }
 
   if (!labId) redirect("/lab-login");
@@ -55,6 +62,8 @@ export default async function LabDashboardPage() {
   return (
     <LabDashboard
       isOwner={role === "lab"}
+      roleName={roleName}
+      canViewReferrals={canViewReferrals}
       lab={{
         id: lab.id,
         name: lab.name,

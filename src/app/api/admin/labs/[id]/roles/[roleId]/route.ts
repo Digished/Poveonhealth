@@ -22,6 +22,7 @@ const PatchRoleSchema = z.object({
   can_send_results:    z.boolean().optional(),
   can_manage_team:     z.boolean().optional(),
   can_manage_api_keys: z.boolean().optional(),
+  can_view_referrals:  z.boolean().optional(),
 });
 
 // PATCH /api/admin/labs/[id]/roles/[roleId]

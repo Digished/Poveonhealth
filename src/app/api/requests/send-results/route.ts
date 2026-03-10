@@ -1,7 +1,7 @@
 export const dynamic = "force-dynamic";
 import { NextRequest, NextResponse } from "next/server";
-import { createServerClient } from "@/lib/supabase/server";
 import { prisma } from "@/lib/prisma";
+import { getLabAuth } from "@/lib/lab-auth";
 import { resend, labSender } from "@/lib/email/resend";
 import { labResultsDoctor, labResultsPatient } from "@/lib/email/templates";
 import { logApiCall } from "@/lib/api-logger";
@@ -36,24 +36,17 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    // Authenticate lab user
-    const authClient = await createServerClient();
-    const { data: { user } } = await authClient.auth.getUser();
-
-    if (!user) {
+    // Authenticate lab user/member/API key
+    const auth = await getLabAuth(request);
+    if (!auth) {
       return NextResponse.json(
         { success: false, error: "Authentication required" },
         { status: 401 }
       );
     }
-
-    const labUser = await prisma.labUser.findUnique({
-      where: { user_id: user.id },
-    });
-
-    if (!labUser) {
+    if (!auth.permissions.can_send_results) {
       return NextResponse.json(
-        { success: false, error: "Lab user not found" },
+        { success: false, error: "You do not have permission to send results" },
         { status: 403 }
       );
     }
@@ -71,7 +64,7 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    if (req.lab_id !== labUser.lab_id) {
+    if (req.lab_id !== auth.lab_id) {
       return NextResponse.json(
         { success: false, error: "Unauthorized to update this request" },
         { status: 403 }

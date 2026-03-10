@@ -1,8 +1,8 @@
 export const dynamic = "force-dynamic";
 import { NextRequest, NextResponse } from "next/server";
 import { z } from "zod";
-import { createServerClient } from "@/lib/supabase/server";
 import { prisma } from "@/lib/prisma";
+import { getLabAuth } from "@/lib/lab-auth";
 import { resend, labSender } from "@/lib/email/resend";
 import { doctorTestsCompleted } from "@/lib/email/templates";
 import { logApiCall } from "@/lib/api-logger";
@@ -27,24 +27,20 @@ export async function POST(request: NextRequest) {
 
     const { requestId, status } = parsed.data;
 
-    // Authenticate lab user
-    const authClient = await createServerClient();
-    const { data: { user } } = await authClient.auth.getUser();
-
-    if (!user) {
+    // Authenticate lab user/member/API key
+    const auth = await getLabAuth(request);
+    if (!auth) {
       return NextResponse.json(
         { success: false, error: "Authentication required" },
         { status: 401 }
       );
     }
 
-    const labUser = await prisma.labUser.findUnique({
-      where: { user_id: user.id },
-    });
-
-    if (!labUser) {
+    // Check permission based on which status is being set
+    const requiredPerm = status === "seen" ? "can_mark_seen" : "can_mark_done";
+    if (!auth.permissions[requiredPerm]) {
       return NextResponse.json(
-        { success: false, error: "Lab user not found" },
+        { success: false, error: "You do not have permission to perform this action" },
         { status: 403 }
       );
     }
@@ -62,7 +58,7 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    if (req.lab_id !== labUser.lab_id) {
+    if (req.lab_id !== auth.lab_id) {
       return NextResponse.json(
         { success: false, error: "Unauthorized to update this request" },
         { status: 403 }

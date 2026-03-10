@@ -22,6 +22,7 @@ const RoleSchema = z.object({
   can_send_results:    z.boolean().default(false),
   can_manage_team:     z.boolean().default(false),
   can_manage_api_keys: z.boolean().default(false),
+  can_view_referrals:  z.boolean().default(false),
 });
 
 // GET /api/admin/labs/[id]/roles

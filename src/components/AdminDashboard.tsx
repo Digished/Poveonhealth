@@ -1323,6 +1323,7 @@ const PERMISSION_LABELS: { key: keyof LabRole; label: string }[] = [
   { key: "can_send_results",    label: "Send results"    },
   { key: "can_manage_team",     label: "Manage team"     },
   { key: "can_manage_api_keys", label: "Manage API keys" },
+  { key: "can_view_referrals",  label: "View referrals"  },
 ];
 
 type DraftRole = {
@@ -1333,10 +1334,11 @@ type DraftRole = {
   can_send_results:    boolean;
   can_manage_team:     boolean;
   can_manage_api_keys: boolean;
+  can_view_referrals:  boolean;
 };
 
 function blankRole(): DraftRole {
-  return { name: "", can_view_requests: true, can_mark_seen: false, can_mark_done: false, can_send_results: false, can_manage_team: false, can_manage_api_keys: false };
+  return { name: "", can_view_requests: true, can_mark_seen: false, can_mark_done: false, can_send_results: false, can_manage_team: false, can_manage_api_keys: false, can_view_referrals: false };
 }
 
 function LabTeamTab({ lab }: { lab: Lab }) {
@@ -1405,6 +1407,7 @@ function LabTeamTab({ lab }: { lab: Lab }) {
       can_send_results:    role.can_send_results,
       can_manage_team:     role.can_manage_team,
       can_manage_api_keys: role.can_manage_api_keys,
+      can_view_referrals:  role.can_view_referrals,
     });
     setShowNewRole(true);
   }

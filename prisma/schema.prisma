@@ -73,6 +73,7 @@ model LabRole {
   can_send_results     Boolean  @default(false)
   can_manage_team      Boolean  @default(false)
   can_manage_api_keys  Boolean  @default(false)
+  can_view_referrals   Boolean  @default(false)
   created_at           DateTime @default(now())
 
   lab     Lab         @relation(fields: [lab_id], references: [id], onDelete: Cascade)
