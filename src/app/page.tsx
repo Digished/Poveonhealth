@@ -12,7 +12,11 @@ export default function HomePage() {
             <PoveonLogo className="w-8 h-8" />
             <span className="font-bold text-medical-700 text-lg">Poveon</span>
           </div>
-          <div className="flex items-center gap-2 text-sm" />
+          <div className="flex items-center gap-2 text-sm">
+            <a href="/api-docs" className="text-slate-500 hover:text-medical-700 transition-colors">
+              API Docs
+            </a>
+          </div>
         </div>
       </nav>
 
