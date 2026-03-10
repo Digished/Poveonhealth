@@ -35,7 +35,20 @@ export async function GET(
       orderBy: { created_at: "asc" },
     });
 
-    return NextResponse.json({ success: true, members });
+    // Fetch last_sign_in_at from Supabase for each member
+    const adminSupabase = createAdminClient();
+    const enriched = await Promise.all(
+      members.map(async (m) => {
+        try {
+          const { data } = await adminSupabase.auth.admin.getUserById(m.user_id);
+          return { ...m, last_sign_in_at: data.user?.last_sign_in_at ?? null };
+        } catch {
+          return { ...m, last_sign_in_at: null };
+        }
+      })
+    );
+
+    return NextResponse.json({ success: true, members: enriched });
   } catch (e) {
     console.error("List members error:", e);
     return NextResponse.json({ success: false, error: "Failed to list members" }, { status: 500 });
@@ -65,10 +78,9 @@ export async function POST(
     });
     if (!roleExists) return NextResponse.json({ success: false, error: "Role not found for this lab" }, { status: 404 });
 
-    // Generate password if not provided
     const password = parsed.data.password ?? generatePassword();
 
-    // Create Supabase auth user with lab_member role metadata
+    // Create Supabase auth user
     const adminSupabase = createAdminClient();
     const { data: authData, error: authError } = await adminSupabase.auth.admin.createUser({
       email: parsed.data.email,
@@ -78,17 +90,18 @@ export async function POST(
     });
 
     if (authError) {
-      if (authError.message.includes("already")) {
+      if (authError.message.toLowerCase().includes("already")) {
         return NextResponse.json({ success: false, error: "A user with this email already exists" }, { status: 409 });
       }
       return NextResponse.json({ success: false, error: authError.message }, { status: 400 });
     }
 
-    // Create LabMember record
+    // Create LabMember record — store email for display without extra Supabase lookups
     const member = await prisma.labMember.create({
       data: {
-        lab_id: params.id,
+        lab_id:  params.id,
         user_id: authData.user.id,
+        email:   parsed.data.email,
         role_id: parsed.data.role_id,
       },
       include: { role: { select: { id: true, name: true } } },

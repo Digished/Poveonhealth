@@ -27,6 +27,7 @@ interface LabDashboardProps {
     service_categories: string[];
     certifications: string[];
   };
+  isOwner?: boolean;
 }
 
 const TABS: { key: RequestStatus; label: string; icon: React.ReactNode }[] = [
@@ -39,7 +40,7 @@ function calcAge(dob: string): number {
   return differenceInYears(new Date(), new Date(dob));
 }
 
-export function LabDashboard({ lab }: LabDashboardProps) {
+export function LabDashboard({ lab, isOwner = false }: LabDashboardProps) {
   const { name: labName, logo_url: labLogoUrl } = lab;
   const router = useRouter();
   const [activeTab, setActiveTab] = useState<RequestStatus>("incoming");
@@ -53,6 +54,8 @@ export function LabDashboard({ lab }: LabDashboardProps) {
   const [selectedRequest, setSelectedRequest] = useState<LabRequest | null>(null);
   const [mobileDetailOpen, setMobileDetailOpen] = useState(false);
   const [profileOpen, setProfileOpen] = useState(false);
+  const [teamMembers, setTeamMembers] = useState<{ id: string; email: string; role: { name: string }; last_sign_in_at: string | null }[]>([]);
+  const [teamLoading, setTeamLoading] = useState(false);
 
   // Results modal state
   const [resultsModalRequest, setResultsModalRequest] = useState<LabRequest | null>(null);
@@ -268,7 +271,19 @@ export function LabDashboard({ lab }: LabDashboardProps) {
               <RefreshCw className={`w-4 h-4 ${refreshing ? "animate-spin" : ""}`} />
             </button>
             <button
-              onClick={() => setProfileOpen(true)}
+              onClick={async () => {
+                setProfileOpen(true);
+                if (isOwner && teamMembers.length === 0) {
+                  setTeamLoading(true);
+                  try {
+                    const res = await fetch("/api/lab/team");
+                    const data = await res.json();
+                    if (data.success) setTeamMembers(data.members ?? []);
+                  } finally {
+                    setTeamLoading(false);
+                  }
+                }
+              }}
               className="p-2 rounded-lg hover:bg-white/10 transition-colors text-slate-400 hover:text-white"
               title="Lab Profile"
             >
@@ -876,8 +891,39 @@ export function LabDashboard({ lab }: LabDashboardProps) {
                   </div>
                 )}
 
-                {lab.service_categories.length === 0 && lab.certifications.length === 0 && !lab.address && lab.phones.length === 0 && (
+                {lab.service_categories.length === 0 && lab.certifications.length === 0 && !lab.address && lab.phones.length === 0 && !isOwner && (
                   <p className="text-center text-slate-500 text-sm py-6">No additional profile information yet.</p>
+                )}
+
+                {/* Team members — visible to lab owner only */}
+                {isOwner && (
+                  <div>
+                    <div className="flex items-center gap-2 mb-3">
+                      <UserCircle className="w-4 h-4 text-slate-500" />
+                      <p className="text-xs text-slate-500 font-semibold uppercase tracking-wider">Team Members</p>
+                    </div>
+                    {teamLoading ? (
+                      <p className="text-sm text-slate-500 text-center py-4">Loading…</p>
+                    ) : teamMembers.length === 0 ? (
+                      <p className="text-sm text-slate-500 text-center py-4">No team members yet. Add them from the admin panel.</p>
+                    ) : (
+                      <div className="space-y-2">
+                        {teamMembers.map((m) => (
+                          <div key={m.id} className="bg-white/5 border border-white/8 rounded-xl px-4 py-3 flex items-center justify-between gap-3">
+                            <div className="min-w-0">
+                              <p className="text-sm text-white truncate">{m.email}</p>
+                              <p className="text-xs text-slate-500 mt-0.5">
+                                {m.role.name}
+                                {m.last_sign_in_at
+                                  ? <span className="ml-2">· last login {new Date(m.last_sign_in_at).toLocaleDateString("en-GB", { day: "numeric", month: "short", year: "numeric" })}</span>
+                                  : <span className="ml-2">· never logged in</span>}
+                              </p>
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    )}
+                  </div>
                 )}
               </div>
             </div>

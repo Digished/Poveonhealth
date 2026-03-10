@@ -54,6 +54,7 @@ export default async function LabDashboardPage() {
 
   return (
     <LabDashboard
+      isOwner={role === "lab"}
       lab={{
         id: lab.id,
         name: lab.name,

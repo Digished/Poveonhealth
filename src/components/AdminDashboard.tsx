@@ -6,7 +6,7 @@ import {
   Plus, FlaskConical, BarChart3, List, LogOut,
   Building2, Trash2, Eye, EyeOff, RefreshCw, X, Pencil,
   Phone, Upload, Check, MapPin, Users, ChevronRight,
-  Code2, Key, Copy, ChevronDown,
+  Code2, Key, Copy,
 } from "lucide-react";
 import { Button } from "@/components/ui/Button";
 import { Input, Textarea } from "@/components/ui/Input";
@@ -535,11 +535,10 @@ export function AdminDashboard() {
                         {lab.hidden ? "Show" : "Hide"}
                       </button>
                       <button
-                        onClick={() => setExpandedLabIntegration(expandedLabIntegration === lab.id ? null : lab.id)}
+                        onClick={() => setExpandedLabIntegration(lab.id)}
                         className="flex items-center gap-1 px-2.5 py-1.5 rounded-lg bg-blue-500/10 hover:bg-blue-500/20 text-blue-400 hover:text-blue-300 text-xs transition-colors"
                       >
                         <Code2 className="w-3 h-3" />Dev
-                        <ChevronDown className={`w-3 h-3 transition-transform ${expandedLabIntegration === lab.id ? "rotate-180" : ""}`} />
                       </button>
                       <button
                         onClick={() => handleDeleteLab(lab)}
@@ -549,9 +548,6 @@ export function AdminDashboard() {
                         <Trash2 className="w-3 h-3" />Delete
                       </button>
                     </div>
-                    {expandedLabIntegration === lab.id && (
-                      <LabIntegrationPanel lab={lab} />
-                    )}
                   </div>
                 ))}
                 {labs.length === 0 && (
@@ -678,6 +674,12 @@ export function AdminDashboard() {
       {selectedReferralGroup && (
         <ReferralDetailModal group={selectedReferralGroup} onClose={() => setSelectedReferralGroup(null)} />
       )}
+      {expandedLabIntegration && (() => {
+        const lab = labs.find((l) => l.id === expandedLabIntegration);
+        return lab ? (
+          <LabIntegrationModal lab={lab} onClose={() => setExpandedLabIntegration(null)} />
+        ) : null;
+      })()}
     </div>
   );
 }
@@ -1102,31 +1104,50 @@ function CopyField({ label, value }: { label: string; value: string }) {
 
 type IntegrationTab = "developer" | "team";
 
-function LabIntegrationPanel({ lab }: { lab: Lab }) {
+function LabIntegrationModal({ lab, onClose }: { lab: Lab; onClose: () => void }) {
   const [activeTab, setActiveTab] = useState<IntegrationTab>("developer");
 
   return (
-    <div className="mt-3 border-t border-blue-500/20 pt-3">
-      {/* Tab selector */}
-      <div className="flex gap-1 bg-white/5 rounded-lg p-0.5 mb-4 w-fit">
-        {([
-          { key: "developer" as IntegrationTab, label: "Developer", icon: <Code2 className="w-3 h-3" /> },
-          { key: "team" as IntegrationTab, label: "Team & Roles", icon: <Users className="w-3 h-3" /> },
-        ]).map((t) => (
-          <button
-            key={t.key}
-            onClick={() => setActiveTab(t.key)}
-            className={`flex items-center gap-1.5 px-3 py-1.5 rounded-md text-xs font-medium transition-all ${
-              activeTab === t.key ? "bg-blue-600 text-white" : "text-slate-400 hover:text-white"
-            }`}
-          >
-            {t.icon}{t.label}
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm p-4">
+      <div className="bg-slate-900 border border-white/15 rounded-2xl w-full max-w-lg shadow-2xl animate-slide-up max-h-[90vh] flex flex-col">
+        {/* Header */}
+        <div className="flex items-center justify-between px-5 py-4 border-b border-white/10 shrink-0">
+          <div className="flex items-center gap-2">
+            <Code2 className="w-4 h-4 text-blue-400" />
+            <div>
+              <h2 className="font-semibold text-white text-sm">{lab.name}</h2>
+              <p className="text-xs text-slate-500">Developer & Team Setup</p>
+            </div>
+          </div>
+          <button onClick={onClose} className="p-1.5 rounded-lg hover:bg-white/10 text-slate-400 transition-colors">
+            <X className="w-4 h-4" />
           </button>
-        ))}
-      </div>
+        </div>
 
-      {activeTab === "developer" && <LabDeveloperTab lab={lab} />}
-      {activeTab === "team" && <LabTeamTab lab={lab} />}
+        {/* Tabs */}
+        <div className="flex gap-1 bg-white/5 rounded-lg p-0.5 mx-5 mt-4 shrink-0 w-fit">
+          {([
+            { key: "developer" as IntegrationTab, label: "Developer", icon: <Code2 className="w-3 h-3" /> },
+            { key: "team" as IntegrationTab, label: "Team & Roles", icon: <Users className="w-3 h-3" /> },
+          ]).map((t) => (
+            <button
+              key={t.key}
+              onClick={() => setActiveTab(t.key)}
+              className={`flex items-center gap-1.5 px-3 py-1.5 rounded-md text-xs font-medium transition-all ${
+                activeTab === t.key ? "bg-blue-600 text-white" : "text-slate-400 hover:text-white"
+              }`}
+            >
+              {t.icon}{t.label}
+            </button>
+          ))}
+        </div>
+
+        {/* Scrollable content */}
+        <div className="overflow-y-auto flex-1 px-5 py-4">
+          {activeTab === "developer" && <LabDeveloperTab lab={lab} />}
+          {activeTab === "team" && <LabTeamTab lab={lab} />}
+        </div>
+      </div>
     </div>
   );
 }
@@ -1545,8 +1566,13 @@ function LabTeamTab({ lab }: { lab: Lab }) {
           {members.map((m) => (
             <div key={m.id} className="flex items-center gap-2 bg-slate-950/40 border border-white/6 rounded-lg px-3 py-2">
               <div className="flex-1 min-w-0">
-                <p className="text-xs font-mono text-slate-400 truncate">{m.user_id}</p>
-                <p className="text-xs text-slate-600">Role: <span className="text-slate-400">{m.role.name}</span></p>
+                <p className="text-xs text-slate-300 truncate">{m.email}</p>
+                <p className="text-xs text-slate-600">
+                  Role: <span className="text-slate-400">{m.role.name}</span>
+                  {m.last_sign_in_at
+                    ? <span className="ml-2 text-slate-600">· last login {format(new Date(m.last_sign_in_at), "dd MMM yyyy")}</span>
+                    : <span className="ml-2 text-slate-600">· never logged in</span>}
+                </p>
               </div>
               <button onClick={() => handleRemoveMember(m)}
                 className="shrink-0 p-1.5 rounded hover:bg-red-500/20 text-slate-500 hover:text-red-400 transition-colors">
