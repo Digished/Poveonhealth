@@ -2,7 +2,7 @@ export const dynamic = "force-dynamic";
 import { NextRequest, NextResponse } from "next/server";
 import { createServerClient } from "@/lib/supabase/server";
 import { prisma } from "@/lib/prisma";
-import { resend, FROM_ADDRESS } from "@/lib/email/resend";
+import { resend, labSender } from "@/lib/email/resend";
 import { labResultsDoctor, labResultsPatient } from "@/lib/email/templates";
 
 export async function POST(request: NextRequest) {
@@ -59,7 +59,7 @@ export async function POST(request: NextRequest) {
     // Fetch the request and verify ownership
     const req = await prisma.request.findUnique({
       where: { id: requestId },
-      include: { lab: { select: { name: true } } },
+      include: { lab: { select: { name: true, notification_email: true } } },
     });
 
     if (!req) {
@@ -105,7 +105,7 @@ export async function POST(request: NextRequest) {
 
     // Send to doctor
     resend.emails.send({
-      from: FROM_ADDRESS,
+      from: labSender(req.lab),
       to: req.doctor_email,
       subject: `Lab Results Available — ${req.patient_name}`,
       html: labResultsDoctor({
@@ -127,7 +127,7 @@ export async function POST(request: NextRequest) {
     // Send to patient if email is available
     if (patientEmail) {
       resend.emails.send({
-        from: FROM_ADDRESS,
+        from: labSender(req.lab),
         to: patientEmail,
         subject: "Your Lab Results Are Ready",
         html: labResultsPatient({

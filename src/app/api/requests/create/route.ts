@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { z } from "zod";
 import { prisma } from "@/lib/prisma";
 import { generateUniqueCode } from "@/lib/code-generator";
-import { resend, FROM_ADDRESS } from "@/lib/email/resend";
+import { resend, labSender } from "@/lib/email/resend";
 import {
   doctorRequestConfirmation,
   patientRequestCode,
@@ -92,7 +92,7 @@ export async function POST(request: NextRequest) {
     // Send emails — failures are logged but never block the request response
     const sends: Promise<void>[] = [
       resend.emails.send({
-        from: FROM_ADDRESS,
+        from: labSender(lab),
         to: data.doctor_email,
         subject: `Lab Request Confirmed — Code: ${code}`,
         html: doctorRequestConfirmation({
@@ -110,7 +110,7 @@ export async function POST(request: NextRequest) {
     if (data.patient_email) {
       sends.push(
         resend.emails.send({
-          from: FROM_ADDRESS,
+          from: labSender(lab),
           to: data.patient_email,
           subject: `Your Lab Request Code — ${code}`,
           html: patientRequestCode({

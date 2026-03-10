@@ -18,6 +18,7 @@ model Lab {
   email               String    @unique
   description         String    @default("")
   logo_url            String?
+  notification_email  String?
   hidden              Boolean   @default(false)
   service_categories  Json      @default("[]")
   certifications      Json      @default("[]")

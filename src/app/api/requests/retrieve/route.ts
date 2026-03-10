@@ -3,7 +3,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { z } from "zod";
 import { createServerClient } from "@/lib/supabase/server";
 import { prisma } from "@/lib/prisma";
-import { resend, FROM_ADDRESS } from "@/lib/email/resend";
+import { resend, labSender } from "@/lib/email/resend";
 import { doctorPatientArrived } from "@/lib/email/templates";
 
 const RetrieveSchema = z.object({
@@ -50,7 +50,7 @@ export async function POST(request: NextRequest) {
     // Look up the request by code
     const req = await prisma.request.findUnique({
       where: { code },
-      include: { lab: { select: { name: true, address: true } } },
+      include: { lab: { select: { name: true, address: true, notification_email: true } } },
     });
 
     if (!req) {
@@ -76,7 +76,7 @@ export async function POST(request: NextRequest) {
       });
 
       resend.emails.send({
-        from: FROM_ADDRESS,
+        from: labSender(req.lab),
         to: req.doctor_email,
         subject: `Patient Arrived — ${req.patient_name} is at ${req.lab.name}`,
         html: doctorPatientArrived({

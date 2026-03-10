@@ -3,7 +3,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { z } from "zod";
 import { createServerClient } from "@/lib/supabase/server";
 import { prisma } from "@/lib/prisma";
-import { resend, FROM_ADDRESS } from "@/lib/email/resend";
+import { resend, labSender } from "@/lib/email/resend";
 import { doctorTestsCompleted } from "@/lib/email/templates";
 
 const UpdateStatusSchema = z.object({
@@ -50,7 +50,7 @@ export async function POST(request: NextRequest) {
     // Fetch the request and verify ownership
     const req = await prisma.request.findUnique({
       where: { id: requestId },
-      include: { lab: { select: { name: true } } },
+      include: { lab: { select: { name: true, notification_email: true } } },
     });
 
     if (!req) {
@@ -90,7 +90,7 @@ export async function POST(request: NextRequest) {
     // Notify doctor when tests are done
     if (status === "done") {
       resend.emails.send({
-        from: FROM_ADDRESS,
+        from: labSender(req.lab),
         to: req.doctor_email,
         subject: `Tests Completed — ${req.patient_name}`,
         html: doctorTestsCompleted({
