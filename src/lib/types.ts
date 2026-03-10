@@ -65,6 +65,16 @@ export interface LabRole {
   can_manage_team: boolean;
   can_manage_api_keys: boolean;
   created_at: string;
+  _count?: { members: number };
+}
+
+export interface LabMember {
+  id: string;
+  lab_id: string;
+  user_id: string;
+  role_id: string;
+  role: { id: string; name: string };
+  created_at: string;
 }
 
 export interface LabRequest {

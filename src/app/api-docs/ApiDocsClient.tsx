@@ -183,14 +183,18 @@ console.log(data.code); // e.g. "CDL-A3X9B1"`,
           { name: "page", type: "number", required: false, description: "Page number for pagination (default: 1)" },
           { name: "limit", type: "number", required: false, description: "Results per page (max 100, default: 50)" },
         ],
-        requestExample: `# curl (session cookie required — obtained after lab login)
+        requestExample: `# curl — using API key (LIMS/server integration)
+curl -X GET "https://poveon.com/api/lab/requests?status=incoming&page=1&limit=20" \\
+  -H "X-Poveon-Api-Key: pvn_live_xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx"
+
+# curl — using session cookie (portal/browser login)
 curl -X GET "https://poveon.com/api/lab/requests?status=incoming&page=1&limit=20" \\
   -H "Cookie: sb-access-token=<your-session-token>"
 
-# JavaScript (fetch) — cookie is sent automatically in browser sessions
+# JavaScript (fetch) — LIMS server-side
 const res = await fetch(
   "https://poveon.com/api/lab/requests?status=incoming&page=1&limit=20",
-  { credentials: "include" }
+  { headers: { "X-Poveon-Api-Key": process.env.POVEON_API_KEY } }
 );
 const data = await res.json();
 console.log(data.requests);`,
@@ -229,17 +233,19 @@ console.log(data.requests);`,
         body: [
           { name: "code", type: "string", required: true, description: "The request code (e.g. CDL-A3X9B1) — case-insensitive" },
         ],
-        requestExample: `# curl
+        requestExample: `# curl — API key (LIMS integration)
 curl -X POST https://poveon.com/api/requests/retrieve \\
   -H "Content-Type: application/json" \\
-  -H "Cookie: sb-access-token=<your-session-token>" \\
+  -H "X-Poveon-Api-Key: pvn_live_xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx" \\
   -d '{ "code": "CDL-A3X9B1" }'
 
-# JavaScript (fetch)
+# JavaScript (fetch) — LIMS server-side
 const res = await fetch("https://poveon.com/api/requests/retrieve", {
   method: "POST",
-  headers: { "Content-Type": "application/json" },
-  credentials: "include",
+  headers: {
+    "Content-Type": "application/json",
+    "X-Poveon-Api-Key": process.env.POVEON_API_KEY,
+  },
   body: JSON.stringify({ code: "CDL-A3X9B1" }),
 });
 const data = await res.json();
@@ -876,9 +882,31 @@ function AuthSection() {
     <div className="glass-card p-5 sm:p-6">
       <h2 className="text-lg font-bold text-slate-800 mb-1">Authentication</h2>
       <p className="text-sm text-slate-500 mb-4">
-        The API uses three access levels. Credentials are passed via Supabase session cookies set at login.
-        For server-to-server integrations, include the cookie header explicitly in every request.
+        The API supports three access levels. Lab endpoints accept <strong>either</strong> a session cookie (for human users logging in via the portal) <strong>or</strong> an <code className="text-xs bg-slate-100 px-1 rounded">X-Poveon-Api-Key</code> header (for LIMS and server integrations). Public endpoints require no credentials.
       </p>
+
+      {/* API Key box */}
+      <div className="mb-5 rounded-2xl border border-blue-200 bg-blue-50 p-4">
+        <div className="flex items-center gap-2 mb-2">
+          <span className="text-lg">🔑</span>
+          <span className="font-bold text-sm text-blue-800">LIMS / Server Authentication (API Key)</span>
+        </div>
+        <p className="text-xs text-slate-600 mb-3 leading-relaxed">
+          For machine-to-machine integrations, generate an API key from the Admin Dashboard → Labs → Dev panel. Pass it in every request as a header. Keys are hashed server-side — the raw value is only shown once at generation time.
+        </p>
+        <pre className="bg-slate-900 text-slate-100 rounded-xl p-3 text-xs font-mono overflow-x-auto mb-2">{`# All lab endpoints accept this header instead of a session cookie:
+X-Poveon-Api-Key: pvn_live_xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx`}</pre>
+        <pre className="bg-slate-900 text-slate-100 rounded-xl p-3 text-xs font-mono overflow-x-auto">{`// Node.js example
+const res = await fetch("https://poveon.com/api/requests/retrieve", {
+  method: "POST",
+  headers: {
+    "Content-Type": "application/json",
+    "X-Poveon-Api-Key": process.env.POVEON_API_KEY,
+  },
+  body: JSON.stringify({ code: "CDL-A3X9B1" }),
+});`}</pre>
+      </div>
+
       <div className="grid gap-3 sm:grid-cols-3">
         {[
           {
@@ -894,7 +922,7 @@ function AuthSection() {
             icon: "🔬",
             color: "border-blue-200 bg-blue-50",
             textColor: "text-blue-800",
-            desc: "Requires an active Supabase session for a lab user account. Log in via the lab dashboard to obtain a session cookie.",
+            desc: "Pass either a session cookie (portal login) or an X-Poveon-Api-Key header. Both grant the same access scoped to your lab.",
             endpoints: ["/api/lab/requests", "/api/requests/retrieve", "/api/requests/update-status", "/api/requests/send-results"],
           },
           {
@@ -930,8 +958,8 @@ function ErrorCodes() {
   const codes = [
     { code: "200", label: "OK", desc: "Request succeeded" },
     { code: "400", label: "Bad Request", desc: "Validation failed or invalid input" },
-    { code: "401", label: "Unauthorized", desc: "No valid session cookie present" },
-    { code: "403", label: "Forbidden", desc: "Authenticated but insufficient permissions" },
+    { code: "401", label: "Unauthorized", desc: "No valid session cookie or X-Poveon-Api-Key header present, or key is expired/revoked" },
+    { code: "403", label: "Forbidden", desc: "Authenticated but insufficient permissions (e.g. member role lacks the required permission)" },
     { code: "404", label: "Not Found", desc: "Resource does not exist" },
     { code: "500", label: "Server Error", desc: "Unexpected internal error" },
   ];

@@ -11,7 +11,7 @@ import {
 import { Button } from "@/components/ui/Button";
 import { Input, Textarea } from "@/components/ui/Input";
 import { StatusBadge, Badge } from "@/components/ui/Badge";
-import type { Lab, LabRequest, AdminMetrics, ApiLog, ApiLogSummary, LabApiKey } from "@/lib/types";
+import type { Lab, LabRequest, AdminMetrics, ApiLog, ApiLogSummary, LabApiKey, LabRole, LabMember } from "@/lib/types";
 import { SERVICE_CATEGORIES, LAB_CERTIFICATIONS } from "@/lib/constants";
 import { format } from "date-fns";
 import { createClient } from "@/lib/supabase/client"; // still used for auth sign-out
@@ -1100,7 +1100,39 @@ function CopyField({ label, value }: { label: string; value: string }) {
   );
 }
 
+type IntegrationTab = "developer" | "team";
+
 function LabIntegrationPanel({ lab }: { lab: Lab }) {
+  const [activeTab, setActiveTab] = useState<IntegrationTab>("developer");
+
+  return (
+    <div className="mt-3 border-t border-blue-500/20 pt-3">
+      {/* Tab selector */}
+      <div className="flex gap-1 bg-white/5 rounded-lg p-0.5 mb-4 w-fit">
+        {([
+          { key: "developer" as IntegrationTab, label: "Developer", icon: <Code2 className="w-3 h-3" /> },
+          { key: "team" as IntegrationTab, label: "Team & Roles", icon: <Users className="w-3 h-3" /> },
+        ]).map((t) => (
+          <button
+            key={t.key}
+            onClick={() => setActiveTab(t.key)}
+            className={`flex items-center gap-1.5 px-3 py-1.5 rounded-md text-xs font-medium transition-all ${
+              activeTab === t.key ? "bg-blue-600 text-white" : "text-slate-400 hover:text-white"
+            }`}
+          >
+            {t.icon}{t.label}
+          </button>
+        ))}
+      </div>
+
+      {activeTab === "developer" && <LabDeveloperTab lab={lab} />}
+      {activeTab === "team" && <LabTeamTab lab={lab} />}
+    </div>
+  );
+}
+
+// ── Developer Tab ──────────────────────────────────────────────────────────
+function LabDeveloperTab({ lab }: { lab: Lab }) {
   const [keys, setKeys] = useState<LabApiKey[]>([]);
   const [loadingKeys, setLoadingKeys] = useState(true);
   const [newKeyName, setNewKeyName] = useState("");
@@ -1147,15 +1179,13 @@ function LabIntegrationPanel({ lab }: { lab: Lab }) {
   }
 
   async function handleRevokeKey(keyId: string, keyName: string) {
-    if (!confirm(`Revoke API key "${keyName}"? Any LIMS using this key will stop working immediately.`)) return;
+    if (!confirm(`Revoke "${keyName}"? Any LIMS using this key will stop working immediately.`)) return;
     try {
       const res = await fetch(`/api/admin/labs/${lab.id}/api-keys/${keyId}`, { method: "DELETE" });
       const data = await res.json();
       if (data.success) { toast.success("Key revoked"); await fetchKeys(); }
       else toast.error(data.error ?? "Failed to revoke");
-    } catch {
-      toast.error("Network error");
-    }
+    } catch { toast.error("Network error"); }
   }
 
   const snippet = `curl -X POST ${API_BASE}/requests/create \\
@@ -1172,19 +1202,12 @@ function LabIntegrationPanel({ lab }: { lab: Lab }) {
   }'`;
 
   return (
-    <div className="mt-3 border-t border-blue-500/20 pt-3 space-y-4">
-      <div className="flex items-center gap-2 mb-1">
-        <Code2 className="w-3.5 h-3.5 text-blue-400" />
-        <p className="text-xs font-semibold text-blue-300 uppercase tracking-wider">Developer Setup</p>
-      </div>
-
-      {/* Credentials */}
+    <div className="space-y-4">
       <div className="space-y-2.5">
         <CopyField label="Lab ID" value={lab.id} />
         <CopyField label="API Base URL" value={API_BASE} />
       </div>
 
-      {/* Code snippet */}
       <div>
         <p className="text-xs text-slate-500 mb-1">Sample request (create lab request)</p>
         <div className="relative bg-slate-950/70 border border-white/8 rounded-lg p-3 overflow-x-auto">
@@ -1198,7 +1221,6 @@ function LabIntegrationPanel({ lab }: { lab: Lab }) {
         </div>
       </div>
 
-      {/* New revealed key banner */}
       {revealedKey && (
         <div className="bg-emerald-500/10 border border-emerald-500/30 rounded-xl p-3 space-y-2">
           <p className="text-xs font-semibold text-emerald-400">New key generated — copy it now. It will never be shown again.</p>
@@ -1215,7 +1237,6 @@ function LabIntegrationPanel({ lab }: { lab: Lab }) {
         </div>
       )}
 
-      {/* API keys */}
       <div>
         <p className="text-xs font-semibold text-slate-400 mb-2 flex items-center gap-1.5">
           <Key className="w-3.5 h-3.5" />API Keys
@@ -1246,7 +1267,6 @@ function LabIntegrationPanel({ lab }: { lab: Lab }) {
             ))}
           </div>
         )}
-        {/* Generate new key */}
         <div className="flex gap-2">
           <input
             value={newKeyName}
@@ -1267,8 +1287,324 @@ function LabIntegrationPanel({ lab }: { lab: Lab }) {
       </div>
 
       <p className="text-xs text-slate-600">
-        Authenticate LIMS requests with the <code className="font-mono text-slate-500">X-Poveon-Api-Key</code> header. Keys are hashed — only you can see the prefix for identification.
+        Authenticate LIMS requests with <code className="font-mono text-slate-500">X-Poveon-Api-Key</code>. Keys are hashed — only the prefix is stored for display.
       </p>
+    </div>
+  );
+}
+
+// ── Team & Roles Tab ───────────────────────────────────────────────────────
+
+const PERMISSION_LABELS: { key: keyof LabRole; label: string }[] = [
+  { key: "can_view_requests",   label: "View requests"   },
+  { key: "can_mark_seen",       label: "Mark seen"       },
+  { key: "can_mark_done",       label: "Mark done"       },
+  { key: "can_send_results",    label: "Send results"    },
+  { key: "can_manage_team",     label: "Manage team"     },
+  { key: "can_manage_api_keys", label: "Manage API keys" },
+];
+
+type DraftRole = {
+  name: string;
+  can_view_requests:   boolean;
+  can_mark_seen:       boolean;
+  can_mark_done:       boolean;
+  can_send_results:    boolean;
+  can_manage_team:     boolean;
+  can_manage_api_keys: boolean;
+};
+
+function blankRole(): DraftRole {
+  return { name: "", can_view_requests: true, can_mark_seen: false, can_mark_done: false, can_send_results: false, can_manage_team: false, can_manage_api_keys: false };
+}
+
+function LabTeamTab({ lab }: { lab: Lab }) {
+  const [roles, setRoles]     = useState<LabRole[]>([]);
+  const [members, setMembers] = useState<LabMember[]>([]);
+  const [loading, setLoading] = useState(true);
+
+  // Role editing state
+  const [editingRole, setEditingRole] = useState<LabRole | null>(null);
+  const [showNewRole, setShowNewRole] = useState(false);
+  const [draftRole, setDraftRole]     = useState<DraftRole>(blankRole());
+  const [savingRole, setSavingRole]   = useState(false);
+
+  // Member invite state
+  const [showInvite, setShowInvite]     = useState(false);
+  const [inviteEmail, setInviteEmail]   = useState("");
+  const [inviteRoleId, setInviteRoleId] = useState("");
+  const [inviting, setInviting]         = useState(false);
+  const [newMemberPass, setNewMemberPass] = useState<string | null>(null);
+
+  const refresh = useCallback(async () => {
+    try {
+      const [rolesRes, membersRes] = await Promise.all([
+        fetch(`/api/admin/labs/${lab.id}/roles`),
+        fetch(`/api/admin/labs/${lab.id}/members`),
+      ]);
+      const [rd, md] = await Promise.all([rolesRes.json(), membersRes.json()]);
+      if (rd.success) setRoles(rd.roles ?? []);
+      if (md.success) setMembers(md.members ?? []);
+    } finally {
+      setLoading(false);
+    }
+  }, [lab.id]);
+
+  useEffect(() => { refresh(); }, [refresh]);
+
+  // ── Role save (create or update) ──
+  async function handleSaveRole() {
+    if (!draftRole.name.trim()) { toast.error("Role name is required"); return; }
+    setSavingRole(true);
+    try {
+      const url  = editingRole ? `/api/admin/labs/${lab.id}/roles/${editingRole.id}` : `/api/admin/labs/${lab.id}/roles`;
+      const method = editingRole ? "PATCH" : "POST";
+      const res  = await fetch(url, { method, headers: { "Content-Type": "application/json" }, body: JSON.stringify(draftRole) });
+      const data = await res.json();
+      if (data.success) {
+        toast.success(editingRole ? "Role updated" : "Role created");
+        setShowNewRole(false);
+        setEditingRole(null);
+        setDraftRole(blankRole());
+        await refresh();
+      } else {
+        toast.error(data.error ?? "Failed to save role");
+      }
+    } catch { toast.error("Network error"); }
+    finally { setSavingRole(false); }
+  }
+
+  function startEditRole(role: LabRole) {
+    setEditingRole(role);
+    setDraftRole({
+      name: role.name,
+      can_view_requests:   role.can_view_requests,
+      can_mark_seen:       role.can_mark_seen,
+      can_mark_done:       role.can_mark_done,
+      can_send_results:    role.can_send_results,
+      can_manage_team:     role.can_manage_team,
+      can_manage_api_keys: role.can_manage_api_keys,
+    });
+    setShowNewRole(true);
+  }
+
+  async function handleDeleteRole(role: LabRole) {
+    if (!confirm(`Delete role "${role.name}"?${(role._count?.members ?? 0) > 0 ? ` It still has ${role._count?.members} member(s) — reassign them first.` : ""}`)) return;
+    try {
+      const res  = await fetch(`/api/admin/labs/${lab.id}/roles/${role.id}`, { method: "DELETE" });
+      const data = await res.json();
+      if (data.success) { toast.success("Role deleted"); await refresh(); }
+      else toast.error(data.error ?? "Failed to delete");
+    } catch { toast.error("Network error"); }
+  }
+
+  // ── Member invite ──
+  async function handleInvite() {
+    if (!inviteEmail.trim() || !inviteRoleId) { toast.error("Email and role are required"); return; }
+    setInviting(true);
+    try {
+      const res  = await fetch(`/api/admin/labs/${lab.id}/members`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ email: inviteEmail.trim(), role_id: inviteRoleId }),
+      });
+      const data = await res.json();
+      if (data.success) {
+        setNewMemberPass(data.tempPassword);
+        setInviteEmail("");
+        setInviteRoleId("");
+        setShowInvite(false);
+        await refresh();
+        toast.success("Member invited!");
+      } else {
+        toast.error(data.error ?? "Failed to invite");
+      }
+    } catch { toast.error("Network error"); }
+    finally { setInviting(false); }
+  }
+
+  async function handleRemoveMember(member: LabMember) {
+    if (!confirm(`Remove this member? Their login will be deleted.`)) return;
+    try {
+      const res  = await fetch(`/api/admin/labs/${lab.id}/members/${member.id}`, { method: "DELETE" });
+      const data = await res.json();
+      if (data.success) { toast.success("Member removed"); await refresh(); }
+      else toast.error(data.error ?? "Failed to remove");
+    } catch { toast.error("Network error"); }
+  }
+
+  if (loading) return <p className="text-xs text-slate-600 py-4 text-center">Loading…</p>;
+
+  return (
+    <div className="space-y-5">
+
+      {/* ── Roles section ── */}
+      <div>
+        <div className="flex items-center justify-between mb-2">
+          <p className="text-xs font-semibold text-slate-400 flex items-center gap-1.5">
+            <Key className="w-3.5 h-3.5" />Roles ({roles.length})
+          </p>
+          <button
+            onClick={() => { setEditingRole(null); setDraftRole(blankRole()); setShowNewRole(true); }}
+            className="flex items-center gap-1 px-2.5 py-1 rounded-lg bg-blue-600 hover:bg-blue-500 text-white text-xs transition-colors"
+          >
+            <Plus className="w-3 h-3" />New Role
+          </button>
+        </div>
+
+        {roles.length === 0 && !showNewRole && (
+          <p className="text-xs text-slate-600 py-2">No roles yet. Create one to start inviting team members.</p>
+        )}
+
+        <div className="space-y-1.5">
+          {roles.map((r) => (
+            <div key={r.id} className="bg-slate-950/40 border border-white/6 rounded-lg px-3 py-2">
+              <div className="flex items-center justify-between gap-2">
+                <div>
+                  <p className="text-xs font-medium text-slate-300">{r.name}</p>
+                  <p className="text-xs text-slate-600 mt-0.5">
+                    {PERMISSION_LABELS.filter((p) => r[p.key as keyof LabRole]).map((p) => p.label).join(" · ") || "No permissions"}
+                    {(r._count?.members ?? 0) > 0 && <span className="ml-2 text-slate-500">· {r._count?.members} member{(r._count?.members ?? 0) !== 1 ? "s" : ""}</span>}
+                  </p>
+                </div>
+                <div className="flex items-center gap-1 shrink-0">
+                  <button onClick={() => startEditRole(r)} className="p-1.5 rounded hover:bg-white/10 text-slate-500 hover:text-white transition-colors">
+                    <Pencil className="w-3 h-3" />
+                  </button>
+                  <button onClick={() => handleDeleteRole(r)} className="p-1.5 rounded hover:bg-red-500/20 text-slate-500 hover:text-red-400 transition-colors">
+                    <Trash2 className="w-3 h-3" />
+                  </button>
+                </div>
+              </div>
+            </div>
+          ))}
+        </div>
+
+        {/* Role editor */}
+        {showNewRole && (
+          <div className="mt-3 bg-slate-950/60 border border-blue-500/20 rounded-xl p-3 space-y-3">
+            <p className="text-xs font-semibold text-blue-300">{editingRole ? `Edit: ${editingRole.name}` : "New Role"}</p>
+            <input
+              value={draftRole.name}
+              onChange={(e) => setDraftRole((d) => ({ ...d, name: e.target.value }))}
+              placeholder="Role name (e.g. Front Desk, Lab Scientist)"
+              className="w-full bg-slate-900 border border-white/10 text-slate-200 placeholder-slate-600 rounded-lg px-3 py-2 text-xs focus:outline-none focus:ring-1 focus:ring-blue-500"
+            />
+            <div className="grid grid-cols-2 gap-1.5">
+              {PERMISSION_LABELS.map(({ key, label }) => (
+                <label key={key} className="flex items-center gap-2 cursor-pointer group">
+                  <input
+                    type="checkbox"
+                    checked={!!draftRole[key as keyof DraftRole]}
+                    onChange={(e) => setDraftRole((d) => ({ ...d, [key]: e.target.checked }))}
+                    className="accent-blue-500 w-3.5 h-3.5 shrink-0"
+                  />
+                  <span className="text-xs text-slate-400 group-hover:text-slate-200 transition-colors">{label}</span>
+                </label>
+              ))}
+            </div>
+            <div className="flex gap-2">
+              <button onClick={() => { setShowNewRole(false); setEditingRole(null); setDraftRole(blankRole()); }}
+                className="flex-1 px-3 py-1.5 rounded-lg bg-white/5 hover:bg-white/10 text-slate-400 text-xs transition-colors">
+                Cancel
+              </button>
+              <button onClick={handleSaveRole} disabled={savingRole}
+                className="flex-1 px-3 py-1.5 rounded-lg bg-blue-600 hover:bg-blue-500 text-white text-xs font-medium transition-colors disabled:opacity-50">
+                {savingRole ? "Saving…" : editingRole ? "Save Changes" : "Create Role"}
+              </button>
+            </div>
+          </div>
+        )}
+      </div>
+
+      {/* ── Members section ── */}
+      <div>
+        <div className="flex items-center justify-between mb-2">
+          <p className="text-xs font-semibold text-slate-400 flex items-center gap-1.5">
+            <Users className="w-3.5 h-3.5" />Members ({members.length})
+          </p>
+          {roles.length > 0 && (
+            <button
+              onClick={() => setShowInvite((v) => !v)}
+              className="flex items-center gap-1 px-2.5 py-1 rounded-lg bg-blue-600 hover:bg-blue-500 text-white text-xs transition-colors"
+            >
+              <Plus className="w-3 h-3" />Invite
+            </button>
+          )}
+        </div>
+
+        {roles.length === 0 && (
+          <p className="text-xs text-slate-600 py-1">Create at least one role before inviting members.</p>
+        )}
+
+        {members.length === 0 && roles.length > 0 && (
+          <p className="text-xs text-slate-600 py-1">No members yet.</p>
+        )}
+
+        <div className="space-y-1.5">
+          {members.map((m) => (
+            <div key={m.id} className="flex items-center gap-2 bg-slate-950/40 border border-white/6 rounded-lg px-3 py-2">
+              <div className="flex-1 min-w-0">
+                <p className="text-xs font-mono text-slate-400 truncate">{m.user_id}</p>
+                <p className="text-xs text-slate-600">Role: <span className="text-slate-400">{m.role.name}</span></p>
+              </div>
+              <button onClick={() => handleRemoveMember(m)}
+                className="shrink-0 p-1.5 rounded hover:bg-red-500/20 text-slate-500 hover:text-red-400 transition-colors">
+                <Trash2 className="w-3 h-3" />
+              </button>
+            </div>
+          ))}
+        </div>
+
+        {/* Invite form */}
+        {showInvite && (
+          <div className="mt-3 bg-slate-950/60 border border-blue-500/20 rounded-xl p-3 space-y-2">
+            <p className="text-xs font-semibold text-blue-300">Invite Team Member</p>
+            <input
+              type="email"
+              value={inviteEmail}
+              onChange={(e) => setInviteEmail(e.target.value)}
+              placeholder="member@lab.com"
+              className="w-full bg-slate-900 border border-white/10 text-slate-200 placeholder-slate-600 rounded-lg px-3 py-2 text-xs focus:outline-none focus:ring-1 focus:ring-blue-500"
+            />
+            <select
+              value={inviteRoleId}
+              onChange={(e) => setInviteRoleId(e.target.value)}
+              className="w-full bg-slate-900 border border-white/10 text-slate-300 rounded-lg px-3 py-2 text-xs focus:outline-none focus:ring-1 focus:ring-blue-500"
+            >
+              <option value="">Select role…</option>
+              {roles.map((r) => <option key={r.id} value={r.id}>{r.name}</option>)}
+            </select>
+            <div className="flex gap-2">
+              <button onClick={() => setShowInvite(false)}
+                className="flex-1 px-3 py-1.5 rounded-lg bg-white/5 hover:bg-white/10 text-slate-400 text-xs transition-colors">
+                Cancel
+              </button>
+              <button onClick={handleInvite} disabled={inviting}
+                className="flex-1 px-3 py-1.5 rounded-lg bg-blue-600 hover:bg-blue-500 text-white text-xs font-medium transition-colors disabled:opacity-50">
+                {inviting ? "Inviting…" : "Send Invite"}
+              </button>
+            </div>
+          </div>
+        )}
+
+        {/* Temp password reveal */}
+        {newMemberPass && (
+          <div className="mt-3 bg-amber-500/10 border border-amber-500/30 rounded-xl p-3 space-y-2">
+            <p className="text-xs font-semibold text-amber-400">Member created — share this temporary password</p>
+            <div className="flex items-center gap-2 bg-slate-950/60 rounded-lg px-3 py-2">
+              <code className="text-xs font-mono text-amber-300 flex-1">{newMemberPass}</code>
+              <button
+                onClick={() => { navigator.clipboard.writeText(newMemberPass); toast.success("Copied!"); }}
+                className="p-1 rounded hover:bg-white/10 text-amber-500 transition-colors"
+              >
+                <Copy className="w-3.5 h-3.5" />
+              </button>
+            </div>
+            <button onClick={() => setNewMemberPass(null)} className="text-xs text-slate-500 hover:text-white transition-colors">Dismiss</button>
+          </div>
+        )}
+      </div>
     </div>
   );
 }
