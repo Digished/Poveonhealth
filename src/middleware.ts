@@ -30,39 +30,29 @@ export async function middleware(request: NextRequest) {
   } = await supabase.auth.getUser();
 
   const { pathname } = request.nextUrl;
+  const role = user?.user_metadata?.role;
 
   // ── Lab Dashboard ──────────────────────────────────────────────────────────
   if (pathname.startsWith("/lab-dashboard")) {
-    if (!user) {
-      return NextResponse.redirect(new URL("/lab-login", request.url));
-    }
-    const role = user.user_metadata?.role;
-    if (role !== "lab") {
+    if (!user || (role !== "lab" && role !== "lab_member")) {
       return NextResponse.redirect(new URL("/lab-login", request.url));
     }
   }
 
   // ── Admin ──────────────────────────────────────────────────────────────────
   if (pathname.startsWith("/admin") && !pathname.startsWith("/admin-login")) {
-    if (!user) {
-      return NextResponse.redirect(new URL("/admin-login", request.url));
-    }
-    const role = user.user_metadata?.role;
-    if (role !== "admin") {
+    if (!user || role !== "admin") {
       return NextResponse.redirect(new URL("/admin-login", request.url));
     }
   }
 
   // ── Redirect authenticated lab users away from login page ─────────────────
-  if (pathname === "/lab-login" && user?.user_metadata?.role === "lab") {
+  if (pathname === "/lab-login" && (role === "lab" || role === "lab_member")) {
     return NextResponse.redirect(new URL("/lab-dashboard", request.url));
   }
 
   // ── Redirect authenticated admin users away from admin-login ──────────────
-  if (
-    pathname === "/admin-login" &&
-    user?.user_metadata?.role === "admin"
-  ) {
+  if (pathname === "/admin-login" && role === "admin") {
     return NextResponse.redirect(new URL("/admin", request.url));
   }
 
