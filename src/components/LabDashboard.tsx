@@ -911,7 +911,7 @@ export function LabDashboard({ lab, isOwner = false }: LabDashboardProps) {
                         {teamMembers.map((m) => (
                           <div key={m.id} className="bg-white/5 border border-white/8 rounded-xl px-4 py-3 flex items-center justify-between gap-3">
                             <div className="min-w-0">
-                              <p className="text-sm text-white truncate">{m.email}</p>
+                              <p className="text-sm text-white truncate">{m.email ?? "—"}</p>
                               <p className="text-xs text-slate-500 mt-0.5">
                                 {m.role.name}
                                 {m.last_sign_in_at

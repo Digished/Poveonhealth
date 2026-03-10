@@ -1566,7 +1566,7 @@ function LabTeamTab({ lab }: { lab: Lab }) {
           {members.map((m) => (
             <div key={m.id} className="flex items-center gap-2 bg-slate-950/40 border border-white/6 rounded-lg px-3 py-2">
               <div className="flex-1 min-w-0">
-                <p className="text-xs text-slate-300 truncate">{m.email}</p>
+                <p className="text-xs text-slate-300 truncate">{m.email ?? m.user_id}</p>
                 <p className="text-xs text-slate-600">
                   Role: <span className="text-slate-400">{m.role.name}</span>
                   {m.last_sign_in_at

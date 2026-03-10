@@ -72,7 +72,7 @@ export interface LabMember {
   id: string;
   lab_id: string;
   user_id: string;
-  email: string;
+  email: string | null;
   role_id: string;
   role: { id: string; name: string };
   created_at: string;

@@ -50,7 +50,7 @@ model LabMember {
   id         String   @id @default(uuid())
   lab_id     String
   user_id    String   @unique
-  email      String
+  email      String?
   role_id    String
   created_at DateTime @default(now())
 
