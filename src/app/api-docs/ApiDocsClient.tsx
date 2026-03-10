@@ -24,6 +24,7 @@ interface Endpoint {
   params?: Param[];
   body?: Param[];
   responseExample: string;
+  requestExample: string;
   notes?: string[];
 }
 
@@ -34,6 +35,8 @@ interface Section {
   color: string;
   endpoints: Endpoint[];
 }
+
+const BASE_URL = "https://poveon.com";
 
 /* ─── Data ───────────────────────────────────────────────────────────── */
 const sections: Section[] = [
@@ -51,6 +54,13 @@ const sections: Section[] = [
         description:
           "Returns all visible (non-hidden) laboratories. Used to populate the lab selector in the request form. Response is never cached — always returns fresh data.",
         auth: "public",
+        requestExample: `# curl
+curl -X GET https://poveon.com/api/labs
+
+# JavaScript (fetch)
+const res = await fetch("https://poveon.com/api/labs");
+const data = await res.json();
+console.log(data.labs);`,
         responseExample: JSON.stringify(
           {
             success: true,
@@ -101,6 +111,38 @@ const sections: Section[] = [
           { name: "doctor_account_name", type: "string", required: false, description: "Account name for referral payment" },
           { name: "diagnosis", type: "string", required: false, description: "Clinical diagnosis / notes (up to 2000 chars)" },
         ],
+        requestExample: `# curl
+curl -X POST https://poveon.com/api/requests/create \\
+  -H "Content-Type: application/json" \\
+  -d '{
+    "patient_name": "John Doe",
+    "dob": "1985-06-15",
+    "sex": "male",
+    "tests": "Full Blood Count, Liver Function Test",
+    "lab_id": "your-lab-uuid",
+    "doctor_name": "Amara Obi",
+    "doctor_email": "amara@clinic.com",
+    "doctor_prefix": "Dr.",
+    "patient_email": "johndoe@email.com",
+    "diagnosis": "Suspected anaemia"
+  }'
+
+# JavaScript (fetch)
+const res = await fetch("https://poveon.com/api/requests/create", {
+  method: "POST",
+  headers: { "Content-Type": "application/json" },
+  body: JSON.stringify({
+    patient_name: "John Doe",
+    dob: "1985-06-15",
+    sex: "male",
+    tests: "Full Blood Count, Liver Function Test",
+    lab_id: "your-lab-uuid",
+    doctor_name: "Amara Obi",
+    doctor_email: "amara@clinic.com",
+  }),
+});
+const data = await res.json();
+console.log(data.code); // e.g. "CDL-A3X9B1"`,
         responseExample: JSON.stringify(
           {
             success: true,
@@ -134,8 +176,24 @@ const sections: Section[] = [
         path: "/api/lab/requests",
         summary: "List Lab's Requests",
         description:
-          "Returns all requests for the authenticated lab user's laboratory, ordered newest first.",
+          "Returns all requests for the authenticated lab user's laboratory, ordered newest first. Requires an active lab session cookie (obtained by logging in via the lab dashboard).",
         auth: "lab",
+        params: [
+          { name: "status", type: '"incoming" | "seen" | "done"', required: false, description: "Filter by request status" },
+          { name: "page", type: "number", required: false, description: "Page number for pagination (default: 1)" },
+          { name: "limit", type: "number", required: false, description: "Results per page (max 100, default: 50)" },
+        ],
+        requestExample: `# curl (session cookie required — obtained after lab login)
+curl -X GET "https://poveon.com/api/lab/requests?status=incoming&page=1&limit=20" \\
+  -H "Cookie: sb-access-token=<your-session-token>"
+
+# JavaScript (fetch) — cookie is sent automatically in browser sessions
+const res = await fetch(
+  "https://poveon.com/api/lab/requests?status=incoming&page=1&limit=20",
+  { credentials: "include" }
+);
+const data = await res.json();
+console.log(data.requests);`,
         responseExample: JSON.stringify(
           {
             success: true,
@@ -171,6 +229,21 @@ const sections: Section[] = [
         body: [
           { name: "code", type: "string", required: true, description: "The request code (e.g. CDL-A3X9B1) — case-insensitive" },
         ],
+        requestExample: `# curl
+curl -X POST https://poveon.com/api/requests/retrieve \\
+  -H "Content-Type: application/json" \\
+  -H "Cookie: sb-access-token=<your-session-token>" \\
+  -d '{ "code": "CDL-A3X9B1" }'
+
+# JavaScript (fetch)
+const res = await fetch("https://poveon.com/api/requests/retrieve", {
+  method: "POST",
+  headers: { "Content-Type": "application/json" },
+  credentials: "include",
+  body: JSON.stringify({ code: "CDL-A3X9B1" }),
+});
+const data = await res.json();
+console.log(data.request);`,
         responseExample: JSON.stringify(
           {
             success: true,
@@ -211,6 +284,20 @@ const sections: Section[] = [
           { name: "requestId", type: "UUID", required: true, description: "The request's unique ID" },
           { name: "status", type: '"seen" | "done"', required: true, description: "Target status" },
         ],
+        requestExample: `# curl
+curl -X POST https://poveon.com/api/requests/update-status \\
+  -H "Content-Type: application/json" \\
+  -H "Cookie: sb-access-token=<your-session-token>" \\
+  -d '{ "requestId": "uuid-of-request", "status": "done" }'
+
+# JavaScript (fetch)
+const res = await fetch("https://poveon.com/api/requests/update-status", {
+  method: "POST",
+  headers: { "Content-Type": "application/json" },
+  credentials: "include",
+  body: JSON.stringify({ requestId: "uuid-of-request", status: "done" }),
+});
+const data = await res.json(); // { success: true, status: "done" }`,
         responseExample: JSON.stringify({ success: true, status: "done" }, null, 2),
         notes: [
           "Only valid transitions are allowed: incoming→seen, seen→done.",
@@ -233,6 +320,31 @@ const sections: Section[] = [
           { name: "note", type: "string", required: false, description: "Optional note included in the email" },
           { name: "patientEmail", type: "string (email)", required: false, description: "Override patient email for this delivery" },
         ],
+        requestExample: `# curl — sending a PDF file
+curl -X POST https://poveon.com/api/requests/send-results \\
+  -H "Cookie: sb-access-token=<your-session-token>" \\
+  -F "requestId=uuid-of-request" \\
+  -F "resultFiles=@/path/to/results.pdf" \\
+  -F "note=All tests completed. Please review the attached PDF."
+
+# curl — sending a result link instead
+curl -X POST https://poveon.com/api/requests/send-results \\
+  -H "Cookie: sb-access-token=<your-session-token>" \\
+  -F "requestId=uuid-of-request" \\
+  -F "resultLink=https://your-lims.com/results/abc123"
+
+# JavaScript (fetch) — multipart/form-data
+const form = new FormData();
+form.append("requestId", "uuid-of-request");
+form.append("resultFiles", pdfFileObject); // a File object
+form.append("note", "Results attached.");
+
+const res = await fetch("https://poveon.com/api/requests/send-results", {
+  method: "POST",
+  credentials: "include",
+  body: form, // do NOT set Content-Type manually — browser sets it with boundary
+});
+const data = await res.json();`,
         responseExample: JSON.stringify({ success: true, status: "done" }, null, 2),
         notes: [
           "Request must be `multipart/form-data` (not JSON).",
@@ -258,6 +370,15 @@ const sections: Section[] = [
         params: [
           { name: "—", type: "—", required: false, description: "No query parameters" },
         ],
+        requestExample: `# curl
+curl -X GET https://poveon.com/api/admin/labs \\
+  -H "Cookie: sb-access-token=<admin-session-token>"
+
+# JavaScript (fetch)
+const res = await fetch("https://poveon.com/api/admin/labs", {
+  credentials: "include",
+});
+const data = await res.json();`,
         responseExample: JSON.stringify(
           { success: true, labs: [{ id: "uuid", name: "Lab A", hidden: true }] },
           null,
@@ -283,6 +404,32 @@ const sections: Section[] = [
           { name: "certifications", type: "string[]", required: false, description: "List of certification names" },
           { name: "hidden", type: "boolean", required: false, description: "Hide from public lab list (default: false)" },
         ],
+        requestExample: `# curl
+curl -X POST https://poveon.com/api/admin/create-lab \\
+  -H "Content-Type: application/json" \\
+  -H "Cookie: sb-access-token=<admin-session-token>" \\
+  -d '{
+    "name": "Central Diagnostics Lab",
+    "prefix": "CDL",
+    "email": "lab@centraldiagnostics.com",
+    "address": "12 Hospital Rd, Lagos",
+    "phones": ["+2348012345678"],
+    "service_categories": ["Hematology", "Clinical Chemistry"],
+    "certifications": ["MLSCN Registered"]
+  }'
+
+# JavaScript (fetch)
+const res = await fetch("https://poveon.com/api/admin/create-lab", {
+  method: "POST",
+  headers: { "Content-Type": "application/json" },
+  credentials: "include",
+  body: JSON.stringify({
+    name: "Central Diagnostics Lab",
+    prefix: "CDL",
+    email: "lab@centraldiagnostics.com",
+  }),
+});
+const data = await res.json();`,
         responseExample: JSON.stringify({ success: true, lab: { id: "uuid", name: "New Lab" } }, null, 2),
       },
       {
@@ -301,6 +448,20 @@ const sections: Section[] = [
           { name: "service_categories", type: "string[]", required: false, description: "Updated service categories" },
           { name: "certifications", type: "string[]", required: false, description: "Updated certifications" },
         ],
+        requestExample: `# curl — replace [id] with the lab's UUID
+curl -X PATCH https://poveon.com/api/admin/labs/uuid-of-lab \\
+  -H "Content-Type: application/json" \\
+  -H "Cookie: sb-access-token=<admin-session-token>" \\
+  -d '{ "address": "15 New Street, Abuja", "hidden": false }'
+
+# JavaScript (fetch)
+const res = await fetch(\`https://poveon.com/api/admin/labs/\${labId}\`, {
+  method: "PATCH",
+  headers: { "Content-Type": "application/json" },
+  credentials: "include",
+  body: JSON.stringify({ address: "15 New Street, Abuja" }),
+});
+const data = await res.json();`,
         responseExample: JSON.stringify({ success: true, lab: { id: "uuid", name: "Updated Lab" } }, null, 2),
       },
       {
@@ -311,6 +472,16 @@ const sections: Section[] = [
         description:
           "Permanently deletes a laboratory and all associated data (requests, lab users). Also removes the Supabase auth user. This action is irreversible.",
         auth: "admin",
+        requestExample: `# curl — replace [id] with the lab's UUID
+curl -X DELETE https://poveon.com/api/admin/labs/uuid-of-lab \\
+  -H "Cookie: sb-access-token=<admin-session-token>"
+
+# JavaScript (fetch)
+const res = await fetch(\`https://poveon.com/api/admin/labs/\${labId}\`, {
+  method: "DELETE",
+  credentials: "include",
+});
+const data = await res.json(); // { success: true }`,
         responseExample: JSON.stringify({ success: true }, null, 2),
         notes: ["This is a destructive operation — all lab data is permanently removed."],
       },
@@ -325,6 +496,21 @@ const sections: Section[] = [
         body: [
           { name: "logo", type: "File (image)", required: true, description: "JPEG, PNG, WebP, or GIF image file (multipart/form-data)" },
         ],
+        requestExample: `# curl
+curl -X POST https://poveon.com/api/admin/labs/uuid-of-lab/logo \\
+  -H "Cookie: sb-access-token=<admin-session-token>" \\
+  -F "logo=@/path/to/logo.png"
+
+# JavaScript (fetch)
+const form = new FormData();
+form.append("logo", imageFileObject);
+
+const res = await fetch(\`https://poveon.com/api/admin/labs/\${labId}/logo\`, {
+  method: "POST",
+  credentials: "include",
+  body: form,
+});
+const data = await res.json();`,
         responseExample: JSON.stringify(
           { success: true, logo_url: "https://storage.supabase.co/lab-logos/uuid.jpg" },
           null,
@@ -345,6 +531,16 @@ const sections: Section[] = [
           { name: "page", type: "number", required: false, description: "Page number (default: 1)" },
           { name: "limit", type: "number", required: false, description: "Results per page (max 100, default 50)" },
         ],
+        requestExample: `# curl — list all incoming requests for a specific lab
+curl -X GET "https://poveon.com/api/admin/requests?status=incoming&lab_id=uuid&page=1&limit=50" \\
+  -H "Cookie: sb-access-token=<admin-session-token>"
+
+# JavaScript (fetch)
+const params = new URLSearchParams({ status: "incoming", page: "1", limit: "50" });
+const res = await fetch(\`https://poveon.com/api/admin/requests?\${params}\`, {
+  credentials: "include",
+});
+const data = await res.json();`,
         responseExample: JSON.stringify(
           {
             success: true,
@@ -365,6 +561,16 @@ const sections: Section[] = [
         summary: "Delete Request",
         description: "Permanently deletes a single request record.",
         auth: "admin",
+        requestExample: `# curl
+curl -X DELETE https://poveon.com/api/admin/requests/uuid-of-request \\
+  -H "Cookie: sb-access-token=<admin-session-token>"
+
+# JavaScript (fetch)
+const res = await fetch(\`https://poveon.com/api/admin/requests/\${requestId}\`, {
+  method: "DELETE",
+  credentials: "include",
+});
+const data = await res.json(); // { success: true }`,
         responseExample: JSON.stringify({ success: true }, null, 2),
       },
     ],
@@ -467,7 +673,7 @@ function ParamTable({ params, title }: { params: Param[]; title: string }) {
   );
 }
 
-function CodeBlock({ code }: { code: string }) {
+function CodeBlock({ code, label = "Response Example" }: { code: string; label?: string }) {
   const [copied, setCopied] = useState(false);
   const copy = () => {
     navigator.clipboard.writeText(code).then(() => {
@@ -478,7 +684,7 @@ function CodeBlock({ code }: { code: string }) {
   return (
     <div className="mt-4">
       <div className="flex items-center justify-between mb-1.5">
-        <p className="text-xs font-semibold text-slate-500 uppercase tracking-wider">Response Example</p>
+        <p className="text-xs font-semibold text-slate-500 uppercase tracking-wider">{label}</p>
         <button
           onClick={copy}
           className="text-xs text-slate-400 hover:text-slate-600 transition-colors flex items-center gap-1 px-2 py-1 rounded-md hover:bg-slate-100"
@@ -495,6 +701,7 @@ function CodeBlock({ code }: { code: string }) {
 
 function EndpointCard({ endpoint }: { endpoint: Endpoint }) {
   const [open, setOpen] = useState(false);
+  const [tab, setTab] = useState<"request" | "response">("request");
   return (
     <div className="border border-slate-200 rounded-2xl overflow-hidden bg-white shadow-sm hover:shadow-md transition-shadow">
       {/* Header — always visible */}
@@ -547,7 +754,36 @@ function EndpointCard({ endpoint }: { endpoint: Endpoint }) {
             <ParamTable params={endpoint.body} title="Request Body" />
           )}
 
-          <CodeBlock code={endpoint.responseExample} />
+          {/* Tab switcher for request / response examples */}
+          <div className="mt-5">
+            <div className="flex gap-1 mb-2 border-b border-slate-100 pb-1">
+              <button
+                onClick={() => setTab("request")}
+                className={`text-xs font-semibold px-3 py-1.5 rounded-t-md transition-colors ${
+                  tab === "request"
+                    ? "bg-slate-900 text-slate-100"
+                    : "text-slate-500 hover:text-slate-700 hover:bg-slate-100"
+                }`}
+              >
+                Request Example
+              </button>
+              <button
+                onClick={() => setTab("response")}
+                className={`text-xs font-semibold px-3 py-1.5 rounded-t-md transition-colors ${
+                  tab === "response"
+                    ? "bg-slate-900 text-slate-100"
+                    : "text-slate-500 hover:text-slate-700 hover:bg-slate-100"
+                }`}
+              >
+                Response Example
+              </button>
+            </div>
+            {tab === "request" ? (
+              <CodeBlock code={endpoint.requestExample} label="Request Example (curl / fetch)" />
+            ) : (
+              <CodeBlock code={endpoint.responseExample} label="Response Example" />
+            )}
+          </div>
         </div>
       )}
     </div>
@@ -640,7 +876,8 @@ function AuthSection() {
     <div className="glass-card p-5 sm:p-6">
       <h2 className="text-lg font-bold text-slate-800 mb-1">Authentication</h2>
       <p className="text-sm text-slate-500 mb-4">
-        The API uses three access levels. Credentials are passed via Supabase session cookies.
+        The API uses three access levels. Credentials are passed via Supabase session cookies set at login.
+        For server-to-server integrations, include the cookie header explicitly in every request.
       </p>
       <div className="grid gap-3 sm:grid-cols-3">
         {[
@@ -657,7 +894,7 @@ function AuthSection() {
             icon: "🔬",
             color: "border-blue-200 bg-blue-50",
             textColor: "text-blue-800",
-            desc: "Requires an active Supabase session for a lab user account.",
+            desc: "Requires an active Supabase session for a lab user account. Log in via the lab dashboard to obtain a session cookie.",
             endpoints: ["/api/lab/requests", "/api/requests/retrieve", "/api/requests/update-status", "/api/requests/send-results"],
           },
           {
@@ -665,7 +902,7 @@ function AuthSection() {
             icon: "🔐",
             color: "border-violet-200 bg-violet-50",
             textColor: "text-violet-800",
-            desc: "Requires a Supabase session for a verified AdminUser record.",
+            desc: "Requires a Supabase session for a verified AdminUser record. Only Poveon staff accounts qualify.",
             endpoints: ["/api/admin/*"],
           },
         ].map((item) => (
@@ -698,11 +935,21 @@ function ErrorCodes() {
     { code: "404", label: "Not Found", desc: "Resource does not exist" },
     { code: "500", label: "Server Error", desc: "Unexpected internal error" },
   ];
+  const errorExample = JSON.stringify(
+    { success: false, error: "Validation failed: patient_name is required" },
+    null,
+    2
+  );
   return (
     <div className="glass-card p-5 sm:p-6">
       <h2 className="text-lg font-bold text-slate-800 mb-1">HTTP Status Codes</h2>
-      <p className="text-sm text-slate-500 mb-4">All error responses include a JSON body with <code className="text-xs bg-slate-100 px-1 rounded">success: false</code> and an <code className="text-xs bg-slate-100 px-1 rounded">error</code> message.</p>
-      <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-3">
+      <p className="text-sm text-slate-500 mb-4">
+        All error responses include a JSON body with{" "}
+        <code className="text-xs bg-slate-100 px-1 rounded">success: false</code> and an{" "}
+        <code className="text-xs bg-slate-100 px-1 rounded">error</code> message string. Always check{" "}
+        <code className="text-xs bg-slate-100 px-1 rounded">success</code> before using the response data.
+      </p>
+      <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-3 mb-5">
         {codes.map((c) => (
           <div key={c.code} className="flex items-start gap-3 p-3 rounded-xl border border-slate-100 bg-slate-50/50">
             <span className={`font-mono font-bold text-sm flex-shrink-0 ${
@@ -718,6 +965,57 @@ function ErrorCodes() {
           </div>
         ))}
       </div>
+      <p className="text-xs font-semibold text-slate-500 uppercase tracking-wider mb-2">Error Response Format</p>
+      <pre className="bg-slate-900 text-slate-100 rounded-xl p-4 text-xs font-mono overflow-x-auto leading-relaxed border border-slate-800">
+        {errorExample}
+      </pre>
+    </div>
+  );
+}
+
+function RateLimiting() {
+  return (
+    <div className="glass-card p-5 sm:p-6">
+      <h2 className="text-lg font-bold text-slate-800 mb-1">Rate Limiting</h2>
+      <p className="text-sm text-slate-500 mb-4">
+        The API does not enforce hard rate limits at this time. However, the following fair-use guidelines apply
+        to keep the platform stable for all users.
+      </p>
+      <div className="grid gap-3 sm:grid-cols-3">
+        {[
+          {
+            icon: "📝",
+            title: "Request Creation",
+            rule: "Max ~60 requests/minute per IP",
+            note: "Suitable for batch doctor workflows. Avoid tight loops.",
+          },
+          {
+            icon: "📡",
+            title: "Status Polling",
+            rule: "Poll at most once every 30 seconds",
+            note: "Do not poll continuously. Use reasonable intervals in your LIMS.",
+          },
+          {
+            icon: "📄",
+            title: "File Uploads",
+            rule: "Max 10 MB per PDF file",
+            note: "Compress large result PDFs before uploading.",
+          },
+        ].map((item) => (
+          <div key={item.title} className="rounded-2xl border border-slate-200 bg-slate-50/50 p-4">
+            <div className="flex items-center gap-2 mb-2">
+              <span className="text-xl">{item.icon}</span>
+              <span className="font-bold text-sm text-slate-700">{item.title}</span>
+            </div>
+            <p className="text-xs font-semibold text-medical-700 mb-1">{item.rule}</p>
+            <p className="text-xs text-slate-500 leading-relaxed">{item.note}</p>
+          </div>
+        ))}
+      </div>
+      <p className="text-xs text-slate-400 mt-4">
+        If your integration requires higher throughput, contact us at{" "}
+        <a href="mailto:support@poveon.com" className="text-medical-600 hover:underline">support@poveon.com</a>.
+      </p>
     </div>
   );
 }
@@ -765,7 +1063,7 @@ export default function ApiDocsClient() {
           {/* Quick stats */}
           <div className="flex flex-wrap gap-3 mt-5">
             {[
-              { label: "Base URL", value: "https://your-domain.com" },
+              { label: "Base URL", value: BASE_URL },
               { label: "Protocol", value: "HTTPS only" },
               { label: "Format", value: "JSON / FormData" },
               { label: "Auth", value: "Cookie-based" },
@@ -791,6 +1089,7 @@ export default function ApiDocsClient() {
                   { id: "status-flow", label: "Status Workflow", icon: "🔄" },
                   ...sections.map((s) => ({ id: s.id, label: s.label, icon: s.icon })),
                   { id: "errors", label: "Status Codes", icon: "⚠️" },
+                  { id: "rate-limiting", label: "Rate Limiting", icon: "⏱️" },
                 ].map((item) => (
                   <button
                     key={item.id}
@@ -873,6 +1172,11 @@ export default function ApiDocsClient() {
             {/* Error codes */}
             <section id="errors">
               <ErrorCodes />
+            </section>
+
+            {/* Rate limiting */}
+            <section id="rate-limiting">
+              <RateLimiting />
             </section>
 
             {/* Footer CTA */}
