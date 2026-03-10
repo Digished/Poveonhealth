@@ -45,6 +45,28 @@ export interface LabUser {
   created_at: string;
 }
 
+export interface LabApiKey {
+  id: string;
+  name: string;
+  key_prefix: string;
+  last_used: string | null;
+  expires_at: string | null;
+  created_at: string;
+}
+
+export interface LabRole {
+  id: string;
+  lab_id: string;
+  name: string;
+  can_view_requests: boolean;
+  can_mark_seen: boolean;
+  can_mark_done: boolean;
+  can_send_results: boolean;
+  can_manage_team: boolean;
+  can_manage_api_keys: boolean;
+  created_at: string;
+}
+
 export interface LabRequest {
   id: string;
   code: string;

@@ -24,13 +24,16 @@ model Lab {
   certifications      Json      @default("[]")
   created_at          DateTime  @default(now())
 
-  lab_users  LabUser[]
-  requests   Request[]
+  lab_users   LabUser[]
+  lab_members LabMember[]
+  lab_roles   LabRole[]
+  api_keys    LabApiKey[]
+  requests    Request[]
 
   @@map("labs")
 }
 
-// Links Supabase Auth users to labs
+// Links Supabase Auth users to labs (legacy — owner/admin account)
 model LabUser {
   id         String   @id @default(uuid())
   user_id    String   @unique
@@ -40,6 +43,60 @@ model LabUser {
   lab        Lab      @relation(fields: [lab_id], references: [id], onDelete: Cascade)
 
   @@map("lab_users")
+}
+
+// Lab staff members with custom roles
+model LabMember {
+  id         String   @id @default(uuid())
+  lab_id     String
+  user_id    String   @unique
+  role_id    String
+  created_at DateTime @default(now())
+
+  lab        Lab      @relation(fields: [lab_id], references: [id], onDelete: Cascade)
+  role       LabRole  @relation(fields: [role_id], references: [id])
+
+  @@index([lab_id])
+  @@map("lab_members")
+}
+
+// Granular, lab-defined roles (e.g., "Front Desk", "Results Uploader")
+model LabRole {
+  id                   String   @id @default(uuid())
+  lab_id               String
+  name                 String
+  // Permission toggles
+  can_view_requests    Boolean  @default(true)
+  can_mark_seen        Boolean  @default(false)
+  can_mark_done        Boolean  @default(false)
+  can_send_results     Boolean  @default(false)
+  can_manage_team      Boolean  @default(false)
+  can_manage_api_keys  Boolean  @default(false)
+  created_at           DateTime @default(now())
+
+  lab     Lab         @relation(fields: [lab_id], references: [id], onDelete: Cascade)
+  members LabMember[]
+
+  @@unique([lab_id, name])
+  @@index([lab_id])
+  @@map("lab_roles")
+}
+
+// API keys for LIMS/developer integrations
+model LabApiKey {
+  id          String    @id @default(uuid())
+  lab_id      String
+  name        String
+  key_hash    String    @unique  // SHA-256 hash of the raw key
+  key_prefix  String             // First 8 chars for display (e.g., "pvn_live")
+  last_used   DateTime?
+  expires_at  DateTime?
+  created_at  DateTime  @default(now())
+
+  lab         Lab       @relation(fields: [lab_id], references: [id], onDelete: Cascade)
+
+  @@index([lab_id])
+  @@map("lab_api_keys")
 }
 
 // Platform administrators

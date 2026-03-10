@@ -6,11 +6,12 @@ import {
   Plus, FlaskConical, BarChart3, List, LogOut,
   Building2, Trash2, Eye, EyeOff, RefreshCw, X, Pencil,
   Phone, Upload, Check, MapPin, Users, ChevronRight,
+  Code2, Key, Copy, ChevronDown,
 } from "lucide-react";
 import { Button } from "@/components/ui/Button";
 import { Input, Textarea } from "@/components/ui/Input";
 import { StatusBadge, Badge } from "@/components/ui/Badge";
-import type { Lab, LabRequest, AdminMetrics, ApiLog, ApiLogSummary } from "@/lib/types";
+import type { Lab, LabRequest, AdminMetrics, ApiLog, ApiLogSummary, LabApiKey } from "@/lib/types";
 import { SERVICE_CATEGORIES, LAB_CERTIFICATIONS } from "@/lib/constants";
 import { format } from "date-fns";
 import { createClient } from "@/lib/supabase/client"; // still used for auth sign-out
@@ -46,6 +47,7 @@ export function AdminDashboard() {
   const [selectedReferralGroup, setSelectedReferralGroup] = useState<ReferralGroup | null>(null);
   const [apiLogs, setApiLogs] = useState<ApiLog[]>([]);
   const [apiLogSummary, setApiLogSummary] = useState<ApiLogSummary | null>(null);
+  const [expandedLabIntegration, setExpandedLabIntegration] = useState<string | null>(null);
 
   const fetchApiLogs = useCallback(async () => {
     try {
@@ -533,6 +535,13 @@ export function AdminDashboard() {
                         {lab.hidden ? "Show" : "Hide"}
                       </button>
                       <button
+                        onClick={() => setExpandedLabIntegration(expandedLabIntegration === lab.id ? null : lab.id)}
+                        className="flex items-center gap-1 px-2.5 py-1.5 rounded-lg bg-blue-500/10 hover:bg-blue-500/20 text-blue-400 hover:text-blue-300 text-xs transition-colors"
+                      >
+                        <Code2 className="w-3 h-3" />Dev
+                        <ChevronDown className={`w-3 h-3 transition-transform ${expandedLabIntegration === lab.id ? "rotate-180" : ""}`} />
+                      </button>
+                      <button
                         onClick={() => handleDeleteLab(lab)}
                         disabled={deletingId === lab.id}
                         className="flex items-center gap-1 px-2.5 py-1.5 rounded-lg bg-red-500/10 hover:bg-red-500/20 text-red-400 hover:text-red-300 text-xs transition-colors ml-auto"
@@ -540,6 +549,9 @@ export function AdminDashboard() {
                         <Trash2 className="w-3 h-3" />Delete
                       </button>
                     </div>
+                    {expandedLabIntegration === lab.id && (
+                      <LabIntegrationPanel lab={lab} />
+                    )}
                   </div>
                 ))}
                 {labs.length === 0 && (
@@ -1058,6 +1070,205 @@ function ReferralDetailModal({ group, onClose }: { group: ReferralGroup; onClose
           ))}
         </div>
       </div>
+    </div>
+  );
+}
+
+// =============================================================================
+// Lab Integration Panel — shown inline on each lab card when "Dev" is clicked
+// =============================================================================
+const API_BASE = "https://poveon.com/api";
+
+function CopyField({ label, value }: { label: string; value: string }) {
+  const [copied, setCopied] = useState(false);
+  function copy() {
+    navigator.clipboard.writeText(value).then(() => {
+      setCopied(true);
+      setTimeout(() => setCopied(false), 1800);
+    });
+  }
+  return (
+    <div>
+      <p className="text-xs text-slate-500 mb-1">{label}</p>
+      <div className="flex items-center gap-2 bg-slate-950/60 border border-white/8 rounded-lg px-3 py-2">
+        <code className="text-xs font-mono text-slate-300 flex-1 break-all">{value}</code>
+        <button onClick={copy} className="shrink-0 p-1 rounded hover:bg-white/10 text-slate-500 hover:text-white transition-colors">
+          {copied ? <Check className="w-3.5 h-3.5 text-emerald-400" /> : <Copy className="w-3.5 h-3.5" />}
+        </button>
+      </div>
+    </div>
+  );
+}
+
+function LabIntegrationPanel({ lab }: { lab: Lab }) {
+  const [keys, setKeys] = useState<LabApiKey[]>([]);
+  const [loadingKeys, setLoadingKeys] = useState(true);
+  const [newKeyName, setNewKeyName] = useState("");
+  const [generatingKey, setGeneratingKey] = useState(false);
+  const [revealedKey, setRevealedKey] = useState<string | null>(null);
+  const [revealedKeyCopied, setRevealedKeyCopied] = useState(false);
+
+  const fetchKeys = useCallback(async () => {
+    try {
+      const res = await fetch(`/api/admin/labs/${lab.id}/api-keys`);
+      const data = await res.json();
+      if (data.success) setKeys(data.keys ?? []);
+    } finally {
+      setLoadingKeys(false);
+    }
+  }, [lab.id]);
+
+  useEffect(() => { fetchKeys(); }, [fetchKeys]);
+
+  async function handleGenerateKey() {
+    if (!newKeyName.trim()) { toast.error("Enter a name for this key"); return; }
+    setGeneratingKey(true);
+    try {
+      const res = await fetch(`/api/admin/labs/${lab.id}/api-keys`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ name: newKeyName.trim() }),
+      });
+      const data = await res.json();
+      if (data.success) {
+        setRevealedKey(data.key);
+        setRevealedKeyCopied(false);
+        setNewKeyName("");
+        await fetchKeys();
+        toast.success("API key generated — copy it now!");
+      } else {
+        toast.error(data.error ?? "Failed to generate key");
+      }
+    } catch {
+      toast.error("Network error");
+    } finally {
+      setGeneratingKey(false);
+    }
+  }
+
+  async function handleRevokeKey(keyId: string, keyName: string) {
+    if (!confirm(`Revoke API key "${keyName}"? Any LIMS using this key will stop working immediately.`)) return;
+    try {
+      const res = await fetch(`/api/admin/labs/${lab.id}/api-keys/${keyId}`, { method: "DELETE" });
+      const data = await res.json();
+      if (data.success) { toast.success("Key revoked"); await fetchKeys(); }
+      else toast.error(data.error ?? "Failed to revoke");
+    } catch {
+      toast.error("Network error");
+    }
+  }
+
+  const snippet = `curl -X POST ${API_BASE}/requests/create \\
+  -H "Content-Type: application/json" \\
+  -H "X-Poveon-Api-Key: <your-api-key>" \\
+  -d '{
+    "lab_id": "${lab.id}",
+    "patient_name": "Ada Okonkwo",
+    "dob": "1990-05-12",
+    "sex": "female",
+    "doctor_name": "Dr. James",
+    "doctor_email": "james@clinic.com",
+    "tests": "FBC, LFT"
+  }'`;
+
+  return (
+    <div className="mt-3 border-t border-blue-500/20 pt-3 space-y-4">
+      <div className="flex items-center gap-2 mb-1">
+        <Code2 className="w-3.5 h-3.5 text-blue-400" />
+        <p className="text-xs font-semibold text-blue-300 uppercase tracking-wider">Developer Setup</p>
+      </div>
+
+      {/* Credentials */}
+      <div className="space-y-2.5">
+        <CopyField label="Lab ID" value={lab.id} />
+        <CopyField label="API Base URL" value={API_BASE} />
+      </div>
+
+      {/* Code snippet */}
+      <div>
+        <p className="text-xs text-slate-500 mb-1">Sample request (create lab request)</p>
+        <div className="relative bg-slate-950/70 border border-white/8 rounded-lg p-3 overflow-x-auto">
+          <pre className="text-xs font-mono text-slate-300 whitespace-pre">{snippet}</pre>
+          <button
+            onClick={() => { navigator.clipboard.writeText(snippet); toast.success("Snippet copied!"); }}
+            className="absolute top-2 right-2 p-1 rounded bg-white/5 hover:bg-white/15 text-slate-500 hover:text-white transition-colors"
+          >
+            <Copy className="w-3.5 h-3.5" />
+          </button>
+        </div>
+      </div>
+
+      {/* New revealed key banner */}
+      {revealedKey && (
+        <div className="bg-emerald-500/10 border border-emerald-500/30 rounded-xl p-3 space-y-2">
+          <p className="text-xs font-semibold text-emerald-400">New key generated — copy it now. It will never be shown again.</p>
+          <div className="flex items-center gap-2 bg-slate-950/60 border border-emerald-500/20 rounded-lg px-3 py-2">
+            <code className="text-xs font-mono text-emerald-300 flex-1 break-all">{revealedKey}</code>
+            <button
+              onClick={() => { navigator.clipboard.writeText(revealedKey); setRevealedKeyCopied(true); }}
+              className="shrink-0 p-1 rounded hover:bg-white/10 text-emerald-500 hover:text-white transition-colors"
+            >
+              {revealedKeyCopied ? <Check className="w-3.5 h-3.5 text-emerald-400" /> : <Copy className="w-3.5 h-3.5" />}
+            </button>
+          </div>
+          <button onClick={() => setRevealedKey(null)} className="text-xs text-slate-500 hover:text-white transition-colors">Dismiss</button>
+        </div>
+      )}
+
+      {/* API keys */}
+      <div>
+        <p className="text-xs font-semibold text-slate-400 mb-2 flex items-center gap-1.5">
+          <Key className="w-3.5 h-3.5" />API Keys
+        </p>
+        {loadingKeys ? (
+          <p className="text-xs text-slate-600 py-2">Loading…</p>
+        ) : keys.length === 0 ? (
+          <p className="text-xs text-slate-600 py-2">No API keys yet. Generate one below.</p>
+        ) : (
+          <div className="space-y-1.5 mb-3">
+            {keys.map((k) => (
+              <div key={k.id} className="flex items-center gap-2 bg-slate-950/40 border border-white/6 rounded-lg px-3 py-2">
+                <div className="flex-1 min-w-0">
+                  <p className="text-xs font-medium text-slate-300 truncate">{k.name}</p>
+                  <p className="text-xs text-slate-600 font-mono">
+                    {k.key_prefix}…
+                    {k.last_used ? ` · last used ${format(new Date(k.last_used), "dd MMM yyyy")}` : " · never used"}
+                    {k.expires_at ? ` · expires ${format(new Date(k.expires_at), "dd MMM yyyy")}` : ""}
+                  </p>
+                </div>
+                <button
+                  onClick={() => handleRevokeKey(k.id, k.name)}
+                  className="shrink-0 flex items-center gap-1 px-2 py-1 rounded-lg bg-red-500/10 hover:bg-red-500/20 text-red-400 text-xs transition-colors"
+                >
+                  <Trash2 className="w-3 h-3" />Revoke
+                </button>
+              </div>
+            ))}
+          </div>
+        )}
+        {/* Generate new key */}
+        <div className="flex gap-2">
+          <input
+            value={newKeyName}
+            onChange={(e) => setNewKeyName(e.target.value)}
+            onKeyDown={(e) => e.key === "Enter" && handleGenerateKey()}
+            placeholder="Key name (e.g. LIMS Production)"
+            className="flex-1 bg-slate-950/40 border border-white/10 text-slate-200 placeholder-slate-600 rounded-lg px-3 py-2 text-xs focus:outline-none focus:ring-1 focus:ring-blue-500"
+          />
+          <button
+            onClick={handleGenerateKey}
+            disabled={generatingKey}
+            className="flex items-center gap-1 px-3 py-2 rounded-lg bg-blue-600 hover:bg-blue-500 text-white text-xs font-medium transition-colors disabled:opacity-50"
+          >
+            {generatingKey ? <RefreshCw className="w-3 h-3 animate-spin" /> : <Key className="w-3 h-3" />}
+            Generate
+          </button>
+        </div>
+      </div>
+
+      <p className="text-xs text-slate-600">
+        Authenticate LIMS requests with the <code className="font-mono text-slate-500">X-Poveon-Api-Key</code> header. Keys are hashed — only you can see the prefix for identification.
+      </p>
     </div>
   );
 }
