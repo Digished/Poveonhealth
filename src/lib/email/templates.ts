@@ -3,13 +3,18 @@
 // All styles are inline for email client compatibility
 // =============================================================================
 
-const base = (content: string) => `
+/**
+ * brand — when a lab has a custom notification_email, pass { name: lab.name }
+ * so the email header shows the lab's name rather than "Poveon".
+ * A "Powered by Poveon" line is appended to branded emails for transparency.
+ */
+const base = (content: string, brand?: { name: string }) => `
 <!DOCTYPE html>
 <html lang="en">
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Poveon</title>
+  <title>${brand ? brand.name : "Poveon"}</title>
 </head>
 <body style="margin:0;padding:0;background-color:#f0f7ff;font-family:Inter,'Helvetica Neue',Arial,sans-serif;">
   <table width="100%" cellpadding="0" cellspacing="0" style="background-color:#f0f7ff;padding:40px 20px;">
@@ -20,9 +25,12 @@ const base = (content: string) => `
           <tr>
             <td style="background:linear-gradient(135deg,#0259a0,#0270c3);border-radius:12px 12px 0 0;padding:32px 40px;text-align:center;">
               <h1 style="margin:0;color:#ffffff;font-size:24px;font-weight:700;letter-spacing:-0.5px;">
-                Poveon
+                ${brand ? brand.name : "Poveon"}
               </h1>
-              <p style="margin:4px 0 0;color:#bae0fd;font-size:13px;">Laboratory Request Management</p>
+              <p style="margin:4px 0 0;color:#bae0fd;font-size:13px;">
+                ${brand ? "Laboratory Notifications" : "Laboratory Request Management"}
+              </p>
+              ${brand ? `<p style="margin:8px 0 0;color:#93c5fd;font-size:11px;opacity:0.75;">Powered by Poveon</p>` : ""}
             </td>
           </tr>
           <!-- Body -->
@@ -35,7 +43,7 @@ const base = (content: string) => `
           <tr>
             <td style="background:#f0f7ff;border:1px solid #e0effe;border-radius:0 0 12px 12px;padding:20px 40px;text-align:center;">
               <p style="margin:0;color:#6b7280;font-size:12px;">
-                © ${new Date().getFullYear()} Poveon. All rights reserved.<br>
+                © ${new Date().getFullYear()} ${brand ? brand.name : "Poveon"}. All rights reserved.<br>
                 This is an automated message. Please do not reply to this email.
               </p>
             </td>
@@ -74,6 +82,7 @@ export function doctorRequestConfirmation({
   labAddress,
   labPhones,
   tests,
+  brand,
 }: {
   doctorName: string;
   patientName: string;
@@ -82,6 +91,7 @@ export function doctorRequestConfirmation({
   labAddress: string;
   labPhones: string[];
   tests: string;
+  brand?: { name: string };
 }) {
   const phoneLines = labPhones.length
     ? labPhones.map((p) => `<p style="margin:2px 0;color:#1e3a5f;font-size:15px;font-weight:500;">📞 ${p}</p>`).join("")
@@ -117,7 +127,7 @@ export function doctorRequestConfirmation({
     <p style="margin:0;color:#6b7280;font-size:13px;line-height:1.6;">
       The patient should present this code at the laboratory reception. You will receive email notifications when the patient arrives and when tests are completed.
     </p>
-  `);
+  `, brand);
 }
 
 // =============================================================================
@@ -129,12 +139,14 @@ export function patientRequestCode({
   labName,
   labAddress,
   labPhones,
+  brand,
 }: {
   patientName: string;
   code: string;
   labName: string;
   labAddress: string;
   labPhones: string[];
+  brand?: { name: string };
 }) {
   const phoneLines = labPhones.length
     ? labPhones.map((p) => `<p style="margin:2px 0;color:#1e3a5f;font-size:14px;">📞 ${p}</p>`).join("")
@@ -162,7 +174,7 @@ export function patientRequestCode({
     <p style="margin:0;color:#6b7280;font-size:13px;line-height:1.6;">
       Simply walk in and provide this code at the reception desk. No appointment necessary — your test request has already been registered.
     </p>
-  `);
+  `, brand);
 }
 
 // =============================================================================
@@ -173,11 +185,13 @@ export function doctorPatientArrived({
   patientName,
   labName,
   code,
+  brand,
 }: {
   doctorName: string;
   patientName: string;
   labName: string;
   code: string;
+  brand?: { name: string };
 }) {
   return base(`
     <h2 style="margin:0 0 8px;color:#0270c3;font-size:20px;font-weight:700;">Patient Has Arrived</h2>
@@ -202,7 +216,7 @@ export function doctorPatientArrived({
     <p style="margin:0;color:#6b7280;font-size:13px;">
       You will receive another notification when the tests have been completed.
     </p>
-  `);
+  `, brand);
 }
 
 // =============================================================================
@@ -213,11 +227,13 @@ export function doctorTestsCompleted({
   patientName,
   labName,
   code,
+  brand,
 }: {
   doctorName: string;
   patientName: string;
   labName: string;
   code: string;
+  brand?: { name: string };
 }) {
   return base(`
     <h2 style="margin:0 0 8px;color:#059669;font-size:20px;font-weight:700;">Tests Completed</h2>
@@ -240,9 +256,9 @@ export function doctorTestsCompleted({
     ${divider}
 
     <p style="margin:0;color:#6b7280;font-size:13px;">
-      Please contact the laboratory or your patient directly to arrange result collection. Thank you for using Poveon.
+      Please contact the laboratory or your patient directly to arrange result collection.
     </p>
-  `);
+  `, brand);
 }
 
 // =============================================================================
@@ -256,6 +272,7 @@ export function labResultsDoctor({
   resultLink,
   hasAttachment,
   note,
+  brand,
 }: {
   doctorName: string;
   patientName: string;
@@ -264,6 +281,7 @@ export function labResultsDoctor({
   resultLink?: string;
   hasAttachment?: boolean;
   note?: string;
+  brand?: { name: string };
 }) {
   const resultsSection = [
     resultLink
@@ -319,9 +337,9 @@ export function labResultsDoctor({
     ${divider}
 
     <p style="margin:0;color:#6b7280;font-size:13px;">
-      Thank you for using Poveon.
+      Thank you for using ${brand ? brand.name : "Poveon"}.
     </p>
-  `);
+  `, brand);
 }
 
 // =============================================================================
@@ -332,11 +350,13 @@ export function labResultsPatient({
   labName,
   resultLink,
   hasAttachment,
+  brand,
 }: {
   patientName: string;
   labName: string;
   resultLink?: string;
   hasAttachment?: boolean;
+  brand?: { name: string };
 }) {
   const resultsSection = [
     resultLink
@@ -372,9 +392,9 @@ export function labResultsPatient({
     ${divider}
 
     <p style="margin:0;color:#6b7280;font-size:13px;line-height:1.6;">
-      If you have any questions about your results, please contact your doctor or the laboratory directly.
+      If you have any questions about your results, please contact your doctor or ${brand ? brand.name : "the laboratory"} directly.
     </p>
-  `);
+  `, brand);
 }
 
 // =============================================================================

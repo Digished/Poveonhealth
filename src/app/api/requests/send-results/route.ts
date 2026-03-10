@@ -4,8 +4,10 @@ import { createServerClient } from "@/lib/supabase/server";
 import { prisma } from "@/lib/prisma";
 import { resend, labSender } from "@/lib/email/resend";
 import { labResultsDoctor, labResultsPatient } from "@/lib/email/templates";
+import { logApiCall } from "@/lib/api-logger";
 
 export async function POST(request: NextRequest) {
+  const start = Date.now();
   try {
     const formData = await request.formData();
 
@@ -102,6 +104,7 @@ export async function POST(request: NextRequest) {
 
     const hasAttachment = attachments.length > 0;
     const patientEmail = patientEmailOverride || req.patient_email || undefined;
+    const brand = req.lab.notification_email ? { name: req.lab.name } : undefined;
 
     // Send to doctor
     resend.emails.send({
@@ -116,6 +119,7 @@ export async function POST(request: NextRequest) {
         resultLink,
         hasAttachment,
         note,
+        brand,
       }),
       ...(attachments.length > 0 ? { attachments } : {}),
     })
@@ -135,6 +139,7 @@ export async function POST(request: NextRequest) {
           labName: req.lab.name,
           resultLink,
           hasAttachment,
+          brand,
         }),
         ...(attachments.length > 0 ? { attachments } : {}),
       })
@@ -144,9 +149,11 @@ export async function POST(request: NextRequest) {
         .catch((e) => console.error("[email] results to patient error:", e));
     }
 
+    logApiCall({ method: "POST", path: "/api/requests/send-results", status: 200, lab_id: req.lab_id, duration_ms: Date.now() - start });
     return NextResponse.json({ success: true, status: req.status === "seen" ? "done" : req.status });
   } catch (error) {
     console.error("Send results error:", error);
+    logApiCall({ method: "POST", path: "/api/requests/send-results", status: 500, duration_ms: Date.now() - start });
     return NextResponse.json(
       { success: false, error: "An unexpected error occurred" },
       { status: 500 }

@@ -3,10 +3,8 @@ import { z } from "zod";
 import { prisma } from "@/lib/prisma";
 import { generateUniqueCode } from "@/lib/code-generator";
 import { resend, labSender } from "@/lib/email/resend";
-import {
-  doctorRequestConfirmation,
-  patientRequestCode,
-} from "@/lib/email/templates";
+import { doctorRequestConfirmation, patientRequestCode } from "@/lib/email/templates";
+import { logApiCall } from "@/lib/api-logger";
 
 const CreateRequestSchema = z.object({
   patient_name: z.string().min(2).max(200),
@@ -28,6 +26,7 @@ const CreateRequestSchema = z.object({
 });
 
 export async function POST(request: NextRequest) {
+  const start = Date.now();
   try {
     const body = await request.json();
     const parsed = CreateRequestSchema.safeParse(body);
@@ -88,6 +87,7 @@ export async function POST(request: NextRequest) {
 
     const labAddress = lab.address ?? "";
     const labPhones = (lab.phones as string[]) ?? [];
+    const brand = lab.notification_email ? { name: lab.name } : undefined;
 
     // Send emails — failures are logged but never block the request response
     const sends: Promise<void>[] = [
@@ -103,6 +103,7 @@ export async function POST(request: NextRequest) {
           labAddress,
           labPhones,
           tests: data.tests,
+          brand,
         }),
       }).then(({ error }) => { if (error) console.error("[email] doctor confirmation:", JSON.stringify(error)); }),
     ];
@@ -119,6 +120,7 @@ export async function POST(request: NextRequest) {
             labName: lab.name,
             labAddress,
             labPhones,
+            brand,
           }),
         }).then(({ error }) => { if (error) console.error("[email] patient code:", JSON.stringify(error)); })
       );
@@ -126,6 +128,7 @@ export async function POST(request: NextRequest) {
 
     await Promise.all(sends).catch((e) => console.error("[email] send error:", e));
 
+    logApiCall({ method: "POST", path: "/api/requests/create", status: 200, duration_ms: Date.now() - start });
     return NextResponse.json({
       success: true,
       code,
@@ -133,6 +136,7 @@ export async function POST(request: NextRequest) {
     });
   } catch (error) {
     console.error("Create request error:", error);
+    logApiCall({ method: "POST", path: "/api/requests/create", status: 500, duration_ms: Date.now() - start });
     return NextResponse.json(
       { success: false, error: "An unexpected error occurred" },
       { status: 500 }

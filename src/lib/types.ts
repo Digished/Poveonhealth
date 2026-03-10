@@ -13,11 +13,29 @@ export interface Lab {
   description: string;
   phones: string[];
   email: string;
+  notification_email: string | null;
   logo_url: string | null;
   hidden: boolean;
   service_categories: string[];
   certifications: string[];
   created_at: string;
+}
+
+export interface ApiLog {
+  id: string;
+  method: string;
+  path: string;
+  status: number;
+  lab_id: string | null;
+  duration_ms: number | null;
+  created_at: string;
+}
+
+export interface ApiLogSummary {
+  today: number;
+  week: number;
+  topEndpoints: { path: string; count: number }[];
+  byStatus: { status: number; count: number }[];
 }
 
 export interface LabUser {

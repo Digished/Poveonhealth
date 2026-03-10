@@ -5,12 +5,14 @@ import { createServerClient } from "@/lib/supabase/server";
 import { prisma } from "@/lib/prisma";
 import { resend, labSender } from "@/lib/email/resend";
 import { doctorPatientArrived } from "@/lib/email/templates";
+import { logApiCall } from "@/lib/api-logger";
 
 const RetrieveSchema = z.object({
   code: z.string().min(1).max(50).transform((s) => s.trim().toUpperCase()),
 });
 
 export async function POST(request: NextRequest) {
+  const start = Date.now();
   try {
     const body = await request.json();
     const parsed = RetrieveSchema.safeParse(body);
@@ -68,6 +70,8 @@ export async function POST(request: NextRequest) {
       );
     }
 
+    const brand = req.lab.notification_email ? { name: req.lab.name } : undefined;
+
     // Move incoming → seen and notify doctor
     if (req.status === "incoming") {
       await prisma.request.update({
@@ -84,16 +88,20 @@ export async function POST(request: NextRequest) {
           patientName: req.patient_name,
           labName: req.lab.name,
           code: req.code,
+          brand,
         }),
       }).then(({ error }) => { if (error) console.error("[email] patient arrived:", JSON.stringify(error)); })
         .catch((e) => console.error("[email] patient arrived error:", e));
 
+      logApiCall({ method: "POST", path: "/api/requests/retrieve", status: 200, lab_id: req.lab_id, duration_ms: Date.now() - start });
       return NextResponse.json({ success: true, request: { ...req, status: "seen" } });
     }
 
+    logApiCall({ method: "POST", path: "/api/requests/retrieve", status: 200, lab_id: req.lab_id, duration_ms: Date.now() - start });
     return NextResponse.json({ success: true, request: req });
   } catch (error) {
     console.error("Retrieve error:", error);
+    logApiCall({ method: "POST", path: "/api/requests/retrieve", status: 500, duration_ms: Date.now() - start });
     return NextResponse.json(
       { success: false, error: "An unexpected error occurred" },
       { status: 500 }

@@ -80,3 +80,19 @@ model Request {
 
   @@map("requests")
 }
+
+// Tracks API calls for analytics — written asynchronously, never blocks responses
+model ApiLog {
+  id          String   @id @default(uuid())
+  method      String
+  path        String
+  status      Int
+  lab_id      String?
+  duration_ms Int?
+  created_at  DateTime @default(now())
+
+  @@index([created_at])
+  @@index([path])
+  @@index([lab_id])
+  @@map("api_logs")
+}

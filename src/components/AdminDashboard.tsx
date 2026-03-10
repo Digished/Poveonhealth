@@ -10,13 +10,13 @@ import {
 import { Button } from "@/components/ui/Button";
 import { Input, Textarea } from "@/components/ui/Input";
 import { StatusBadge, Badge } from "@/components/ui/Badge";
-import type { Lab, LabRequest, AdminMetrics } from "@/lib/types";
+import type { Lab, LabRequest, AdminMetrics, ApiLog, ApiLogSummary } from "@/lib/types";
 import { SERVICE_CATEGORIES, LAB_CERTIFICATIONS } from "@/lib/constants";
 import { format } from "date-fns";
 import { createClient } from "@/lib/supabase/client"; // still used for auth sign-out
 import { useRouter } from "next/navigation";
 
-type AdminTab = "metrics" | "requests" | "referrals" | "labs";
+type AdminTab = "metrics" | "requests" | "referrals" | "labs" | "analytics";
 
 interface ReferralGroup {
   key: string;
@@ -44,6 +44,21 @@ export function AdminDashboard() {
   const [togglingId, setTogglingId] = useState<string | null>(null);
   const [deletingRequestId, setDeletingRequestId] = useState<string | null>(null);
   const [selectedReferralGroup, setSelectedReferralGroup] = useState<ReferralGroup | null>(null);
+  const [apiLogs, setApiLogs] = useState<ApiLog[]>([]);
+  const [apiLogSummary, setApiLogSummary] = useState<ApiLogSummary | null>(null);
+
+  const fetchApiLogs = useCallback(async () => {
+    try {
+      const res = await fetch("/api/admin/api-logs");
+      const data = await res.json();
+      if (data.success) {
+        setApiLogs(data.logs ?? []);
+        setApiLogSummary(data.summary ?? null);
+      }
+    } catch {
+      // non-critical — don't toast on analytics failures
+    }
+  }, []);
 
   const fetchLabs = useCallback(async () => {
     try {
@@ -62,6 +77,7 @@ export function AdminDashboard() {
       const [reqRes] = await Promise.all([
         fetch("/api/admin/requests"),
         fetchLabs(),
+        fetchApiLogs(),
       ]);
       const reqData = await reqRes.json();
       if (reqData.success) {
@@ -204,6 +220,7 @@ export function AdminDashboard() {
               { key: "requests" as AdminTab, label: "All Requests", icon: <List className="w-4 h-4" /> },
               { key: "referrals" as AdminTab, label: "Referrals", icon: <Users className="w-4 h-4" /> },
               { key: "labs" as AdminTab, label: "Labs", icon: <Building2 className="w-4 h-4" /> },
+              { key: "analytics" as AdminTab, label: "API Analytics", icon: <BarChart3 className="w-4 h-4" /> },
             ].map((tab) => (
               <button
                 key={tab.key}
@@ -460,6 +477,11 @@ export function AdminDashboard() {
                       </div>
                     </div>
                     <p className="text-xs text-slate-400 mb-1">{lab.email}</p>
+                    {lab.notification_email && (
+                      <p className="text-xs text-emerald-400 flex items-center gap-1 mb-1" title="Custom notification email configured">
+                        <span>✉</span> {lab.notification_email}
+                      </p>
+                    )}
                     {lab.address && (
                       <p className="text-xs text-slate-500 flex items-start gap-1 mt-0.5">
                         <MapPin className="w-3 h-3 text-slate-600 mt-0.5 shrink-0" />{lab.address}
@@ -527,6 +549,112 @@ export function AdminDashboard() {
             )}
           </div>
         )}
+        {/* ── API ANALYTICS ── */}
+        {activeTab === "analytics" && (
+          <div className="animate-fade-in space-y-6">
+            <div className="flex items-center justify-between">
+              <div>
+                <h2 className="font-semibold text-white">API Analytics</h2>
+                <p className="text-xs text-slate-500 mt-0.5">Live API call tracking — last 200 calls</p>
+              </div>
+              <button onClick={fetchApiLogs} className="p-2 rounded-lg hover:bg-white/10 text-slate-400 hover:text-white transition-colors">
+                <RefreshCw className="w-4 h-4" />
+              </button>
+            </div>
+
+            {/* Summary cards */}
+            {apiLogSummary && (
+              <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+                {[
+                  { label: "Calls Today", value: apiLogSummary.today, color: "from-blue-500/20 to-blue-600/10 border-blue-500/30" },
+                  { label: "Calls This Week", value: apiLogSummary.week, color: "from-medical-500/20 to-medical-600/10 border-medical-500/30" },
+                  { label: "Success (2xx)", value: apiLogSummary.byStatus.filter(s => s.status >= 200 && s.status < 300).reduce((a, b) => a + b.count, 0), color: "from-emerald-400/20 to-emerald-500/10 border-emerald-400/30" },
+                  { label: "Errors (4xx/5xx)", value: apiLogSummary.byStatus.filter(s => s.status >= 400).reduce((a, b) => a + b.count, 0), color: "from-red-400/20 to-red-500/10 border-red-400/30" },
+                ].map((stat) => (
+                  <div key={stat.label} className={`bg-gradient-to-br ${stat.color} border rounded-2xl p-5`}>
+                    <p className="text-xs text-slate-400 font-medium uppercase tracking-wider mb-1">{stat.label}</p>
+                    <p className="text-3xl font-bold text-white">{stat.value}</p>
+                  </div>
+                ))}
+              </div>
+            )}
+
+            {/* Top endpoints */}
+            {apiLogSummary && apiLogSummary.topEndpoints.length > 0 && (
+              <div className="bg-white/5 border border-white/10 rounded-2xl p-5">
+                <h3 className="text-sm font-semibold text-slate-300 mb-4">Top Endpoints (last 7 days)</h3>
+                <div className="space-y-2.5">
+                  {apiLogSummary.topEndpoints.map((ep) => {
+                    const max = apiLogSummary.topEndpoints[0]?.count ?? 1;
+                    return (
+                      <div key={ep.path} className="flex items-center gap-3">
+                        <code className="text-xs font-mono text-medical-300 w-64 shrink-0 truncate">{ep.path}</code>
+                        <div className="flex-1 bg-white/8 rounded-full h-2 overflow-hidden">
+                          <div className="h-full bg-medical-500 rounded-full transition-all" style={{ width: `${(ep.count / max) * 100}%` }} />
+                        </div>
+                        <span className="text-xs text-slate-400 font-mono w-10 text-right shrink-0">{ep.count}</span>
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
+            )}
+
+            {/* Recent calls table */}
+            <div className="bg-white/5 border border-white/10 rounded-2xl overflow-hidden">
+              <div className="px-5 py-3 border-b border-white/10">
+                <h3 className="text-sm font-semibold text-slate-300">Recent API Calls</h3>
+              </div>
+              <div className="overflow-x-auto">
+                <table className="w-full text-sm">
+                  <thead>
+                    <tr className="border-b border-white/8">
+                      {["Time", "Method", "Endpoint", "Status", "Duration"].map((h) => (
+                        <th key={h} className="pb-2 pt-3 px-4 text-left text-xs text-slate-500 font-semibold uppercase tracking-wider">{h}</th>
+                      ))}
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-white/5">
+                    {apiLogs.length === 0 && (
+                      <tr><td colSpan={5} className="py-12 text-center text-slate-500 text-sm">No API calls recorded yet. Calls will appear here as the API is used.</td></tr>
+                    )}
+                    {apiLogs.map((log) => (
+                      <tr key={log.id} className="hover:bg-white/4 transition-colors">
+                        <td className="py-2.5 px-4 text-xs text-slate-500 whitespace-nowrap">{format(new Date(log.created_at), "dd MMM HH:mm:ss")}</td>
+                        <td className="py-2.5 px-4">
+                          <span className={`text-xs font-mono font-bold px-1.5 py-0.5 rounded ${
+                            log.method === "GET" ? "text-emerald-400 bg-emerald-400/10" :
+                            log.method === "POST" ? "text-blue-400 bg-blue-400/10" :
+                            log.method === "DELETE" ? "text-red-400 bg-red-400/10" :
+                            "text-slate-400 bg-white/10"
+                          }`}>{log.method}</span>
+                        </td>
+                        <td className="py-2.5 px-4"><code className="text-xs font-mono text-slate-300">{log.path}</code></td>
+                        <td className="py-2.5 px-4">
+                          <span className={`text-xs font-mono font-bold ${
+                            log.status >= 200 && log.status < 300 ? "text-emerald-400" :
+                            log.status >= 400 ? "text-red-400" : "text-slate-400"
+                          }`}>{log.status}</span>
+                        </td>
+                        <td className="py-2.5 px-4 text-xs text-slate-500 font-mono">{log.duration_ms != null ? `${log.duration_ms}ms` : "—"}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+
+            {/* Security notice */}
+            <div className="bg-amber-500/8 border border-amber-500/20 rounded-2xl p-4">
+              <p className="text-xs font-semibold text-amber-400 mb-1">Security Notice</p>
+              <p className="text-xs text-amber-200/70 leading-relaxed">
+                IP addresses are not stored. Lab IDs are logged only for authenticated lab endpoints.
+                Logs older than 90 days should be purged periodically to comply with data minimisation principles.
+              </p>
+            </div>
+          </div>
+        )}
+
       </div>
 
       {showCreateLab && (
@@ -551,6 +679,7 @@ function CreateLabModal({ onClose, onSuccess }: { onClose: () => void; onSuccess
   const [address, setAddress] = useState("");
   const [description, setDescription] = useState("");
   const [phones, setPhones] = useState("");
+  const [notificationEmail, setNotificationEmail] = useState("");
   const [tempPassword, setTempPassword] = useState("");
   const [showPassword, setShowPassword] = useState(false);
   const [loading, setLoading] = useState(false);
@@ -588,7 +717,7 @@ function CreateLabModal({ onClose, onSuccess }: { onClose: () => void; onSuccess
       const res = await fetch("/api/admin/create-lab", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ name: name.trim(), email: email.trim(), address: address.trim(), description: description.trim() || undefined, phones: phoneList, tempPassword: tempPassword.trim() || undefined }),
+        body: JSON.stringify({ name: name.trim(), email: email.trim(), address: address.trim(), description: description.trim() || undefined, phones: phoneList, notification_email: notificationEmail.trim() || undefined, tempPassword: tempPassword.trim() || undefined }),
       });
       const data = await res.json();
       if (data.success) {
@@ -660,6 +789,15 @@ function CreateLabModal({ onClose, onSuccess }: { onClose: () => void; onSuccess
               <textarea rows={2} className={`w-full rounded-xl border px-4 py-2.5 text-sm resize-none focus:outline-none focus:ring-2 focus:ring-medical-500 ${whiteInput}`} placeholder={"+234 800 000 0000\n+234 801 000 0001"} value={phones} onChange={(e) => setPhones(e.target.value)} />
               <p className="text-xs text-slate-500 mt-1">One per line</p>
             </div>
+            <div>
+              <label className="text-sm font-medium text-slate-300 block mb-1">
+                Notification Email <span className="text-xs text-slate-500">(optional)</span>
+              </label>
+              <input type="email" className={`w-full rounded-xl border px-4 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-medical-500 ${whiteInput}`} placeholder="no-reply@foremost.com" value={notificationEmail} onChange={(e) => setNotificationEmail(e.target.value)} />
+              <p className="text-xs text-slate-500 mt-1">
+                Emails to doctors &amp; patients will come from this address. Must be verified in Resend first. Leave blank to use notifications@poveon.com.
+              </p>
+            </div>
             <div className="relative">
               <label className="text-sm font-medium text-slate-300 block mb-1">Temporary Password <span className="text-xs text-slate-500">(optional)</span></label>
               <input type={showPassword ? "text" : "password"} className={`w-full rounded-xl border px-4 py-2.5 pr-10 text-sm focus:outline-none focus:ring-2 focus:ring-medical-500 ${whiteInput}`} placeholder="Leave blank to auto-generate" value={tempPassword} onChange={(e) => setTempPassword(e.target.value)} />
@@ -687,6 +825,7 @@ function EditLabModal({ lab, onClose, onSuccess }: { lab: Lab; onClose: () => vo
   const [address, setAddress] = useState(lab.address);
   const [description, setDescription] = useState(lab.description ?? "");
   const [phones, setPhones] = useState((lab.phones as string[]).join("\n"));
+  const [notificationEmail, setNotificationEmail] = useState(lab.notification_email ?? "");
   const [selectedCategories, setSelectedCategories] = useState<string[]>((lab.service_categories as string[]) ?? []);
   const [selectedCerts, setSelectedCerts] = useState<string[]>((lab.certifications as string[]) ?? []);
   const [loading, setLoading] = useState(false);
@@ -726,7 +865,7 @@ function EditLabModal({ lab, onClose, onSuccess }: { lab: Lab; onClose: () => vo
       const res = await fetch(`/api/admin/labs/${lab.id}`, {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ name: name.trim(), address: address.trim(), description: description.trim(), phones: phoneList, service_categories: selectedCategories, certifications: selectedCerts }),
+        body: JSON.stringify({ name: name.trim(), address: address.trim(), description: description.trim(), phones: phoneList, notification_email: notificationEmail.trim() || null, service_categories: selectedCategories, certifications: selectedCerts }),
       });
       const data = await res.json();
       if (data.success) {
@@ -765,6 +904,15 @@ function EditLabModal({ lab, onClose, onSuccess }: { lab: Lab; onClose: () => vo
           <div>
             <label className="text-sm font-medium text-slate-300 block mb-1">Contact Phone Numbers <span className="text-xs text-slate-500">(optional, one per line)</span></label>
             <textarea rows={2} className={`w-full rounded-xl border px-4 py-2.5 text-sm resize-none focus:outline-none focus:ring-2 focus:ring-medical-500 ${whiteInput}`} value={phones} onChange={(e) => setPhones(e.target.value)} />
+          </div>
+          <div>
+            <label className="text-sm font-medium text-slate-300 block mb-1">
+              Notification Email <span className="text-xs text-slate-500">(optional)</span>
+            </label>
+            <input type="email" className={`w-full rounded-xl border px-4 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-medical-500 ${whiteInput}`} placeholder="no-reply@foremost.com" value={notificationEmail} onChange={(e) => setNotificationEmail(e.target.value)} />
+            <p className="text-xs text-slate-500 mt-1">
+              When set, all patient &amp; doctor emails for this lab will come from this address and display the lab&apos;s name. Must be verified in Resend. Leave blank to use notifications@poveon.com.
+            </p>
           </div>
 
           <SearchableCheckboxGroup
