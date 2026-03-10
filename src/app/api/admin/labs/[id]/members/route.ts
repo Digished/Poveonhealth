@@ -3,6 +3,8 @@ import { NextRequest, NextResponse } from "next/server";
 import { z } from "zod";
 import { createServerClient, createAdminClient } from "@/lib/supabase/server";
 import { prisma } from "@/lib/prisma";
+import { resend, FROM_ADDRESS } from "@/lib/email/resend";
+import { labMemberWelcome } from "@/lib/email/templates";
 
 async function verifyAdmin() {
   const authClient = await createServerClient();
@@ -106,6 +108,21 @@ export async function POST(
       },
       include: { role: { select: { id: true, name: true } } },
     });
+
+    // Send welcome email with login credentials
+    const loginUrl = `${process.env.NEXT_PUBLIC_APP_URL ?? "https://poveon.com"}/lab-login`;
+    resend.emails.send({
+      from: FROM_ADDRESS,
+      to: parsed.data.email,
+      subject: `You've been added to ${labExists.name} — Poveon`,
+      html: labMemberWelcome({
+        labName: labExists.name,
+        roleName: member.role.name,
+        email: parsed.data.email,
+        tempPassword: password,
+        loginUrl,
+      }),
+    }).catch((e) => console.error("[invite-member] email send failed:", e));
 
     return NextResponse.json({ success: true, member, tempPassword: password }, { status: 201 });
   } catch (e) {

@@ -444,3 +444,53 @@ export function labAccountCreated({
     </p>
   `);
 }
+
+export function labMemberWelcome({
+  labName,
+  roleName,
+  email,
+  tempPassword,
+  loginUrl,
+}: {
+  labName: string;
+  roleName: string;
+  email: string;
+  tempPassword: string;
+  loginUrl: string;
+}) {
+  return base(`
+    <h2 style="margin:0 0 8px;color:#0259a0;font-size:20px;font-weight:700;">You've been added to ${labName}</h2>
+    <p style="margin:0 0 24px;color:#4b5563;font-size:15px;">
+      An account has been created for you on the Poveon lab portal.
+      Use the credentials below to sign in.
+    </p>
+
+    ${divider}
+
+    ${label("Laboratory")}
+    ${value(labName)}
+
+    ${label("Your Role")}
+    ${value(roleName)}
+
+    ${label("Login Email")}
+    ${value(email)}
+
+    ${label("Temporary Password")}
+    <div style="background:#fff7ed;border:1px solid #fed7aa;border-radius:6px;padding:12px;margin:4px 0 16px;">
+      <p style="margin:0;color:#c2410c;font-size:18px;font-weight:700;font-family:monospace;">${tempPassword}</p>
+    </div>
+
+    ${divider}
+
+    <div style="text-align:center;margin:24px 0;">
+      <a href="${loginUrl}" style="display:inline-block;background:#0270c3;color:#ffffff;text-decoration:none;padding:14px 32px;border-radius:8px;font-weight:600;font-size:15px;">
+        Sign In to Dashboard
+      </a>
+    </div>
+
+    <p style="margin:16px 0 0;color:#dc2626;font-size:13px;font-weight:500;">
+      ⚠️ Please change your password after your first login.
+    </p>
+  `, { name: labName });
+}
