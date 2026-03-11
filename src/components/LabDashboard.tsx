@@ -58,6 +58,16 @@ function calcAge(dob: string): number {
   return differenceInYears(new Date(), new Date(dob));
 }
 
+function scheduleLabel(value: string | null): string | null {
+  const map: Record<string, string> = {
+    today: "Today",
+    this_week: "Within a week",
+    this_month: "Within a month",
+    not_sure: "Not sure yet",
+  };
+  return value ? (map[value] ?? value) : null;
+}
+
 export function LabDashboard({ lab, isOwner = false, roleName = "Lab Owner", canViewReferrals = false }: LabDashboardProps) {
   const { name: labName, logo_url: labLogoUrl } = lab;
   const router = useRouter();
@@ -751,10 +761,17 @@ export function LabDashboard({ lab, isOwner = false, roleName = "Lab Owner", can
                               <span className="text-slate-500 font-medium">Tests: </span>
                               {req.tests}
                             </p>
-                            <p className="text-xs text-slate-500 mt-1 flex items-center gap-1">
-                              <Calendar className="w-3 h-3" />
-                              {format(new Date(req.created_at), "dd MMM yyyy")}
-                            </p>
+                            <div className="flex items-center gap-2 mt-1 flex-wrap">
+                              <p className="text-xs text-slate-500 flex items-center gap-1">
+                                <Calendar className="w-3 h-3" />
+                                {format(new Date(req.created_at), "dd MMM yyyy")}
+                              </p>
+                              {scheduleLabel(req.schedule) && (
+                                <span className="text-xs bg-emerald-900/40 text-emerald-400 border border-emerald-800/30 px-2 py-0.5 rounded-full">
+                                  {scheduleLabel(req.schedule)}
+                                </span>
+                              )}
+                            </div>
                           </>
                         ) : (
                           /* Full info for seen/done */
@@ -779,6 +796,11 @@ export function LabDashboard({ lab, isOwner = false, roleName = "Lab Owner", can
                               <span className="text-slate-500 font-medium">Tests: </span>
                               {req.tests}
                             </p>
+                            {scheduleLabel(req.schedule) && (
+                              <span className="mt-1 inline-flex text-xs bg-emerald-900/40 text-emerald-400 border border-emerald-800/30 px-2 py-0.5 rounded-full">
+                                {scheduleLabel(req.schedule)}
+                              </span>
+                            )}
                           </>
                         )}
                       </div>
@@ -855,6 +877,11 @@ export function LabDashboard({ lab, isOwner = false, roleName = "Lab Owner", can
                     <DetailRow label="Tests">
                       <span className="text-white font-medium">{selectedRequest.tests}</span>
                     </DetailRow>
+                    {scheduleLabel(selectedRequest.schedule) && (
+                      <DetailRow label="Preferred Schedule">
+                        <span className="text-emerald-300 font-medium">{scheduleLabel(selectedRequest.schedule)}</span>
+                      </DetailRow>
+                    )}
                     <DetailRow label="Submitted">
                       {format(new Date(selectedRequest.created_at), "dd MMM yyyy HH:mm")}
                     </DetailRow>
@@ -1310,6 +1337,12 @@ export function LabDashboard({ lab, isOwner = false, roleName = "Lab Owner", can
                   <p className="text-xs text-slate-500 font-medium mb-0.5">Tests</p>
                   <p className="text-slate-200 font-medium">{selectedRequest.tests}</p>
                 </div>
+                {scheduleLabel(selectedRequest.schedule) && (
+                  <div>
+                    <p className="text-xs text-slate-500 font-medium mb-0.5">Preferred Schedule</p>
+                    <p className="text-emerald-300 font-medium text-sm">{scheduleLabel(selectedRequest.schedule)}</p>
+                  </div>
+                )}
                 <div>
                   <p className="text-xs text-slate-500 font-medium mb-0.5">Submitted</p>
                   <p className="text-slate-200">{format(new Date(selectedRequest.created_at), "dd MMM yyyy HH:mm")}</p>

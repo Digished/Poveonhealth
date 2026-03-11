@@ -327,7 +327,14 @@ export function AdminDashboard() {
                       )}
                       <div className="flex items-center justify-between mt-2">
                         <p className="text-xs text-slate-500 truncate flex-1">{(req.labs as { name: string } | null)?.name ?? "—"}</p>
-                        <p className="text-xs text-slate-600 shrink-0 ml-2">{format(new Date(req.created_at), "dd MMM yy")}</p>
+                        <div className="flex items-center gap-2 shrink-0 ml-2">
+                          {req.schedule && (
+                            <span className="text-xs bg-emerald-900/40 text-emerald-400 border border-emerald-800/30 px-1.5 py-0.5 rounded-full">
+                              {({ today: "Today", this_week: "~1 week", this_month: "~1 month", not_sure: "TBD" } as Record<string, string>)[req.schedule] ?? req.schedule}
+                            </span>
+                          )}
+                          <p className="text-xs text-slate-600">{format(new Date(req.created_at), "dd MMM yy")}</p>
+                        </div>
                       </div>
                     </div>
                   ))}

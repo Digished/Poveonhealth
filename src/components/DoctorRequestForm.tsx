@@ -6,7 +6,7 @@ import {
   FlaskConical, User, MapPin, Phone, Stethoscope,
   TestTube2, ChevronRight, ChevronLeft, Building2, Check,
   Search, X, PhoneCall, RefreshCw, ChevronDown, Mail,
-  Award, Info, Layers,
+  Award, Info, Layers, CalendarDays, Clock, Pencil,
 } from "lucide-react";
 
 function MarsIcon({ className }: { className?: string }) {
@@ -52,6 +52,7 @@ interface FormData {
   doctor_bank_name: string;
   doctor_account_number: string;
   doctor_account_name: string;
+  schedule: string;
   diagnosis: string;
   tests: string;
 }
@@ -72,6 +73,7 @@ const INITIAL: FormData = {
   doctor_bank_name: "",
   doctor_account_number: "",
   doctor_account_name: "",
+  schedule: "",
   diagnosis: "",
   tests: "",
 };
@@ -190,13 +192,24 @@ function PrefixSelect({
   );
 }
 
-// Contact step removed — merged into Patient step as an expandable section
 const STEPS = [
   { title: "Laboratory", icon: Building2 },
   { title: "Patient", icon: User },
   { title: "Referrer", icon: Stethoscope },
+  { title: "Schedule", icon: CalendarDays },
   { title: "Tests", icon: TestTube2 },
 ];
+
+const SCHEDULE_OPTIONS = [
+  { value: "today", label: "Today", desc: "Run the test today", icon: Clock },
+  { value: "this_week", label: "Within a week", desc: "Next 7 days", icon: CalendarDays },
+  { value: "this_month", label: "Within a month", desc: "Next 30 days", icon: CalendarDays },
+  { value: "not_sure", label: "Not sure yet", desc: "Haven't decided", icon: CalendarDays },
+] as const;
+
+function scheduleLabel(value: string | null): string {
+  return SCHEDULE_OPTIONS.find((o) => o.value === value)?.label ?? "—";
+}
 
 const DOCTOR_STORAGE_KEY = "poveon_doctor_profile";
 
@@ -547,6 +560,7 @@ export function DoctorRequestForm() {
   const [learnMoreOpen, setLearnMoreOpen] = useState(false);
   const [callOpen, setCallOpen] = useState(false);
   const [scrolled, setScrolled] = useState(false);
+  const [doctorEditing, setDoctorEditing] = useState(false);
   const [savedProfile, setSavedProfile] = useState<{ prefix: string; name: string; email: string; phone: string; hospital: string; bankName: string; accountNumber: string; accountName: string } | null>(null);
 
   const fetchLabs = useCallback(() => {
@@ -606,6 +620,7 @@ export function DoctorRequestForm() {
   function clearDoctorProfile() {
     try { localStorage.removeItem(DOCTOR_STORAGE_KEY); } catch { /* ignore */ }
     setSavedProfile(null);
+    setDoctorEditing(false);
     setBankOpen(true); // Re-open bank section for fresh entry
     setForm((prev) => ({
       ...prev,
@@ -641,14 +656,14 @@ export function DoctorRequestForm() {
         if (!form.doctor_account_name.trim()) errs.doctor_account_name = "Required";
       }
     }
-    if (s === 4 && !form.tests.trim()) errs.tests = "Required";
+    if (s === 5 && !form.tests.trim()) errs.tests = "Required";
     setErrors(errs);
     return Object.keys(errs).length === 0;
   }
 
   function handleNext() {
     if (validateStep(step)) {
-      setStep((s) => Math.min(4, s + 1));
+      setStep((s) => Math.min(5, s + 1));
       window.scrollTo({ top: 0, behavior: "smooth" });
     }
   }
@@ -710,8 +725,10 @@ export function DoctorRequestForm() {
 
   return (
     <div className="animate-fade-in">
-      {/* Header + step indicator — non-sticky, collapses when scrolled */}
-      <div className={`-mx-4 px-4 transition-all duration-300 ${scrolled ? "pt-3 pb-2" : "pt-5 pb-4"}`}>
+      {/* Sticky header + step indicator */}
+      <div className={`sticky top-0 z-10 -mx-4 px-4 transition-all duration-300 ${scrolled ? "pt-2 pb-2" : "pt-5 pb-4"}`}>
+        {/* Full-width frosted background */}
+        <div className="absolute inset-0 left-1/2 -translate-x-1/2 w-screen bg-white/80 backdrop-blur-md border-b border-white/60 -z-10" />
 
         {/* Lab info / branding — hides when scrolled */}
         {!scrolled && (
@@ -736,8 +753,9 @@ export function DoctorRequestForm() {
                     <div className="min-w-0 flex-1">
                       <p className="text-sm font-bold text-slate-800 leading-tight truncate">{selectedLab.name}</p>
                       {selectedLab.address && (
-                        <p className="text-xs text-slate-400 flex items-start gap-1 mt-0.5">
-                          <MapPin className="w-3 h-3 shrink-0 text-medical-300 mt-0.5" />{selectedLab.address}
+                        <p className="text-xs text-slate-400 flex items-start gap-1 mt-0.5 overflow-hidden">
+                          <MapPin className="w-3 h-3 shrink-0 text-medical-300 mt-0.5" />
+                          <span className="truncate">{selectedLab.address}</span>
                         </p>
                       )}
                       {step > 1 && (
@@ -841,11 +859,13 @@ export function DoctorRequestForm() {
                       ? <Check className="w-3 h-3" />
                       : <Icon className={active ? "w-3.5 h-3.5" : "w-3 h-3"} />}
                   </div>
-                  <p className={`text-xs mt-1 hidden sm:block whitespace-nowrap ${
-                    active ? "font-semibold text-slate-800" : done ? "font-medium text-slate-500" : "font-medium text-slate-400"
-                  }`}>
-                    {s.title}
-                  </p>
+                  {!scrolled && (
+                    <p className={`text-xs mt-1 hidden sm:block whitespace-nowrap ${
+                      active ? "font-semibold text-slate-800" : done ? "font-medium text-slate-500" : "font-medium text-slate-400"
+                    }`}>
+                      {s.title}
+                    </p>
+                  )}
                 </div>
                 {i < STEPS.length - 1 && (
                   <div className={`flex-1 h-0.5 mx-2 mb-4 rounded transition-all ${done ? "bg-slate-400" : "bg-slate-200"}`} />
@@ -1054,62 +1074,116 @@ export function DoctorRequestForm() {
               Referring Professional
             </h2>
 
-
-            {/* Saved profile banner */}
-            {savedProfile && (
-              <div className="flex items-center justify-between bg-medical-50 border border-medical-100 rounded-xl px-4 py-2.5">
-                <p className="text-xs text-medical-700 flex items-center gap-1.5">
-                  <Check className="w-3.5 h-3.5 text-medical-600 shrink-0" />
-                  Pre-filled from your saved profile
-                </p>
-                <button
-                  type="button"
-                  onClick={clearDoctorProfile}
-                  className="text-xs text-slate-400 hover:text-slate-600 underline underline-offset-2 shrink-0 ml-3"
-                >
-                  Not you? Clear
-                </button>
+            {/* Profile summary card — shown when cache exists and not editing */}
+            {savedProfile && !doctorEditing ? (
+              <div className="rounded-2xl border border-medical-200 bg-gradient-to-br from-medical-50 to-white overflow-hidden">
+                {/* Card header */}
+                <div className="px-4 pt-4 pb-3 flex items-start justify-between gap-3">
+                  <div className="flex items-center gap-3 min-w-0">
+                    <div className="w-9 h-9 rounded-full bg-medical-100 border border-medical-200 flex items-center justify-center shrink-0">
+                      <User className="w-4 h-4 text-medical-600" />
+                    </div>
+                    <div className="min-w-0">
+                      <p className="font-bold text-slate-800 text-sm leading-tight truncate">
+                        {[form.doctor_prefix, form.doctor_name].filter(Boolean).join(" ") || "—"}
+                      </p>
+                      <p className="text-xs text-medical-600 mt-0.5">Saved profile</p>
+                    </div>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => setDoctorEditing(true)}
+                    className="flex items-center gap-1 text-xs text-medical-600 hover:text-medical-800 font-semibold transition-colors shrink-0 mt-0.5"
+                  >
+                    <Pencil className="w-3 h-3" /> Edit
+                  </button>
+                </div>
+                {/* Card fields */}
+                <div className="px-4 pb-3 space-y-1.5 border-t border-medical-100 pt-3">
+                  <div className="flex items-center gap-2 text-xs">
+                    <Mail className="w-3 h-3 shrink-0 text-slate-400" />
+                    <span className="text-slate-600 truncate">{form.doctor_email || <span className="text-slate-300 italic">No email</span>}</span>
+                  </div>
+                  <div className={`flex items-center gap-2 text-xs ${form.doctor_phone ? "" : "opacity-50"}`}>
+                    <Phone className="w-3 h-3 shrink-0 text-slate-400" />
+                    <span className={form.doctor_phone ? "text-slate-600" : "text-slate-400 italic"}>{form.doctor_phone || "No phone saved"}</span>
+                  </div>
+                  <div className={`flex items-center gap-2 text-xs ${form.doctor_hospital ? "" : "opacity-50"}`}>
+                    <Building2 className="w-3 h-3 shrink-0 text-slate-400" />
+                    <span className={form.doctor_hospital ? "text-slate-600 truncate" : "text-slate-400 italic"}>{form.doctor_hospital || "No hospital/clinic saved"}</span>
+                  </div>
+                </div>
+                {/* Bank status + clear */}
+                <div className="px-4 pb-3 flex items-center justify-between gap-3 border-t border-medical-100 pt-2.5">
+                  {!bankSkipped && (form.doctor_bank_name || form.doctor_account_number) ? (
+                    <span className="text-xs bg-emerald-100 text-emerald-700 border border-emerald-200 px-2.5 py-0.5 rounded-full flex items-center gap-1 font-medium">
+                      <Check className="w-3 h-3" /> Bank details saved
+                    </span>
+                  ) : (
+                    <span className="text-xs text-slate-400 italic">No bank details</span>
+                  )}
+                  <button
+                    type="button"
+                    onClick={clearDoctorProfile}
+                    className="text-xs text-slate-400 hover:text-slate-600 underline underline-offset-2 transition-colors shrink-0"
+                  >
+                    Not you? Clear
+                  </button>
+                </div>
               </div>
+            ) : (
+              /* Form fields — shown for new entries or when editing cached profile */
+              <>
+                {savedProfile && (
+                  <div className="flex justify-end">
+                    <button
+                      type="button"
+                      onClick={() => setDoctorEditing(false)}
+                      className="text-xs text-slate-400 hover:text-slate-600 underline underline-offset-2 transition-colors"
+                    >
+                      ← Back to saved profile
+                    </button>
+                  </div>
+                )}
+                <PrefixSelect
+                  value={form.doctor_prefix}
+                  onChange={(v) => set("doctor_prefix", v)}
+                />
+                <Input
+                  label="Full Name"
+                  required
+                  placeholder="Firstname Lastname"
+                  value={form.doctor_name}
+                  onChange={(e) => set("doctor_name", e.target.value)}
+                  error={errors.doctor_name}
+                />
+                <Input
+                  label="Email"
+                  type="email"
+                  required
+                  placeholder="you@hospital.com"
+                  hint="You will receive request updates here"
+                  value={form.doctor_email}
+                  onChange={(e) => set("doctor_email", e.target.value)}
+                  error={errors.doctor_email}
+                />
+                <Input
+                  label="Phone"
+                  type="tel"
+                  placeholder="+234 800 000 0000"
+                  value={form.doctor_phone}
+                  onChange={(e) => set("doctor_phone", e.target.value)}
+                />
+                {/* Hospital / clinic (optional) */}
+                <Input
+                  label="Hospital or Clinic"
+                  placeholder="e.g. Lagos University Teaching Hospital"
+                  hint="Optional — where you are referring from"
+                  value={form.doctor_hospital}
+                  onChange={(e) => set("doctor_hospital", e.target.value)}
+                />
+              </>
             )}
-
-            <PrefixSelect
-              value={form.doctor_prefix}
-              onChange={(v) => set("doctor_prefix", v)}
-            />
-            <Input
-              label="Full Name"
-              required
-              placeholder="Firstname Lastname"
-              value={form.doctor_name}
-              onChange={(e) => set("doctor_name", e.target.value)}
-              error={errors.doctor_name}
-            />
-            <Input
-              label="Email"
-              type="email"
-              required
-              placeholder="you@hospital.com"
-              hint="You will receive request updates here"
-              value={form.doctor_email}
-              onChange={(e) => set("doctor_email", e.target.value)}
-              error={errors.doctor_email}
-            />
-            <Input
-              label="Phone"
-              type="tel"
-              placeholder="+234 800 000 0000"
-              value={form.doctor_phone}
-              onChange={(e) => set("doctor_phone", e.target.value)}
-            />
-
-            {/* Hospital / clinic (optional) */}
-            <Input
-              label="Hospital or Clinic"
-              placeholder="e.g. Lagos University Teaching Hospital"
-              hint="Optional — where you are referring from"
-              value={form.doctor_hospital}
-              onChange={(e) => set("doctor_hospital", e.target.value)}
-            />
 
             {/* Bank account details — single collapsible section */}
             {bankSkipped ? (
@@ -1142,7 +1216,7 @@ export function DoctorRequestForm() {
                       <div className="flex items-center gap-2">
                         <span className="text-sm font-semibold text-slate-700">Bank Account Details</span>
                         {!bankSkipped && <span className="inline-block w-1.5 h-1.5 rounded-full bg-amber-400 align-middle" aria-label="required" />}
-                        <span className="text-xs text-slate-400 ml-1">For referral payment</span>
+                        <span className="hidden sm:inline text-xs text-slate-400 ml-1">For referral payment</span>
                       </div>
                     )}
                     <ChevronDown className={`w-4 h-4 transition-transform shrink-0 ${hasBankContent ? "text-emerald-500" : "text-slate-400"} ${bankOpen ? "rotate-180" : ""}`} />
@@ -1197,8 +1271,48 @@ export function DoctorRequestForm() {
           </div>
         )}
 
-        {/* Step 4: Clinical Details + Review */}
+        {/* Step 4: Preferred Schedule (optional) */}
         {step === 4 && (
+          <div className="space-y-4">
+            <div>
+              <h2 className="flex items-center gap-2 text-base font-semibold text-slate-700 pb-3 border-b border-slate-100">
+                <CalendarDays className="w-4 h-4 text-medical-600" />
+                Preferred Schedule
+                <span className="text-xs text-slate-400 font-normal ml-1">(optional)</span>
+              </h2>
+            </div>
+            <p className="text-sm text-slate-500 -mt-1">When does the patient plan to carry out these tests?</p>
+            <div className="grid grid-cols-2 gap-3">
+              {SCHEDULE_OPTIONS.map((opt) => {
+                const selected = form.schedule === opt.value;
+                return (
+                  <button
+                    key={opt.value}
+                    type="button"
+                    onClick={() => set("schedule", selected ? "" : opt.value)}
+                    className={`flex flex-col items-start gap-1.5 p-4 rounded-2xl border-2 transition-all text-left ${
+                      selected
+                        ? "border-medical-400 bg-medical-50 ring-2 ring-medical-200"
+                        : "border-slate-200 bg-white/60 hover:border-slate-300 hover:bg-slate-50"
+                    }`}
+                  >
+                    <div className={`w-8 h-8 rounded-xl flex items-center justify-center ${selected ? "bg-medical-600" : "bg-slate-100"}`}>
+                      <opt.icon className={`w-4 h-4 ${selected ? "text-white" : "text-slate-400"}`} />
+                    </div>
+                    <span className={`text-sm font-semibold leading-tight ${selected ? "text-medical-800" : "text-slate-700"}`}>{opt.label}</span>
+                    <span className={`text-xs ${selected ? "text-medical-600" : "text-slate-400"}`}>{opt.desc}</span>
+                  </button>
+                );
+              })}
+            </div>
+            {!form.schedule && (
+              <p className="text-xs text-center text-slate-400">You can skip this — it helps the lab plan resources</p>
+            )}
+          </div>
+        )}
+
+        {/* Step 5: Clinical Details + Review */}
+        {step === 5 && (
           <div className="space-y-4">
             <h2 className="flex items-center gap-2 text-base font-semibold text-slate-700 pb-3 border-b border-slate-100">
               <TestTube2 className="w-4 h-4 text-medical-600" />
@@ -1231,6 +1345,7 @@ export function DoctorRequestForm() {
               <SummaryRow label="Referrer" value={[form.doctor_prefix, form.doctor_name].filter(Boolean).join(" ")} />
               <SummaryRow label="Referrer Email" value={form.doctor_email} />
               {form.doctor_hospital && <SummaryRow label="Hospital/Clinic" value={form.doctor_hospital} />}
+              {form.schedule && <SummaryRow label="Schedule" value={scheduleLabel(form.schedule)} />}
             </div>
           </div>
         )}
@@ -1244,9 +1359,9 @@ export function DoctorRequestForm() {
             Back
           </Button>
         )}
-        {step < 4 ? (
+        {step < 5 ? (
           <Button onClick={handleNext} type="button">
-            Continue
+            {step === 4 && !form.schedule ? "Skip & Continue" : "Continue"}
             <ChevronRight className="w-4 h-4" />
           </Button>
         ) : (

@@ -129,6 +129,7 @@ model Request {
   doctor_bank_name      String?
   doctor_account_number String?
   doctor_account_name   String?
+  schedule              String?
   diagnosis             String?
   tests                 String
   status                String    @default("incoming")

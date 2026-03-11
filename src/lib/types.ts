@@ -98,6 +98,7 @@ export interface LabRequest {
   doctor_bank_name: string | null;
   doctor_account_number: string | null;
   doctor_account_name: string | null;
+  schedule: string | null;
   diagnosis: string | null;
   tests: string;
   status: RequestStatus;
