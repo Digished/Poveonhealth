@@ -692,7 +692,9 @@ export function DoctorRequestForm() {
   return (
     <div className="animate-fade-in">
       {/* Sticky header + step indicator */}
-      <div className="sticky top-14 z-10 -mx-4 px-4 pt-5 pb-4 bg-white/70 backdrop-blur-md border-b border-white/50">
+      <div className="sticky top-0 z-10 -mx-4 px-4 pt-5 pb-4">
+        {/* Full-viewport-width background */}
+        <div className="absolute inset-0 left-1/2 -translate-x-1/2 w-screen bg-white/70 backdrop-blur-md border-b border-white/50 -z-10" />
 
         {/* Header — swaps to lab branding once a lab is selected */}
         <div className="mb-4">
@@ -732,7 +734,7 @@ export function DoctorRequestForm() {
                   </div>
                   {/* Call button */}
                   {phones.length > 0 && (
-                    <div className="relative shrink-0">
+                    <div className="shrink-0">
                       {phones.length === 1 ? (
                         <a
                           href={`tel:${phones[0]}`}
@@ -742,33 +744,14 @@ export function DoctorRequestForm() {
                           <PhoneCall className="w-4 h-4" />
                         </a>
                       ) : (
-                        <>
-                          <button
-                            type="button"
-                            onClick={() => setCallOpen((v) => !v)}
-                            className="w-9 h-9 rounded-xl bg-medical-600 hover:bg-medical-700 text-white flex items-center justify-center shadow-sm transition-colors"
-                            title={callOpen ? "Close" : `Call ${selectedLab.name}`}
-                          >
-                            {callOpen ? <X className="w-4 h-4" /> : <PhoneCall className="w-4 h-4" />}
-                          </button>
-                          {callOpen && (
-                            <div className="absolute right-0 top-full mt-1.5 bg-white rounded-2xl shadow-xl border border-slate-100 overflow-hidden min-w-[180px] z-20 animate-slide-up">
-                              <p className="text-xs font-semibold text-slate-400 px-4 pt-3 pb-1 uppercase tracking-wider">
-                                Call {selectedLab.name}
-                              </p>
-                              {phones.map((ph, i) => (
-                                <a
-                                  key={i}
-                                  href={`tel:${ph}`}
-                                  onClick={() => setCallOpen(false)}
-                                  className="flex items-center gap-2 px-4 py-2.5 hover:bg-medical-50 text-medical-700 text-sm font-medium"
-                                >
-                                  <Phone className="w-3.5 h-3.5" />{ph}
-                                </a>
-                              ))}
-                            </div>
-                          )}
-                        </>
+                        <button
+                          type="button"
+                          onClick={() => setCallOpen(true)}
+                          className="w-9 h-9 rounded-xl bg-medical-600 hover:bg-medical-700 text-white flex items-center justify-center shadow-sm transition-colors"
+                          title={`Call ${selectedLab.name}`}
+                        >
+                          <PhoneCall className="w-4 h-4" />
+                        </button>
                       )}
                     </div>
                   )}
@@ -844,7 +827,7 @@ export function DoctorRequestForm() {
       </div>
 
       {/* Step content */}
-      <div className="glass-card p-6 mt-6 mb-5">
+      <div className="glass-card p-6 mt-4 mb-2">
 
         {/* Step 1: Choose Lab */}
         {step === 1 && (
@@ -1257,6 +1240,54 @@ export function DoctorRequestForm() {
 
       {/* Learn more modal */}
       {learnMoreOpen && <LearnMoreModal onClose={() => setLearnMoreOpen(false)} />}
+
+      {/* Call modal — shown when lab has multiple phone numbers */}
+      {callOpen && selectedLab && (
+        <div
+          className="fixed inset-0 z-50 flex items-end sm:items-center justify-center p-4 animate-backdrop-in"
+          style={{ backgroundColor: "rgba(15,23,42,0.45)", backdropFilter: "blur(4px)" }}
+          onClick={() => setCallOpen(false)}
+        >
+          <div
+            className="w-full max-w-sm bg-white rounded-3xl shadow-2xl overflow-hidden animate-scale-in"
+            onClick={(e) => e.stopPropagation()}
+          >
+            {/* Header */}
+            <div className="bg-gradient-to-br from-medical-50 via-white to-sky-50 px-5 pt-5 pb-4 flex items-center gap-3">
+              <div className="w-10 h-10 rounded-2xl bg-medical-600 flex items-center justify-center shrink-0 shadow-sm">
+                <PhoneCall className="w-5 h-5 text-white" />
+              </div>
+              <div className="flex-1 min-w-0">
+                <h3 className="text-base font-bold text-slate-800 leading-tight truncate">{selectedLab.name}</h3>
+                <p className="text-xs text-slate-400 mt-0.5">Select a number to call</p>
+              </div>
+              <button
+                onClick={() => setCallOpen(false)}
+                className="p-1.5 rounded-xl hover:bg-white/60 text-slate-400 hover:text-slate-700 transition-colors shrink-0"
+              >
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+            {/* Phone number list */}
+            <div className="px-4 py-3 space-y-2 pb-5">
+              {((selectedLab.phones as string[] | null) ?? []).map((ph, i) => (
+                <a
+                  key={i}
+                  href={`tel:${ph}`}
+                  onClick={() => setCallOpen(false)}
+                  className="flex items-center gap-3 w-full px-4 py-3.5 rounded-2xl bg-medical-50 hover:bg-medical-100 border border-medical-100 hover:border-medical-200 text-medical-800 font-semibold text-sm transition-all group"
+                >
+                  <div className="w-8 h-8 rounded-xl bg-medical-600 group-hover:bg-medical-700 flex items-center justify-center shrink-0 transition-colors">
+                    <Phone className="w-4 h-4 text-white" />
+                  </div>
+                  <span className="flex-1">{ph}</span>
+                  <PhoneCall className="w-4 h-4 text-medical-400 group-hover:text-medical-600 transition-colors" />
+                </a>
+              ))}
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

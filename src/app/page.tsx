@@ -4,9 +4,9 @@ import { PoveonLogo } from "@/components/PoveonLogo";
 
 export default function HomePage() {
   return (
-    <div className="min-h-screen bg-gradient-to-br from-sky-50 via-blue-50 to-indigo-50">
+    <div className="h-dvh flex flex-col bg-gradient-to-br from-sky-50 via-blue-50 to-indigo-50 overflow-hidden">
       {/* Top navigation bar */}
-      <nav className="border-b border-white/80 bg-white/60 backdrop-blur-md sticky top-0 z-20">
+      <nav className="border-b border-white/80 bg-white/60 backdrop-blur-md shrink-0 z-20">
         <div className="max-w-6xl mx-auto px-4 py-3 flex items-center justify-between">
           <div className="flex items-center gap-2.5">
             <PoveonLogo className="w-8 h-8" />
@@ -20,21 +20,26 @@ export default function HomePage() {
         </div>
       </nav>
 
-      <main className="max-w-2xl mx-auto px-4 pb-20">
-        <DoctorRequestForm />
-        <TrustIndicators />
-      </main>
+      {/* Scrollable content area — page never scrolls, only this div does */}
+      <main className="flex-1 overflow-y-auto">
+        <div className="max-w-2xl mx-auto px-4 pt-2 pb-2">
+          <DoctorRequestForm />
+        </div>
 
-      {/* Footer */}
-      <footer className="border-t border-white/60 bg-white/40 backdrop-blur-sm py-6">
-        <div className="max-w-6xl mx-auto px-4 flex flex-col sm:flex-row items-center justify-between gap-3 text-xs text-slate-400">
-          <span>© {new Date().getFullYear()} Poveon. All rights reserved.</span>
-          <div className="flex items-center gap-4">
-            <a href="/terms" className="hover:text-slate-600 transition-colors">Terms &amp; Conditions</a>
-            <a href="/privacy" className="hover:text-slate-600 transition-colors">Privacy Policy</a>
+        {/* Full-width trust indicators strip */}
+        <div className="w-full border-t border-white/60 bg-white/30 backdrop-blur-sm">
+          <div className="max-w-2xl mx-auto px-4 py-4">
+            <TrustIndicators />
           </div>
         </div>
-      </footer>
+
+        {/* Compact inline footer */}
+        <div className="max-w-6xl mx-auto px-4 py-3 flex items-center justify-center gap-4 text-xs text-slate-400">
+          <span>© {new Date().getFullYear()} Poveon.</span>
+          <a href="/terms" className="hover:text-slate-600 transition-colors">Terms</a>
+          <a href="/privacy" className="hover:text-slate-600 transition-colors">Privacy</a>
+        </div>
+      </main>
     </div>
   );
 }

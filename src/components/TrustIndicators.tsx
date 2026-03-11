@@ -41,7 +41,7 @@ export function TrustIndicators() {
 
   return (
     <>
-      <div className="mt-10 grid grid-cols-3 gap-3">
+      <div className="grid grid-cols-3 gap-3">
         {ITEMS.map((item) => {
           const Icon = item.icon;
           return (
