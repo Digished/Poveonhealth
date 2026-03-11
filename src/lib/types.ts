@@ -10,11 +10,32 @@ export interface Lab {
   name: string;
   prefix: string;
   address: string;
+  description: string;
   phones: string[];
   email: string;
+  notification_email: string | null;
   logo_url: string | null;
   hidden: boolean;
+  service_categories: string[];
+  certifications: string[];
   created_at: string;
+}
+
+export interface ApiLog {
+  id: string;
+  method: string;
+  path: string;
+  status: number;
+  lab_id: string | null;
+  duration_ms: number | null;
+  created_at: string;
+}
+
+export interface ApiLogSummary {
+  today: number;
+  week: number;
+  topEndpoints: { path: string; count: number }[];
+  byStatus: { status: number; count: number }[];
 }
 
 export interface LabUser {
@@ -22,6 +43,41 @@ export interface LabUser {
   user_id: string;
   lab_id: string;
   created_at: string;
+}
+
+export interface LabApiKey {
+  id: string;
+  name: string;
+  key_prefix: string;
+  last_used: string | null;
+  expires_at: string | null;
+  created_at: string;
+}
+
+export interface LabRole {
+  id: string;
+  lab_id: string;
+  name: string;
+  can_view_requests: boolean;
+  can_mark_seen: boolean;
+  can_mark_done: boolean;
+  can_send_results: boolean;
+  can_manage_team: boolean;
+  can_manage_api_keys: boolean;
+  can_view_referrals: boolean;
+  created_at: string;
+  _count?: { members: number };
+}
+
+export interface LabMember {
+  id: string;
+  lab_id: string;
+  user_id: string;
+  email: string | null;
+  role_id: string;
+  role: { id: string; name: string };
+  created_at: string;
+  last_sign_in_at?: string | null;
 }
 
 export interface LabRequest {
@@ -33,9 +89,16 @@ export interface LabRequest {
   sex: Sex;
   address: string | null;
   patient_email: string | null;
+  patient_phone: string | null;
+  doctor_prefix: string | null;
   doctor_name: string;
   doctor_email: string;
   doctor_phone: string | null;
+  doctor_hospital: string | null;
+  doctor_bank_name: string | null;
+  doctor_account_number: string | null;
+  doctor_account_name: string | null;
+  schedule: string | null;
   diagnosis: string | null;
   tests: string;
   status: RequestStatus;
@@ -56,9 +119,14 @@ export interface CreateRequestPayload {
   sex: Sex;
   address?: string;
   patient_email?: string;
+  patient_phone?: string;
+  doctor_prefix?: string;
   doctor_name: string;
   doctor_email: string;
   doctor_phone?: string;
+  doctor_bank_name?: string;
+  doctor_account_number?: string;
+  doctor_account_name?: string;
   diagnosis?: string;
   tests: string;
   lab_id: string;

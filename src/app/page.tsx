@@ -1,64 +1,32 @@
 import { DoctorRequestForm } from "@/components/DoctorRequestForm";
-import { FlaskConical, Shield, Clock, Mail } from "lucide-react";
+import { TrustIndicators } from "@/components/TrustIndicators";
+import { PoveonLogo } from "@/components/PoveonLogo";
 
 export default function HomePage() {
   return (
-    <div className="min-h-screen bg-gradient-to-br from-sky-50 via-blue-50 to-indigo-50">
-      {/* Top navigation bar */}
-      <nav className="border-b border-white/80 bg-white/60 backdrop-blur-md sticky top-0 z-20">
-        <div className="max-w-6xl mx-auto px-4 py-3 flex items-center justify-between">
-          <div className="flex items-center gap-2.5">
-            <div className="w-8 h-8 bg-medical-600 rounded-xl flex items-center justify-center">
-              <FlaskConical className="w-4.5 h-4.5 text-white w-[18px] h-[18px]" />
-            </div>
-            <span className="font-bold text-medical-700 text-lg">Poveon</span>
-            <span className="text-xs text-slate-400 font-medium hidden sm:inline">Health</span>
-          </div>
-          <div className="flex items-center gap-2 text-sm" />
+    <div className="h-dvh flex flex-col bg-gradient-to-br from-sky-50 via-blue-50 to-indigo-50 overflow-hidden">
+      {/* Scrollable content area — page never scrolls, only this div does */}
+      <main className="flex-1 overflow-y-auto overflow-x-hidden">
+        <div className="max-w-2xl mx-auto px-4 pb-2">
+          <DoctorRequestForm />
         </div>
-      </nav>
 
-      <main className="max-w-2xl mx-auto px-4 py-10 pb-20">
-        <DoctorRequestForm />
+        {/* Full-width trust indicators strip */}
+        <div className="w-full border-t border-white/60 bg-white/30 backdrop-blur-sm">
+          <div className="max-w-2xl mx-auto px-4 py-4">
+            <TrustIndicators />
+          </div>
+        </div>
 
-        {/* Trust indicators */}
-        <div className="mt-12 grid grid-cols-3 gap-4">
-          {[
-            {
-              icon: <Shield className="w-5 h-5 text-medical-600" />,
-              title: "Secure",
-              desc: "End-to-end encrypted requests",
-            },
-            {
-              icon: <Clock className="w-5 h-5 text-medical-600" />,
-              title: "Instant",
-              desc: "Real-time lab notifications",
-            },
-            {
-              icon: <Mail className="w-5 h-5 text-medical-600" />,
-              title: "Notified",
-              desc: "Email updates at every step",
-            },
-          ].map((item) => (
-            <div
-              key={item.title}
-              className="text-center p-4 bg-white/60 rounded-2xl border border-white/80"
-            >
-              <div className="flex justify-center mb-2">{item.icon}</div>
-              <p className="text-xs font-semibold text-slate-700">{item.title}</p>
-              <p className="text-xs text-slate-400 mt-0.5">{item.desc}</p>
-            </div>
-          ))}
+        {/* Compact inline footer */}
+        <div className="max-w-6xl mx-auto px-4 py-3 flex items-center justify-center gap-4 text-xs text-slate-400">
+          <PoveonLogo className="w-5 h-5 opacity-40" />
+          <span>© {new Date().getFullYear()} Poveon.</span>
+          <a href="/terms" className="hover:text-slate-600 transition-colors">Terms</a>
+          <a href="/privacy" className="hover:text-slate-600 transition-colors">Privacy</a>
+          <a href="/api-docs" className="hover:text-slate-600 transition-colors">API Docs</a>
         </div>
       </main>
-
-      {/* Footer */}
-      <footer className="border-t border-white/60 bg-white/40 backdrop-blur-sm py-6">
-        <div className="max-w-6xl mx-auto px-4 flex flex-col sm:flex-row items-center justify-between gap-2 text-xs text-slate-400">
-          <span>© {new Date().getFullYear()} Poveon Health. All rights reserved.</span>
-          <span>Secure lab request platform</span>
-        </div>
-      </footer>
     </div>
   );
 }

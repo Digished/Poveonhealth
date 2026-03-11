@@ -38,9 +38,9 @@ export default function LabLoginPage() {
       return;
     }
 
-    // Check role
+    // Check role — lab owners and lab members both land on the lab dashboard
     const role = data.user?.user_metadata?.role;
-    if (role !== "lab") {
+    if (role !== "lab" && role !== "lab_member") {
       await supabase.auth.signOut();
       setLoading(false);
       setError("This login is for laboratory accounts only");

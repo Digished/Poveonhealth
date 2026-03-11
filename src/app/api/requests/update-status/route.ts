@@ -1,9 +1,11 @@
+export const dynamic = "force-dynamic";
 import { NextRequest, NextResponse } from "next/server";
 import { z } from "zod";
-import { createServerClient } from "@/lib/supabase/server";
 import { prisma } from "@/lib/prisma";
-import { resend, FROM_ADDRESS } from "@/lib/email/resend";
+import { getLabAuth } from "@/lib/lab-auth";
+import { resend, labSender } from "@/lib/email/resend";
 import { doctorTestsCompleted } from "@/lib/email/templates";
+import { logApiCall } from "@/lib/api-logger";
 
 const UpdateStatusSchema = z.object({
   requestId: z.string().uuid(),
@@ -11,6 +13,7 @@ const UpdateStatusSchema = z.object({
 });
 
 export async function POST(request: NextRequest) {
+  const start = Date.now();
   try {
     const body = await request.json();
     const parsed = UpdateStatusSchema.safeParse(body);
@@ -24,24 +27,20 @@ export async function POST(request: NextRequest) {
 
     const { requestId, status } = parsed.data;
 
-    // Authenticate lab user
-    const authClient = await createServerClient();
-    const { data: { user } } = await authClient.auth.getUser();
-
-    if (!user) {
+    // Authenticate lab user/member/API key
+    const auth = await getLabAuth(request);
+    if (!auth) {
       return NextResponse.json(
         { success: false, error: "Authentication required" },
         { status: 401 }
       );
     }
 
-    const labUser = await prisma.labUser.findUnique({
-      where: { user_id: user.id },
-    });
-
-    if (!labUser) {
+    // Check permission based on which status is being set
+    const requiredPerm = status === "seen" ? "can_mark_seen" : "can_mark_done";
+    if (!auth.permissions[requiredPerm]) {
       return NextResponse.json(
-        { success: false, error: "Lab user not found" },
+        { success: false, error: "You do not have permission to perform this action" },
         { status: 403 }
       );
     }
@@ -49,7 +48,7 @@ export async function POST(request: NextRequest) {
     // Fetch the request and verify ownership
     const req = await prisma.request.findUnique({
       where: { id: requestId },
-      include: { lab: { select: { name: true } } },
+      include: { lab: { select: { name: true, notification_email: true } } },
     });
 
     if (!req) {
@@ -59,7 +58,7 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    if (req.lab_id !== labUser.lab_id) {
+    if (req.lab_id !== auth.lab_id) {
       return NextResponse.json(
         { success: false, error: "Unauthorized to update this request" },
         { status: 403 }
@@ -86,10 +85,12 @@ export async function POST(request: NextRequest) {
 
     await prisma.request.update({ where: { id: requestId }, data: updateData });
 
+    const brand = req.lab.notification_email ? { name: req.lab.name } : undefined;
+
     // Notify doctor when tests are done
     if (status === "done") {
-      await resend.emails.send({
-        from: FROM_ADDRESS,
+      resend.emails.send({
+        from: labSender(req.lab),
         to: req.doctor_email,
         subject: `Tests Completed — ${req.patient_name}`,
         html: doctorTestsCompleted({
@@ -97,13 +98,17 @@ export async function POST(request: NextRequest) {
           patientName: req.patient_name,
           labName: req.lab.name,
           code: req.code,
+          brand,
         }),
-      });
+      }).then(({ error }) => { if (error) console.error("[email] tests completed:", JSON.stringify(error)); })
+        .catch((e) => console.error("[email] tests completed error:", e));
     }
 
+    logApiCall({ method: "POST", path: "/api/requests/update-status", status: 200, lab_id: req.lab_id, duration_ms: Date.now() - start });
     return NextResponse.json({ success: true, status });
   } catch (error) {
     console.error("Update status error:", error);
+    logApiCall({ method: "POST", path: "/api/requests/update-status", status: 500, duration_ms: Date.now() - start });
     return NextResponse.json(
       { success: false, error: "An unexpected error occurred" },
       { status: 500 }

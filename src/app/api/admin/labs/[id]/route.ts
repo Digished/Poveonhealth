@@ -1,3 +1,4 @@
+export const dynamic = "force-dynamic";
 import { NextRequest, NextResponse } from "next/server";
 import { z } from "zod";
 import { createServerClient, createAdminClient } from "@/lib/supabase/server";
@@ -15,8 +16,12 @@ async function verifyAdmin() {
 const PatchSchema = z.object({
   name: z.string().min(2).max(200).optional(),
   address: z.string().min(1).max(500).optional(),
+  description: z.string().max(1000).optional(),
   phones: z.array(z.string().min(1)).optional(),
+  notification_email: z.string().email().nullable().optional(),
   hidden: z.boolean().optional(),
+  service_categories: z.array(z.string()).optional(),
+  certifications: z.array(z.string()).optional(),
 });
 
 export async function PATCH(
@@ -61,7 +66,8 @@ export async function DELETE(
     // Find the linked auth user via lab_users
     const labUser = await prisma.labUser.findFirst({ where: { lab_id: params.id } });
 
-    // Delete lab (cascades to lab_users and requests via FK)
+    // Delete requests first (no cascade on requests FK), then lab (cascades lab_users)
+    await prisma.request.deleteMany({ where: { lab_id: params.id } });
     await prisma.lab.delete({ where: { id: params.id } });
 
     // Delete the Supabase auth user if found

@@ -1,3 +1,4 @@
+export const dynamic = "force-dynamic";
 import { NextRequest, NextResponse } from "next/server";
 import { z } from "zod";
 import { createServerClient, createAdminClient } from "@/lib/supabase/server";
@@ -10,7 +11,9 @@ const CreateLabSchema = z.object({
   name: z.string().min(2).max(200),
   email: z.string().email(),
   address: z.string().min(3).max(500),
+  description: z.string().max(1000).optional(),
   phones: z.array(z.string().min(1)).optional(),
+  notification_email: z.string().email().optional(),
   tempPassword: z.string().min(8).max(100).optional(),
 });
 
@@ -46,7 +49,7 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    const { name, email, address, phones } = parsed.data;
+    const { name, email, address, description, phones, notification_email } = parsed.data;
     const tempPassword = parsed.data.tempPassword ?? generateTempPassword();
 
     // Derive a unique prefix
@@ -67,7 +70,7 @@ export async function POST(request: NextRequest) {
     let newLab: { id: string; name: string; prefix: string; email: string };
     try {
       newLab = await prisma.lab.create({
-        data: { name, prefix, address, email, ...(phones ? { phones } : {}) },
+        data: { name, prefix, address, email, ...(description ? { description } : {}), ...(phones ? { phones } : {}), ...(notification_email ? { notification_email } : {}) },
         select: { id: true, name: true, prefix: true, email: true },
       });
     } catch (err: unknown) {
@@ -117,7 +120,7 @@ export async function POST(request: NextRequest) {
     await resend.emails.send({
       from: FROM_ADDRESS,
       to: email,
-      subject: "Welcome to Poveon Health — Lab Account Created",
+      subject: "Welcome to Poveon — Lab Account Created",
       html: labAccountCreated({ labName: name, email, tempPassword, loginUrl }),
     });
 

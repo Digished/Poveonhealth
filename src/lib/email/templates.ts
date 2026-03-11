@@ -3,13 +3,18 @@
 // All styles are inline for email client compatibility
 // =============================================================================
 
-const base = (content: string) => `
+/**
+ * brand — when a lab has a custom notification_email, pass { name: lab.name }
+ * so the email header shows the lab's name rather than "Poveon".
+ * A "Powered by Poveon" line is appended to branded emails for transparency.
+ */
+const base = (content: string, brand?: { name: string }) => `
 <!DOCTYPE html>
 <html lang="en">
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Poveon Health</title>
+  <title>${brand ? brand.name : "Poveon"}</title>
 </head>
 <body style="margin:0;padding:0;background-color:#f0f7ff;font-family:Inter,'Helvetica Neue',Arial,sans-serif;">
   <table width="100%" cellpadding="0" cellspacing="0" style="background-color:#f0f7ff;padding:40px 20px;">
@@ -20,9 +25,12 @@ const base = (content: string) => `
           <tr>
             <td style="background:linear-gradient(135deg,#0259a0,#0270c3);border-radius:12px 12px 0 0;padding:32px 40px;text-align:center;">
               <h1 style="margin:0;color:#ffffff;font-size:24px;font-weight:700;letter-spacing:-0.5px;">
-                Poveon Health
+                ${brand ? brand.name : "Poveon"}
               </h1>
-              <p style="margin:4px 0 0;color:#bae0fd;font-size:13px;">Laboratory Request Management</p>
+              <p style="margin:4px 0 0;color:#bae0fd;font-size:13px;">
+                ${brand ? "Laboratory Notifications" : "Laboratory Request Management"}
+              </p>
+              ${brand ? `<p style="margin:8px 0 0;color:#93c5fd;font-size:11px;opacity:0.75;">Powered by Poveon</p>` : ""}
             </td>
           </tr>
           <!-- Body -->
@@ -35,7 +43,7 @@ const base = (content: string) => `
           <tr>
             <td style="background:#f0f7ff;border:1px solid #e0effe;border-radius:0 0 12px 12px;padding:20px 40px;text-align:center;">
               <p style="margin:0;color:#6b7280;font-size:12px;">
-                © ${new Date().getFullYear()} Poveon Health. All rights reserved.<br>
+                © ${new Date().getFullYear()} ${brand ? brand.name : "Poveon"}. All rights reserved.<br>
                 This is an automated message. Please do not reply to this email.
               </p>
             </td>
@@ -72,15 +80,22 @@ export function doctorRequestConfirmation({
   code,
   labName,
   labAddress,
+  labPhones,
   tests,
+  brand,
 }: {
   doctorName: string;
   patientName: string;
   code: string;
   labName: string;
   labAddress: string;
+  labPhones: string[];
   tests: string;
+  brand?: { name: string };
 }) {
+  const phoneLines = labPhones.length
+    ? labPhones.map((p) => `<p style="margin:2px 0;color:#1e3a5f;font-size:15px;font-weight:500;">📞 ${p}</p>`).join("")
+    : "";
   return base(`
     <h2 style="margin:0 0 8px;color:#0259a0;font-size:20px;font-weight:700;">Lab Request Submitted</h2>
     <p style="margin:0 0 24px;color:#4b5563;font-size:15px;">
@@ -105,13 +120,14 @@ export function doctorRequestConfirmation({
     ${value(labName)}
 
     ${labAddress ? `${label("Lab Address")}${value(labAddress)}` : ""}
+    ${phoneLines ? `${label("Lab Phone")}${phoneLines}<p style="margin:0 0 16px;"></p>` : ""}
 
     ${divider}
 
     <p style="margin:0;color:#6b7280;font-size:13px;line-height:1.6;">
       The patient should present this code at the laboratory reception. You will receive email notifications when the patient arrives and when tests are completed.
     </p>
-  `);
+  `, brand);
 }
 
 // =============================================================================
@@ -122,19 +138,24 @@ export function patientRequestCode({
   code,
   labName,
   labAddress,
-  doctorName,
+  labPhones,
+  brand,
 }: {
   patientName: string;
   code: string;
   labName: string;
   labAddress: string;
-  doctorName: string;
+  labPhones: string[];
+  brand?: { name: string };
 }) {
+  const phoneLines = labPhones.length
+    ? labPhones.map((p) => `<p style="margin:2px 0;color:#1e3a5f;font-size:14px;">📞 ${p}</p>`).join("")
+    : "";
   return base(`
     <h2 style="margin:0 0 8px;color:#0259a0;font-size:20px;font-weight:700;">Your Lab Test Request</h2>
     <p style="margin:0 0 24px;color:#4b5563;font-size:15px;">
       Dear ${patientName},<br><br>
-      Dr. ${doctorName} has sent a laboratory test request on your behalf to <strong>${labName}</strong>.
+      Your doctor has sent a laboratory test request on your behalf to <strong>${labName}</strong>.
       Please present the code below when you arrive at the laboratory.
     </p>
 
@@ -144,14 +165,16 @@ export function patientRequestCode({
 
     <h3 style="margin:0 0 12px;color:#0259a0;font-size:16px;font-weight:600;">Where to Go</h3>
     <p style="margin:0 0 8px;color:#4b5563;font-size:14px;font-weight:500;">${labName}</p>
-    ${labAddress ? `<p style="margin:0 0 16px;color:#1e3a5f;font-size:14px;">${labAddress}</p>` : ""}
+    ${labAddress ? `<p style="margin:0 0 6px;color:#1e3a5f;font-size:14px;">${labAddress}</p>` : ""}
+    ${phoneLines}
+    ${phoneLines ? `<p style="margin:0 0 16px;"></p>` : ""}
 
     ${divider}
 
     <p style="margin:0;color:#6b7280;font-size:13px;line-height:1.6;">
       Simply walk in and provide this code at the reception desk. No appointment necessary — your test request has already been registered.
     </p>
-  `);
+  `, brand);
 }
 
 // =============================================================================
@@ -162,11 +185,13 @@ export function doctorPatientArrived({
   patientName,
   labName,
   code,
+  brand,
 }: {
   doctorName: string;
   patientName: string;
   labName: string;
   code: string;
+  brand?: { name: string };
 }) {
   return base(`
     <h2 style="margin:0 0 8px;color:#0270c3;font-size:20px;font-weight:700;">Patient Has Arrived</h2>
@@ -191,7 +216,7 @@ export function doctorPatientArrived({
     <p style="margin:0;color:#6b7280;font-size:13px;">
       You will receive another notification when the tests have been completed.
     </p>
-  `);
+  `, brand);
 }
 
 // =============================================================================
@@ -202,11 +227,13 @@ export function doctorTestsCompleted({
   patientName,
   labName,
   code,
+  brand,
 }: {
   doctorName: string;
   patientName: string;
   labName: string;
   code: string;
+  brand?: { name: string };
 }) {
   return base(`
     <h2 style="margin:0 0 8px;color:#059669;font-size:20px;font-weight:700;">Tests Completed</h2>
@@ -229,9 +256,145 @@ export function doctorTestsCompleted({
     ${divider}
 
     <p style="margin:0;color:#6b7280;font-size:13px;">
-      Please contact the laboratory or your patient directly to arrange result collection. Thank you for using Poveon Health.
+      Please contact the laboratory or your patient directly to arrange result collection.
     </p>
-  `);
+  `, brand);
+}
+
+// =============================================================================
+// TEMPLATE: Doctor — Lab Results Available
+// =============================================================================
+export function labResultsDoctor({
+  doctorName,
+  patientName,
+  labName,
+  code,
+  resultLink,
+  hasAttachment,
+  note,
+  brand,
+}: {
+  doctorName: string;
+  patientName: string;
+  labName: string;
+  code: string;
+  resultLink?: string;
+  hasAttachment?: boolean;
+  note?: string;
+  brand?: { name: string };
+}) {
+  const resultsSection = [
+    resultLink
+      ? `<div style="text-align:center;margin:24px 0;">
+          <a href="${resultLink}" style="display:inline-block;background:#0270c3;color:#ffffff;text-decoration:none;padding:14px 32px;border-radius:8px;font-weight:600;font-size:15px;">
+            View Results Online
+          </a>
+        </div>`
+      : "",
+    hasAttachment
+      ? `<div style="background:#f0fdf4;border:1px solid #bbf7d0;border-radius:8px;padding:12px 16px;margin:16px 0;">
+          <p style="margin:0;color:#166534;font-size:14px;font-weight:500;">📎 Results are attached to this email as PDF document(s).</p>
+        </div>`
+      : "",
+  ]
+    .filter(Boolean)
+    .join("");
+
+  const noteSection = note
+    ? `${divider}
+       <h3 style="margin:0 0 8px;color:#92400e;font-size:14px;font-weight:600;">Note from Laboratory</h3>
+       <div style="background:#fffbeb;border:1px solid #fde68a;border-radius:8px;padding:12px 16px;">
+         <p style="margin:0;color:#78350f;font-size:14px;line-height:1.6;">${note}</p>
+       </div>`
+    : "";
+
+  return base(`
+    <h2 style="margin:0 0 8px;color:#059669;font-size:20px;font-weight:700;">Lab Results Available</h2>
+    <p style="margin:0 0 24px;color:#4b5563;font-size:15px;">
+      Dear Dr. ${doctorName},<br><br>
+      The laboratory results for your patient <strong>${patientName}</strong> are now available from <strong>${labName}</strong>.
+    </p>
+
+    ${divider}
+
+    ${label("Patient")}
+    ${value(patientName)}
+
+    ${label("Laboratory")}
+    ${value(labName)}
+
+    ${label("Request Code")}
+    ${value(`<span style="font-family:monospace;font-weight:700;">${code}</span>`)}
+
+    ${divider}
+
+    <h3 style="margin:0 0 12px;color:#059669;font-size:16px;font-weight:600;">Results</h3>
+
+    ${resultsSection}
+
+    ${noteSection}
+
+    ${divider}
+
+    <p style="margin:0;color:#6b7280;font-size:13px;">
+      Thank you for using ${brand ? brand.name : "Poveon"}.
+    </p>
+  `, brand);
+}
+
+// =============================================================================
+// TEMPLATE: Patient — Lab Results Available
+// =============================================================================
+export function labResultsPatient({
+  patientName,
+  labName,
+  resultLink,
+  hasAttachment,
+  brand,
+}: {
+  patientName: string;
+  labName: string;
+  resultLink?: string;
+  hasAttachment?: boolean;
+  brand?: { name: string };
+}) {
+  const resultsSection = [
+    resultLink
+      ? `<div style="text-align:center;margin:24px 0;">
+          <a href="${resultLink}" style="display:inline-block;background:#0270c3;color:#ffffff;text-decoration:none;padding:14px 32px;border-radius:8px;font-weight:600;font-size:15px;">
+            View Your Results Online
+          </a>
+        </div>`
+      : "",
+    hasAttachment
+      ? `<div style="background:#f0fdf4;border:1px solid #bbf7d0;border-radius:8px;padding:12px 16px;margin:16px 0;">
+          <p style="margin:0;color:#166534;font-size:14px;font-weight:500;">📎 Your results are attached to this email as a PDF document.</p>
+        </div>`
+      : "",
+  ]
+    .filter(Boolean)
+    .join("");
+
+  return base(`
+    <h2 style="margin:0 0 8px;color:#059669;font-size:20px;font-weight:700;">Your Lab Results Are Ready</h2>
+    <p style="margin:0 0 24px;color:#4b5563;font-size:15px;">
+      Dear ${patientName},<br><br>
+      Your laboratory test results from <strong>${labName}</strong> are now available.
+      Please share these results with your doctor if you have not already done so.
+    </p>
+
+    ${divider}
+
+    <h3 style="margin:0 0 12px;color:#059669;font-size:16px;font-weight:600;">Results</h3>
+
+    ${resultsSection}
+
+    ${divider}
+
+    <p style="margin:0;color:#6b7280;font-size:13px;line-height:1.6;">
+      If you have any questions about your results, please contact your doctor or ${brand ? brand.name : "the laboratory"} directly.
+    </p>
+  `, brand);
 }
 
 // =============================================================================
@@ -249,9 +412,9 @@ export function labAccountCreated({
   loginUrl: string;
 }) {
   return base(`
-    <h2 style="margin:0 0 8px;color:#0259a0;font-size:20px;font-weight:700;">Welcome to Poveon Health</h2>
+    <h2 style="margin:0 0 8px;color:#0259a0;font-size:20px;font-weight:700;">Welcome to Poveon</h2>
     <p style="margin:0 0 24px;color:#4b5563;font-size:15px;">
-      Your laboratory has been registered on the Poveon Health platform.
+      Your laboratory has been registered on the Poveon platform.
       Use the credentials below to access your dashboard.
     </p>
 
@@ -278,6 +441,87 @@ export function labAccountCreated({
 
     <p style="margin:16px 0 0;color:#dc2626;font-size:13px;font-weight:500;">
       ⚠️ For security, please change your password immediately after your first login via the dashboard settings.
+    </p>
+  `);
+}
+
+export function labMemberWelcome({
+  labName,
+  roleName,
+  email,
+  tempPassword,
+  loginUrl,
+}: {
+  labName: string;
+  roleName: string;
+  email: string;
+  tempPassword: string;
+  loginUrl: string;
+}) {
+  return base(`
+    <h2 style="margin:0 0 8px;color:#0259a0;font-size:20px;font-weight:700;">You've been added to ${labName}</h2>
+    <p style="margin:0 0 24px;color:#4b5563;font-size:15px;">
+      An account has been created for you on the Poveon lab portal.
+      Use the credentials below to sign in.
+    </p>
+
+    ${divider}
+
+    ${label("Laboratory")}
+    ${value(labName)}
+
+    ${label("Your Role")}
+    ${value(roleName)}
+
+    ${label("Login Email")}
+    ${value(email)}
+
+    ${label("Temporary Password")}
+    <div style="background:#fff7ed;border:1px solid #fed7aa;border-radius:6px;padding:12px;margin:4px 0 16px;">
+      <p style="margin:0;color:#c2410c;font-size:18px;font-weight:700;font-family:monospace;">${tempPassword}</p>
+    </div>
+
+    ${divider}
+
+    <div style="text-align:center;margin:24px 0;">
+      <a href="${loginUrl}" style="display:inline-block;background:#0270c3;color:#ffffff;text-decoration:none;padding:14px 32px;border-radius:8px;font-weight:600;font-size:15px;">
+        Sign In to Dashboard
+      </a>
+    </div>
+
+    <p style="margin:16px 0 0;color:#dc2626;font-size:13px;font-weight:500;">
+      ⚠️ Please change your password after your first login.
+    </p>
+  `, { name: labName });
+}
+
+// =============================================================================
+// TEMPLATE: Doctor — One-Time Passcode for Portal Login
+// =============================================================================
+export function doctorOtpEmail({
+  doctorEmail,
+  otp,
+}: {
+  doctorEmail: string;
+  otp: string;
+}) {
+  return base(`
+    <h2 style="margin:0 0 8px;color:#0259a0;font-size:20px;font-weight:700;">Your Login Code</h2>
+    <p style="margin:0 0 24px;color:#4b5563;font-size:15px;">
+      Use the code below to sign in to your Poveon doctor portal. It expires in <strong>10 minutes</strong>.
+    </p>
+
+    <div style="background:#f0f7ff;border:2px dashed #0270c3;border-radius:8px;padding:24px;text-align:center;margin:24px 0;">
+      <p style="margin:0 0 6px;color:#0259a0;font-size:12px;font-weight:600;text-transform:uppercase;letter-spacing:1px;">One-Time Passcode</p>
+      <p style="margin:0;color:#0259a0;font-size:40px;font-weight:800;letter-spacing:10px;font-family:monospace;">${otp}</p>
+    </div>
+
+    ${divider}
+
+    <p style="margin:0 0 8px;color:#6b7280;font-size:13px;">Signing in as: <strong style="color:#1e3a5f;">${doctorEmail}</strong></p>
+
+    <p style="margin:12px 0 0;color:#dc2626;font-size:13px;font-weight:500;">
+      If you did not request this code, you can safely ignore this email.
     </p>
   `);
 }

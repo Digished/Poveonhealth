@@ -1,3 +1,4 @@
+export const dynamic = "force-dynamic";
 import { NextRequest, NextResponse } from "next/server";
 import { createServerClient, createAdminClient } from "@/lib/supabase/server";
 import { prisma } from "@/lib/prisma";
@@ -21,6 +22,16 @@ export async function POST(
     const admin = await verifyAdmin();
     if (!admin) {
       return NextResponse.json({ success: false, error: "Admin access required" }, { status: 403 });
+    }
+
+    // Validate lab ID is a real UUID that exists — prevents path traversal via storage key
+    const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+    if (!UUID_RE.test(params.id)) {
+      return NextResponse.json({ success: false, error: "Invalid lab ID" }, { status: 400 });
+    }
+    const labExists = await prisma.lab.findUnique({ where: { id: params.id }, select: { id: true } });
+    if (!labExists) {
+      return NextResponse.json({ success: false, error: "Lab not found" }, { status: 404 });
     }
 
     const formData = await request.formData();
