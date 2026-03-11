@@ -45,6 +45,11 @@ export async function POST(
       return NextResponse.json({ success: false, error: "Only JPEG, PNG, WebP or GIF images are allowed" }, { status: 400 });
     }
 
+    const MAX_SIZE = 5 * 1024 * 1024; // 5MB
+    if (file.size > MAX_SIZE) {
+      return NextResponse.json({ success: false, error: "Image must be under 5MB" }, { status: 400 });
+    }
+
     const supabaseAdmin = createAdminClient();
 
     // Ensure bucket exists
