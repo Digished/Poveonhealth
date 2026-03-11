@@ -726,13 +726,12 @@ export function DoctorRequestForm() {
   return (
     <div className="animate-fade-in">
       {/* Sticky header + step indicator */}
-      <div className={`sticky top-0 z-10 -mx-4 px-4 transition-all duration-300 ${scrolled ? "pt-2 pb-2" : "pt-5 pb-4"}`}>
+      <div className={`sticky top-0 z-10 -mx-4 px-4 transition-all duration-300 ${scrolled ? "pt-2 pb-2" : "pt-4 pb-3"}`}>
         {/* Full-width frosted background */}
         <div className="absolute inset-0 left-1/2 -translate-x-1/2 w-screen bg-white/80 backdrop-blur-md border-b border-white/60 -z-10" />
 
-        {/* Lab info / branding — hides when scrolled */}
-        {!scrolled && (
-          <div className="mb-4">
+        {/* Lab info / branding */}
+        <div className="mb-4">
             {selectedLab ? (() => {
               const phones = (selectedLab.phones as string[] | null) ?? [];
               return (
@@ -824,19 +823,7 @@ export function DoctorRequestForm() {
               </div>
             )}
           </div>
-        )}
-
-        {/* Compact lab name strip — shown only when scrolled and a lab is selected */}
-        {scrolled && selectedLab && (
-          <div className="flex items-center gap-2 mb-2">
-            {selectedLab.logo_url ? (
-              <img src={selectedLab.logo_url} alt={selectedLab.name} className="w-5 h-5 rounded object-cover shrink-0" />
-            ) : (
-              <Building2 className="w-4 h-4 text-medical-500 shrink-0" />
-            )}
-            <span className="text-xs font-semibold text-slate-600 truncate">{selectedLab.name}</span>
-          </div>
-        )}
+        </div>
 
         {/* Step indicator */}
         <div className="flex items-center">
