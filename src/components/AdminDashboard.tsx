@@ -22,6 +22,7 @@ type AdminTab = "metrics" | "requests" | "referrals" | "labs" | "analytics";
 interface ReferralGroup {
   key: string;
   referrerName: string;
+  hospital: string | null;
   bankName: string | null;
   accountNumber: string | null;
   accountName: string | null;
@@ -112,6 +113,7 @@ export function AdminDashboard() {
         map.set(key, {
           key,
           referrerName: [req.doctor_prefix, req.doctor_name].filter(Boolean).join(" "),
+          hospital: req.doctor_hospital ?? null,
           bankName: req.doctor_bank_name,
           accountNumber: req.doctor_account_number,
           accountName: req.doctor_account_name,
@@ -351,6 +353,9 @@ export function AdminDashboard() {
                           <td className="py-3 px-3 text-white font-medium">{req.patient_name}</td>
                           <td className="py-3 px-3">
                             <p className="text-slate-300">{[req.doctor_prefix, req.doctor_name].filter(Boolean).join(" ")}</p>
+                            {req.doctor_hospital && (
+                              <p className="text-xs text-slate-500 mt-0.5">{req.doctor_hospital}</p>
+                            )}
                             {(req.doctor_bank_name || req.doctor_account_number) && (
                               <p className="text-xs text-slate-500 mt-0.5">
                                 {[req.doctor_bank_name, req.doctor_account_number].filter(Boolean).join(" · ")}
@@ -418,6 +423,9 @@ export function AdminDashboard() {
                       <ChevronRight className="w-4 h-4 text-slate-600 group-hover:text-slate-400 transition-colors mt-1" />
                     </div>
                     <p className="font-semibold text-white text-sm truncate">{group.referrerName || "—"}</p>
+                    {group.hospital && (
+                      <p className="text-xs text-slate-400 truncate mt-0.5">{group.hospital}</p>
+                    )}
                     {group.accountName && (
                       <p className="text-xs text-slate-400 truncate mt-0.5">{group.accountName}</p>
                     )}
@@ -1015,6 +1023,7 @@ function ReferralDetailModal({ group, onClose }: { group: ReferralGroup; onClose
         <div className="flex items-start justify-between p-5 border-b border-white/10 shrink-0">
           <div>
             <h2 className="font-semibold text-white">{group.referrerName || "Unknown Referrer"}</h2>
+            {group.hospital && <p className="text-xs text-slate-400 mt-0.5">{group.hospital}</p>}
             {group.accountName && <p className="text-sm text-slate-400 mt-0.5">{group.accountName}</p>}
             {group.bankName && (
               <p className="text-xs text-slate-500 mt-0.5">

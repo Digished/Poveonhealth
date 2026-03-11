@@ -125,6 +125,7 @@ model Request {
   doctor_name           String
   doctor_email          String
   doctor_phone          String?
+  doctor_hospital       String?
   doctor_bank_name      String?
   doctor_account_number String?
   doctor_account_name   String?

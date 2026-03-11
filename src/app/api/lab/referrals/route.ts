@@ -28,6 +28,7 @@ export async function GET(request: NextRequest) {
       doctor_email: true,
       doctor_prefix: true,
       doctor_phone: true,
+      doctor_hospital: true,
       doctor_bank_name: true,
       doctor_account_number: true,
       doctor_account_name: true,
@@ -60,6 +61,7 @@ export async function GET(request: NextRequest) {
     doctor_email: string;
     doctor_prefix: string | null;
     doctor_phone: string | null;
+    doctor_hospital: string | null;
     doctor_bank_name: string | null;
     doctor_account_number: string | null;
     doctor_account_name: string | null;
@@ -80,6 +82,7 @@ export async function GET(request: NextRequest) {
         doctor_email: r.doctor_email,
         doctor_prefix: r.doctor_prefix,
         doctor_phone: r.doctor_phone,
+        doctor_hospital: r.doctor_hospital,
         doctor_bank_name: r.doctor_bank_name,
         doctor_account_number: r.doctor_account_number,
         doctor_account_name: r.doctor_account_name,

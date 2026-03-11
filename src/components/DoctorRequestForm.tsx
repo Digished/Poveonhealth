@@ -48,6 +48,7 @@ interface FormData {
   doctor_name: string;
   doctor_email: string;
   doctor_phone: string;
+  doctor_hospital: string;
   doctor_bank_name: string;
   doctor_account_number: string;
   doctor_account_name: string;
@@ -67,6 +68,7 @@ const INITIAL: FormData = {
   doctor_name: "",
   doctor_email: "",
   doctor_phone: "",
+  doctor_hospital: "",
   doctor_bank_name: "",
   doctor_account_number: "",
   doctor_account_name: "",
@@ -539,12 +541,13 @@ export function DoctorRequestForm() {
   const [submitting, setSubmitting] = useState(false);
   const [result, setResult] = useState<CreateRequestResponse | null>(null);
   const [contactOpen, setContactOpen] = useState(false);
-  const [bankOpen, setBankOpen] = useState(false);
+  const [bankOpen, setBankOpen] = useState(true);
   const [bankSkipped, setBankSkipped] = useState(false);
   const [labDetailsOpen, setLabDetailsOpen] = useState(false);
   const [learnMoreOpen, setLearnMoreOpen] = useState(false);
   const [callOpen, setCallOpen] = useState(false);
-  const [savedProfile, setSavedProfile] = useState<{ prefix: string; name: string; email: string; phone: string; bankName: string; accountNumber: string; accountName: string } | null>(null);
+  const [scrolled, setScrolled] = useState(false);
+  const [savedProfile, setSavedProfile] = useState<{ prefix: string; name: string; email: string; phone: string; hospital: string; bankName: string; accountNumber: string; accountName: string } | null>(null);
 
   const fetchLabs = useCallback(() => {
     setLabsLoading(true);
@@ -559,20 +562,33 @@ export function DoctorRequestForm() {
     fetchLabs();
   }, [fetchLabs]);
 
+  // Scroll listener — compact header when user scrolls past ~80px inside the main scrollable area
+  useEffect(() => {
+    const main = document.querySelector("main");
+    if (!main) return;
+    function onScroll() {
+      setScrolled((main?.scrollTop ?? 0) > 80);
+    }
+    main.addEventListener("scroll", onScroll, { passive: true });
+    return () => main.removeEventListener("scroll", onScroll);
+  }, []);
+
   // Load saved referrer profile from localStorage on mount
   useEffect(() => {
     try {
       const raw = localStorage.getItem(DOCTOR_STORAGE_KEY);
       if (raw) {
-        const profile = JSON.parse(raw) as { prefix: string; name: string; email: string; phone: string; bankName: string; accountNumber: string; accountName: string };
+        const profile = JSON.parse(raw) as { prefix: string; name: string; email: string; phone: string; hospital: string; bankName: string; accountNumber: string; accountName: string };
         if (profile.name || profile.email) {
           setSavedProfile(profile);
+          setBankOpen(false); // Start collapsed when loading from cache
           setForm((prev) => ({
             ...prev,
             doctor_prefix: profile.prefix || prev.doctor_prefix,
             doctor_name: profile.name || prev.doctor_name,
             doctor_email: profile.email || prev.doctor_email,
             doctor_phone: profile.phone || prev.doctor_phone,
+            doctor_hospital: profile.hospital || prev.doctor_hospital,
             doctor_bank_name: profile.bankName || prev.doctor_bank_name,
             doctor_account_number: profile.accountNumber || prev.doctor_account_number,
             doctor_account_name: profile.accountName || prev.doctor_account_name,
@@ -590,12 +606,14 @@ export function DoctorRequestForm() {
   function clearDoctorProfile() {
     try { localStorage.removeItem(DOCTOR_STORAGE_KEY); } catch { /* ignore */ }
     setSavedProfile(null);
+    setBankOpen(true); // Re-open bank section for fresh entry
     setForm((prev) => ({
       ...prev,
       doctor_prefix: "",
       doctor_name: "",
       doctor_email: "",
       doctor_phone: "",
+      doctor_hospital: "",
       doctor_bank_name: "",
       doctor_account_number: "",
       doctor_account_name: "",
@@ -659,6 +677,7 @@ export function DoctorRequestForm() {
             name: form.doctor_name,
             email: form.doctor_email,
             phone: form.doctor_phone,
+            hospital: form.doctor_hospital,
             bankName: form.doctor_bank_name,
             accountNumber: form.doctor_account_number,
             accountName: form.doctor_account_name,
@@ -691,104 +710,115 @@ export function DoctorRequestForm() {
 
   return (
     <div className="animate-fade-in">
-      {/* Sticky header + step indicator */}
-      <div className="sticky top-0 z-10 -mx-4 px-4 pt-5 pb-4">
-        {/* Full-viewport-width background */}
-        <div className="absolute inset-0 left-1/2 -translate-x-1/2 w-screen bg-white/70 backdrop-blur-md border-b border-white/50 -z-10" />
+      {/* Header + step indicator — non-sticky, collapses when scrolled */}
+      <div className={`-mx-4 px-4 transition-all duration-300 ${scrolled ? "pt-3 pb-2" : "pt-5 pb-4"}`}>
 
-        {/* Header — swaps to lab branding once a lab is selected */}
-        <div className="mb-4">
-          {selectedLab ? (() => {
-            const phones = (selectedLab.phones as string[] | null) ?? [];
-            return (
-              <div className="relative overflow-hidden rounded-2xl border border-medical-100 bg-gradient-to-r from-medical-50 via-white to-sky-50 shadow-sm animate-fade-in-up">
-                <div className="absolute -top-6 -right-6 w-28 h-28 bg-medical-100/40 rounded-full blur-2xl pointer-events-none" />
-                <div className="relative px-4 py-3 flex items-center gap-3">
-                  {selectedLab.logo_url ? (
-                    <img
-                      src={selectedLab.logo_url}
-                      alt={selectedLab.name}
-                      className="w-10 h-10 rounded-xl object-cover shrink-0 shadow-sm ring-2 ring-white"
-                    />
-                  ) : (
-                    <div className="w-10 h-10 rounded-xl bg-medical-100 flex items-center justify-center shrink-0 border border-medical-200">
-                      <Building2 className="w-5 h-5 text-medical-600" />
-                    </div>
-                  )}
-                  <div className="min-w-0 flex-1">
-                    <p className="text-sm font-bold text-slate-800 leading-tight truncate">{selectedLab.name}</p>
-                    {selectedLab.address && (
-                      <p className="text-xs text-slate-400 flex items-start gap-1 mt-0.5">
-                        <MapPin className="w-3 h-3 shrink-0 text-medical-300 mt-0.5" />{selectedLab.address}
-                      </p>
+        {/* Lab info / branding — hides when scrolled */}
+        {!scrolled && (
+          <div className="mb-4">
+            {selectedLab ? (() => {
+              const phones = (selectedLab.phones as string[] | null) ?? [];
+              return (
+                <div className="relative overflow-hidden rounded-2xl border border-medical-100 bg-gradient-to-r from-medical-50 via-white to-sky-50 shadow-sm animate-fade-in-up">
+                  <div className="absolute -top-6 -right-6 w-28 h-28 bg-medical-100/40 rounded-full blur-2xl pointer-events-none" />
+                  <div className="relative px-4 py-3 flex items-center gap-3">
+                    {selectedLab.logo_url ? (
+                      <img
+                        src={selectedLab.logo_url}
+                        alt={selectedLab.name}
+                        className="w-10 h-10 rounded-xl object-cover shrink-0 shadow-sm ring-2 ring-white"
+                      />
+                    ) : (
+                      <div className="w-10 h-10 rounded-xl bg-medical-100 flex items-center justify-center shrink-0 border border-medical-200">
+                        <Building2 className="w-5 h-5 text-medical-600" />
+                      </div>
                     )}
-                    {step > 1 && (
-                      <button
-                        type="button"
-                        onClick={() => setLabDetailsOpen(true)}
-                        className="mt-1 text-xs text-medical-600 hover:text-medical-800 font-semibold underline underline-offset-2 transition-colors"
-                      >
-                        View details
-                      </button>
-                    )}
-                  </div>
-                  {/* Call button */}
-                  {phones.length > 0 && (
-                    <div className="shrink-0">
-                      {phones.length === 1 ? (
-                        <a
-                          href={`tel:${phones[0]}`}
-                          className="w-9 h-9 rounded-xl bg-medical-600 hover:bg-medical-700 text-white flex items-center justify-center shadow-sm transition-colors"
-                          title={`Call ${selectedLab.name}`}
-                        >
-                          <PhoneCall className="w-4 h-4" />
-                        </a>
-                      ) : (
+                    <div className="min-w-0 flex-1">
+                      <p className="text-sm font-bold text-slate-800 leading-tight truncate">{selectedLab.name}</p>
+                      {selectedLab.address && (
+                        <p className="text-xs text-slate-400 flex items-start gap-1 mt-0.5">
+                          <MapPin className="w-3 h-3 shrink-0 text-medical-300 mt-0.5" />{selectedLab.address}
+                        </p>
+                      )}
+                      {step > 1 && (
                         <button
                           type="button"
-                          onClick={() => setCallOpen(true)}
-                          className="w-9 h-9 rounded-xl bg-medical-600 hover:bg-medical-700 text-white flex items-center justify-center shadow-sm transition-colors"
-                          title={`Call ${selectedLab.name}`}
+                          onClick={() => setLabDetailsOpen(true)}
+                          className="mt-1 text-xs text-medical-600 hover:text-medical-800 font-semibold underline underline-offset-2 transition-colors"
                         >
-                          <PhoneCall className="w-4 h-4" />
+                          View details
                         </button>
                       )}
                     </div>
-                  )}
+                    {/* Call button */}
+                    {phones.length > 0 && (
+                      <div className="shrink-0">
+                        {phones.length === 1 ? (
+                          <a
+                            href={`tel:${phones[0]}`}
+                            className="w-9 h-9 rounded-xl bg-medical-600 hover:bg-medical-700 text-white flex items-center justify-center shadow-sm transition-colors"
+                            title={`Call ${selectedLab.name}`}
+                          >
+                            <PhoneCall className="w-4 h-4" />
+                          </a>
+                        ) : (
+                          <button
+                            type="button"
+                            onClick={() => setCallOpen(true)}
+                            className="w-9 h-9 rounded-xl bg-medical-600 hover:bg-medical-700 text-white flex items-center justify-center shadow-sm transition-colors"
+                            title={`Call ${selectedLab.name}`}
+                          >
+                            <PhoneCall className="w-4 h-4" />
+                          </button>
+                        )}
+                      </div>
+                    )}
+                  </div>
+                </div>
+              );
+            })() : (
+              <div className="relative py-2 animate-fade-in">
+                <div className="absolute inset-0 overflow-hidden pointer-events-none -z-10">
+                  <div className="absolute top-2 left-0 w-40 h-40 bg-medical-100/50 rounded-full blur-3xl animate-float" style={{ animationDelay: "0s" }} />
+                  <div className="absolute top-0 right-4 w-32 h-32 bg-sky-100/60 rounded-full blur-3xl animate-float" style={{ animationDelay: "1.8s" }} />
+                  <div className="absolute -top-2 left-1/2 w-24 h-24 bg-indigo-100/40 rounded-full blur-2xl animate-float" style={{ animationDelay: "3.2s" }} />
+                </div>
+                <div className="flex items-center gap-3">
+                  <div className="w-9 h-9 rounded-xl flex items-center justify-center shadow-md shrink-0 bg-gradient-to-br from-slate-900 via-slate-800 to-indigo-900 ring-1 ring-white/10">
+                    <FlaskConical className="w-[18px] h-[18px] text-sky-300" />
+                  </div>
+                  <div>
+                    <p className="text-sm font-semibold text-slate-700 leading-snug">
+                      Submit a lab request for your patient.
+                    </p>
+                    <p className="text-xs text-slate-400 mt-0.5">
+                      No account needed.{" "}
+                      <button
+                        type="button"
+                        onClick={() => setLearnMoreOpen(true)}
+                        className="text-medical-600 hover:text-medical-800 font-semibold underline underline-offset-2 transition-colors"
+                      >
+                        Learn more
+                      </button>
+                    </p>
+                  </div>
                 </div>
               </div>
-            );
-          })() : (
-            <div className="relative py-2 animate-fade-in">
-              {/* Subtle animated background blobs */}
-              <div className="absolute inset-0 overflow-hidden pointer-events-none -z-10">
-                <div className="absolute top-2 left-0 w-40 h-40 bg-medical-100/50 rounded-full blur-3xl animate-float" style={{ animationDelay: "0s" }} />
-                <div className="absolute top-0 right-4 w-32 h-32 bg-sky-100/60 rounded-full blur-3xl animate-float" style={{ animationDelay: "1.8s" }} />
-                <div className="absolute -top-2 left-1/2 w-24 h-24 bg-indigo-100/40 rounded-full blur-2xl animate-float" style={{ animationDelay: "3.2s" }} />
-              </div>
-              <div className="flex items-center gap-3">
-                <div className="w-9 h-9 rounded-xl flex items-center justify-center shadow-md shrink-0 bg-gradient-to-br from-slate-900 via-slate-800 to-indigo-900 ring-1 ring-white/10">
-                  <FlaskConical className="w-[18px] h-[18px] text-sky-300" />
-                </div>
-                <div>
-                  <p className="text-sm font-semibold text-slate-700 leading-snug">
-                    Submit a lab request for your patient.
-                  </p>
-                  <p className="text-xs text-slate-400 mt-0.5">
-                    No account needed.{" "}
-                    <button
-                      type="button"
-                      onClick={() => setLearnMoreOpen(true)}
-                      className="text-medical-600 hover:text-medical-800 font-semibold underline underline-offset-2 transition-colors"
-                    >
-                      Learn more
-                    </button>
-                  </p>
-                </div>
-              </div>
-            </div>
-          )}
-        </div>
+            )}
+          </div>
+        )}
+
+        {/* Compact lab name strip — shown only when scrolled and a lab is selected */}
+        {scrolled && selectedLab && (
+          <div className="flex items-center gap-2 mb-2">
+            {selectedLab.logo_url ? (
+              <img src={selectedLab.logo_url} alt={selectedLab.name} className="w-5 h-5 rounded object-cover shrink-0" />
+            ) : (
+              <Building2 className="w-4 h-4 text-medical-500 shrink-0" />
+            )}
+            <span className="text-xs font-semibold text-slate-600 truncate">{selectedLab.name}</span>
+          </div>
+        )}
 
         {/* Step indicator */}
         <div className="flex items-center">
@@ -1072,93 +1102,98 @@ export function DoctorRequestForm() {
               onChange={(e) => set("doctor_phone", e.target.value)}
             />
 
-            {/* Bank account details */}
+            {/* Hospital / clinic (optional) */}
+            <Input
+              label="Hospital or Clinic"
+              placeholder="e.g. Lagos University Teaching Hospital"
+              hint="Optional — where you are referring from"
+              value={form.doctor_hospital}
+              onChange={(e) => set("doctor_hospital", e.target.value)}
+            />
+
+            {/* Bank account details — single collapsible section */}
             {bankSkipped ? (
               /* Skipped state — compact strip */
               <div className="flex items-center justify-between px-4 py-3 rounded-xl bg-slate-50 border border-slate-200">
                 <p className="text-xs text-slate-500 font-medium">Bank details skipped</p>
                 <button
                   type="button"
-                  onClick={() => setBankSkipped(false)}
+                  onClick={() => { setBankSkipped(false); setBankOpen(true); }}
                   className="text-xs text-medical-600 hover:text-medical-800 font-semibold transition-colors"
                 >
                   + Add details
                 </button>
               </div>
-            ) : form.doctor_bank_name || form.doctor_account_number || form.doctor_account_name ? (
-              /* Filled state — green collapsible */
-              <div className="border-2 border-emerald-200 bg-emerald-50/30 rounded-xl overflow-hidden">
-                <button
-                  type="button"
-                  onClick={() => setBankOpen((v) => !v)}
-                  className="w-full flex items-center justify-between px-4 py-3.5 hover:bg-emerald-50/50 transition-colors"
-                >
-                  <span className="flex items-center gap-2">
-                    <Check className="w-4 h-4 text-emerald-500 shrink-0" />
-                    <span className="text-sm font-semibold text-slate-700">Bank details added</span>
-                  </span>
-                  <ChevronDown className={`w-4 h-4 text-emerald-500 transition-transform shrink-0 ${bankOpen ? "rotate-180" : ""}`} />
-                </button>
-                {bankOpen && (
-                  <div className="px-4 pb-4 pt-1 space-y-3 border-t border-emerald-100 bg-emerald-50/20">
-                    <Input label="Bank Name" placeholder="e.g. First Bank, GTBank, Zenith…" value={form.doctor_bank_name} onChange={(e) => set("doctor_bank_name", e.target.value)} />
-                    <Input label="Account Number" placeholder="10-digit account number" value={form.doctor_account_number} onChange={(e) => set("doctor_account_number", e.target.value)} />
-                    <Input label="Account Name" placeholder="Name as it appears on bank account" value={form.doctor_account_name} onChange={(e) => set("doctor_account_name", e.target.value)} />
-                  </div>
-                )}
-              </div>
-            ) : (
-              /* Default state — fields open, required, with skip link */
-              <div className="rounded-xl border-2 border-slate-200 overflow-hidden">
-                <div className="px-4 py-3 border-b border-slate-100 bg-slate-50/50 flex items-center justify-between">
-                  <div className="flex items-center gap-2">
-                    <span className="text-sm font-semibold text-slate-700">Bank Account Details</span>
-                    <span className="inline-block w-1.5 h-1.5 rounded-full bg-amber-400 align-middle" aria-label="required" />
-                  </div>
-                  <span className="text-xs text-slate-400">For referral payment</span>
-                </div>
-                <div className="px-4 py-4 space-y-3">
-                  <Input
-                    label="Bank Name"
-                    required
-                    placeholder="e.g. First Bank, GTBank, Zenith…"
-                    value={form.doctor_bank_name}
-                    onChange={(e) => set("doctor_bank_name", e.target.value)}
-                    error={errors.doctor_bank_name}
-                  />
-                  <Input
-                    label="Account Number"
-                    required
-                    placeholder="10-digit account number"
-                    value={form.doctor_account_number}
-                    onChange={(e) => set("doctor_account_number", e.target.value)}
-                    error={errors.doctor_account_number}
-                  />
-                  <Input
-                    label="Account Name"
-                    required
-                    placeholder="Name as it appears on bank account"
-                    value={form.doctor_account_name}
-                    onChange={(e) => set("doctor_account_name", e.target.value)}
-                    error={errors.doctor_account_name}
-                  />
-                </div>
-                <div className="px-4 pb-3 border-t border-slate-100">
+            ) : (() => {
+              const hasBankContent = !!(form.doctor_bank_name || form.doctor_account_number || form.doctor_account_name);
+              return (
+                <div className={`rounded-xl border-2 overflow-hidden transition-colors ${hasBankContent ? "border-emerald-200 bg-emerald-50/30" : "border-slate-200"}`}>
                   <button
                     type="button"
-                    onClick={() => {
-                      setBankSkipped(true);
-                      set("doctor_bank_name", "");
-                      set("doctor_account_number", "");
-                      set("doctor_account_name", "");
-                    }}
-                    className="text-xs text-slate-400 hover:text-slate-600 transition-colors underline underline-offset-2"
+                    onClick={() => setBankOpen((v) => !v)}
+                    className={`w-full flex items-center justify-between px-4 py-3.5 transition-colors ${hasBankContent ? "hover:bg-emerald-50/50" : "hover:bg-slate-50 bg-slate-50/50"}`}
                   >
-                    Skip — I'll settle payment another way
+                    {hasBankContent ? (
+                      <span className="flex items-center gap-2">
+                        <Check className="w-4 h-4 text-emerald-500 shrink-0" />
+                        <span className="text-sm font-semibold text-slate-700">Bank details added</span>
+                      </span>
+                    ) : (
+                      <div className="flex items-center gap-2">
+                        <span className="text-sm font-semibold text-slate-700">Bank Account Details</span>
+                        {!bankSkipped && <span className="inline-block w-1.5 h-1.5 rounded-full bg-amber-400 align-middle" aria-label="required" />}
+                        <span className="text-xs text-slate-400 ml-1">For referral payment</span>
+                      </div>
+                    )}
+                    <ChevronDown className={`w-4 h-4 transition-transform shrink-0 ${hasBankContent ? "text-emerald-500" : "text-slate-400"} ${bankOpen ? "rotate-180" : ""}`} />
                   </button>
+                  {bankOpen && (
+                    <div className={`px-4 pb-4 pt-1 space-y-3 border-t ${hasBankContent ? "border-emerald-100 bg-emerald-50/20" : "border-slate-100"}`}>
+                      <Input
+                        label="Bank Name"
+                        required
+                        placeholder="e.g. First Bank, GTBank, Zenith…"
+                        value={form.doctor_bank_name}
+                        onChange={(e) => set("doctor_bank_name", e.target.value)}
+                        error={errors.doctor_bank_name}
+                      />
+                      <Input
+                        label="Account Number"
+                        required
+                        placeholder="10-digit account number"
+                        value={form.doctor_account_number}
+                        onChange={(e) => set("doctor_account_number", e.target.value)}
+                        error={errors.doctor_account_number}
+                      />
+                      <Input
+                        label="Account Name"
+                        required
+                        placeholder="Name as it appears on bank account"
+                        value={form.doctor_account_name}
+                        onChange={(e) => set("doctor_account_name", e.target.value)}
+                        error={errors.doctor_account_name}
+                      />
+                      {!hasBankContent && (
+                        <div className="pt-1 border-t border-slate-100">
+                          <button
+                            type="button"
+                            onClick={() => {
+                              setBankSkipped(true);
+                              set("doctor_bank_name", "");
+                              set("doctor_account_number", "");
+                              set("doctor_account_name", "");
+                            }}
+                            className="text-xs text-slate-400 hover:text-slate-600 transition-colors underline underline-offset-2"
+                          >
+                            Skip — I'll settle payment another way
+                          </button>
+                        </div>
+                      )}
+                    </div>
+                  )}
                 </div>
-              </div>
-            )}
+              );
+            })()}
           </div>
         )}
 
@@ -1195,6 +1230,7 @@ export function DoctorRequestForm() {
               <SummaryRow label="Sex" value={form.sex} capitalize />
               <SummaryRow label="Referrer" value={[form.doctor_prefix, form.doctor_name].filter(Boolean).join(" ")} />
               <SummaryRow label="Referrer Email" value={form.doctor_email} />
+              {form.doctor_hospital && <SummaryRow label="Hospital/Clinic" value={form.doctor_hospital} />}
             </div>
           </div>
         )}

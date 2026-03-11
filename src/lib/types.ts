@@ -94,6 +94,7 @@ export interface LabRequest {
   doctor_name: string;
   doctor_email: string;
   doctor_phone: string | null;
+  doctor_hospital: string | null;
   doctor_bank_name: string | null;
   doctor_account_number: string | null;
   doctor_account_name: string | null;

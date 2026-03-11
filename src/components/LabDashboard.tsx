@@ -22,6 +22,7 @@ interface ReferralDoctor {
   doctor_email: string;
   doctor_prefix: string | null;
   doctor_phone: string | null;
+  doctor_hospital: string | null;
   doctor_bank_name: string | null;
   doctor_account_number: string | null;
   doctor_account_name: string | null;
@@ -458,6 +459,9 @@ export function LabDashboard({ lab, isOwner = false, roleName = "Lab Owner", can
                               {[doc.doctor_prefix, doc.doctor_name].filter(Boolean).join(" ")}
                             </p>
                             <p className="text-xs text-slate-400 mt-0.5">{doc.doctor_email}</p>
+                            {doc.doctor_hospital && (
+                              <p className="text-xs text-slate-500 mt-0.5">{doc.doctor_hospital}</p>
+                            )}
                             {doc.doctor_phone && (
                               <a href={`tel:${doc.doctor_phone}`} className="text-xs text-blue-400 hover:underline flex items-center gap-1 mt-0.5">
                                 <Phone className="w-3 h-3" />{doc.doctor_phone}
@@ -524,6 +528,12 @@ export function LabDashboard({ lab, isOwner = false, roleName = "Lab Owner", can
 
                       {expandedDoctor === doc.doctor_email && (
                         <div className="border-t border-white/10 px-4 py-4 space-y-4">
+                          {doc.doctor_hospital && (
+                            <div>
+                              <p className="text-xs text-slate-500 font-medium mb-1">Hospital / Clinic</p>
+                              <p className="text-sm text-slate-300">{doc.doctor_hospital}</p>
+                            </div>
+                          )}
                           {doc.doctor_phone && (
                             <div>
                               <p className="text-xs text-slate-500 font-medium mb-1">Phone</p>
@@ -834,6 +844,9 @@ export function LabDashboard({ lab, isOwner = false, roleName = "Lab Owner", can
                           {selectedRequest.doctor_phone}
                         </a>
                       </DetailRow>
+                    )}
+                    {selectedRequest.doctor_hospital && (
+                      <DetailRow label="Hospital/Clinic">{selectedRequest.doctor_hospital}</DetailRow>
                     )}
                     <div className="border-t border-white/10 pt-3" />
                     {selectedRequest.diagnosis && (
@@ -1279,6 +1292,12 @@ export function LabDashboard({ lab, isOwner = false, roleName = "Lab Owner", can
                       <p className="text-xs text-slate-500 font-medium mb-0.5">Email</p>
                       <p className="text-slate-200">{selectedRequest.doctor_email}</p>
                     </div>
+                    {selectedRequest.doctor_hospital && (
+                      <div>
+                        <p className="text-xs text-slate-500 font-medium mb-0.5">Hospital/Clinic</p>
+                        <p className="text-slate-200">{selectedRequest.doctor_hospital}</p>
+                      </div>
+                    )}
                   </>
                 )}
                 {selectedRequest.diagnosis && (
