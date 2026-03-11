@@ -36,6 +36,24 @@ export async function POST(request: NextRequest) {
       );
     }
 
+    const MAX_FILES = 5;
+    const MAX_FILE_SIZE = 10 * 1024 * 1024; // 10MB per file
+
+    if (resultFiles.length > MAX_FILES) {
+      return NextResponse.json(
+        { success: false, error: "Maximum 5 files allowed per submission" },
+        { status: 400 }
+      );
+    }
+
+    const oversized = resultFiles.find((f) => f.size > MAX_FILE_SIZE);
+    if (oversized) {
+      return NextResponse.json(
+        { success: false, error: "Each file must be under 10MB" },
+        { status: 400 }
+      );
+    }
+
     // Authenticate lab user/member/API key
     const auth = await getLabAuth(request);
     if (!auth) {

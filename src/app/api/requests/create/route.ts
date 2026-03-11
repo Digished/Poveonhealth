@@ -27,6 +27,16 @@ const CreateRequestSchema = z.object({
   lab_id: z.string().uuid(),
 });
 
+const CORS_HEADERS = {
+  "Access-Control-Allow-Origin": "*",
+  "Access-Control-Allow-Methods": "POST, OPTIONS",
+  "Access-Control-Allow-Headers": "Content-Type",
+};
+
+export async function OPTIONS() {
+  return new Response(null, { status: 204, headers: CORS_HEADERS });
+}
+
 export async function POST(request: NextRequest) {
   const start = Date.now();
   try {
@@ -48,6 +58,20 @@ export async function POST(request: NextRequest) {
       return NextResponse.json(
         { success: false, error: "Selected laboratory not found" },
         { status: 404 }
+      );
+    }
+
+    // Rate-limit: max 20 requests per doctor email per hour
+    const recentCount = await prisma.request.count({
+      where: {
+        doctor_email: data.doctor_email,
+        created_at: { gt: new Date(Date.now() - 60 * 60 * 1000) },
+      },
+    });
+    if (recentCount >= 20) {
+      return NextResponse.json(
+        { success: false, error: "Too many requests submitted. Please try again later." },
+        { status: 429, headers: CORS_HEADERS }
       );
     }
 
@@ -133,17 +157,16 @@ export async function POST(request: NextRequest) {
     await Promise.all(sends).catch((e) => console.error("[email] send error:", e));
 
     logApiCall({ method: "POST", path: "/api/requests/create", status: 200, duration_ms: Date.now() - start });
-    return NextResponse.json({
-      success: true,
-      code,
-      lab: { name: lab.name, address: labAddress, phones: labPhones },
-    });
+    return NextResponse.json(
+      { success: true, code, lab: { name: lab.name, address: labAddress } },
+      { headers: CORS_HEADERS }
+    );
   } catch (error) {
     console.error("Create request error:", error);
     logApiCall({ method: "POST", path: "/api/requests/create", status: 500, duration_ms: Date.now() - start });
     return NextResponse.json(
       { success: false, error: "An unexpected error occurred" },
-      { status: 500 }
+      { status: 500, headers: CORS_HEADERS }
     );
   }
 }

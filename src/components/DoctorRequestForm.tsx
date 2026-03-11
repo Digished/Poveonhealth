@@ -561,6 +561,7 @@ export function DoctorRequestForm() {
   const [callOpen, setCallOpen] = useState(false);
   const [scrolled, setScrolled] = useState(false);
   const [doctorEditing, setDoctorEditing] = useState(false);
+  const [doctorOptionalOpen, setDoctorOptionalOpen] = useState(false);
   const [savedProfile, setSavedProfile] = useState<{ prefix: string; name: string; email: string; phone: string; hospital: string; bankName: string; accountNumber: string; accountName: string } | null>(null);
 
   const fetchLabs = useCallback(() => {
@@ -621,6 +622,7 @@ export function DoctorRequestForm() {
     try { localStorage.removeItem(DOCTOR_STORAGE_KEY); } catch { /* ignore */ }
     setSavedProfile(null);
     setDoctorEditing(false);
+    setDoctorOptionalOpen(false);
     setBankOpen(true); // Re-open bank section for fresh entry
     setForm((prev) => ({
       ...prev,
@@ -1057,8 +1059,18 @@ export function DoctorRequestForm() {
           <div className="space-y-4">
             <h2 className="flex items-center gap-2 text-base font-semibold text-slate-700 pb-3 border-b border-slate-100">
               <Stethoscope className="w-4 h-4 text-medical-600" />
-              Referring Professional
+              Your Profile
             </h2>
+
+            {/* First-time banner — only shown when no saved profile exists */}
+            {!savedProfile && (
+              <div className="flex items-start gap-3 bg-sky-50 border border-sky-200 rounded-xl px-4 py-3">
+                <Info className="w-4 h-4 text-sky-500 shrink-0 mt-0.5" />
+                <p className="text-xs text-sky-800 leading-relaxed">
+                  <span className="font-semibold">Fill this in once.</span> Your details are saved to this device — next time, this step will be pre-filled automatically.
+                </p>
+              </div>
+            )}
 
             {/* Profile summary card — shown when cache exists and not editing */}
             {savedProfile && !doctorEditing ? (
@@ -1153,21 +1165,73 @@ export function DoctorRequestForm() {
                   onChange={(e) => set("doctor_email", e.target.value)}
                   error={errors.doctor_email}
                 />
-                <Input
-                  label="Phone"
-                  type="tel"
-                  placeholder="+234 800 000 0000"
-                  value={form.doctor_phone}
-                  onChange={(e) => set("doctor_phone", e.target.value)}
-                />
-                {/* Hospital / clinic (optional) */}
-                <Input
-                  label="Hospital or Clinic"
-                  placeholder="e.g. Lagos University Teaching Hospital"
-                  hint="Optional — where you are referring from"
-                  value={form.doctor_hospital}
-                  onChange={(e) => set("doctor_hospital", e.target.value)}
-                />
+                {/* Phone + Hospital — collapsible optional details */}
+                {(form.doctor_phone || form.doctor_hospital) ? (
+                  <div className="border-2 border-emerald-200 bg-emerald-50/30 rounded-xl overflow-hidden">
+                    <button
+                      type="button"
+                      onClick={() => setDoctorOptionalOpen((v) => !v)}
+                      className="w-full flex items-center justify-between px-4 py-3.5 hover:bg-emerald-50/50 transition-colors"
+                    >
+                      <span className="flex items-center gap-2">
+                        <Check className="w-4 h-4 text-emerald-500 shrink-0" />
+                        <span className="text-sm font-semibold text-slate-700">Optional details added</span>
+                      </span>
+                      <ChevronDown className={`w-4 h-4 text-emerald-500 transition-transform shrink-0 ${doctorOptionalOpen ? "rotate-180" : ""}`} />
+                    </button>
+                    {doctorOptionalOpen && (
+                      <div className="px-4 pb-4 pt-1 space-y-4 border-t border-emerald-100 bg-emerald-50/20">
+                        <Input
+                          label="Phone"
+                          type="tel"
+                          placeholder="+234 800 000 0000"
+                          value={form.doctor_phone}
+                          onChange={(e) => set("doctor_phone", e.target.value)}
+                        />
+                        <Input
+                          label="Hospital or Clinic"
+                          placeholder="e.g. Lagos University Teaching Hospital"
+                          value={form.doctor_hospital}
+                          onChange={(e) => set("doctor_hospital", e.target.value)}
+                        />
+                      </div>
+                    )}
+                  </div>
+                ) : (
+                  <div className="border-2 border-slate-200 bg-slate-50/40 rounded-xl overflow-hidden">
+                    <button
+                      type="button"
+                      onClick={() => setDoctorOptionalOpen((v) => !v)}
+                      className="w-full flex items-center justify-between px-4 py-3.5 hover:bg-slate-50 transition-colors"
+                    >
+                      <div className="flex items-start gap-3">
+                        <Phone className="w-4 h-4 text-slate-400 shrink-0 mt-0.5" />
+                        <div className="text-left">
+                          <span className="text-sm font-semibold text-slate-700">Phone &amp; Hospital</span>
+                          <p className="text-xs text-slate-400 mt-0.5">Optional — add your contact and workplace</p>
+                        </div>
+                      </div>
+                      <ChevronDown className={`w-4 h-4 text-slate-400 transition-transform shrink-0 ml-3 ${doctorOptionalOpen ? "rotate-180" : ""}`} />
+                    </button>
+                    {doctorOptionalOpen && (
+                      <div className="px-4 pb-4 pt-1 space-y-4 border-t border-slate-100 bg-slate-50/20">
+                        <Input
+                          label="Phone"
+                          type="tel"
+                          placeholder="+234 800 000 0000"
+                          value={form.doctor_phone}
+                          onChange={(e) => set("doctor_phone", e.target.value)}
+                        />
+                        <Input
+                          label="Hospital or Clinic"
+                          placeholder="e.g. Lagos University Teaching Hospital"
+                          value={form.doctor_hospital}
+                          onChange={(e) => set("doctor_hospital", e.target.value)}
+                        />
+                      </div>
+                    )}
+                  </div>
+                )}
               </>
             )}
 
