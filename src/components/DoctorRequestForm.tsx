@@ -822,7 +822,6 @@ export function DoctorRequestForm() {
                 </div>
               </div>
             )}
-          </div>
         </div>
 
         {/* Step indicator */}
