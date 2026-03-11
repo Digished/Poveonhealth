@@ -726,7 +726,7 @@ export function DoctorRequestForm() {
   return (
     <div className="animate-fade-in">
       {/* Sticky header + step indicator */}
-      <div className={`sticky top-0 z-10 -mx-4 px-4 transition-all duration-300 ${scrolled ? "pt-2 pb-2" : "pt-0 pb-3"}`}>
+      <div className={`sticky top-0 z-10 -mx-4 px-4 transition-all duration-300 ${scrolled ? "pt-2 pb-2" : "pt-3 pb-3"}`}>
         {/* Full-width frosted background */}
         <div className="absolute inset-0 left-1/2 -translate-x-1/2 w-screen bg-white/80 backdrop-blur-md border-b border-white/60 -z-10" />
 
@@ -1338,15 +1338,15 @@ export function DoctorRequestForm() {
       </div>
 
       {/* Navigation */}
-      <div className={`flex gap-3 mt-4 ${step === 1 ? "justify-end" : "justify-between"}`}>
+      <div className={`flex gap-3 mt-4 w-full min-w-0 ${step === 1 ? "justify-end" : "justify-between"}`}>
         {step > 1 && (
-          <Button variant="ghost" onClick={handleBack} type="button">
+          <Button variant="ghost" onClick={handleBack} type="button" className="shrink-0">
             <ChevronLeft className="w-4 h-4" />
             Back
           </Button>
         )}
         {step < 5 ? (
-          <Button onClick={handleNext} type="button">
+          <Button onClick={handleNext} type="button" className="shrink-0 ml-auto">
             {step === 4 && !form.schedule ? "Skip & Continue" : "Continue"}
             <ChevronRight className="w-4 h-4" />
           </Button>

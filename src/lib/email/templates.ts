@@ -494,3 +494,34 @@ export function labMemberWelcome({
     </p>
   `, { name: labName });
 }
+
+// =============================================================================
+// TEMPLATE: Doctor — One-Time Passcode for Portal Login
+// =============================================================================
+export function doctorOtpEmail({
+  doctorEmail,
+  otp,
+}: {
+  doctorEmail: string;
+  otp: string;
+}) {
+  return base(`
+    <h2 style="margin:0 0 8px;color:#0259a0;font-size:20px;font-weight:700;">Your Login Code</h2>
+    <p style="margin:0 0 24px;color:#4b5563;font-size:15px;">
+      Use the code below to sign in to your Poveon doctor portal. It expires in <strong>10 minutes</strong>.
+    </p>
+
+    <div style="background:#f0f7ff;border:2px dashed #0270c3;border-radius:8px;padding:24px;text-align:center;margin:24px 0;">
+      <p style="margin:0 0 6px;color:#0259a0;font-size:12px;font-weight:600;text-transform:uppercase;letter-spacing:1px;">One-Time Passcode</p>
+      <p style="margin:0;color:#0259a0;font-size:40px;font-weight:800;letter-spacing:10px;font-family:monospace;">${otp}</p>
+    </div>
+
+    ${divider}
+
+    <p style="margin:0 0 8px;color:#6b7280;font-size:13px;">Signing in as: <strong style="color:#1e3a5f;">${doctorEmail}</strong></p>
+
+    <p style="margin:12px 0 0;color:#dc2626;font-size:13px;font-weight:500;">
+      If you did not request this code, you can safely ignore this email.
+    </p>
+  `);
+}

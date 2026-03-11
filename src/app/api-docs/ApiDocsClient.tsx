@@ -106,9 +106,11 @@ console.log(data.labs);`,
           { name: "patient_phone", type: "string", required: false, description: "Patient phone number" },
           { name: "doctor_prefix", type: "string", required: false, description: "Title prefix (Dr., Prof., etc.)" },
           { name: "doctor_phone", type: "string", required: false, description: "Doctor's phone number" },
+          { name: "doctor_hospital", type: "string", required: false, description: "Doctor's hospital or clinic name" },
           { name: "doctor_bank_name", type: "string", required: false, description: "Bank name for referral payment" },
           { name: "doctor_account_number", type: "string", required: false, description: "Account number for referral payment" },
           { name: "doctor_account_name", type: "string", required: false, description: "Account name for referral payment" },
+          { name: "schedule", type: '"today" | "this_week" | "this_month" | "not_sure"', required: false, description: "Patient's preferred schedule for carrying out the tests" },
           { name: "diagnosis", type: "string", required: false, description: "Clinical diagnosis / notes (up to 2000 chars)" },
         ],
         requestExample: `# curl
@@ -123,7 +125,9 @@ curl -X POST https://poveon.com/api/requests/create \\
     "doctor_name": "Amara Obi",
     "doctor_email": "amara@clinic.com",
     "doctor_prefix": "Dr.",
+    "doctor_hospital": "City General Hospital",
     "patient_email": "johndoe@email.com",
+    "schedule": "this_week",
     "diagnosis": "Suspected anaemia"
   }'
 
@@ -159,6 +163,7 @@ console.log(data.code); // e.g. "CDL-A3X9B1"`,
         notes: [
           "The `code` returned is unique per lab and should be given to the patient.",
           "If `patient_email` is provided, a separate email is sent to the patient with their code.",
+          "The `schedule` field helps the lab plan resources — accepted values: `today`, `this_week`, `this_month`, `not_sure`.",
           "Email failures are logged but never block the response.",
         ],
       },
