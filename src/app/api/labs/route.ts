@@ -26,6 +26,7 @@ export async function GET() {
         address: true,
         description: true,
         logo_url: true,
+        phones: true,
         service_categories: true,
         certifications: true,
       },
