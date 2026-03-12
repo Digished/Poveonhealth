@@ -166,6 +166,65 @@ model DoctorSession {
   @@map("doctor_sessions")
 }
 
+// Marketers who refer doctors to the platform
+model Marketer {
+  id         String   @id @default(uuid())
+  name       String
+  email      String   @unique
+  phone      String?
+  code       String   @unique  // Short unique code used in referral links, e.g. "AMAKA001"
+  suspended  Boolean  @default(false)
+  created_at DateTime @default(now())
+
+  doctor_links DoctorMarketerLink[]
+  otp_records  MarketerOtp[]
+  sessions     MarketerSession[]
+
+  @@map("marketers")
+}
+
+// First-touch attribution: links a doctor email to the marketer who referred them
+model DoctorMarketerLink {
+  id               String   @id @default(uuid())
+  doctor_email     String   @unique  // One marketer owns a doctor email forever
+  marketer_id      String
+  first_request_id String?  // The request that triggered the attribution
+  created_at       DateTime @default(now())
+
+  marketer Marketer @relation(fields: [marketer_id], references: [id], onDelete: Cascade)
+
+  @@index([marketer_id])
+  @@map("doctor_marketer_links")
+}
+
+// One-time passcodes for marketer portal login
+model MarketerOtp {
+  id          String   @id @default(uuid())
+  marketer_id String
+  code_hash   String   // SHA-256 of the 6-digit OTP
+  expires_at  DateTime
+  used        Boolean  @default(false)
+  created_at  DateTime @default(now())
+
+  marketer Marketer @relation(fields: [marketer_id], references: [id], onDelete: Cascade)
+
+  @@index([marketer_id])
+  @@map("marketer_otps")
+}
+
+// Active marketer portal sessions
+model MarketerSession {
+  id          String   @id @default(uuid())
+  marketer_id String
+  expires_at  DateTime
+  created_at  DateTime @default(now())
+
+  marketer Marketer @relation(fields: [marketer_id], references: [id], onDelete: Cascade)
+
+  @@index([marketer_id])
+  @@map("marketer_sessions")
+}
+
 // Tracks API calls for analytics — written asynchronously, never blocks responses
 model ApiLog {
   id          String   @id @default(uuid())

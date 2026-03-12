@@ -56,6 +56,23 @@ export async function middleware(request: NextRequest) {
     return NextResponse.redirect(new URL("/admin", request.url));
   }
 
+  // ── Scale (Marketer) Dashboard ─────────────────────────────────────────────
+  if (pathname.startsWith("/scale/dashboard")) {
+    const token = request.cookies.get("scale_token")?.value;
+    if (!token) {
+      return NextResponse.redirect(new URL("/scale", request.url));
+    }
+    // Session validity is checked in the API; middleware only verifies cookie presence
+  }
+
+  // ── Redirect authenticated marketers away from login page ─────────────────
+  if (pathname === "/scale") {
+    const token = request.cookies.get("scale_token")?.value;
+    if (token) {
+      return NextResponse.redirect(new URL("/scale/dashboard", request.url));
+    }
+  }
+
   return response;
 }
 
@@ -65,5 +82,7 @@ export const config = {
     "/admin/:path*",
     "/admin-login",
     "/lab-login",
+    "/scale",
+    "/scale/dashboard/:path*",
   ],
 };

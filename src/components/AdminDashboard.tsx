@@ -5,8 +5,8 @@ import { toast } from "react-hot-toast";
 import {
   Plus, FlaskConical, BarChart3, List, LogOut,
   Building2, Trash2, Eye, EyeOff, RefreshCw, X, Pencil,
-  Phone, Upload, Check, MapPin, Users, ChevronRight,
-  Code2, Key, Copy,
+  Phone, Upload, Check, MapPin, Users, ChevronRight, ChevronDown, ChevronUp,
+  Code2, Key, Copy, TrendingUp, Link,
 } from "lucide-react";
 import { Button } from "@/components/ui/Button";
 import { Input, Textarea } from "@/components/ui/Input";
@@ -17,7 +17,7 @@ import { format } from "date-fns";
 import { createClient } from "@/lib/supabase/client"; // still used for auth sign-out
 import { useRouter } from "next/navigation";
 
-type AdminTab = "metrics" | "requests" | "referrals" | "labs" | "analytics";
+type AdminTab = "metrics" | "requests" | "referrals" | "labs" | "analytics" | "marketers";
 
 interface ReferralGroup {
   key: string;
@@ -33,6 +33,11 @@ interface ReferralGroup {
 // Shared white input class for dark-background modals
 const whiteInput = "bg-white border-slate-200 text-slate-800 placeholder-slate-300";
 
+function refLink(code: string) {
+  const origin = typeof window !== "undefined" ? window.location.origin : "";
+  return `${origin}/?ref=${code}`;
+}
+
 export function AdminDashboard() {
   const router = useRouter();
   const [activeTab, setActiveTab] = useState<AdminTab>("metrics");
@@ -41,6 +46,11 @@ export function AdminDashboard() {
   const [metrics, setMetrics] = useState<AdminMetrics | null>(null);
   const [loading, setLoading] = useState(true);
   const [showCreateLab, setShowCreateLab] = useState(false);
+  const [showCreateMarketer, setShowCreateMarketer] = useState(false);
+  const [marketers, setMarketers] = useState<{ id: string; name: string; email: string; phone: string | null; code: string; suspended: boolean; created_at: string; doctor_count: number; referral_link: string }[]>([]);
+  const [selectedMarketerId, setSelectedMarketerId] = useState<string | null>(null);
+  const [togglingMarketerId, setTogglingMarketerId] = useState<string | null>(null);
+  const [deletingMarketerId, setDeletingMarketerId] = useState<string | null>(null);
   const [editLab, setEditLab] = useState<Lab | null>(null);
   const [deletingId, setDeletingId] = useState<string | null>(null);
   const [togglingId, setTogglingId] = useState<string | null>(null);
@@ -74,6 +84,16 @@ export function AdminDashboard() {
     }
   }, []);
 
+  const fetchMarketers = useCallback(async () => {
+    try {
+      const res = await fetch("/api/admin/create-marketer");
+      const data = await res.json();
+      if (data.success) setMarketers(data.marketers ?? []);
+    } catch {
+      // non-critical
+    }
+  }, []);
+
   const fetchData = useCallback(async () => {
     setLoading(true);
     try {
@@ -81,6 +101,7 @@ export function AdminDashboard() {
         fetch("/api/admin/requests"),
         fetchLabs(),
         fetchApiLogs(),
+        fetchMarketers(),
       ]);
       const reqData = await reqRes.json();
       if (reqData.success) {
@@ -92,7 +113,7 @@ export function AdminDashboard() {
     } finally {
       setLoading(false);
     }
-  }, [fetchLabs]);
+  }, [fetchLabs, fetchMarketers]);
 
   useEffect(() => { fetchData(); }, [fetchData]);
 
@@ -141,6 +162,47 @@ export function AdminDashboard() {
       toast.error("Network error");
     } finally {
       setDeletingRequestId(null);
+    }
+  }
+
+  async function handleToggleMarketerSuspended(m: typeof marketers[number]) {
+    setTogglingMarketerId(m.id);
+    try {
+      const res = await fetch(`/api/admin/marketers/${m.id}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ suspended: !m.suspended }),
+      });
+      const data = await res.json();
+      if (data.success) {
+        toast.success(m.suspended ? `${m.name} unsuspended` : `${m.name} suspended`);
+        await fetchMarketers();
+      } else {
+        toast.error(data.error ?? "Failed to update");
+      }
+    } catch {
+      toast.error("Network error");
+    } finally {
+      setTogglingMarketerId(null);
+    }
+  }
+
+  async function handleDeleteMarketer(m: typeof marketers[number]) {
+    if (!confirm(`Delete marketer "${m.name}"? This removes all their referral links. Cannot be undone.`)) return;
+    setDeletingMarketerId(m.id);
+    try {
+      const res = await fetch(`/api/admin/marketers/${m.id}`, { method: "DELETE" });
+      const data = await res.json();
+      if (data.success) {
+        toast.success(`"${m.name}" deleted`);
+        await fetchMarketers();
+      } else {
+        toast.error(data.error ?? "Failed to delete");
+      }
+    } catch {
+      toast.error("Network error");
+    } finally {
+      setDeletingMarketerId(null);
     }
   }
 
@@ -225,6 +287,7 @@ export function AdminDashboard() {
               { key: "referrals" as AdminTab, label: "Referrals", icon: <Users className="w-4 h-4" /> },
               { key: "labs" as AdminTab, label: "Labs", icon: <Building2 className="w-4 h-4" /> },
               { key: "analytics" as AdminTab, label: "API Analytics", icon: <BarChart3 className="w-4 h-4" /> },
+              { key: "marketers" as AdminTab, label: "Marketers", icon: <TrendingUp className="w-4 h-4" /> },
             ].map((tab) => (
               <button
                 key={tab.key}
@@ -606,16 +669,18 @@ export function AdminDashboard() {
             {apiLogSummary && apiLogSummary.topEndpoints.length > 0 && (
               <div className="bg-white/5 border border-white/10 rounded-2xl p-5">
                 <h3 className="text-sm font-semibold text-slate-300 mb-4">Top Endpoints (last 7 days)</h3>
-                <div className="space-y-2.5">
+                <div className="space-y-3">
                   {apiLogSummary.topEndpoints.map((ep) => {
                     const max = apiLogSummary.topEndpoints[0]?.count ?? 1;
                     return (
-                      <div key={ep.path} className="flex items-center gap-3">
-                        <code className="text-xs font-mono text-medical-300 w-64 shrink-0 truncate">{ep.path}</code>
-                        <div className="flex-1 bg-white/8 rounded-full h-2 overflow-hidden">
+                      <div key={ep.path} className="space-y-1">
+                        <div className="flex items-center justify-between gap-2">
+                          <code className="text-xs font-mono text-medical-300 truncate min-w-0">{ep.path}</code>
+                          <span className="text-xs text-slate-400 font-mono shrink-0">{ep.count}</span>
+                        </div>
+                        <div className="bg-white/8 rounded-full h-1.5 overflow-hidden">
                           <div className="h-full bg-medical-500 rounded-full transition-all" style={{ width: `${(ep.count / max) * 100}%` }} />
                         </div>
-                        <span className="text-xs text-slate-400 font-mono w-10 text-right shrink-0">{ep.count}</span>
                       </div>
                     );
                   })}
@@ -623,48 +688,78 @@ export function AdminDashboard() {
               </div>
             )}
 
-            {/* Recent calls table */}
+            {/* Recent calls */}
             <div className="bg-white/5 border border-white/10 rounded-2xl overflow-hidden">
               <div className="px-5 py-3 border-b border-white/10">
                 <h3 className="text-sm font-semibold text-slate-300">Recent API Calls</h3>
               </div>
-              <div className="overflow-x-auto">
-                <table className="w-full text-sm">
-                  <thead>
-                    <tr className="border-b border-white/8">
-                      {["Time", "Method", "Endpoint", "Status", "Duration"].map((h) => (
-                        <th key={h} className="pb-2 pt-3 px-4 text-left text-xs text-slate-500 font-semibold uppercase tracking-wider">{h}</th>
-                      ))}
-                    </tr>
-                  </thead>
-                  <tbody className="divide-y divide-white/5">
-                    {apiLogs.length === 0 && (
-                      <tr><td colSpan={5} className="py-12 text-center text-slate-500 text-sm">No API calls recorded yet. Calls will appear here as the API is used.</td></tr>
-                    )}
-                    {apiLogs.map((log) => (
-                      <tr key={log.id} className="hover:bg-white/4 transition-colors">
-                        <td className="py-2.5 px-4 text-xs text-slate-500 whitespace-nowrap">{format(new Date(log.created_at), "dd MMM HH:mm:ss")}</td>
-                        <td className="py-2.5 px-4">
-                          <span className={`text-xs font-mono font-bold px-1.5 py-0.5 rounded ${
-                            log.method === "GET" ? "text-emerald-400 bg-emerald-400/10" :
-                            log.method === "POST" ? "text-blue-400 bg-blue-400/10" :
-                            log.method === "DELETE" ? "text-red-400 bg-red-400/10" :
-                            "text-slate-400 bg-white/10"
-                          }`}>{log.method}</span>
-                        </td>
-                        <td className="py-2.5 px-4"><code className="text-xs font-mono text-slate-300">{log.path}</code></td>
-                        <td className="py-2.5 px-4">
-                          <span className={`text-xs font-mono font-bold ${
-                            log.status >= 200 && log.status < 300 ? "text-emerald-400" :
-                            log.status >= 400 ? "text-red-400" : "text-slate-400"
-                          }`}>{log.status}</span>
-                        </td>
-                        <td className="py-2.5 px-4 text-xs text-slate-500 font-mono">{log.duration_ms != null ? `${log.duration_ms}ms` : "—"}</td>
+
+              {apiLogs.length === 0 && (
+                <p className="py-12 text-center text-slate-500 text-sm">No API calls recorded yet. Calls will appear here as the API is used.</p>
+              )}
+
+              {/* Mobile card list */}
+              {apiLogs.length > 0 && (
+                <div className="md:hidden divide-y divide-white/5">
+                  {apiLogs.map((log) => (
+                    <div key={log.id} className="px-4 py-3 space-y-1.5">
+                      <div className="flex items-center justify-between gap-2">
+                        <span className={`text-xs font-mono font-bold px-1.5 py-0.5 rounded ${
+                          log.method === "GET" ? "text-emerald-400 bg-emerald-400/10" :
+                          log.method === "POST" ? "text-blue-400 bg-blue-400/10" :
+                          log.method === "DELETE" ? "text-red-400 bg-red-400/10" :
+                          "text-slate-400 bg-white/10"
+                        }`}>{log.method}</span>
+                        <span className={`text-xs font-mono font-bold ${
+                          log.status >= 200 && log.status < 300 ? "text-emerald-400" :
+                          log.status >= 400 ? "text-red-400" : "text-slate-400"
+                        }`}>{log.status}</span>
+                        <span className="text-xs text-slate-500 font-mono ml-auto">{log.duration_ms != null ? `${log.duration_ms}ms` : "—"}</span>
+                      </div>
+                      <code className="text-xs font-mono text-slate-400 block truncate">{log.path}</code>
+                      <p className="text-xs text-slate-600">{format(new Date(log.created_at), "dd MMM HH:mm:ss")}</p>
+                    </div>
+                  ))}
+                </div>
+              )}
+
+              {/* Desktop table */}
+              {apiLogs.length > 0 && (
+                <div className="hidden md:block overflow-x-auto">
+                  <table className="w-full text-sm">
+                    <thead>
+                      <tr className="border-b border-white/8">
+                        {["Time", "Method", "Endpoint", "Status", "Duration"].map((h) => (
+                          <th key={h} className="pb-2 pt-3 px-4 text-left text-xs text-slate-500 font-semibold uppercase tracking-wider">{h}</th>
+                        ))}
                       </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
+                    </thead>
+                    <tbody className="divide-y divide-white/5">
+                      {apiLogs.map((log) => (
+                        <tr key={log.id} className="hover:bg-white/4 transition-colors">
+                          <td className="py-2.5 px-4 text-xs text-slate-500 whitespace-nowrap">{format(new Date(log.created_at), "dd MMM HH:mm:ss")}</td>
+                          <td className="py-2.5 px-4">
+                            <span className={`text-xs font-mono font-bold px-1.5 py-0.5 rounded ${
+                              log.method === "GET" ? "text-emerald-400 bg-emerald-400/10" :
+                              log.method === "POST" ? "text-blue-400 bg-blue-400/10" :
+                              log.method === "DELETE" ? "text-red-400 bg-red-400/10" :
+                              "text-slate-400 bg-white/10"
+                            }`}>{log.method}</span>
+                          </td>
+                          <td className="py-2.5 px-4"><code className="text-xs font-mono text-slate-300">{log.path}</code></td>
+                          <td className="py-2.5 px-4">
+                            <span className={`text-xs font-mono font-bold ${
+                              log.status >= 200 && log.status < 300 ? "text-emerald-400" :
+                              log.status >= 400 ? "text-red-400" : "text-slate-400"
+                            }`}>{log.status}</span>
+                          </td>
+                          <td className="py-2.5 px-4 text-xs text-slate-500 font-mono">{log.duration_ms != null ? `${log.duration_ms}ms` : "—"}</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              )}
             </div>
 
             {/* Security notice */}
@@ -678,8 +773,117 @@ export function AdminDashboard() {
           </div>
         )}
 
+        {/* ── MARKETERS ── */}
+        {activeTab === "marketers" && (
+          <div className="animate-fade-in space-y-6">
+            <div className="flex items-center justify-between">
+              <h2 className="font-semibold text-white">Marketers ({marketers.length})</h2>
+              <Button onClick={() => setShowCreateMarketer(true)}>
+                <Plus className="w-4 h-4" />
+                <span className="hidden sm:inline">Add Marketer</span>
+              </Button>
+            </div>
+
+            {marketers.length === 0 && !loading ? (
+              <div className="bg-white/5 border border-white/10 rounded-2xl p-10 text-center">
+                <TrendingUp className="w-10 h-10 text-slate-600 mx-auto mb-3" />
+                <p className="text-sm font-semibold text-slate-400">No marketers yet</p>
+                <p className="text-xs text-slate-500 mt-1">Add a marketer to generate their referral link.</p>
+              </div>
+            ) : (
+              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+                {marketers.map((m) => (
+                  <div key={m.id} className={`bg-white/5 border rounded-2xl p-5 space-y-3 transition-opacity ${m.suspended ? "border-white/5 opacity-60" : "border-white/10"}`}>
+                    {/* Header — clickable to open detail */}
+                    <button
+                      type="button"
+                      onClick={() => setSelectedMarketerId(m.id)}
+                      className="w-full flex items-center gap-2 text-left hover:opacity-80 transition-opacity"
+                    >
+                      <div className={`w-8 h-8 rounded-lg flex items-center justify-center shrink-0 ${m.suspended ? "bg-slate-700/40" : "bg-emerald-700/40"}`}>
+                        <TrendingUp className={`w-4 h-4 ${m.suspended ? "text-slate-500" : "text-emerald-400"}`} />
+                      </div>
+                      <div className="min-w-0 flex-1">
+                        <div className="flex items-center gap-2 flex-wrap">
+                          <p className="font-semibold text-white text-sm truncate">{m.name}</p>
+                          {m.suspended && <span className="text-xs bg-red-900/40 text-red-400 border border-red-800/30 px-1.5 py-0.5 rounded-full">Suspended</span>}
+                        </div>
+                        <p className="text-xs text-slate-400 truncate">{m.email}</p>
+                      </div>
+                      <ChevronRight className="w-4 h-4 text-slate-600 shrink-0" />
+                    </button>
+                    {m.phone && (
+                      <p className="text-xs text-slate-500 flex items-center gap-1">
+                        <Phone className="w-3 h-3 text-slate-600 shrink-0" />{m.phone}
+                      </p>
+                    )}
+                    <div className="flex items-center gap-2">
+                      <span className="text-xs bg-emerald-900/40 text-emerald-400 border border-emerald-800/30 px-2 py-0.5 rounded-full font-mono">
+                        {m.code}
+                      </span>
+                      <span className="text-xs text-slate-500">{m.doctor_count} doctor{m.doctor_count !== 1 ? "s" : ""}</span>
+                    </div>
+                    <div className="bg-white/5 rounded-xl border border-white/10 px-3 py-2 flex items-center gap-2">
+                      <Link className="w-3 h-3 text-slate-500 shrink-0" />
+                      <span className="text-xs text-slate-500 flex-1 truncate font-mono">{refLink(m.code)}</span>
+                      <button
+                        type="button"
+                        onClick={() => { navigator.clipboard.writeText(refLink(m.code)); toast.success("Referral link copied!"); }}
+                        className="shrink-0 text-slate-400 hover:text-white transition-colors"
+                        title="Copy referral link"
+                      >
+                        <Copy className="w-3.5 h-3.5" />
+                      </button>
+                    </div>
+                    <div className="flex items-center justify-between pt-1">
+                      <p className="text-xs text-slate-600">Added {format(new Date(m.created_at), "dd MMM yyyy")}</p>
+                      <div className="flex items-center gap-1">
+                        <button
+                          type="button"
+                          onClick={() => handleToggleMarketerSuspended(m)}
+                          disabled={togglingMarketerId === m.id}
+                          title={m.suspended ? "Unsuspend" : "Suspend"}
+                          className={`p-1.5 rounded-lg text-xs transition-colors disabled:opacity-40 ${m.suspended ? "hover:bg-emerald-500/15 text-slate-500 hover:text-emerald-400" : "hover:bg-amber-500/15 text-slate-500 hover:text-amber-400"}`}
+                        >
+                          {togglingMarketerId === m.id ? (
+                            <RefreshCw className="w-3.5 h-3.5 animate-spin" />
+                          ) : m.suspended ? (
+                            <Eye className="w-3.5 h-3.5" />
+                          ) : (
+                            <EyeOff className="w-3.5 h-3.5" />
+                          )}
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => handleDeleteMarketer(m)}
+                          disabled={deletingMarketerId === m.id}
+                          title="Delete marketer"
+                          className="p-1.5 rounded-lg hover:bg-red-500/15 text-slate-500 hover:text-red-400 transition-colors disabled:opacity-40"
+                        >
+                          {deletingMarketerId === m.id ? <RefreshCw className="w-3.5 h-3.5 animate-spin" /> : <Trash2 className="w-3.5 h-3.5" />}
+                        </button>
+                      </div>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+        )}
+
       </div>
 
+      {showCreateMarketer && (
+        <CreateMarketerModal onClose={() => setShowCreateMarketer(false)} onSuccess={() => { setShowCreateMarketer(false); fetchMarketers(); }} />
+      )}
+      {selectedMarketerId && (
+        <MarketerDetailModal
+          marketerId={selectedMarketerId}
+          onClose={() => setSelectedMarketerId(null)}
+          onSuspendToggle={() => fetchMarketers()}
+          onDelete={() => { setSelectedMarketerId(null); fetchMarketers(); }}
+        />
+      )}
       {showCreateLab && (
         <CreateLabModal onClose={() => setShowCreateLab(false)} onSuccess={() => { setShowCreateLab(false); fetchLabs(); }} />
       )}
@@ -1738,6 +1942,389 @@ function SearchableCheckboxGroup({
           ))}
         </div>
       )}
+    </div>
+  );
+}
+
+// =============================================================================
+// Create Marketer Modal
+// =============================================================================
+function CreateMarketerModal({ onClose, onSuccess }: { onClose: () => void; onSuccess: () => void }) {
+  const [name, setName] = useState("");
+  const [email, setEmail] = useState("");
+  const [phone, setPhone] = useState("");
+  const [loading, setLoading] = useState(false);
+  const [created, setCreated] = useState<{ code: string } | null>(null);
+
+  async function handleSubmit(e: React.FormEvent) {
+    e.preventDefault();
+    if (!name.trim() || !email.trim()) { toast.error("Name and email are required"); return; }
+    setLoading(true);
+    try {
+      const res = await fetch("/api/admin/create-marketer", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ name: name.trim(), email: email.trim(), phone: phone.trim() || undefined }),
+      });
+      const data = await res.json();
+      if (data.success) {
+        setCreated({ code: data.marketer.code });
+        toast.success(`Marketer "${name}" created!`);
+      } else {
+        toast.error(data.error ?? "Failed to create marketer");
+      }
+    } catch {
+      toast.error("Network error");
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm p-4">
+      <div className="bg-slate-900 border border-white/15 rounded-2xl w-full max-w-md shadow-2xl animate-slide-up">
+        <div className="flex items-center justify-between p-5 border-b border-white/10">
+          <h2 className="font-semibold text-white">Add New Marketer</h2>
+          <button onClick={onClose} className="p-1.5 rounded-lg hover:bg-white/10 text-slate-400 transition-colors"><X className="w-4 h-4" /></button>
+        </div>
+        {created ? (
+          <div className="p-5 space-y-4">
+            <div className="text-center">
+              <div className="w-12 h-12 bg-emerald-500/20 rounded-full flex items-center justify-center mx-auto mb-3">
+                <TrendingUp className="w-6 h-6 text-emerald-400" />
+              </div>
+              <h3 className="font-semibold text-white mb-1">Marketer Created!</h3>
+              <p className="text-sm text-slate-400">Share the referral link below with them.</p>
+            </div>
+            <div className="bg-white/5 border border-white/10 rounded-xl p-4 space-y-2">
+              <div>
+                <p className="text-xs text-slate-400 mb-1 font-semibold uppercase tracking-wider">Referral Code</p>
+                <p className="font-mono text-lg text-emerald-400 font-bold">{created.code}</p>
+              </div>
+              <div>
+                <p className="text-xs text-slate-400 mb-1 font-semibold uppercase tracking-wider">Referral Link</p>
+                <div className="flex items-center gap-2 bg-white/5 rounded-lg px-3 py-2">
+                  <span className="text-xs text-slate-300 flex-1 truncate font-mono">{refLink(created.code)}</span>
+                  <button
+                    type="button"
+                    onClick={() => { navigator.clipboard.writeText(refLink(created.code)); toast.success("Copied!"); }}
+                    className="text-slate-400 hover:text-white transition-colors shrink-0"
+                  >
+                    <Copy className="w-3.5 h-3.5" />
+                  </button>
+                </div>
+              </div>
+            </div>
+            <p className="text-xs text-slate-500 leading-relaxed">
+              The marketer can log in at <span className="text-slate-300 font-mono">/scale</span> using their email address (OTP-based, no password needed).
+            </p>
+            <Button fullWidth onClick={onSuccess}>Done</Button>
+          </div>
+        ) : (
+          <form onSubmit={handleSubmit} className="p-5 space-y-4">
+            <div>
+              <label className="text-sm font-medium text-slate-300 block mb-1">Full Name <span className="text-red-400">*</span></label>
+              <input className={`w-full rounded-xl border px-4 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500 ${whiteInput}`} placeholder="e.g. Amaka Johnson" value={name} onChange={(e) => setName(e.target.value)} required />
+            </div>
+            <div>
+              <label className="text-sm font-medium text-slate-300 block mb-1">Email Address <span className="text-red-400">*</span></label>
+              <input type="email" className={`w-full rounded-xl border px-4 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500 ${whiteInput}`} placeholder="marketer@example.com" value={email} onChange={(e) => setEmail(e.target.value)} required />
+              <p className="text-xs text-slate-500 mt-1">They&apos;ll use this to log in at /scale.</p>
+            </div>
+            <div>
+              <label className="text-sm font-medium text-slate-300 block mb-1">Phone Number <span className="text-xs text-slate-500">(optional)</span></label>
+              <input className={`w-full rounded-xl border px-4 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500 ${whiteInput}`} placeholder="+234 800 000 0000" value={phone} onChange={(e) => setPhone(e.target.value)} />
+            </div>
+            <div className="flex gap-3 pt-2">
+              <Button type="button" variant="secondary" fullWidth onClick={onClose}>Cancel</Button>
+              <Button type="submit" fullWidth loading={loading}>Create Marketer</Button>
+            </div>
+          </form>
+        )}
+      </div>
+    </div>
+  );
+}
+
+// =============================================================================
+// Marketer Detail Modal
+// =============================================================================
+interface MarketerDetail {
+  id: string;
+  name: string;
+  email: string;
+  phone: string | null;
+  code: string;
+  suspended: boolean;
+  created_at: string;
+  referral_link: string;
+}
+interface MarketerDoctorDetail {
+  doctor_email: string;
+  doctor_name: string;
+  doctor_phone: string | null;
+  doctor_hospital: string | null;
+  total_requests: number;
+  linked_since: string;
+  requests: {
+    id: string;
+    code: string;
+    patient_name: string;
+    tests: string;
+    status: string;
+    created_at: string;
+    seen_at: string | null;
+    completed_at: string | null;
+  }[];
+}
+
+const MSTATUS: Record<string, { label: string; color: string }> = {
+  incoming: { label: "Pending", color: "bg-amber-400/15 text-amber-300 border border-amber-400/25" },
+  seen: { label: "Arrived", color: "bg-blue-400/15 text-blue-300 border border-blue-400/25" },
+  done: { label: "Completed", color: "bg-emerald-400/15 text-emerald-300 border border-emerald-400/25" },
+};
+
+function MarketerDetailModal({
+  marketerId,
+  onClose,
+  onSuspendToggle,
+  onDelete,
+}: {
+  marketerId: string;
+  onClose: () => void;
+  onSuspendToggle: () => void;
+  onDelete: () => void;
+}) {
+  const [data, setData] = useState<{ marketer: MarketerDetail; doctors: MarketerDoctorDetail[]; stats: { total_doctors: number; total_requests: number; pending: number; seen: number; done: number } } | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState("");
+  const [expandedEmail, setExpandedEmail] = useState<string | null>(null);
+  const [toggling, setToggling] = useState(false);
+  const [deleting, setDeleting] = useState(false);
+
+  useEffect(() => {
+    (async () => {
+      try {
+        const res = await fetch(`/api/admin/marketers/${marketerId}`);
+        const json = await res.json();
+        if (json.success) setData(json);
+        else setError(json.error ?? "Failed to load");
+      } catch {
+        setError("Network error");
+      } finally {
+        setLoading(false);
+      }
+    })();
+  }, [marketerId]);
+
+  async function handleSuspendToggle() {
+    if (!data) return;
+    setToggling(true);
+    try {
+      const res = await fetch(`/api/admin/marketers/${marketerId}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ suspended: !data.marketer.suspended }),
+      });
+      const json = await res.json();
+      if (json.success) {
+        setData((d) => d ? { ...d, marketer: { ...d.marketer, suspended: !d.marketer.suspended } } : d);
+        toast.success(data.marketer.suspended ? "Marketer unsuspended" : "Marketer suspended");
+        onSuspendToggle();
+      } else {
+        toast.error(json.error ?? "Failed to update");
+      }
+    } catch {
+      toast.error("Network error");
+    } finally {
+      setToggling(false);
+    }
+  }
+
+  async function handleDelete() {
+    if (!data) return;
+    if (!confirm(`Delete marketer "${data.marketer.name}"? This removes all their referral links. Cannot be undone.`)) return;
+    setDeleting(true);
+    try {
+      const res = await fetch(`/api/admin/marketers/${marketerId}`, { method: "DELETE" });
+      const json = await res.json();
+      if (json.success) {
+        toast.success(`"${data.marketer.name}" deleted`);
+        onDelete();
+      } else {
+        toast.error(json.error ?? "Failed to delete");
+      }
+    } catch {
+      toast.error("Network error");
+    } finally {
+      setDeleting(false);
+    }
+  }
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm p-4">
+      <div className="bg-slate-900 border border-white/15 rounded-2xl w-full max-w-2xl shadow-2xl animate-slide-up max-h-[90vh] flex flex-col">
+        {/* Header */}
+        <div className="flex items-center justify-between px-5 py-4 border-b border-white/10 shrink-0">
+          <div className="flex items-center gap-2 min-w-0">
+            <div className={`w-8 h-8 rounded-lg flex items-center justify-center shrink-0 ${data?.marketer.suspended ? "bg-slate-700/40" : "bg-emerald-700/40"}`}>
+              <TrendingUp className={`w-4 h-4 ${data?.marketer.suspended ? "text-slate-500" : "text-emerald-400"}`} />
+            </div>
+            <div className="min-w-0">
+              <div className="flex items-center gap-2 flex-wrap">
+                <h2 className="font-semibold text-white text-sm truncate">{data?.marketer.name ?? "Loading…"}</h2>
+                {data?.marketer.suspended && <span className="text-xs bg-red-900/40 text-red-400 border border-red-800/30 px-1.5 py-0.5 rounded-full">Suspended</span>}
+              </div>
+              {data && <p className="text-xs text-slate-400">{data.marketer.email}</p>}
+            </div>
+          </div>
+          <div className="flex items-center gap-1 shrink-0">
+            {data && (
+              <>
+                <button
+                  type="button"
+                  onClick={handleSuspendToggle}
+                  disabled={toggling}
+                  title={data.marketer.suspended ? "Unsuspend" : "Suspend"}
+                  className={`p-2 rounded-lg transition-colors disabled:opacity-40 text-xs ${data.marketer.suspended ? "hover:bg-emerald-500/15 text-slate-400 hover:text-emerald-400" : "hover:bg-amber-500/15 text-slate-400 hover:text-amber-400"}`}
+                >
+                  {toggling ? <RefreshCw className="w-4 h-4 animate-spin" /> : data.marketer.suspended ? <Eye className="w-4 h-4" /> : <EyeOff className="w-4 h-4" />}
+                </button>
+                <button
+                  type="button"
+                  onClick={handleDelete}
+                  disabled={deleting}
+                  title="Delete marketer"
+                  className="p-2 rounded-lg hover:bg-red-500/15 text-slate-400 hover:text-red-400 transition-colors disabled:opacity-40"
+                >
+                  {deleting ? <RefreshCw className="w-4 h-4 animate-spin" /> : <Trash2 className="w-4 h-4" />}
+                </button>
+              </>
+            )}
+            <button onClick={onClose} className="p-2 rounded-lg hover:bg-white/10 text-slate-400 transition-colors ml-1">
+              <X className="w-4 h-4" />
+            </button>
+          </div>
+        </div>
+
+        {/* Body */}
+        <div className="overflow-y-auto flex-1 p-5 space-y-5">
+          {loading && (
+            <div className="space-y-3">
+              {[1, 2, 3].map((i) => <div key={i} className="bg-white/5 rounded-xl h-12 animate-pulse" />)}
+            </div>
+          )}
+          {error && <p className="text-sm text-red-400 bg-red-500/10 border border-red-500/20 rounded-xl px-4 py-3">{error}</p>}
+          {data && (
+            <>
+              {/* Info + referral link */}
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                <div className="bg-white/5 border border-white/10 rounded-xl p-4 space-y-2">
+                  <p className="text-xs text-slate-500 font-semibold uppercase tracking-wider">Details</p>
+                  {data.marketer.phone && (
+                    <p className="text-xs text-slate-300 flex items-center gap-1.5"><Phone className="w-3 h-3 text-slate-500" />{data.marketer.phone}</p>
+                  )}
+                  <p className="text-xs text-slate-400">Code: <span className="font-mono text-emerald-400">{data.marketer.code}</span></p>
+                  <p className="text-xs text-slate-600">Joined {format(new Date(data.marketer.created_at), "dd MMM yyyy")}</p>
+                </div>
+                <div className="bg-white/5 border border-white/10 rounded-xl p-4 space-y-2">
+                  <p className="text-xs text-slate-500 font-semibold uppercase tracking-wider">Referral Link</p>
+                  <div className="flex items-center gap-2">
+                    <span className="text-xs text-slate-400 flex-1 truncate font-mono">{refLink(data.marketer.code)}</span>
+                    <button
+                      type="button"
+                      onClick={() => { navigator.clipboard.writeText(refLink(data.marketer.code)); toast.success("Copied!"); }}
+                      className="shrink-0 text-slate-400 hover:text-white transition-colors"
+                    >
+                      <Copy className="w-3.5 h-3.5" />
+                    </button>
+                  </div>
+                </div>
+              </div>
+
+              {/* Stats */}
+              <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+                {[
+                  { label: "Doctors", value: data.stats.total_doctors, color: "text-emerald-400" },
+                  { label: "Requests", value: data.stats.total_requests, color: "text-white" },
+                  { label: "Pending", value: data.stats.pending, color: "text-amber-400" },
+                  { label: "Completed", value: data.stats.done, color: "text-emerald-400" },
+                ].map((s) => (
+                  <div key={s.label} className="bg-white/5 border border-white/10 rounded-xl p-3 text-center">
+                    <p className={`text-2xl font-bold ${s.color}`}>{s.value}</p>
+                    <p className="text-xs text-slate-500 mt-0.5">{s.label}</p>
+                  </div>
+                ))}
+              </div>
+
+              {/* Doctor list */}
+              <div>
+                <p className="text-xs font-semibold text-slate-400 uppercase tracking-wider mb-3">Referred Doctors</p>
+                {data.doctors.length === 0 ? (
+                  <div className="bg-white/5 border border-white/10 rounded-xl p-8 text-center">
+                    <Users className="w-8 h-8 text-slate-600 mx-auto mb-2" />
+                    <p className="text-sm text-slate-500">No doctors referred yet</p>
+                  </div>
+                ) : (
+                  <div className="space-y-2">
+                    {data.doctors.map((doc) => (
+                      <div key={doc.doctor_email} className="bg-white/5 border border-white/8 rounded-xl overflow-hidden">
+                        {/* Doctor row */}
+                        <button
+                          type="button"
+                          onClick={() => setExpandedEmail(expandedEmail === doc.doctor_email ? null : doc.doctor_email)}
+                          className="w-full flex items-center gap-3 px-4 py-3 hover:bg-white/5 transition-colors text-left"
+                        >
+                          <div className="w-7 h-7 rounded-lg bg-slate-700/50 flex items-center justify-center shrink-0">
+                            <Users className="w-3.5 h-3.5 text-slate-400" />
+                          </div>
+                          <div className="flex-1 min-w-0">
+                            <p className="text-sm font-semibold text-white truncate">{doc.doctor_name}</p>
+                            <div className="flex items-center gap-2 flex-wrap mt-0.5">
+                              {doc.doctor_hospital && <span className="text-xs text-slate-500 truncate">{doc.doctor_hospital}</span>}
+                              {doc.doctor_phone && <span className="text-xs text-slate-600">· {doc.doctor_phone}</span>}
+                            </div>
+                          </div>
+                          <div className="shrink-0 flex items-center gap-2">
+                            <span className="text-xs text-slate-400">{doc.total_requests} req</span>
+                            {expandedEmail === doc.doctor_email ? <ChevronUp className="w-3.5 h-3.5 text-slate-500" /> : <ChevronDown className="w-3.5 h-3.5 text-slate-500" />}
+                          </div>
+                        </button>
+
+                        {/* Expanded requests */}
+                        {expandedEmail === doc.doctor_email && (
+                          <div className="border-t border-white/8 px-4 py-3 space-y-2 bg-slate-950/30">
+                            {doc.requests.length === 0 ? (
+                              <p className="text-xs text-slate-500 py-2 text-center">No requests yet</p>
+                            ) : (
+                              doc.requests.map((req) => {
+                                const st = MSTATUS[req.status] ?? MSTATUS.incoming;
+                                return (
+                                  <div key={req.id} className="flex items-start gap-3 py-2 border-b border-white/5 last:border-0">
+                                    <div className="flex-1 min-w-0">
+                                      <div className="flex items-center gap-2 flex-wrap">
+                                        <span className="font-mono text-xs text-medical-400">{req.code}</span>
+                                        <span className={`text-xs font-semibold px-1.5 py-0.5 rounded-full ${st.color}`}>{st.label}</span>
+                                      </div>
+                                      <p className="text-xs text-slate-500 mt-0.5">Patient: <span className="text-slate-300 font-medium">{req.patient_name}</span></p>
+                                      <p className="text-xs text-slate-600 mt-0.5 line-clamp-2 leading-relaxed">{req.tests}</p>
+                                    </div>
+                                    <span className="text-xs text-slate-600 whitespace-nowrap shrink-0 mt-0.5">{format(new Date(req.created_at), "dd MMM yy")}</span>
+                                  </div>
+                                );
+                              })
+                            )}
+                          </div>
+                        )}
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+            </>
+          )}
+        </div>
+      </div>
     </div>
   );
 }
