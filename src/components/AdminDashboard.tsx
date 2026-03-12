@@ -6,7 +6,7 @@ import {
   Plus, FlaskConical, BarChart3, List, LogOut,
   Building2, Trash2, Eye, EyeOff, RefreshCw, X, Pencil,
   Phone, Upload, Check, MapPin, Users, ChevronRight,
-  Code2, Key, Copy,
+  Code2, Key, Copy, TrendingUp, Link,
 } from "lucide-react";
 import { Button } from "@/components/ui/Button";
 import { Input, Textarea } from "@/components/ui/Input";
@@ -17,7 +17,7 @@ import { format } from "date-fns";
 import { createClient } from "@/lib/supabase/client"; // still used for auth sign-out
 import { useRouter } from "next/navigation";
 
-type AdminTab = "metrics" | "requests" | "referrals" | "labs" | "analytics";
+type AdminTab = "metrics" | "requests" | "referrals" | "labs" | "analytics" | "marketers";
 
 interface ReferralGroup {
   key: string;
@@ -41,6 +41,8 @@ export function AdminDashboard() {
   const [metrics, setMetrics] = useState<AdminMetrics | null>(null);
   const [loading, setLoading] = useState(true);
   const [showCreateLab, setShowCreateLab] = useState(false);
+  const [showCreateMarketer, setShowCreateMarketer] = useState(false);
+  const [marketers, setMarketers] = useState<{ id: string; name: string; email: string; phone: string | null; code: string; created_at: string; doctor_count: number; referral_link: string }[]>([]);
   const [editLab, setEditLab] = useState<Lab | null>(null);
   const [deletingId, setDeletingId] = useState<string | null>(null);
   const [togglingId, setTogglingId] = useState<string | null>(null);
@@ -74,6 +76,16 @@ export function AdminDashboard() {
     }
   }, []);
 
+  const fetchMarketers = useCallback(async () => {
+    try {
+      const res = await fetch("/api/admin/create-marketer");
+      const data = await res.json();
+      if (data.success) setMarketers(data.marketers ?? []);
+    } catch {
+      // non-critical
+    }
+  }, []);
+
   const fetchData = useCallback(async () => {
     setLoading(true);
     try {
@@ -81,6 +93,7 @@ export function AdminDashboard() {
         fetch("/api/admin/requests"),
         fetchLabs(),
         fetchApiLogs(),
+        fetchMarketers(),
       ]);
       const reqData = await reqRes.json();
       if (reqData.success) {
@@ -92,7 +105,7 @@ export function AdminDashboard() {
     } finally {
       setLoading(false);
     }
-  }, [fetchLabs]);
+  }, [fetchLabs, fetchMarketers]);
 
   useEffect(() => { fetchData(); }, [fetchData]);
 
@@ -225,6 +238,7 @@ export function AdminDashboard() {
               { key: "referrals" as AdminTab, label: "Referrals", icon: <Users className="w-4 h-4" /> },
               { key: "labs" as AdminTab, label: "Labs", icon: <Building2 className="w-4 h-4" /> },
               { key: "analytics" as AdminTab, label: "API Analytics", icon: <BarChart3 className="w-4 h-4" /> },
+              { key: "marketers" as AdminTab, label: "Marketers", icon: <TrendingUp className="w-4 h-4" /> },
             ].map((tab) => (
               <button
                 key={tab.key}
@@ -678,8 +692,72 @@ export function AdminDashboard() {
           </div>
         )}
 
+        {/* ── MARKETERS ── */}
+        {activeTab === "marketers" && (
+          <div className="animate-fade-in space-y-6">
+            <div className="flex items-center justify-between">
+              <h2 className="font-semibold text-white">Marketers ({marketers.length})</h2>
+              <Button onClick={() => setShowCreateMarketer(true)}>
+                <Plus className="w-4 h-4" />
+                <span className="hidden sm:inline">Add Marketer</span>
+              </Button>
+            </div>
+
+            {marketers.length === 0 && !loading ? (
+              <div className="bg-white/5 border border-white/10 rounded-2xl p-10 text-center">
+                <TrendingUp className="w-10 h-10 text-slate-600 mx-auto mb-3" />
+                <p className="text-sm font-semibold text-slate-400">No marketers yet</p>
+                <p className="text-xs text-slate-500 mt-1">Add a marketer to generate their referral link.</p>
+              </div>
+            ) : (
+              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+                {marketers.map((m) => (
+                  <div key={m.id} className="bg-white/5 border border-white/10 rounded-2xl p-5 space-y-3">
+                    <div className="flex items-center gap-2">
+                      <div className="w-8 h-8 bg-emerald-700/40 rounded-lg flex items-center justify-center shrink-0">
+                        <TrendingUp className="w-4 h-4 text-emerald-400" />
+                      </div>
+                      <div className="min-w-0">
+                        <p className="font-semibold text-white text-sm truncate">{m.name}</p>
+                        <p className="text-xs text-slate-400 truncate">{m.email}</p>
+                      </div>
+                    </div>
+                    {m.phone && (
+                      <p className="text-xs text-slate-500 flex items-center gap-1">
+                        <Phone className="w-3 h-3 text-slate-600 shrink-0" />{m.phone}
+                      </p>
+                    )}
+                    <div className="flex items-center gap-2">
+                      <span className="text-xs bg-emerald-900/40 text-emerald-400 border border-emerald-800/30 px-2 py-0.5 rounded-full font-mono">
+                        {m.code}
+                      </span>
+                      <span className="text-xs text-slate-500">{m.doctor_count} doctor{m.doctor_count !== 1 ? "s" : ""}</span>
+                    </div>
+                    <div className="bg-white/5 rounded-xl border border-white/10 px-3 py-2 flex items-center gap-2">
+                      <Link className="w-3 h-3 text-slate-500 shrink-0" />
+                      <span className="text-xs text-slate-500 flex-1 truncate font-mono">{m.referral_link}</span>
+                      <button
+                        type="button"
+                        onClick={() => { navigator.clipboard.writeText(m.referral_link); toast.success("Referral link copied!"); }}
+                        className="shrink-0 text-slate-400 hover:text-white transition-colors"
+                        title="Copy referral link"
+                      >
+                        <Copy className="w-3.5 h-3.5" />
+                      </button>
+                    </div>
+                    <p className="text-xs text-slate-600">Added {format(new Date(m.created_at), "dd MMM yyyy")}</p>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+        )}
+
       </div>
 
+      {showCreateMarketer && (
+        <CreateMarketerModal onClose={() => setShowCreateMarketer(false)} onSuccess={() => { setShowCreateMarketer(false); fetchMarketers(); }} />
+      )}
       {showCreateLab && (
         <CreateLabModal onClose={() => setShowCreateLab(false)} onSuccess={() => { setShowCreateLab(false); fetchLabs(); }} />
       )}
@@ -1738,6 +1816,106 @@ function SearchableCheckboxGroup({
           ))}
         </div>
       )}
+    </div>
+  );
+}
+
+// =============================================================================
+// Create Marketer Modal
+// =============================================================================
+function CreateMarketerModal({ onClose, onSuccess }: { onClose: () => void; onSuccess: () => void }) {
+  const [name, setName] = useState("");
+  const [email, setEmail] = useState("");
+  const [phone, setPhone] = useState("");
+  const [loading, setLoading] = useState(false);
+  const [created, setCreated] = useState<{ code: string; referral_link: string } | null>(null);
+
+  async function handleSubmit(e: React.FormEvent) {
+    e.preventDefault();
+    if (!name.trim() || !email.trim()) { toast.error("Name and email are required"); return; }
+    setLoading(true);
+    try {
+      const res = await fetch("/api/admin/create-marketer", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ name: name.trim(), email: email.trim(), phone: phone.trim() || undefined }),
+      });
+      const data = await res.json();
+      if (data.success) {
+        setCreated({ code: data.marketer.code, referral_link: data.referral_link });
+        toast.success(`Marketer "${name}" created!`);
+      } else {
+        toast.error(data.error ?? "Failed to create marketer");
+      }
+    } catch {
+      toast.error("Network error");
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm p-4">
+      <div className="bg-slate-900 border border-white/15 rounded-2xl w-full max-w-md shadow-2xl animate-slide-up">
+        <div className="flex items-center justify-between p-5 border-b border-white/10">
+          <h2 className="font-semibold text-white">Add New Marketer</h2>
+          <button onClick={onClose} className="p-1.5 rounded-lg hover:bg-white/10 text-slate-400 transition-colors"><X className="w-4 h-4" /></button>
+        </div>
+        {created ? (
+          <div className="p-5 space-y-4">
+            <div className="text-center">
+              <div className="w-12 h-12 bg-emerald-500/20 rounded-full flex items-center justify-center mx-auto mb-3">
+                <TrendingUp className="w-6 h-6 text-emerald-400" />
+              </div>
+              <h3 className="font-semibold text-white mb-1">Marketer Created!</h3>
+              <p className="text-sm text-slate-400">Share the referral link below with them.</p>
+            </div>
+            <div className="bg-white/5 border border-white/10 rounded-xl p-4 space-y-2">
+              <div>
+                <p className="text-xs text-slate-400 mb-1 font-semibold uppercase tracking-wider">Referral Code</p>
+                <p className="font-mono text-lg text-emerald-400 font-bold">{created.code}</p>
+              </div>
+              <div>
+                <p className="text-xs text-slate-400 mb-1 font-semibold uppercase tracking-wider">Referral Link</p>
+                <div className="flex items-center gap-2 bg-white/5 rounded-lg px-3 py-2">
+                  <span className="text-xs text-slate-300 flex-1 truncate font-mono">{created.referral_link}</span>
+                  <button
+                    type="button"
+                    onClick={() => { navigator.clipboard.writeText(created.referral_link); toast.success("Copied!"); }}
+                    className="text-slate-400 hover:text-white transition-colors shrink-0"
+                  >
+                    <Copy className="w-3.5 h-3.5" />
+                  </button>
+                </div>
+              </div>
+            </div>
+            <p className="text-xs text-slate-500 leading-relaxed">
+              The marketer can log in at <span className="text-slate-300 font-mono">/scale</span> using their email address (OTP-based, no password needed).
+            </p>
+            <Button fullWidth onClick={onSuccess}>Done</Button>
+          </div>
+        ) : (
+          <form onSubmit={handleSubmit} className="p-5 space-y-4">
+            <div>
+              <label className="text-sm font-medium text-slate-300 block mb-1">Full Name <span className="text-red-400">*</span></label>
+              <input className={`w-full rounded-xl border px-4 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500 ${whiteInput}`} placeholder="e.g. Amaka Johnson" value={name} onChange={(e) => setName(e.target.value)} required />
+            </div>
+            <div>
+              <label className="text-sm font-medium text-slate-300 block mb-1">Email Address <span className="text-red-400">*</span></label>
+              <input type="email" className={`w-full rounded-xl border px-4 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500 ${whiteInput}`} placeholder="marketer@example.com" value={email} onChange={(e) => setEmail(e.target.value)} required />
+              <p className="text-xs text-slate-500 mt-1">They&apos;ll use this to log in at /scale.</p>
+            </div>
+            <div>
+              <label className="text-sm font-medium text-slate-300 block mb-1">Phone Number <span className="text-xs text-slate-500">(optional)</span></label>
+              <input className={`w-full rounded-xl border px-4 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500 ${whiteInput}`} placeholder="+234 800 000 0000" value={phone} onChange={(e) => setPhone(e.target.value)} />
+            </div>
+            <div className="flex gap-3 pt-2">
+              <Button type="button" variant="secondary" fullWidth onClick={onClose}>Cancel</Button>
+              <Button type="submit" fullWidth loading={loading}>Create Marketer</Button>
+            </div>
+          </form>
+        )}
+      </div>
     </div>
   );
 }

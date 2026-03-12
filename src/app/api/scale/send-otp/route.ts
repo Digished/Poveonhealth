@@ -18,8 +18,10 @@ export async function POST(req: NextRequest) {
 
     const marketer = await prisma.marketer.findUnique({ where: { email: normalised } });
     if (!marketer) {
-      // Return generic message to avoid email enumeration
-      return NextResponse.json({ success: true });
+      return NextResponse.json(
+        { error: "No marketer account found with that email address. Please contact your administrator." },
+        { status: 404 }
+      );
     }
 
     // Rate-limit: max 3 pending (unused, non-expired) OTPs per marketer in last 10 min
