@@ -14,6 +14,7 @@ interface BankAccountInputProps {
   onBankChange: (name: string, code: string) => void;
   onAccountNumberChange: (value: string) => void;
   onAccountNameChange: (value: string) => void;
+  onVerifiedChange?: (verified: boolean) => void;
   bankError?: string;
   accountNumberError?: string;
   accountNameError?: string;
@@ -27,6 +28,7 @@ export function BankAccountInput({
   onBankChange,
   onAccountNumberChange,
   onAccountNameChange,
+  onVerifiedChange,
   bankError,
   accountNumberError,
   accountNameError,
@@ -71,6 +73,7 @@ export function BankAccountInput({
       // Reset verified state when inputs change
       if (verified) {
         setVerified(false);
+        onVerifiedChange?.(false);
         onAccountNameChange("");
       }
       setVerifyError("");
@@ -91,10 +94,12 @@ export function BankAccountInput({
       if (data.success) {
         onAccountNameChange(data.account_name);
         setVerified(true);
+        onVerifiedChange?.(true);
       } else {
         setVerifyError(data.error ?? "Verification failed. Please try again.");
         onAccountNameChange("");
         setVerified(false);
+        onVerifiedChange?.(false);
       }
     } catch {
       setVerifyError("Network error. Please try again.");

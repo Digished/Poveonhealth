@@ -164,6 +164,44 @@ console.log(data.code); // e.g. "CDL-A3X9B1"`,
           "Rate limited to 20 requests per doctor email per hour. Returns 429 if exceeded.",
         ],
       },
+      {
+        id: "verify-account",
+        method: "POST",
+        path: "/api/doc-profile/verify-account",
+        summary: "Verify Nigerian Bank Account",
+        description:
+          "Resolves a Nigerian bank account number via NIBSS (through Paystack). Returns the verified account name as it appears on the bank's records. Used to auto-fill and confirm the doctor's payment account before submission.",
+        auth: "public",
+        body: [
+          { name: "account_number", type: "string", required: true, description: "10-digit NUBAN account number" },
+          { name: "bank_code", type: "string", required: true, description: "Paystack bank code (e.g. '058' for Zenith Bank)" },
+        ],
+        requestExample: `# curl
+curl -X POST https://poveon.com/api/doc-profile/verify-account \\
+  -H "Content-Type: application/json" \\
+  -d '{ "account_number": "0123456789", "bank_code": "058" }'
+
+# JavaScript (fetch)
+const res = await fetch("https://poveon.com/api/doc-profile/verify-account", {
+  method: "POST",
+  headers: { "Content-Type": "application/json" },
+  body: JSON.stringify({ account_number: "0123456789", bank_code: "058" }),
+});
+const data = await res.json();
+console.log(data.account_name); // e.g. "JOHN DOE ADEYEMI"`,
+        responseExample: JSON.stringify(
+          { success: true, account_name: "JOHN DOE ADEYEMI", account_number: "0123456789" },
+          null,
+          2
+        ),
+        notes: [
+          "Requires `PAYSTACK_SECRET_KEY` to be configured on the server. Returns 503 if not set.",
+          "Account number must be exactly 10 digits (Nigerian NUBAN format).",
+          "Returns 422 if the account cannot be resolved — check the account number and bank code.",
+          "Bank codes follow the Paystack standard. Use `GET https://api.paystack.co/bank` for a full list.",
+          "This endpoint proxies Paystack — the secret key is never exposed to the client.",
+        ],
+      },
     ],
   },
   {
@@ -357,6 +395,8 @@ const data = await res.json();`,
         notes: [
           "Request must be `multipart/form-data` (not JSON).",
           "At least one of `resultFiles` or `resultLink` is required.",
+          "Maximum 5 PDF files per request. Returns 400 if exceeded.",
+          "Maximum 10 MB per file. Returns 400 if any file exceeds this limit.",
           "Patient email is used if on file; `patientEmail` override takes precedence.",
         ],
       },
@@ -524,6 +564,11 @@ const data = await res.json();`,
           null,
           2
         ),
+        notes: [
+          "Maximum file size is 5 MB. Returns 400 if exceeded.",
+          "Accepted formats: JPEG, PNG, WebP, GIF.",
+          "Uploading a new logo replaces the previous one.",
+        ],
       },
       {
         id: "admin-list-requests",
@@ -1008,28 +1053,27 @@ function RateLimiting() {
     <div className="glass-card p-5 sm:p-6">
       <h2 className="text-lg font-bold text-slate-800 mb-1">Rate Limiting</h2>
       <p className="text-sm text-slate-500 mb-4">
-        The API does not enforce hard rate limits at this time. However, the following fair-use guidelines apply
-        to keep the platform stable for all users.
+        Some endpoints enforce hard rate limits. The limits below are actively enforced — requests that exceed them receive a <code className="text-xs bg-slate-100 px-1 py-0.5 rounded">429</code> response.
       </p>
       <div className="grid gap-3 sm:grid-cols-3">
         {[
           {
             icon: "📝",
             title: "Request Creation",
-            rule: "Max ~60 requests/minute per IP",
-            note: "Suitable for batch doctor workflows. Avoid tight loops.",
+            rule: "20 requests per doctor email per hour",
+            note: "Enforced server-side. Returns 429 when exceeded. Resets on a rolling 1-hour window.",
           },
           {
             icon: "📡",
             title: "Status Polling",
             rule: "Poll at most once every 30 seconds",
-            note: "Do not poll continuously. Use reasonable intervals in your LIMS.",
+            note: "Not enforced but please follow this guideline. Continuous polling may be throttled.",
           },
           {
             icon: "📄",
             title: "File Uploads",
-            rule: "Max 10 MB per PDF file",
-            note: "Compress large result PDFs before uploading.",
+            rule: "Max 5 files · 10 MB each (results) / 5 MB (logos)",
+            note: "Enforced server-side. Returns 400 for oversized or too many files.",
           },
         ].map((item) => (
           <div key={item.title} className="rounded-2xl border border-slate-200 bg-slate-50/50 p-4">

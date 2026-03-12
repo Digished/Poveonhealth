@@ -105,8 +105,8 @@ export interface LabRequest {
   created_at: string;
   seen_at: string | null;
   completed_at: string | null;
-  // Joined field from labs table
-  labs?: {
+  // Joined field from lab relation (Prisma relation name is "lab")
+  lab?: {
     name: string;
     address: string;
   };

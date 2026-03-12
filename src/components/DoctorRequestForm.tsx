@@ -566,6 +566,8 @@ export function DoctorRequestForm() {
   const [doctorOptionalOpen, setDoctorOptionalOpen] = useState(false);
   const [savedProfile, setSavedProfile] = useState<{ prefix: string; name: string; email: string; phone: string; hospital: string; bankName: string; bankCode: string; accountNumber: string; accountName: string } | null>(null);
   const [bankCode, setBankCode] = useState("");
+  const [bankVerified, setBankVerified] = useState(false);
+  const [maxStep, setMaxStep] = useState(1);
 
   const fetchLabs = useCallback(() => {
     setLabsLoading(true);
@@ -629,6 +631,7 @@ export function DoctorRequestForm() {
     setDoctorOptionalOpen(false);
     setBankOpen(true); // Re-open bank section for fresh entry
     setBankCode("");
+    setBankVerified(false);
     setForm((prev) => ({
       ...prev,
       doctor_prefix: "",
@@ -670,9 +673,23 @@ export function DoctorRequestForm() {
 
   function handleNext() {
     if (validateStep(step)) {
-      setStep((s) => Math.min(5, s + 1));
+      const next = Math.min(5, step + 1);
+      setStep(next);
+      setMaxStep((m) => Math.max(m, next));
       window.scrollTo({ top: 0, behavior: "smooth" });
     }
+  }
+
+  function handleJumpToStep(target: number) {
+    // Allow jumping to any visited step freely; validate when jumping forward
+    if (target === step) return;
+    if (target > step) {
+      if (!validateStep(step)) return;
+    } else {
+      setErrors({});
+    }
+    setStep(target);
+    window.scrollTo({ top: 0, behavior: "smooth" });
   }
 
   function handleBack() {
@@ -838,24 +855,33 @@ export function DoctorRequestForm() {
             const num = i + 1;
             const done = num < step;
             const active = num === step;
+            const visited = num <= maxStep;
             const Icon = s.icon;
             return (
               <div key={s.title} className="flex items-center flex-1">
                 <div className="flex flex-col items-center">
-                  <div className={`rounded-full flex items-center justify-center transition-all border-2 ${
-                    done
-                      ? "w-7 h-7 bg-slate-700 text-white border-slate-700"
-                      : active
-                      ? "w-8 h-8 bg-slate-900 text-white border-slate-800 ring-4 ring-slate-900/10"
-                      : "w-7 h-7 bg-white text-slate-300 border-slate-200"
-                  }`}>
+                  <button
+                    type="button"
+                    onClick={() => visited && handleJumpToStep(num)}
+                    disabled={!visited}
+                    className={`rounded-full flex items-center justify-center transition-all border-2 focus:outline-none ${
+                      done
+                        ? "w-7 h-7 bg-slate-700 text-white border-slate-700 cursor-pointer hover:bg-medical-600 hover:border-medical-600"
+                        : active
+                        ? "w-8 h-8 bg-slate-900 text-white border-slate-800 ring-4 ring-slate-900/10 cursor-default"
+                        : visited
+                        ? "w-7 h-7 bg-slate-200 text-slate-500 border-slate-300 cursor-pointer hover:bg-medical-100 hover:border-medical-400"
+                        : "w-7 h-7 bg-white text-slate-300 border-slate-200 cursor-default"
+                    }`}
+                    aria-label={visited ? `Go to step ${num}: ${s.title}` : s.title}
+                  >
                     {done
                       ? <Check className="w-3 h-3" />
                       : <Icon className={active ? "w-3.5 h-3.5" : "w-3 h-3"} />}
-                  </div>
+                  </button>
                   {!scrolled && (
                     <p className={`text-xs mt-1 hidden sm:block whitespace-nowrap ${
-                      active ? "font-semibold text-slate-800" : done ? "font-medium text-slate-500" : "font-medium text-slate-400"
+                      active ? "font-semibold text-slate-800" : done ? "font-medium text-slate-500 cursor-pointer" : "font-medium text-slate-400"
                     }`}>
                       {s.title}
                     </p>
@@ -871,7 +897,24 @@ export function DoctorRequestForm() {
       </div>
 
       {/* Step content */}
-      <div className="glass-card p-6 mt-4 mb-2">
+      <div
+        className="glass-card p-6 mt-4 mb-2"
+        onKeyDown={(e) => {
+          if (e.key !== "Enter") return;
+          const target = e.target as HTMLElement;
+          if (target.tagName !== "INPUT") return;
+          e.preventDefault();
+          const inputs = Array.from(
+            e.currentTarget.querySelectorAll<HTMLElement>(
+              'input:not([type="hidden"]):not([disabled]), select:not([disabled])'
+            )
+          );
+          const idx = inputs.indexOf(target as HTMLInputElement);
+          if (idx >= 0 && idx < inputs.length - 1) {
+            inputs[idx + 1].focus();
+          }
+        }}
+      >
 
         {/* Step 1: Choose Lab */}
         {step === 1 && (
@@ -1115,9 +1158,13 @@ export function DoctorRequestForm() {
                 </div>
                 {/* Bank status + clear */}
                 <div className="px-4 pb-3 flex items-center justify-between gap-3 border-t border-medical-100 pt-2.5">
-                  {!bankSkipped && (form.doctor_bank_name || form.doctor_account_number) ? (
+                  {!bankSkipped && bankVerified && form.doctor_account_name ? (
                     <span className="text-xs bg-emerald-100 text-emerald-700 border border-emerald-200 px-2.5 py-0.5 rounded-full flex items-center gap-1 font-medium">
-                      <Check className="w-3 h-3" /> Bank details saved
+                      <Check className="w-3 h-3" /> Bank verified
+                    </span>
+                  ) : !bankSkipped && (form.doctor_bank_name || form.doctor_account_number) ? (
+                    <span className="text-xs bg-amber-100 text-amber-700 border border-amber-200 px-2.5 py-0.5 rounded-full flex items-center gap-1 font-medium">
+                      Bank not verified
                     </span>
                   ) : (
                     <span className="text-xs text-slate-400 italic">No bank details</span>
@@ -1247,7 +1294,7 @@ export function DoctorRequestForm() {
                 </button>
               </div>
             ) : (() => {
-              const hasBankContent = !!(form.doctor_bank_name || form.doctor_account_number || form.doctor_account_name);
+              const hasBankContent = bankVerified && !!(form.doctor_bank_name && form.doctor_account_number && form.doctor_account_name);
               return (
                 <div className={`rounded-xl border-2 overflow-hidden transition-colors ${hasBankContent ? "border-emerald-200 bg-emerald-50/30" : "border-slate-200"}`}>
                   <button
@@ -1276,9 +1323,10 @@ export function DoctorRequestForm() {
                         bankCode={bankCode}
                         accountNumber={form.doctor_account_number}
                         accountName={form.doctor_account_name}
-                        onBankChange={(name, code) => { set("doctor_bank_name", name); setBankCode(code); }}
-                        onAccountNumberChange={(v) => set("doctor_account_number", v)}
+                        onBankChange={(name, code) => { set("doctor_bank_name", name); setBankCode(code); setBankVerified(false); }}
+                        onAccountNumberChange={(v) => { set("doctor_account_number", v); setBankVerified(false); }}
                         onAccountNameChange={(v) => set("doctor_account_name", v)}
+                        onVerifiedChange={setBankVerified}
                         bankError={errors.doctor_bank_name}
                         accountNumberError={errors.doctor_account_number}
                         accountNameError={errors.doctor_account_name}

@@ -326,7 +326,7 @@ export function AdminDashboard() {
                         </p>
                       )}
                       <div className="flex items-center justify-between mt-2">
-                        <p className="text-xs text-slate-500 truncate flex-1">{(req.labs as { name: string } | null)?.name ?? "—"}</p>
+                        <p className="text-xs text-slate-500 truncate flex-1">{(req.lab as { name: string } | null)?.name ?? "—"}</p>
                         <div className="flex items-center gap-2 shrink-0 ml-2">
                           {req.schedule && (
                             <span className="text-xs bg-emerald-900/40 text-emerald-400 border border-emerald-800/30 px-1.5 py-0.5 rounded-full">
@@ -370,7 +370,7 @@ export function AdminDashboard() {
                             )}
                           </td>
                           <td className="py-3 px-3 max-w-[180px]"><p className="text-slate-400 truncate">{req.tests}</p></td>
-                          <td className="py-3 px-3 text-slate-300">{(req.labs as { name: string } | null)?.name ?? "—"}</td>
+                          <td className="py-3 px-3 text-slate-300">{(req.lab as { name: string } | null)?.name ?? "—"}</td>
                           <td className="py-3 px-3"><StatusBadge status={req.status} /></td>
                           <td className="py-3 px-3 text-slate-400 whitespace-nowrap">{format(new Date(req.created_at), "dd MMM yy")}</td>
                           <td className="py-3 px-3">
