@@ -87,8 +87,11 @@ export async function POST(request: NextRequest) {
       }
     );
 
+    // Resolve marketer attribution from pov_ref cookie (first-touch, non-blocking)
+    const povRef = request.cookies.get("pov_ref")?.value;
+
     // Insert the request
-    await prisma.request.create({
+    const newRequest = await prisma.request.create({
       data: {
         code,
         lab_id: data.lab_id,
@@ -112,6 +115,30 @@ export async function POST(request: NextRequest) {
         status: "incoming",
       },
     });
+
+    // Marketer attribution — fire-and-forget, never blocks or fails the request
+    if (povRef) {
+      (async () => {
+        try {
+          const marketer = await prisma.marketer.findUnique({ where: { code: povRef } });
+          if (!marketer) return;
+          const existing = await prisma.doctorMarketerLink.findUnique({
+            where: { doctor_email: data.doctor_email },
+          });
+          if (!existing) {
+            await prisma.doctorMarketerLink.create({
+              data: {
+                doctor_email: data.doctor_email,
+                marketer_id: marketer.id,
+                first_request_id: newRequest.id,
+              },
+            });
+          }
+        } catch (e) {
+          console.error("[marketer-attribution]", e);
+        }
+      })();
+    }
 
     const labAddress = lab.address ?? "";
     const labPhones = (lab.phones as string[]) ?? [];

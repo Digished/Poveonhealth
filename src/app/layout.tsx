@@ -1,5 +1,7 @@
 import type { Metadata } from "next";
+import { Suspense } from "react";
 import { Toaster } from "react-hot-toast";
+import { RefTracker } from "@/components/RefTracker";
 import "./globals.css";
 
 export const metadata: Metadata = {
@@ -25,6 +27,9 @@ export default function RootLayout({
   return (
     <html lang="en" className="scroll-smooth">
       <body className="font-sans antialiased">
+        <Suspense fallback={null}>
+          <RefTracker />
+        </Suspense>
         {children}
         <Toaster
           position="top-right"
