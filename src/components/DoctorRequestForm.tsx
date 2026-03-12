@@ -33,6 +33,7 @@ function VenusIcon({ className }: { className?: string }) {
 import { Button } from "@/components/ui/Button";
 import { Input, Textarea, Select } from "@/components/ui/Input";
 import { PhoneInput } from "@/components/PhoneInput";
+import { BankAccountInput } from "@/components/BankAccountInput";
 import { DobInput } from "@/components/DobInput";
 import { SuccessScreen } from "@/components/SuccessScreen";
 import type { Lab, CreateRequestResponse } from "@/lib/types";
@@ -563,7 +564,8 @@ export function DoctorRequestForm() {
   const [scrolled, setScrolled] = useState(false);
   const [doctorEditing, setDoctorEditing] = useState(false);
   const [doctorOptionalOpen, setDoctorOptionalOpen] = useState(false);
-  const [savedProfile, setSavedProfile] = useState<{ prefix: string; name: string; email: string; phone: string; hospital: string; bankName: string; accountNumber: string; accountName: string } | null>(null);
+  const [savedProfile, setSavedProfile] = useState<{ prefix: string; name: string; email: string; phone: string; hospital: string; bankName: string; bankCode: string; accountNumber: string; accountName: string } | null>(null);
+  const [bankCode, setBankCode] = useState("");
 
   const fetchLabs = useCallback(() => {
     setLabsLoading(true);
@@ -594,10 +596,11 @@ export function DoctorRequestForm() {
     try {
       const raw = localStorage.getItem(DOCTOR_STORAGE_KEY);
       if (raw) {
-        const profile = JSON.parse(raw) as { prefix: string; name: string; email: string; phone: string; hospital: string; bankName: string; accountNumber: string; accountName: string };
+        const profile = JSON.parse(raw) as { prefix: string; name: string; email: string; phone: string; hospital: string; bankName: string; bankCode: string; accountNumber: string; accountName: string };
         if (profile.name || profile.email) {
           setSavedProfile(profile);
           setBankOpen(false); // Start collapsed when loading from cache
+          if (profile.bankCode) setBankCode(profile.bankCode);
           setForm((prev) => ({
             ...prev,
             doctor_prefix: profile.prefix || prev.doctor_prefix,
@@ -625,6 +628,7 @@ export function DoctorRequestForm() {
     setDoctorEditing(false);
     setDoctorOptionalOpen(false);
     setBankOpen(true); // Re-open bank section for fresh entry
+    setBankCode("");
     setForm((prev) => ({
       ...prev,
       doctor_prefix: "",
@@ -697,6 +701,7 @@ export function DoctorRequestForm() {
             phone: form.doctor_phone,
             hospital: form.doctor_hospital,
             bankName: form.doctor_bank_name,
+            bankCode: bankCode,
             accountNumber: form.doctor_account_number,
             accountName: form.doctor_account_name,
           }));
@@ -1266,29 +1271,17 @@ export function DoctorRequestForm() {
                   </button>
                   {bankOpen && (
                     <div className={`px-4 pb-4 pt-1 space-y-3 border-t ${hasBankContent ? "border-emerald-100 bg-emerald-50/20" : "border-slate-100"}`}>
-                      <Input
-                        label="Bank Name"
-                        required
-                        placeholder="e.g. First Bank, GTBank, Zenith…"
-                        value={form.doctor_bank_name}
-                        onChange={(e) => set("doctor_bank_name", e.target.value)}
-                        error={errors.doctor_bank_name}
-                      />
-                      <Input
-                        label="Account Number"
-                        required
-                        placeholder="10-digit account number"
-                        value={form.doctor_account_number}
-                        onChange={(e) => set("doctor_account_number", e.target.value)}
-                        error={errors.doctor_account_number}
-                      />
-                      <Input
-                        label="Account Name"
-                        required
-                        placeholder="Name as it appears on bank account"
-                        value={form.doctor_account_name}
-                        onChange={(e) => set("doctor_account_name", e.target.value)}
-                        error={errors.doctor_account_name}
+                      <BankAccountInput
+                        bankName={form.doctor_bank_name}
+                        bankCode={bankCode}
+                        accountNumber={form.doctor_account_number}
+                        accountName={form.doctor_account_name}
+                        onBankChange={(name, code) => { set("doctor_bank_name", name); setBankCode(code); }}
+                        onAccountNumberChange={(v) => set("doctor_account_number", v)}
+                        onAccountNameChange={(v) => set("doctor_account_name", v)}
+                        bankError={errors.doctor_bank_name}
+                        accountNumberError={errors.doctor_account_number}
+                        accountNameError={errors.doctor_account_name}
                       />
                       {!hasBankContent && (
                         <div className="pt-1 border-t border-slate-100">
