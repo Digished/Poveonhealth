@@ -5,7 +5,7 @@ import { toast } from "react-hot-toast";
 import {
   Plus, FlaskConical, BarChart3, List, LogOut,
   Building2, Trash2, Eye, EyeOff, RefreshCw, X, Pencil,
-  Phone, Upload, Check, MapPin, Users, ChevronRight,
+  Phone, Upload, Check, MapPin, Users, ChevronRight, ChevronDown, ChevronUp,
   Code2, Key, Copy, TrendingUp, Link,
 } from "lucide-react";
 import { Button } from "@/components/ui/Button";
@@ -42,7 +42,10 @@ export function AdminDashboard() {
   const [loading, setLoading] = useState(true);
   const [showCreateLab, setShowCreateLab] = useState(false);
   const [showCreateMarketer, setShowCreateMarketer] = useState(false);
-  const [marketers, setMarketers] = useState<{ id: string; name: string; email: string; phone: string | null; code: string; created_at: string; doctor_count: number; referral_link: string }[]>([]);
+  const [marketers, setMarketers] = useState<{ id: string; name: string; email: string; phone: string | null; code: string; suspended: boolean; created_at: string; doctor_count: number; referral_link: string }[]>([]);
+  const [selectedMarketerId, setSelectedMarketerId] = useState<string | null>(null);
+  const [togglingMarketerId, setTogglingMarketerId] = useState<string | null>(null);
+  const [deletingMarketerId, setDeletingMarketerId] = useState<string | null>(null);
   const [editLab, setEditLab] = useState<Lab | null>(null);
   const [deletingId, setDeletingId] = useState<string | null>(null);
   const [togglingId, setTogglingId] = useState<string | null>(null);
@@ -154,6 +157,47 @@ export function AdminDashboard() {
       toast.error("Network error");
     } finally {
       setDeletingRequestId(null);
+    }
+  }
+
+  async function handleToggleMarketerSuspended(m: typeof marketers[number]) {
+    setTogglingMarketerId(m.id);
+    try {
+      const res = await fetch(`/api/admin/marketers/${m.id}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ suspended: !m.suspended }),
+      });
+      const data = await res.json();
+      if (data.success) {
+        toast.success(m.suspended ? `${m.name} unsuspended` : `${m.name} suspended`);
+        await fetchMarketers();
+      } else {
+        toast.error(data.error ?? "Failed to update");
+      }
+    } catch {
+      toast.error("Network error");
+    } finally {
+      setTogglingMarketerId(null);
+    }
+  }
+
+  async function handleDeleteMarketer(m: typeof marketers[number]) {
+    if (!confirm(`Delete marketer "${m.name}"? This removes all their referral links. Cannot be undone.`)) return;
+    setDeletingMarketerId(m.id);
+    try {
+      const res = await fetch(`/api/admin/marketers/${m.id}`, { method: "DELETE" });
+      const data = await res.json();
+      if (data.success) {
+        toast.success(`"${m.name}" deleted`);
+        await fetchMarketers();
+      } else {
+        toast.error(data.error ?? "Failed to delete");
+      }
+    } catch {
+      toast.error("Network error");
+    } finally {
+      setDeletingMarketerId(null);
     }
   }
 
@@ -712,16 +756,25 @@ export function AdminDashboard() {
             ) : (
               <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
                 {marketers.map((m) => (
-                  <div key={m.id} className="bg-white/5 border border-white/10 rounded-2xl p-5 space-y-3">
-                    <div className="flex items-center gap-2">
-                      <div className="w-8 h-8 bg-emerald-700/40 rounded-lg flex items-center justify-center shrink-0">
-                        <TrendingUp className="w-4 h-4 text-emerald-400" />
+                  <div key={m.id} className={`bg-white/5 border rounded-2xl p-5 space-y-3 transition-opacity ${m.suspended ? "border-white/5 opacity-60" : "border-white/10"}`}>
+                    {/* Header — clickable to open detail */}
+                    <button
+                      type="button"
+                      onClick={() => setSelectedMarketerId(m.id)}
+                      className="w-full flex items-center gap-2 text-left hover:opacity-80 transition-opacity"
+                    >
+                      <div className={`w-8 h-8 rounded-lg flex items-center justify-center shrink-0 ${m.suspended ? "bg-slate-700/40" : "bg-emerald-700/40"}`}>
+                        <TrendingUp className={`w-4 h-4 ${m.suspended ? "text-slate-500" : "text-emerald-400"}`} />
                       </div>
-                      <div className="min-w-0">
-                        <p className="font-semibold text-white text-sm truncate">{m.name}</p>
+                      <div className="min-w-0 flex-1">
+                        <div className="flex items-center gap-2 flex-wrap">
+                          <p className="font-semibold text-white text-sm truncate">{m.name}</p>
+                          {m.suspended && <span className="text-xs bg-red-900/40 text-red-400 border border-red-800/30 px-1.5 py-0.5 rounded-full">Suspended</span>}
+                        </div>
                         <p className="text-xs text-slate-400 truncate">{m.email}</p>
                       </div>
-                    </div>
+                      <ChevronRight className="w-4 h-4 text-slate-600 shrink-0" />
+                    </button>
                     {m.phone && (
                       <p className="text-xs text-slate-500 flex items-center gap-1">
                         <Phone className="w-3 h-3 text-slate-600 shrink-0" />{m.phone}
@@ -745,7 +798,35 @@ export function AdminDashboard() {
                         <Copy className="w-3.5 h-3.5" />
                       </button>
                     </div>
-                    <p className="text-xs text-slate-600">Added {format(new Date(m.created_at), "dd MMM yyyy")}</p>
+                    <div className="flex items-center justify-between pt-1">
+                      <p className="text-xs text-slate-600">Added {format(new Date(m.created_at), "dd MMM yyyy")}</p>
+                      <div className="flex items-center gap-1">
+                        <button
+                          type="button"
+                          onClick={() => handleToggleMarketerSuspended(m)}
+                          disabled={togglingMarketerId === m.id}
+                          title={m.suspended ? "Unsuspend" : "Suspend"}
+                          className={`p-1.5 rounded-lg text-xs transition-colors disabled:opacity-40 ${m.suspended ? "hover:bg-emerald-500/15 text-slate-500 hover:text-emerald-400" : "hover:bg-amber-500/15 text-slate-500 hover:text-amber-400"}`}
+                        >
+                          {togglingMarketerId === m.id ? (
+                            <RefreshCw className="w-3.5 h-3.5 animate-spin" />
+                          ) : m.suspended ? (
+                            <Eye className="w-3.5 h-3.5" />
+                          ) : (
+                            <EyeOff className="w-3.5 h-3.5" />
+                          )}
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => handleDeleteMarketer(m)}
+                          disabled={deletingMarketerId === m.id}
+                          title="Delete marketer"
+                          className="p-1.5 rounded-lg hover:bg-red-500/15 text-slate-500 hover:text-red-400 transition-colors disabled:opacity-40"
+                        >
+                          {deletingMarketerId === m.id ? <RefreshCw className="w-3.5 h-3.5 animate-spin" /> : <Trash2 className="w-3.5 h-3.5" />}
+                        </button>
+                      </div>
+                    </div>
                   </div>
                 ))}
               </div>
@@ -757,6 +838,14 @@ export function AdminDashboard() {
 
       {showCreateMarketer && (
         <CreateMarketerModal onClose={() => setShowCreateMarketer(false)} onSuccess={() => { setShowCreateMarketer(false); fetchMarketers(); }} />
+      )}
+      {selectedMarketerId && (
+        <MarketerDetailModal
+          marketerId={selectedMarketerId}
+          onClose={() => setSelectedMarketerId(null)}
+          onSuspendToggle={() => fetchMarketers()}
+          onDelete={() => { setSelectedMarketerId(null); fetchMarketers(); }}
+        />
       )}
       {showCreateLab && (
         <CreateLabModal onClose={() => setShowCreateLab(false)} onSuccess={() => { setShowCreateLab(false); fetchLabs(); }} />
@@ -1915,6 +2004,289 @@ function CreateMarketerModal({ onClose, onSuccess }: { onClose: () => void; onSu
             </div>
           </form>
         )}
+      </div>
+    </div>
+  );
+}
+
+// =============================================================================
+// Marketer Detail Modal
+// =============================================================================
+interface MarketerDetail {
+  id: string;
+  name: string;
+  email: string;
+  phone: string | null;
+  code: string;
+  suspended: boolean;
+  created_at: string;
+  referral_link: string;
+}
+interface MarketerDoctorDetail {
+  doctor_email: string;
+  doctor_name: string;
+  doctor_phone: string | null;
+  doctor_hospital: string | null;
+  total_requests: number;
+  linked_since: string;
+  requests: {
+    id: string;
+    code: string;
+    patient_name: string;
+    tests: string;
+    status: string;
+    created_at: string;
+    seen_at: string | null;
+    completed_at: string | null;
+  }[];
+}
+
+const MSTATUS: Record<string, { label: string; color: string }> = {
+  incoming: { label: "Pending", color: "bg-amber-400/15 text-amber-300 border border-amber-400/25" },
+  seen: { label: "Arrived", color: "bg-blue-400/15 text-blue-300 border border-blue-400/25" },
+  done: { label: "Completed", color: "bg-emerald-400/15 text-emerald-300 border border-emerald-400/25" },
+};
+
+function MarketerDetailModal({
+  marketerId,
+  onClose,
+  onSuspendToggle,
+  onDelete,
+}: {
+  marketerId: string;
+  onClose: () => void;
+  onSuspendToggle: () => void;
+  onDelete: () => void;
+}) {
+  const [data, setData] = useState<{ marketer: MarketerDetail; doctors: MarketerDoctorDetail[]; stats: { total_doctors: number; total_requests: number; pending: number; seen: number; done: number } } | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState("");
+  const [expandedEmail, setExpandedEmail] = useState<string | null>(null);
+  const [toggling, setToggling] = useState(false);
+  const [deleting, setDeleting] = useState(false);
+
+  useEffect(() => {
+    (async () => {
+      try {
+        const res = await fetch(`/api/admin/marketers/${marketerId}`);
+        const json = await res.json();
+        if (json.success) setData(json);
+        else setError(json.error ?? "Failed to load");
+      } catch {
+        setError("Network error");
+      } finally {
+        setLoading(false);
+      }
+    })();
+  }, [marketerId]);
+
+  async function handleSuspendToggle() {
+    if (!data) return;
+    setToggling(true);
+    try {
+      const res = await fetch(`/api/admin/marketers/${marketerId}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ suspended: !data.marketer.suspended }),
+      });
+      const json = await res.json();
+      if (json.success) {
+        setData((d) => d ? { ...d, marketer: { ...d.marketer, suspended: !d.marketer.suspended } } : d);
+        toast.success(data.marketer.suspended ? "Marketer unsuspended" : "Marketer suspended");
+        onSuspendToggle();
+      } else {
+        toast.error(json.error ?? "Failed to update");
+      }
+    } catch {
+      toast.error("Network error");
+    } finally {
+      setToggling(false);
+    }
+  }
+
+  async function handleDelete() {
+    if (!data) return;
+    if (!confirm(`Delete marketer "${data.marketer.name}"? This removes all their referral links. Cannot be undone.`)) return;
+    setDeleting(true);
+    try {
+      const res = await fetch(`/api/admin/marketers/${marketerId}`, { method: "DELETE" });
+      const json = await res.json();
+      if (json.success) {
+        toast.success(`"${data.marketer.name}" deleted`);
+        onDelete();
+      } else {
+        toast.error(json.error ?? "Failed to delete");
+      }
+    } catch {
+      toast.error("Network error");
+    } finally {
+      setDeleting(false);
+    }
+  }
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm p-4">
+      <div className="bg-slate-900 border border-white/15 rounded-2xl w-full max-w-2xl shadow-2xl animate-slide-up max-h-[90vh] flex flex-col">
+        {/* Header */}
+        <div className="flex items-center justify-between px-5 py-4 border-b border-white/10 shrink-0">
+          <div className="flex items-center gap-2 min-w-0">
+            <div className={`w-8 h-8 rounded-lg flex items-center justify-center shrink-0 ${data?.marketer.suspended ? "bg-slate-700/40" : "bg-emerald-700/40"}`}>
+              <TrendingUp className={`w-4 h-4 ${data?.marketer.suspended ? "text-slate-500" : "text-emerald-400"}`} />
+            </div>
+            <div className="min-w-0">
+              <div className="flex items-center gap-2 flex-wrap">
+                <h2 className="font-semibold text-white text-sm truncate">{data?.marketer.name ?? "Loading…"}</h2>
+                {data?.marketer.suspended && <span className="text-xs bg-red-900/40 text-red-400 border border-red-800/30 px-1.5 py-0.5 rounded-full">Suspended</span>}
+              </div>
+              {data && <p className="text-xs text-slate-400">{data.marketer.email}</p>}
+            </div>
+          </div>
+          <div className="flex items-center gap-1 shrink-0">
+            {data && (
+              <>
+                <button
+                  type="button"
+                  onClick={handleSuspendToggle}
+                  disabled={toggling}
+                  title={data.marketer.suspended ? "Unsuspend" : "Suspend"}
+                  className={`p-2 rounded-lg transition-colors disabled:opacity-40 text-xs ${data.marketer.suspended ? "hover:bg-emerald-500/15 text-slate-400 hover:text-emerald-400" : "hover:bg-amber-500/15 text-slate-400 hover:text-amber-400"}`}
+                >
+                  {toggling ? <RefreshCw className="w-4 h-4 animate-spin" /> : data.marketer.suspended ? <Eye className="w-4 h-4" /> : <EyeOff className="w-4 h-4" />}
+                </button>
+                <button
+                  type="button"
+                  onClick={handleDelete}
+                  disabled={deleting}
+                  title="Delete marketer"
+                  className="p-2 rounded-lg hover:bg-red-500/15 text-slate-400 hover:text-red-400 transition-colors disabled:opacity-40"
+                >
+                  {deleting ? <RefreshCw className="w-4 h-4 animate-spin" /> : <Trash2 className="w-4 h-4" />}
+                </button>
+              </>
+            )}
+            <button onClick={onClose} className="p-2 rounded-lg hover:bg-white/10 text-slate-400 transition-colors ml-1">
+              <X className="w-4 h-4" />
+            </button>
+          </div>
+        </div>
+
+        {/* Body */}
+        <div className="overflow-y-auto flex-1 p-5 space-y-5">
+          {loading && (
+            <div className="space-y-3">
+              {[1, 2, 3].map((i) => <div key={i} className="bg-white/5 rounded-xl h-12 animate-pulse" />)}
+            </div>
+          )}
+          {error && <p className="text-sm text-red-400 bg-red-500/10 border border-red-500/20 rounded-xl px-4 py-3">{error}</p>}
+          {data && (
+            <>
+              {/* Info + referral link */}
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                <div className="bg-white/5 border border-white/10 rounded-xl p-4 space-y-2">
+                  <p className="text-xs text-slate-500 font-semibold uppercase tracking-wider">Details</p>
+                  {data.marketer.phone && (
+                    <p className="text-xs text-slate-300 flex items-center gap-1.5"><Phone className="w-3 h-3 text-slate-500" />{data.marketer.phone}</p>
+                  )}
+                  <p className="text-xs text-slate-400">Code: <span className="font-mono text-emerald-400">{data.marketer.code}</span></p>
+                  <p className="text-xs text-slate-600">Joined {format(new Date(data.marketer.created_at), "dd MMM yyyy")}</p>
+                </div>
+                <div className="bg-white/5 border border-white/10 rounded-xl p-4 space-y-2">
+                  <p className="text-xs text-slate-500 font-semibold uppercase tracking-wider">Referral Link</p>
+                  <div className="flex items-center gap-2">
+                    <span className="text-xs text-slate-400 flex-1 truncate font-mono">{data.marketer.referral_link}</span>
+                    <button
+                      type="button"
+                      onClick={() => { navigator.clipboard.writeText(data.marketer.referral_link); toast.success("Copied!"); }}
+                      className="shrink-0 text-slate-400 hover:text-white transition-colors"
+                    >
+                      <Copy className="w-3.5 h-3.5" />
+                    </button>
+                  </div>
+                </div>
+              </div>
+
+              {/* Stats */}
+              <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+                {[
+                  { label: "Doctors", value: data.stats.total_doctors, color: "text-emerald-400" },
+                  { label: "Requests", value: data.stats.total_requests, color: "text-white" },
+                  { label: "Pending", value: data.stats.pending, color: "text-amber-400" },
+                  { label: "Completed", value: data.stats.done, color: "text-emerald-400" },
+                ].map((s) => (
+                  <div key={s.label} className="bg-white/5 border border-white/10 rounded-xl p-3 text-center">
+                    <p className={`text-2xl font-bold ${s.color}`}>{s.value}</p>
+                    <p className="text-xs text-slate-500 mt-0.5">{s.label}</p>
+                  </div>
+                ))}
+              </div>
+
+              {/* Doctor list */}
+              <div>
+                <p className="text-xs font-semibold text-slate-400 uppercase tracking-wider mb-3">Referred Doctors</p>
+                {data.doctors.length === 0 ? (
+                  <div className="bg-white/5 border border-white/10 rounded-xl p-8 text-center">
+                    <Users className="w-8 h-8 text-slate-600 mx-auto mb-2" />
+                    <p className="text-sm text-slate-500">No doctors referred yet</p>
+                  </div>
+                ) : (
+                  <div className="space-y-2">
+                    {data.doctors.map((doc) => (
+                      <div key={doc.doctor_email} className="bg-white/5 border border-white/8 rounded-xl overflow-hidden">
+                        {/* Doctor row */}
+                        <button
+                          type="button"
+                          onClick={() => setExpandedEmail(expandedEmail === doc.doctor_email ? null : doc.doctor_email)}
+                          className="w-full flex items-center gap-3 px-4 py-3 hover:bg-white/5 transition-colors text-left"
+                        >
+                          <div className="w-7 h-7 rounded-lg bg-slate-700/50 flex items-center justify-center shrink-0">
+                            <Users className="w-3.5 h-3.5 text-slate-400" />
+                          </div>
+                          <div className="flex-1 min-w-0">
+                            <p className="text-sm font-semibold text-white truncate">{doc.doctor_name}</p>
+                            <div className="flex items-center gap-2 flex-wrap mt-0.5">
+                              {doc.doctor_hospital && <span className="text-xs text-slate-500 truncate">{doc.doctor_hospital}</span>}
+                              {doc.doctor_phone && <span className="text-xs text-slate-600">· {doc.doctor_phone}</span>}
+                            </div>
+                          </div>
+                          <div className="shrink-0 flex items-center gap-2">
+                            <span className="text-xs text-slate-400">{doc.total_requests} req</span>
+                            {expandedEmail === doc.doctor_email ? <ChevronUp className="w-3.5 h-3.5 text-slate-500" /> : <ChevronDown className="w-3.5 h-3.5 text-slate-500" />}
+                          </div>
+                        </button>
+
+                        {/* Expanded requests */}
+                        {expandedEmail === doc.doctor_email && (
+                          <div className="border-t border-white/8 px-4 py-3 space-y-2 bg-slate-950/30">
+                            {doc.requests.length === 0 ? (
+                              <p className="text-xs text-slate-500 py-2 text-center">No requests yet</p>
+                            ) : (
+                              doc.requests.map((req) => {
+                                const st = MSTATUS[req.status] ?? MSTATUS.incoming;
+                                return (
+                                  <div key={req.id} className="flex items-start gap-3 py-2 border-b border-white/5 last:border-0">
+                                    <div className="flex-1 min-w-0">
+                                      <div className="flex items-center gap-2 flex-wrap">
+                                        <span className="font-mono text-xs text-medical-400">{req.code}</span>
+                                        <span className={`text-xs font-semibold px-1.5 py-0.5 rounded-full ${st.color}`}>{st.label}</span>
+                                      </div>
+                                      <p className="text-xs text-slate-500 mt-0.5">Patient: <span className="text-slate-300 font-medium">{req.patient_name}</span></p>
+                                      <p className="text-xs text-slate-600 mt-0.5 line-clamp-2 leading-relaxed">{req.tests}</p>
+                                    </div>
+                                    <span className="text-xs text-slate-600 whitespace-nowrap shrink-0 mt-0.5">{format(new Date(req.created_at), "dd MMM yy")}</span>
+                                  </div>
+                                );
+                              })
+                            )}
+                          </div>
+                        )}
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+            </>
+          )}
+        </div>
       </div>
     </div>
   );

@@ -173,6 +173,7 @@ model Marketer {
   email      String   @unique
   phone      String?
   code       String   @unique  // Short unique code used in referral links, e.g. "AMAKA001"
+  suspended  Boolean  @default(false)
   created_at DateTime @default(now())
 
   doctor_links DoctorMarketerLink[]

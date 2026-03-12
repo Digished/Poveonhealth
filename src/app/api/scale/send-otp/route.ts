@@ -24,6 +24,13 @@ export async function POST(req: NextRequest) {
       );
     }
 
+    if (marketer.suspended) {
+      return NextResponse.json(
+        { error: "Your account has been suspended. Please contact your administrator." },
+        { status: 403 }
+      );
+    }
+
     // Rate-limit: max 3 pending (unused, non-expired) OTPs per marketer in last 10 min
     const recentCount = await prisma.marketerOtp.count({
       where: {
