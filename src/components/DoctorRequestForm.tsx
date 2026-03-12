@@ -32,6 +32,7 @@ function VenusIcon({ className }: { className?: string }) {
 }
 import { Button } from "@/components/ui/Button";
 import { Input, Textarea, Select } from "@/components/ui/Input";
+import { PhoneInput } from "@/components/PhoneInput";
 import { DobInput } from "@/components/DobInput";
 import { SuccessScreen } from "@/components/SuccessScreen";
 import type { Lab, CreateRequestResponse } from "@/lib/types";
@@ -1006,12 +1007,10 @@ export function DoctorRequestForm() {
                       value={form.address}
                       onChange={(e) => set("address", e.target.value)}
                     />
-                    <Input
+                    <PhoneInput
                       label="Patient Phone"
-                      type="tel"
-                      placeholder="+1 555 000 0000"
                       value={form.patient_phone}
-                      onChange={(e) => set("patient_phone", e.target.value)}
+                      onChange={(v) => set("patient_phone", v)}
                     />
                   </div>
                 )}
@@ -1040,12 +1039,10 @@ export function DoctorRequestForm() {
                       value={form.address}
                       onChange={(e) => set("address", e.target.value)}
                     />
-                    <Input
+                    <PhoneInput
                       label="Patient Phone"
-                      type="tel"
-                      placeholder="+1 555 000 0000"
                       value={form.patient_phone}
-                      onChange={(e) => set("patient_phone", e.target.value)}
+                      onChange={(v) => set("patient_phone", v)}
                     />
                   </div>
                 )}
@@ -1181,12 +1178,10 @@ export function DoctorRequestForm() {
                     </button>
                     {doctorOptionalOpen && (
                       <div className="px-4 pb-4 pt-1 space-y-4 border-t border-emerald-100 bg-emerald-50/20">
-                        <Input
+                        <PhoneInput
                           label="Phone"
-                          type="tel"
-                          placeholder="+234 800 000 0000"
                           value={form.doctor_phone}
-                          onChange={(e) => set("doctor_phone", e.target.value)}
+                          onChange={(v) => set("doctor_phone", v)}
                         />
                         <Input
                           label="Hospital or Clinic"
@@ -1215,12 +1210,10 @@ export function DoctorRequestForm() {
                     </button>
                     {doctorOptionalOpen && (
                       <div className="px-4 pb-4 pt-1 space-y-4 border-t border-slate-100 bg-slate-50/20">
-                        <Input
+                        <PhoneInput
                           label="Phone"
-                          type="tel"
-                          placeholder="+234 800 000 0000"
                           value={form.doctor_phone}
-                          onChange={(e) => set("doctor_phone", e.target.value)}
+                          onChange={(v) => set("doctor_phone", v)}
                         />
                         <Input
                           label="Hospital or Clinic"
