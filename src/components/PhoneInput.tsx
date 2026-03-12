@@ -1,7 +1,8 @@
 "use client";
 
 import { useState, useEffect, useRef } from "react";
-import { ChevronDown, Search } from "lucide-react";
+import { createPortal } from "react-dom";
+import { ChevronDown, Search, X } from "lucide-react";
 import clsx from "clsx";
 
 /* ─── Complete country / dial-code list ─────────────────────────────── */
@@ -137,7 +138,6 @@ function parsePhone(raw: string): { dialCode: string; number: string } {
   const v = (raw ?? "").trim();
   if (!v) return { dialCode: DEFAULT_DIAL, number: "" };
 
-  // Match known dial codes — longest first so "+234" beats "+23"
   const sorted = [...COUNTRIES].sort((a, b) => b.dial.length - a.dial.length);
   for (const c of sorted) {
     if (v.startsWith(c.dial)) {
@@ -145,15 +145,149 @@ function parsePhone(raw: string): { dialCode: string; number: string } {
     }
   }
 
-  // Nigerian local format: leading 0 → strip it, use +234
-  if (v.startsWith("0")) {
-    return { dialCode: DEFAULT_DIAL, number: v.slice(1) };
-  }
-
+  if (v.startsWith("0")) return { dialCode: DEFAULT_DIAL, number: v.slice(1) };
   return { dialCode: DEFAULT_DIAL, number: v };
 }
 
-/* ─── Component ──────────────────────────────────────────────────────── */
+/* ─── Country picker modal (portal, bottom-sheet on mobile) ─────────── */
+interface PickerModalProps {
+  selected: typeof COUNTRIES[number];
+  onSelect: (dial: string) => void;
+  onClose: () => void;
+}
+
+function CountryPickerModal({ selected, onSelect, onClose }: PickerModalProps) {
+  const [query, setQuery] = useState("");
+  const searchRef = useRef<HTMLInputElement>(null);
+  const listRef = useRef<HTMLUListElement>(null);
+
+  useEffect(() => {
+    // Lock body scroll while open
+    const prev = document.body.style.overflow;
+    document.body.style.overflow = "hidden";
+    return () => { document.body.style.overflow = prev; };
+  }, []);
+
+  useEffect(() => {
+    setTimeout(() => searchRef.current?.focus(), 80);
+  }, []);
+
+  const q = query.trim().toLowerCase();
+  const filtered = q
+    ? COUNTRIES.filter(
+        (c) =>
+          c.name.toLowerCase().includes(q) ||
+          c.dial.includes(q) ||
+          c.code.toLowerCase().includes(q)
+      )
+    : COUNTRIES;
+
+  function handleSelect(dial: string) {
+    onSelect(dial);
+    onClose();
+  }
+
+  const modal = (
+    <div
+      className="fixed inset-0 z-[9999] flex flex-col justify-end sm:justify-center sm:items-center"
+      aria-modal="true"
+      role="dialog"
+      aria-label="Select country code"
+    >
+      {/* Backdrop */}
+      <div
+        className="absolute inset-0 bg-black/40 backdrop-blur-[2px]"
+        onClick={onClose}
+        aria-hidden="true"
+      />
+
+      {/* Sheet */}
+      <div className="relative w-full sm:w-[420px] sm:mx-4 bg-white sm:rounded-2xl rounded-t-2xl shadow-2xl flex flex-col max-h-[85vh] sm:max-h-[600px] animate-in slide-in-from-bottom-4 sm:zoom-in-95 duration-200">
+        {/* Handle (mobile) */}
+        <div className="sm:hidden flex justify-center pt-3 pb-1">
+          <div className="w-10 h-1 rounded-full bg-slate-200" />
+        </div>
+
+        {/* Header */}
+        <div className="flex items-center justify-between px-5 py-4 border-b border-slate-100">
+          <h2 className="text-base font-semibold text-slate-800">Select Country</h2>
+          <button
+            type="button"
+            onClick={onClose}
+            className="p-1.5 rounded-lg hover:bg-slate-100 transition-colors text-slate-500 hover:text-slate-700"
+            aria-label="Close"
+          >
+            <X className="w-5 h-5" />
+          </button>
+        </div>
+
+        {/* Search */}
+        <div className="px-4 py-3 border-b border-slate-100">
+          <div className="relative">
+            <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400 pointer-events-none" />
+            <input
+              ref={searchRef}
+              type="text"
+              placeholder="Search country or code…"
+              value={query}
+              onChange={(e) => setQuery(e.target.value)}
+              onKeyDown={(e) => {
+                if (e.key === "Escape") onClose();
+                if (e.key === "Enter" && filtered.length === 1) handleSelect(filtered[0].dial);
+              }}
+              className="w-full rounded-xl border border-slate-200 bg-slate-50 pl-9 pr-4 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-medical-500 focus:border-medical-400 placeholder-slate-400"
+            />
+          </div>
+        </div>
+
+        {/* Country list */}
+        <ul ref={listRef} className="flex-1 overflow-y-auto overscroll-contain">
+          {filtered.length === 0 ? (
+            <li className="px-5 py-8 text-sm text-slate-400 text-center">No countries found</li>
+          ) : (
+            filtered.map((c) => {
+              const isSelected = c.code === selected.code;
+              return (
+                <li key={c.code}>
+                  <button
+                    type="button"
+                    onClick={() => handleSelect(c.dial)}
+                    className={clsx(
+                      "w-full flex items-center gap-3 px-5 py-3.5 transition-colors text-left",
+                      "active:bg-medical-50",
+                      isSelected
+                        ? "bg-medical-50 text-medical-700"
+                        : "hover:bg-slate-50 text-slate-700"
+                    )}
+                  >
+                    <span className="text-2xl leading-none w-8 text-center">{c.flag}</span>
+                    <span className="flex-1 text-sm font-medium truncate">{c.name}</span>
+                    <span className={clsx(
+                      "text-sm tabular-nums font-semibold shrink-0",
+                      isSelected ? "text-medical-600" : "text-slate-400"
+                    )}>
+                      {c.dial}
+                    </span>
+                    {isSelected && (
+                      <span className="w-2 h-2 rounded-full bg-medical-500 shrink-0" />
+                    )}
+                  </button>
+                </li>
+              );
+            })
+          )}
+        </ul>
+
+        {/* Safe area bottom padding (iOS) */}
+        <div className="sm:hidden h-safe-bottom" style={{ paddingBottom: "env(safe-area-inset-bottom, 0px)" }} />
+      </div>
+    </div>
+  );
+
+  return createPortal(modal, document.body);
+}
+
+/* ─── Main PhoneInput component ──────────────────────────────────────── */
 interface PhoneInputProps {
   label?: string;
   required?: boolean;
@@ -168,36 +302,18 @@ export function PhoneInput({ label, required, value, onChange, error, hint }: Ph
   const [dialCode, setDialCode] = useState(initDial);
   const [number, setNumber] = useState(initNumber);
   const [open, setOpen] = useState(false);
-  const [query, setQuery] = useState("");
-  const containerRef = useRef<HTMLDivElement>(null);
-  const searchRef = useRef<HTMLInputElement>(null);
+  const [mounted, setMounted] = useState(false);
 
-  // Re-parse if parent resets value to empty (e.g. form reset)
+  // Ensure portal only renders client-side
+  useEffect(() => { setMounted(true); }, []);
+
+  // Re-parse if parent resets value to empty
   useEffect(() => {
     if (!value) {
       setDialCode(DEFAULT_DIAL);
       setNumber("");
     }
   }, [value]);
-
-  // Close dropdown on outside click
-  useEffect(() => {
-    function handler(e: MouseEvent) {
-      if (containerRef.current && !containerRef.current.contains(e.target as Node)) {
-        setOpen(false);
-        setQuery("");
-      }
-    }
-    document.addEventListener("mousedown", handler);
-    return () => document.removeEventListener("mousedown", handler);
-  }, []);
-
-  // Focus search field when dropdown opens
-  useEffect(() => {
-    if (open) {
-      setTimeout(() => searchRef.current?.focus(), 50);
-    }
-  }, [open]);
 
   function emit(dial: string, num: string) {
     const combined = num.trim() ? `${dial} ${num.trim()}` : "";
@@ -206,8 +322,6 @@ export function PhoneInput({ label, required, value, onChange, error, hint }: Ph
 
   function handleDialSelect(dial: string) {
     setDialCode(dial);
-    setOpen(false);
-    setQuery("");
     emit(dial, number);
   }
 
@@ -221,18 +335,8 @@ export function PhoneInput({ label, required, value, onChange, error, hint }: Ph
     ?? COUNTRIES.find((c) => c.dial === dialCode)
     ?? COUNTRIES[0];
 
-  const q = query.trim().toLowerCase();
-  const filtered = q
-    ? COUNTRIES.filter(
-        (c) =>
-          c.name.toLowerCase().includes(q) ||
-          c.dial.includes(q) ||
-          c.code.toLowerCase().includes(q)
-      )
-    : COUNTRIES;
-
   return (
-    <div className="flex flex-col gap-1" ref={containerRef}>
+    <div className="flex flex-col gap-1">
       {label && (
         <label className="text-sm font-medium text-slate-700">
           {label}
@@ -242,71 +346,25 @@ export function PhoneInput({ label, required, value, onChange, error, hint }: Ph
         </label>
       )}
 
-      {/* Wrapper — no overflow-hidden so dropdown isn't clipped */}
+      {/* Input row — no overflow-hidden, no relative positioning for dropdown */}
       <div className={clsx(
         "flex rounded-xl border bg-white/60 backdrop-blur-sm transition-all duration-200",
         "focus-within:ring-2 focus-within:ring-medical-500 focus-within:border-medical-400",
         error ? "border-red-400" : "border-slate-200 hover:border-slate-300"
       )}>
-        {/* Dial code picker */}
-        <div className="relative shrink-0">
-          <button
-            type="button"
-            onClick={() => setOpen((v) => !v)}
-            className="flex items-center gap-1.5 px-3 py-2.5 text-sm font-medium text-slate-700 hover:bg-slate-50 rounded-l-xl transition-colors border-r border-slate-200 h-full"
-          >
-            <span className="text-base leading-none">{selected.flag}</span>
-            <span className="text-xs font-semibold text-slate-600 tabular-nums">{selected.dial}</span>
-            <ChevronDown className={`w-3 h-3 text-slate-400 transition-transform ${open ? "rotate-180" : ""}`} />
-          </button>
+        {/* Dial code trigger */}
+        <button
+          type="button"
+          onClick={() => setOpen(true)}
+          className="flex items-center gap-1.5 px-3 py-2.5 text-sm font-medium text-slate-700 hover:bg-slate-50 active:bg-slate-100 rounded-l-xl transition-colors border-r border-slate-200 shrink-0"
+          aria-label={`Country code ${selected.dial}, tap to change`}
+        >
+          <span className="text-base leading-none">{selected.flag}</span>
+          <span className="text-xs font-semibold text-slate-600 tabular-nums">{selected.dial}</span>
+          <ChevronDown className="w-3 h-3 text-slate-400" />
+        </button>
 
-          {open && (
-            <div className="absolute z-50 top-full left-0 mt-1.5 w-64 bg-white border border-slate-200 rounded-xl shadow-xl overflow-hidden">
-              {/* Search */}
-              <div className="p-2 border-b border-slate-100">
-                <div className="relative">
-                  <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-slate-400 pointer-events-none" />
-                  <input
-                    ref={searchRef}
-                    type="text"
-                    placeholder="Search country or code…"
-                    value={query}
-                    onChange={(e) => setQuery(e.target.value)}
-                    onKeyDown={(e) => {
-                      if (e.key === "Escape") { setOpen(false); setQuery(""); }
-                      if (e.key === "Enter" && filtered.length === 1) handleDialSelect(filtered[0].dial);
-                    }}
-                    className="w-full rounded-lg border border-slate-200 pl-8 pr-3 py-1.5 text-xs focus:outline-none focus:ring-1 focus:ring-medical-400"
-                  />
-                </div>
-              </div>
-              <ul className="max-h-52 overflow-y-auto overscroll-contain">
-                {filtered.length === 0 ? (
-                  <li className="px-4 py-3 text-xs text-slate-400 text-center">No match</li>
-                ) : (
-                  filtered.map((c) => (
-                    <li key={c.code}>
-                      <button
-                        type="button"
-                        onMouseDown={(e) => { e.preventDefault(); handleDialSelect(c.dial); }}
-                        className={clsx(
-                          "w-full flex items-center gap-2.5 px-3 py-2 hover:bg-medical-50 transition-colors text-left",
-                          c.code === selected.code && "bg-medical-50"
-                        )}
-                      >
-                        <span className="text-base leading-none">{c.flag}</span>
-                        <span className="flex-1 text-xs text-slate-700 truncate">{c.name}</span>
-                        <span className="text-xs text-slate-400 tabular-nums shrink-0">{c.dial}</span>
-                      </button>
-                    </li>
-                  ))
-                )}
-              </ul>
-            </div>
-          )}
-        </div>
-
-        {/* Number input */}
+        {/* Number field */}
         <input
           type="tel"
           placeholder="803 123 4567"
@@ -318,6 +376,15 @@ export function PhoneInput({ label, required, value, onChange, error, hint }: Ph
 
       {hint && !error && <p className="text-xs text-slate-500">{hint}</p>}
       {error && <p className="text-xs text-red-600 font-medium">{error}</p>}
+
+      {/* Portal modal — renders on document.body, no clipping ever */}
+      {mounted && open && (
+        <CountryPickerModal
+          selected={selected}
+          onSelect={handleDialSelect}
+          onClose={() => setOpen(false)}
+        />
+      )}
     </div>
   );
 }
