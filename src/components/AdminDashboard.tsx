@@ -33,6 +33,11 @@ interface ReferralGroup {
 // Shared white input class for dark-background modals
 const whiteInput = "bg-white border-slate-200 text-slate-800 placeholder-slate-300";
 
+function refLink(code: string) {
+  const origin = typeof window !== "undefined" ? window.location.origin : "";
+  return `${origin}/?ref=${code}`;
+}
+
 export function AdminDashboard() {
   const router = useRouter();
   const [activeTab, setActiveTab] = useState<AdminTab>("metrics");
@@ -664,16 +669,18 @@ export function AdminDashboard() {
             {apiLogSummary && apiLogSummary.topEndpoints.length > 0 && (
               <div className="bg-white/5 border border-white/10 rounded-2xl p-5">
                 <h3 className="text-sm font-semibold text-slate-300 mb-4">Top Endpoints (last 7 days)</h3>
-                <div className="space-y-2.5">
+                <div className="space-y-3">
                   {apiLogSummary.topEndpoints.map((ep) => {
                     const max = apiLogSummary.topEndpoints[0]?.count ?? 1;
                     return (
-                      <div key={ep.path} className="flex items-center gap-3">
-                        <code className="text-xs font-mono text-medical-300 w-64 shrink-0 truncate">{ep.path}</code>
-                        <div className="flex-1 bg-white/8 rounded-full h-2 overflow-hidden">
+                      <div key={ep.path} className="space-y-1">
+                        <div className="flex items-center justify-between gap-2">
+                          <code className="text-xs font-mono text-medical-300 truncate min-w-0">{ep.path}</code>
+                          <span className="text-xs text-slate-400 font-mono shrink-0">{ep.count}</span>
+                        </div>
+                        <div className="bg-white/8 rounded-full h-1.5 overflow-hidden">
                           <div className="h-full bg-medical-500 rounded-full transition-all" style={{ width: `${(ep.count / max) * 100}%` }} />
                         </div>
-                        <span className="text-xs text-slate-400 font-mono w-10 text-right shrink-0">{ep.count}</span>
                       </div>
                     );
                   })}
@@ -681,48 +688,78 @@ export function AdminDashboard() {
               </div>
             )}
 
-            {/* Recent calls table */}
+            {/* Recent calls */}
             <div className="bg-white/5 border border-white/10 rounded-2xl overflow-hidden">
               <div className="px-5 py-3 border-b border-white/10">
                 <h3 className="text-sm font-semibold text-slate-300">Recent API Calls</h3>
               </div>
-              <div className="overflow-x-auto">
-                <table className="w-full text-sm">
-                  <thead>
-                    <tr className="border-b border-white/8">
-                      {["Time", "Method", "Endpoint", "Status", "Duration"].map((h) => (
-                        <th key={h} className="pb-2 pt-3 px-4 text-left text-xs text-slate-500 font-semibold uppercase tracking-wider">{h}</th>
-                      ))}
-                    </tr>
-                  </thead>
-                  <tbody className="divide-y divide-white/5">
-                    {apiLogs.length === 0 && (
-                      <tr><td colSpan={5} className="py-12 text-center text-slate-500 text-sm">No API calls recorded yet. Calls will appear here as the API is used.</td></tr>
-                    )}
-                    {apiLogs.map((log) => (
-                      <tr key={log.id} className="hover:bg-white/4 transition-colors">
-                        <td className="py-2.5 px-4 text-xs text-slate-500 whitespace-nowrap">{format(new Date(log.created_at), "dd MMM HH:mm:ss")}</td>
-                        <td className="py-2.5 px-4">
-                          <span className={`text-xs font-mono font-bold px-1.5 py-0.5 rounded ${
-                            log.method === "GET" ? "text-emerald-400 bg-emerald-400/10" :
-                            log.method === "POST" ? "text-blue-400 bg-blue-400/10" :
-                            log.method === "DELETE" ? "text-red-400 bg-red-400/10" :
-                            "text-slate-400 bg-white/10"
-                          }`}>{log.method}</span>
-                        </td>
-                        <td className="py-2.5 px-4"><code className="text-xs font-mono text-slate-300">{log.path}</code></td>
-                        <td className="py-2.5 px-4">
-                          <span className={`text-xs font-mono font-bold ${
-                            log.status >= 200 && log.status < 300 ? "text-emerald-400" :
-                            log.status >= 400 ? "text-red-400" : "text-slate-400"
-                          }`}>{log.status}</span>
-                        </td>
-                        <td className="py-2.5 px-4 text-xs text-slate-500 font-mono">{log.duration_ms != null ? `${log.duration_ms}ms` : "—"}</td>
+
+              {apiLogs.length === 0 && (
+                <p className="py-12 text-center text-slate-500 text-sm">No API calls recorded yet. Calls will appear here as the API is used.</p>
+              )}
+
+              {/* Mobile card list */}
+              {apiLogs.length > 0 && (
+                <div className="md:hidden divide-y divide-white/5">
+                  {apiLogs.map((log) => (
+                    <div key={log.id} className="px-4 py-3 space-y-1.5">
+                      <div className="flex items-center justify-between gap-2">
+                        <span className={`text-xs font-mono font-bold px-1.5 py-0.5 rounded ${
+                          log.method === "GET" ? "text-emerald-400 bg-emerald-400/10" :
+                          log.method === "POST" ? "text-blue-400 bg-blue-400/10" :
+                          log.method === "DELETE" ? "text-red-400 bg-red-400/10" :
+                          "text-slate-400 bg-white/10"
+                        }`}>{log.method}</span>
+                        <span className={`text-xs font-mono font-bold ${
+                          log.status >= 200 && log.status < 300 ? "text-emerald-400" :
+                          log.status >= 400 ? "text-red-400" : "text-slate-400"
+                        }`}>{log.status}</span>
+                        <span className="text-xs text-slate-500 font-mono ml-auto">{log.duration_ms != null ? `${log.duration_ms}ms` : "—"}</span>
+                      </div>
+                      <code className="text-xs font-mono text-slate-400 block truncate">{log.path}</code>
+                      <p className="text-xs text-slate-600">{format(new Date(log.created_at), "dd MMM HH:mm:ss")}</p>
+                    </div>
+                  ))}
+                </div>
+              )}
+
+              {/* Desktop table */}
+              {apiLogs.length > 0 && (
+                <div className="hidden md:block overflow-x-auto">
+                  <table className="w-full text-sm">
+                    <thead>
+                      <tr className="border-b border-white/8">
+                        {["Time", "Method", "Endpoint", "Status", "Duration"].map((h) => (
+                          <th key={h} className="pb-2 pt-3 px-4 text-left text-xs text-slate-500 font-semibold uppercase tracking-wider">{h}</th>
+                        ))}
                       </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
+                    </thead>
+                    <tbody className="divide-y divide-white/5">
+                      {apiLogs.map((log) => (
+                        <tr key={log.id} className="hover:bg-white/4 transition-colors">
+                          <td className="py-2.5 px-4 text-xs text-slate-500 whitespace-nowrap">{format(new Date(log.created_at), "dd MMM HH:mm:ss")}</td>
+                          <td className="py-2.5 px-4">
+                            <span className={`text-xs font-mono font-bold px-1.5 py-0.5 rounded ${
+                              log.method === "GET" ? "text-emerald-400 bg-emerald-400/10" :
+                              log.method === "POST" ? "text-blue-400 bg-blue-400/10" :
+                              log.method === "DELETE" ? "text-red-400 bg-red-400/10" :
+                              "text-slate-400 bg-white/10"
+                            }`}>{log.method}</span>
+                          </td>
+                          <td className="py-2.5 px-4"><code className="text-xs font-mono text-slate-300">{log.path}</code></td>
+                          <td className="py-2.5 px-4">
+                            <span className={`text-xs font-mono font-bold ${
+                              log.status >= 200 && log.status < 300 ? "text-emerald-400" :
+                              log.status >= 400 ? "text-red-400" : "text-slate-400"
+                            }`}>{log.status}</span>
+                          </td>
+                          <td className="py-2.5 px-4 text-xs text-slate-500 font-mono">{log.duration_ms != null ? `${log.duration_ms}ms` : "—"}</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              )}
             </div>
 
             {/* Security notice */}
@@ -788,10 +825,10 @@ export function AdminDashboard() {
                     </div>
                     <div className="bg-white/5 rounded-xl border border-white/10 px-3 py-2 flex items-center gap-2">
                       <Link className="w-3 h-3 text-slate-500 shrink-0" />
-                      <span className="text-xs text-slate-500 flex-1 truncate font-mono">{m.referral_link}</span>
+                      <span className="text-xs text-slate-500 flex-1 truncate font-mono">{refLink(m.code)}</span>
                       <button
                         type="button"
-                        onClick={() => { navigator.clipboard.writeText(m.referral_link); toast.success("Referral link copied!"); }}
+                        onClick={() => { navigator.clipboard.writeText(refLink(m.code)); toast.success("Referral link copied!"); }}
                         className="shrink-0 text-slate-400 hover:text-white transition-colors"
                         title="Copy referral link"
                       >
@@ -1917,7 +1954,7 @@ function CreateMarketerModal({ onClose, onSuccess }: { onClose: () => void; onSu
   const [email, setEmail] = useState("");
   const [phone, setPhone] = useState("");
   const [loading, setLoading] = useState(false);
-  const [created, setCreated] = useState<{ code: string; referral_link: string } | null>(null);
+  const [created, setCreated] = useState<{ code: string } | null>(null);
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
@@ -1931,7 +1968,7 @@ function CreateMarketerModal({ onClose, onSuccess }: { onClose: () => void; onSu
       });
       const data = await res.json();
       if (data.success) {
-        setCreated({ code: data.marketer.code, referral_link: data.referral_link });
+        setCreated({ code: data.marketer.code });
         toast.success(`Marketer "${name}" created!`);
       } else {
         toast.error(data.error ?? "Failed to create marketer");
@@ -1967,10 +2004,10 @@ function CreateMarketerModal({ onClose, onSuccess }: { onClose: () => void; onSu
               <div>
                 <p className="text-xs text-slate-400 mb-1 font-semibold uppercase tracking-wider">Referral Link</p>
                 <div className="flex items-center gap-2 bg-white/5 rounded-lg px-3 py-2">
-                  <span className="text-xs text-slate-300 flex-1 truncate font-mono">{created.referral_link}</span>
+                  <span className="text-xs text-slate-300 flex-1 truncate font-mono">{refLink(created.code)}</span>
                   <button
                     type="button"
-                    onClick={() => { navigator.clipboard.writeText(created.referral_link); toast.success("Copied!"); }}
+                    onClick={() => { navigator.clipboard.writeText(refLink(created.code)); toast.success("Copied!"); }}
                     className="text-slate-400 hover:text-white transition-colors shrink-0"
                   >
                     <Copy className="w-3.5 h-3.5" />
@@ -2193,10 +2230,10 @@ function MarketerDetailModal({
                 <div className="bg-white/5 border border-white/10 rounded-xl p-4 space-y-2">
                   <p className="text-xs text-slate-500 font-semibold uppercase tracking-wider">Referral Link</p>
                   <div className="flex items-center gap-2">
-                    <span className="text-xs text-slate-400 flex-1 truncate font-mono">{data.marketer.referral_link}</span>
+                    <span className="text-xs text-slate-400 flex-1 truncate font-mono">{refLink(data.marketer.code)}</span>
                     <button
                       type="button"
-                      onClick={() => { navigator.clipboard.writeText(data.marketer.referral_link); toast.success("Copied!"); }}
+                      onClick={() => { navigator.clipboard.writeText(refLink(data.marketer.code)); toast.success("Copied!"); }}
                       className="shrink-0 text-slate-400 hover:text-white transition-colors"
                     >
                       <Copy className="w-3.5 h-3.5" />
