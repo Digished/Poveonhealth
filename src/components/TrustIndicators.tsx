@@ -76,11 +76,11 @@ export function TrustIndicators() {
           onClick={() => setOpen(false)}
         >
           <div
-            className="w-full max-w-sm bg-white rounded-3xl shadow-2xl overflow-y-auto max-h-[85vh] animate-scale-in"
+            className="w-full max-w-sm h-[90dvh] flex flex-col bg-white rounded-3xl shadow-2xl overflow-hidden animate-scale-in"
             onClick={(e) => e.stopPropagation()}
           >
             {/* Header */}
-            <div className="px-5 pt-4 pb-4 flex items-center justify-between border-b border-slate-100">
+            <div className="px-5 pt-4 pb-4 flex items-center justify-between border-b border-slate-100 shrink-0">
               <div className="flex items-center gap-2.5">
                 <div className="w-9 h-9 rounded-xl bg-gradient-to-br from-medical-500 to-indigo-600 flex items-center justify-center shadow-sm">
                   <Sparkles className="w-4 h-4 text-white" />
@@ -100,17 +100,17 @@ export function TrustIndicators() {
               </button>
             </div>
 
-            {/* Feature list */}
-            <div className="px-5 py-4 pb-6 space-y-4">
-              {FEATURES.map((f, i) => {
+            {/* Feature list — fills remaining height */}
+            <div className="flex-1 overflow-y-auto px-5 py-5 space-y-6">
+              {FEATURES.map((f) => {
                 const Icon = f.icon;
                 return (
-                  <div key={f.title} className="flex gap-3.5">
-                    <div className={`w-10 h-10 rounded-2xl flex items-center justify-center shrink-0 ${f.iconBg}`}>
-                      <Icon className={`w-5 h-5 ${f.iconColor}`} />
+                  <div key={f.title} className="flex gap-4">
+                    <div className={`w-12 h-12 rounded-2xl flex items-center justify-center shrink-0 ${f.iconBg}`}>
+                      <Icon className={`w-6 h-6 ${f.iconColor}`} />
                     </div>
                     <div className="flex-1 min-w-0">
-                      <div className="flex items-center gap-2 mb-1">
+                      <div className="flex items-center gap-2 mb-1.5">
                         <p className="text-sm font-bold text-slate-800">{f.title}</p>
                         <span className={`text-xs font-medium px-2 py-0.5 rounded-full border ${f.badgeBg}`}>
                           {f.subtitle}

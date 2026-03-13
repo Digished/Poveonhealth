@@ -1112,6 +1112,7 @@ export function DoctorRequestForm() {
 
           return (
             <div className="space-y-5">
+              <div className="sticky top-36 z-[5] -mx-6 px-6 pt-2 bg-white/95 backdrop-blur-sm">
               <div className="flex items-center justify-between pb-3 border-b border-slate-100">
                 <h2 className="flex items-center gap-2 text-base font-semibold text-slate-700">
                   <User className="w-4 h-4 text-medical-600" />
@@ -1132,6 +1133,7 @@ export function DoctorRequestForm() {
                     />
                   ))}
                 </div>
+              </div>
               </div>
 
               {/* Sub-step 1: Name */}
@@ -1287,6 +1289,7 @@ export function DoctorRequestForm() {
 
           return (
           <div className="space-y-4">
+            <div className="sticky top-36 z-[5] -mx-6 px-6 pt-2 bg-white/95 backdrop-blur-sm">
             <div className="flex items-center justify-between pb-3 border-b border-slate-100">
               <h2 className="flex items-center gap-2 text-base font-semibold text-slate-700">
                 <Stethoscope className="w-4 h-4 text-medical-600" />
@@ -1309,6 +1312,7 @@ export function DoctorRequestForm() {
                   ))}
                 </div>
               )}
+            </div>
             </div>
 
             {/* First-time banner — only shown when no saved profile exists */}
