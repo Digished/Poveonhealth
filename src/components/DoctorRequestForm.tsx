@@ -702,7 +702,14 @@ export function DoctorRequestForm() {
     const main = document.querySelector("main");
     if (!main) return;
     function onScroll() {
-      setScrolled((main?.scrollTop ?? 0) > 80);
+      const top = main?.scrollTop ?? 0;
+      // Hysteresis: collapse labels past 100px, restore them below 60px
+      // This prevents flickering when the user is near the threshold.
+      setScrolled((prev) => {
+        if (prev && top < 60) return false;
+        if (!prev && top > 100) return true;
+        return prev;
+      });
     }
     main.addEventListener("scroll", onScroll, { passive: true });
     return () => main.removeEventListener("scroll", onScroll);
@@ -999,13 +1006,13 @@ export function DoctorRequestForm() {
                       ? <Check className="w-3 h-3" />
                       : <Icon className={active ? "w-3.5 h-3.5" : "w-3 h-3"} />}
                   </button>
-                  {!scrolled && (
-                    <p className={`text-xs mt-1 hidden sm:block whitespace-nowrap ${
-                      active ? "font-semibold text-slate-800" : done ? "font-medium text-slate-500 cursor-pointer" : "font-medium text-slate-400"
-                    }`}>
-                      {s.title}
-                    </p>
-                  )}
+                  <p className={`text-xs whitespace-nowrap overflow-hidden transition-all duration-300 ease-in-out hidden sm:block ${
+                    scrolled ? "max-h-0 opacity-0 mt-0" : "max-h-5 opacity-100 mt-1"
+                  } ${
+                    active ? "font-semibold text-slate-800" : done ? "font-medium text-slate-500 cursor-pointer" : "font-medium text-slate-400"
+                  }`}>
+                    {s.title}
+                  </p>
                 </div>
                 {i < STEPS.length - 1 && (
                   <div className={`flex-1 h-0.5 mx-2 mb-4 rounded transition-all ${done ? "bg-slate-400" : "bg-slate-200"}`} />
