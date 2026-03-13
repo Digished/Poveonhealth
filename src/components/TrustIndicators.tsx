@@ -71,19 +71,14 @@ export function TrustIndicators() {
       {/* Features modal */}
       {open && (
         <div
-          className="fixed inset-0 z-50 flex items-end sm:items-center justify-center sm:p-4 animate-backdrop-in"
+          className="fixed inset-0 z-50 flex items-center justify-center p-4 animate-backdrop-in"
           style={{ backgroundColor: "rgba(15,23,42,0.45)", backdropFilter: "blur(4px)" }}
           onClick={() => setOpen(false)}
         >
           <div
-            className="w-full sm:max-w-sm bg-white rounded-t-3xl sm:rounded-3xl shadow-2xl overflow-hidden animate-scale-in"
+            className="w-full max-w-sm bg-white rounded-3xl shadow-2xl overflow-y-auto max-h-[85vh] animate-scale-in"
             onClick={(e) => e.stopPropagation()}
           >
-            {/* Drag handle (mobile only) */}
-            <div className="sm:hidden flex justify-center pt-3 pb-1">
-              <div className="w-10 h-1 rounded-full bg-slate-200" />
-            </div>
-
             {/* Header */}
             <div className="px-5 pt-4 pb-4 flex items-center justify-between border-b border-slate-100">
               <div className="flex items-center gap-2.5">
@@ -106,7 +101,7 @@ export function TrustIndicators() {
             </div>
 
             {/* Feature list */}
-            <div className="px-5 py-4 space-y-4 pb-6" style={{ paddingBottom: "calc(1.5rem + env(safe-area-inset-bottom, 0px))" }}>
+            <div className="px-5 py-4 pb-6 space-y-4">
               {FEATURES.map((f, i) => {
                 const Icon = f.icon;
                 return (
