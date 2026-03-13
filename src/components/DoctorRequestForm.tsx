@@ -1141,12 +1141,12 @@ export function DoctorRequestForm() {
                   Patient Information
                 </h2>
                 {/* Sub-step dots */}
-                <div className="flex items-center gap-1.5">
+                <div className="flex shrink-0 items-center gap-1.5">
                   {Array.from({ length: patientTotalSteps }).map((_, i) => (
                     <div
                       key={i}
-                      className={`rounded-full transition-all duration-300 ${
-                        i < patientSubStep
+                      className={`shrink-0 rounded-full transition-all duration-300 ${
+                        i < patientSubStep - 1
                           ? "w-5 h-1.5 bg-medical-500"
                           : i === patientSubStep - 1
                           ? "w-3 h-1.5 bg-medical-400"
@@ -1319,12 +1319,12 @@ export function DoctorRequestForm() {
               </h2>
               {/* Sub-step dots — only show when in edit/new mode */}
               {(!savedProfile || doctorEditing) && (
-                <div className="flex items-center gap-1.5">
+                <div className="flex shrink-0 items-center gap-1.5">
                   {Array.from({ length: profileTotalSteps }).map((_, i) => (
                     <div
                       key={i}
-                      className={`rounded-full transition-all duration-300 ${
-                        i < profileSubStep
+                      className={`shrink-0 rounded-full transition-all duration-300 ${
+                        i < profileSubStep - 1
                           ? "w-5 h-1.5 bg-medical-500"
                           : i === profileSubStep - 1
                           ? "w-3 h-1.5 bg-medical-400"
