@@ -243,6 +243,7 @@ function LabSearchModal({
 }) {
   const [query, setQuery] = useState("");
   const searchRef = useRef<HTMLInputElement>(null);
+  const containerRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
     const prev = document.body.style.overflow;
@@ -252,6 +253,25 @@ function LabSearchModal({
 
   useEffect(() => {
     setTimeout(() => searchRef.current?.focus(), 80);
+  }, []);
+
+  // Keep container height in sync with the visual viewport so the bottom sheet
+  // stays above the on-screen keyboard on iOS/Android.
+  useEffect(() => {
+    const vv = window.visualViewport;
+    if (!vv) return;
+    function sync() {
+      if (!containerRef.current) return;
+      containerRef.current.style.height = `${vv!.height}px`;
+      containerRef.current.style.top = `${vv!.offsetTop}px`;
+    }
+    vv.addEventListener("resize", sync);
+    vv.addEventListener("scroll", sync);
+    sync();
+    return () => {
+      vv.removeEventListener("resize", sync);
+      vv.removeEventListener("scroll", sync);
+    };
   }, []);
 
   const q = query.trim().toLowerCase();
@@ -271,7 +291,9 @@ function LabSearchModal({
 
   const modal = (
     <div
-      className="fixed inset-0 z-[9999] flex flex-col justify-end sm:justify-center sm:items-center"
+      ref={containerRef}
+      className="fixed inset-x-0 top-0 z-[9999] flex flex-col justify-end sm:justify-center sm:items-center"
+      style={{ height: "100dvh" }}
       aria-modal="true"
       role="dialog"
       aria-label="Select laboratory"
