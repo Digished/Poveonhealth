@@ -1185,10 +1185,10 @@ export function DoctorRequestForm() {
                       key={i}
                       className={`shrink-0 rounded-full transition-all duration-300 ${
                         i < patientSubStep - 1
-                          ? "w-5 h-1.5 bg-medical-500"
+                          ? "w-2.5 h-2.5 bg-medical-500"
                           : i === patientSubStep - 1
-                          ? "w-3 h-1.5 bg-medical-400"
-                          : "w-1.5 h-1.5 bg-slate-200"
+                          ? "w-3.5 h-3.5 bg-medical-400 ring-2 ring-medical-200 ring-offset-1"
+                          : "w-2 h-2 bg-slate-200"
                       }`}
                     />
                   ))}
@@ -1516,10 +1516,17 @@ export function DoctorRequestForm() {
                             onAccountNameChange={(v) => set("doctor_account_name", v)}
                             onVerifiedChange={(verified) => {
                               setBankVerified(verified);
-                              // Auto-populate Full Name from the verified account name
-                              // so the referrer only edits it if they want a different display name.
-                              if (verified && form.doctor_account_name && !form.doctor_name.trim()) {
-                                set("doctor_name", form.doctor_account_name);
+                              // Use the functional setForm updater so we always read the latest
+                              // doctor_account_name — the plain `form` closure may be stale
+                              // because onAccountNameChange and onVerifiedChange fire in the
+                              // same render cycle before React has flushed the state update.
+                              if (verified) {
+                                setForm((prev) => {
+                                  if (prev.doctor_account_name && !prev.doctor_name.trim()) {
+                                    return { ...prev, doctor_name: prev.doctor_account_name };
+                                  }
+                                  return prev;
+                                });
                               }
                             }}
                             bankError={errors.doctor_bank_name}
