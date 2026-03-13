@@ -798,8 +798,26 @@ export function DoctorRequestForm() {
     return Object.keys(errs).length === 0;
   }
 
+  function persistDoctorProfile() {
+    try {
+      localStorage.setItem(DOCTOR_STORAGE_KEY, JSON.stringify({
+        prefix: form.doctor_prefix,
+        name: form.doctor_name,
+        email: form.doctor_email,
+        phone: form.doctor_phone,
+        hospital: form.doctor_hospital,
+        bankName: form.doctor_bank_name,
+        bankCode: bankCode,
+        accountNumber: form.doctor_account_number,
+        accountName: form.doctor_account_name,
+      }));
+    } catch { /* ignore storage errors */ }
+  }
+
   function handleNext() {
     if (validateStep(step)) {
+      // Persist profile as soon as the user leaves Step 3
+      if (step === 3) persistDoctorProfile();
       const next = Math.min(5, step + 1);
       setStep(next);
       setMaxStep((m) => Math.max(m, next));
@@ -812,6 +830,7 @@ export function DoctorRequestForm() {
     if (target === step) return;
     if (target > step) {
       if (!validateStep(step)) return;
+      if (step === 3) persistDoctorProfile();
     } else {
       setErrors({});
     }
@@ -836,20 +855,7 @@ export function DoctorRequestForm() {
       });
       const data: CreateRequestResponse = await res.json();
       if (data.success) {
-        // Persist referrer profile for next time
-        try {
-          localStorage.setItem(DOCTOR_STORAGE_KEY, JSON.stringify({
-            prefix: form.doctor_prefix,
-            name: form.doctor_name,
-            email: form.doctor_email,
-            phone: form.doctor_phone,
-            hospital: form.doctor_hospital,
-            bankName: form.doctor_bank_name,
-            bankCode: bankCode,
-            accountNumber: form.doctor_account_number,
-            accountName: form.doctor_account_name,
-          }));
-        } catch { /* ignore storage errors */ }
+        persistDoctorProfile();
         setResult(data);
       } else {
         toast.error(data.error ?? "Failed to submit request");
