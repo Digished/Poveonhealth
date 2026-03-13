@@ -981,7 +981,7 @@ export function DoctorRequestForm() {
       const next = Math.min(5, step + 1);
       setStep(next);
       setMaxStep((m) => Math.max(m, next));
-      window.scrollTo({ top: 0, behavior: "smooth" });
+      document.querySelector("main")?.scrollTo({ top: 0, behavior: "smooth" });
     }
   }
 
