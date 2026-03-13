@@ -1,6 +1,7 @@
 "use client";
 
 import { useState } from "react";
+import { createPortal } from "react-dom";
 import { Shield, Clock, Mail, X, Sparkles, ChevronRight } from "lucide-react";
 
 const FEATURES = [
@@ -68,8 +69,8 @@ export function TrustIndicators() {
         </button>
       </div>
 
-      {/* Features modal */}
-      {open && (
+      {/* Features modal — portalled to body to escape stacking context */}
+      {open && createPortal(
         <div
           className="fixed inset-0 z-50 flex items-center justify-center p-4 animate-backdrop-in"
           style={{ backgroundColor: "rgba(15,23,42,0.45)", backdropFilter: "blur(4px)" }}
@@ -123,7 +124,8 @@ export function TrustIndicators() {
               })}
             </div>
           </div>
-        </div>
+        </div>,
+        document.body
       )}
     </>
   );
