@@ -360,53 +360,63 @@ function LabSearchModal({
           </div>
         </div>
 
-        {/* Lab list */}
-        <ul className="flex-1 overflow-y-auto overscroll-contain">
-          {loading ? (
-            <li className="px-5 py-8 text-sm text-slate-400 text-center flex flex-col items-center gap-2">
-              <RefreshCw className="w-5 h-5 animate-spin text-slate-300" />
-              Loading laboratories…
-            </li>
-          ) : filtered.length === 0 ? (
-            <li className="px-5 py-8 text-sm text-slate-400 text-center">No laboratories found</li>
-          ) : (
-            filtered.map((lab) => {
-              const isSelected = lab.id === selected?.id;
-              return (
-                <li key={lab.id}>
-                  <button
-                    type="button"
-                    onClick={() => handleSelect(lab)}
-                    className={`w-full flex items-center gap-3 px-5 py-3.5 transition-colors text-left active:bg-medical-50 ${
-                      isSelected ? "bg-medical-50" : "hover:bg-slate-50"
-                    }`}
-                  >
-                    {lab.logo_url ? (
-                      <img src={lab.logo_url} alt={lab.name} className="w-10 h-10 rounded-xl object-cover shrink-0 shadow-sm" />
-                    ) : (
-                      <div className="w-10 h-10 rounded-xl bg-medical-100 flex items-center justify-center shrink-0">
-                        <Building2 className="w-5 h-5 text-medical-600" />
-                      </div>
-                    )}
-                    <div className="min-w-0 flex-1">
-                      <p className={`text-sm font-semibold truncate ${isSelected ? "text-medical-800" : "text-slate-800"}`}>
-                        {lab.name}
-                      </p>
-                      {lab.address && (
-                        <p className="text-xs text-slate-400 flex items-center gap-1 mt-0.5 truncate">
-                          <MapPin className="w-3 h-3 shrink-0" />{lab.address}
-                        </p>
+        {/* Lab list — capped to 3 rows on mobile (204px) and 5 rows on desktop (340px).
+             Each row is py-3.5 (28px) + h-10 icon (40px) = 68px. */}
+        <div className="relative">
+          <ul className="overflow-y-auto overscroll-contain max-h-[204px] sm:max-h-[340px]">
+            {loading ? (
+              <li className="px-5 py-8 text-sm text-slate-400 text-center flex flex-col items-center gap-2">
+                <RefreshCw className="w-5 h-5 animate-spin text-slate-300" />
+                Loading laboratories…
+              </li>
+            ) : filtered.length === 0 ? (
+              <li className="px-5 py-8 text-sm text-slate-400 text-center">No laboratories found</li>
+            ) : (
+              filtered.map((lab) => {
+                const isSelected = lab.id === selected?.id;
+                return (
+                  <li key={lab.id}>
+                    <button
+                      type="button"
+                      onClick={() => handleSelect(lab)}
+                      className={`w-full flex items-center gap-3 px-5 py-3.5 transition-colors text-left active:bg-medical-50 ${
+                        isSelected ? "bg-medical-50" : "hover:bg-slate-50"
+                      }`}
+                    >
+                      {lab.logo_url ? (
+                        <img src={lab.logo_url} alt={lab.name} className="w-10 h-10 rounded-xl object-cover shrink-0 shadow-sm" />
+                      ) : (
+                        <div className="w-10 h-10 rounded-xl bg-medical-100 flex items-center justify-center shrink-0">
+                          <Building2 className="w-5 h-5 text-medical-600" />
+                        </div>
                       )}
-                    </div>
-                    {isSelected && (
-                      <span className="w-2 h-2 rounded-full bg-medical-500 shrink-0" />
-                    )}
-                  </button>
-                </li>
-              );
-            })
+                      <div className="min-w-0 flex-1">
+                        <p className={`text-sm font-semibold truncate ${isSelected ? "text-medical-800" : "text-slate-800"}`}>
+                          {lab.name}
+                        </p>
+                        {lab.address && (
+                          <p className="text-xs text-slate-400 flex items-center gap-1 mt-0.5 truncate">
+                            <MapPin className="w-3 h-3 shrink-0" />{lab.address}
+                          </p>
+                        )}
+                      </div>
+                      {isSelected && (
+                        <span className="w-2 h-2 rounded-full bg-medical-500 shrink-0" />
+                      )}
+                    </button>
+                  </li>
+                );
+              })
+            )}
+          </ul>
+          {/* Gradient fade — hints at more items below */}
+          {!loading && filtered.length > 3 && (
+            <div className="pointer-events-none absolute bottom-0 inset-x-0 h-10 bg-gradient-to-t from-white to-transparent sm:hidden" />
           )}
-        </ul>
+          {!loading && filtered.length > 5 && (
+            <div className="pointer-events-none absolute bottom-0 inset-x-0 h-10 bg-gradient-to-t from-white to-transparent hidden sm:block" />
+          )}
+        </div>
 
         {/* Safe area (iOS) */}
         <div className="sm:hidden" style={{ paddingBottom: "env(safe-area-inset-bottom, 0px)" }} />
