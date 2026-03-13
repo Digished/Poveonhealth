@@ -715,36 +715,39 @@ export function DoctorRequestForm() {
     return () => main.removeEventListener("scroll", onScroll);
   }, []);
 
-  // Load saved referrer profile from localStorage on mount
-  useEffect(() => {
+  // Load saved referrer profile from localStorage
+  function loadSavedProfile() {
     try {
       const raw = localStorage.getItem(DOCTOR_STORAGE_KEY);
       if (raw) {
         const profile = JSON.parse(raw) as { prefix: string; name: string; email: string; phone: string; hospital: string; bankName: string; bankCode: string; accountNumber: string; accountName: string };
         if (profile.name || profile.email) {
           setSavedProfile(profile);
-          setBankOpen(false); // Start collapsed when loading from cache
+          setBankOpen(false);
           if (profile.bankCode) setBankCode(profile.bankCode);
-          // If all bank details are stored, treat them as previously verified so the
-          // profile card shows "Bank verified" instead of "Bank not verified".
           if (profile.bankCode && profile.accountNumber && profile.accountName) {
             setBankVerified(true);
           }
           setForm((prev) => ({
             ...prev,
-            doctor_prefix: profile.prefix || prev.doctor_prefix,
-            doctor_name: profile.name || prev.doctor_name,
-            doctor_email: profile.email || prev.doctor_email,
-            doctor_phone: profile.phone || prev.doctor_phone,
-            doctor_hospital: profile.hospital || prev.doctor_hospital,
-            doctor_bank_name: profile.bankName || prev.doctor_bank_name,
-            doctor_account_number: profile.accountNumber || prev.doctor_account_number,
-            doctor_account_name: profile.accountName || prev.doctor_account_name,
+            doctor_prefix: profile.prefix || "",
+            doctor_name: profile.name || "",
+            doctor_email: profile.email || "",
+            doctor_phone: profile.phone || "",
+            doctor_hospital: profile.hospital || "",
+            doctor_bank_name: profile.bankName || "",
+            doctor_account_number: profile.accountNumber || "",
+            doctor_account_name: profile.accountName || "",
           }));
+          return;
         }
       }
     } catch { /* ignore storage errors */ }
-  }, []);
+    // No saved profile
+    setSavedProfile(null);
+  }
+
+  useEffect(() => { loadSavedProfile(); }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
   function set(field: keyof FormData, value: string) {
     setForm((prev) => ({ ...prev, [field]: value }));
@@ -874,7 +877,7 @@ export function DoctorRequestForm() {
         labName={result.lab?.name ?? ""}
         labAddress={result.lab?.address ?? ""}
         labPhones={result.lab?.phones ?? []}
-        onReset={() => { setResult(null); setForm(INITIAL); setStep(1); setSavedProfile(null); }}
+        onReset={() => { setResult(null); setForm(INITIAL); setStep(1); setMaxStep(1); loadSavedProfile(); }}
       />
     );
   }
