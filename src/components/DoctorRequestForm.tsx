@@ -243,6 +243,7 @@ function LabSearchModal({
 }) {
   const [query, setQuery] = useState("");
   const searchRef = useRef<HTMLInputElement>(null);
+  const containerRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
     const prev = document.body.style.overflow;
@@ -252,6 +253,25 @@ function LabSearchModal({
 
   useEffect(() => {
     setTimeout(() => searchRef.current?.focus(), 80);
+  }, []);
+
+  // Keep container height in sync with the visual viewport so the bottom sheet
+  // stays above the on-screen keyboard on iOS/Android.
+  useEffect(() => {
+    const vv = window.visualViewport;
+    if (!vv) return;
+    function sync() {
+      if (!containerRef.current) return;
+      containerRef.current.style.height = `${vv!.height}px`;
+      containerRef.current.style.top = `${vv!.offsetTop}px`;
+    }
+    vv.addEventListener("resize", sync);
+    vv.addEventListener("scroll", sync);
+    sync();
+    return () => {
+      vv.removeEventListener("resize", sync);
+      vv.removeEventListener("scroll", sync);
+    };
   }, []);
 
   const q = query.trim().toLowerCase();
@@ -271,7 +291,9 @@ function LabSearchModal({
 
   const modal = (
     <div
-      className="fixed inset-0 z-[9999] flex flex-col justify-end sm:justify-center sm:items-center"
+      ref={containerRef}
+      className="fixed inset-x-0 top-0 z-[9999] flex flex-col justify-end sm:justify-center sm:items-center"
+      style={{ height: "100dvh" }}
       aria-modal="true"
       role="dialog"
       aria-label="Select laboratory"
@@ -338,53 +360,63 @@ function LabSearchModal({
           </div>
         </div>
 
-        {/* Lab list */}
-        <ul className="flex-1 overflow-y-auto overscroll-contain">
-          {loading ? (
-            <li className="px-5 py-8 text-sm text-slate-400 text-center flex flex-col items-center gap-2">
-              <RefreshCw className="w-5 h-5 animate-spin text-slate-300" />
-              Loading laboratories…
-            </li>
-          ) : filtered.length === 0 ? (
-            <li className="px-5 py-8 text-sm text-slate-400 text-center">No laboratories found</li>
-          ) : (
-            filtered.map((lab) => {
-              const isSelected = lab.id === selected?.id;
-              return (
-                <li key={lab.id}>
-                  <button
-                    type="button"
-                    onClick={() => handleSelect(lab)}
-                    className={`w-full flex items-center gap-3 px-5 py-3.5 transition-colors text-left active:bg-medical-50 ${
-                      isSelected ? "bg-medical-50" : "hover:bg-slate-50"
-                    }`}
-                  >
-                    {lab.logo_url ? (
-                      <img src={lab.logo_url} alt={lab.name} className="w-10 h-10 rounded-xl object-cover shrink-0 shadow-sm" />
-                    ) : (
-                      <div className="w-10 h-10 rounded-xl bg-medical-100 flex items-center justify-center shrink-0">
-                        <Building2 className="w-5 h-5 text-medical-600" />
-                      </div>
-                    )}
-                    <div className="min-w-0 flex-1">
-                      <p className={`text-sm font-semibold truncate ${isSelected ? "text-medical-800" : "text-slate-800"}`}>
-                        {lab.name}
-                      </p>
-                      {lab.address && (
-                        <p className="text-xs text-slate-400 flex items-center gap-1 mt-0.5 truncate">
-                          <MapPin className="w-3 h-3 shrink-0" />{lab.address}
-                        </p>
+        {/* Lab list — capped to 3 rows on mobile (204px) and 5 rows on desktop (340px).
+             Each row is py-3.5 (28px) + h-10 icon (40px) = 68px. */}
+        <div className="relative">
+          <ul className="overflow-y-auto overscroll-contain max-h-[204px] sm:max-h-[340px]">
+            {loading ? (
+              <li className="px-5 py-8 text-sm text-slate-400 text-center flex flex-col items-center gap-2">
+                <RefreshCw className="w-5 h-5 animate-spin text-slate-300" />
+                Loading laboratories…
+              </li>
+            ) : filtered.length === 0 ? (
+              <li className="px-5 py-8 text-sm text-slate-400 text-center">No laboratories found</li>
+            ) : (
+              filtered.map((lab) => {
+                const isSelected = lab.id === selected?.id;
+                return (
+                  <li key={lab.id}>
+                    <button
+                      type="button"
+                      onClick={() => handleSelect(lab)}
+                      className={`w-full flex items-center gap-3 px-5 py-3.5 transition-colors text-left active:bg-medical-50 ${
+                        isSelected ? "bg-medical-50" : "hover:bg-slate-50"
+                      }`}
+                    >
+                      {lab.logo_url ? (
+                        <img src={lab.logo_url} alt={lab.name} className="w-10 h-10 rounded-xl object-cover shrink-0 shadow-sm" />
+                      ) : (
+                        <div className="w-10 h-10 rounded-xl bg-medical-100 flex items-center justify-center shrink-0">
+                          <Building2 className="w-5 h-5 text-medical-600" />
+                        </div>
                       )}
-                    </div>
-                    {isSelected && (
-                      <span className="w-2 h-2 rounded-full bg-medical-500 shrink-0" />
-                    )}
-                  </button>
-                </li>
-              );
-            })
+                      <div className="min-w-0 flex-1">
+                        <p className={`text-sm font-semibold truncate ${isSelected ? "text-medical-800" : "text-slate-800"}`}>
+                          {lab.name}
+                        </p>
+                        {lab.address && (
+                          <p className="text-xs text-slate-400 flex items-center gap-1 mt-0.5 truncate">
+                            <MapPin className="w-3 h-3 shrink-0" />{lab.address}
+                          </p>
+                        )}
+                      </div>
+                      {isSelected && (
+                        <span className="w-2 h-2 rounded-full bg-medical-500 shrink-0" />
+                      )}
+                    </button>
+                  </li>
+                );
+              })
+            )}
+          </ul>
+          {/* Gradient fade — hints at more items below */}
+          {!loading && filtered.length > 3 && (
+            <div className="pointer-events-none absolute bottom-0 inset-x-0 h-10 bg-gradient-to-t from-white to-transparent sm:hidden" />
           )}
-        </ul>
+          {!loading && filtered.length > 5 && (
+            <div className="pointer-events-none absolute bottom-0 inset-x-0 h-10 bg-gradient-to-t from-white to-transparent hidden sm:block" />
+          )}
+        </div>
 
         {/* Safe area (iOS) */}
         <div className="sm:hidden" style={{ paddingBottom: "env(safe-area-inset-bottom, 0px)" }} />
@@ -884,6 +916,34 @@ export function DoctorRequestForm() {
 
   const selectedLab = labs.find((l) => l.id === form.lab_id);
 
+  // Reactively compute whether the current step's required fields are satisfied.
+  // The Continue button is hidden until this is true so the user always sees a
+  // clear goal: fill the fields, then the button appears.
+  const stepValid = (() => {
+    if (step === 1) return !!form.lab_id;
+    if (step === 2) {
+      return (
+        form.patient_name.trim().length > 0 &&
+        !!form.dob &&
+        !!form.sex &&
+        (!form.patient_email || /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(form.patient_email))
+      );
+    }
+    if (step === 3) {
+      const nameOk = form.doctor_name.trim().length > 0;
+      const emailOk =
+        form.doctor_email.trim().length > 0 &&
+        /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(form.doctor_email);
+      const bankOk =
+        bankSkipped ||
+        (form.doctor_bank_name.trim().length > 0 &&
+          form.doctor_account_number.trim().length > 0 &&
+          form.doctor_account_name.trim().length > 0);
+      return nameOk && emailOk && bankOk;
+    }
+    return true; // step 4 (schedule) is always skippable; step 5 uses submit
+  })();
+
   return (
     <div className="animate-fade-in">
       {/* Sticky header + step indicator */}
@@ -1119,16 +1179,16 @@ export function DoctorRequestForm() {
                   Patient Information
                 </h2>
                 {/* Sub-step dots */}
-                <div className="flex items-center gap-1.5">
+                <div className="flex shrink-0 items-center gap-1.5">
                   {Array.from({ length: patientTotalSteps }).map((_, i) => (
                     <div
                       key={i}
-                      className={`rounded-full transition-all duration-300 ${
-                        i < patientSubStep
-                          ? "w-5 h-1.5 bg-medical-500"
+                      className={`shrink-0 rounded-full transition-all duration-300 ${
+                        i < patientSubStep - 1
+                          ? "w-2.5 h-2.5 bg-medical-500"
                           : i === patientSubStep - 1
-                          ? "w-3 h-1.5 bg-medical-400"
-                          : "w-1.5 h-1.5 bg-slate-200"
+                          ? "w-3.5 h-3.5 bg-medical-400 ring-2 ring-medical-200 ring-offset-1"
+                          : "w-2 h-2 bg-slate-200"
                       }`}
                     />
                   ))}
@@ -1278,13 +1338,19 @@ export function DoctorRequestForm() {
 
         {/* Step 3: Referring Professional — progressive disclosure */}
         {step === 3 && (() => {
-          // Sub-step visibility
-          const showEmail = form.doctor_name.trim().length > 0;
+          // Bank is "done" once verified or explicitly skipped
+          const bankDone =
+            bankSkipped ||
+            (bankVerified &&
+              !!(form.doctor_bank_name && form.doctor_account_number && form.doctor_account_name));
+          // Progressive disclosure order: Bank → Name → Email → Optional contacts
+          // For saved-profile edit mode we skip the gate so all fields are immediately visible
+          const showName = bankDone || !!savedProfile;
+          const showEmail = showName && form.doctor_name.trim().length > 0;
           const showOptional = showEmail && form.doctor_email.trim().length > 0;
-          const showBank = showOptional;
 
-          // Sub-step count for dots: 1=Name, 2=Email, 3=Optional, 4=Bank
-          const profileSubStep = !showEmail ? 1 : !showOptional ? 2 : !showBank ? 3 : 4;
+          // Sub-step count for dots: 1=Bank, 2=Name, 3=Email, 4=Optional
+          const profileSubStep = !bankDone ? 1 : !showEmail ? 2 : !showOptional ? 3 : 4;
           const profileTotalSteps = 4;
 
           return (
@@ -1297,16 +1363,16 @@ export function DoctorRequestForm() {
               </h2>
               {/* Sub-step dots — only show when in edit/new mode */}
               {(!savedProfile || doctorEditing) && (
-                <div className="flex items-center gap-1.5">
+                <div className="flex shrink-0 items-center gap-1.5">
                   {Array.from({ length: profileTotalSteps }).map((_, i) => (
                     <div
                       key={i}
-                      className={`rounded-full transition-all duration-300 ${
-                        i < profileSubStep
-                          ? "w-5 h-1.5 bg-medical-500"
+                      className={`shrink-0 rounded-full transition-all duration-300 ${
+                        i < profileSubStep - 1
+                          ? "w-2.5 h-2.5 bg-medical-500"
                           : i === profileSubStep - 1
-                          ? "w-3 h-1.5 bg-medical-400"
-                          : "w-1.5 h-1.5 bg-slate-200"
+                          ? "w-3.5 h-3.5 bg-medical-400 ring-2 ring-medical-200 ring-offset-1"
+                          : "w-2 h-2 bg-slate-200"
                       }`}
                     />
                   ))}
@@ -1401,21 +1467,114 @@ export function DoctorRequestForm() {
                   </div>
                 )}
 
-                {/* Sub-step 1: Title + Name */}
-                <PrefixSelect
-                  value={form.doctor_prefix}
-                  onChange={(v) => set("doctor_prefix", v)}
-                />
-                <Input
-                  label="Full Name"
-                  required
-                  placeholder="Firstname Lastname"
-                  value={form.doctor_name}
-                  onChange={(e) => set("doctor_name", e.target.value)}
-                  error={errors.doctor_name}
-                />
+                {/* Sub-step 1: Bank details — always shown first.
+                    Verifying auto-fills Full Name; skipping lets the user type it manually. */}
+                {bankSkipped ? (
+                  /* Skipped state — compact strip */
+                  <div className="flex items-center justify-between px-4 py-3 rounded-xl bg-slate-50 border border-slate-200">
+                    <p className="text-xs text-slate-500 font-medium">Bank details skipped</p>
+                    <button
+                      type="button"
+                      onClick={() => { setBankSkipped(false); setBankOpen(true); }}
+                      className="text-xs text-medical-600 hover:text-medical-800 font-semibold transition-colors"
+                    >
+                      + Add details
+                    </button>
+                  </div>
+                ) : (() => {
+                  const hasBankContent = bankVerified && !!(form.doctor_bank_name && form.doctor_account_number && form.doctor_account_name);
+                  return (
+                    <div className={`rounded-xl border-2 overflow-hidden transition-colors ${hasBankContent ? "border-emerald-200 bg-emerald-50/30" : "border-slate-200"}`}>
+                      <button
+                        type="button"
+                        onClick={() => setBankOpen((v) => !v)}
+                        className={`w-full flex items-center justify-between px-4 py-3.5 transition-colors ${hasBankContent ? "hover:bg-emerald-50/50" : "hover:bg-slate-50 bg-slate-50/50"}`}
+                      >
+                        {hasBankContent ? (
+                          <span className="flex items-center gap-2">
+                            <Check className="w-4 h-4 text-emerald-500 shrink-0" />
+                            <span className="text-sm font-semibold text-slate-700">Bank details added</span>
+                          </span>
+                        ) : (
+                          <div className="flex items-center gap-2">
+                            <span className="text-sm font-semibold text-slate-700">Bank Account Details</span>
+                            {!bankSkipped && <span className="inline-block w-1.5 h-1.5 rounded-full bg-amber-400 align-middle" aria-label="required" />}
+                            <span className="hidden sm:inline text-xs text-slate-400 ml-1">For referral payment</span>
+                          </div>
+                        )}
+                        <ChevronDown className={`w-4 h-4 transition-transform shrink-0 ${hasBankContent ? "text-emerald-500" : "text-slate-400"} ${bankOpen ? "rotate-180" : ""}`} />
+                      </button>
+                      {bankOpen && (
+                        <div className={`px-4 pb-4 pt-1 space-y-3 border-t ${hasBankContent ? "border-emerald-100 bg-emerald-50/20" : "border-slate-100"}`}>
+                          <BankAccountInput
+                            bankName={form.doctor_bank_name}
+                            bankCode={bankCode}
+                            accountNumber={form.doctor_account_number}
+                            accountName={form.doctor_account_name}
+                            onBankChange={(name, code) => { set("doctor_bank_name", name); setBankCode(code); setBankVerified(false); }}
+                            onAccountNumberChange={(v) => { set("doctor_account_number", v); setBankVerified(false); }}
+                            onAccountNameChange={(v) => set("doctor_account_name", v)}
+                            onVerifiedChange={(verified) => {
+                              setBankVerified(verified);
+                              // Use the functional setForm updater so we always read the latest
+                              // doctor_account_name — the plain `form` closure may be stale
+                              // because onAccountNameChange and onVerifiedChange fire in the
+                              // same render cycle before React has flushed the state update.
+                              if (verified) {
+                                setForm((prev) => {
+                                  if (prev.doctor_account_name && !prev.doctor_name.trim()) {
+                                    return { ...prev, doctor_name: prev.doctor_account_name };
+                                  }
+                                  return prev;
+                                });
+                              }
+                            }}
+                            bankError={errors.doctor_bank_name}
+                            accountNumberError={errors.doctor_account_number}
+                            accountNameError={errors.doctor_account_name}
+                          />
+                          {!hasBankContent && (
+                            <div className="pt-1 border-t border-slate-100">
+                              <button
+                                type="button"
+                                onClick={() => {
+                                  setBankSkipped(true);
+                                  set("doctor_bank_name", "");
+                                  set("doctor_account_number", "");
+                                  set("doctor_account_name", "");
+                                }}
+                                className="text-xs text-slate-400 hover:text-slate-600 transition-colors underline underline-offset-2"
+                              >
+                                Skip — I'll settle payment another way
+                              </button>
+                            </div>
+                          )}
+                        </div>
+                      )}
+                    </div>
+                  );
+                })()}
 
-                {/* Sub-step 2: Email — revealed after name filled */}
+                {/* Sub-step 2: Title + Name — revealed once bank is verified or skipped.
+                    Full Name is pre-filled from the verified account name but remains editable. */}
+                {showName && (
+                  <div className="animate-fade-in-up space-y-4">
+                    <PrefixSelect
+                      value={form.doctor_prefix}
+                      onChange={(v) => set("doctor_prefix", v)}
+                    />
+                    <Input
+                      label="Full Name"
+                      required
+                      placeholder="Firstname Lastname"
+                      value={form.doctor_name}
+                      onChange={(e) => set("doctor_name", e.target.value)}
+                      error={errors.doctor_name}
+                    />
+                  </div>
+                )}
+
+                {/* Sub-step 3: Email — revealed after name filled */}
                 {showEmail && (
                   <div className="animate-fade-in-up">
                     <Input
@@ -1431,7 +1590,7 @@ export function DoctorRequestForm() {
                   </div>
                 )}
 
-                {/* Sub-step 3: Phone + Hospital — revealed after email filled */}
+                {/* Sub-step 4: Phone + Hospital — revealed after email filled */}
                 {showOptional && (
                   <div className="animate-fade-in-up">
                     {(form.doctor_phone || form.doctor_hospital) ? (
@@ -1499,83 +1658,6 @@ export function DoctorRequestForm() {
                   </div>
                 )}
               </>
-            )}
-
-            {/* Bank account details — shown after email is filled (progressive disclosure) */}
-            {(showBank || savedProfile) && (
-              <div className="animate-fade-in-up">
-                {bankSkipped ? (
-                  /* Skipped state — compact strip */
-                  <div className="flex items-center justify-between px-4 py-3 rounded-xl bg-slate-50 border border-slate-200">
-                    <p className="text-xs text-slate-500 font-medium">Bank details skipped</p>
-                    <button
-                      type="button"
-                      onClick={() => { setBankSkipped(false); setBankOpen(true); }}
-                      className="text-xs text-medical-600 hover:text-medical-800 font-semibold transition-colors"
-                    >
-                      + Add details
-                    </button>
-                  </div>
-                ) : (() => {
-                  const hasBankContent = bankVerified && !!(form.doctor_bank_name && form.doctor_account_number && form.doctor_account_name);
-                  return (
-                    <div className={`rounded-xl border-2 overflow-hidden transition-colors ${hasBankContent ? "border-emerald-200 bg-emerald-50/30" : "border-slate-200"}`}>
-                      <button
-                        type="button"
-                        onClick={() => setBankOpen((v) => !v)}
-                        className={`w-full flex items-center justify-between px-4 py-3.5 transition-colors ${hasBankContent ? "hover:bg-emerald-50/50" : "hover:bg-slate-50 bg-slate-50/50"}`}
-                      >
-                        {hasBankContent ? (
-                          <span className="flex items-center gap-2">
-                            <Check className="w-4 h-4 text-emerald-500 shrink-0" />
-                            <span className="text-sm font-semibold text-slate-700">Bank details added</span>
-                          </span>
-                        ) : (
-                          <div className="flex items-center gap-2">
-                            <span className="text-sm font-semibold text-slate-700">Bank Account Details</span>
-                            {!bankSkipped && <span className="inline-block w-1.5 h-1.5 rounded-full bg-amber-400 align-middle" aria-label="required" />}
-                            <span className="hidden sm:inline text-xs text-slate-400 ml-1">For referral payment</span>
-                          </div>
-                        )}
-                        <ChevronDown className={`w-4 h-4 transition-transform shrink-0 ${hasBankContent ? "text-emerald-500" : "text-slate-400"} ${bankOpen ? "rotate-180" : ""}`} />
-                      </button>
-                      {bankOpen && (
-                        <div className={`px-4 pb-4 pt-1 space-y-3 border-t ${hasBankContent ? "border-emerald-100 bg-emerald-50/20" : "border-slate-100"}`}>
-                          <BankAccountInput
-                            bankName={form.doctor_bank_name}
-                            bankCode={bankCode}
-                            accountNumber={form.doctor_account_number}
-                            accountName={form.doctor_account_name}
-                            onBankChange={(name, code) => { set("doctor_bank_name", name); setBankCode(code); setBankVerified(false); }}
-                            onAccountNumberChange={(v) => { set("doctor_account_number", v); setBankVerified(false); }}
-                            onAccountNameChange={(v) => set("doctor_account_name", v)}
-                            onVerifiedChange={setBankVerified}
-                            bankError={errors.doctor_bank_name}
-                            accountNumberError={errors.doctor_account_number}
-                            accountNameError={errors.doctor_account_name}
-                          />
-                          {!hasBankContent && (
-                            <div className="pt-1 border-t border-slate-100">
-                              <button
-                                type="button"
-                                onClick={() => {
-                                  setBankSkipped(true);
-                                  set("doctor_bank_name", "");
-                                  set("doctor_account_number", "");
-                                  set("doctor_account_name", "");
-                                }}
-                                className="text-xs text-slate-400 hover:text-slate-600 transition-colors underline underline-offset-2"
-                              >
-                                Skip — I'll settle payment another way
-                              </button>
-                            </div>
-                          )}
-                        </div>
-                      )}
-                    </div>
-                  );
-                })()}
-              </div>
             )}
           </div>
           );
@@ -1670,10 +1752,12 @@ export function DoctorRequestForm() {
           </Button>
         )}
         {step < 5 ? (
-          <Button onClick={handleNext} type="button" className="shrink-0 ml-auto">
-            {step === 4 && !form.schedule ? "Skip & Continue" : "Continue"}
-            <ChevronRight className="w-4 h-4" />
-          </Button>
+          stepValid ? (
+            <Button onClick={handleNext} type="button" className="shrink-0 ml-auto">
+              {step === 4 && !form.schedule ? "Skip & Continue" : "Continue"}
+              <ChevronRight className="w-4 h-4" />
+            </Button>
+          ) : null
         ) : (
           <Button
             onClick={handleSubmit}
