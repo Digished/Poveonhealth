@@ -1031,6 +1031,7 @@ export function DoctorRequestForm() {
     return (
       <SuccessScreen
         code={result.code!}
+        requestId={result.requestId}
         labName={result.lab?.name ?? ""}
         labAddress={result.lab?.address ?? ""}
         labPhones={result.lab?.phones ?? []}

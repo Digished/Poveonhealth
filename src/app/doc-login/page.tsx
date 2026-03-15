@@ -3,12 +3,14 @@
 import { useState, useRef, useEffect } from "react";
 import { FlaskConical, Mail, KeyRound, ArrowRight, RefreshCw, ChevronLeft } from "lucide-react";
 import { PoveonLogo } from "@/components/PoveonLogo";
-import { useRouter } from "next/navigation";
+import { useRouter, useSearchParams } from "next/navigation";
 
 type Stage = "email" | "otp";
 
 export default function DocLoginPage() {
   const router = useRouter();
+  const searchParams = useSearchParams();
+  const editId = searchParams.get("edit");
   const [stage, setStage] = useState<Stage>("email");
   const [email, setEmail] = useState("");
   const [otp, setOtp] = useState(["", "", "", "", "", ""]);
@@ -109,7 +111,10 @@ export default function DocLoginPage() {
       });
       const data = await res.json();
       if (!res.ok) { setError(data.error ?? "Invalid code."); return; }
-      router.replace("/doc-login/dashboard");
+      const destination = editId
+        ? `/doc-login/dashboard?edit=${editId}`
+        : "/doc-login/dashboard";
+      router.replace(destination);
     } catch {
       setError("Network error. Please try again.");
     } finally {
