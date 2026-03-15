@@ -135,6 +135,7 @@ export interface CreateRequestPayload {
 export interface CreateRequestResponse {
   success: boolean;
   code?: string;
+  requestId?: string;
   lab?: Pick<Lab, "name" | "address" | "phones">;
   error?: string;
 }
