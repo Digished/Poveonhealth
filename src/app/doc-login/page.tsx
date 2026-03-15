@@ -1,13 +1,13 @@
 "use client";
 
-import { useState, useRef, useEffect } from "react";
+import { useState, useRef, useEffect, Suspense } from "react";
 import { FlaskConical, Mail, KeyRound, ArrowRight, RefreshCw, ChevronLeft } from "lucide-react";
 import { PoveonLogo } from "@/components/PoveonLogo";
 import { useRouter, useSearchParams } from "next/navigation";
 
 type Stage = "email" | "otp";
 
-export default function DocLoginPage() {
+function DocLoginInner() {
   const router = useRouter();
   const searchParams = useSearchParams();
   const editId = searchParams.get("edit");
@@ -253,5 +253,13 @@ export default function DocLoginPage() {
         </p>
       </div>
     </div>
+  );
+}
+
+export default function DocLoginPage() {
+  return (
+    <Suspense>
+      <DocLoginInner />
+    </Suspense>
   );
 }

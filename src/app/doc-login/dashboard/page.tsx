@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, Suspense } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import {
   FlaskConical, LogOut, RefreshCw, Building2, User,
@@ -656,7 +656,7 @@ function RequestCard({
   );
 }
 
-export default function DocDashboardPage() {
+function DocDashboardInner() {
   const router = useRouter();
   const searchParams = useSearchParams();
   const editIdFromUrl = searchParams.get("edit");
@@ -843,5 +843,13 @@ export default function DocDashboardPage() {
         <span>© {new Date().getFullYear()} Poveon. All rights reserved.</span>
       </div>
     </div>
+  );
+}
+
+export default function DocDashboardPage() {
+  return (
+    <Suspense>
+      <DocDashboardInner />
+    </Suspense>
   );
 }
