@@ -877,7 +877,7 @@ function CustomEmailSection() {
         </div>
         <p className="text-xs text-slate-600 leading-relaxed mb-3">
           When a lab has a <code className="bg-white/70 px-1 rounded font-mono">notification_email</code> configured
-          (e.g. <code className="bg-white/70 px-1 rounded font-mono">no-reply@foremostlab.com</code>),
+          (e.g. <code className="bg-white/70 px-1 rounded font-mono">no-reply@apexdiagnostics.com</code>),
           every email in the flow — including LIMS-triggered results — goes out from that address under the lab&apos;s name.
           Recipients see the lab&apos;s brand, not Poveon&apos;s.
         </p>
@@ -915,7 +915,7 @@ function CustomEmailSection() {
           {[
             "Unverified addresses will cause email delivery to silently fail.",
             "Each lab can have one notification_email configured.",
-            "The domain (e.g. foremostlab.com) must be verified — not just the address.",
+            "The domain (e.g. apexdiagnostics.com) must be verified — not just the address.",
           ].map((note, i) => (
             <li key={i} className="text-xs text-amber-800 flex gap-2">
               <span className="flex-shrink-0 mt-0.5">•</span>
@@ -934,7 +934,7 @@ function CustomEmailSection() {
         </div>
         <div className="rounded-xl border border-emerald-200 bg-emerald-50 p-3">
           <p className="text-xs font-semibold text-emerald-700 mb-2">With custom email configured</p>
-          <pre className="text-xs font-mono text-emerald-800 whitespace-pre-wrap">From: Foremost Lab &lt;no-reply@foremostlab.com&gt;</pre>
+          <pre className="text-xs font-mono text-emerald-800 whitespace-pre-wrap">From: Apex Diagnostics &lt;no-reply@apexdiagnostics.com&gt;</pre>
         </div>
       </div>
     </div>
