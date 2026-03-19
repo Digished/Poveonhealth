@@ -148,6 +148,7 @@ console.log(data.code); // e.g. "CDL-A3X9B1"`,
           {
             success: true,
             code: "CDL-A3X9B1",
+            requestId: "uuid-of-new-request",
             lab: {
               name: "Central Diagnostics Lab",
               address: "12 Hospital Rd, Lagos",
@@ -158,6 +159,7 @@ console.log(data.code); // e.g. "CDL-A3X9B1"`,
         ),
         notes: [
           "The `code` returned is unique per lab and should be given to the patient.",
+          "Store `requestId` from this response — it is required later when calling `/api/requests/send-results`.",
           "If `patient_email` is provided, a separate email is sent to the patient with their code.",
           "The `schedule` field helps the lab plan resources — accepted values: `today`, `this_week`, `this_month`, `not_sure`.",
           "Email failures are logged but never block the response.",
@@ -330,17 +332,25 @@ console.log(data.request);`,
           { name: "requestId", type: "UUID", required: true, description: "The request's unique ID" },
           { name: "status", type: '"seen" | "done"', required: true, description: "Target status" },
         ],
-        requestExample: `# curl
+        requestExample: `# curl — API key (LIMS integration)
+curl -X POST https://poveon.com/api/requests/update-status \\
+  -H "Content-Type: application/json" \\
+  -H "X-Poveon-Api-Key: pvn_live_xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx" \\
+  -d '{ "requestId": "uuid-of-request", "status": "done" }'
+
+# curl — session cookie (portal login)
 curl -X POST https://poveon.com/api/requests/update-status \\
   -H "Content-Type: application/json" \\
   -H "Cookie: sb-access-token=<your-session-token>" \\
   -d '{ "requestId": "uuid-of-request", "status": "done" }'
 
-# JavaScript (fetch)
+# JavaScript (fetch) — LIMS server-side
 const res = await fetch("https://poveon.com/api/requests/update-status", {
   method: "POST",
-  headers: { "Content-Type": "application/json" },
-  credentials: "include",
+  headers: {
+    "Content-Type": "application/json",
+    "X-Poveon-Api-Key": process.env.POVEON_API_KEY,
+  },
   body: JSON.stringify({ requestId: "uuid-of-request", status: "done" }),
 });
 const data = await res.json(); // { success: true, status: "done" }`,
@@ -366,29 +376,35 @@ const data = await res.json(); // { success: true, status: "done" }`,
           { name: "note", type: "string", required: false, description: "Optional note included in the email" },
           { name: "patientEmail", type: "string (email)", required: false, description: "Override patient email for this delivery" },
         ],
-        requestExample: `# curl — sending a PDF file
+        requestExample: `# curl — API key + PDF file (LIMS integration)
 curl -X POST https://poveon.com/api/requests/send-results \\
-  -H "Cookie: sb-access-token=<your-session-token>" \\
+  -H "X-Poveon-Api-Key: pvn_live_xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx" \\
   -F "requestId=uuid-of-request" \\
   -F "resultFiles=@/path/to/results.pdf" \\
   -F "note=All tests completed. Please review the attached PDF."
 
-# curl — sending a result link instead
+# curl — API key + result link
 curl -X POST https://poveon.com/api/requests/send-results \\
-  -H "Cookie: sb-access-token=<your-session-token>" \\
+  -H "X-Poveon-Api-Key: pvn_live_xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx" \\
   -F "requestId=uuid-of-request" \\
   -F "resultLink=https://your-lims.com/results/abc123"
 
-# JavaScript (fetch) — multipart/form-data
+# curl — session cookie (portal login)
+curl -X POST https://poveon.com/api/requests/send-results \\
+  -H "Cookie: sb-access-token=<your-session-token>" \\
+  -F "requestId=uuid-of-request" \\
+  -F "resultFiles=@/path/to/results.pdf"
+
+# JavaScript (fetch) — LIMS server-side with API key
 const form = new FormData();
 form.append("requestId", "uuid-of-request");
-form.append("resultFiles", pdfFileObject); // a File object
+form.append("resultFiles", pdfFileObject); // a File/Blob object
 form.append("note", "Results attached.");
 
 const res = await fetch("https://poveon.com/api/requests/send-results", {
   method: "POST",
-  credentials: "include",
-  body: form, // do NOT set Content-Type manually — browser sets it with boundary
+  headers: { "X-Poveon-Api-Key": process.env.POVEON_API_KEY },
+  body: form, // do NOT set Content-Type manually — fetch sets it with boundary
 });
 const data = await res.json();`,
         responseExample: JSON.stringify({ success: true, status: "done" }, null, 2),
@@ -843,6 +859,88 @@ function EndpointCard({ endpoint }: { endpoint: Endpoint }) {
   );
 }
 
+function CustomEmailSection() {
+  return (
+    <div className="glass-card p-5 sm:p-6">
+      <h2 className="text-lg font-bold text-slate-800 mb-1">Custom Lab Email Branding</h2>
+      <p className="text-sm text-slate-500 mb-4">
+        By default, all system emails — order confirmations, patient tracking codes, and result
+        deliveries — are sent from Poveon&apos;s address (<code className="text-xs bg-slate-100 px-1 rounded">notifications@poveon.com</code>).
+        Labs can optionally have these emails sent from their own address instead.
+      </p>
+
+      {/* How it works */}
+      <div className="mb-5 rounded-2xl border border-emerald-200 bg-emerald-50 p-4">
+        <div className="flex items-center gap-2 mb-2">
+          <span className="text-lg">✉️</span>
+          <span className="font-bold text-sm text-emerald-800">How It Works</span>
+        </div>
+        <p className="text-xs text-slate-600 leading-relaxed mb-3">
+          When a lab has a <code className="bg-white/70 px-1 rounded font-mono">notification_email</code> configured
+          (e.g. <code className="bg-white/70 px-1 rounded font-mono">no-reply@foremostlab.com</code>),
+          every email in the flow — including LIMS-triggered results — goes out from that address under the lab&apos;s name.
+          Recipients see the lab&apos;s brand, not Poveon&apos;s.
+        </p>
+        <div className="grid gap-2 sm:grid-cols-2">
+          {[
+            { icon: "📝", label: "Order confirmation", desc: "Sent to doctor when a request is created" },
+            { icon: "🔑", label: "Patient tracking code", desc: "Sent to patient if email was provided at creation" },
+            { icon: "👁", label: "Patient arrived notice", desc: "Sent to doctor when lab retrieves the order" },
+            { icon: "📄", label: "Results delivery", desc: "Sent to doctor and patient when lab sends results" },
+          ].map((item) => (
+            <div key={item.label} className="flex gap-2 p-2.5 bg-white/60 rounded-xl border border-white/80">
+              <span className="flex-shrink-0">{item.icon}</span>
+              <div>
+                <p className="text-xs font-semibold text-slate-700">{item.label}</p>
+                <p className="text-xs text-slate-500">{item.desc}</p>
+              </div>
+            </div>
+          ))}
+        </div>
+      </div>
+
+      {/* Activation callout */}
+      <div className="rounded-2xl border border-amber-200 bg-amber-50 p-4 mb-5">
+        <div className="flex items-center gap-2 mb-2">
+          <span className="text-lg">⚠️</span>
+          <span className="font-bold text-sm text-amber-800">Activation Required</span>
+        </div>
+        <p className="text-xs text-slate-700 leading-relaxed">
+          Custom lab email addresses must be <strong>verified in Resend</strong> before they can be used.
+          This is a one-time setup done by the Poveon team — labs cannot self-serve this step.
+          Contact <a href="mailto:support@poveon.com" className="text-medical-600 hover:underline">support@poveon.com</a> with
+          your desired sending address to get onboarded.
+        </p>
+        <ul className="mt-3 space-y-1">
+          {[
+            "Unverified addresses will cause email delivery to silently fail.",
+            "Each lab can have one notification_email configured.",
+            "The domain (e.g. foremostlab.com) must be verified — not just the address.",
+          ].map((note, i) => (
+            <li key={i} className="text-xs text-amber-800 flex gap-2">
+              <span className="flex-shrink-0 mt-0.5">•</span>
+              <span>{note}</span>
+            </li>
+          ))}
+        </ul>
+      </div>
+
+      {/* Before/after visual */}
+      <p className="text-xs font-semibold text-slate-500 uppercase tracking-wider mb-3">From Address — Before vs. After</p>
+      <div className="grid gap-3 sm:grid-cols-2">
+        <div className="rounded-xl border border-slate-200 bg-slate-50 p-3">
+          <p className="text-xs font-semibold text-slate-500 mb-2">Default (no custom email set)</p>
+          <pre className="text-xs font-mono text-slate-700 whitespace-pre-wrap">From: Poveon &lt;notifications@poveon.com&gt;</pre>
+        </div>
+        <div className="rounded-xl border border-emerald-200 bg-emerald-50 p-3">
+          <p className="text-xs font-semibold text-emerald-700 mb-2">With custom email configured</p>
+          <pre className="text-xs font-mono text-emerald-800 whitespace-pre-wrap">From: Foremost Lab &lt;no-reply@foremostlab.com&gt;</pre>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 function StatusFlow() {
   return (
     <div className="glass-card p-5 sm:p-6">
@@ -1008,6 +1106,7 @@ function ErrorCodes() {
     { code: "401", label: "Unauthorized", desc: "No valid session cookie or X-Poveon-Api-Key header present, or key is expired/revoked" },
     { code: "403", label: "Forbidden", desc: "Authenticated but insufficient permissions (e.g. member role lacks the required permission)" },
     { code: "404", label: "Not Found", desc: "Resource does not exist" },
+    { code: "429", label: "Too Many Requests", desc: "Rate limit exceeded (e.g. 20 requests per doctor email per hour on /api/requests/create)" },
     { code: "500", label: "Server Error", desc: "Unexpected internal error" },
   ];
   const errorExample = JSON.stringify(
@@ -1140,7 +1239,7 @@ export default function ApiDocsClient() {
               { label: "Base URL", value: BASE_URL },
               { label: "Protocol", value: "HTTPS only" },
               { label: "Format", value: "JSON / FormData" },
-              { label: "Auth", value: "Cookie-based" },
+              { label: "Auth", value: "Cookie / API Key" },
             ].map((item) => (
               <div key={item.label} className="flex items-center gap-2 bg-white/80 border border-white/60 rounded-xl px-3 py-2 text-sm shadow-sm">
                 <span className="font-semibold text-slate-700">{item.label}:</span>
@@ -1160,6 +1259,7 @@ export default function ApiDocsClient() {
                 {[
                   { id: "overview", label: "Overview", icon: "📋" },
                   { id: "auth-section", label: "Authentication", icon: "🔑" },
+                  { id: "custom-email", label: "Custom Lab Email", icon: "✉️" },
                   { id: "status-flow", label: "Status Workflow", icon: "🔄" },
                   ...sections.map((s) => ({ id: s.id, label: s.label, icon: s.icon })),
                   { id: "errors", label: "Status Codes", icon: "⚠️" },
@@ -1215,6 +1315,11 @@ export default function ApiDocsClient() {
             {/* Auth */}
             <section id="auth-section">
               <AuthSection />
+            </section>
+
+            {/* Custom lab email */}
+            <section id="custom-email">
+              <CustomEmailSection />
             </section>
 
             {/* Status workflow */}
