@@ -7,7 +7,7 @@ import {
   FlaskConical, User, MapPin, Phone, Stethoscope,
   TestTube2, ChevronRight, ChevronLeft, Building2, Check,
   Search, X, PhoneCall, RefreshCw, ChevronDown, Mail,
-  Award, Info, Layers, CalendarDays, Clock, Pencil,
+  Award, Info, Layers, CalendarDays, Clock, Pencil, Camera,
 } from "lucide-react";
 
 function MarsIcon({ className }: { className?: string }) {
@@ -321,11 +321,10 @@ function PrefixSelect({
 
 
 const STEPS = [
-  { title: "Laboratory", icon: Building2 },
-  { title: "Patient", icon: User },
-  { title: "Referrer", icon: Stethoscope },
-  { title: "Schedule", icon: CalendarDays },
-  { title: "Tests", icon: TestTube2 },
+  { title: "Location", icon: Building2 },
+  { title: "Clinical", icon: TestTube2 },
+  { title: "Referral", icon: Stethoscope },
+  { title: "Details", icon: User },
 ];
 
 const SCHEDULE_OPTIONS = [
@@ -819,16 +818,27 @@ function LearnMoreModal({ onClose }: { onClose: () => void }) {
   );
 }
 
+interface Branch {
+  id: string;
+  name: string;
+  address: string;
+  phones: string[];
+  is_main: boolean;
+}
+
 export function DoctorRequestForm({
   preselectedLabId,
   preselectedLabName,
+  branches = [],
 }: {
   preselectedLabId?: string;
   preselectedLabName?: string;
+  branches?: Branch[];
 } = {}) {
-  // If a lab is preselected, start at step 2 and skip step 1 entirely
   const labPreselected = !!preselectedLabId;
-  const [step, setStep] = useState(labPreselected ? 2 : 1);
+  const hasBranches = branches.length > 0;
+  const startStep = !labPreselected ? 1 : hasBranches ? 1 : 2;
+  const [step, setStep] = useState(startStep);
   const [form, setForm] = useState<FormData>(() => ({
     ...INITIAL,
     lab_id: preselectedLabId ?? "",
@@ -850,7 +860,9 @@ export function DoctorRequestForm({
   const [savedProfile, setSavedProfile] = useState<{ prefix: string; name: string; email: string; phone: string; hospital: string; bankName: string; bankCode: string; accountNumber: string; accountName: string } | null>(null);
   const [bankCode, setBankCode] = useState("");
   const [bankVerified, setBankVerified] = useState(false);
-  const [maxStep, setMaxStep] = useState(labPreselected ? 2 : 1);
+  const [maxStep, setMaxStep] = useState(startStep);
+  const [clinicalMode, setClinicalMode] = useState<"type" | "picture">("type");
+  const [selectedBranchId, setSelectedBranchId] = useState<string>("");
   // Image upload state
   const [imageUploading, setImageUploading] = useState(false);
   const [testImageUrl, setTestImageUrl] = useState<string | null>(null);
@@ -953,27 +965,28 @@ export function DoctorRequestForm({
 
   function validateStep(s: number): boolean {
     const errs: Partial<FormData> = {};
-    // Skip lab validation when a lab has been preselected via props
-    if (s === 1 && !labPreselected && !form.lab_id) errs.lab_id = "Please select a laboratory";
+    if (s === 1) {
+      if (!labPreselected && !form.lab_id) errs.lab_id = "Please select a laboratory";
+      if (labPreselected && hasBranches && !selectedBranchId) errs.lab_id = "Please select a branch";
+    }
     if (s === 2) {
-      if (!form.patient_name.trim()) errs.patient_name = "Required";
-      if (!form.dob) errs.dob = "Required";
-      if (!form.sex) errs.sex = "Required";
+      if (!form.patient_phone) errs.patient_phone = "Required";
       if (form.patient_email && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(form.patient_email))
         errs.patient_email = "Invalid email";
+      if (clinicalMode === "type") {
+        if (!form.diagnosis.trim()) errs.diagnosis = "Required";
+        if (!form.tests.trim()) errs.tests = "Required";
+      }
+      if (clinicalMode === "picture" && !testImageUrl) {
+        setImageUploadError("Please upload a test request image");
+      }
     }
     if (s === 3) {
       if (!form.doctor_name.trim()) errs.doctor_name = "Required";
       if (!form.doctor_email.trim()) errs.doctor_email = "Required";
       else if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(form.doctor_email))
         errs.doctor_email = "Invalid email";
-      if (!bankSkipped) {
-        if (!form.doctor_bank_name.trim()) errs.doctor_bank_name = "Required";
-        if (!form.doctor_account_number.trim()) errs.doctor_account_number = "Required";
-        if (!form.doctor_account_name.trim()) errs.doctor_account_name = "Required";
-      }
     }
-    if (s === 5 && !form.tests.trim()) errs.tests = "Required";
     setErrors(errs);
     return Object.keys(errs).length === 0;
   }
@@ -996,9 +1009,8 @@ export function DoctorRequestForm({
 
   function handleNext() {
     if (validateStep(step)) {
-      // Persist profile as soon as the user leaves Step 3
       if (step === 3) persistDoctorProfile();
-      const next = Math.min(5, step + 1);
+      const next = Math.min(4, step + 1);
       setStep(next);
       setMaxStep((m) => Math.max(m, next));
       document.querySelector("main")?.scrollTo({ top: 0, behavior: "smooth" });
@@ -1020,13 +1032,12 @@ export function DoctorRequestForm({
 
   function handleBack() {
     setErrors({});
-    // When a lab is preselected, step 1 is hidden — don't go below step 2
-    setStep((s) => Math.max(labPreselected ? 2 : 1, s - 1));
+    const minStep = (!labPreselected || hasBranches) ? 1 : 2;
+    setStep((s) => Math.max(minStep, s - 1));
     window.scrollTo({ top: 0, behavior: "smooth" });
   }
 
   async function handleSubmit() {
-    if (!validateStep(4)) return;
     setSubmitting(true);
     try {
       const res = await fetch("/api/requests/create", {
@@ -1034,10 +1045,12 @@ export function DoctorRequestForm({
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           ...form,
+          tests: clinicalMode === "picture" ? (form.tests || "See attached image") : form.tests,
           test_image_url: testImageUrl ?? undefined,
           is_critical: isCritical,
           needs_ambulance: needsAmbulance,
           ambulance_notes: ambulanceNotes || undefined,
+          branch_id: selectedBranchId || undefined,
         }),
       });
       const data: CreateRequestResponse = await res.json();
@@ -1065,8 +1078,10 @@ export function DoctorRequestForm({
         onReset={() => {
           setResult(null);
           setForm({ ...INITIAL, lab_id: preselectedLabId ?? "" });
-          setStep(labPreselected ? 2 : 1);
-          setMaxStep(labPreselected ? 2 : 1);
+          setStep(startStep);
+          setMaxStep(startStep);
+          setSelectedBranchId("");
+          setClinicalMode("type");
           setTestImageUrl(null);
           setImageUploadError(null);
           setIsCritical(false);
@@ -1081,31 +1096,26 @@ export function DoctorRequestForm({
   const selectedLab = labs.find((l) => l.id === form.lab_id);
 
   // Reactively compute whether the current step's required fields are satisfied.
-  // The Continue button is hidden until this is true so the user always sees a
-  // clear goal: fill the fields, then the button appears.
   const stepValid = (() => {
-    if (step === 1) return !!form.lab_id;
+    if (step === 1) {
+      if (!labPreselected) return !!form.lab_id;
+      if (hasBranches) return !!selectedBranchId;
+      return true; // Lab URL, no branches: just confirmation
+    }
     if (step === 2) {
-      return (
-        form.patient_name.trim().length > 0 &&
-        !!form.dob &&
-        !!form.sex &&
-        (!form.patient_email || /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(form.patient_email))
-      );
+      const phoneOk = !!form.patient_phone;
+      const emailOk = !form.patient_email || /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(form.patient_email);
+      if (clinicalMode === "picture") return phoneOk && emailOk && !!testImageUrl;
+      return phoneOk && emailOk && form.diagnosis.trim().length > 0 && form.tests.trim().length > 0;
     }
     if (step === 3) {
-      const nameOk = form.doctor_name.trim().length > 0;
-      const emailOk =
+      return (
+        form.doctor_name.trim().length > 0 &&
         form.doctor_email.trim().length > 0 &&
-        /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(form.doctor_email);
-      const bankOk =
-        bankSkipped ||
-        (form.doctor_bank_name.trim().length > 0 &&
-          form.doctor_account_number.trim().length > 0 &&
-          form.doctor_account_name.trim().length > 0);
-      return nameOk && emailOk && bankOk;
+        /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(form.doctor_email)
+      );
     }
-    return true; // step 4 (schedule) is always skippable; step 5 uses submit
+    return true; // step 4 optional
   })();
 
   return (
@@ -1276,274 +1286,292 @@ export function DoctorRequestForm({
         }}
       >
 
-        {/* Step 1: Choose Lab */}
+        {/* Step 1: Choose Lab / Branch */}
         {step === 1 && (
           <div className="space-y-5">
-            <h2 className="flex items-center gap-2 text-base font-semibold text-slate-700 pb-3 border-b border-slate-100">
-              <Building2 className="w-4 h-4 text-medical-600" />
-              Select Laboratory
-            </h2>
-            <LabSearch
-              labs={labs}
-              loading={labsLoading}
-              value={form.lab_id}
-              onChange={(id) => set("lab_id", id)}
-              error={errors.lab_id}
-              onRefresh={fetchLabs}
-            />
-            {selectedLab && (
-              <div className="rounded-2xl border border-medical-100 overflow-hidden">
-                {/* Lab identity row */}
-                <div className="bg-medical-50 px-4 pt-4 pb-3 flex items-start gap-3">
-                  {selectedLab.logo_url ? (
-                    <img src={selectedLab.logo_url} alt={selectedLab.name} className="w-10 h-10 rounded-xl object-cover shrink-0 shadow-sm" />
-                  ) : (
-                    <div className="w-10 h-10 rounded-xl bg-medical-100 flex items-center justify-center shrink-0">
-                      <Building2 className="w-5 h-5 text-medical-600" />
+            {/* Generic URL: lab search — unchanged */}
+            {!labPreselected && (
+              <>
+                <h2 className="flex items-center gap-2 text-base font-semibold text-slate-700 pb-3 border-b border-slate-100">
+                  <Building2 className="w-4 h-4 text-medical-600" />
+                  Select Laboratory
+                </h2>
+                <LabSearch
+                  labs={labs}
+                  loading={labsLoading}
+                  value={form.lab_id}
+                  onChange={(id) => set("lab_id", id)}
+                  error={errors.lab_id}
+                  onRefresh={fetchLabs}
+                />
+                {selectedLab && (
+                  <div className="rounded-2xl border border-medical-100 overflow-hidden">
+                    <div className="bg-medical-50 px-4 pt-4 pb-3 flex items-start gap-3">
+                      {selectedLab.logo_url ? (
+                        <img src={selectedLab.logo_url} alt={selectedLab.name} className="w-10 h-10 rounded-xl object-cover shrink-0 shadow-sm" />
+                      ) : (
+                        <div className="w-10 h-10 rounded-xl bg-medical-100 flex items-center justify-center shrink-0">
+                          <Building2 className="w-5 h-5 text-medical-600" />
+                        </div>
+                      )}
+                      <div className="min-w-0">
+                        <p className="text-sm font-bold text-medical-900 leading-tight">{selectedLab.name}</p>
+                        {selectedLab.address && (
+                          <p className="text-xs text-medical-600 flex items-start gap-1 mt-1">
+                            <MapPin className="w-3 h-3 mt-0.5 shrink-0" />{selectedLab.address}
+                          </p>
+                        )}
+                        <button
+                          type="button"
+                          onClick={() => setLabDetailsOpen(true)}
+                          className="mt-1.5 text-xs text-medical-600 hover:text-medical-800 underline underline-offset-2 font-medium"
+                        >
+                          View details
+                        </button>
+                      </div>
                     </div>
-                  )}
-                  <div className="min-w-0">
-                    <p className="text-sm font-bold text-medical-900 leading-tight">{selectedLab.name}</p>
-                    {selectedLab.address && (
-                      <p className="text-xs text-medical-600 flex items-start gap-1 mt-1">
-                        <MapPin className="w-3 h-3 mt-0.5 shrink-0" />{selectedLab.address}
-                      </p>
-                    )}
-                    <button
-                      type="button"
-                      onClick={() => setLabDetailsOpen(true)}
-                      className="mt-1.5 text-xs text-medical-600 hover:text-medical-800 underline underline-offset-2 font-medium"
-                    >
-                      View details
-                    </button>
                   </div>
+                )}
+              </>
+            )}
+
+            {/* Lab-specific URL with branches: branch selection */}
+            {labPreselected && hasBranches && (
+              <div className="space-y-4">
+                <h2 className="flex items-center gap-2 text-base font-semibold text-slate-700 pb-3 border-b border-slate-100">
+                  <MapPin className="w-4 h-4 text-medical-600" />
+                  Select Branch / Location
+                </h2>
+                <p className="text-sm text-slate-500">Choose the {preselectedLabName} branch you are sending this request to.</p>
+                <div className="space-y-3">
+                  {branches.map((branch) => {
+                    const phones = branch.phones as string[];
+                    const selected = selectedBranchId === branch.id;
+                    return (
+                      <button
+                        key={branch.id}
+                        type="button"
+                        onClick={() => setSelectedBranchId(branch.id)}
+                        className={`w-full flex items-start gap-3 p-4 rounded-2xl border-2 text-left transition-all ${
+                          selected
+                            ? "border-medical-400 bg-medical-50 ring-2 ring-medical-200"
+                            : "border-slate-200 bg-white/60 hover:border-slate-300 hover:bg-slate-50"
+                        }`}
+                      >
+                        <div className={`mt-0.5 w-4 h-4 rounded-full border-2 flex items-center justify-center shrink-0 transition-all ${selected ? "border-medical-500 bg-medical-500" : "border-slate-300"}`}>
+                          {selected && <div className="w-2 h-2 rounded-full bg-white" />}
+                        </div>
+                        <div className="min-w-0 flex-1">
+                          <p className={`text-sm font-semibold leading-tight ${selected ? "text-medical-800" : "text-slate-700"}`}>
+                            {branch.name}
+                            {branch.is_main && <span className="ml-2 text-xs bg-medical-100 text-medical-700 px-2 py-0.5 rounded-full font-medium">Main</span>}
+                          </p>
+                          {branch.address && (
+                            <p className="text-xs text-slate-400 flex items-start gap-1 mt-1">
+                              <MapPin className="w-3 h-3 shrink-0 mt-0.5" />
+                              {branch.address}
+                            </p>
+                          )}
+                          {phones.length > 0 && (
+                            <p className="text-xs text-slate-400 flex items-center gap-1 mt-0.5">
+                              <Phone className="w-3 h-3 shrink-0" />
+                              {phones[0]}{phones.length > 1 ? ` +${phones.length - 1} more` : ""}
+                            </p>
+                          )}
+                        </div>
+                      </button>
+                    );
+                  })}
+                </div>
+                {errors.lab_id && <p className="text-xs text-red-600 font-medium">{errors.lab_id}</p>}
+              </div>
+            )}
+
+            {/* Lab-specific URL, no branches: lab confirmation */}
+            {labPreselected && !hasBranches && (
+              <div className="space-y-4">
+                <h2 className="flex items-center gap-2 text-base font-semibold text-slate-700 pb-3 border-b border-slate-100">
+                  <Building2 className="w-4 h-4 text-medical-600" />
+                  Submit a Lab Request
+                </h2>
+                <div className="rounded-2xl border border-medical-100 bg-medical-50/40 px-5 py-4 space-y-2">
+                  <p className="text-sm font-semibold text-slate-800">{preselectedLabName}</p>
+                  <p className="text-xs text-slate-500 leading-relaxed">
+                    You are about to send a lab test request directly to this laboratory. Fill in the required details and your request will be delivered instantly.
+                  </p>
+                </div>
+                <div className="flex items-start gap-3 bg-sky-50 border border-sky-200 rounded-xl px-4 py-3">
+                  <Info className="w-4 h-4 text-sky-500 shrink-0 mt-0.5" />
+                  <p className="text-xs text-sky-800 leading-relaxed">
+                    Only the patient contact and clinical details are required — everything else is optional and can be filled in the last step.
+                  </p>
                 </div>
               </div>
             )}
           </div>
         )}
 
-        {/* Step 2: Patient Information — progressive disclosure */}
-        {step === 2 && (() => {
-          // Sub-step visibility: each field reveals the next
-          const showDobSex = form.patient_name.trim().length > 0;
-          const showEmail = showDobSex && !!form.dob && !!form.sex;
-          const showContact = showEmail;
+        {/* Step 2: Clinical Details */}
+        {step === 2 && (
+          <div className="space-y-5">
+            <h2 className="flex items-center gap-2 text-base font-semibold text-slate-700 pb-3 border-b border-slate-100">
+              <TestTube2 className="w-4 h-4 text-medical-600" />
+              Clinical Details
+            </h2>
 
-          // Sub-step indicator: 1 = Name, 2 = DOB/Sex, 3 = Email, 4 = Contact
-          const patientSubStep = !showDobSex ? 1 : !showEmail ? 2 : !showContact ? 3 : 4;
-          const patientTotalSteps = 4;
+            {/* Mode toggle */}
+            <div className="flex gap-2 p-1 bg-slate-100 rounded-2xl">
+              <button
+                type="button"
+                onClick={() => setClinicalMode("type")}
+                className={`flex-1 flex items-center justify-center gap-2 py-2.5 px-3 rounded-xl text-sm font-semibold transition-all ${
+                  clinicalMode === "type"
+                    ? "bg-white shadow text-slate-800"
+                    : "text-slate-500 hover:text-slate-700"
+                }`}
+              >
+                <Stethoscope className="w-4 h-4" />
+                Type Details
+              </button>
+              <button
+                type="button"
+                onClick={() => setClinicalMode("picture")}
+                className={`flex-1 flex items-center justify-center gap-2 py-2.5 px-3 rounded-xl text-sm font-semibold transition-all ${
+                  clinicalMode === "picture"
+                    ? "bg-white shadow text-slate-800"
+                    : "text-slate-500 hover:text-slate-700"
+                }`}
+              >
+                <Camera className="w-4 h-4" />
+                Upload Image
+              </button>
+            </div>
 
-          return (
-            <div className="space-y-5">
-              <div className="sticky top-36 z-[5] -mx-6 px-6 pt-2 bg-white/95 backdrop-blur-sm">
-              <div className="flex items-center justify-between pb-3 border-b border-slate-100">
-                <h2 className="flex items-center gap-2 text-base font-semibold text-slate-700">
-                  <User className="w-4 h-4 text-medical-600" />
-                  Patient Information
-                </h2>
-                {/* Sub-step dots */}
-                <div className="flex shrink-0 items-center gap-1.5">
-                  {Array.from({ length: patientTotalSteps }).map((_, i) => (
-                    <div
-                      key={i}
-                      className={`shrink-0 rounded-full transition-all duration-300 ${
-                        i < patientSubStep - 1
-                          ? "w-2.5 h-2.5 bg-medical-500"
-                          : i === patientSubStep - 1
-                          ? "w-3.5 h-3.5 bg-medical-400 ring-2 ring-medical-200 ring-offset-1"
-                          : "w-2 h-2 bg-slate-200"
-                      }`}
-                    />
-                  ))}
-                </div>
-              </div>
-              </div>
-
-              {/* Sub-step 1: Name */}
-              <Input
-                label="Patient Full Name"
+            {/* Patient contact — always shown */}
+            <div className="space-y-4">
+              <PhoneInput
+                label="Patient Phone"
                 required
-                placeholder="e.g. Amara Okonkwo"
-                value={form.patient_name}
-                onChange={(e) => set("patient_name", e.target.value)}
-                error={errors.patient_name}
+                value={form.patient_phone}
+                onChange={(v) => set("patient_phone", v)}
+                error={errors.patient_phone}
               />
+              <div className="flex flex-col gap-1">
+                <label htmlFor="patient_email" className="text-sm font-medium text-slate-700 flex items-center gap-2">
+                  Patient Email
+                  <span className="text-xs bg-amber-100 text-amber-700 px-2 py-0.5 rounded-full font-medium">Recommended</span>
+                </label>
+                <Input
+                  id="patient_email"
+                  type="email"
+                  placeholder="patient@example.com"
+                  hint="Patient will receive their request code & results by email"
+                  value={form.patient_email}
+                  onChange={(e) => set("patient_email", e.target.value)}
+                  error={errors.patient_email}
+                />
+              </div>
+            </div>
 
-              {/* Sub-step 2: DOB + Sex — revealed after name */}
-              {showDobSex && (
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 animate-fade-in-up">
-                  <DobInput
-                    required
-                    value={form.dob}
-                    onChange={(iso) => set("dob", iso)}
-                    error={errors.dob}
-                  />
-                  {/* Sex selector */}
-                  <div className="flex flex-col gap-1">
-                    <label className="text-sm font-medium text-slate-700">
-                      Sex<span className="inline-block w-1.5 h-1.5 rounded-full bg-amber-400 ml-1.5 align-middle" aria-label="required" />
-                    </label>
-                    <div className="flex gap-2">
-                      {(["male", "female"] as const).map((s) => (
-                        <button
-                          key={s}
-                          type="button"
-                          onClick={() => set("sex", s)}
-                          className={`flex items-center gap-2 px-4 py-2.5 rounded-xl border-2 transition-all text-sm font-semibold ${
-                            form.sex === s
-                              ? "border-medical-400 bg-medical-50 text-medical-700"
-                              : errors.sex
-                              ? "border-red-300 bg-white/60 text-slate-500 hover:border-slate-300"
-                              : "border-slate-200 bg-white/60 text-slate-500 hover:border-slate-300 hover:bg-slate-50"
-                          }`}
-                        >
-                          {s === "male"
-                            ? <MarsIcon className={`w-4 h-4 ${form.sex === s ? "text-medical-500" : "text-slate-400"}`} />
-                            : <VenusIcon className={`w-4 h-4 ${form.sex === s ? "text-medical-500" : "text-slate-400"}`} />}
-                          {s.charAt(0).toUpperCase() + s.slice(1)}
-                        </button>
-                      ))}
+            {/* Divider */}
+            <div className="border-t border-slate-100" />
+
+            {/* Type mode: diagnosis + tests */}
+            {clinicalMode === "type" && (
+              <div className="space-y-4 animate-fade-in-up">
+                <Textarea
+                  label="Diagnosis / Clinical Notes"
+                  required
+                  placeholder="Brief clinical summary or working diagnosis…"
+                  rows={3}
+                  value={form.diagnosis}
+                  onChange={(e) => set("diagnosis", e.target.value)}
+                  error={errors.diagnosis}
+                />
+                <Textarea
+                  label="Laboratory Tests Requested"
+                  required
+                  placeholder="e.g. FBC, LFT, Serum electrolytes, Fasting glucose, Urinalysis…"
+                  rows={4}
+                  hint="List all tests separated by commas or new lines"
+                  value={form.tests}
+                  onChange={(e) => set("tests", e.target.value)}
+                  error={errors.tests}
+                />
+              </div>
+            )}
+
+            {/* Picture mode: image upload */}
+            {clinicalMode === "picture" && (
+              <div className="space-y-3 animate-fade-in-up">
+                <p className="text-sm text-slate-500">Upload a photo of the physical test request slip — the lab will read it directly.</p>
+                {testImageUrl ? (
+                  <div className="flex items-center gap-3 rounded-xl border border-emerald-200 bg-emerald-50/40 px-4 py-3">
+                    <img src={testImageUrl} alt="Uploaded test request slip" className="w-14 h-14 rounded-lg object-cover border border-emerald-200 shrink-0" />
+                    <div className="flex-1 min-w-0">
+                      <p className="text-sm font-semibold text-emerald-700 flex items-center gap-1.5"><Check className="w-4 h-4" /> Image uploaded</p>
+                      <p className="text-xs text-slate-400 mt-0.5 truncate">{testImageUrl.split("/").pop()}</p>
                     </div>
-                    {errors.sex && <p className="text-xs text-red-600 font-medium">{errors.sex}</p>}
+                    <button type="button" onClick={() => { setTestImageUrl(null); setImageUploadError(null); }} className="p-1.5 rounded-lg hover:bg-emerald-100 text-emerald-400 hover:text-emerald-700 transition-colors shrink-0" aria-label="Remove uploaded image">
+                      <X className="w-4 h-4" />
+                    </button>
                   </div>
-                </div>
-              )}
-
-              {/* Sub-step 3: Email — revealed after DOB + Sex */}
-              {showEmail && (
-                <div className="flex flex-col gap-1 animate-fade-in-up">
-                  <label htmlFor="patient_email" className="text-sm font-medium text-slate-700 flex items-center gap-2">
-                    Patient Email
-                    <span className="text-xs bg-amber-100 text-amber-700 px-2 py-0.5 rounded-full font-medium">Recommended</span>
-                  </label>
-                  <Input
-                    id="patient_email"
-                    type="email"
-                    placeholder="patient@example.com"
-                    hint="Patient will receive their request code & results by email"
-                    value={form.patient_email}
-                    onChange={(e) => set("patient_email", e.target.value)}
-                    error={errors.patient_email}
-                  />
-                </div>
-              )}
-
-              {/* Sub-step 4: Address & Phone — revealed after email shown */}
-              {showContact && (
-                <div className="animate-fade-in-up">
-                  {form.address || form.patient_phone ? (
-                    <div className="border-2 border-emerald-200 bg-emerald-50/30 rounded-xl overflow-hidden">
-                      <button
-                        type="button"
-                        onClick={() => setContactOpen((v) => !v)}
-                        className="w-full flex items-center justify-between px-4 py-3.5 hover:bg-emerald-50/50 transition-colors"
-                      >
-                        <span className="flex items-center gap-2">
-                          <Check className="w-4 h-4 text-emerald-500 shrink-0" />
-                          <span className="text-sm font-semibold text-slate-700">Additional details added</span>
-                        </span>
-                        <ChevronDown className={`w-4 h-4 text-emerald-500 transition-transform shrink-0 ${contactOpen ? "rotate-180" : ""}`} />
-                      </button>
-                      {contactOpen && (
-                        <div className="px-4 pb-4 pt-1 space-y-4 border-t border-emerald-100 bg-emerald-50/20">
-                          <Input
-                            label="Patient Address"
-                            placeholder="Home address"
-                            value={form.address}
-                            onChange={(e) => set("address", e.target.value)}
-                          />
-                          <PhoneInput
-                            label="Patient Phone"
-                            value={form.patient_phone}
-                            onChange={(v) => set("patient_phone", v)}
-                          />
-                        </div>
-                      )}
+                ) : imageUploading ? (
+                  <div className="flex items-center gap-3 rounded-xl border border-slate-200 bg-slate-50 px-4 py-3">
+                    <RefreshCw className="w-4 h-4 text-slate-400 animate-spin shrink-0" />
+                    <span className="text-sm text-slate-500">Uploading…</span>
+                  </div>
+                ) : (
+                  <label className="cursor-pointer">
+                    <div className={`flex flex-col items-center gap-2 rounded-2xl border-2 border-dashed px-6 py-8 transition-colors text-center ${imageUploadError ? "border-red-300 bg-red-50/30" : "border-slate-200 bg-slate-50/50 hover:border-medical-300 hover:bg-medical-50/30"}`}>
+                      <FlaskConical className="w-8 h-8 text-slate-300" />
+                      <div>
+                        <p className="text-sm font-medium text-slate-600">Tap to upload test request slip</p>
+                        <p className="text-xs text-slate-400 mt-0.5">JPEG, PNG, WebP, HEIC — max 10 MB</p>
+                      </div>
                     </div>
-                  ) : (
-                    <div className="border-2 border-slate-200 bg-slate-50/40 rounded-xl overflow-hidden">
-                      <button
-                        type="button"
-                        onClick={() => setContactOpen((v) => !v)}
-                        className="w-full flex items-center justify-between px-4 py-3.5 hover:bg-slate-50 transition-colors"
-                      >
-                        <div className="flex items-start gap-3">
-                          <Phone className="w-4 h-4 text-slate-400 shrink-0 mt-0.5" />
-                          <div className="text-left">
-                            <span className="text-sm font-semibold text-slate-700">Address &amp; Phone</span>
-                            <p className="text-xs text-slate-400 mt-0.5">Optional — add patient address and phone number</p>
-                          </div>
-                        </div>
-                        <ChevronDown className={`w-4 h-4 text-slate-400 transition-transform shrink-0 ml-3 ${contactOpen ? "rotate-180" : ""}`} />
-                      </button>
-                      {contactOpen && (
-                        <div className="px-4 pb-4 pt-1 space-y-4 border-t border-slate-100 bg-slate-50/20">
-                          <Input
-                            label="Patient Address"
-                            placeholder="Home address"
-                            value={form.address}
-                            onChange={(e) => set("address", e.target.value)}
-                          />
-                          <PhoneInput
-                            label="Patient Phone"
-                            value={form.patient_phone}
-                            onChange={(v) => set("patient_phone", v)}
-                          />
-                        </div>
-                      )}
-                    </div>
-                  )}
-                </div>
-              )}
-            </div>
-          );
-        })()}
-
-        {/* Step 3: Referring Professional — progressive disclosure */}
-        {step === 3 && (() => {
-          // Bank is "done" once verified or explicitly skipped
-          const bankDone =
-            bankSkipped ||
-            (bankVerified &&
-              !!(form.doctor_bank_name && form.doctor_account_number && form.doctor_account_name));
-          // Progressive disclosure order: Bank → Name → Email → Optional contacts
-          // For saved-profile edit mode we skip the gate so all fields are immediately visible
-          const showName = bankDone || !!savedProfile;
-          const showEmail = showName && form.doctor_name.trim().length > 0;
-          const showOptional = showEmail && form.doctor_email.trim().length > 0;
-
-          // Sub-step count for dots: 1=Bank, 2=Name, 3=Email, 4=Optional
-          const profileSubStep = !bankDone ? 1 : !showEmail ? 2 : !showOptional ? 3 : 4;
-          const profileTotalSteps = 4;
-
-          return (
-          <div className="space-y-4">
-            <div className="sticky top-36 z-[5] -mx-6 px-6 pt-2 bg-white/95 backdrop-blur-sm">
-            <div className="flex items-center justify-between pb-3 border-b border-slate-100">
-              <h2 className="flex items-center gap-2 text-base font-semibold text-slate-700">
-                <Stethoscope className="w-4 h-4 text-medical-600" />
-                Your Profile
-              </h2>
-              {/* Sub-step dots — only show when in edit/new mode */}
-              {(!savedProfile || doctorEditing) && (
-                <div className="flex shrink-0 items-center gap-1.5">
-                  {Array.from({ length: profileTotalSteps }).map((_, i) => (
-                    <div
-                      key={i}
-                      className={`shrink-0 rounded-full transition-all duration-300 ${
-                        i < profileSubStep - 1
-                          ? "w-2.5 h-2.5 bg-medical-500"
-                          : i === profileSubStep - 1
-                          ? "w-3.5 h-3.5 bg-medical-400 ring-2 ring-medical-200 ring-offset-1"
-                          : "w-2 h-2 bg-slate-200"
-                      }`}
+                    <input
+                      type="file"
+                      accept="image/jpeg,image/png,image/webp,image/heic,.heic"
+                      className="sr-only"
+                      onChange={async (e) => {
+                        const file = e.target.files?.[0];
+                        if (!file) return;
+                        setImageUploading(true);
+                        setImageUploadError(null);
+                        try {
+                          const fd = new FormData();
+                          fd.append("file", file);
+                          const res = await fetch("/api/requests/upload-image", { method: "POST", body: fd });
+                          const data = await res.json();
+                          if (data.url) {
+                            setTestImageUrl(data.url);
+                          } else {
+                            setImageUploadError(data.error ?? "Upload failed");
+                          }
+                        } catch {
+                          setImageUploadError("Upload failed. Please try again.");
+                        } finally {
+                          setImageUploading(false);
+                          e.target.value = "";
+                        }
+                      }}
                     />
-                  ))}
-                </div>
-              )}
-            </div>
-            </div>
+                  </label>
+                )}
+                {imageUploadError && <p className="text-xs text-red-600 font-medium">{imageUploadError}</p>}
+              </div>
+            )}
+          </div>
+        )}
+
+        {/* Step 3: Referring Professional */}
+        {step === 3 && (
+          <div className="space-y-4">
+            <h2 className="flex items-center gap-2 text-base font-semibold text-slate-700 pb-3 border-b border-slate-100">
+              <Stethoscope className="w-4 h-4 text-medical-600" />
+              Your Profile
+            </h2>
 
             {/* First-time banner — only shown when no saved profile exists */}
             {!savedProfile && (
@@ -1594,19 +1622,8 @@ export function DoctorRequestForm({
                     <span className={form.doctor_hospital ? "text-slate-600 truncate" : "text-slate-400 italic"}>{form.doctor_hospital || "No hospital/clinic saved"}</span>
                   </div>
                 </div>
-                {/* Bank status + clear */}
-                <div className="px-4 pb-3 flex items-center justify-between gap-3 border-t border-medical-100 pt-2.5">
-                  {!bankSkipped && bankVerified && form.doctor_account_name ? (
-                    <span className="text-xs bg-emerald-100 text-emerald-700 border border-emerald-200 px-2.5 py-0.5 rounded-full flex items-center gap-1 font-medium">
-                      <Check className="w-3 h-3" /> Bank verified
-                    </span>
-                  ) : !bankSkipped && (form.doctor_bank_name || form.doctor_account_number) ? (
-                    <span className="text-xs bg-amber-100 text-amber-700 border border-amber-200 px-2.5 py-0.5 rounded-full flex items-center gap-1 font-medium">
-                      Bank not verified
-                    </span>
-                  ) : (
-                    <span className="text-xs text-slate-400 italic">No bank details</span>
-                  )}
+                {/* Clear */}
+                <div className="px-4 pb-3 flex items-center justify-end border-t border-medical-100 pt-2.5">
                   <button
                     type="button"
                     onClick={clearDoctorProfile}
@@ -1631,341 +1648,270 @@ export function DoctorRequestForm({
                   </div>
                 )}
 
-                {/* Sub-step 1: Bank details — always shown first.
-                    Verifying auto-fills Full Name; skipping lets the user type it manually. */}
-                {bankSkipped ? (
-                  /* Skipped state — compact strip */
-                  <div className="flex items-center justify-between px-4 py-3 rounded-xl bg-slate-50 border border-slate-200">
-                    <p className="text-xs text-slate-500 font-medium">Bank details skipped</p>
+                <PrefixSelect
+                  value={form.doctor_prefix}
+                  onChange={(v) => set("doctor_prefix", v)}
+                />
+                <Input
+                  label="Full Name"
+                  required
+                  placeholder="Firstname Lastname"
+                  value={form.doctor_name}
+                  onChange={(e) => set("doctor_name", e.target.value)}
+                  error={errors.doctor_name}
+                />
+                <Input
+                  label="Email"
+                  type="email"
+                  required
+                  placeholder="you@hospital.com"
+                  hint="You will receive request updates here"
+                  value={form.doctor_email}
+                  onChange={(e) => set("doctor_email", e.target.value)}
+                  error={errors.doctor_email}
+                />
+                <PhoneInput
+                  label="Phone"
+                  value={form.doctor_phone}
+                  onChange={(v) => set("doctor_phone", v)}
+                />
+                <Input
+                  label="Hospital or Clinic"
+                  placeholder="e.g. Lagos University Teaching Hospital"
+                  value={form.doctor_hospital}
+                  onChange={(e) => set("doctor_hospital", e.target.value)}
+                />
+              </>
+            )}
+          </div>
+        )}
+
+        {/* Step 4: Optional Details + Review */}
+        {step === 4 && (
+          <div className="space-y-6">
+            <h2 className="flex items-center gap-2 text-base font-semibold text-slate-700 pb-3 border-b border-slate-100">
+              <User className="w-4 h-4 text-medical-600" />
+              Additional Details
+              <span className="text-xs text-slate-400 font-normal ml-1">(all optional)</span>
+            </h2>
+
+            {/* Patient information section */}
+            <div className="space-y-4 animate-fade-in-up">
+              <p className="text-xs font-semibold text-slate-400 uppercase tracking-wider">Patient Information</p>
+              <Input
+                label="Patient Full Name"
+                placeholder="e.g. Amara Okonkwo"
+                value={form.patient_name}
+                onChange={(e) => set("patient_name", e.target.value)}
+              />
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                <DobInput
+                  value={form.dob}
+                  onChange={(iso) => set("dob", iso)}
+                />
+                {/* Sex selector */}
+                <div className="flex flex-col gap-1">
+                  <label className="text-sm font-medium text-slate-700">
+                    Sex <span className="text-xs text-slate-400 font-normal">(optional)</span>
+                  </label>
+                  <div className="flex gap-2">
+                    {(["male", "female"] as const).map((s) => (
+                      <button
+                        key={s}
+                        type="button"
+                        onClick={() => set("sex", form.sex === s ? "" : s)}
+                        className={`flex items-center gap-2 px-4 py-2.5 rounded-xl border-2 transition-all text-sm font-semibold ${
+                          form.sex === s
+                            ? "border-medical-400 bg-medical-50 text-medical-700"
+                            : "border-slate-200 bg-white/60 text-slate-500 hover:border-slate-300 hover:bg-slate-50"
+                        }`}
+                      >
+                        {s === "male"
+                          ? <MarsIcon className={`w-4 h-4 ${form.sex === s ? "text-medical-500" : "text-slate-400"}`} />
+                          : <VenusIcon className={`w-4 h-4 ${form.sex === s ? "text-medical-500" : "text-slate-400"}`} />}
+                        {s.charAt(0).toUpperCase() + s.slice(1)}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              </div>
+
+              {/* Address collapsible */}
+              {form.address ? (
+                <div className="border-2 border-emerald-200 bg-emerald-50/30 rounded-xl overflow-hidden">
+                  <button
+                    type="button"
+                    onClick={() => setContactOpen((v) => !v)}
+                    className="w-full flex items-center justify-between px-4 py-3.5 hover:bg-emerald-50/50 transition-colors"
+                  >
+                    <span className="flex items-center gap-2">
+                      <Check className="w-4 h-4 text-emerald-500 shrink-0" />
+                      <span className="text-sm font-semibold text-slate-700">Address added</span>
+                    </span>
+                    <ChevronDown className={`w-4 h-4 text-emerald-500 transition-transform shrink-0 ${contactOpen ? "rotate-180" : ""}`} />
+                  </button>
+                  {contactOpen && (
+                    <div className="px-4 pb-4 pt-1 border-t border-emerald-100 bg-emerald-50/20">
+                      <Input
+                        label="Patient Address"
+                        placeholder="Home address"
+                        value={form.address}
+                        onChange={(e) => set("address", e.target.value)}
+                      />
+                    </div>
+                  )}
+                </div>
+              ) : (
+                <div className="border-2 border-slate-200 bg-slate-50/40 rounded-xl overflow-hidden">
+                  <button
+                    type="button"
+                    onClick={() => setContactOpen((v) => !v)}
+                    className="w-full flex items-center justify-between px-4 py-3.5 hover:bg-slate-50 transition-colors"
+                  >
+                    <div className="flex items-start gap-3">
+                      <MapPin className="w-4 h-4 text-slate-400 shrink-0 mt-0.5" />
+                      <div className="text-left">
+                        <span className="text-sm font-semibold text-slate-700">Patient Address</span>
+                        <p className="text-xs text-slate-400 mt-0.5">Optional — add patient home address</p>
+                      </div>
+                    </div>
+                    <ChevronDown className={`w-4 h-4 text-slate-400 transition-transform shrink-0 ml-3 ${contactOpen ? "rotate-180" : ""}`} />
+                  </button>
+                  {contactOpen && (
+                    <div className="px-4 pb-4 pt-1 border-t border-slate-100 bg-slate-50/20">
+                      <Input
+                        label="Patient Address"
+                        placeholder="Home address"
+                        value={form.address}
+                        onChange={(e) => set("address", e.target.value)}
+                      />
+                    </div>
+                  )}
+                </div>
+              )}
+            </div>
+
+            <div className="border-t border-slate-100" />
+
+            {/* Schedule section */}
+            <div className="space-y-3">
+              <p className="text-xs font-semibold text-slate-400 uppercase tracking-wider">Preferred Schedule</p>
+              <p className="text-sm text-slate-500">When does the patient plan to carry out these tests?</p>
+              <div className="grid grid-cols-2 gap-3">
+                {SCHEDULE_OPTIONS.map((opt) => {
+                  const selected = form.schedule === opt.value;
+                  return (
+                    <button
+                      key={opt.value}
+                      type="button"
+                      onClick={() => set("schedule", selected ? "" : opt.value)}
+                      className={`flex flex-col items-start gap-1.5 p-4 rounded-2xl border-2 transition-all text-left ${
+                        selected
+                          ? "border-medical-400 bg-medical-50 ring-2 ring-medical-200"
+                          : "border-slate-200 bg-white/60 hover:border-slate-300 hover:bg-slate-50"
+                      }`}
+                    >
+                      <div className={`w-8 h-8 rounded-xl flex items-center justify-center ${selected ? "bg-medical-600" : "bg-slate-100"}`}>
+                        <opt.icon className={`w-4 h-4 ${selected ? "text-white" : "text-slate-400"}`} />
+                      </div>
+                      <span className={`text-sm font-semibold leading-tight ${selected ? "text-medical-800" : "text-slate-700"}`}>{opt.label}</span>
+                      <span className={`text-xs ${selected ? "text-medical-600" : "text-slate-400"}`}>{opt.desc}</span>
+                    </button>
+                  );
+                })}
+              </div>
+              {!form.schedule && (
+                <p className="text-xs text-center text-slate-400">You can skip this — it helps the lab plan resources</p>
+              )}
+            </div>
+
+            <div className="border-t border-slate-100" />
+
+            {/* Bank details section */}
+            <div className="space-y-3">
+              <p className="text-xs font-semibold text-slate-400 uppercase tracking-wider">Bank Details</p>
+              {bankSkipped ? (
+                <div className="flex items-center justify-between px-4 py-3 rounded-xl bg-slate-50 border border-slate-200">
+                  <p className="text-xs text-slate-500 font-medium">Bank details skipped</p>
+                  <button
+                    type="button"
+                    onClick={() => { setBankSkipped(false); setBankOpen(true); }}
+                    className="text-xs text-medical-600 hover:text-medical-800 font-semibold transition-colors"
+                  >
+                    + Add details
+                  </button>
+                </div>
+              ) : (() => {
+                const hasBankContent = bankVerified && !!(form.doctor_bank_name && form.doctor_account_number && form.doctor_account_name);
+                return (
+                  <div className={`rounded-xl border-2 overflow-hidden transition-colors ${hasBankContent ? "border-emerald-200 bg-emerald-50/30" : "border-slate-200"}`}>
                     <button
                       type="button"
-                      onClick={() => { setBankSkipped(false); setBankOpen(true); }}
-                      className="text-xs text-medical-600 hover:text-medical-800 font-semibold transition-colors"
+                      onClick={() => setBankOpen((v) => !v)}
+                      className={`w-full flex items-center justify-between px-4 py-3.5 transition-colors ${hasBankContent ? "hover:bg-emerald-50/50" : "hover:bg-slate-50 bg-slate-50/50"}`}
                     >
-                      + Add details
-                    </button>
-                  </div>
-                ) : (() => {
-                  const hasBankContent = bankVerified && !!(form.doctor_bank_name && form.doctor_account_number && form.doctor_account_name);
-                  return (
-                    <div className={`rounded-xl border-2 overflow-hidden transition-colors ${hasBankContent ? "border-emerald-200 bg-emerald-50/30" : "border-slate-200"}`}>
-                      <button
-                        type="button"
-                        onClick={() => setBankOpen((v) => !v)}
-                        className={`w-full flex items-center justify-between px-4 py-3.5 transition-colors ${hasBankContent ? "hover:bg-emerald-50/50" : "hover:bg-slate-50 bg-slate-50/50"}`}
-                      >
-                        {hasBankContent ? (
-                          <span className="flex items-center gap-2">
-                            <Check className="w-4 h-4 text-emerald-500 shrink-0" />
-                            <span className="text-sm font-semibold text-slate-700">Bank details added</span>
-                          </span>
-                        ) : (
-                          <div className="flex items-center gap-2">
-                            <span className="text-sm font-semibold text-slate-700">Bank Account Details</span>
-                            {!bankSkipped && <span className="inline-block w-1.5 h-1.5 rounded-full bg-amber-400 align-middle" aria-label="required" />}
-                            <span className="hidden sm:inline text-xs text-slate-400 ml-1">For referral payment</span>
-                          </div>
-                        )}
-                        <ChevronDown className={`w-4 h-4 transition-transform shrink-0 ${hasBankContent ? "text-emerald-500" : "text-slate-400"} ${bankOpen ? "rotate-180" : ""}`} />
-                      </button>
-                      {bankOpen && (
-                        <div className={`px-4 pb-4 pt-1 space-y-3 border-t ${hasBankContent ? "border-emerald-100 bg-emerald-50/20" : "border-slate-100"}`}>
-                          <BankAccountInput
-                            bankName={form.doctor_bank_name}
-                            bankCode={bankCode}
-                            accountNumber={form.doctor_account_number}
-                            accountName={form.doctor_account_name}
-                            onBankChange={(name, code) => { set("doctor_bank_name", name); setBankCode(code); setBankVerified(false); }}
-                            onAccountNumberChange={(v) => { set("doctor_account_number", v); setBankVerified(false); }}
-                            onAccountNameChange={(v) => set("doctor_account_name", v)}
-                            onVerifiedChange={(verified) => {
-                              setBankVerified(verified);
-                              // Use the functional setForm updater so we always read the latest
-                              // doctor_account_name — the plain `form` closure may be stale
-                              // because onAccountNameChange and onVerifiedChange fire in the
-                              // same render cycle before React has flushed the state update.
-                              if (verified) {
-                                setForm((prev) => {
-                                  if (prev.doctor_account_name && !prev.doctor_name.trim()) {
-                                    return { ...prev, doctor_name: prev.doctor_account_name };
-                                  }
-                                  return prev;
-                                });
-                              }
-                            }}
-                            bankError={errors.doctor_bank_name}
-                            accountNumberError={errors.doctor_account_number}
-                            accountNameError={errors.doctor_account_name}
-                          />
-                          {!hasBankContent && (
-                            <div className="pt-1 border-t border-slate-100">
-                              <button
-                                type="button"
-                                onClick={() => {
-                                  setBankSkipped(true);
-                                  set("doctor_bank_name", "");
-                                  set("doctor_account_number", "");
-                                  set("doctor_account_name", "");
-                                }}
-                                className="text-xs text-slate-400 hover:text-slate-600 transition-colors underline underline-offset-2"
-                              >
-                                Skip — I'll settle payment another way
-                              </button>
-                            </div>
-                          )}
+                      {hasBankContent ? (
+                        <span className="flex items-center gap-2">
+                          <Check className="w-4 h-4 text-emerald-500 shrink-0" />
+                          <span className="text-sm font-semibold text-slate-700">Bank details added</span>
+                        </span>
+                      ) : (
+                        <div className="flex items-center gap-2">
+                          <span className="text-sm font-semibold text-slate-700">Bank Account Details</span>
+                          <span className="hidden sm:inline text-xs text-slate-400 ml-1">For referral payment</span>
                         </div>
                       )}
-                    </div>
-                  );
-                })()}
-
-                {/* Sub-step 2: Title + Name — revealed once bank is verified or skipped.
-                    Full Name is pre-filled from the verified account name but remains editable. */}
-                {showName && (
-                  <div className="animate-fade-in-up space-y-4">
-                    <PrefixSelect
-                      value={form.doctor_prefix}
-                      onChange={(v) => set("doctor_prefix", v)}
-                    />
-                    <Input
-                      label="Full Name"
-                      required
-                      placeholder="Firstname Lastname"
-                      value={form.doctor_name}
-                      onChange={(e) => set("doctor_name", e.target.value)}
-                      error={errors.doctor_name}
-                    />
-                  </div>
-                )}
-
-                {/* Sub-step 3: Email — revealed after name filled */}
-                {showEmail && (
-                  <div className="animate-fade-in-up">
-                    <Input
-                      label="Email"
-                      type="email"
-                      required
-                      placeholder="you@hospital.com"
-                      hint="You will receive request updates here"
-                      value={form.doctor_email}
-                      onChange={(e) => set("doctor_email", e.target.value)}
-                      error={errors.doctor_email}
-                    />
-                  </div>
-                )}
-
-                {/* Sub-step 4: Phone + Hospital — revealed after email filled */}
-                {showOptional && (
-                  <div className="animate-fade-in-up">
-                    {(form.doctor_phone || form.doctor_hospital) ? (
-                      <div className="border-2 border-emerald-200 bg-emerald-50/30 rounded-xl overflow-hidden">
-                        <button
-                          type="button"
-                          onClick={() => setDoctorOptionalOpen((v) => !v)}
-                          className="w-full flex items-center justify-between px-4 py-3.5 hover:bg-emerald-50/50 transition-colors"
-                        >
-                          <span className="flex items-center gap-2">
-                            <Check className="w-4 h-4 text-emerald-500 shrink-0" />
-                            <span className="text-sm font-semibold text-slate-700">Optional details added</span>
-                          </span>
-                          <ChevronDown className={`w-4 h-4 text-emerald-500 transition-transform shrink-0 ${doctorOptionalOpen ? "rotate-180" : ""}`} />
-                        </button>
-                        {doctorOptionalOpen && (
-                          <div className="px-4 pb-4 pt-1 space-y-4 border-t border-emerald-100 bg-emerald-50/20">
-                            <PhoneInput
-                              label="Phone"
-                              value={form.doctor_phone}
-                              onChange={(v) => set("doctor_phone", v)}
-                            />
-                            <Input
-                              label="Hospital or Clinic"
-                              placeholder="e.g. Lagos University Teaching Hospital"
-                              value={form.doctor_hospital}
-                              onChange={(e) => set("doctor_hospital", e.target.value)}
-                            />
-                          </div>
-                        )}
-                      </div>
-                    ) : (
-                      <div className="border-2 border-slate-200 bg-slate-50/40 rounded-xl overflow-hidden">
-                        <button
-                          type="button"
-                          onClick={() => setDoctorOptionalOpen((v) => !v)}
-                          className="w-full flex items-center justify-between px-4 py-3.5 hover:bg-slate-50 transition-colors"
-                        >
-                          <div className="flex items-start gap-3">
-                            <Phone className="w-4 h-4 text-slate-400 shrink-0 mt-0.5" />
-                            <div className="text-left">
-                              <span className="text-sm font-semibold text-slate-700">Phone &amp; Hospital</span>
-                              <p className="text-xs text-slate-400 mt-0.5">Optional — add your contact and workplace</p>
-                            </div>
-                          </div>
-                          <ChevronDown className={`w-4 h-4 text-slate-400 transition-transform shrink-0 ml-3 ${doctorOptionalOpen ? "rotate-180" : ""}`} />
-                        </button>
-                        {doctorOptionalOpen && (
-                          <div className="px-4 pb-4 pt-1 space-y-4 border-t border-slate-100 bg-slate-50/20">
-                            <PhoneInput
-                              label="Phone"
-                              value={form.doctor_phone}
-                              onChange={(v) => set("doctor_phone", v)}
-                            />
-                            <Input
-                              label="Hospital or Clinic"
-                              placeholder="e.g. Lagos University Teaching Hospital"
-                              value={form.doctor_hospital}
-                              onChange={(e) => set("doctor_hospital", e.target.value)}
-                            />
+                      <ChevronDown className={`w-4 h-4 transition-transform shrink-0 ${hasBankContent ? "text-emerald-500" : "text-slate-400"} ${bankOpen ? "rotate-180" : ""}`} />
+                    </button>
+                    {bankOpen && (
+                      <div className={`px-4 pb-4 pt-1 space-y-3 border-t ${hasBankContent ? "border-emerald-100 bg-emerald-50/20" : "border-slate-100"}`}>
+                        <BankAccountInput
+                          bankName={form.doctor_bank_name}
+                          bankCode={bankCode}
+                          accountNumber={form.doctor_account_number}
+                          accountName={form.doctor_account_name}
+                          onBankChange={(name, code) => { set("doctor_bank_name", name); setBankCode(code); setBankVerified(false); }}
+                          onAccountNumberChange={(v) => { set("doctor_account_number", v); setBankVerified(false); }}
+                          onAccountNameChange={(v) => set("doctor_account_name", v)}
+                          onVerifiedChange={(verified) => {
+                            setBankVerified(verified);
+                            if (verified) {
+                              setForm((prev) => {
+                                if (prev.doctor_account_name && !prev.doctor_name.trim()) {
+                                  return { ...prev, doctor_name: prev.doctor_account_name };
+                                }
+                                return prev;
+                              });
+                            }
+                          }}
+                          bankError={errors.doctor_bank_name}
+                          accountNumberError={errors.doctor_account_number}
+                          accountNameError={errors.doctor_account_name}
+                        />
+                        {!hasBankContent && (
+                          <div className="pt-1 border-t border-slate-100">
+                            <button
+                              type="button"
+                              onClick={() => {
+                                setBankSkipped(true);
+                                set("doctor_bank_name", "");
+                                set("doctor_account_number", "");
+                                set("doctor_account_name", "");
+                              }}
+                              className="text-xs text-slate-400 hover:text-slate-600 transition-colors underline underline-offset-2"
+                            >
+                              Skip — I'll settle payment another way
+                            </button>
                           </div>
                         )}
                       </div>
                     )}
                   </div>
-                )}
-              </>
-            )}
-          </div>
-          );
-        })()}
-
-        {/* Step 4: Preferred Schedule (optional) */}
-        {step === 4 && (
-          <div className="space-y-4">
-            <div>
-              <h2 className="flex items-center gap-2 text-base font-semibold text-slate-700 pb-3 border-b border-slate-100">
-                <CalendarDays className="w-4 h-4 text-medical-600" />
-                Preferred Schedule
-                <span className="text-xs text-slate-400 font-normal ml-1">(optional)</span>
-              </h2>
-            </div>
-            <p className="text-sm text-slate-500 -mt-1">When does the patient plan to carry out these tests?</p>
-            <div className="grid grid-cols-2 gap-3">
-              {SCHEDULE_OPTIONS.map((opt) => {
-                const selected = form.schedule === opt.value;
-                return (
-                  <button
-                    key={opt.value}
-                    type="button"
-                    onClick={() => set("schedule", selected ? "" : opt.value)}
-                    className={`flex flex-col items-start gap-1.5 p-4 rounded-2xl border-2 transition-all text-left ${
-                      selected
-                        ? "border-medical-400 bg-medical-50 ring-2 ring-medical-200"
-                        : "border-slate-200 bg-white/60 hover:border-slate-300 hover:bg-slate-50"
-                    }`}
-                  >
-                    <div className={`w-8 h-8 rounded-xl flex items-center justify-center ${selected ? "bg-medical-600" : "bg-slate-100"}`}>
-                      <opt.icon className={`w-4 h-4 ${selected ? "text-white" : "text-slate-400"}`} />
-                    </div>
-                    <span className={`text-sm font-semibold leading-tight ${selected ? "text-medical-800" : "text-slate-700"}`}>{opt.label}</span>
-                    <span className={`text-xs ${selected ? "text-medical-600" : "text-slate-400"}`}>{opt.desc}</span>
-                  </button>
                 );
-              })}
+              })()}
             </div>
-            {!form.schedule && (
-              <p className="text-xs text-center text-slate-400">You can skip this — it helps the lab plan resources</p>
-            )}
-          </div>
-        )}
 
-        {/* Step 5: Clinical Details + Review */}
-        {step === 5 && (
-          <div className="space-y-4">
-            <h2 className="flex items-center gap-2 text-base font-semibold text-slate-700 pb-3 border-b border-slate-100">
-              <TestTube2 className="w-4 h-4 text-medical-600" />
-              Clinical Details
-            </h2>
-
-            <Textarea
-              label="Diagnosis / Clinical Notes"
-              placeholder="Brief clinical summary or working diagnosis…"
-              rows={3}
-              value={form.diagnosis}
-              onChange={(e) => set("diagnosis", e.target.value)}
-            />
-            <Textarea
-              label="Laboratory Tests Requested"
-              required
-              placeholder="e.g. FBC, LFT, Serum electrolytes, Fasting glucose, Urinalysis…"
-              rows={4}
-              hint="List all tests separated by commas or new lines"
-              value={form.tests}
-              onChange={(e) => set("tests", e.target.value)}
-              error={errors.tests}
-            />
-
-            {/* Upload Test Request Slip (optional) */}
-            <div className="flex flex-col gap-2">
-              <label className="text-sm font-medium text-slate-700">
-                Upload Test Request Slip{" "}
-                <span className="text-xs text-slate-400 font-normal">(optional)</span>
-              </label>
-              {testImageUrl ? (
-                <div className="flex items-center gap-3 rounded-xl border border-emerald-200 bg-emerald-50/40 px-4 py-3">
-                  <img
-                    src={testImageUrl}
-                    alt="Uploaded test request slip"
-                    className="w-14 h-14 rounded-lg object-cover border border-emerald-200 shrink-0"
-                  />
-                  <div className="flex-1 min-w-0">
-                    <p className="text-sm font-semibold text-emerald-700 flex items-center gap-1.5">
-                      <Check className="w-4 h-4" /> Image uploaded
-                    </p>
-                    <p className="text-xs text-slate-400 mt-0.5 truncate">{testImageUrl.split("/").pop()}</p>
-                  </div>
-                  <button
-                    type="button"
-                    onClick={() => { setTestImageUrl(null); setImageUploadError(null); }}
-                    className="p-1.5 rounded-lg hover:bg-emerald-100 text-emerald-400 hover:text-emerald-700 transition-colors shrink-0"
-                    aria-label="Remove uploaded image"
-                  >
-                    <X className="w-4 h-4" />
-                  </button>
-                </div>
-              ) : imageUploading ? (
-                <div className="flex items-center gap-3 rounded-xl border border-slate-200 bg-slate-50 px-4 py-3">
-                  <RefreshCw className="w-4 h-4 text-slate-400 animate-spin shrink-0" />
-                  <span className="text-sm text-slate-500">Uploading…</span>
-                </div>
-              ) : (
-                <label className="cursor-pointer">
-                  <div className={`flex items-center gap-2.5 rounded-xl border-2 border-dashed px-4 py-3 transition-colors ${imageUploadError ? "border-red-300 bg-red-50/30" : "border-slate-200 bg-slate-50/50 hover:border-medical-300 hover:bg-medical-50/30"}`}>
-                    <FlaskConical className="w-4 h-4 text-slate-400 shrink-0" />
-                    <span className="text-sm text-slate-500">Tap to attach a photo of the request slip</span>
-                  </div>
-                  <input
-                    type="file"
-                    accept="image/jpeg,image/png,image/webp,image/heic,.heic"
-                    className="sr-only"
-                    onChange={async (e) => {
-                      const file = e.target.files?.[0];
-                      if (!file) return;
-                      setImageUploading(true);
-                      setImageUploadError(null);
-                      try {
-                        const fd = new FormData();
-                        fd.append("file", file);
-                        const res = await fetch("/api/requests/upload-image", { method: "POST", body: fd });
-                        const data = await res.json();
-                        if (data.url) {
-                          setTestImageUrl(data.url);
-                        } else {
-                          setImageUploadError(data.error ?? "Upload failed");
-                        }
-                      } catch {
-                        setImageUploadError("Upload failed. Please try again.");
-                      } finally {
-                        setImageUploading(false);
-                        // Reset the input so the same file can be re-selected after removal
-                        e.target.value = "";
-                      }
-                    }}
-                  />
-                </label>
-              )}
-              {imageUploadError && (
-                <p className="text-xs text-red-600 font-medium">{imageUploadError}</p>
-              )}
-            </div>
+            <div className="border-t border-slate-100" />
 
             {/* Critical condition / ambulance */}
             <div className="rounded-xl border border-slate-200 bg-slate-50/50 overflow-hidden">
@@ -2013,15 +1959,22 @@ export function DoctorRequestForm({
               </div>
             </div>
 
+            {/* Review summary */}
             <div className="bg-slate-50 rounded-xl p-4 space-y-2 border border-slate-100">
               <p className="text-xs font-semibold text-slate-400 uppercase tracking-wider mb-3">Review</p>
-              <SummaryRow label="Lab" value={selectedLab?.name ?? ""} />
-              <SummaryRow label="Patient" value={form.patient_name} />
-              <SummaryRow label="Date of Birth" value={form.dob ? form.dob.split("-").reverse().join(" / ") : ""} />
-              <SummaryRow label="Sex" value={form.sex} capitalize />
+              <SummaryRow label="Lab" value={selectedLab?.name ?? preselectedLabName ?? ""} />
+              {selectedBranchId && <SummaryRow label="Branch" value={branches.find((b) => b.id === selectedBranchId)?.name ?? selectedBranchId} />}
+              <SummaryRow label="Patient Phone" value={form.patient_phone} />
+              {form.patient_email && <SummaryRow label="Patient Email" value={form.patient_email} />}
+              {clinicalMode === "type" && <SummaryRow label="Diagnosis" value={form.diagnosis} />}
+              {clinicalMode === "type" && <SummaryRow label="Tests" value={form.tests} />}
+              {clinicalMode === "picture" && <SummaryRow label="Clinical" value={testImageUrl ? "Image attached" : "No image"} />}
               <SummaryRow label="Referrer" value={[form.doctor_prefix, form.doctor_name].filter(Boolean).join(" ")} />
               <SummaryRow label="Referrer Email" value={form.doctor_email} />
               {form.doctor_hospital && <SummaryRow label="Hospital/Clinic" value={form.doctor_hospital} />}
+              {form.patient_name && <SummaryRow label="Patient Name" value={form.patient_name} />}
+              {form.dob && <SummaryRow label="Date of Birth" value={form.dob.split("-").reverse().join(" / ")} />}
+              {form.sex && <SummaryRow label="Sex" value={form.sex} capitalize />}
               {form.schedule && <SummaryRow label="Schedule" value={scheduleLabel(form.schedule)} />}
             </div>
           </div>
@@ -2036,10 +1989,10 @@ export function DoctorRequestForm({
             Back
           </Button>
         )}
-        {step < 5 ? (
+        {step < 4 ? (
           stepValid ? (
             <Button onClick={handleNext} type="button" className="shrink-0 ml-auto">
-              {step === 4 && !form.schedule ? "Skip & Continue" : "Continue"}
+              Continue
               <ChevronRight className="w-4 h-4" />
             </Button>
           ) : null
