@@ -121,10 +121,10 @@ export async function POST(request: NextRequest) {
     resend.emails.send({
       from: labSender(req.lab),
       to: req.doctor_email,
-      subject: `Lab Results Available — ${req.patient_name}`,
+      subject: `Lab Results Available — ${req.patient_name ?? "Patient"}`,
       html: labResultsDoctor({
         doctorName: req.doctor_name,
-        patientName: req.patient_name,
+        patientName: req.patient_name ?? "Patient",
         labName: req.lab.name,
         code: req.code,
         resultLink,
@@ -146,7 +146,7 @@ export async function POST(request: NextRequest) {
         to: patientEmail,
         subject: "Your Lab Results Are Ready",
         html: labResultsPatient({
-          patientName: req.patient_name,
+          patientName: req.patient_name ?? "Patient",
           labName: req.lab.name,
           resultLink,
           hasAttachment,

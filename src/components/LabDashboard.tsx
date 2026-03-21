@@ -56,7 +56,8 @@ const TABS: { key: RequestStatus; label: string; icon: React.ReactNode }[] = [
   { key: "done", label: "Done", icon: <CheckCircle className="w-4 h-4" /> },
 ];
 
-function calcAge(dob: string): number {
+function calcAge(dob: string | null): number | null {
+  if (!dob) return null;
   return differenceInYears(new Date(), new Date(dob));
 }
 
@@ -689,7 +690,7 @@ export function LabDashboard({ lab, isOwner = false, roleName = "Lab Owner", can
                 <div>
                   <p className="text-xs text-slate-400">Age / Sex</p>
                   <p className="text-white font-medium capitalize">
-                    {calcAge(retrievedRequest.dob)} yrs · {retrievedRequest.sex}
+                    {retrievedRequest.dob ? `${calcAge(retrievedRequest.dob)} yrs` : "—"}{retrievedRequest.sex ? ` · ${retrievedRequest.sex}` : ""}
                   </p>
                 </div>
                 <div>
@@ -794,7 +795,7 @@ export function LabDashboard({ lab, isOwner = false, roleName = "Lab Owner", can
                           <>
                             <div className="flex items-center gap-2 mb-1.5">
                               <span className="text-xs bg-slate-700/80 text-slate-300 px-2 py-0.5 rounded capitalize">
-                                {req.sex} · {calcAge(req.dob)} yrs
+                                {req.sex ?? "—"}{req.dob ? ` · ${calcAge(req.dob)} yrs` : ""}
                               </span>
                             </div>
                             <p className="text-sm text-slate-300 line-clamp-2">
@@ -868,12 +869,13 @@ export function LabDashboard({ lab, isOwner = false, roleName = "Lab Owner", can
                     </DetailRow>
                     <DetailRow label="Patient Name">{selectedRequest.patient_name}</DetailRow>
                     <DetailRow label="Age / Sex">
-                      {calcAge(selectedRequest.dob)} yrs ·{" "}
-                      <span className="capitalize">{selectedRequest.sex}</span>
+                      {selectedRequest.dob ? `${calcAge(selectedRequest.dob)} yrs` : "—"}{selectedRequest.sex ? ` · ${selectedRequest.sex}` : ""}
                     </DetailRow>
-                    <DetailRow label="Date of Birth">
-                      {format(new Date(selectedRequest.dob), "dd MMM yyyy")}
-                    </DetailRow>
+                    {selectedRequest.dob && (
+                      <DetailRow label="Date of Birth">
+                        {format(new Date(selectedRequest.dob), "dd MMM yyyy")}
+                      </DetailRow>
+                    )}
                     {selectedRequest.address && (
                       <DetailRow label="Address">{selectedRequest.address}</DetailRow>
                     )}
@@ -991,12 +993,13 @@ export function LabDashboard({ lab, isOwner = false, roleName = "Lab Owner", can
                       </p>
                     </div>
                     <DetailRow label="Age / Sex">
-                      {calcAge(selectedRequest.dob)} yrs ·{" "}
-                      <span className="capitalize">{selectedRequest.sex}</span>
+                      {selectedRequest.dob ? `${calcAge(selectedRequest.dob)} yrs` : "—"}{selectedRequest.sex ? ` · ${selectedRequest.sex}` : ""}
                     </DetailRow>
-                    <DetailRow label="Date of Birth">
-                      {format(new Date(selectedRequest.dob), "dd MMM yyyy")}
-                    </DetailRow>
+                    {selectedRequest.dob && (
+                      <DetailRow label="Date of Birth">
+                        {format(new Date(selectedRequest.dob), "dd MMM yyyy")}
+                      </DetailRow>
+                    )}
                     <div className="border-t border-white/10 pt-3" />
                     <DetailRow label="Tests">
                       <span className="text-white font-medium">{selectedRequest.tests}</span>
@@ -1413,12 +1416,14 @@ export function LabDashboard({ lab, isOwner = false, roleName = "Lab Owner", can
                 ) : null}
                 <div>
                   <p className="text-xs text-slate-500 font-medium mb-0.5">Age / Sex</p>
-                  <p className="text-slate-200 capitalize">{calcAge(selectedRequest.dob)} yrs · {selectedRequest.sex}</p>
+                  <p className="text-slate-200 capitalize">{selectedRequest.dob ? `${calcAge(selectedRequest.dob)} yrs` : "—"}{selectedRequest.sex ? ` · ${selectedRequest.sex}` : ""}</p>
                 </div>
-                <div>
-                  <p className="text-xs text-slate-500 font-medium mb-0.5">Date of Birth</p>
-                  <p className="text-slate-200">{format(new Date(selectedRequest.dob), "dd MMM yyyy")}</p>
-                </div>
+                {selectedRequest.dob && (
+                  <div>
+                    <p className="text-xs text-slate-500 font-medium mb-0.5">Date of Birth</p>
+                    <p className="text-slate-200">{format(new Date(selectedRequest.dob), "dd MMM yyyy")}</p>
+                  </div>
+                )}
                 {selectedRequest.status !== "incoming" && selectedRequest.address && (
                   <div>
                     <p className="text-xs text-slate-500 font-medium mb-0.5">Address</p>

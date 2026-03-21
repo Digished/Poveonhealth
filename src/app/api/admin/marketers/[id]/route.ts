@@ -78,7 +78,7 @@ export async function GET(
         requests: doctorRequests.map((r) => ({
           id: r.id,
           code: r.code,
-          patient_name: maskName(r.patient_name),
+          patient_name: maskName(r.patient_name ?? ""),
           tests: r.tests,
           status: r.status,
           created_at: r.created_at,

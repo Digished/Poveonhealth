@@ -92,10 +92,10 @@ export async function POST(request: NextRequest) {
       resend.emails.send({
         from: labSender(req.lab),
         to: req.doctor_email,
-        subject: `Tests Completed — ${req.patient_name}`,
+        subject: `Tests Completed — ${req.patient_name ?? "Patient"}`,
         html: doctorTestsCompleted({
           doctorName: req.doctor_name,
-          patientName: req.patient_name,
+          patientName: req.patient_name ?? "Patient",
           labName: req.lab.name,
           code: req.code,
           brand,

@@ -87,9 +87,9 @@ export interface LabRequest {
   id: string;
   code: string;
   lab_id: string;
-  patient_name: string;
-  dob: string;
-  sex: Sex;
+  patient_name: string | null;
+  dob: string | null;
+  sex: Sex | null;
   address: string | null;
   patient_email: string | null;
   patient_phone: string | null;
@@ -122,9 +122,9 @@ export interface LabRequest {
 
 // API request/response types
 export interface CreateRequestPayload {
-  patient_name: string;
-  dob: string;
-  sex: Sex;
+  patient_name?: string;
+  dob?: string;
+  sex?: Sex;
   address?: string;
   patient_email?: string;
   patient_phone?: string;
