@@ -32,8 +32,26 @@ model Lab {
   lab_roles   LabRole[]
   api_keys    LabApiKey[]
   requests    Request[]
+  branches    LabBranch[]
 
   @@map("labs")
+}
+
+// A physical branch/location belonging to a lab
+model LabBranch {
+  id         String   @id @default(uuid())
+  lab_id     String
+  name       String
+  address    String   @default("")
+  phones     Json     @default("[]")
+  is_main    Boolean  @default(false)
+  created_at DateTime @default(now())
+
+  lab      Lab       @relation(fields: [lab_id], references: [id], onDelete: Cascade)
+  requests Request[]
+
+  @@index([lab_id])
+  @@map("lab_branches")
 }
 
 // Links Supabase Auth users to labs (legacy — owner/admin account)
@@ -118,9 +136,10 @@ model Request {
   id                    String    @id @default(uuid())
   code                  String    @unique
   lab_id                String
-  patient_name          String
-  dob                   DateTime  @db.Date
-  sex                   String
+  branch_id             String?   // Optional — set when a specific lab branch is selected
+  patient_name          String?
+  dob                   DateTime? @db.Date
+  sex                   String?
   address               String?
   patient_email         String?
   patient_phone         String?
@@ -145,7 +164,8 @@ model Request {
   seen_at               DateTime?
   completed_at          DateTime?
 
-  lab           Lab       @relation(fields: [lab_id], references: [id], onDelete: Cascade)
+  lab           Lab        @relation(fields: [lab_id], references: [id], onDelete: Cascade)
+  branch        LabBranch? @relation(fields: [branch_id], references: [id])
 
   @@map("requests")
 }

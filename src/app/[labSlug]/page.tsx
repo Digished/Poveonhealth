@@ -18,6 +18,13 @@ export default async function LabSlugPage({ params }: LabSlugPageProps) {
     notFound();
   }
 
+  // Fetch branches for this lab so the form can show branch selection in step 1
+  const branches = await prisma.labBranch.findMany({
+    where: { lab_id: lab.id },
+    select: { id: true, name: true, address: true, phones: true, is_main: true },
+    orderBy: [{ is_main: "desc" }, { name: "asc" }],
+  });
+
   return (
     <div className="h-dvh flex flex-col bg-gradient-to-br from-sky-50 via-blue-50 to-indigo-50 overflow-hidden">
       {/* Scrollable content area — page never scrolls, only this div does */}
@@ -33,14 +40,13 @@ export default async function LabSlugPage({ params }: LabSlugPageProps) {
             </p>
           </div>
 
-          {/*
-           * NOTE: DoctorRequestForm does not yet accept `preselectedLabId` or
-           * `preselectedLabName` props. These props are passed here and will be
-           * wired up when DoctorRequestForm is updated to support pre-selection.
-           */}
           <DoctorRequestForm
             preselectedLabId={lab.id}
             preselectedLabName={lab.name}
+            branches={branches.map((b) => ({
+              ...b,
+              phones: b.phones as string[],
+            }))}
           />
         </div>
 

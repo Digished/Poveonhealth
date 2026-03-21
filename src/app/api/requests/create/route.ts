@@ -7,9 +7,9 @@ import { doctorRequestConfirmation, patientRequestCode, labNewRequest } from "@/
 import { logApiCall } from "@/lib/api-logger";
 
 const CreateRequestSchema = z.object({
-  patient_name: z.string().min(2).max(200),
-  dob: z.string().regex(/^\d{4}-\d{2}-\d{2}$/, "Invalid date format"),
-  sex: z.enum(["male", "female"]),
+  patient_name: z.string().min(1).max(200).optional().or(z.literal("")),
+  dob: z.string().regex(/^\d{4}-\d{2}-\d{2}$/, "Invalid date format").optional(),
+  sex: z.enum(["male", "female"]).optional(),
   address: z.string().max(500).optional().or(z.literal("")),
   patient_email: z.string().email().optional().or(z.literal("")),
   patient_phone: z.string().max(50).optional().or(z.literal("")),
@@ -23,8 +23,9 @@ const CreateRequestSchema = z.object({
   doctor_account_name: z.string().max(200).optional().or(z.literal("")),
   schedule: z.enum(["today", "this_week", "this_month", "not_sure"]).optional(),
   diagnosis: z.string().max(2000).optional().or(z.literal("")),
-  tests: z.string().min(2).max(2000),
+  tests: z.string().max(2000).optional().or(z.literal("")),
   lab_id: z.string().uuid(),
+  branch_id: z.string().uuid().optional(),
   is_critical: z.boolean().optional().default(false),
   needs_ambulance: z.boolean().optional().default(false),
   ambulance_notes: z.string().max(500).optional().or(z.literal("")),
@@ -99,9 +100,10 @@ export async function POST(request: NextRequest) {
       data: {
         code,
         lab_id: data.lab_id,
-        patient_name: data.patient_name,
-        dob: new Date(data.dob),
-        sex: data.sex,
+        branch_id: data.branch_id || null,
+        patient_name: data.patient_name || null,
+        dob: data.dob ? new Date(data.dob) : null,
+        sex: data.sex || null,
         address: data.address || null,
         patient_email: data.patient_email || null,
         patient_phone: data.patient_phone || null,
@@ -115,7 +117,7 @@ export async function POST(request: NextRequest) {
         doctor_account_name: data.doctor_account_name || null,
         schedule: data.schedule || null,
         diagnosis: data.diagnosis || null,
-        tests: data.tests,
+        tests: data.tests || "See attached image",
         is_critical: data.is_critical,
         needs_ambulance: data.needs_ambulance,
         ambulance_notes: data.ambulance_notes || null,
@@ -160,7 +162,7 @@ export async function POST(request: NextRequest) {
         subject: `Lab Request Confirmed — Code: ${code}`,
         html: doctorRequestConfirmation({
           doctorName: data.doctor_name,
-          patientName: data.patient_name,
+          patientName: data.patient_name || "Patient",
           code,
           labName: lab.name,
           labAddress,
@@ -178,7 +180,7 @@ export async function POST(request: NextRequest) {
           to: data.patient_email,
           subject: `Your Lab Request Code — ${code}`,
           html: patientRequestCode({
-            patientName: data.patient_name,
+            patientName: data.patient_name || "Patient",
             code,
             labName: lab.name,
             labAddress,
@@ -200,7 +202,7 @@ export async function POST(request: NextRequest) {
         html: labNewRequest({
           labName: lab.name,
           requestCode: code,
-          patientName: data.patient_name,
+          patientName: data.patient_name || "Patient",
           doctorName: data.doctor_name,
           doctorPhone: data.doctor_phone || undefined,
           doctorHospital: data.doctor_hospital || undefined,
