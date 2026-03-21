@@ -25,6 +25,9 @@ poveon/
     │   ├── lab-dashboard/page.tsx
     │   ├── admin-login/page.tsx
     │   ├── admin/page.tsx
+    │   ├── [labSlug]/page.tsx   # Lab-specific URL (e.g. /apexlabs) — skips lab selection
+    │   ├── login/page.tsx       # Patient OTP login
+    │   ├── dashboard/page.tsx   # Patient dashboard
     │   └── api/
     │       ├── labs/route.ts              # GET: Lab list for dropdown
     │       ├── lab/requests/route.ts      # GET: Lab's own requests
@@ -32,6 +35,11 @@ poveon/
     │       │   ├── create/route.ts        # POST: Submit lab request
     │       │   ├── retrieve/route.ts      # POST: Retrieve by code
     │       │   └── update-status/route.ts # POST: Update status
+    │       ├── patient/
+    │       │   ├── send-otp/route.ts      # POST: Patient OTP login
+    │       │   ├── verify-otp/route.ts    # POST: Verify OTP + create session
+    │       │   ├── me/route.ts            # GET: Current patient session
+    │       │   └── logout/route.ts        # POST: Destroy session
     │       └── admin/
     │           ├── create-lab/route.ts    # POST: Create new lab
     │           └── requests/route.ts      # GET: All requests + metrics
@@ -177,6 +185,11 @@ vercel --prod
 | Route | Access | Purpose |
 |-------|--------|---------|
 | `/` | Public | Doctor submits requests — no login |
+| `/[labSlug]` | Public | Lab-specific request form — lab pre-selected, no lab picker shown |
+| `/login` | Public | Patient OTP login (email) |
+| `/dashboard` | Authenticated patients | Patient's test history + results |
+| `/doc-login` | Public | Doctor OTP login |
+| `/doc-login/dashboard` | Authenticated doctors | Doctor's submitted requests |
 | `/lab-login` | Lab users | Supabase Auth login |
 | `/lab-dashboard` | Authenticated labs | View & manage requests |
 | `/admin-login` | Admin | Admin Auth login |
@@ -225,10 +238,91 @@ npm run db:studio       # Opens Prisma Studio at http://localhost:5555
 ## 📊 Prisma Schema Overview
 
 ```prisma
-model Lab      { id, name, prefix (unique), addresses (Json), email, requests[] }
+model Lab      { id, name, prefix (unique), slug (unique), whatsapp, addresses (Json), email,
+                 request_email, notification_email, requests[] }
 model LabUser  { user_id (Supabase Auth UUID), lab_id → Lab }
 model AdminUser{ user_id (Supabase Auth UUID) }
-model Request  { code (unique), lab_id → Lab, patient_*, doctor_*, tests, status, timestamps }
+model Request  { code (unique), lab_id → Lab, patient_*, doctor_*, tests, test_image_url,
+                 is_critical, needs_ambulance, ambulance_notes, schedule (optional),
+                 diagnosis (optional), status, timestamps }
+model PatientOtp     { email, code_hash, expires_at, used }
+model PatientSession { patient_email, expires_at }
 ```
 
 Run `npm run db:push` after any schema changes to sync to the database.
+
+---
+
+## 🛣️ Feature Roadmap & Build Plan
+
+### Phase 1 — Emails & Results Flow
+- [ ] Add `request_email` field to `Lab` (dedicated new-request notification email, separate from `notification_email`)
+- [ ] On request creation, email the lab's `request_email` with full request details. If urgent (ambulance), mark prominently
+- [ ] Restructure send-results into **2 mandatory steps**:
+  - Step 1: Confirm patient phone (required) + email (required) — updates request record
+  - Step 2: Clinical content — PDFs, result link, note, diagnosis (all optional)
+
+### Phase 2 — Patient-Facing Pages
+- [ ] Add `whatsapp String?` to `Lab` model (editable in admin + lab dashboard)
+- [ ] New page `/request/[code]` — public, shows request details + lab contact info + FAB WhatsApp button
+- [ ] Update patient email template to include **"View Request Details"** button → `/request/[code]`
+
+### Phase 3 — Doctor Request Form Enhancements
+- [ ] Add `slug String? @unique` to `Lab` model (set in admin dashboard)
+- [ ] New dynamic route `/[labSlug]/page.tsx` — pre-selects lab, skips lab selection step
+- [ ] Add photo/image upload to doctor form ("Snap or upload test request slip")
+  - Store in Supabase Storage (`request-images` bucket)
+  - Add `test_image_url String?` to `Request` model
+  - Lab dashboard displays the image in request detail view
+
+### Phase 4 — Ambulance & Schedule
+- [ ] Add to `Request` model: `is_critical Boolean @default(false)`, `needs_ambulance Boolean @default(false)`, `ambulance_notes String?`
+- [ ] In doctor request form: optional checkboxes for "Patient is critical" and "Request ambulance service" (shown only if lab offers ambulance)
+- [ ] Ambulance requests trigger urgent email to lab's `request_email`
+- [ ] Schedule field made explicitly optional in form UI
+- [ ] Patient can update their schedule from `/request/[code]` page (no login needed — code is the auth)
+
+### Phase 5 — Patient Dashboard
+- [ ] Add `PatientOtp` and `PatientSession` models (mirrors DoctorOtp/DoctorSession)
+- [ ] `/login` — patient enters email → receives 6-digit OTP → session cookie (`patient_token`)
+- [ ] `/dashboard` — shows all requests where `patient_email` matches session, with status + results
+- [ ] WhatsApp contact button per request linking to the lab's WhatsApp
+- [ ] Phone OTP deferred — revisit with Firebase Phone Auth (free, global, Nigeria-compatible) when needed
+
+### Phase 6 — Global Edit Consistency
+- [ ] Add `updated_at DateTime @updatedAt` to `Request`
+- [ ] Doctor edits via `/doc-login/dashboard` are saved and reflected everywhere (lab dashboard, patient page, patient dashboard)
+- [ ] All views show "last updated" timestamp
+
+---
+
+## 📬 Email Types Reference
+
+| Template | Trigger | Recipients |
+|----------|---------|------------|
+| `doctorRequestConfirmation` | Request created | Doctor |
+| `patientRequestCode` | Request created | Patient (if email provided) |
+| `labNewRequest` | Request created | Lab `request_email` (new) |
+| `labNewRequestUrgent` | Request created + ambulance | Lab `request_email` (new, marked urgent) |
+| `doctorPatientArrived` | Status → seen | Doctor |
+| `doctorTestsCompleted` | Status → done | Doctor |
+| `labResultsDoctor` | Results sent | Doctor |
+| `labResultsPatient` | Results sent | Patient |
+| `labAccountCreated` | Lab created in admin | Lab owner |
+| `labMemberWelcome` | Member added | Lab staff |
+| `marketerOtpEmail` | Marketer login | Marketer |
+| `doctorOtpEmail` | Doctor login | Doctor |
+| `patientOtpEmail` | Patient login (new) | Patient |
+
+---
+
+## 🔑 Decisions Log
+
+| # | Decision |
+|---|---------|
+| Lab URLs | **Path-based** (`poveon.com/apexlabs`) — subdomain routing deferred |
+| Patient auth | **Email OTP** only — phone OTP (Firebase) deferred |
+| Patient request page | On hold — not building `/request/[code]` yet |
+| Doctor edits | Via `/doc-login` portal — OTP-authenticated |
+| Ambulance | Flag within request form, not a separate flow. Triggers urgent email to lab |
+| Lab email fields | Two separate fields: `request_email` (new requests) vs `notification_email` (results/brand) |
