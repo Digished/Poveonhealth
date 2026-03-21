@@ -819,9 +819,20 @@ function LearnMoreModal({ onClose }: { onClose: () => void }) {
   );
 }
 
-export function DoctorRequestForm() {
-  const [step, setStep] = useState(1);
-  const [form, setForm] = useState<FormData>(INITIAL);
+export function DoctorRequestForm({
+  preselectedLabId,
+  preselectedLabName,
+}: {
+  preselectedLabId?: string;
+  preselectedLabName?: string;
+} = {}) {
+  // If a lab is preselected, start at step 2 and skip step 1 entirely
+  const labPreselected = !!preselectedLabId;
+  const [step, setStep] = useState(labPreselected ? 2 : 1);
+  const [form, setForm] = useState<FormData>(() => ({
+    ...INITIAL,
+    lab_id: preselectedLabId ?? "",
+  }));
   const [errors, setErrors] = useState<Partial<FormData>>({});
   const [labs, setLabs] = useState<Lab[]>([]);
   const [labsLoading, setLabsLoading] = useState(true);
@@ -839,7 +850,15 @@ export function DoctorRequestForm() {
   const [savedProfile, setSavedProfile] = useState<{ prefix: string; name: string; email: string; phone: string; hospital: string; bankName: string; bankCode: string; accountNumber: string; accountName: string } | null>(null);
   const [bankCode, setBankCode] = useState("");
   const [bankVerified, setBankVerified] = useState(false);
-  const [maxStep, setMaxStep] = useState(1);
+  const [maxStep, setMaxStep] = useState(labPreselected ? 2 : 1);
+  // Image upload state
+  const [imageUploading, setImageUploading] = useState(false);
+  const [testImageUrl, setTestImageUrl] = useState<string | null>(null);
+  const [imageUploadError, setImageUploadError] = useState<string | null>(null);
+  // Critical / ambulance state
+  const [isCritical, setIsCritical] = useState(false);
+  const [needsAmbulance, setNeedsAmbulance] = useState(false);
+  const [ambulanceNotes, setAmbulanceNotes] = useState("");
 
   const fetchLabs = useCallback(() => {
     setLabsLoading(true);
@@ -934,7 +953,8 @@ export function DoctorRequestForm() {
 
   function validateStep(s: number): boolean {
     const errs: Partial<FormData> = {};
-    if (s === 1 && !form.lab_id) errs.lab_id = "Please select a laboratory";
+    // Skip lab validation when a lab has been preselected via props
+    if (s === 1 && !labPreselected && !form.lab_id) errs.lab_id = "Please select a laboratory";
     if (s === 2) {
       if (!form.patient_name.trim()) errs.patient_name = "Required";
       if (!form.dob) errs.dob = "Required";
@@ -1000,7 +1020,8 @@ export function DoctorRequestForm() {
 
   function handleBack() {
     setErrors({});
-    setStep((s) => Math.max(1, s - 1));
+    // When a lab is preselected, step 1 is hidden — don't go below step 2
+    setStep((s) => Math.max(labPreselected ? 2 : 1, s - 1));
     window.scrollTo({ top: 0, behavior: "smooth" });
   }
 
@@ -1011,7 +1032,13 @@ export function DoctorRequestForm() {
       const res = await fetch("/api/requests/create", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(form),
+        body: JSON.stringify({
+          ...form,
+          test_image_url: testImageUrl ?? undefined,
+          is_critical: isCritical,
+          needs_ambulance: needsAmbulance,
+          ambulance_notes: ambulanceNotes || undefined,
+        }),
       });
       const data: CreateRequestResponse = await res.json();
       if (data.success) {
@@ -1035,7 +1062,18 @@ export function DoctorRequestForm() {
         labName={result.lab?.name ?? ""}
         labAddress={result.lab?.address ?? ""}
         labPhones={result.lab?.phones ?? []}
-        onReset={() => { setResult(null); setForm(INITIAL); setStep(1); setMaxStep(1); loadSavedProfile(); }}
+        onReset={() => {
+          setResult(null);
+          setForm({ ...INITIAL, lab_id: preselectedLabId ?? "" });
+          setStep(labPreselected ? 2 : 1);
+          setMaxStep(labPreselected ? 2 : 1);
+          setTestImageUrl(null);
+          setImageUploadError(null);
+          setIsCritical(false);
+          setNeedsAmbulance(false);
+          setAmbulanceNotes("");
+          loadSavedProfile();
+        }}
       />
     );
   }
@@ -1854,6 +1892,127 @@ export function DoctorRequestForm() {
               onChange={(e) => set("tests", e.target.value)}
               error={errors.tests}
             />
+
+            {/* Upload Test Request Slip (optional) */}
+            <div className="flex flex-col gap-2">
+              <label className="text-sm font-medium text-slate-700">
+                Upload Test Request Slip{" "}
+                <span className="text-xs text-slate-400 font-normal">(optional)</span>
+              </label>
+              {testImageUrl ? (
+                <div className="flex items-center gap-3 rounded-xl border border-emerald-200 bg-emerald-50/40 px-4 py-3">
+                  <img
+                    src={testImageUrl}
+                    alt="Uploaded test request slip"
+                    className="w-14 h-14 rounded-lg object-cover border border-emerald-200 shrink-0"
+                  />
+                  <div className="flex-1 min-w-0">
+                    <p className="text-sm font-semibold text-emerald-700 flex items-center gap-1.5">
+                      <Check className="w-4 h-4" /> Image uploaded
+                    </p>
+                    <p className="text-xs text-slate-400 mt-0.5 truncate">{testImageUrl.split("/").pop()}</p>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => { setTestImageUrl(null); setImageUploadError(null); }}
+                    className="p-1.5 rounded-lg hover:bg-emerald-100 text-emerald-400 hover:text-emerald-700 transition-colors shrink-0"
+                    aria-label="Remove uploaded image"
+                  >
+                    <X className="w-4 h-4" />
+                  </button>
+                </div>
+              ) : imageUploading ? (
+                <div className="flex items-center gap-3 rounded-xl border border-slate-200 bg-slate-50 px-4 py-3">
+                  <RefreshCw className="w-4 h-4 text-slate-400 animate-spin shrink-0" />
+                  <span className="text-sm text-slate-500">Uploading…</span>
+                </div>
+              ) : (
+                <label className="cursor-pointer">
+                  <div className={`flex items-center gap-2.5 rounded-xl border-2 border-dashed px-4 py-3 transition-colors ${imageUploadError ? "border-red-300 bg-red-50/30" : "border-slate-200 bg-slate-50/50 hover:border-medical-300 hover:bg-medical-50/30"}`}>
+                    <FlaskConical className="w-4 h-4 text-slate-400 shrink-0" />
+                    <span className="text-sm text-slate-500">Tap to attach a photo of the request slip</span>
+                  </div>
+                  <input
+                    type="file"
+                    accept="image/jpeg,image/png,image/webp,image/heic,.heic"
+                    className="sr-only"
+                    onChange={async (e) => {
+                      const file = e.target.files?.[0];
+                      if (!file) return;
+                      setImageUploading(true);
+                      setImageUploadError(null);
+                      try {
+                        const fd = new FormData();
+                        fd.append("file", file);
+                        const res = await fetch("/api/requests/upload-image", { method: "POST", body: fd });
+                        const data = await res.json();
+                        if (data.url) {
+                          setTestImageUrl(data.url);
+                        } else {
+                          setImageUploadError(data.error ?? "Upload failed");
+                        }
+                      } catch {
+                        setImageUploadError("Upload failed. Please try again.");
+                      } finally {
+                        setImageUploading(false);
+                        // Reset the input so the same file can be re-selected after removal
+                        e.target.value = "";
+                      }
+                    }}
+                  />
+                </label>
+              )}
+              {imageUploadError && (
+                <p className="text-xs text-red-600 font-medium">{imageUploadError}</p>
+              )}
+            </div>
+
+            {/* Critical condition / ambulance */}
+            <div className="rounded-xl border border-slate-200 bg-slate-50/50 overflow-hidden">
+              <div className="px-4 py-3 space-y-3">
+                <p className="text-xs font-semibold text-slate-500 uppercase tracking-wider">Patient Condition</p>
+                <label className="flex items-start gap-3 cursor-pointer group">
+                  <input
+                    type="checkbox"
+                    checked={isCritical}
+                    onChange={(e) => setIsCritical(e.target.checked)}
+                    className="mt-0.5 w-4 h-4 rounded border-slate-300 text-medical-600 focus:ring-medical-500 focus:ring-offset-0 shrink-0"
+                  />
+                  <div className="min-w-0">
+                    <span className="text-sm font-semibold text-slate-700 group-hover:text-slate-900 transition-colors">
+                      Patient is in critical condition
+                    </span>
+                    <p className="text-xs text-slate-400 mt-0.5">Flag this request as urgent / critical for the lab</p>
+                  </div>
+                </label>
+                <label className="flex items-start gap-3 cursor-pointer group">
+                  <input
+                    type="checkbox"
+                    checked={needsAmbulance}
+                    onChange={(e) => setNeedsAmbulance(e.target.checked)}
+                    className="mt-0.5 w-4 h-4 rounded border-slate-300 text-medical-600 focus:ring-medical-500 focus:ring-offset-0 shrink-0"
+                  />
+                  <div className="min-w-0">
+                    <span className="text-sm font-semibold text-slate-700 group-hover:text-slate-900 transition-colors">
+                      Request ambulance service
+                    </span>
+                    <p className="text-xs text-slate-400 mt-0.5">Notify the lab that ambulance transport is needed</p>
+                  </div>
+                </label>
+                {needsAmbulance && (
+                  <div className="animate-fade-in-up">
+                    <Textarea
+                      label="Pickup address / ambulance notes"
+                      placeholder="Patient's pickup address or any relevant notes for the ambulance team…"
+                      rows={2}
+                      value={ambulanceNotes}
+                      onChange={(e) => setAmbulanceNotes(e.target.value)}
+                    />
+                  </div>
+                )}
+              </div>
+            </div>
+
             <div className="bg-slate-50 rounded-xl p-4 space-y-2 border border-slate-100">
               <p className="text-xs font-semibold text-slate-400 uppercase tracking-wider mb-3">Review</p>
               <SummaryRow label="Lab" value={selectedLab?.name ?? ""} />

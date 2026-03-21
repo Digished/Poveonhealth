@@ -13,12 +13,15 @@ model Lab {
   id                  String    @id @default(uuid())
   name                String
   prefix              String    @unique
+  slug                String?   @unique  // URL-friendly identifier e.g. "apexlabs" → /apexlabs
   address             String    @default("")
   phones              Json      @default("[]")
   email               String    @unique
   description         String    @default("")
   logo_url            String?
-  notification_email  String?
+  whatsapp            String?             // WhatsApp number for FAB contact buttons
+  notification_email  String?             // Branded "from" address for result/notification emails
+  request_email       String?             // Dedicated address for incoming new-request alerts
   hidden              Boolean   @default(false)
   service_categories  Json      @default("[]")
   certifications      Json      @default("[]")
@@ -132,8 +135,13 @@ model Request {
   schedule              String?
   diagnosis             String?
   tests                 String
+  test_image_url        String?   // Optional photo/scan of the physical test request slip
+  is_critical           Boolean   @default(false)  // Patient marked as critical
+  needs_ambulance       Boolean   @default(false)  // Ambulance service requested
+  ambulance_notes       String?   // Pickup address / extra ambulance details
   status                String    @default("incoming")
   created_at            DateTime  @default(now())
+  updated_at            DateTime  @updatedAt
   seen_at               DateTime?
   completed_at          DateTime?
 
@@ -223,6 +231,30 @@ model MarketerSession {
 
   @@index([marketer_id])
   @@map("marketer_sessions")
+}
+
+// One-time passcodes for patient portal login
+model PatientOtp {
+  id         String   @id @default(uuid())
+  email      String
+  code_hash  String   // SHA-256 of the 6-digit OTP
+  expires_at DateTime
+  used       Boolean  @default(false)
+  created_at DateTime @default(now())
+
+  @@index([email])
+  @@map("patient_otps")
+}
+
+// Active patient portal sessions
+model PatientSession {
+  id            String   @id @default(uuid())
+  patient_email String
+  expires_at    DateTime
+  created_at    DateTime @default(now())
+
+  @@index([patient_email])
+  @@map("patient_sessions")
 }
 
 // Tracks API calls for analytics — written asynchronously, never blocks responses

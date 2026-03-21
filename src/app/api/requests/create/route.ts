@@ -3,7 +3,7 @@ import { z } from "zod";
 import { prisma } from "@/lib/prisma";
 import { generateUniqueCode } from "@/lib/code-generator";
 import { resend, labSender } from "@/lib/email/resend";
-import { doctorRequestConfirmation, patientRequestCode } from "@/lib/email/templates";
+import { doctorRequestConfirmation, patientRequestCode, labNewRequest } from "@/lib/email/templates";
 import { logApiCall } from "@/lib/api-logger";
 
 const CreateRequestSchema = z.object({
@@ -25,6 +25,10 @@ const CreateRequestSchema = z.object({
   diagnosis: z.string().max(2000).optional().or(z.literal("")),
   tests: z.string().min(2).max(2000),
   lab_id: z.string().uuid(),
+  is_critical: z.boolean().optional().default(false),
+  needs_ambulance: z.boolean().optional().default(false),
+  ambulance_notes: z.string().max(500).optional().or(z.literal("")),
+  test_image_url: z.string().url().optional().or(z.literal("")),
 });
 
 const CORS_HEADERS = {
@@ -112,6 +116,10 @@ export async function POST(request: NextRequest) {
         schedule: data.schedule || null,
         diagnosis: data.diagnosis || null,
         tests: data.tests,
+        is_critical: data.is_critical,
+        needs_ambulance: data.needs_ambulance,
+        ambulance_notes: data.ambulance_notes || null,
+        test_image_url: data.test_image_url || null,
         status: "incoming",
       },
     });
@@ -179,6 +187,36 @@ export async function POST(request: NextRequest) {
           }),
         }).then(({ error }) => { if (error) console.error("[email] patient code:", JSON.stringify(error)); })
       );
+    }
+
+    // Send new-request notification to the lab's request_email (fire-and-forget)
+    if (lab.request_email) {
+      const isUrgent = data.needs_ambulance || data.is_critical;
+      const appUrl = process.env.NEXT_PUBLIC_APP_URL ?? "";
+      resend.emails.send({
+        from: labSender(lab),
+        to: lab.request_email,
+        subject: `New Lab Request${isUrgent ? " — URGENT" : ""} — Code: ${code}`,
+        html: labNewRequest({
+          labName: lab.name,
+          requestCode: code,
+          patientName: data.patient_name,
+          doctorName: data.doctor_name,
+          doctorPhone: data.doctor_phone || undefined,
+          doctorHospital: data.doctor_hospital || undefined,
+          tests: data.tests,
+          diagnosis: data.diagnosis || undefined,
+          schedule: data.schedule || undefined,
+          isUrgent,
+          isCritical: data.is_critical,
+          needsAmbulance: data.needs_ambulance,
+          ambulanceNotes: data.ambulance_notes || undefined,
+          testImageUrl: data.test_image_url || undefined,
+          appUrl,
+        }),
+      })
+        .then(({ error }) => { if (error) console.error("[email] lab new request:", JSON.stringify(error)); })
+        .catch((e) => console.error("[email] lab new request error:", e));
     }
 
     await Promise.all(sends).catch((e) => console.error("[email] send error:", e));

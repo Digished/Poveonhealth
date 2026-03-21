@@ -72,7 +72,7 @@ export async function POST(request: NextRequest) {
     // Fetch the request and verify ownership
     const req = await prisma.request.findUnique({
       where: { id: requestId },
-      include: { lab: { select: { name: true, notification_email: true } } },
+      include: { lab: { select: { name: true, notification_email: true, request_email: true, whatsapp: true } } },
     });
 
     if (!req) {

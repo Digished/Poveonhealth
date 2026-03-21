@@ -140,6 +140,7 @@ export function patientRequestCode({
   labAddress,
   labPhones,
   brand,
+  requestPageUrl,
 }: {
   patientName: string;
   code: string;
@@ -147,9 +148,17 @@ export function patientRequestCode({
   labAddress: string;
   labPhones: string[];
   brand?: { name: string };
+  requestPageUrl?: string;
 }) {
   const phoneLines = labPhones.length
     ? labPhones.map((p) => `<p style="margin:2px 0;color:#1e3a5f;font-size:14px;">📞 ${p}</p>`).join("")
+    : "";
+  const viewRequestButton = requestPageUrl
+    ? `<div style="text-align:center;margin:20px 0;">
+        <a href="${requestPageUrl}" style="display:inline-block;background:#0270c3;color:#ffffff;text-decoration:none;padding:14px 32px;border-radius:8px;font-weight:600;font-size:15px;">
+          View Request Details
+        </a>
+      </div>`
     : "";
   return base(`
     <h2 style="margin:0 0 8px;color:#0259a0;font-size:20px;font-weight:700;">Your Lab Test Request</h2>
@@ -160,6 +169,8 @@ export function patientRequestCode({
     </p>
 
     ${codeBox(code)}
+
+    ${viewRequestButton}
 
     ${divider}
 
@@ -561,4 +572,149 @@ export function doctorOtpEmail({
       If you did not request this code, you can safely ignore this email.
     </p>
   `);
+}
+
+// =============================================================================
+// TEMPLATE: Patient — One-Time Passcode for Portal Login
+// =============================================================================
+export function patientOtpEmail({
+  patientEmail,
+  otp,
+}: {
+  patientEmail: string;
+  otp: string;
+}) {
+  return base(`
+    <h2 style="margin:0 0 8px;color:#0259a0;font-size:20px;font-weight:700;">Your Login Code</h2>
+    <p style="margin:0 0 24px;color:#4b5563;font-size:15px;">
+      Use the code below to sign in to your Poveon Patient Portal. It expires in <strong>10 minutes</strong>.
+    </p>
+
+    <div style="background:#f0f7ff;border:2px dashed #0270c3;border-radius:8px;padding:24px;text-align:center;margin:24px 0;">
+      <p style="margin:0 0 6px;color:#0259a0;font-size:12px;font-weight:600;text-transform:uppercase;letter-spacing:1px;">One-Time Passcode</p>
+      <p style="margin:0;color:#0259a0;font-size:40px;font-weight:800;letter-spacing:10px;font-family:monospace;">${otp}</p>
+    </div>
+
+    ${divider}
+
+    <p style="margin:0 0 8px;color:#6b7280;font-size:13px;">Signing in as: <strong style="color:#1e3a5f;">${patientEmail}</strong></p>
+
+    <p style="margin:12px 0 0;color:#dc2626;font-size:13px;font-weight:500;">
+      If you did not request this code, you can safely ignore this email.
+    </p>
+  `);
+}
+
+// =============================================================================
+// TEMPLATE: Lab — New Request Notification
+// =============================================================================
+export function labNewRequest({
+  labName,
+  requestCode,
+  patientName,
+  doctorName,
+  doctorPhone,
+  doctorHospital,
+  tests,
+  diagnosis,
+  schedule,
+  isUrgent,
+  isCritical,
+  needsAmbulance,
+  ambulanceNotes,
+  testImageUrl,
+  appUrl,
+}: {
+  labName: string;
+  requestCode: string;
+  patientName: string;
+  doctorName: string;
+  doctorPhone?: string;
+  doctorHospital?: string;
+  tests: string;
+  diagnosis?: string;
+  schedule?: string;
+  isUrgent: boolean;
+  isCritical: boolean;
+  needsAmbulance: boolean;
+  ambulanceNotes?: string;
+  testImageUrl?: string;
+  appUrl: string;
+}) {
+  const urgentBanner = isUrgent
+    ? `<div style="background:#fee2e2;border:2px solid #ef4444;border-radius:8px;padding:14px 20px;margin:0 0 24px;text-align:center;">
+        <p style="margin:0;color:#b91c1c;font-size:15px;font-weight:700;letter-spacing:0.5px;">
+          🚨 URGENT REQUEST${needsAmbulance ? " — AMBULANCE REQUIRED" : ""}${isCritical ? " — CRITICAL PATIENT" : ""}
+        </p>
+      </div>`
+    : "";
+
+  const scheduleLabel: Record<string, string> = {
+    today: "Today",
+    this_week: "This Week",
+    this_month: "This Month",
+    not_sure: "Not Sure",
+  };
+
+  const imageSection = testImageUrl
+    ? `${label("Test Image / Referral Document")}
+       <div style="margin:4px 0 16px;">
+         <a href="${testImageUrl}" style="color:#0270c3;font-size:14px;text-decoration:underline;">View Attached Image</a>
+       </div>`
+    : "";
+
+  const ambulanceSection = needsAmbulance
+    ? `${label("Ambulance Required")}
+       ${value("Yes")}
+       ${ambulanceNotes ? `${label("Ambulance Notes")}${value(ambulanceNotes)}` : ""}`
+    : "";
+
+  return base(`
+    <h2 style="margin:0 0 8px;color:#0259a0;font-size:20px;font-weight:700;">New Lab Request Received</h2>
+    <p style="margin:0 0 24px;color:#4b5563;font-size:15px;">
+      ${labName} has received a new laboratory request. Details are provided below.
+    </p>
+
+    ${urgentBanner}
+
+    ${codeBox(requestCode)}
+
+    ${divider}
+
+    <h3 style="margin:0 0 16px;color:#0259a0;font-size:16px;font-weight:600;">Patient Information</h3>
+
+    ${label("Patient Name")}
+    ${value(patientName)}
+
+    ${divider}
+
+    <h3 style="margin:0 0 16px;color:#0259a0;font-size:16px;font-weight:600;">Requesting Doctor</h3>
+
+    ${label("Doctor")}
+    ${value(doctorName)}
+
+    ${doctorPhone ? `${label("Phone")}${value(doctorPhone)}` : ""}
+    ${doctorHospital ? `${label("Hospital / Clinic")}${value(doctorHospital)}` : ""}
+
+    ${divider}
+
+    <h3 style="margin:0 0 16px;color:#0259a0;font-size:16px;font-weight:600;">Request Details</h3>
+
+    ${label("Tests Requested")}
+    ${value(tests)}
+
+    ${diagnosis ? `${label("Diagnosis / Clinical Notes")}${value(diagnosis)}` : ""}
+    ${schedule ? `${label("Preferred Schedule")}${value(scheduleLabel[schedule] ?? schedule)}` : ""}
+    ${isCritical ? `${label("Critical Patient")}${value("Yes")}` : ""}
+    ${ambulanceSection}
+    ${imageSection}
+
+    ${divider}
+
+    <div style="text-align:center;margin:24px 0;">
+      <a href="${appUrl}/lab-dashboard" style="display:inline-block;background:#0270c3;color:#ffffff;text-decoration:none;padding:14px 32px;border-radius:8px;font-weight:600;font-size:15px;">
+        View Request
+      </a>
+    </div>
+  `, { name: labName });
 }

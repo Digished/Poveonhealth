@@ -9,12 +9,15 @@ export interface Lab {
   id: string;
   name: string;
   prefix: string;
+  slug: string | null;
   address: string;
   description: string;
   phones: string[];
   email: string;
   notification_email: string | null;
   logo_url: string | null;
+  whatsapp: string | null;
+  request_email: string | null;
   hidden: boolean;
   service_categories: string[];
   certifications: string[];
@@ -103,12 +106,17 @@ export interface LabRequest {
   tests: string;
   status: RequestStatus;
   created_at: string;
+  updated_at: string | null;
   seen_at: string | null;
   completed_at: string | null;
+  test_image_url: string | null;
+  is_critical: boolean | null;
+  needs_ambulance: boolean | null;
   // Joined field from lab relation (Prisma relation name is "lab")
   lab?: {
     name: string;
     address: string;
+    whatsapp?: string | null;
   };
 }
 

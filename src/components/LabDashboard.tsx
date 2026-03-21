@@ -6,7 +6,8 @@ import {
   Search, RefreshCw, CheckCircle, Clock, FlaskConical,
   ChevronRight, Calendar, Stethoscope, LogOut, Eye, EyeOff, Phone, X,
   Link2, Paperclip, Send, SkipForward, UserCircle, MapPin, Shield, Layers,
-  Users, CreditCard, Filter, ChevronDown,
+  Users, CreditCard, Filter, ChevronDown, AlertTriangle, Truck, ExternalLink,
+  MessageCircle, ChevronLeft,
 } from "lucide-react";
 import { Button } from "@/components/ui/Button";
 import { Input } from "@/components/ui/Input";
@@ -40,6 +41,7 @@ interface LabDashboardProps {
     address: string;
     description: string;
     phones: string[];
+    whatsapp?: string | null;
     service_categories: string[];
     certifications: string[];
   };
@@ -97,6 +99,11 @@ export function LabDashboard({ lab, isOwner = false, roleName = "Lab Owner", can
 
   // Results modal state
   const [resultsModalRequest, setResultsModalRequest] = useState<LabRequest | null>(null);
+  const [resultsStep, setResultsStep] = useState<1 | 2>(1);
+  const [contactPhone, setContactPhone] = useState("");
+  const [contactEmail, setContactEmail] = useState("");
+  const [contactError, setContactError] = useState("");
+  const [updatingContact, setUpdatingContact] = useState(false);
   const [resultLink, setResultLink] = useState("");
   const [resultFiles, setResultFiles] = useState<File[]>([]);
   const [resultNote, setResultNote] = useState("");
@@ -200,6 +207,11 @@ export function LabDashboard({ lab, isOwner = false, roleName = "Lab Owner", can
 
   function openResultsModal(req: LabRequest) {
     setResultsModalRequest(req);
+    setResultsStep(1);
+    setContactPhone(req.patient_phone ?? "");
+    setContactEmail(req.patient_email ?? "");
+    setContactError("");
+    setUpdatingContact(false);
     setResultLink("");
     setResultFiles([]);
     setResultNote("");
@@ -210,7 +222,35 @@ export function LabDashboard({ lab, isOwner = false, roleName = "Lab Owner", can
 
   function closeResultsModal() {
     setResultsModalRequest(null);
+    setContactError("");
     setPatientEmailError("");
+  }
+
+  async function handleContactNext() {
+    if (!resultsModalRequest) return;
+    setContactError("");
+    setUpdatingContact(true);
+    try {
+      const res = await fetch("/api/requests/update-contact", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          requestId: resultsModalRequest.id,
+          patient_phone: contactPhone.trim(),
+          patient_email: contactEmail.trim(),
+        }),
+      });
+      const data = await res.json();
+      if (!data.success) {
+        setContactError(data.error ?? "Failed to update contact info");
+        return;
+      }
+      setResultsStep(2);
+    } catch {
+      setContactError("Network error — please try again");
+    } finally {
+      setUpdatingContact(false);
+    }
   }
 
   function removeFile(index: number) {
@@ -890,6 +930,56 @@ export function LabDashboard({ lab, isOwner = false, roleName = "Lab Owner", can
                         {format(new Date(selectedRequest.seen_at), "dd MMM yyyy HH:mm")}
                       </DetailRow>
                     )}
+                    {selectedRequest.updated_at && (
+                      <DetailRow label="Last updated">
+                        {format(new Date(selectedRequest.updated_at), "dd MMM yyyy HH:mm")}
+                      </DetailRow>
+                    )}
+                    {/* Flags */}
+                    {(selectedRequest.is_critical || selectedRequest.needs_ambulance) && (
+                      <div className="flex flex-wrap gap-2 pt-1">
+                        {selectedRequest.is_critical && (
+                          <span className="flex items-center gap-1 text-xs font-semibold bg-red-500/20 text-red-400 border border-red-500/30 px-2.5 py-1 rounded-full">
+                            <AlertTriangle className="w-3 h-3" />
+                            Critical Patient
+                          </span>
+                        )}
+                        {selectedRequest.needs_ambulance && (
+                          <span className="flex items-center gap-1 text-xs font-semibold bg-orange-500/20 text-orange-400 border border-orange-500/30 px-2.5 py-1 rounded-full">
+                            <Truck className="w-3 h-3" />
+                            Ambulance Requested
+                          </span>
+                        )}
+                      </div>
+                    )}
+                    {/* Test request image */}
+                    {selectedRequest.test_image_url && (
+                      <DetailRow label="Test Request Image">
+                        <a
+                          href={selectedRequest.test_image_url}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="inline-flex items-center gap-1.5 text-blue-400 hover:text-blue-300 hover:underline text-sm"
+                        >
+                          <ExternalLink className="w-3.5 h-3.5" />
+                          View Test Request Image
+                        </a>
+                      </DetailRow>
+                    )}
+                    {/* WhatsApp */}
+                    {lab.whatsapp && (
+                      <DetailRow label="Lab WhatsApp">
+                        <a
+                          href={`https://wa.me/${lab.whatsapp.replace(/\D/g, "")}`}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="inline-flex items-center gap-1.5 text-emerald-400 hover:text-emerald-300 hover:underline text-sm"
+                        >
+                          <MessageCircle className="w-3.5 h-3.5" />
+                          Chat on WhatsApp
+                        </a>
+                      </DetailRow>
+                    )}
                   </div>
                 ) : (
                   /* Incoming: restricted view */
@@ -965,6 +1055,7 @@ export function LabDashboard({ lab, isOwner = false, roleName = "Lab Owner", can
         {resultsModalRequest && (() => {
           const isSeenRequest = resultsModalRequest.status === "seen";
           const hasContent = resultFiles.length > 0 || resultLink.trim().length > 0;
+          const contactNextDisabled = !contactPhone.trim() || !contactEmail.trim() || updatingContact;
           return (
             <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center bg-black/60 backdrop-blur-sm px-0 sm:px-4">
               <div className="w-full sm:max-w-lg bg-slate-900 border border-white/15 rounded-t-2xl sm:rounded-2xl max-h-[92vh] overflow-y-auto animate-slide-up">
@@ -978,6 +1069,9 @@ export function LabDashboard({ lab, isOwner = false, roleName = "Lab Owner", can
                     <p className="text-xs text-slate-400 mt-0.5">
                       {resultsModalRequest.patient_name} &middot; {resultsModalRequest.code}
                     </p>
+                    <p className="text-xs text-medical-400 font-medium mt-1">
+                      {resultsStep === 1 ? "Step 1 of 2: Patient Contact" : "Step 2 of 2: Send Results"}
+                    </p>
                   </div>
                   <button
                     onClick={closeResultsModal}
@@ -988,81 +1082,27 @@ export function LabDashboard({ lab, isOwner = false, roleName = "Lab Owner", can
                   </button>
                 </div>
 
-                <div className="p-5 space-y-5">
-                  <p className="text-sm text-slate-300">
-                    {isSeenRequest
-                      ? "Attach results below to email them to the doctor and patient. Or skip to just mark as done and notify the doctor."
-                      : "Send additional results that became available after the request was completed."}
-                  </p>
+                {/* Step 1 — Contact Verification */}
+                {resultsStep === 1 && (
+                  <div className="p-5 space-y-5">
+                    <p className="text-sm text-slate-300">
+                      Verify the patient&apos;s contact details before sending results. Both fields are required.
+                    </p>
 
-                  {/* PDF attachments */}
-                  <div>
-                    <label className="flex items-center gap-1.5 text-xs font-semibold text-slate-400 uppercase tracking-wider mb-2">
-                      <Paperclip className="w-3.5 h-3.5" />
-                      PDF Attachments <span className="normal-case font-normal text-slate-500">(optional, multiple)</span>
-                    </label>
-                    <input
-                      ref={fileInputRef}
-                      type="file"
-                      accept="application/pdf"
-                      multiple
-                      onChange={(e) => {
-                        const picked = Array.from(e.target.files ?? []);
-                        if (picked.length) setResultFiles((prev) => [...prev, ...picked]);
-                        // Reset so the same file can be re-picked if removed
-                        if (fileInputRef.current) fileInputRef.current.value = "";
-                      }}
-                      className="w-full text-sm text-slate-300 file:mr-3 file:py-2 file:px-4 file:rounded-lg file:border-0 file:bg-white/10 file:text-white file:font-medium hover:file:bg-white/20 file:cursor-pointer cursor-pointer bg-white/5 border border-white/10 rounded-xl px-3 py-2.5"
-                    />
-                    {resultFiles.length > 0 && (
-                      <ul className="mt-2 space-y-1.5">
-                        {resultFiles.map((f, i) => (
-                          <li key={i} className="flex items-center justify-between bg-emerald-500/10 border border-emerald-500/20 rounded-lg px-3 py-2">
-                            <span className="text-xs text-emerald-300 truncate">{f.name}</span>
-                            <button
-                              onClick={() => removeFile(i)}
-                              className="ml-2 text-slate-400 hover:text-white shrink-0"
-                              title="Remove"
-                            >
-                              <X className="w-3.5 h-3.5" />
-                            </button>
-                          </li>
-                        ))}
-                      </ul>
-                    )}
-                  </div>
+                    <div>
+                      <label className="flex items-center gap-1.5 text-xs font-semibold text-slate-400 uppercase tracking-wider mb-2">
+                        <Phone className="w-3.5 h-3.5" />
+                        Patient Phone <span className="text-red-400 ml-0.5">*</span>
+                      </label>
+                      <input
+                        type="tel"
+                        placeholder="+234 800 000 0000"
+                        value={contactPhone}
+                        onChange={(e) => { setContactPhone(e.target.value); if (contactError) setContactError(""); }}
+                        className="w-full bg-white/5 border border-white/10 rounded-xl px-4 py-3 text-sm text-white placeholder-slate-500 focus:outline-none focus:ring-2 focus:ring-medical-500/50 focus:border-medical-500/50 transition-colors"
+                      />
+                    </div>
 
-                  {/* Result link */}
-                  <div>
-                    <label className="flex items-center gap-1.5 text-xs font-semibold text-slate-400 uppercase tracking-wider mb-2">
-                      <Link2 className="w-3.5 h-3.5" />
-                      Result Link <span className="normal-case font-normal text-slate-500">(optional)</span>
-                    </label>
-                    <input
-                      type="url"
-                      placeholder="https://results.example.com/..."
-                      value={resultLink}
-                      onChange={(e) => setResultLink(e.target.value)}
-                      className="w-full bg-white/5 border border-white/10 rounded-xl px-4 py-3 text-sm text-white placeholder-slate-500 focus:outline-none focus:ring-2 focus:ring-medical-500/50 focus:border-medical-500/50 transition-colors"
-                    />
-                  </div>
-
-                  {/* Note to doctor */}
-                  <div>
-                    <label className="flex items-center gap-1.5 text-xs font-semibold text-slate-400 uppercase tracking-wider mb-2">
-                      Note to Doctor <span className="normal-case font-normal text-slate-500">(optional)</span>
-                    </label>
-                    <textarea
-                      rows={3}
-                      placeholder="e.g. Culture results may follow within 48 hours…"
-                      value={resultNote}
-                      onChange={(e) => setResultNote(e.target.value)}
-                      className="w-full bg-white/5 border border-white/10 rounded-xl px-4 py-3 text-sm text-white placeholder-slate-500 focus:outline-none focus:ring-2 focus:ring-medical-500/50 focus:border-medical-500/50 transition-colors resize-none"
-                    />
-                  </div>
-
-                  {/* Patient email — required when none is on file */}
-                  {!resultsModalRequest.patient_email && (
                     <div>
                       <label className="flex items-center gap-1.5 text-xs font-semibold text-slate-400 uppercase tracking-wider mb-2">
                         Patient Email <span className="text-red-400 ml-0.5">*</span>
@@ -1070,56 +1110,149 @@ export function LabDashboard({ lab, isOwner = false, roleName = "Lab Owner", can
                       <input
                         type="email"
                         placeholder="patient@example.com"
-                        value={patientEmailInput}
-                        onChange={(e) => {
-                          setPatientEmailInput(e.target.value);
-                          if (patientEmailError) setPatientEmailError("");
-                        }}
-                        className={`w-full bg-white/5 border rounded-xl px-4 py-3 text-sm text-white placeholder-slate-500 focus:outline-none focus:ring-2 transition-colors ${
-                          patientEmailError
-                            ? "border-red-500 focus:ring-red-500/50"
-                            : "border-white/10 focus:ring-medical-500/50 focus:border-medical-500/50"
-                        }`}
+                        value={contactEmail}
+                        onChange={(e) => { setContactEmail(e.target.value); if (contactError) setContactError(""); }}
+                        className="w-full bg-white/5 border border-white/10 rounded-xl px-4 py-3 text-sm text-white placeholder-slate-500 focus:outline-none focus:ring-2 focus:ring-medical-500/50 focus:border-medical-500/50 transition-colors"
                       />
-                      {patientEmailError ? (
-                        <p className="text-xs text-red-400 font-medium mt-1.5">{patientEmailError}</p>
-                      ) : (
-                        <p className="text-xs text-slate-500 mt-1.5">
-                          No email on file — required to send results to the patient.
+                    </div>
+
+                    {contactError && (
+                      <p className="text-xs text-red-400 font-medium">{contactError}</p>
+                    )}
+
+                    <div className="flex flex-col gap-2 pt-1">
+                      <Button
+                        variant="success"
+                        fullWidth
+                        loading={updatingContact}
+                        disabled={contactNextDisabled}
+                        onClick={handleContactNext}
+                      >
+                        Next
+                        <ChevronRight className="w-4 h-4" />
+                      </Button>
+                      {(!contactPhone.trim() || !contactEmail.trim()) && (
+                        <p className="text-center text-xs text-slate-500">
+                          Both phone and email are required to continue.
                         </p>
                       )}
                     </div>
-                  )}
+                  </div>
+                )}
 
-                  {/* Actions */}
-                  <div className="flex flex-col gap-2 pt-1">
-                    <Button
-                      variant="success"
-                      fullWidth
-                      loading={sendingResults}
-                      disabled={!hasContent}
-                      onClick={handleSendResults}
-                    >
-                      <Send className="w-4 h-4" />
-                      {isSeenRequest ? "Send Results & Mark Done" : "Send Results"}
-                    </Button>
-                    {!hasContent && (
-                      <p className="text-center text-xs text-slate-500">
-                        Add a PDF or a link to enable sending.
-                      </p>
-                    )}
-                    {isSeenRequest && (
+                {/* Step 2 — Clinical Content */}
+                {resultsStep === 2 && (
+                  <div className="p-5 space-y-5">
+                    <p className="text-sm text-slate-300">
+                      {isSeenRequest
+                        ? "Attach results below to email them to the doctor and patient. Or skip to just mark as done and notify the doctor."
+                        : "Send additional results that became available after the request was completed."}
+                    </p>
+
+                    {/* PDF attachments */}
+                    <div>
+                      <label className="flex items-center gap-1.5 text-xs font-semibold text-slate-400 uppercase tracking-wider mb-2">
+                        <Paperclip className="w-3.5 h-3.5" />
+                        PDF Attachments <span className="normal-case font-normal text-slate-500">(optional, max 5 · 10 MB each)</span>
+                      </label>
+                      <input
+                        ref={fileInputRef}
+                        type="file"
+                        accept="application/pdf"
+                        multiple
+                        onChange={(e) => {
+                          const picked = Array.from(e.target.files ?? []);
+                          if (picked.length) setResultFiles((prev) => [...prev, ...picked]);
+                          // Reset so the same file can be re-picked if removed
+                          if (fileInputRef.current) fileInputRef.current.value = "";
+                        }}
+                        className="w-full text-sm text-slate-300 file:mr-3 file:py-2 file:px-4 file:rounded-lg file:border-0 file:bg-white/10 file:text-white file:font-medium hover:file:bg-white/20 file:cursor-pointer cursor-pointer bg-white/5 border border-white/10 rounded-xl px-3 py-2.5"
+                      />
+                      {resultFiles.length > 0 && (
+                        <ul className="mt-2 space-y-1.5">
+                          {resultFiles.map((f, i) => (
+                            <li key={i} className="flex items-center justify-between bg-emerald-500/10 border border-emerald-500/20 rounded-lg px-3 py-2">
+                              <span className="text-xs text-emerald-300 truncate">{f.name}</span>
+                              <button
+                                onClick={() => removeFile(i)}
+                                className="ml-2 text-slate-400 hover:text-white shrink-0"
+                                title="Remove"
+                              >
+                                <X className="w-3.5 h-3.5" />
+                              </button>
+                            </li>
+                          ))}
+                        </ul>
+                      )}
+                    </div>
+
+                    {/* Result link */}
+                    <div>
+                      <label className="flex items-center gap-1.5 text-xs font-semibold text-slate-400 uppercase tracking-wider mb-2">
+                        <Link2 className="w-3.5 h-3.5" />
+                        Result Link <span className="normal-case font-normal text-slate-500">(optional)</span>
+                      </label>
+                      <input
+                        type="url"
+                        placeholder="https://results.example.com/..."
+                        value={resultLink}
+                        onChange={(e) => setResultLink(e.target.value)}
+                        className="w-full bg-white/5 border border-white/10 rounded-xl px-4 py-3 text-sm text-white placeholder-slate-500 focus:outline-none focus:ring-2 focus:ring-medical-500/50 focus:border-medical-500/50 transition-colors"
+                      />
+                    </div>
+
+                    {/* Note from laboratory */}
+                    <div>
+                      <label className="flex items-center gap-1.5 text-xs font-semibold text-slate-400 uppercase tracking-wider mb-2">
+                        Note from Laboratory <span className="normal-case font-normal text-slate-500">(optional)</span>
+                      </label>
+                      <textarea
+                        rows={3}
+                        placeholder="e.g. Culture results may follow within 48 hours…"
+                        value={resultNote}
+                        onChange={(e) => setResultNote(e.target.value)}
+                        className="w-full bg-white/5 border border-white/10 rounded-xl px-4 py-3 text-sm text-white placeholder-slate-500 focus:outline-none focus:ring-2 focus:ring-medical-500/50 focus:border-medical-500/50 transition-colors resize-none"
+                      />
+                    </div>
+
+                    {/* Actions */}
+                    <div className="flex flex-col gap-2 pt-1">
+                      <Button
+                        variant="success"
+                        fullWidth
+                        loading={sendingResults}
+                        disabled={!hasContent}
+                        onClick={handleSendResults}
+                      >
+                        <Send className="w-4 h-4" />
+                        {isSeenRequest ? "Send Results & Mark Done" : "Send Results"}
+                      </Button>
+                      {!hasContent && (
+                        <p className="text-center text-xs text-slate-500">
+                          Add a PDF or a link to enable sending.
+                        </p>
+                      )}
+                      {isSeenRequest && (
+                        <button
+                          onClick={() => handleSkipResults(resultsModalRequest)}
+                          disabled={sendingResults}
+                          className="w-full flex items-center justify-center gap-2 px-4 py-2.5 rounded-xl text-sm font-medium text-slate-400 hover:text-white hover:bg-white/10 transition-colors disabled:opacity-50"
+                        >
+                          <SkipForward className="w-4 h-4" />
+                          Skip — mark done &amp; notify doctor only
+                        </button>
+                      )}
                       <button
-                        onClick={() => handleSkipResults(resultsModalRequest)}
+                        onClick={() => setResultsStep(1)}
                         disabled={sendingResults}
                         className="w-full flex items-center justify-center gap-2 px-4 py-2.5 rounded-xl text-sm font-medium text-slate-400 hover:text-white hover:bg-white/10 transition-colors disabled:opacity-50"
                       >
-                        <SkipForward className="w-4 h-4" />
-                        Skip — mark done &amp; notify doctor only
+                        <ChevronLeft className="w-4 h-4" />
+                        Back
                       </button>
-                    )}
+                    </div>
                   </div>
-                </div>
+                )}
               </div>
             </div>
           );
@@ -1351,6 +1484,59 @@ export function LabDashboard({ lab, isOwner = false, roleName = "Lab Owner", can
                   <div>
                     <p className="text-xs text-slate-500 font-medium mb-0.5">Retrieved</p>
                     <p className="text-slate-200">{format(new Date(selectedRequest.seen_at), "dd MMM yyyy HH:mm")}</p>
+                  </div>
+                )}
+                {selectedRequest.updated_at && (
+                  <div>
+                    <p className="text-xs text-slate-500 font-medium mb-0.5">Last updated</p>
+                    <p className="text-slate-200">{format(new Date(selectedRequest.updated_at), "dd MMM yyyy HH:mm")}</p>
+                  </div>
+                )}
+                {/* Flags */}
+                {(selectedRequest.is_critical || selectedRequest.needs_ambulance) && (
+                  <div className="flex flex-wrap gap-2">
+                    {selectedRequest.is_critical && (
+                      <span className="flex items-center gap-1 text-xs font-semibold bg-red-500/20 text-red-400 border border-red-500/30 px-2.5 py-1 rounded-full">
+                        <AlertTriangle className="w-3 h-3" />
+                        Critical Patient
+                      </span>
+                    )}
+                    {selectedRequest.needs_ambulance && (
+                      <span className="flex items-center gap-1 text-xs font-semibold bg-orange-500/20 text-orange-400 border border-orange-500/30 px-2.5 py-1 rounded-full">
+                        <Truck className="w-3 h-3" />
+                        Ambulance Requested
+                      </span>
+                    )}
+                  </div>
+                )}
+                {/* Test request image */}
+                {selectedRequest.test_image_url && (
+                  <div>
+                    <p className="text-xs text-slate-500 font-medium mb-0.5">Test Request Image</p>
+                    <a
+                      href={selectedRequest.test_image_url}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="inline-flex items-center gap-1.5 text-blue-400 hover:text-blue-300 hover:underline text-sm"
+                    >
+                      <ExternalLink className="w-3.5 h-3.5" />
+                      View Test Request Image
+                    </a>
+                  </div>
+                )}
+                {/* WhatsApp */}
+                {lab.whatsapp && (
+                  <div>
+                    <p className="text-xs text-slate-500 font-medium mb-0.5">Lab WhatsApp</p>
+                    <a
+                      href={`https://wa.me/${lab.whatsapp.replace(/\D/g, "")}`}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="inline-flex items-center gap-1.5 text-emerald-400 hover:text-emerald-300 hover:underline text-sm"
+                    >
+                      <MessageCircle className="w-3.5 h-3.5" />
+                      Chat on WhatsApp
+                    </a>
                   </div>
                 )}
                 {selectedRequest.status === "seen" && (

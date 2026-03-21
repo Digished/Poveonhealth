@@ -562,6 +562,31 @@ export function AdminDashboard() {
                         <span>✉</span> {lab.notification_email}
                       </p>
                     )}
+                    {(lab.slug || lab.whatsapp || lab.request_email) && (
+                      <div className="flex flex-wrap items-center gap-1.5 mb-1">
+                        {lab.slug && (
+                          <a
+                            href={`/${lab.slug}`}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            className="text-xs text-blue-400 hover:text-blue-300 underline underline-offset-2 font-mono"
+                            title={`Direct URL: poveon.com/${lab.slug}`}
+                          >
+                            /{lab.slug}
+                          </a>
+                        )}
+                        {lab.whatsapp && (
+                          <span className="inline-flex items-center gap-1 text-xs bg-green-900/30 text-green-400 border border-green-800/30 px-1.5 py-0.5 rounded-full" title={`WhatsApp: ${lab.whatsapp}`}>
+                            <Phone className="w-2.5 h-2.5" />WA
+                          </span>
+                        )}
+                        {lab.request_email && (
+                          <span className="inline-flex items-center gap-1 text-xs bg-blue-900/30 text-blue-400 border border-blue-800/30 px-1.5 py-0.5 rounded-full" title={`Request email: ${lab.request_email}`}>
+                            <span>✉</span> Requests
+                          </span>
+                        )}
+                      </div>
+                    )}
                     {lab.address && (
                       <p className="text-xs text-slate-500 flex items-start gap-1 mt-0.5">
                         <MapPin className="w-3 h-3 text-slate-600 mt-0.5 shrink-0" />{lab.address}
@@ -913,6 +938,10 @@ function CreateLabModal({ onClose, onSuccess }: { onClose: () => void; onSuccess
   const [description, setDescription] = useState("");
   const [phones, setPhones] = useState("");
   const [notificationEmail, setNotificationEmail] = useState("");
+  const [slug, setSlug] = useState("");
+  const [slugError, setSlugError] = useState("");
+  const [whatsapp, setWhatsapp] = useState("");
+  const [requestEmail, setRequestEmail] = useState("");
   const [tempPassword, setTempPassword] = useState("");
   const [showPassword, setShowPassword] = useState(false);
   const [loading, setLoading] = useState(false);
@@ -945,12 +974,27 @@ function CreateLabModal({ onClose, onSuccess }: { onClose: () => void; onSuccess
       toast.error("Name, email and address are required");
       return;
     }
+    if (slug.trim() && !/^[a-z0-9-]+$/.test(slug.trim())) {
+      setSlugError("Only lowercase letters, numbers, and hyphens allowed");
+      return;
+    }
     setLoading(true);
     try {
       const res = await fetch("/api/admin/create-lab", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ name: name.trim(), email: email.trim(), address: address.trim(), description: description.trim() || undefined, phones: phoneList, notification_email: notificationEmail.trim() || undefined, tempPassword: tempPassword.trim() || undefined }),
+        body: JSON.stringify({
+          name: name.trim(),
+          email: email.trim(),
+          address: address.trim(),
+          description: description.trim() || undefined,
+          phones: phoneList,
+          notification_email: notificationEmail.trim() || undefined,
+          slug: slug.trim() || undefined,
+          whatsapp: whatsapp.trim() || undefined,
+          request_email: requestEmail.trim() || undefined,
+          tempPassword: tempPassword.trim() || undefined,
+        }),
       });
       const data = await res.json();
       if (data.success) {
@@ -1031,6 +1075,47 @@ function CreateLabModal({ onClose, onSuccess }: { onClose: () => void; onSuccess
                 Emails to doctors &amp; patients will come from this address. Must be verified in Resend first. Leave blank to use notifications@poveon.com.
               </p>
             </div>
+            <div>
+              <label className="text-sm font-medium text-slate-300 block mb-1">
+                Lab URL Slug <span className="text-xs text-slate-500">(optional)</span>
+              </label>
+              <input
+                className={`w-full rounded-xl border px-4 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-medical-500 ${whiteInput} ${slugError ? "border-red-400" : ""}`}
+                placeholder="e.g. apexlabs"
+                value={slug}
+                onChange={(e) => { setSlug(e.target.value); setSlugError(""); }}
+              />
+              {slugError ? (
+                <p className="text-xs text-red-400 mt-1">{slugError}</p>
+              ) : (
+                <p className="text-xs text-slate-500 mt-1">Creates a direct URL: poveon.com/[slug]. Lowercase letters, numbers, hyphens only.</p>
+              )}
+            </div>
+            <div>
+              <label className="text-sm font-medium text-slate-300 block mb-1">
+                WhatsApp Number <span className="text-xs text-slate-500">(optional)</span>
+              </label>
+              <input
+                className={`w-full rounded-xl border px-4 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-medical-500 ${whiteInput}`}
+                placeholder="+234 800 000 0000"
+                value={whatsapp}
+                onChange={(e) => setWhatsapp(e.target.value)}
+              />
+              <p className="text-xs text-slate-500 mt-1">Used for patient contact buttons. Include country code.</p>
+            </div>
+            <div>
+              <label className="text-sm font-medium text-slate-300 block mb-1">
+                New Request Notification Email <span className="text-xs text-slate-500">(optional)</span>
+              </label>
+              <input
+                type="email"
+                className={`w-full rounded-xl border px-4 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-medical-500 ${whiteInput}`}
+                placeholder="requests@apexlabs.com"
+                value={requestEmail}
+                onChange={(e) => setRequestEmail(e.target.value)}
+              />
+              <p className="text-xs text-slate-500 mt-1">New test requests will be emailed to this address.</p>
+            </div>
             <div className="relative">
               <label className="text-sm font-medium text-slate-300 block mb-1">Temporary Password <span className="text-xs text-slate-500">(optional)</span></label>
               <input type={showPassword ? "text" : "password"} className={`w-full rounded-xl border px-4 py-2.5 pr-10 text-sm focus:outline-none focus:ring-2 focus:ring-medical-500 ${whiteInput}`} placeholder="Leave blank to auto-generate" value={tempPassword} onChange={(e) => setTempPassword(e.target.value)} />
@@ -1059,6 +1144,10 @@ function EditLabModal({ lab, onClose, onSuccess }: { lab: Lab; onClose: () => vo
   const [description, setDescription] = useState(lab.description ?? "");
   const [phones, setPhones] = useState((lab.phones as string[]).join("\n"));
   const [notificationEmail, setNotificationEmail] = useState(lab.notification_email ?? "");
+  const [slug, setSlug] = useState(lab.slug ?? "");
+  const [slugError, setSlugError] = useState("");
+  const [whatsapp, setWhatsapp] = useState(lab.whatsapp ?? "");
+  const [requestEmail, setRequestEmail] = useState(lab.request_email ?? "");
   const [selectedCategories, setSelectedCategories] = useState<string[]>((lab.service_categories as string[]) ?? []);
   const [selectedCerts, setSelectedCerts] = useState<string[]>((lab.certifications as string[]) ?? []);
   const [loading, setLoading] = useState(false);
@@ -1093,12 +1182,16 @@ function EditLabModal({ lab, onClose, onSuccess }: { lab: Lab; onClose: () => vo
       toast.error("Name and address are required");
       return;
     }
+    if (slug.trim() && !/^[a-z0-9-]+$/.test(slug.trim())) {
+      setSlugError("Only lowercase letters, numbers, and hyphens allowed");
+      return;
+    }
     setLoading(true);
     try {
       const res = await fetch(`/api/admin/labs/${lab.id}`, {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ name: name.trim(), address: address.trim(), description: description.trim(), phones: phoneList, notification_email: notificationEmail.trim() || null, service_categories: selectedCategories, certifications: selectedCerts }),
+        body: JSON.stringify({ name: name.trim(), address: address.trim(), description: description.trim(), phones: phoneList, notification_email: notificationEmail.trim() || null, service_categories: selectedCategories, certifications: selectedCerts, slug: slug.trim() || null, whatsapp: whatsapp.trim() || null, request_email: requestEmail.trim() || null }),
       });
       const data = await res.json();
       if (data.success) {
@@ -1146,6 +1239,47 @@ function EditLabModal({ lab, onClose, onSuccess }: { lab: Lab; onClose: () => vo
             <p className="text-xs text-slate-500 mt-1">
               When set, all patient &amp; doctor emails for this lab will come from this address and display the lab&apos;s name. Must be verified in Resend. Leave blank to use notifications@poveon.com.
             </p>
+          </div>
+          <div>
+            <label className="text-sm font-medium text-slate-300 block mb-1">
+              Lab URL Slug <span className="text-xs text-slate-500">(optional)</span>
+            </label>
+            <input
+              className={`w-full rounded-xl border px-4 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-medical-500 ${whiteInput} ${slugError ? "border-red-400" : ""}`}
+              placeholder="e.g. apexlabs"
+              value={slug}
+              onChange={(e) => { setSlug(e.target.value); setSlugError(""); }}
+            />
+            {slugError ? (
+              <p className="text-xs text-red-400 mt-1">{slugError}</p>
+            ) : (
+              <p className="text-xs text-slate-500 mt-1">Creates a direct URL: poveon.com/[slug]. Lowercase letters, numbers, hyphens only.</p>
+            )}
+          </div>
+          <div>
+            <label className="text-sm font-medium text-slate-300 block mb-1">
+              WhatsApp Number <span className="text-xs text-slate-500">(optional)</span>
+            </label>
+            <input
+              className={`w-full rounded-xl border px-4 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-medical-500 ${whiteInput}`}
+              placeholder="+234 800 000 0000"
+              value={whatsapp}
+              onChange={(e) => setWhatsapp(e.target.value)}
+            />
+            <p className="text-xs text-slate-500 mt-1">Used for patient contact buttons. Include country code.</p>
+          </div>
+          <div>
+            <label className="text-sm font-medium text-slate-300 block mb-1">
+              New Request Notification Email <span className="text-xs text-slate-500">(optional)</span>
+            </label>
+            <input
+              type="email"
+              className={`w-full rounded-xl border px-4 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-medical-500 ${whiteInput}`}
+              placeholder="requests@apexlabs.com"
+              value={requestEmail}
+              onChange={(e) => setRequestEmail(e.target.value)}
+            />
+            <p className="text-xs text-slate-500 mt-1">New test requests will be emailed to this address.</p>
           </div>
 
           <SearchableCheckboxGroup
