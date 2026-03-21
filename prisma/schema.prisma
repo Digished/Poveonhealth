@@ -141,7 +141,7 @@ model Request {
   ambulance_notes       String?   // Pickup address / extra ambulance details
   status                String    @default("incoming")
   created_at            DateTime  @default(now())
-  updated_at            DateTime  @updatedAt
+  updated_at            DateTime  @default(now()) @updatedAt
   seen_at               DateTime?
   completed_at          DateTime?
 
