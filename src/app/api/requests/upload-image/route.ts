@@ -52,6 +52,9 @@ export async function POST(req: NextRequest) {
 
     const supabase = createAdminClient();
 
+    // Ensure the bucket exists (creates it if missing, ignores error if it already exists)
+    await supabase.storage.createBucket("request-images", { public: true });
+
     const { data, error } = await supabase.storage
       .from("request-images")
       .upload(filePath, buffer, { contentType: file.type, upsert: false });
