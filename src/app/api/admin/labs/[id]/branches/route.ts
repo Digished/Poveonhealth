@@ -1,6 +1,5 @@
 export const dynamic = "force-dynamic";
 import { NextRequest, NextResponse } from "next/server";
-import { z } from "zod";
 import { createServerClient } from "@/lib/supabase/server";
 import { prisma } from "@/lib/prisma";
 
@@ -12,28 +11,25 @@ async function verifyAdmin() {
   return adminRecord ? user : null;
 }
 
-const BranchSchema = z.object({
-  name:     z.string().min(1).max(200),
-  address:  z.string().max(500).default(""),
-  phones:   z.array(z.string().min(1)).default([]),
-  is_main:  z.boolean().default(false),
-});
-
-/** GET /api/admin/labs/[id]/branches */
+/** GET /api/admin/labs/[id]/branches — list branches with full branch_lab info */
 export async function GET(
   _req: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ) {
   if (!await verifyAdmin()) return NextResponse.json({ error: "Forbidden" }, { status: 403 });
   const { id } = await params;
+
   const branches = await prisma.labBranch.findMany({
     where: { lab_id: id },
-    orderBy: [{ is_main: "desc" }, { name: "asc" }],
+    include: {
+      branch_lab: { select: { id: true, name: true, address: true, phones: true, whatsapp: true } },
+    },
+    orderBy: [{ is_main: "desc" }],
   });
   return NextResponse.json({ success: true, branches });
 }
 
-/** POST /api/admin/labs/[id]/branches */
+/** POST /api/admin/labs/[id]/branches — link an existing lab as a branch */
 export async function POST(
   req: NextRequest,
   { params }: { params: Promise<{ id: string }> }
@@ -41,21 +37,36 @@ export async function POST(
   if (!await verifyAdmin()) return NextResponse.json({ error: "Forbidden" }, { status: 403 });
   const { id } = await params;
 
-  const lab = await prisma.lab.findUnique({ where: { id }, select: { id: true } });
-  if (!lab) return NextResponse.json({ error: "Lab not found" }, { status: 404 });
+  const body = await req.json();
+  const branch_lab_id: string | undefined = body.branch_lab_id;
+  const is_main: boolean = body.is_main ?? false;
 
-  const parsed = BranchSchema.safeParse(await req.json());
-  if (!parsed.success) return NextResponse.json({ error: "Invalid data", details: parsed.error.flatten() }, { status: 400 });
+  if (!branch_lab_id) return NextResponse.json({ error: "branch_lab_id is required" }, { status: 400 });
+  if (branch_lab_id === id) return NextResponse.json({ error: "A lab cannot be its own branch" }, { status: 400 });
 
-  const { is_main, ...rest } = parsed.data;
+  // Verify both labs exist
+  const [parent, child] = await Promise.all([
+    prisma.lab.findUnique({ where: { id }, select: { id: true } }),
+    prisma.lab.findUnique({ where: { id: branch_lab_id }, select: { id: true } }),
+  ]);
+  if (!parent) return NextResponse.json({ error: "Parent lab not found" }, { status: 404 });
+  if (!child) return NextResponse.json({ error: "Branch lab not found" }, { status: 404 });
 
-  // If marking as main, unset others first
+  // Check for circular — the branch_lab should not already be a parent of this lab
+  const circular = await prisma.labBranch.findFirst({
+    where: { lab_id: branch_lab_id, branch_lab_id: id },
+  });
+  if (circular) return NextResponse.json({ error: "Circular branch relationship" }, { status: 400 });
+
   if (is_main) {
     await prisma.labBranch.updateMany({ where: { lab_id: id }, data: { is_main: false } });
   }
 
-  const branch = await prisma.labBranch.create({
-    data: { lab_id: id, ...rest, is_main },
+  const branch = await prisma.labBranch.upsert({
+    where: { lab_id_branch_lab_id: { lab_id: id, branch_lab_id } },
+    create: { lab_id: id, branch_lab_id, is_main },
+    update: { is_main },
+    include: { branch_lab: { select: { id: true, name: true, address: true, phones: true } } },
   });
   return NextResponse.json({ success: true, branch }, { status: 201 });
 }

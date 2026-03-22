@@ -19,10 +19,10 @@ export default async function LabSlugPage({ params }: LabSlugPageProps) {
   }
 
   // Fetch branches for this lab so the form can show branch selection in step 1
-  const branches = await prisma.labBranch.findMany({
+  const rawBranches = await prisma.labBranch.findMany({
     where: { lab_id: lab.id },
-    select: { id: true, name: true, address: true, phones: true, is_main: true },
-    orderBy: [{ is_main: "desc" }, { name: "asc" }],
+    select: { id: true, is_main: true, branch_lab: { select: { name: true, address: true, phones: true } } },
+    orderBy: [{ is_main: "desc" }],
   });
 
   return (
@@ -33,9 +33,12 @@ export default async function LabSlugPage({ params }: LabSlugPageProps) {
           <DoctorRequestForm
             preselectedLabId={lab.id}
             preselectedLabName={lab.name}
-            branches={branches.map((b) => ({
-              ...b,
-              phones: b.phones as string[],
+            branches={rawBranches.map((b) => ({
+              id: b.id,
+              is_main: b.is_main,
+              name: b.branch_lab.name,
+              address: b.branch_lab.address ?? "",
+              phones: (b.branch_lab.phones ?? []) as string[],
             }))}
           />
         </div>

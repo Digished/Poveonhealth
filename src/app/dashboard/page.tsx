@@ -29,6 +29,7 @@ interface LabRequest {
   test_image_url: string | null;
   result_link: string | null;
   result_note: string | null;
+  result_file_urls: string[];
   created_at: string;
   seen_at: string | null;
   completed_at: string | null;
@@ -602,20 +603,27 @@ function ResultCard({ req }: { req: LabRequest }) {
           <div><TestTags tests={req.tests} /></div>
         )}
         {/* Results section */}
-        {(req.result_link || req.result_note) ? (
-          <div className="bg-emerald-50 border border-emerald-200 rounded-xl p-3">
-            <p className="text-xs font-semibold text-emerald-700 mb-1.5 flex items-center gap-1.5">
+        {(req.result_link || req.result_note || req.result_file_urls?.length > 0) ? (
+          <div className="bg-emerald-50 border border-emerald-200 rounded-xl p-3 space-y-2">
+            <p className="text-xs font-semibold text-emerald-700 flex items-center gap-1.5">
               <BadgeCheck className="w-3.5 h-3.5" />Results Available
             </p>
             {req.result_note && (
-              <p className="text-sm text-emerald-800 mb-2 leading-relaxed">{req.result_note}</p>
+              <p className="text-sm text-emerald-800 leading-relaxed">{req.result_note}</p>
             )}
             {req.result_link && (
               <a href={req.result_link} target="_blank" rel="noopener noreferrer"
                 className="inline-flex items-center gap-1.5 text-xs font-semibold bg-emerald-600 hover:bg-emerald-700 text-white px-3 py-1.5 rounded-lg transition">
-                <ExternalLink className="w-3 h-3" />View Results
+                <ExternalLink className="w-3 h-3" />View Results Online
               </a>
             )}
+            {req.result_file_urls?.map((url, i) => (
+              <a key={i} href={url} target="_blank" rel="noopener noreferrer"
+                className="flex items-center gap-1.5 text-xs font-semibold text-emerald-700 hover:text-emerald-900 bg-emerald-100 hover:bg-emerald-200 px-3 py-1.5 rounded-lg transition w-fit">
+                <ExternalLink className="w-3 h-3 shrink-0" />
+                {req.result_file_urls.length > 1 ? `Result File ${i + 1}` : "Download Result File"}
+              </a>
+            ))}
           </div>
         ) : (
           <div className="bg-slate-50 border border-slate-200 rounded-xl px-3 py-2">

@@ -32,25 +32,26 @@ model Lab {
   lab_roles   LabRole[]
   api_keys    LabApiKey[]
   requests    Request[]
-  branches    LabBranch[]
+  branches    LabBranch[] @relation("BranchParent")  // branches where this lab is the parent
+  branch_of   LabBranch[] @relation("BranchChild")   // entries where this lab is a branch
   feedbacks   LabFeedback[]
 
   @@map("labs")
 }
 
-// A physical branch/location belonging to a lab
+// Links two existing Labs as parent/branch — branches are selected from existing labs
 model LabBranch {
-  id         String   @id @default(uuid())
-  lab_id     String
-  name       String
-  address    String   @default("")
-  phones     Json     @default("[]")
-  is_main    Boolean  @default(false)
-  created_at DateTime @default(now())
+  id            String   @id @default(uuid())
+  lab_id        String   // parent lab
+  branch_lab_id String   // the branch (must be an existing Lab)
+  is_main       Boolean  @default(false)
+  created_at    DateTime @default(now())
 
-  lab      Lab       @relation(fields: [lab_id], references: [id], onDelete: Cascade)
-  requests Request[]
+  lab        Lab       @relation("BranchParent", fields: [lab_id], references: [id], onDelete: Cascade)
+  branch_lab Lab       @relation("BranchChild",  fields: [branch_lab_id], references: [id], onDelete: Cascade)
+  requests   Request[]
 
+  @@unique([lab_id, branch_lab_id])
   @@index([lab_id])
   @@map("lab_branches")
 }
@@ -166,6 +167,7 @@ model Request {
   status                String    @default("incoming")
   result_link           String?   // URL to online results (stored when lab sends results)
   result_note           String?   // Lab note sent with results
+  result_file_urls      String[]  @default([])  // URLs of uploaded result files in Supabase Storage
   created_at            DateTime  @default(now())
   updated_at            DateTime  @default(now()) @updatedAt
   seen_at               DateTime?
@@ -371,7 +373,7 @@ model LabFeedback {
   created_at          DateTime @default(now())
   updated_at          DateTime @updatedAt
 
-  @@unique([lab_id, reviewer_email])
+  @@unique([lab_id, reviewer_email, reviewer_type])
   @@index([lab_id, created_at])
   @@map("lab_feedbacks")
 }

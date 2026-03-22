@@ -1065,7 +1065,7 @@ export function AdminDashboard() {
       {branchModalLabId && (() => {
         const lab = labs.find((l) => l.id === branchModalLabId);
         return lab ? (
-          <LabBranchModal lab={lab} onClose={() => setBranchModalLabId(null)} />
+          <LabBranchModal lab={lab} onClose={() => setBranchModalLabId(null)} allLabs={labs} />
         ) : null;
       })()}
 
@@ -1878,22 +1878,19 @@ function CopyField({ label, value }: { label: string; value: string }) {
 
 interface BranchRecord {
   id: string;
-  name: string;
-  address: string;
-  phones: string[];
+  branch_lab_id: string;
   is_main: boolean;
-  created_at: string;
+  branch_lab: { id: string; name: string; address: string; phones: unknown; whatsapp?: string | null };
 }
 
-function LabBranchModal({ lab, onClose }: { lab: Lab; onClose: () => void }) {
+function LabBranchModal({ lab, onClose, allLabs }: { lab: Lab; onClose: () => void; allLabs: Lab[] }) {
   const [branches, setBranches] = useState<BranchRecord[]>([]);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
-  const [editingId, setEditingId] = useState<string | null>(null); // null = new
-  const [showForm, setShowForm] = useState(false);
-
-  const blankForm = () => ({ name: "", address: "", phones: [""], is_main: false });
-  const [form, setForm] = useState(blankForm());
+  const [showPicker, setShowPicker] = useState(false);
+  const [selectedLabId, setSelectedLabId] = useState("");
+  const [isMain, setIsMain] = useState(false);
+  const [search, setSearch] = useState("");
 
   const fetchBranches = useCallback(async () => {
     setLoading(true);
@@ -1906,42 +1903,52 @@ function LabBranchModal({ lab, onClose }: { lab: Lab; onClose: () => void }) {
 
   useEffect(() => { fetchBranches(); }, [fetchBranches]);
 
-  function openNew() {
-    setEditingId(null);
-    setForm(blankForm());
-    setShowForm(true);
-  }
+  // Labs that can still be added: exclude self, already-linked, and labs that ARE the parent themselves
+  const linkedIds = new Set(branches.map((b) => b.branch_lab_id));
+  const availableLabs = allLabs.filter(
+    (l) => l.id !== lab.id && !linkedIds.has(l.id)
+  );
+  const filteredAvailable = search.trim()
+    ? availableLabs.filter((l) => l.name.toLowerCase().includes(search.toLowerCase()) || l.address.toLowerCase().includes(search.toLowerCase()))
+    : availableLabs;
 
-  function openEdit(b: BranchRecord) {
-    setEditingId(b.id);
-    setForm({ name: b.name, address: b.address, phones: (b.phones as string[]).length ? b.phones as string[] : [""], is_main: b.is_main });
-    setShowForm(true);
-  }
-
-  async function handleSave() {
-    if (!form.name.trim()) { toast.error("Branch name is required"); return; }
+  async function handleLink() {
+    if (!selectedLabId) { toast.error("Select a lab to add as a branch"); return; }
     setSaving(true);
     try {
-      const phones = form.phones.map((p) => p.trim()).filter(Boolean);
-      const body = { ...form, phones };
-      const url = editingId
-        ? `/api/admin/labs/${lab.id}/branches/${editingId}`
-        : `/api/admin/labs/${lab.id}/branches`;
-      const method = editingId ? "PATCH" : "POST";
-      const res = await fetch(url, { method, headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) });
+      const res = await fetch(`/api/admin/labs/${lab.id}/branches`, {
+        method: "POST", headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ branch_lab_id: selectedLabId, is_main: isMain }),
+      });
       const data = await res.json();
-      if (data.success) { toast.success(editingId ? "Branch updated" : "Branch added"); setShowForm(false); await fetchBranches(); }
-      else toast.error(data.error ?? "Failed to save");
+      if (data.success) {
+        toast.success("Branch linked");
+        setShowPicker(false); setSelectedLabId(""); setIsMain(false); setSearch("");
+        await fetchBranches();
+      } else { toast.error(data.error ?? "Failed"); }
     } catch { toast.error("Network error"); }
     finally { setSaving(false); }
   }
 
-  async function handleDelete(b: BranchRecord) {
-    if (!confirm(`Delete branch "${b.name}"?`)) return;
+  async function handleToggleMain(b: BranchRecord) {
+    const newMain = !b.is_main;
+    try {
+      const res = await fetch(`/api/admin/labs/${lab.id}/branches/${b.id}`, {
+        method: "PATCH", headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ is_main: newMain }),
+      });
+      const data = await res.json();
+      if (data.success) { await fetchBranches(); }
+      else toast.error(data.error ?? "Failed");
+    } catch { toast.error("Network error"); }
+  }
+
+  async function handleUnlink(b: BranchRecord) {
+    if (!confirm(`Unlink "${b.branch_lab.name}" as a branch of ${lab.name}?`)) return;
     try {
       const res = await fetch(`/api/admin/labs/${lab.id}/branches/${b.id}`, { method: "DELETE" });
       const data = await res.json();
-      if (data.success) { toast.success("Branch deleted"); await fetchBranches(); }
+      if (data.success) { toast.success("Branch unlinked"); await fetchBranches(); }
       else toast.error(data.error ?? "Failed");
     } catch { toast.error("Network error"); }
   }
@@ -1954,62 +1961,46 @@ function LabBranchModal({ lab, onClose }: { lab: Lab; onClose: () => void }) {
           <div>
             <h2 className="font-semibold text-white text-base flex items-center gap-2">
               <GitBranch className="w-4 h-4 text-medical-400" />
-              Branches — {lab.name}
+              Branch Setup — {lab.name}
             </h2>
-            <p className="text-xs text-slate-500 mt-0.5">Manage physical locations / collection points</p>
+            <p className="text-xs text-slate-500 mt-0.5">Link existing labs as branches of this lab</p>
           </div>
           <button onClick={onClose} className="p-1.5 rounded-lg hover:bg-white/10 text-slate-400 transition-colors"><X className="w-5 h-5" /></button>
         </div>
 
         <div className="p-5 space-y-4">
-          {/* Branch form */}
-          {showForm && (
+          {/* Lab picker panel */}
+          {showPicker && (
             <div className="bg-white/5 border border-white/10 rounded-xl p-4 space-y-3">
-              <h3 className="text-sm font-semibold text-white">{editingId ? "Edit Branch" : "New Branch"}</h3>
-              <div>
-                <label className="text-xs text-slate-400 font-medium mb-1 block">Branch Name *</label>
-                <input value={form.name} onChange={(e) => setForm((f) => ({ ...f, name: e.target.value }))}
-                  placeholder="e.g. Main Branch, Lekki Branch"
-                  className="w-full text-sm rounded-xl border border-white/15 bg-white/5 text-white placeholder-slate-500 px-3 py-2.5 focus:outline-none focus:ring-2 focus:ring-medical-500/50" />
-              </div>
-              <div>
-                <label className="text-xs text-slate-400 font-medium mb-1 block">Address</label>
-                <input value={form.address} onChange={(e) => setForm((f) => ({ ...f, address: e.target.value }))}
-                  placeholder="Street address"
-                  className="w-full text-sm rounded-xl border border-white/15 bg-white/5 text-white placeholder-slate-500 px-3 py-2.5 focus:outline-none focus:ring-2 focus:ring-medical-500/50" />
-              </div>
-              <div>
-                <label className="text-xs text-slate-400 font-medium mb-1 block">Phone Numbers</label>
-                {form.phones.map((ph, i) => (
-                  <div key={i} className="flex gap-2 mb-2">
-                    <input value={ph} onChange={(e) => setForm((f) => { const phones = [...f.phones]; phones[i] = e.target.value; return { ...f, phones }; })}
-                      placeholder={`Phone ${i + 1}`}
-                      className="flex-1 text-sm rounded-xl border border-white/15 bg-white/5 text-white placeholder-slate-500 px-3 py-2.5 focus:outline-none focus:ring-2 focus:ring-medical-500/50" />
-                    {form.phones.length > 1 && (
-                      <button onClick={() => setForm((f) => ({ ...f, phones: f.phones.filter((_, j) => j !== i) }))}
-                        className="p-2.5 rounded-xl bg-red-500/10 text-red-400 hover:bg-red-500/20 transition-colors">
-                        <X className="w-4 h-4" />
-                      </button>
-                    )}
-                  </div>
+              <h3 className="text-sm font-semibold text-white">Select a Lab to Add as Branch</h3>
+              <input
+                value={search} onChange={(e) => setSearch(e.target.value)}
+                placeholder="Search labs by name or address…"
+                className="w-full text-sm rounded-xl border border-white/15 bg-white/5 text-white placeholder-slate-500 px-3 py-2.5 focus:outline-none focus:ring-2 focus:ring-medical-500/50"
+              />
+              <div className="max-h-52 overflow-y-auto space-y-1">
+                {filteredAvailable.length === 0 ? (
+                  <p className="text-xs text-slate-500 text-center py-4">{availableLabs.length === 0 ? "All labs are already linked" : "No labs match your search"}</p>
+                ) : filteredAvailable.map((l) => (
+                  <button key={l.id} onClick={() => setSelectedLabId(l.id)}
+                    className={`w-full text-left px-3 py-2.5 rounded-xl text-sm transition-colors ${selectedLabId === l.id ? "bg-medical-600 text-white" : "hover:bg-white/8 text-slate-300"}`}>
+                    <p className="font-semibold">{l.name}</p>
+                    {l.address && <p className={`text-xs ${selectedLabId === l.id ? "text-medical-200" : "text-slate-500"}`}>{l.address}</p>}
+                  </button>
                 ))}
-                <button onClick={() => setForm((f) => ({ ...f, phones: [...f.phones, ""] }))}
-                  className="text-xs text-medical-400 hover:text-medical-300 flex items-center gap-1 transition-colors">
-                  <Plus className="w-3 h-3" />Add phone
-                </button>
               </div>
               <label className="flex items-center gap-2 cursor-pointer">
-                <input type="checkbox" checked={form.is_main} onChange={(e) => setForm((f) => ({ ...f, is_main: e.target.checked }))}
-                  className="rounded border-white/20 bg-white/5 text-medical-500 focus:ring-medical-500/50" />
-                <span className="text-sm text-slate-300">Mark as main branch</span>
+                <input type="checkbox" checked={isMain} onChange={(e) => setIsMain(e.target.checked)}
+                  className="rounded border-white/20 bg-white/5 text-medical-500" />
+                <span className="text-sm text-slate-300">Mark as the main branch</span>
               </label>
               <div className="flex gap-2 pt-1">
-                <button onClick={handleSave} disabled={saving}
-                  className="flex-1 flex items-center justify-center gap-2 py-2.5 rounded-xl bg-medical-600 hover:bg-medical-500 text-white text-sm font-semibold transition-colors disabled:opacity-50">
+                <button onClick={handleLink} disabled={saving || !selectedLabId}
+                  className="flex-1 flex items-center justify-center gap-2 py-2.5 rounded-xl bg-medical-600 hover:bg-medical-500 text-white text-sm font-semibold disabled:opacity-50 transition-colors">
                   {saving ? <RefreshCw className="w-4 h-4 animate-spin" /> : <Check className="w-4 h-4" />}
-                  {editingId ? "Save Changes" : "Add Branch"}
+                  Link as Branch
                 </button>
-                <button onClick={() => setShowForm(false)}
+                <button onClick={() => { setShowPicker(false); setSelectedLabId(""); setSearch(""); }}
                   className="px-4 py-2.5 rounded-xl bg-white/5 hover:bg-white/10 text-slate-400 hover:text-white text-sm transition-colors">
                   Cancel
                 </button>
@@ -2017,42 +2008,51 @@ function LabBranchModal({ lab, onClose }: { lab: Lab; onClose: () => void }) {
             </div>
           )}
 
-          {/* Branch list */}
+          {/* Linked branches list */}
           {loading ? (
             <div className="flex justify-center py-8"><RefreshCw className="w-5 h-5 text-slate-500 animate-spin" /></div>
-          ) : branches.length === 0 && !showForm ? (
+          ) : branches.length === 0 && !showPicker ? (
             <div className="text-center py-10">
               <GitBranch className="w-8 h-8 text-slate-600 mx-auto mb-2" />
-              <p className="text-sm text-slate-400 font-medium">No branches yet</p>
-              <p className="text-xs text-slate-500 mt-1">Add branches for each physical location of this lab</p>
+              <p className="text-sm text-slate-400 font-medium">No branches linked</p>
+              <p className="text-xs text-slate-500 mt-1">Link existing labs as physical branches of {lab.name}</p>
             </div>
           ) : (
             <div className="space-y-2">
-              {branches.map((b) => (
-                <div key={b.id} className="bg-white/5 border border-white/10 rounded-xl px-4 py-3">
-                  <div className="flex items-start justify-between gap-2">
-                    <div className="min-w-0">
-                      <div className="flex items-center gap-2 mb-0.5">
-                        <p className="font-semibold text-white text-sm truncate">{b.name}</p>
-                        {b.is_main && <span className="text-xs bg-medical-600/30 text-medical-300 border border-medical-600/30 px-2 py-0.5 rounded-full font-medium shrink-0">Main</span>}
+              {branches.map((b) => {
+                const phones = b.branch_lab.phones as string[];
+                return (
+                  <div key={b.id} className="bg-white/5 border border-white/10 rounded-xl px-4 py-3">
+                    <div className="flex items-start justify-between gap-2">
+                      <div className="min-w-0">
+                        <div className="flex items-center gap-2 mb-0.5">
+                          <p className="font-semibold text-white text-sm truncate">{b.branch_lab.name}</p>
+                          {b.is_main && <span className="text-xs bg-medical-600/30 text-medical-300 border border-medical-600/30 px-2 py-0.5 rounded-full font-medium shrink-0">Main</span>}
+                        </div>
+                        {b.branch_lab.address && <p className="text-xs text-slate-400 flex items-center gap-1"><MapPin className="w-3 h-3 shrink-0" />{b.branch_lab.address}</p>}
+                        {phones.slice(0, 2).map((ph, i) => <p key={i} className="text-xs text-slate-500 flex items-center gap-1"><Phone className="w-3 h-3 shrink-0" />{ph}</p>)}
                       </div>
-                      {b.address && <p className="text-xs text-slate-400 flex items-center gap-1"><MapPin className="w-3 h-3 shrink-0" />{b.address}</p>}
-                      {(b.phones as string[]).map((ph, i) => <p key={i} className="text-xs text-slate-500 flex items-center gap-1"><Phone className="w-3 h-3 shrink-0" />{ph}</p>)}
-                    </div>
-                    <div className="flex items-center gap-1 shrink-0">
-                      <button onClick={() => openEdit(b)} className="p-1.5 rounded-lg hover:bg-white/10 text-slate-500 hover:text-white transition-colors"><Pencil className="w-3.5 h-3.5" /></button>
-                      <button onClick={() => handleDelete(b)} className="p-1.5 rounded-lg hover:bg-red-500/20 text-slate-500 hover:text-red-400 transition-colors"><Trash2 className="w-3.5 h-3.5" /></button>
+                      <div className="flex items-center gap-1 shrink-0">
+                        <button onClick={() => handleToggleMain(b)} title={b.is_main ? "Remove main status" : "Set as main"}
+                          className={`p-1.5 rounded-lg transition-colors ${b.is_main ? "text-medical-400 hover:bg-medical-500/20" : "text-slate-500 hover:text-medical-400 hover:bg-white/10"}`}>
+                          <Star className="w-3.5 h-3.5" />
+                        </button>
+                        <button onClick={() => handleUnlink(b)} title="Unlink branch"
+                          className="p-1.5 rounded-lg hover:bg-red-500/20 text-slate-500 hover:text-red-400 transition-colors">
+                          <Trash2 className="w-3.5 h-3.5" />
+                        </button>
+                      </div>
                     </div>
                   </div>
-                </div>
-              ))}
+                );
+              })}
             </div>
           )}
 
-          {!showForm && (
-            <button onClick={openNew}
+          {!showPicker && (
+            <button onClick={() => setShowPicker(true)}
               className="w-full flex items-center justify-center gap-2 py-2.5 rounded-xl border border-dashed border-white/15 text-slate-400 hover:text-white hover:border-white/30 text-sm transition-colors">
-              <Plus className="w-4 h-4" />Add Branch
+              <Plus className="w-4 h-4" />Link Existing Lab as Branch
             </button>
           )}
         </div>

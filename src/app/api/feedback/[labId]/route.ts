@@ -114,7 +114,7 @@ export async function POST(
     const data = parsed.data;
 
     const feedback = await prisma.labFeedback.upsert({
-      where: { lab_id_reviewer_email: { lab_id: labId, reviewer_email: reviewerEmail } },
+      where: { lab_id_reviewer_email_reviewer_type: { lab_id: labId, reviewer_email: reviewerEmail, reviewer_type: reviewerType } },
       create: {
         lab_id: labId,
         reviewer_email: reviewerEmail,
@@ -167,8 +167,10 @@ export async function PATCH(
     }
     if (!reviewerEmail) return NextResponse.json({ error: "Not authenticated." }, { status: 401 });
 
+    // Determine reviewer type for lookup
+    const patType = req.cookies.get("patient_token")?.value ? "patient" : "doctor";
     const feedback = await prisma.labFeedback.findUnique({
-      where: { lab_id_reviewer_email: { lab_id: labId, reviewer_email: reviewerEmail } },
+      where: { lab_id_reviewer_email_reviewer_type: { lab_id: labId, reviewer_email: reviewerEmail, reviewer_type: patType } },
     });
     return NextResponse.json({ success: true, feedback: feedback ?? null });
   } catch (err) {

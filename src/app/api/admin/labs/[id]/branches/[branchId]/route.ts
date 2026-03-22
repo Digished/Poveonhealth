@@ -1,6 +1,5 @@
 export const dynamic = "force-dynamic";
 import { NextRequest, NextResponse } from "next/server";
-import { z } from "zod";
 import { createServerClient } from "@/lib/supabase/server";
 import { prisma } from "@/lib/prisma";
 
@@ -12,25 +11,15 @@ async function verifyAdmin() {
   return adminRecord ? user : null;
 }
 
-const PatchSchema = z.object({
-  name:    z.string().min(1).max(200).optional(),
-  address: z.string().max(500).optional(),
-  phones:  z.array(z.string().min(1)).optional(),
-  is_main: z.boolean().optional(),
-});
-
-/** PATCH /api/admin/labs/[id]/branches/[branchId] */
+/** PATCH /api/admin/labs/[id]/branches/[branchId] — toggle is_main */
 export async function PATCH(
   req: NextRequest,
   { params }: { params: Promise<{ id: string; branchId: string }> }
 ) {
   if (!await verifyAdmin()) return NextResponse.json({ error: "Forbidden" }, { status: 403 });
   const { id, branchId } = await params;
-
-  const parsed = PatchSchema.safeParse(await req.json());
-  if (!parsed.success) return NextResponse.json({ error: "Invalid data" }, { status: 400 });
-
-  const { is_main, ...rest } = parsed.data;
+  const body = await req.json();
+  const is_main: boolean = body.is_main ?? false;
 
   if (is_main) {
     await prisma.labBranch.updateMany({ where: { lab_id: id }, data: { is_main: false } });
@@ -38,12 +27,13 @@ export async function PATCH(
 
   const branch = await prisma.labBranch.update({
     where: { id: branchId },
-    data: { ...rest, ...(is_main !== undefined ? { is_main } : {}) },
+    data: { is_main },
+    include: { branch_lab: { select: { id: true, name: true, address: true } } },
   });
   return NextResponse.json({ success: true, branch });
 }
 
-/** DELETE /api/admin/labs/[id]/branches/[branchId] */
+/** DELETE /api/admin/labs/[id]/branches/[branchId] — unlink a branch */
 export async function DELETE(
   _req: NextRequest,
   { params }: { params: Promise<{ id: string; branchId: string }> }

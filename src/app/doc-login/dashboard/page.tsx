@@ -5,7 +5,7 @@ import { useRouter } from "next/navigation";
 import {
   FlaskConical, LogOut, Building2, User,
   CalendarDays, TestTube2, ChevronDown, ChevronUp,
-  Clock, CheckCircle, Eye, MapPin, Phone, X, Shield, EyeOff, RefreshCw, MessageCircle, Star, MessageSquare,
+  Clock, CheckCircle, Eye, MapPin, Phone, X, Shield, EyeOff, RefreshCw, MessageCircle, Star, MessageSquare, ExternalLink,
 } from "lucide-react";
 import { PoveonLogo } from "@/components/PoveonLogo";
 
@@ -41,6 +41,7 @@ interface Request {
   status: string;
   result_link: string | null;
   result_note: string | null;
+  result_file_urls: string[];
   created_at: string;
   seen_at: string | null;
   completed_at: string | null;
@@ -235,25 +236,25 @@ function RequestCard({ req }: { req: Request }) {
           </div>
 
           {/* Results — shown when lab has sent results */}
-          {req.status === "done" && (req.result_link || req.result_note) && (
-            <div className="bg-emerald-50 border border-emerald-200 rounded-xl p-3">
-              <p className="text-xs font-semibold text-emerald-700 uppercase tracking-wider mb-2 flex items-center gap-1.5">
-                <CheckCircle className="w-3.5 h-3.5" />
-                Results Available
+          {req.status === "done" && (req.result_link || req.result_note || req.result_file_urls?.length > 0) && (
+            <div className="bg-emerald-50 border border-emerald-200 rounded-xl p-3 space-y-2">
+              <p className="text-xs font-semibold text-emerald-700 uppercase tracking-wider flex items-center gap-1.5">
+                <CheckCircle className="w-3.5 h-3.5" />Results Available
               </p>
-              {req.result_note && (
-                <p className="text-sm text-emerald-800 mb-2 leading-relaxed">{req.result_note}</p>
-              )}
+              {req.result_note && <p className="text-sm text-emerald-800 leading-relaxed">{req.result_note}</p>}
               {req.result_link && (
-                <a
-                  href={req.result_link}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className="inline-flex items-center gap-1.5 text-xs font-semibold text-emerald-700 hover:text-emerald-900 underline underline-offset-2 transition"
-                >
+                <a href={req.result_link} target="_blank" rel="noopener noreferrer"
+                  className="inline-flex items-center gap-1.5 text-xs font-semibold text-emerald-700 hover:text-emerald-900 underline underline-offset-2 transition">
                   View Results Online →
                 </a>
               )}
+              {req.result_file_urls?.map((url, i) => (
+                <a key={i} href={url} target="_blank" rel="noopener noreferrer"
+                  className="flex items-center gap-1.5 text-xs font-semibold text-emerald-700 hover:text-emerald-900 bg-emerald-100 hover:bg-emerald-200 px-3 py-1.5 rounded-lg transition w-fit">
+                  <ExternalLink className="w-3 h-3 shrink-0" />
+                  {req.result_file_urls.length > 1 ? `Result File ${i + 1}` : "Download Result File"}
+                </a>
+              ))}
             </div>
           )}
 
@@ -611,18 +612,25 @@ function DocDashboardInner() {
                     </div>
                   </div>
                   <p className="text-xs text-slate-500">Patient: <span className="font-medium text-slate-700">{req.patient_name ?? "—"}</span></p>
-                  {(req.result_link || req.result_note) ? (
-                    <div className="bg-emerald-50 border border-emerald-200 rounded-xl p-3">
-                      <p className="text-xs font-semibold text-emerald-700 mb-1.5 flex items-center gap-1.5">
+                  {(req.result_link || req.result_note || req.result_file_urls?.length > 0) ? (
+                    <div className="bg-emerald-50 border border-emerald-200 rounded-xl p-3 space-y-2">
+                      <p className="text-xs font-semibold text-emerald-700 flex items-center gap-1.5">
                         <CheckCircle className="w-3.5 h-3.5" />Results Available
                       </p>
-                      {req.result_note && <p className="text-sm text-emerald-800 mb-2">{req.result_note}</p>}
+                      {req.result_note && <p className="text-sm text-emerald-800">{req.result_note}</p>}
                       {req.result_link && (
                         <a href={req.result_link} target="_blank" rel="noopener noreferrer"
                           className="inline-flex items-center gap-1.5 text-xs font-semibold bg-emerald-600 hover:bg-emerald-700 text-white px-3 py-1.5 rounded-lg transition">
-                          View Results
+                          View Results Online
                         </a>
                       )}
+                      {req.result_file_urls?.map((url, i) => (
+                        <a key={i} href={url} target="_blank" rel="noopener noreferrer"
+                          className="flex items-center gap-1.5 text-xs font-semibold text-emerald-700 hover:text-emerald-900 bg-emerald-100 hover:bg-emerald-200 px-3 py-1.5 rounded-lg transition w-fit">
+                          <ExternalLink className="w-3 h-3 shrink-0" />
+                          {req.result_file_urls.length > 1 ? `Result File ${i + 1}` : "Download Result File"}
+                        </a>
+                      ))}
                     </div>
                   ) : (
                     <div className="bg-slate-50 border border-slate-200 rounded-xl px-3 py-2">

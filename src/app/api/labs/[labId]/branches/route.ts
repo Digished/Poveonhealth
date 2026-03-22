@@ -1,6 +1,9 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 
+// GET /api/labs/[labId]/branches — public: returns branch labs for a parent lab
+// Returns the same shape as before (id, name, address, phones, is_main)
+// but name/address/phones now come from the linked branch_lab record
 export async function GET(
   _req: NextRequest,
   { params }: { params: { labId: string } }
@@ -8,10 +11,26 @@ export async function GET(
   try {
     const branches = await prisma.labBranch.findMany({
       where: { lab_id: params.labId },
-      select: { id: true, name: true, address: true, phones: true, is_main: true },
-      orderBy: [{ is_main: "desc" }, { name: "asc" }],
+      include: {
+        branch_lab: {
+          select: { id: true, name: true, address: true, phones: true, whatsapp: true },
+        },
+      },
+      orderBy: [{ is_main: "desc" }],
     });
-    return NextResponse.json({ branches });
+
+    // Return branch_lab data in the shape the form expects
+    const result = branches.map((b) => ({
+      id: b.id,
+      branch_lab_id: b.branch_lab_id,
+      name: b.branch_lab.name,
+      address: b.branch_lab.address,
+      phones: b.branch_lab.phones as string[],
+      whatsapp: b.branch_lab.whatsapp,
+      is_main: b.is_main,
+    }));
+
+    return NextResponse.json({ branches: result });
   } catch {
     return NextResponse.json({ branches: [] }, { status: 500 });
   }
