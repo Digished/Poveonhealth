@@ -1,45 +1,47 @@
 import { NextRequest, NextResponse } from "next/server";
-import Anthropic from "@anthropic-ai/sdk";
+import OpenAI from "openai";
 
-const client = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
+const client = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
 
 export interface ExtractedSlipData {
-  tests_text: string;        // comma-separated or newline list ready for the textarea
-  tests: string[];           // individual test names
+  tests_text: string;            // newline-separated list ready for the textarea
+  tests: string[];               // individual test names
   diagnosis: string;
   patient_name: string;
-  dob: string;               // YYYY-MM-DD or ""
-  sex: string;               // "male" | "female" | ""
+  dob: string;                   // YYYY-MM-DD or ""
+  sex: string;                   // "male" | "female" | ""
   doctor_name: string;
   doctor_prefix: string;
-  schedule_hint: string;     // "today" | "this_week" | "this_month" | ""
+  schedule_hint: string;         // "today" | "this_week" | "this_month" | ""
   confidence: "high" | "medium" | "low";
-  low_confidence_items: string[]; // items Claude was unsure about
+  low_confidence_items: string[];
 }
 
-const SYSTEM_PROMPT = `You are a medical document OCR specialist.
-You extract structured data from laboratory test request slips / doctor referral forms.
-These may be handwritten, printed, or a mix of both.
-Always return valid JSON exactly matching the schema — no prose, no markdown.
-If a field cannot be determined, return an empty string or empty array as appropriate.
-For test names, use standard medical abbreviations where well-known (e.g. FBC, LFT, RFT, U/E, PCV, WIDAL, ESR, CXR, ECG, ECHO, etc.) but always include the full name in parentheses if the abbreviation might be unclear.
-Never invent data — only extract what is visibly present.`;
+const SYSTEM_PROMPT = `You are a specialist in reading medical laboratory test request slips and doctor referral forms.
+Your job is to extract all clinical information from the image provided.
+The slips may be handwritten, printed, stamped, or a combination.
+You must return ONLY a valid JSON object — no prose, no markdown, no commentary.
+Follow these rules strictly:
+- List every individual test as a separate entry in the "tests" array.
+- Use full test names. If a standard abbreviation is clear (FBC, LFT, RFT, U/E, PCV, ESR, WIDAL, CXR, ECG, ECHO, HbA1c, PSA, etc.) include both: e.g. "Full Blood Count (FBC)".
+- Never invent or guess data that is not visible in the image.
+- For any field not visible or unreadable, return an empty string or empty array.
+- "low_confidence_items" must list the exact test names or field values you were uncertain about.`;
 
-const USER_PROMPT = `Extract all clinical information from this test request slip.
+const USER_PROMPT = `Extract all clinical data from this test request slip and return a JSON object with exactly these fields:
 
-Return ONLY a JSON object with this exact structure:
 {
-  "tests_text": "string — all requested tests as a newline-separated list, ready to paste into a form",
-  "tests": ["array", "of", "individual", "test", "names"],
-  "diagnosis": "clinical diagnosis or indication for the tests, empty string if not stated",
-  "patient_name": "patient full name or empty string",
-  "dob": "date of birth in YYYY-MM-DD format or empty string",
-  "sex": "male or female or empty string",
-  "doctor_name": "referring doctor's name WITHOUT title/prefix, or empty string",
-  "doctor_prefix": "title only e.g. Dr. or Prof. or Nurse, or empty string",
-  "schedule_hint": "today or this_week or this_month or empty string based on any urgency/timing written",
-  "confidence": "high if text is clear and complete, medium if some parts are unclear, low if mostly unreadable",
-  "low_confidence_items": ["list of specific items you were unsure about"]
+  "tests_text": "all requested tests as a newline-separated list — e.g. Full Blood Count (FBC)\\nLiver Function Test (LFT)\\nUrinalysis",
+  "tests": ["Full Blood Count (FBC)", "Liver Function Test (LFT)", "Urinalysis"],
+  "diagnosis": "clinical diagnosis or indication written on the slip, empty string if absent",
+  "patient_name": "patient's full name as written, empty string if not found",
+  "dob": "date of birth in YYYY-MM-DD format, empty string if not found",
+  "sex": "male or female (lowercase), empty string if not determinable",
+  "doctor_name": "referring doctor's name WITHOUT any title or prefix, empty string if not found",
+  "doctor_prefix": "title only e.g. Dr. or Prof. or Nurse or Pharm., empty string if not found",
+  "schedule_hint": "today if marked urgent/STAT/today, this_week if within the week, this_month if within the month, empty string otherwise",
+  "confidence": "high if the slip is clearly readable, medium if some parts are unclear or partially legible, low if mostly unreadable or heavily obscured",
+  "low_confidence_items": ["exact names of tests or fields you were uncertain about reading correctly"]
 }`;
 
 export async function POST(req: NextRequest) {
@@ -54,7 +56,7 @@ export async function POST(req: NextRequest) {
       );
     }
 
-    // Validate it's a URL we trust (Supabase storage or similar)
+    // Only allow https image URLs
     let parsedUrl: URL;
     try {
       parsedUrl = new URL(imageUrl);
@@ -64,8 +66,6 @@ export async function POST(req: NextRequest) {
         { status: 400 }
       );
     }
-
-    // Only allow https URLs (not data: or file: etc.)
     if (parsedUrl.protocol !== "https:") {
       return NextResponse.json(
         { success: false, error: "Only HTTPS image URLs are supported" },
@@ -73,44 +73,47 @@ export async function POST(req: NextRequest) {
       );
     }
 
-    const response = await client.messages.create({
-      // Haiku 4.5: fast (< 3 s) for real-time form auto-fill; vision-capable;
-      // good enough for printed/handwritten medical slips.
-      // Upgrade to claude-sonnet-4-6 for higher accuracy if needed.
-      model: "claude-haiku-4-5",
+    // GPT-4o: best-in-class OCR and vision, handles handwritten medical text well.
+    // response_format json_object guarantees valid JSON — no parsing surprises.
+    const response = await client.chat.completions.create({
+      model: "gpt-4o",
       max_tokens: 1024,
-      system: SYSTEM_PROMPT,
+      response_format: { type: "json_object" },
       messages: [
+        {
+          role: "system",
+          content: SYSTEM_PROMPT,
+        },
         {
           role: "user",
           content: [
             {
-              type: "image",
-              source: { type: "url", url: imageUrl },
+              type: "image_url",
+              image_url: {
+                url: imageUrl,
+                detail: "high", // high-res mode for reading fine text & handwriting
+              },
             },
-            { type: "text", text: USER_PROMPT },
+            {
+              type: "text",
+              text: USER_PROMPT,
+            },
           ],
         },
       ],
     });
 
-    // Extract the text block
-    const textBlock = response.content.find((b) => b.type === "text");
-    if (!textBlock || textBlock.type !== "text") {
+    const raw = response.choices[0]?.message?.content ?? "";
+    if (!raw) {
       return NextResponse.json(
-        { success: false, error: "No text response from vision model" },
+        { success: false, error: "No response from vision model" },
         { status: 500 }
       );
     }
 
-    // Parse JSON — strip markdown fences if model wraps it
-    let raw = textBlock.text.trim();
-    if (raw.startsWith("```")) {
-      raw = raw.replace(/^```(?:json)?\n?/, "").replace(/\n?```$/, "").trim();
-    }
-
     let extracted: ExtractedSlipData;
     try {
+      // json_object mode guarantees valid JSON so this should never throw
       extracted = JSON.parse(raw) as ExtractedSlipData;
     } catch {
       console.error("[extract-from-image] JSON parse failed:", raw);
@@ -120,10 +123,12 @@ export async function POST(req: NextRequest) {
       );
     }
 
-    // Sanitise — ensure all expected fields exist
+    // Sanitise — coerce types and validate enum values
     const safe: ExtractedSlipData = {
       tests_text: String(extracted.tests_text ?? "").trim(),
-      tests: Array.isArray(extracted.tests) ? extracted.tests.map(String) : [],
+      tests: Array.isArray(extracted.tests)
+        ? extracted.tests.map(String).filter(Boolean)
+        : [],
       diagnosis: String(extracted.diagnosis ?? "").trim(),
       patient_name: String(extracted.patient_name ?? "").trim(),
       dob: String(extracted.dob ?? "").trim(),
@@ -143,7 +148,7 @@ export async function POST(req: NextRequest) {
         ? (String(extracted.confidence) as "high" | "medium" | "low")
         : "medium",
       low_confidence_items: Array.isArray(extracted.low_confidence_items)
-        ? extracted.low_confidence_items.map(String)
+        ? extracted.low_confidence_items.map(String).filter(Boolean)
         : [],
     };
 
@@ -151,17 +156,15 @@ export async function POST(req: NextRequest) {
   } catch (err) {
     console.error("[extract-from-image]", err);
 
-    if (err instanceof Anthropic.RateLimitError) {
-      return NextResponse.json(
-        { success: false, error: "AI service is busy. You can continue by typing the tests manually." },
-        { status: 429 }
-      );
-    }
-    if (err instanceof Anthropic.APIError) {
-      return NextResponse.json(
-        { success: false, error: "AI extraction unavailable. Please type the tests manually." },
-        { status: 500 }
-      );
+    // OpenAI error types
+    if (err && typeof err === "object" && "status" in err) {
+      const status = (err as { status: number }).status;
+      if (status === 429) {
+        return NextResponse.json(
+          { success: false, error: "AI service is busy. You can continue by typing the tests manually." },
+          { status: 429 }
+        );
+      }
     }
 
     return NextResponse.json(
