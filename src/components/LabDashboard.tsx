@@ -8,7 +8,7 @@ import {
   Link2, Paperclip, Send, SkipForward, UserCircle, MapPin, Shield, Layers,
   Users, CreditCard, Filter, ChevronDown, AlertTriangle, Truck, ExternalLink,
   MessageCircle, ChevronLeft, FileImage, Sun, Moon, Pencil, Save, BarChart3, Lock,
-  Menu, Activity, KeyRound, ArrowRight,
+  Menu, Activity, KeyRound, ArrowRight, Star, MessageSquare,
 } from "lucide-react";
 import { useDashTheme } from "@/hooks/useDashTheme";
 import { Button } from "@/components/ui/Button";
@@ -54,6 +54,7 @@ interface LabDashboardProps {
   canViewClients?: boolean;
   canViewAnalytics?: boolean;
   canViewActivity?: boolean;
+  canViewFeedback?: boolean;
 }
 
 const TABS: { key: RequestStatus; label: string; icon: React.ReactNode }[] = [
@@ -86,11 +87,11 @@ function scheduleLabel(value: string | null): string | null {
   return value ? (map[value] ?? value) : null;
 }
 
-export function LabDashboard({ lab, isOwner = false, roleName = "Lab Owner", canViewReferrals = false, canViewClients = false, canViewAnalytics = false, canViewActivity = false }: LabDashboardProps) {
+export function LabDashboard({ lab, isOwner = false, roleName = "Lab Owner", canViewReferrals = false, canViewClients = false, canViewAnalytics = false, canViewActivity = false, canViewFeedback = false }: LabDashboardProps) {
   const { name: labName, logo_url: labLogoUrl } = lab;
   const router = useRouter();
   const { isLight, toggle, themeClass } = useDashTheme("lab_dash_theme");
-  const [mainView, setMainView] = useState<"requests" | "referrals" | "clients" | "analytics" | "activity">("requests");
+  const [mainView, setMainView] = useState<"requests" | "referrals" | "clients" | "analytics" | "activity" | "feedback">("requests");
   const [mobileNavOpen, setMobileNavOpen] = useState(false);
   const [activeTab, setActiveTab] = useState<RequestStatus>("seen");
   const [requests, setRequests] = useState<LabRequest[]>([]);
@@ -519,6 +520,7 @@ export function LabDashboard({ lab, isOwner = false, roleName = "Lab Owner", can
             { key: "clients" as const, label: "Clients", icon: <UserCircle className="w-4 h-4" />, show: isOwner || canViewClients },
             { key: "analytics" as const, label: "Analytics", icon: <BarChart3 className="w-4 h-4" />, show: isOwner || canViewAnalytics },
             { key: "activity" as const, label: "Activity", icon: <Activity className="w-4 h-4" />, show: isOwner || canViewActivity },
+            { key: "feedback" as const, label: "Feedback", icon: <Star className="w-4 h-4" />, show: isOwner || canViewFeedback },
           ].filter((item) => item.show);
           if (navItems.length <= 1) return null;
           const currentItem = navItems.find((n) => n.key === mainView) ?? navItems[0];
@@ -1609,6 +1611,11 @@ export function LabDashboard({ lab, isOwner = false, roleName = "Lab Owner", can
         {/* Activity view */}
         {mainView === "activity" && (isOwner || canViewActivity) && (
           <LabActivityView />
+        )}
+
+        {/* Feedback view */}
+        {mainView === "feedback" && (isOwner || canViewFeedback) && (
+          <LabFeedbackView labId={lab.id} />
         )}
 
         {/* Requests view */}
@@ -2765,6 +2772,216 @@ function LabActivityView() {
                   {a.actor_role !== "owner" && <span className="text-slate-500 ml-1">({a.actor_role})</span>}
                 </p>
                 {a.detail && <p className="text-xs text-slate-500 mt-1 leading-relaxed">{a.detail}</p>}
+              </div>
+            );
+          })}
+        </div>
+      )}
+
+      {total > PAGE && (
+        <div className="flex items-center justify-between pt-2">
+          <button onClick={() => loadPage(Math.max(0, offset - PAGE))} disabled={offset === 0}
+            className="flex items-center gap-1.5 text-xs font-semibold text-slate-400 hover:text-white disabled:opacity-30 transition px-3 py-2 rounded-lg hover:bg-white/5">
+            <ChevronLeft className="w-3.5 h-3.5" />Previous
+          </button>
+          <span className="text-xs text-slate-500">{offset + 1}–{Math.min(offset + PAGE, total)} of {total}</span>
+          <button onClick={() => loadPage(offset + PAGE)} disabled={offset + PAGE >= total}
+            className="flex items-center gap-1.5 text-xs font-semibold text-slate-400 hover:text-white disabled:opacity-30 transition px-3 py-2 rounded-lg hover:bg-white/5">
+            Next<ChevronRight className="w-3.5 h-3.5" />
+          </button>
+        </div>
+      )}
+    </div>
+  );
+}
+
+interface FeedbackRecord {
+  id: string;
+  reviewer_email: string;
+  reviewer_type: string;
+  is_anonymous: boolean;
+  display_name: string | null;
+  rating_overall: number;
+  rating_accuracy: number | null;
+  rating_speed: number | null;
+  rating_staff: number | null;
+  rating_environment: number | null;
+  comment: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
+interface FeedbackAverages {
+  overall: number | null;
+  accuracy: number | null;
+  speed: number | null;
+  staff: number | null;
+  environment: number | null;
+}
+
+function FeedbackStars({ value, size = "sm" }: { value: number | null; size?: "sm" | "md" }) {
+  if (value == null) return <span className="text-xs text-slate-500">No data</span>;
+  const sz = size === "md" ? "w-4 h-4" : "w-3.5 h-3.5";
+  return (
+    <div className="flex items-center gap-0.5">
+      {[1, 2, 3, 4, 5].map((i) => (
+        <Star key={i} className={`${sz} ${i <= Math.round(value) ? "text-amber-400 fill-amber-400" : "text-slate-600"}`} />
+      ))}
+      <span className="text-xs text-slate-400 ml-1">{value.toFixed(1)}</span>
+    </div>
+  );
+}
+
+function LabFeedbackView({ labId }: { labId: string }) {
+  const [feedbacks, setFeedbacks] = useState<FeedbackRecord[]>([]);
+  const [averages, setAverages] = useState<FeedbackAverages | null>(null);
+  const [total, setTotal] = useState(0);
+  const [loading, setLoading] = useState(true);
+  const [offset, setOffset] = useState(0);
+  const [filterType, setFilterType] = useState<"all" | "patient" | "doctor">("all");
+  const PAGE = 20;
+
+  const fetchFeedback = useCallback(async (off: number) => {
+    setLoading(true);
+    try {
+      const res = await fetch(`/api/lab/feedback?limit=${PAGE}&offset=${off}`);
+      const data = await res.json();
+      if (data.success) {
+        setFeedbacks(data.feedbacks ?? []);
+        setAverages(data.averages ?? null);
+        setTotal(data.total ?? 0);
+      }
+    } catch { /* ignore */ } finally { setLoading(false); }
+  }, []);
+
+  useEffect(() => { fetchFeedback(0); }, [fetchFeedback]);
+
+  function loadPage(off: number) { setOffset(off); fetchFeedback(off); }
+
+  const filtered = filterType === "all" ? feedbacks : feedbacks.filter((f) => f.reviewer_type === filterType);
+
+  const aspectLabels: { key: keyof FeedbackAverages; label: string }[] = [
+    { key: "overall", label: "Overall" },
+    { key: "accuracy", label: "Accuracy" },
+    { key: "speed", label: "Speed" },
+    { key: "staff", label: "Staff" },
+    { key: "environment", label: "Environment" },
+  ];
+
+  return (
+    <div className="space-y-6 animate-fade-in">
+      {/* Header */}
+      <div className="flex items-center justify-between flex-wrap gap-3">
+        <div>
+          <h2 className="font-semibold text-white text-base">Patient & Doctor Feedback</h2>
+          <p className="text-xs text-slate-500 mt-0.5">Reviews and ratings from your clients</p>
+        </div>
+        <div className="flex items-center gap-2">
+          <span className="text-xs text-slate-500 bg-white/5 border border-white/8 rounded-full px-2.5 py-1">{total} review{total !== 1 ? "s" : ""}</span>
+          <button onClick={() => { setOffset(0); fetchFeedback(0); }} className="p-2 rounded-lg hover:bg-white/10 text-slate-400 hover:text-white transition-colors">
+            <RefreshCw className="w-4 h-4" />
+          </button>
+        </div>
+      </div>
+
+      {/* Averages overview */}
+      {averages && (
+        <div className="bg-white/5 border border-white/10 rounded-2xl p-4 sm:p-5">
+          <h3 className="text-sm font-semibold text-slate-300 mb-4">Rating Overview</h3>
+          <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-3 sm:gap-4">
+            {aspectLabels.map(({ key, label }) => (
+              <div key={key} className={`flex flex-col gap-1.5 ${key === "overall" ? "col-span-2 sm:col-span-1" : ""}`}>
+                <p className="text-xs text-slate-500 font-medium">{label}</p>
+                {averages[key] != null ? (
+                  <>
+                    <div className="flex items-center gap-0.5">
+                      {[1, 2, 3, 4, 5].map((i) => (
+                        <Star key={i} className={`w-4 h-4 ${i <= Math.round(averages[key]!) ? "text-amber-400 fill-amber-400" : "text-slate-600"}`} />
+                      ))}
+                    </div>
+                    <p className={`text-xl font-bold ${key === "overall" ? "text-amber-400" : "text-white"}`}>{averages[key]!.toFixed(1)}</p>
+                  </>
+                ) : (
+                  <p className="text-sm text-slate-600 italic">No data</p>
+                )}
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {/* Filter */}
+      <div className="flex items-center gap-2 flex-wrap">
+        <span className="text-xs text-slate-500 font-medium">Filter:</span>
+        {(["all", "patient", "doctor"] as const).map((t) => (
+          <button key={t} onClick={() => setFilterType(t)}
+            className={`text-xs font-semibold px-3 py-1.5 rounded-full transition-colors capitalize ${
+              filterType === t ? "bg-medical-600 text-white" : "bg-white/5 text-slate-400 hover:text-white hover:bg-white/10"
+            }`}>
+            {t === "all" ? "All" : t === "patient" ? "Patients" : "Doctors"}
+          </button>
+        ))}
+      </div>
+
+      {loading ? (
+        <div className="flex justify-center py-16">
+          <RefreshCw className="w-6 h-6 text-slate-500 animate-spin" />
+        </div>
+      ) : filtered.length === 0 ? (
+        <div className="text-center py-16">
+          <MessageSquare className="w-10 h-10 text-slate-600 mx-auto mb-3" />
+          <p className="text-slate-400 font-medium text-sm">No feedback yet</p>
+          <p className="text-slate-500 text-xs mt-1">Feedback from patients and doctors will appear here</p>
+        </div>
+      ) : (
+        <div className="space-y-3">
+          {filtered.map((fb) => {
+            const reviewer = fb.is_anonymous
+              ? (fb.display_name ?? "Anonymous")
+              : fb.reviewer_email;
+            const typeColor = fb.reviewer_type === "patient" ? "text-sky-400 bg-sky-400/10" : "text-violet-400 bg-violet-400/10";
+            return (
+              <div key={fb.id} className="bg-white/5 border border-white/10 rounded-2xl p-4 sm:p-5">
+                {/* Top row */}
+                <div className="flex items-start justify-between gap-3 mb-3">
+                  <div className="min-w-0">
+                    <div className="flex items-center gap-2 flex-wrap mb-0.5">
+                      <p className="text-sm font-semibold text-white truncate">{reviewer}</p>
+                      <span className={`text-xs font-semibold px-2 py-0.5 rounded-full capitalize ${typeColor}`}>
+                        {fb.reviewer_type}
+                      </span>
+                      {fb.is_anonymous && (
+                        <span className="text-xs text-slate-500 bg-white/5 px-2 py-0.5 rounded-full">anonymous</span>
+                      )}
+                    </div>
+                    <p className="text-xs text-slate-500">{format(new Date(fb.updated_at), "dd MMM yyyy")}</p>
+                  </div>
+                  <div className="shrink-0">
+                    <FeedbackStars value={fb.rating_overall} size="md" />
+                  </div>
+                </div>
+
+                {/* Aspect ratings */}
+                <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 mb-3">
+                  {[
+                    { label: "Accuracy", val: fb.rating_accuracy },
+                    { label: "Speed", val: fb.rating_speed },
+                    { label: "Staff", val: fb.rating_staff },
+                    { label: "Environment", val: fb.rating_environment },
+                  ].filter((a) => a.val != null).map((a) => (
+                    <div key={a.label} className="bg-white/5 rounded-xl px-3 py-2">
+                      <p className="text-xs text-slate-500 mb-1">{a.label}</p>
+                      <FeedbackStars value={a.val!} />
+                    </div>
+                  ))}
+                </div>
+
+                {/* Comment */}
+                {fb.comment && (
+                  <div className="bg-white/5 border border-white/8 rounded-xl px-4 py-3">
+                    <p className="text-sm text-slate-300 leading-relaxed italic">&ldquo;{fb.comment}&rdquo;</p>
+                  </div>
+                )}
               </div>
             );
           })}

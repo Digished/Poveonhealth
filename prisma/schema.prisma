@@ -33,6 +33,7 @@ model Lab {
   api_keys    LabApiKey[]
   requests    Request[]
   branches    LabBranch[]
+  feedbacks   LabFeedback[]
 
   @@map("labs")
 }
@@ -98,6 +99,7 @@ model LabRole {
   can_view_clients     Boolean  @default(false)
   can_view_analytics   Boolean  @default(false)
   can_view_activity    Boolean  @default(false)
+  can_view_feedback    Boolean  @default(false)
   created_at           DateTime @default(now())
 
   lab     Lab         @relation(fields: [lab_id], references: [id], onDelete: Cascade)
@@ -349,4 +351,27 @@ model ApiLog {
   @@index([path])
   @@index([lab_id])
   @@map("api_logs")
+}
+
+// Lab feedback / ratings submitted by patients and doctors
+model LabFeedback {
+  id                  String   @id @default(uuid())
+  lab_id              String
+  lab                 Lab      @relation(fields: [lab_id], references: [id], onDelete: Cascade)
+  reviewer_email      String
+  reviewer_type       String   // "patient" | "doctor"
+  is_anonymous        Boolean  @default(false)
+  display_name        String?  // optional name to show; null = use email prefix
+  rating_overall      Int      // 1–5
+  rating_accuracy     Int?     // 1–5 – test accuracy / reliability
+  rating_speed        Int?     // 1–5 – turnaround time
+  rating_staff        Int?     // 1–5 – staff & professionalism
+  rating_environment  Int?     // 1–5 – cleanliness & environment
+  comment             String?
+  created_at          DateTime @default(now())
+  updated_at          DateTime @updatedAt
+
+  @@unique([lab_id, reviewer_email])
+  @@index([lab_id, created_at])
+  @@map("lab_feedbacks")
 }

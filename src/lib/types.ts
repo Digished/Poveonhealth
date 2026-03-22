@@ -71,8 +71,26 @@ export interface LabRole {
   can_view_clients: boolean;
   can_view_analytics: boolean;
   can_view_activity: boolean;
+  can_view_feedback: boolean;
   created_at: string;
   _count?: { members: number };
+}
+
+export interface LabFeedback {
+  id: string;
+  lab_id: string;
+  reviewer_email: string;
+  reviewer_type: "patient" | "doctor";
+  is_anonymous: boolean;
+  display_name: string | null;
+  rating_overall: number;
+  rating_accuracy: number | null;
+  rating_speed: number | null;
+  rating_staff: number | null;
+  rating_environment: number | null;
+  comment: string | null;
+  created_at: string;
+  updated_at: string;
 }
 
 export interface LabMember {

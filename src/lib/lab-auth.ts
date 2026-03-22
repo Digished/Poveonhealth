@@ -14,6 +14,7 @@ export interface LabPermissions {
   can_view_clients:    boolean;
   can_view_analytics:  boolean;
   can_view_activity:   boolean;
+  can_view_feedback:   boolean;
 }
 
 /** Full permissions — granted to the lab owner (LabUser) and API keys */
@@ -28,6 +29,7 @@ export const FULL_PERMISSIONS: LabPermissions = {
   can_view_clients:    true,
   can_view_analytics:  true,
   can_view_activity:   true,
+  can_view_feedback:   true,
 };
 
 export interface LabAuthResult {
@@ -82,6 +84,7 @@ export async function getLabAuth(request: NextRequest): Promise<LabAuthResult | 
                 can_view_clients:    true,
                 can_view_analytics:  true,
                 can_view_activity:   true,
+                can_view_feedback:   true,
               },
             },
           },
