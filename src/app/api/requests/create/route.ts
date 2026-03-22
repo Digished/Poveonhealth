@@ -202,6 +202,7 @@ export async function POST(request: NextRequest) {
         html: labNewRequest({
           labName: lab.name,
           patientName: data.patient_name || "",
+          patientPhone: data.patient_phone || undefined,
           doctorName: data.doctor_name,
           doctorPhone: data.doctor_phone || undefined,
           doctorHospital: data.doctor_hospital || undefined,

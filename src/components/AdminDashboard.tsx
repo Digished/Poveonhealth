@@ -940,7 +940,7 @@ function CreateLabModal({ onClose, onSuccess }: { onClose: () => void; onSuccess
   const [notificationEmail, setNotificationEmail] = useState("");
   const [slug, setSlug] = useState("");
   const [slugError, setSlugError] = useState("");
-  const [whatsapp, setWhatsapp] = useState("");
+  const [whatsappNumbers, setWhatsappNumbers] = useState<string[]>([""]);
   const [requestEmail, setRequestEmail] = useState("");
   const [tempPassword, setTempPassword] = useState("");
   const [showPassword, setShowPassword] = useState(false);
@@ -991,7 +991,7 @@ function CreateLabModal({ onClose, onSuccess }: { onClose: () => void; onSuccess
           phones: phoneList,
           notification_email: notificationEmail.trim() || undefined,
           slug: slug.trim() || undefined,
-          whatsapp: whatsapp.trim() || undefined,
+          whatsapp: JSON.stringify(whatsappNumbers.map((n) => n.trim()).filter(Boolean)) || undefined,
           request_email: requestEmail.trim() || undefined,
           tempPassword: tempPassword.trim() || undefined,
         }),
@@ -1093,14 +1093,26 @@ function CreateLabModal({ onClose, onSuccess }: { onClose: () => void; onSuccess
             </div>
             <div>
               <label className="text-sm font-medium text-slate-300 block mb-1">
-                WhatsApp Number <span className="text-xs text-slate-500">(optional)</span>
+                WhatsApp Numbers <span className="text-xs text-slate-500">(optional)</span>
               </label>
-              <input
-                className={`w-full rounded-xl border px-4 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-medical-500 ${whiteInput}`}
-                placeholder="+234 800 000 0000"
-                value={whatsapp}
-                onChange={(e) => setWhatsapp(e.target.value)}
-              />
+              <div className="space-y-2">
+                {whatsappNumbers.map((num, i) => (
+                  <div key={i} className="flex gap-2">
+                    <input
+                      className={`flex-1 rounded-xl border px-4 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-medical-500 ${whiteInput}`}
+                      placeholder="+234 800 000 0000"
+                      value={num}
+                      onChange={(e) => { const next = [...whatsappNumbers]; next[i] = e.target.value; setWhatsappNumbers(next); }}
+                    />
+                    {whatsappNumbers.length > 1 && (
+                      <button type="button" onClick={() => setWhatsappNumbers(whatsappNumbers.filter((_, j) => j !== i))}
+                        className="px-3 py-2 rounded-xl bg-red-900/30 text-red-400 hover:bg-red-900/50 transition-colors text-xs font-bold shrink-0">✕</button>
+                    )}
+                  </div>
+                ))}
+                <button type="button" onClick={() => setWhatsappNumbers([...whatsappNumbers, ""])}
+                  className="text-xs text-medical-400 hover:text-medical-300 font-medium transition-colors">+ Add another number</button>
+              </div>
               <p className="text-xs text-slate-500 mt-1">Used for patient contact buttons. Include country code.</p>
             </div>
             <div>
@@ -1146,7 +1158,14 @@ function EditLabModal({ lab, onClose, onSuccess }: { lab: Lab; onClose: () => vo
   const [notificationEmail, setNotificationEmail] = useState(lab.notification_email ?? "");
   const [slug, setSlug] = useState(lab.slug ?? "");
   const [slugError, setSlugError] = useState("");
-  const [whatsapp, setWhatsapp] = useState(lab.whatsapp ?? "");
+  const [whatsappNumbers, setWhatsappNumbers] = useState<string[]>(() => {
+    try {
+      const p = JSON.parse(lab.whatsapp ?? "[]");
+      return Array.isArray(p) ? (p.length ? p : [""]) : lab.whatsapp ? [lab.whatsapp] : [""];
+    } catch {
+      return lab.whatsapp ? [lab.whatsapp] : [""];
+    }
+  });
   const [requestEmail, setRequestEmail] = useState(lab.request_email ?? "");
   const [selectedCategories, setSelectedCategories] = useState<string[]>((lab.service_categories as string[]) ?? []);
   const [selectedCerts, setSelectedCerts] = useState<string[]>((lab.certifications as string[]) ?? []);
@@ -1191,7 +1210,7 @@ function EditLabModal({ lab, onClose, onSuccess }: { lab: Lab; onClose: () => vo
       const res = await fetch(`/api/admin/labs/${lab.id}`, {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ name: name.trim(), address: address.trim(), description: description.trim(), phones: phoneList, notification_email: notificationEmail.trim() || null, service_categories: selectedCategories, certifications: selectedCerts, slug: slug.trim() || null, whatsapp: whatsapp.trim() || null, request_email: requestEmail.trim() || null }),
+        body: JSON.stringify({ name: name.trim(), address: address.trim(), description: description.trim(), phones: phoneList, notification_email: notificationEmail.trim() || null, service_categories: selectedCategories, certifications: selectedCerts, slug: slug.trim() || null, whatsapp: JSON.stringify(whatsappNumbers.map(n => n.trim()).filter(Boolean)) || null, request_email: requestEmail.trim() || null }),
       });
       const data = await res.json();
       if (data.success) {
@@ -1258,14 +1277,26 @@ function EditLabModal({ lab, onClose, onSuccess }: { lab: Lab; onClose: () => vo
           </div>
           <div>
             <label className="text-sm font-medium text-slate-300 block mb-1">
-              WhatsApp Number <span className="text-xs text-slate-500">(optional)</span>
+              WhatsApp Numbers <span className="text-xs text-slate-500">(optional)</span>
             </label>
-            <input
-              className={`w-full rounded-xl border px-4 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-medical-500 ${whiteInput}`}
-              placeholder="+234 800 000 0000"
-              value={whatsapp}
-              onChange={(e) => setWhatsapp(e.target.value)}
-            />
+            <div className="space-y-2">
+              {whatsappNumbers.map((num, i) => (
+                <div key={i} className="flex gap-2">
+                  <input
+                    className={`flex-1 rounded-xl border px-4 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-medical-500 ${whiteInput}`}
+                    placeholder="+234 800 000 0000"
+                    value={num}
+                    onChange={(e) => { const next = [...whatsappNumbers]; next[i] = e.target.value; setWhatsappNumbers(next); }}
+                  />
+                  {whatsappNumbers.length > 1 && (
+                    <button type="button" onClick={() => setWhatsappNumbers(whatsappNumbers.filter((_, j) => j !== i))}
+                      className="px-3 py-2 rounded-xl bg-red-900/30 text-red-400 hover:bg-red-900/50 transition-colors text-sm">✕</button>
+                  )}
+                </div>
+              ))}
+              <button type="button" onClick={() => setWhatsappNumbers([...whatsappNumbers, ""])}
+                className="text-xs text-medical-400 hover:text-medical-300 transition-colors">+ Add another number</button>
+            </div>
             <p className="text-xs text-slate-500 mt-1">Used for patient contact buttons. Include country code.</p>
           </div>
           <div>

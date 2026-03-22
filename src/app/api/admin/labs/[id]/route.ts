@@ -23,7 +23,7 @@ const PatchSchema = z.object({
   service_categories: z.array(z.string()).optional(),
   certifications: z.array(z.string()).optional(),
   slug: z.string().regex(/^[a-z0-9-]+$/).max(80).nullable().optional(),
-  whatsapp: z.string().max(30).nullable().optional(),
+  whatsapp: z.string().max(500).nullable().optional(),
   request_email: z.string().email().nullable().optional(),
 });
 

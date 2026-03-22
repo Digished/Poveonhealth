@@ -611,6 +611,7 @@ export function patientOtpEmail({
 export function labNewRequest({
   labName,
   patientName,
+  patientPhone,
   doctorName,
   doctorPhone,
   doctorHospital,
@@ -626,6 +627,7 @@ export function labNewRequest({
 }: {
   labName: string;
   patientName: string;
+  patientPhone?: string;
   doctorName: string;
   doctorPhone?: string;
   doctorHospital?: string;
@@ -656,8 +658,8 @@ export function labNewRequest({
 
   const imageSection = testImageUrl
     ? `${label("Test Image / Referral Document")}
-       <div style="margin:4px 0 16px;">
-         <a href="${testImageUrl}" style="color:#0270c3;font-size:14px;text-decoration:underline;">View Attached Image</a>
+       <div style="margin:8px 0 16px;">
+         <a href="${testImageUrl}" style="display:inline-block;background:#0270c3;color:#ffffff;text-decoration:none;padding:10px 20px;border-radius:8px;font-weight:600;font-size:13px;">📎 View Test Request Image</a>
        </div>`
     : "";
 
@@ -675,11 +677,10 @@ export function labNewRequest({
 
     ${urgentBanner}
 
-    ${patientName ? `
     <h3 style="margin:0 0 16px;color:#0259a0;font-size:16px;font-weight:600;">Patient Information</h3>
-    ${label("Patient Name")}
-    ${value(patientName)}
-    ${divider}` : ""}
+    ${patientName ? `${label("Patient Name")}${value(patientName)}` : ""}
+    ${patientPhone ? `${label("Patient Phone")}${value(patientPhone)}` : ""}
+    ${divider}
 
     <h3 style="margin:0 0 16px;color:#0259a0;font-size:16px;font-weight:600;">Requesting Doctor</h3>
 
@@ -703,11 +704,5 @@ export function labNewRequest({
     ${imageSection}
 
     ${divider}
-
-    <div style="text-align:center;margin:24px 0;">
-      <a href="${appUrl}/lab-dashboard" style="display:inline-block;background:#0270c3;color:#ffffff;text-decoration:none;padding:14px 32px;border-radius:8px;font-weight:600;font-size:15px;">
-        View Request
-      </a>
-    </div>
   `, { name: labName });
 }

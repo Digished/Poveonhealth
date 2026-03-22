@@ -171,7 +171,7 @@ function PrefixSelectModal({
       />
 
       {/* Sheet */}
-      <div className="relative w-full sm:w-[440px] sm:mx-4 bg-white sm:rounded-2xl rounded-t-2xl shadow-2xl flex flex-col max-h-[80vh] sm:max-h-[540px] animate-in slide-in-from-bottom-4 sm:zoom-in-95 duration-200">
+      <div className="relative w-full sm:w-[440px] sm:mx-4 bg-white sm:rounded-2xl rounded-t-2xl shadow-2xl flex flex-col max-h-[90%] sm:max-h-[540px] animate-in slide-in-from-bottom-4 sm:zoom-in-95 duration-200">
         {/* Handle (mobile only) */}
         <div className="sm:hidden flex justify-center pt-3 pb-1">
           <div className="w-10 h-1 rounded-full bg-slate-200" />
@@ -277,7 +277,6 @@ function PrefixSelect({
         <div className="w-full rounded-xl border border-medical-300 bg-medical-50 px-4 py-2.5 flex items-center justify-between gap-3">
           <div className="min-w-0">
             <span className="text-sm font-semibold text-medical-800">{selected.value}</span>
-            <span className="text-xs text-medical-500 ml-2 truncate">{selected.label.split(" — ")[1]}</span>
           </div>
           <div className="flex items-center gap-0.5 shrink-0">
             <button
@@ -1531,9 +1530,17 @@ export function DoctorRequestForm({
                     </button>
                   </div>
                 ) : imageUploading ? (
-                  <div className="flex items-center gap-3 rounded-xl border border-slate-200 bg-slate-50 px-4 py-3">
-                    <RefreshCw className="w-4 h-4 text-slate-400 animate-spin shrink-0" />
-                    <span className="text-sm text-slate-500">Uploading…</span>
+                  <div className="flex flex-col items-center gap-4 rounded-2xl border-2 border-dashed border-medical-300 bg-medical-50/30 px-6 py-10 text-center">
+                    <div className="w-14 h-14 rounded-2xl bg-medical-100 flex items-center justify-center">
+                      <RefreshCw className="w-7 h-7 text-medical-600 animate-spin" />
+                    </div>
+                    <div>
+                      <p className="text-sm font-semibold text-medical-700">Uploading your image…</p>
+                      <p className="text-xs text-slate-400 mt-1">Please wait, this only takes a moment</p>
+                    </div>
+                    <div className="w-full max-w-[180px] bg-medical-100 rounded-full h-1.5 overflow-hidden">
+                      <div className="h-full bg-medical-500 rounded-full animate-pulse" style={{ width: "70%" }} />
+                    </div>
                   </div>
                 ) : (
                   <label className="cursor-pointer">
@@ -1967,54 +1974,96 @@ export function DoctorRequestForm({
             </div>
 
             {/* Review summary */}
-            <div className="bg-slate-50 rounded-xl p-4 space-y-2 border border-slate-100">
-              <p className="text-xs font-semibold text-slate-400 uppercase tracking-wider mb-3">Review</p>
-              <SummaryRow label="Lab" value={selectedLab?.name ?? preselectedLabName ?? ""} />
-              {selectedBranchId && <SummaryRow label="Branch" value={branches.find((b) => b.id === selectedBranchId)?.name ?? selectedBranchId} />}
-              <SummaryRow label="Patient Phone" value={form.patient_phone} />
-              {form.patient_email && <SummaryRow label="Patient Email" value={form.patient_email} />}
-              {clinicalMode === "type" && <SummaryRow label="Diagnosis" value={form.diagnosis} />}
-              {clinicalMode === "type" && <SummaryRow label="Tests" value={form.tests} />}
-              {clinicalMode === "picture" && <SummaryRow label="Clinical" value={testImageUrl ? "Image attached" : "No image"} />}
-              <SummaryRow label="Referrer" value={[form.doctor_prefix, form.doctor_name].filter(Boolean).join(" ")} />
-              <SummaryRow label="Referrer Email" value={form.doctor_email} />
-              {form.doctor_hospital && <SummaryRow label="Hospital/Clinic" value={form.doctor_hospital} />}
-              {form.patient_name && <SummaryRow label="Patient Name" value={form.patient_name} />}
-              {form.dob && <SummaryRow label="Date of Birth" value={form.dob.split("-").reverse().join(" / ")} />}
-              {form.sex && <SummaryRow label="Sex" value={form.sex} capitalize />}
-              {form.schedule && <SummaryRow label="Schedule" value={scheduleLabel(form.schedule)} />}
+            <div className="rounded-2xl border border-slate-200 overflow-hidden">
+              <div className="px-4 py-3 bg-slate-50 border-b border-slate-100">
+                <p className="text-xs font-bold text-slate-500 uppercase tracking-wider">Review before sending</p>
+              </div>
+              <div className="divide-y divide-slate-100">
+                {/* Lab */}
+                <div className="px-4 py-3 flex items-start justify-between gap-3">
+                  <p className="text-xs text-slate-400 shrink-0 w-24">Lab</p>
+                  <p className="text-xs font-semibold text-slate-700 text-right truncate">{selectedLab?.name ?? preselectedLabName ?? ""}{selectedBranchId ? ` · ${branches.find((b) => b.id === selectedBranchId)?.name ?? ""}` : ""}</p>
+                </div>
+                {/* Patient */}
+                <div className="px-4 py-3 flex items-start justify-between gap-3">
+                  <p className="text-xs text-slate-400 shrink-0 w-24">Patient</p>
+                  <div className="text-right min-w-0">
+                    {form.patient_name && <p className="text-xs font-semibold text-slate-700 truncate">{form.patient_name}</p>}
+                    <p className="text-xs text-slate-600 font-mono">{form.patient_phone}</p>
+                    {form.dob && <p className="text-xs text-slate-500">DOB: {form.dob.split("-").reverse().join(" / ")}{form.sex ? ` · ${form.sex}` : ""}</p>}
+                  </div>
+                </div>
+                {/* Clinical */}
+                <div className="px-4 py-3 flex items-start justify-between gap-3">
+                  <p className="text-xs text-slate-400 shrink-0 w-24">Clinical</p>
+                  <div className="text-right min-w-0">
+                    {clinicalMode === "picture"
+                      ? <p className="text-xs font-semibold text-slate-700">{testImageUrl ? "📎 Image attached" : "⚠ No image"}</p>
+                      : <>
+                          {form.diagnosis && <p className="text-xs text-slate-500 truncate">{form.diagnosis}</p>}
+                          <p className="text-xs font-semibold text-slate-700 truncate">{form.tests}</p>
+                        </>
+                    }
+                    {form.schedule && <p className="text-xs text-medical-600 font-medium mt-0.5">{scheduleLabel(form.schedule)}</p>}
+                  </div>
+                </div>
+                {/* Referrer */}
+                <div className="px-4 py-3 flex items-start justify-between gap-3">
+                  <p className="text-xs text-slate-400 shrink-0 w-24">Referrer</p>
+                  <div className="text-right min-w-0">
+                    <p className="text-xs font-semibold text-slate-700 truncate">{[form.doctor_prefix, form.doctor_name].filter(Boolean).join(" ")}</p>
+                    {form.doctor_hospital && <p className="text-xs text-slate-500 truncate">{form.doctor_hospital}</p>}
+                    <p className="text-xs text-slate-500 truncate">{form.doctor_email}</p>
+                  </div>
+                </div>
+                {/* Flags */}
+                {(isCritical || needsAmbulance) && (
+                  <div className="px-4 py-3 flex items-center gap-2 flex-wrap">
+                    {isCritical && <span className="inline-flex items-center gap-1 text-xs font-semibold bg-red-50 text-red-600 border border-red-200 px-2 py-0.5 rounded-full"><AlertTriangle className="w-3 h-3" />Critical</span>}
+                    {needsAmbulance && <span className="inline-flex items-center gap-1 text-xs font-semibold bg-orange-50 text-orange-600 border border-orange-200 px-2 py-0.5 rounded-full"><Truck className="w-3 h-3" />Ambulance</span>}
+                  </div>
+                )}
+              </div>
             </div>
           </div>
         )}
       </div>
 
-      {/* Navigation */}
-      <div className={`flex gap-3 mt-4 w-full min-w-0 ${step === 1 ? "justify-end" : "justify-between"}`}>
-        {step > 1 && (
+      {/* Back button — inline */}
+      {step > 1 && (
+        <div className="mt-4">
           <Button variant="ghost" onClick={handleBack} type="button" className="shrink-0">
             <ChevronLeft className="w-4 h-4" />
             Back
           </Button>
-        )}
-        {step < 4 ? (
-          stepValid ? (
-            <Button onClick={handleNext} type="button" className="shrink-0 ml-auto">
+        </div>
+      )}
+
+      {/* FAB — Next / Submit — fixed bottom-right, appears when step is valid */}
+      {stepValid && (
+        <div className="fixed bottom-6 right-5 z-50">
+          {step < 4 ? (
+            <button
+              type="button"
+              onClick={handleNext}
+              className="flex items-center gap-2.5 px-6 py-3.5 rounded-2xl bg-medical-600 hover:bg-medical-700 active:scale-95 text-white font-bold text-sm shadow-2xl shadow-medical-600/40 transition-all"
+            >
               Continue
-              <ChevronRight className="w-4 h-4" />
-            </Button>
-          ) : null
-        ) : (
-          <Button
-            onClick={handleSubmit}
-            loading={submitting}
-            size="lg"
-            className="shadow-xl shadow-medical-500/20"
-          >
-            <FlaskConical className="w-5 h-5" />
-            Generate Lab Request
-          </Button>
-        )}
-      </div>
+              <ChevronRight className="w-5 h-5" />
+            </button>
+          ) : (
+            <button
+              type="button"
+              onClick={handleSubmit}
+              disabled={submitting}
+              className="flex items-center gap-2.5 px-6 py-3.5 rounded-2xl bg-medical-600 hover:bg-medical-700 active:scale-95 disabled:opacity-70 text-white font-bold text-sm shadow-2xl shadow-medical-600/40 transition-all"
+            >
+              {submitting ? <RefreshCw className="w-5 h-5 animate-spin" /> : <FlaskConical className="w-5 h-5" />}
+              {submitting ? "Sending…" : "Generate Lab Request"}
+            </button>
+          )}
+        </div>
+      )}
 
       <p className="text-center text-xs text-slate-400 mt-4 leading-relaxed">
         By submitting, you confirm you are authorised to request these tests on behalf of the patient and receive the results.{" "}

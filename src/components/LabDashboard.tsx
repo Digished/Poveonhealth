@@ -74,7 +74,7 @@ function scheduleLabel(value: string | null): string | null {
 export function LabDashboard({ lab, isOwner = false, roleName = "Lab Owner", canViewReferrals = false }: LabDashboardProps) {
   const { name: labName, logo_url: labLogoUrl } = lab;
   const router = useRouter();
-  const [mainView, setMainView] = useState<"requests" | "referrals">("requests");
+  const [mainView, setMainView] = useState<"requests" | "referrals" | "clients">("requests");
   const [activeTab, setActiveTab] = useState<RequestStatus>("incoming");
   const [requests, setRequests] = useState<LabRequest[]>([]);
   const [loading, setLoading] = useState(true);
@@ -88,6 +88,20 @@ export function LabDashboard({ lab, isOwner = false, roleName = "Lab Owner", can
   const [profileOpen, setProfileOpen] = useState(false);
   const [teamMembers, setTeamMembers] = useState<{ id: string; email: string; role: { name: string }; last_sign_in_at: string | null }[]>([]);
   const [teamLoading, setTeamLoading] = useState(false);
+
+  // Clients state
+  type ClientRecord = {
+    patient_phone: string;
+    patient_name: string | null;
+    visit_count: number;
+    first_visit: string;
+    last_visit: string;
+    recent_tests: string;
+    requests: LabRequest[];
+  };
+  const [clients, setClients] = useState<ClientRecord[]>([]);
+  const [clientsLoading, setClientsLoading] = useState(false);
+  const [selectedClient, setSelectedClient] = useState<ClientRecord | null>(null);
 
   // Referrals state
   const [referrals, setReferrals] = useState<ReferralDoctor[]>([]);
@@ -154,11 +168,28 @@ export function LabDashboard({ lab, isOwner = false, roleName = "Lab Owner", can
     return () => clearInterval(interval);
   }, [fetchRequests]);
 
+  const fetchClients = useCallback(async () => {
+    setClientsLoading(true);
+    try {
+      const res = await fetch("/api/lab/clients");
+      const data = await res.json();
+      if (!data.success) throw new Error(data.error);
+      setClients(data.clients ?? []);
+    } catch {
+      toast.error("Failed to load clients");
+    } finally {
+      setClientsLoading(false);
+    }
+  }, []);
+
   useEffect(() => {
     if (mainView === "referrals" && (isOwner || canViewReferrals)) {
       fetchReferrals();
     }
-  }, [mainView, fetchReferrals, isOwner, canViewReferrals]);
+    if (mainView === "clients") {
+      fetchClients();
+    }
+  }, [mainView, fetchReferrals, fetchClients, isOwner, canViewReferrals]);
 
   const tabRequests = requests.filter((r) => r.status === activeTab);
 
@@ -430,6 +461,17 @@ export function LabDashboard({ lab, isOwner = false, roleName = "Lab Owner", can
               <Users className="w-4 h-4" />
               Referrals
             </button>
+            <button
+              onClick={() => setMainView("clients")}
+              className={`flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-medium transition-all ${
+                mainView === "clients"
+                  ? "bg-white/15 text-white shadow-sm"
+                  : "text-slate-400 hover:text-slate-200"
+              }`}
+            >
+              <UserCircle className="w-4 h-4" />
+              Clients
+            </button>
           </div>
         )}
 
@@ -637,6 +679,130 @@ export function LabDashboard({ lab, isOwner = false, roleName = "Lab Owner", can
                   ))}
                 </div>
               </>
+            )}
+          </div>
+        )}
+
+        {/* Clients view */}
+        {mainView === "clients" && (
+          <div>
+            {clientsLoading ? (
+              <div className="flex items-center justify-center py-20">
+                <RefreshCw className="w-6 h-6 text-slate-400 animate-spin" />
+              </div>
+            ) : clients.length === 0 ? (
+              <div className="text-center py-16">
+                <div className="w-16 h-16 rounded-2xl bg-white/5 flex items-center justify-center mx-auto mb-4">
+                  <UserCircle className="w-8 h-8 text-slate-500" />
+                </div>
+                <p className="text-slate-300 font-semibold">No clients yet</p>
+                <p className="text-slate-500 text-sm mt-1">Clients appear here after their code is entered at the lab.</p>
+              </div>
+            ) : (
+              <div className="space-y-3">
+                <p className="text-xs text-slate-500 font-semibold uppercase tracking-wider mb-4">{clients.length} client{clients.length !== 1 ? "s" : ""}</p>
+                {clients.map((client) => (
+                  <button
+                    key={client.patient_phone}
+                    type="button"
+                    onClick={() => setSelectedClient(client)}
+                    className="w-full text-left bg-white/5 hover:bg-white/10 border border-white/10 hover:border-white/20 rounded-2xl p-4 transition-all group"
+                  >
+                    <div className="flex items-start justify-between gap-3">
+                      <div className="flex items-center gap-3 min-w-0">
+                        <div className="w-10 h-10 rounded-full bg-medical-600/20 border border-medical-500/30 flex items-center justify-center shrink-0">
+                          <UserCircle className="w-5 h-5 text-medical-400" />
+                        </div>
+                        <div className="min-w-0">
+                          {client.patient_name ? (
+                            <p className="text-sm font-bold text-white leading-tight truncate">{client.patient_name}</p>
+                          ) : null}
+                          <a
+                            href={`tel:${client.patient_phone}`}
+                            onClick={(e) => e.stopPropagation()}
+                            className="text-xs text-medical-400 hover:text-medical-300 font-mono flex items-center gap-1 mt-0.5"
+                          >
+                            <Phone className="w-3 h-3" />
+                            {client.patient_phone}
+                          </a>
+                        </div>
+                      </div>
+                      <div className="text-right shrink-0">
+                        <span className="inline-block text-xs font-bold text-medical-300 bg-medical-600/20 border border-medical-500/30 px-2 py-0.5 rounded-full">
+                          {client.visit_count} visit{client.visit_count !== 1 ? "s" : ""}
+                        </span>
+                        <p className="text-xs text-slate-500 mt-1">{new Date(client.last_visit).toLocaleDateString("en-GB", { day: "numeric", month: "short", year: "numeric" })}</p>
+                      </div>
+                    </div>
+                    <div className="mt-3 pt-3 border-t border-white/5">
+                      <p className="text-xs text-slate-400 line-clamp-1"><span className="text-slate-500">Last: </span>{client.recent_tests}</p>
+                    </div>
+                  </button>
+                ))}
+              </div>
+            )}
+
+            {/* Client detail popup */}
+            {selectedClient && (
+              <div
+                className="fixed inset-0 z-50 flex items-end sm:items-center justify-center p-4"
+                style={{ backgroundColor: "rgba(15,23,42,0.7)", backdropFilter: "blur(4px)" }}
+                onClick={() => setSelectedClient(null)}
+              >
+                <div
+                  className="w-full max-w-md bg-slate-900 border border-white/10 rounded-3xl shadow-2xl overflow-hidden max-h-[85vh] flex flex-col"
+                  onClick={(e) => e.stopPropagation()}
+                >
+                  {/* Header */}
+                  <div className="px-5 pt-5 pb-4 border-b border-white/10 flex items-start justify-between gap-3 shrink-0">
+                    <div className="flex items-center gap-3 min-w-0">
+                      <div className="w-11 h-11 rounded-2xl bg-medical-600/20 border border-medical-500/30 flex items-center justify-center shrink-0">
+                        <UserCircle className="w-6 h-6 text-medical-400" />
+                      </div>
+                      <div className="min-w-0">
+                        {selectedClient.patient_name && <p className="font-bold text-white text-base leading-tight truncate">{selectedClient.patient_name}</p>}
+                        <a href={`tel:${selectedClient.patient_phone}`} className="text-sm text-medical-400 font-mono flex items-center gap-1 mt-0.5">
+                          <Phone className="w-3.5 h-3.5" />{selectedClient.patient_phone}
+                        </a>
+                      </div>
+                    </div>
+                    <button type="button" onClick={() => setSelectedClient(null)} className="p-1.5 rounded-xl hover:bg-white/10 text-slate-400 hover:text-white transition-colors shrink-0">
+                      <X className="w-5 h-5" />
+                    </button>
+                  </div>
+                  {/* Stats */}
+                  <div className="px-5 py-3 flex gap-4 border-b border-white/5 shrink-0">
+                    <div>
+                      <p className="text-xs text-slate-500">Visits</p>
+                      <p className="text-lg font-bold text-white">{selectedClient.visit_count}</p>
+                    </div>
+                    <div>
+                      <p className="text-xs text-slate-500">First visit</p>
+                      <p className="text-sm font-semibold text-white">{new Date(selectedClient.first_visit).toLocaleDateString("en-GB", { day: "numeric", month: "short", year: "numeric" })}</p>
+                    </div>
+                    <div>
+                      <p className="text-xs text-slate-500">Last visit</p>
+                      <p className="text-sm font-semibold text-white">{new Date(selectedClient.last_visit).toLocaleDateString("en-GB", { day: "numeric", month: "short", year: "numeric" })}</p>
+                    </div>
+                  </div>
+                  {/* Visit history */}
+                  <div className="overflow-y-auto flex-1">
+                    <p className="px-5 pt-4 pb-2 text-xs font-semibold text-slate-500 uppercase tracking-wider">Visit History</p>
+                    <div className="space-y-0">
+                      {selectedClient.requests.map((req, i) => (
+                        <div key={req.id} className={`px-5 py-4 ${i < selectedClient.requests.length - 1 ? "border-b border-white/5" : ""}`}>
+                          <div className="flex items-start justify-between gap-3 mb-1.5">
+                            <p className="text-xs text-slate-400">{new Date(req.created_at).toLocaleDateString("en-GB", { day: "numeric", month: "long", year: "numeric" })}</p>
+                            <StatusBadge status={req.status} />
+                          </div>
+                          <p className="text-sm text-white font-medium leading-snug line-clamp-2">{req.tests}</p>
+                          {req.diagnosis && <p className="text-xs text-slate-500 mt-1 line-clamp-1">{req.diagnosis}</p>}
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                </div>
+              </div>
             )}
           </div>
         )}
@@ -867,10 +1033,14 @@ export function LabDashboard({ lab, isOwner = false, roleName = "Lab Owner", can
                     <DetailRow label="Code">
                       <span className="font-mono font-bold text-medical-400">{selectedRequest.code}</span>
                     </DetailRow>
-                    <DetailRow label="Patient Name">{selectedRequest.patient_name}</DetailRow>
-                    <DetailRow label="Age / Sex">
-                      {selectedRequest.dob ? `${calcAge(selectedRequest.dob)} yrs` : "—"}{selectedRequest.sex ? ` · ${selectedRequest.sex}` : ""}
-                    </DetailRow>
+                    {selectedRequest.patient_name && (
+                      <DetailRow label="Patient Name">{selectedRequest.patient_name}</DetailRow>
+                    )}
+                    {(selectedRequest.dob || selectedRequest.sex) && (
+                      <DetailRow label="Age / Sex">
+                        {selectedRequest.dob ? `${calcAge(selectedRequest.dob)} yrs` : ""}{selectedRequest.sex ? `${selectedRequest.dob ? " · " : ""}${selectedRequest.sex}` : ""}
+                      </DetailRow>
+                    )}
                     {selectedRequest.dob && (
                       <DetailRow label="Date of Birth">
                         {format(new Date(selectedRequest.dob), "dd MMM yyyy")}
@@ -974,20 +1144,25 @@ export function LabDashboard({ lab, isOwner = false, roleName = "Lab Owner", can
                         </a>
                       </DetailRow>
                     )}
-                    {/* WhatsApp */}
-                    {lab.whatsapp && (
-                      <DetailRow label="Lab WhatsApp">
-                        <a
-                          href={`https://wa.me/${lab.whatsapp.replace(/\D/g, "")}`}
-                          target="_blank"
-                          rel="noopener noreferrer"
-                          className="inline-flex items-center gap-1.5 text-emerald-400 hover:text-emerald-300 hover:underline text-sm"
-                        >
-                          <MessageCircle className="w-3.5 h-3.5" />
-                          Chat on WhatsApp
-                        </a>
-                      </DetailRow>
-                    )}
+                    {/* WhatsApp — supports multiple numbers stored as JSON array */}
+                    {(() => {
+                      const nums: string[] = lab.whatsapp
+                        ? (() => { try { const p = JSON.parse(lab.whatsapp); return Array.isArray(p) ? p : [lab.whatsapp]; } catch { return [lab.whatsapp]; } })()
+                        : [];
+                      return nums.length > 0 ? (
+                        <DetailRow label="Lab WhatsApp">
+                          <div className="flex flex-wrap gap-2">
+                            {nums.filter(Boolean).map((num, i) => (
+                              <a key={i} href={`https://wa.me/${num.replace(/\D/g, "")}`} target="_blank" rel="noopener noreferrer"
+                                className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-emerald-500/10 border border-emerald-500/20 text-emerald-400 hover:bg-emerald-500/20 hover:text-emerald-300 transition-all text-xs font-medium">
+                                <MessageCircle className="w-3.5 h-3.5" />
+                                {num}
+                              </a>
+                            ))}
+                          </div>
+                        </DetailRow>
+                      ) : null;
+                    })()}
                   </div>
                 ) : (
                   /* Incoming: restricted view */
@@ -998,9 +1173,11 @@ export function LabDashboard({ lab, isOwner = false, roleName = "Lab Owner", can
                         Patient details are hidden. Enter the code above to reveal.
                       </p>
                     </div>
-                    <DetailRow label="Age / Sex">
-                      {selectedRequest.dob ? `${calcAge(selectedRequest.dob)} yrs` : "—"}{selectedRequest.sex ? ` · ${selectedRequest.sex}` : ""}
-                    </DetailRow>
+                    {(selectedRequest.dob || selectedRequest.sex) && (
+                      <DetailRow label="Age / Sex">
+                        {selectedRequest.dob ? `${calcAge(selectedRequest.dob)} yrs` : ""}{selectedRequest.sex ? `${selectedRequest.dob ? " · " : ""}${selectedRequest.sex}` : ""}
+                      </DetailRow>
+                    )}
                     {selectedRequest.dob && (
                       <DetailRow label="Date of Birth">
                         {format(new Date(selectedRequest.dob), "dd MMM yyyy")}
@@ -1541,21 +1718,26 @@ export function LabDashboard({ lab, isOwner = false, roleName = "Lab Owner", can
                     </a>
                   </div>
                 )}
-                {/* WhatsApp */}
-                {lab.whatsapp && (
-                  <div>
-                    <p className="text-xs text-slate-500 font-medium mb-0.5">Lab WhatsApp</p>
-                    <a
-                      href={`https://wa.me/${lab.whatsapp.replace(/\D/g, "")}`}
-                      target="_blank"
-                      rel="noopener noreferrer"
-                      className="inline-flex items-center gap-1.5 text-emerald-400 hover:text-emerald-300 hover:underline text-sm"
-                    >
-                      <MessageCircle className="w-3.5 h-3.5" />
-                      Chat on WhatsApp
-                    </a>
-                  </div>
-                )}
+                {/* WhatsApp — multiple numbers */}
+                {(() => {
+                  const nums: string[] = lab.whatsapp
+                    ? (() => { try { const p = JSON.parse(lab.whatsapp); return Array.isArray(p) ? p : [lab.whatsapp]; } catch { return [lab.whatsapp]; } })()
+                    : [];
+                  return nums.filter(Boolean).length > 0 ? (
+                    <div>
+                      <p className="text-xs text-slate-500 font-medium mb-1.5">Lab WhatsApp</p>
+                      <div className="flex flex-wrap gap-2">
+                        {nums.filter(Boolean).map((num, i) => (
+                          <a key={i} href={`https://wa.me/${num.replace(/\D/g, "")}`} target="_blank" rel="noopener noreferrer"
+                            className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-emerald-500/10 border border-emerald-500/20 text-emerald-400 hover:bg-emerald-500/20 transition-all text-xs font-medium">
+                            <MessageCircle className="w-3.5 h-3.5" />
+                            {num}
+                          </a>
+                        ))}
+                      </div>
+                    </div>
+                  ) : null;
+                })()}
                 {selectedRequest.status === "seen" && (
                   <div className="border-t border-white/10 pt-4">
                     <Button variant="success" fullWidth loading={updatingId === selectedRequest.id} onClick={() => { setMobileDetailOpen(false); openResultsModal(selectedRequest); }}>
