@@ -8,8 +8,8 @@ import { logApiCall } from "@/lib/api-logger";
 
 const CreateRequestSchema = z.object({
   patient_name: z.string().min(1).max(200).optional().or(z.literal("")),
-  dob: z.string().regex(/^\d{4}-\d{2}-\d{2}$/, "Invalid date format").optional(),
-  sex: z.enum(["male", "female"]).optional(),
+  dob: z.string().regex(/^\d{4}-\d{2}-\d{2}$/, "Invalid date format").optional().or(z.literal("")),
+  sex: z.enum(["male", "female"]).optional().or(z.literal("")),
   address: z.string().max(500).optional().or(z.literal("")),
   patient_email: z.string().email().optional().or(z.literal("")),
   patient_phone: z.string().max(50).optional().or(z.literal("")),
