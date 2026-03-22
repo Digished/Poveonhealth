@@ -43,7 +43,26 @@ export async function PATCH(request: NextRequest) {
   if (fields.sex !== undefined) updateData.sex = fields.sex || null;
   if (fields.address !== undefined) updateData.address = fields.address || null;
 
+  // Update the specific request
   await prisma.request.update({ where: { id: requestId }, data: updateData });
+
+  // Propagate non-null field changes to ALL other requests with the same patient email
+  // (so patient info is consistent across the entire history)
+  const emailForGlobal = (fields.patient_email !== undefined ? fields.patient_email : existing.patient_email) || null;
+  if (emailForGlobal) {
+    const globalUpdate: Record<string, unknown> = {};
+    if (fields.patient_name !== undefined && fields.patient_name) globalUpdate.patient_name = fields.patient_name;
+    if (fields.patient_phone !== undefined && fields.patient_phone) globalUpdate.patient_phone = fields.patient_phone;
+    if (fields.dob !== undefined && fields.dob) globalUpdate.dob = new Date(fields.dob);
+    if (fields.sex !== undefined && fields.sex) globalUpdate.sex = fields.sex;
+    if (fields.address !== undefined && fields.address) globalUpdate.address = fields.address;
+    if (Object.keys(globalUpdate).length > 0) {
+      await prisma.request.updateMany({
+        where: { patient_email: emailForGlobal.toLowerCase(), id: { not: requestId } },
+        data: globalUpdate,
+      }).catch(() => null); // non-blocking best-effort
+    }
+  }
 
   // Also update PatientProfile if email is on file (so patient portal reflects changes)
   const emailForProfile = (fields.patient_email !== undefined ? fields.patient_email : existing.patient_email) || null;

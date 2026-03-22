@@ -6,7 +6,7 @@ import {
   FlaskConical, LogOut, RefreshCw, Building2, User,
   CalendarDays, TestTube2, ChevronDown, ChevronUp,
   Clock, CheckCircle, Eye, MapPin, Phone, Mail,
-  Pencil, X, Save, AlertCircle,
+  Pencil, X, Save, AlertCircle, ImageIcon, Trash2, Upload,
 } from "lucide-react";
 import { PoveonLogo } from "@/components/PoveonLogo";
 import { toast } from "react-hot-toast";
@@ -35,6 +35,7 @@ interface Request {
   doctor_account_number: string | null;
   doctor_account_name: string | null;
   tests: string;
+  test_image_url: string | null;
   diagnosis: string | null;
   schedule: string | null;
   status: string;
@@ -98,6 +99,8 @@ function toDateInputValue(iso: string | null) {
   return iso.slice(0, 10);
 }
 
+const MAX_IMAGE_MB = 10;
+
 function EditModal({
   req,
   onClose,
@@ -107,11 +110,22 @@ function EditModal({
   onClose: () => void;
   onSaved: (updated: Request) => void;
 }) {
+  // Detect if the original request was image-based
+  const wasImageRequest = req.tests === "See attached image" || !!req.test_image_url;
+
   const [form, setForm] = useState<EditForm>({
-    tests: req.tests,
+    tests: wasImageRequest ? "" : req.tests,
     diagnosis: req.diagnosis ?? "",
     schedule: req.schedule ?? "",
   });
+
+  // Image state — starts with the existing image URL
+  const [imageUrl, setImageUrl] = useState<string | null>(req.test_image_url ?? null);
+  const [imageMode, setImageMode] = useState<"image" | "text">(wasImageRequest ? "image" : "text");
+  const [uploading, setUploading] = useState(false);
+  const [uploadProgress, setUploadProgress] = useState(0);
+  const [uploadError, setUploadError] = useState<string | null>(null);
+
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState("");
 
@@ -120,28 +134,70 @@ function EditModal({
     setError("");
   }
 
+  function handleFileChange(e: React.ChangeEvent<HTMLInputElement>) {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    if (file.size > MAX_IMAGE_MB * 1024 * 1024) {
+      setUploadError(`File too large (${(file.size / 1024 / 1024).toFixed(1)} MB). Max ${MAX_IMAGE_MB} MB.`);
+      e.target.value = "";
+      return;
+    }
+    const allowed = ["image/jpeg", "image/png", "image/webp", "image/heic"];
+    if (!allowed.includes(file.type) && !file.name.toLowerCase().endsWith(".heic")) {
+      setUploadError("Unsupported format. Use JPEG, PNG, WebP, or HEIC.");
+      e.target.value = "";
+      return;
+    }
+    setUploading(true);
+    setUploadProgress(0);
+    setUploadError(null);
+    const fd = new FormData();
+    fd.append("file", file);
+    const xhr = new XMLHttpRequest();
+    xhr.upload.onprogress = (ev) => {
+      if (ev.lengthComputable) setUploadProgress(Math.round((ev.loaded / ev.total) * 100));
+    };
+    xhr.onload = () => {
+      try {
+        const data = JSON.parse(xhr.responseText);
+        if (data.url) { setImageUrl(data.url); setUploadProgress(100); }
+        else setUploadError(data.error ?? "Upload failed.");
+      } catch { setUploadError("Upload failed."); }
+      finally { setUploading(false); e.target.value = ""; }
+    };
+    xhr.onerror = () => { setUploadError("Network error. Try again."); setUploading(false); e.target.value = ""; };
+    xhr.open("POST", "/api/requests/upload-image");
+    xhr.send(fd);
+  }
+
   async function handleSave() {
     setError("");
-    if (!form.tests.trim()) { setError("Tests are required."); return; }
+    if (imageMode === "image" && !imageUrl) { setError("Please upload a test slip image, or switch to text entry."); return; }
+    if (imageMode === "text" && !form.tests.trim()) { setError("Tests are required."); return; }
     setSaving(true);
     try {
+      const testsValue = imageMode === "image" ? "See attached image" : form.tests.trim();
       const res = await fetch("/api/requests/edit", {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           requestId: req.id,
-          tests: form.tests.trim(),
+          tests: testsValue,
+          test_image_url: imageMode === "image" ? imageUrl : null,
           diagnosis: form.diagnosis.trim() || undefined,
           schedule: form.schedule || undefined,
         }),
       });
       const data = await res.json();
-      if (!data.success) {
-        setError(data.error ?? "Failed to save changes.");
-        return;
-      }
+      if (!data.success) { setError(data.error ?? "Failed to save changes."); return; }
       toast.success("Request updated successfully.");
-      onSaved({ ...req, tests: form.tests.trim(), diagnosis: form.diagnosis.trim() || null, schedule: form.schedule || null });
+      onSaved({
+        ...req,
+        tests: testsValue,
+        test_image_url: imageMode === "image" ? imageUrl : null,
+        diagnosis: form.diagnosis.trim() || null,
+        schedule: form.schedule || null,
+      });
     } catch {
       setError("Network error. Please try again.");
     } finally {
@@ -164,11 +220,7 @@ function EditModal({
             <p className="text-sm font-bold text-slate-800">Edit Request</p>
             <p className="text-xs text-slate-400 font-mono">{req.code}</p>
           </div>
-          <button
-            type="button"
-            onClick={onClose}
-            className="w-8 h-8 rounded-xl bg-slate-100 hover:bg-slate-200 flex items-center justify-center text-slate-500 transition shrink-0"
-          >
+          <button type="button" onClick={onClose} className="w-8 h-8 rounded-xl bg-slate-100 hover:bg-slate-200 flex items-center justify-center text-slate-500 transition shrink-0">
             <X className="w-4 h-4" />
           </button>
         </div>
@@ -211,16 +263,80 @@ function EditModal({
           <div>
             <p className="text-xs font-semibold text-slate-400 uppercase tracking-wider mb-3">Tests & Diagnosis</p>
             <div className="space-y-3">
-              <div>
-                <label className="text-xs font-medium text-slate-600 block mb-1">Tests Requested *</label>
-                <textarea
-                  value={form.tests}
-                  onChange={(e) => set("tests", e.target.value)}
-                  rows={3}
-                  className={`${inputCls} resize-none`}
-                  placeholder="List of tests requested"
-                />
+
+              {/* Mode toggle */}
+              <div className="flex gap-2">
+                <button
+                  type="button"
+                  onClick={() => { setImageMode("image"); setError(""); }}
+                  className={`flex-1 flex items-center justify-center gap-1.5 py-2 rounded-xl text-xs font-semibold border transition ${imageMode === "image" ? "bg-blue-50 border-blue-300 text-blue-700" : "bg-slate-50 border-slate-200 text-slate-500 hover:bg-slate-100"}`}
+                >
+                  <ImageIcon className="w-3.5 h-3.5" /> Image slip
+                </button>
+                <button
+                  type="button"
+                  onClick={() => { setImageMode("text"); setError(""); }}
+                  className={`flex-1 flex items-center justify-center gap-1.5 py-2 rounded-xl text-xs font-semibold border transition ${imageMode === "text" ? "bg-amber-50 border-amber-300 text-amber-700" : "bg-slate-50 border-slate-200 text-slate-500 hover:bg-slate-100"}`}
+                >
+                  <Pencil className="w-3.5 h-3.5" /> Type tests
+                </button>
               </div>
+
+              {/* Image upload area */}
+              {imageMode === "image" && (
+                <div className="space-y-2">
+                  {imageUrl ? (
+                    <div className="relative rounded-2xl overflow-hidden border border-slate-200 bg-slate-50">
+                      <img src={imageUrl} alt="Test request slip" className="w-full max-h-56 object-contain" />
+                      <div className="absolute top-2 right-2 flex gap-1.5">
+                        {/* Replace */}
+                        <label className="cursor-pointer w-8 h-8 rounded-lg bg-white/90 hover:bg-white shadow flex items-center justify-center text-blue-600 transition" title="Replace image">
+                          <Upload className="w-3.5 h-3.5" />
+                          <input type="file" accept="image/jpeg,image/png,image/webp,image/heic,.heic" className="sr-only" onChange={handleFileChange} />
+                        </label>
+                        {/* Delete */}
+                        <button type="button" onClick={() => setImageUrl(null)} className="w-8 h-8 rounded-lg bg-white/90 hover:bg-red-50 shadow flex items-center justify-center text-red-500 transition" title="Remove image">
+                          <Trash2 className="w-3.5 h-3.5" />
+                        </button>
+                      </div>
+                    </div>
+                  ) : (
+                    <label className="block cursor-pointer border-2 border-dashed border-slate-200 hover:border-blue-300 rounded-2xl p-6 text-center transition bg-slate-50 hover:bg-blue-50/40">
+                      {uploading ? (
+                        <div className="flex flex-col items-center gap-2">
+                          <div className="w-full bg-slate-200 rounded-full h-1.5 max-w-[160px]">
+                            <div className="bg-blue-500 h-1.5 rounded-full transition-all" style={{ width: `${uploadProgress}%` }} />
+                          </div>
+                          <p className="text-xs text-slate-500">Uploading… {uploadProgress}%</p>
+                        </div>
+                      ) : (
+                        <div className="flex flex-col items-center gap-2 text-slate-400">
+                          <ImageIcon className="w-8 h-8" />
+                          <p className="text-sm font-medium text-slate-600">Tap to upload test slip</p>
+                          <p className="text-xs">JPEG, PNG, WebP, HEIC — max {MAX_IMAGE_MB} MB</p>
+                        </div>
+                      )}
+                      <input type="file" accept="image/jpeg,image/png,image/webp,image/heic,.heic" className="sr-only" onChange={handleFileChange} />
+                    </label>
+                  )}
+                  {uploadError && <p className="text-xs text-red-600 font-medium">{uploadError}</p>}
+                </div>
+              )}
+
+              {/* Text entry */}
+              {imageMode === "text" && (
+                <div>
+                  <label className="text-xs font-medium text-slate-600 block mb-1">Tests Requested</label>
+                  <textarea
+                    value={form.tests}
+                    onChange={(e) => set("tests", e.target.value)}
+                    rows={3}
+                    className={`${inputCls} resize-none`}
+                    placeholder="List of tests requested"
+                  />
+                </div>
+              )}
+
               <div>
                 <label className="text-xs font-medium text-slate-600 block mb-1">Diagnosis / Notes</label>
                 <textarea
@@ -233,11 +349,7 @@ function EditModal({
               </div>
               <div>
                 <label className="text-xs font-medium text-slate-600 block mb-1">Preferred Schedule</label>
-                <select
-                  value={form.schedule}
-                  onChange={(e) => set("schedule", e.target.value)}
-                  className={inputCls}
-                >
+                <select value={form.schedule} onChange={(e) => set("schedule", e.target.value)} className={inputCls}>
                   <option value="">Not specified</option>
                   <option value="today">Today</option>
                   <option value="this_week">This Week</option>
@@ -258,17 +370,13 @@ function EditModal({
 
         {/* Footer actions */}
         <div className="px-5 py-4 border-t border-slate-100 flex gap-3">
-          <button
-            type="button"
-            onClick={onClose}
-            className="flex-1 py-2.5 rounded-xl border border-slate-200 text-slate-600 font-semibold text-sm hover:bg-slate-50 transition"
-          >
+          <button type="button" onClick={onClose} className="flex-1 py-2.5 rounded-xl border border-slate-200 text-slate-600 font-semibold text-sm hover:bg-slate-50 transition">
             Cancel
           </button>
           <button
             type="button"
             onClick={handleSave}
-            disabled={saving}
+            disabled={saving || uploading}
             className="flex-1 flex items-center justify-center gap-2 py-2.5 rounded-xl bg-amber-500 hover:bg-amber-600 disabled:opacity-60 disabled:cursor-not-allowed text-white font-semibold text-sm transition shadow-sm"
           >
             {saving ? (

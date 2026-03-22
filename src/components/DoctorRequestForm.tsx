@@ -8,7 +8,7 @@ import {
   TestTube2, ChevronRight, ChevronLeft, Building2, Check,
   Search, X, PhoneCall, RefreshCw, ChevronDown, Mail,
   Award, Info, Layers, CalendarDays, Clock, Pencil, Camera,
-  AlertTriangle, Truck,
+  AlertTriangle, Truck, MessageCircle,
 } from "lucide-react";
 
 function MarsIcon({ className }: { className?: string }) {
@@ -270,7 +270,7 @@ function PrefixSelect({
   return (
     <div className="flex flex-col gap-1">
       <label className="text-sm font-medium text-slate-700">
-        Title / Prefix <span className="text-red-500 ml-0.5">*</span>
+        Title / Prefix <span className="inline-block w-1.5 h-1.5 rounded-full bg-amber-400 ml-0.5 align-middle" aria-label="required" />
       </label>
 
       {selected ? (
@@ -690,22 +690,39 @@ function LabDetailsModal({ lab, onClose }: { lab: Lab; onClose: () => void }) {
           )}
 
           {/* Contact */}
-          {(((lab.phones as string[] | null) ?? []).length > 0) && (
-            <div>
-              <p className="text-xs font-semibold text-slate-400 uppercase tracking-wider mb-2.5">Contact</p>
-              <div className="flex flex-col gap-2">
-                {((lab.phones as string[] | null) ?? []).map((ph, i) => (
-                  <a key={i} href={`tel:${ph}`}
-                    className="flex items-center gap-2 text-sm text-medical-700 font-medium hover:text-medical-900 transition-colors">
-                    <div className="w-7 h-7 rounded-lg bg-medical-50 flex items-center justify-center shrink-0">
-                      <Phone className="w-3.5 h-3.5 text-medical-500" />
-                    </div>
-                    {ph}
-                  </a>
-                ))}
+          {(() => {
+            const phones = (lab.phones as string[] | null) ?? [];
+            const waNumbers: string[] = lab.whatsapp
+              ? (() => { try { const p = JSON.parse(lab.whatsapp); return Array.isArray(p) ? p : [lab.whatsapp]; } catch { return [lab.whatsapp]; } })()
+              : [];
+            const hasContact = phones.length > 0 || waNumbers.filter(Boolean).length > 0;
+            return hasContact ? (
+              <div>
+                <p className="text-xs font-semibold text-slate-400 uppercase tracking-wider mb-2.5">Contact</p>
+                <div className="flex flex-col gap-2">
+                  {phones.map((ph, i) => (
+                    <a key={i} href={`tel:${ph}`}
+                      className="flex items-center gap-2 text-sm text-medical-700 font-medium hover:text-medical-900 transition-colors">
+                      <div className="w-7 h-7 rounded-lg bg-medical-50 flex items-center justify-center shrink-0">
+                        <Phone className="w-3.5 h-3.5 text-medical-500" />
+                      </div>
+                      {ph}
+                    </a>
+                  ))}
+                  {waNumbers.filter(Boolean).map((num, i) => (
+                    <a key={`wa-${i}`} href={`https://wa.me/${num.replace(/\D/g, "")}`} target="_blank" rel="noopener noreferrer"
+                      className="flex items-center gap-2 text-sm text-emerald-700 font-medium hover:text-emerald-900 transition-colors">
+                      <div className="w-7 h-7 rounded-lg bg-emerald-50 flex items-center justify-center shrink-0">
+                        <MessageCircle className="w-3.5 h-3.5 text-emerald-500" />
+                      </div>
+                      {num}
+                      <span className="text-xs bg-emerald-50 text-emerald-600 px-1.5 py-0.5 rounded-full border border-emerald-100">WhatsApp</span>
+                    </a>
+                  ))}
+                </div>
               </div>
-            </div>
-          )}
+            ) : null;
+          })()}
 
           {/* Services */}
           {services.length > 0 && (
@@ -1504,7 +1521,7 @@ export function DoctorRequestForm({
                   <div className="flex-1 pb-5 min-w-0">
                     <div className="flex flex-col gap-1">
                       <label htmlFor="patient_email" className="text-sm font-medium text-slate-700 flex items-center gap-2">
-                        Patient Email <span className="text-red-500 ml-0.5">*</span>
+                        Patient Email <span className="inline-block w-1.5 h-1.5 rounded-full bg-amber-400 ml-0.5 align-middle" aria-label="required" />
                         <span className="text-xs bg-sky-100 text-sky-700 px-2 py-0.5 rounded-full font-medium">Tracks patient details</span>
                       </label>
                       <Input

@@ -2,10 +2,11 @@ import { NextRequest, NextResponse } from "next/server";
 import { z } from "zod";
 import { prisma } from "@/lib/prisma";
 
-// Doctors can only edit tests, diagnosis, and schedule — not patient or doctor info
+// Doctors can only edit tests, diagnosis, schedule, and test_image_url — not patient or doctor info
 const EditRequestSchema = z.object({
   requestId: z.string().uuid(),
   tests: z.string().min(2).max(2000),
+  test_image_url: z.string().url().nullable().optional(),
   diagnosis: z.string().max(2000).optional().or(z.literal("")),
   schedule: z.enum(["today", "this_week", "this_month", "not_sure"]).optional(),
 });
@@ -55,11 +56,12 @@ export async function PATCH(request: NextRequest) {
       );
     }
 
-    // Apply the update — only tests, diagnosis, and schedule
+    // Apply the update — only tests, test_image_url, diagnosis, and schedule
     await prisma.request.update({
       where: { id: data.requestId },
       data: {
         tests: data.tests,
+        test_image_url: data.test_image_url !== undefined ? data.test_image_url : undefined,
         diagnosis: data.diagnosis || null,
         schedule: data.schedule || null,
       },

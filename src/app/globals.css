@@ -105,6 +105,53 @@
   border-color: #e2e8f0 !important;
 }
 
+/* Medical / brand colour tints */
+.dash-light .bg-medical-600\/20 { background-color: #dbeafe !important; }
+.dash-light .bg-medical-600\/30 { background-color: #bfdbfe !important; }
+.dash-light .bg-medical-700\/50 { background-color: #dbeafe !important; }
+.dash-light .bg-medical-900\/50 { background-color: #eff6ff !important; }
+.dash-light .bg-medical-900\/60 { background-color: #dbeafe !important; }
+.dash-light .border-medical-500\/30 { border-color: #93c5fd !important; }
+.dash-light .border-medical-500\/60 { border-color: #60a5fa !important; }
+.dash-light .border-medical-800\/30 { border-color: #bfdbfe !important; }
+.dash-light .border-medical-800\/40 { border-color: #bfdbfe !important; }
+.dash-light .ring-medical-500\/40 { --tw-ring-color: rgba(96,165,250,0.3) !important; }
+
+/* Emerald / green tints */
+.dash-light .bg-emerald-500\/10 { background-color: #ecfdf5 !important; }
+.dash-light .bg-emerald-500\/20 { background-color: #d1fae5 !important; }
+.dash-light .bg-emerald-900\/40 { background-color: #ecfdf5 !important; }
+.dash-light .text-emerald-300  { color: #059669 !important; }
+.dash-light .border-emerald-500\/20 { border-color: #a7f3d0 !important; }
+.dash-light .border-emerald-500\/30 { border-color: #6ee7b7 !important; }
+.dash-light .border-emerald-500\/50 { border-color: #34d399 !important; }
+.dash-light .border-emerald-800\/30 { border-color: #a7f3d0 !important; }
+.dash-light .hover\:bg-emerald-500\/20:hover { background-color: #d1fae5 !important; }
+.dash-light .hover\:border-emerald-500\/50:hover { border-color: #34d399 !important; }
+
+/* Blue tints */
+.dash-light .text-blue-400   { color: #2563eb !important; }
+.dash-light .bg-blue-500\/10 { background-color: #eff6ff !important; }
+.dash-light .bg-blue-500\/20 { background-color: #dbeafe !important; }
+.dash-light .bg-blue-500\/30 { background-color: #bfdbfe !important; }
+.dash-light .border-blue-500\/20 { border-color: #93c5fd !important; }
+.dash-light .border-blue-500\/40 { border-color: #60a5fa !important; }
+.dash-light .text-blue-400\/70 { color: rgba(37,99,235,0.7) !important; }
+.dash-light .hover\:bg-blue-500\/20:hover { background-color: #dbeafe !important; }
+.dash-light .hover\:border-blue-500\/40:hover { border-color: #60a5fa !important; }
+
+/* Slate / neutral tints */
+.dash-light .bg-slate-700\/80 { background-color: #f1f5f9 !important; }
+
+/* Amber tints */
+.dash-light .bg-amber-900\/20 { background-color: #fffbeb !important; }
+.dash-light .border-amber-800\/30 { border-color: #fde68a !important; }
+
+/* Red / error tints */
+.dash-light .text-red-400     { color: #dc2626 !important; }
+.dash-light .bg-red-500\/20   { background-color: #fee2e2 !important; }
+.dash-light .border-red-500\/30 { border-color: #fca5a5 !important; }
+
 /* Scrollbar in light mode */
 .dash-light::-webkit-scrollbar-thumb { background: rgba(100, 116, 139, 0.35); }
 

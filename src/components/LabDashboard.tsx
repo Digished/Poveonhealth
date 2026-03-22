@@ -1,13 +1,13 @@
 "use client";
 
-import { useState, useEffect, useCallback, useRef } from "react";
+import { useState, useEffect, useCallback, useRef, useMemo } from "react";
 import { toast } from "react-hot-toast";
 import {
   Search, RefreshCw, CheckCircle, Clock, FlaskConical,
   ChevronRight, Calendar, Stethoscope, LogOut, Eye, EyeOff, Phone, X,
   Link2, Paperclip, Send, SkipForward, UserCircle, MapPin, Shield, Layers,
   Users, CreditCard, Filter, ChevronDown, AlertTriangle, Truck, ExternalLink,
-  MessageCircle, ChevronLeft, FileImage, Sun, Moon, Pencil, Save,
+  MessageCircle, ChevronLeft, FileImage, Sun, Moon, Pencil, Save, BarChart3,
 } from "lucide-react";
 import { useDashTheme } from "@/hooks/useDashTheme";
 import { Button } from "@/components/ui/Button";
@@ -77,7 +77,7 @@ export function LabDashboard({ lab, isOwner = false, roleName = "Lab Owner", can
   const { name: labName, logo_url: labLogoUrl } = lab;
   const router = useRouter();
   const { isLight, toggle, themeClass } = useDashTheme("lab_dash_theme");
-  const [mainView, setMainView] = useState<"requests" | "referrals" | "clients">("requests");
+  const [mainView, setMainView] = useState<"requests" | "referrals" | "clients" | "analytics">("requests");
   const [activeTab, setActiveTab] = useState<RequestStatus>("incoming");
   const [requests, setRequests] = useState<LabRequest[]>([]);
   const [loading, setLoading] = useState(true);
@@ -532,6 +532,17 @@ export function LabDashboard({ lab, isOwner = false, roleName = "Lab Owner", can
               <UserCircle className="w-4 h-4" />
               Clients
             </button>
+            <button
+              onClick={() => setMainView("analytics")}
+              className={`flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-medium transition-all ${
+                mainView === "analytics"
+                  ? "bg-white/15 text-white shadow-sm"
+                  : "text-slate-400 hover:text-slate-200"
+              }`}
+            >
+              <BarChart3 className="w-4 h-4" />
+              Analytics
+            </button>
           </div>
         )}
 
@@ -856,9 +867,20 @@ export function LabDashboard({ lab, isOwner = false, roleName = "Lab Owner", can
                         </a>
                       </div>
                     </div>
-                    <button type="button" onClick={() => setSelectedClient(null)} className="p-1.5 rounded-xl hover:bg-white/10 text-slate-400 hover:text-white transition-colors shrink-0">
-                      <X className="w-5 h-5" />
-                    </button>
+                    <div className="flex items-center gap-1.5 shrink-0">
+                      {selectedClient.requests.length > 0 && (
+                        <button
+                          type="button"
+                          onClick={() => { openEditPatient(selectedClient.requests[0]); setSelectedClient(null); }}
+                          className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-medical-600/20 hover:bg-medical-600/30 text-medical-400 hover:text-medical-300 text-xs font-medium transition-all border border-medical-500/30"
+                        >
+                          <Pencil className="w-3 h-3" /> Edit
+                        </button>
+                      )}
+                      <button type="button" onClick={() => setSelectedClient(null)} className="p-1.5 rounded-xl hover:bg-white/10 text-slate-400 hover:text-white transition-colors">
+                        <X className="w-5 h-5" />
+                      </button>
+                    </div>
                   </div>
                   {/* Stats */}
                   <div className="px-5 py-3 flex gap-4 border-b border-white/5 shrink-0">
@@ -909,6 +931,320 @@ export function LabDashboard({ lab, isOwner = false, roleName = "Lab Owner", can
             )}
           </div>
         )}
+
+        {/* Analytics view */}
+        {mainView === "analytics" && (() => {
+          const analyticsMetrics = (() => {
+            const total = requests.length;
+            const done = requests.filter((r) => r.status === "done").length;
+            const completionRate = total > 0 ? Math.round((done / total) * 100) : 0;
+            const todayStr = new Date().toISOString().slice(0, 10);
+            const seenToday = requests.filter((r) => {
+              const sa = (r as any).seen_at;
+              return sa && String(sa).slice(0, 10) === todayStr;
+            }).length;
+            let avgPerMonth = 0;
+            if (total > 0) {
+              const sorted = [...requests].sort(
+                (a, b) => new Date(a.created_at).getTime() - new Date(b.created_at).getTime()
+              );
+              const first = new Date(sorted[0].created_at);
+              const now = new Date();
+              const months =
+                (now.getFullYear() - first.getFullYear()) * 12 +
+                (now.getMonth() - first.getMonth()) +
+                1;
+              avgPerMonth = Math.round((total / months) * 10) / 10;
+            }
+
+            // Monthly trend (last 6 months)
+            const monthCounts: Record<string, number> = {};
+            requests.forEach((r) => {
+              const key = r.created_at.slice(0, 7);
+              monthCounts[key] = (monthCounts[key] ?? 0) + 1;
+            });
+            const last6: { label: string; key: string; count: number }[] = [];
+            for (let i = 5; i >= 0; i--) {
+              const d = new Date();
+              d.setDate(1);
+              d.setMonth(d.getMonth() - i);
+              const key = d.toISOString().slice(0, 7);
+              const label = d.toLocaleDateString("en-GB", { month: "short" });
+              last6.push({ label, key, count: monthCounts[key] ?? 0 });
+            }
+
+            // Status breakdown
+            const statusCounts = { incoming: 0, seen: 0, done: 0 };
+            requests.forEach((r) => {
+              if (r.status in statusCounts) statusCounts[r.status as keyof typeof statusCounts]++;
+            });
+
+            // Sex demographics
+            const sexCounts: Record<string, number> = {};
+            requests.forEach((r) => {
+              const s = (r.sex ?? "unknown").toLowerCase();
+              const key = ["male", "female", "other"].includes(s) ? s : "unknown";
+              sexCounts[key] = (sexCounts[key] ?? 0) + 1;
+            });
+
+            // Top 10 tests
+            const testCounts: Record<string, number> = {};
+            requests.forEach((r) => {
+              if (!r.tests) return;
+              r.tests
+                .split(/[,\n]+/)
+                .map((t: string) => t.trim())
+                .filter(Boolean)
+                .forEach((t: string) => {
+                  testCounts[t] = (testCounts[t] ?? 0) + 1;
+                });
+            });
+            const top10Tests = Object.entries(testCounts)
+              .sort((a, b) => b[1] - a[1])
+              .slice(0, 10);
+
+            // Schedule preferences
+            const schedCounts: Record<string, number> = {
+              today: 0,
+              this_week: 0,
+              this_month: 0,
+              not_sure: 0,
+            };
+            requests.forEach((r) => {
+              const s = (r as any).schedule ?? "not_sure";
+              if (s in schedCounts) schedCounts[s]++;
+            });
+
+            return {
+              total,
+              completionRate,
+              seenToday,
+              avgPerMonth,
+              last6,
+              statusCounts,
+              sexCounts,
+              top10Tests,
+              schedCounts,
+            };
+          })();
+
+          const {
+            total,
+            completionRate,
+            seenToday,
+            avgPerMonth,
+            last6,
+            statusCounts,
+            sexCounts,
+            top10Tests,
+            schedCounts,
+          } = analyticsMetrics;
+
+          const maxMonthly = Math.max(...last6.map((m) => m.count), 1);
+          const maxTest = top10Tests.length > 0 ? top10Tests[0][1] : 1;
+          const totalSex = Object.values(sexCounts).reduce((a, b) => a + b, 0) || 1;
+          const totalStatus = statusCounts.incoming + statusCounts.seen + statusCounts.done || 1;
+
+          const schedLabels: Record<string, string> = {
+            today: "Today",
+            this_week: "This Week",
+            this_month: "This Month",
+            not_sure: "Not Sure",
+          };
+
+          return (
+            <div className="space-y-5">
+              {/* Summary Stats */}
+              <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+                {[
+                  { label: "Total Requests", value: total },
+                  { label: "Completion Rate", value: `${completionRate}%` },
+                  { label: "Seen Today", value: seenToday },
+                  { label: "Avg / Month", value: avgPerMonth },
+                ].map((stat) => (
+                  <div
+                    key={stat.label}
+                    className="bg-white/5 border border-white/10 rounded-2xl p-5 flex flex-col gap-1"
+                  >
+                    <span className="text-xs font-semibold text-slate-400 uppercase tracking-wider">
+                      {stat.label}
+                    </span>
+                    <span className="text-2xl font-bold text-white">{stat.value}</span>
+                  </div>
+                ))}
+              </div>
+
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
+                {/* Monthly Trend */}
+                <div className="bg-white/5 border border-white/10 rounded-2xl p-5">
+                  <p className="text-xs font-semibold text-slate-400 uppercase tracking-wider mb-4">
+                    Monthly Trend (Last 6 Months)
+                  </p>
+                  <svg
+                    viewBox={`0 0 ${last6.length * 50} 110`}
+                    className="w-full h-28"
+                    preserveAspectRatio="none"
+                  >
+                    {last6.map((m, i) => {
+                      const barH = Math.max((m.count / maxMonthly) * 80, 2);
+                      const y = 90 - barH;
+                      return (
+                        <g key={m.key}>
+                          <rect
+                            x={i * 50 + 5}
+                            y={y}
+                            width={40}
+                            height={barH}
+                            rx="4"
+                            fill="#0e8fe5"
+                            opacity="0.8"
+                          />
+                          <text
+                            x={i * 50 + 25}
+                            y={104}
+                            textAnchor="middle"
+                            fill="#94a3b8"
+                            fontSize="9"
+                          >
+                            {m.label}
+                          </text>
+                          <text
+                            x={i * 50 + 25}
+                            y={y - 3}
+                            textAnchor="middle"
+                            fill="white"
+                            fontSize="9"
+                          >
+                            {m.count}
+                          </text>
+                        </g>
+                      );
+                    })}
+                  </svg>
+                </div>
+
+                {/* Status Breakdown */}
+                <div className="bg-white/5 border border-white/10 rounded-2xl p-5">
+                  <p className="text-xs font-semibold text-slate-400 uppercase tracking-wider mb-4">
+                    Status Breakdown
+                  </p>
+                  <div className="space-y-3">
+                    {(
+                      [
+                        { key: "incoming", label: "Incoming", color: "bg-amber-400" },
+                        { key: "seen", label: "Seen", color: "bg-blue-400" },
+                        { key: "done", label: "Done", color: "bg-emerald-400" },
+                      ] as const
+                    ).map(({ key, label, color }) => {
+                      const count = statusCounts[key];
+                      const pct = Math.round((count / totalStatus) * 100);
+                      return (
+                        <div key={key}>
+                          <div className="flex justify-between text-sm mb-1">
+                            <span className="text-slate-300">{label}</span>
+                            <span className="text-slate-400">
+                              {count} ({pct}%)
+                            </span>
+                          </div>
+                          <div className="h-2 rounded-full bg-white/10 overflow-hidden">
+                            <div
+                              className={`h-full rounded-full ${color}`}
+                              style={{ width: `${pct}%` }}
+                            />
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
+                </div>
+
+                {/* Sex Demographics */}
+                <div className="bg-white/5 border border-white/10 rounded-2xl p-5">
+                  <p className="text-xs font-semibold text-slate-400 uppercase tracking-wider mb-4">
+                    Sex Demographics
+                  </p>
+                  <div className="space-y-3">
+                    {(["male", "female", "other", "unknown"] as const).map((s) => {
+                      const count = sexCounts[s] ?? 0;
+                      const pct = Math.round((count / totalSex) * 100);
+                      return (
+                        <div key={s}>
+                          <div className="flex justify-between text-sm mb-1">
+                            <span className="text-slate-300 capitalize">{s}</span>
+                            <span className="text-slate-400">
+                              {count} ({pct}%)
+                            </span>
+                          </div>
+                          <div className="h-2 rounded-full bg-white/10 overflow-hidden">
+                            <div
+                              className="h-full rounded-full bg-medical-500"
+                              style={{ width: `${pct}%`, backgroundColor: "#0e8fe5" }}
+                            />
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
+                </div>
+
+                {/* Schedule Preferences */}
+                <div className="bg-white/5 border border-white/10 rounded-2xl p-5">
+                  <p className="text-xs font-semibold text-slate-400 uppercase tracking-wider mb-4">
+                    Schedule Preferences
+                  </p>
+                  <div className="flex flex-wrap gap-3">
+                    {Object.entries(schedCounts).map(([key, count]) => (
+                      <div
+                        key={key}
+                        className="flex flex-col items-center bg-white/5 border border-white/10 rounded-xl px-4 py-3 min-w-[80px]"
+                      >
+                        <span className="text-lg font-bold text-white">{count}</span>
+                        <span className="text-xs text-slate-400 mt-0.5 text-center">
+                          {schedLabels[key] ?? key}
+                        </span>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              </div>
+
+              {/* Top 10 Tests */}
+              <div className="bg-white/5 border border-white/10 rounded-2xl p-5">
+                <p className="text-xs font-semibold text-slate-400 uppercase tracking-wider mb-4">
+                  Top 10 Tests
+                </p>
+                {top10Tests.length === 0 ? (
+                  <p className="text-slate-500 text-sm">No test data available.</p>
+                ) : (
+                  <div className="space-y-2">
+                    {top10Tests.map(([name, count], idx) => {
+                      const pct = Math.round((count / maxTest) * 100);
+                      return (
+                        <div key={name} className="flex items-center gap-3">
+                          <span className="text-xs text-slate-500 w-4 text-right shrink-0">
+                            {idx + 1}
+                          </span>
+                          <div className="flex-1 min-w-0">
+                            <div className="flex justify-between text-sm mb-0.5">
+                              <span className="text-slate-300 truncate">{name}</span>
+                              <span className="text-slate-400 ml-2 shrink-0">{count}</span>
+                            </div>
+                            <div className="h-1.5 rounded-full bg-white/10 overflow-hidden">
+                              <div
+                                className="h-full rounded-full"
+                                style={{ width: `${pct}%`, backgroundColor: "#0e8fe5" }}
+                              />
+                            </div>
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
+                )}
+              </div>
+            </div>
+          );
+        })()}
 
         {/* Requests view */}
         {mainView === "requests" && (
@@ -1606,23 +1942,38 @@ export function LabDashboard({ lab, isOwner = false, roleName = "Lab Owner", can
                 </div>
 
                 {/* Contact */}
-                {(lab.address || lab.phones.length > 0) && (
-                  <div className="bg-white/5 border border-white/8 rounded-xl p-4 space-y-2">
-                    <p className="text-xs text-slate-500 font-semibold uppercase tracking-wider mb-3">Contact</p>
-                    {lab.address && (
-                      <div className="flex items-start gap-2 text-sm text-slate-300">
-                        <MapPin className="w-4 h-4 text-slate-500 mt-0.5 shrink-0" />
-                        <span>{lab.address}</span>
-                      </div>
-                    )}
-                    {lab.phones.map((ph, i) => (
-                      <div key={i} className="flex items-center gap-2 text-sm">
-                        <Phone className="w-4 h-4 text-slate-500 shrink-0" />
-                        <a href={`tel:${ph}`} className="text-blue-400 hover:underline">{ph}</a>
-                      </div>
-                    ))}
-                  </div>
-                )}
+                {(() => {
+                  const waNumbers: string[] = lab.whatsapp
+                    ? (() => { try { const p = JSON.parse(lab.whatsapp); return Array.isArray(p) ? p : [lab.whatsapp]; } catch { return [lab.whatsapp]; } })()
+                    : [];
+                  const hasContact = lab.address || lab.phones.length > 0 || waNumbers.filter(Boolean).length > 0;
+                  return hasContact ? (
+                    <div className="bg-white/5 border border-white/8 rounded-xl p-4 space-y-2">
+                      <p className="text-xs text-slate-500 font-semibold uppercase tracking-wider mb-3">Contact</p>
+                      {lab.address && (
+                        <div className="flex items-start gap-2 text-sm text-slate-300">
+                          <MapPin className="w-4 h-4 text-slate-500 mt-0.5 shrink-0" />
+                          <span>{lab.address}</span>
+                        </div>
+                      )}
+                      {lab.phones.map((ph, i) => (
+                        <div key={i} className="flex items-center gap-2 text-sm">
+                          <Phone className="w-4 h-4 text-slate-500 shrink-0" />
+                          <a href={`tel:${ph}`} className="text-blue-400 hover:underline">{ph}</a>
+                        </div>
+                      ))}
+                      {waNumbers.filter(Boolean).map((num, i) => (
+                        <div key={`wa-${i}`} className="flex items-center gap-2 text-sm">
+                          <MessageCircle className="w-4 h-4 text-emerald-500 shrink-0" />
+                          <a href={`https://wa.me/${num.replace(/\D/g, "")}`} target="_blank" rel="noopener noreferrer" className="text-emerald-400 hover:underline flex items-center gap-1">
+                            {num}
+                            <span className="text-xs bg-emerald-500/10 text-emerald-400 px-1.5 py-0.5 rounded-full border border-emerald-500/20 ml-1">WhatsApp</span>
+                          </a>
+                        </div>
+                      ))}
+                    </div>
+                  ) : null;
+                })()}
 
                 {/* Service Categories */}
                 {lab.service_categories.length > 0 && (
