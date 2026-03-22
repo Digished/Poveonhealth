@@ -384,22 +384,35 @@ function DocFeedbackWidget({ labId, labName }: { labId: string; labName: string 
   const hasRated = existing !== null && existing.rating_overall > 0;
 
   return (
-    <div className="border-t border-slate-100 pt-3 mt-1">
-      <button onClick={toggle} className="flex items-center gap-2 w-full text-left group">
-        <div className="flex-1 flex items-center gap-2">
-          <Star className={`w-3.5 h-3.5 shrink-0 ${hasRated ? "fill-amber-400 text-amber-400" : "text-slate-300"}`} />
-          <span className={`text-xs font-semibold ${hasRated ? "text-amber-600" : "text-slate-500 group-hover:text-slate-700"} transition`}>
-            {saved ? "Rating saved!" : hasRated ? `Your rating: ${existing.rating_overall}/5` : `Rate ${labName}`}
-          </span>
-          {hasRated && !open && (
-            <div className="flex gap-0.5 ml-1">
-              {[1,2,3,4,5].map((s) => (
-                <Star key={s} className={`w-3 h-3 ${s <= existing.rating_overall ? "fill-amber-400 text-amber-400" : "text-slate-200 fill-slate-100"}`} />
-              ))}
-            </div>
-          )}
+    <div>
+      <button onClick={toggle}
+        className={`w-full flex items-center justify-between gap-3 px-4 py-3 rounded-xl border transition-colors ${
+          hasRated
+            ? "bg-amber-50 border-amber-200 hover:bg-amber-100"
+            : "bg-sky-50 border-sky-200 hover:bg-sky-100"
+        }`}>
+        <div className="flex items-center gap-2.5">
+          <div className={`w-7 h-7 rounded-lg flex items-center justify-center shrink-0 ${hasRated ? "bg-amber-100" : "bg-sky-100"}`}>
+            <Star className={`w-4 h-4 ${hasRated ? "fill-amber-500 text-amber-500" : "text-sky-500"}`} />
+          </div>
+          <div className="text-left">
+            <p className={`text-xs font-bold ${hasRated ? "text-amber-700" : "text-sky-700"}`}>
+              {saved ? "Rating saved!" : hasRated ? "Your rating" : `Rate ${labName}`}
+            </p>
+            {hasRated && !open ? (
+              <div className="flex gap-0.5 mt-0.5">
+                {[1,2,3,4,5].map((s) => (
+                  <Star key={s} className={`w-3 h-3 ${s <= existing.rating_overall ? "fill-amber-400 text-amber-400" : "text-amber-200 fill-amber-50"}`} />
+                ))}
+              </div>
+            ) : (
+              <p className={`text-xs ${hasRated ? "text-amber-500" : "text-sky-500"}`}>
+                {hasRated ? `${existing.rating_overall}/5 · tap to update` : "Share your experience with this lab"}
+              </p>
+            )}
+          </div>
         </div>
-        <ChevronDown className={`w-3.5 h-3.5 text-slate-400 transition-transform ${open ? "rotate-180" : ""}`} />
+        <ChevronDown className={`w-4 h-4 text-slate-400 transition-transform shrink-0 ${open ? "rotate-180" : ""}`} />
       </button>
 
       {open && (
@@ -545,7 +558,7 @@ function DocDashboardInner() {
           <div className="flex gap-1 bg-white/60 rounded-xl p-1 border border-white/60 shadow-sm">
             {(["requests", "results", "security"] as const).map((tab) => {
               const labels = { requests: "Referrals", results: "Results", security: "Security" };
-              const resultCount = requests.filter((r) => r.status === "done" && (r.result_link || r.result_note)).length;
+              const resultCount = requests.filter((r) => r.status === "done").length;
               const tabCount = tab === "requests" ? requests.length : tab === "results" ? resultCount : 0;
               return (
                 <button key={tab} onClick={() => setActiveTab(tab)}
@@ -575,14 +588,14 @@ function DocDashboardInner() {
         {/* Results Tab */}
         {!loading && activeTab === "results" && (
           <div className="space-y-4">
-            {requests.filter((r) => r.status === "done" && (r.result_link || r.result_note)).length === 0 ? (
+            {requests.filter((r) => r.status === "done").length === 0 ? (
               <div className="bg-white rounded-2xl border border-slate-100 p-8 text-center">
                 <CheckCircle className="w-10 h-10 text-slate-200 mx-auto mb-3" />
-                <p className="text-sm font-semibold text-slate-600">No results yet</p>
-                <p className="text-xs text-slate-400 mt-1">Results will appear here once labs have sent them.</p>
+                <p className="text-sm font-semibold text-slate-600">No completed tests yet</p>
+                <p className="text-xs text-slate-400 mt-1">Tests marked as done by the lab will appear here.</p>
               </div>
             ) : (
-              requests.filter((r) => r.status === "done" && (r.result_link || r.result_note)).map((req) => (
+              requests.filter((r) => r.status === "done").map((req) => (
                 <div key={req.id} className="bg-white rounded-2xl border border-emerald-100 shadow-sm p-4 space-y-2">
                   <div className="flex items-center gap-2">
                     {req.lab.logo_url ? (
@@ -598,18 +611,25 @@ function DocDashboardInner() {
                     </div>
                   </div>
                   <p className="text-xs text-slate-500">Patient: <span className="font-medium text-slate-700">{req.patient_name ?? "—"}</span></p>
-                  <div className="bg-emerald-50 border border-emerald-200 rounded-xl p-3">
-                    <p className="text-xs font-semibold text-emerald-700 mb-1.5 flex items-center gap-1.5">
-                      <CheckCircle className="w-3.5 h-3.5" />Results Available
-                    </p>
-                    {req.result_note && <p className="text-sm text-emerald-800 mb-2">{req.result_note}</p>}
-                    {req.result_link && (
-                      <a href={req.result_link} target="_blank" rel="noopener noreferrer"
-                        className="inline-flex items-center gap-1.5 text-xs font-semibold bg-emerald-600 hover:bg-emerald-700 text-white px-3 py-1.5 rounded-lg transition">
-                        View Results
-                      </a>
-                    )}
-                  </div>
+                  {(req.result_link || req.result_note) ? (
+                    <div className="bg-emerald-50 border border-emerald-200 rounded-xl p-3">
+                      <p className="text-xs font-semibold text-emerald-700 mb-1.5 flex items-center gap-1.5">
+                        <CheckCircle className="w-3.5 h-3.5" />Results Available
+                      </p>
+                      {req.result_note && <p className="text-sm text-emerald-800 mb-2">{req.result_note}</p>}
+                      {req.result_link && (
+                        <a href={req.result_link} target="_blank" rel="noopener noreferrer"
+                          className="inline-flex items-center gap-1.5 text-xs font-semibold bg-emerald-600 hover:bg-emerald-700 text-white px-3 py-1.5 rounded-lg transition">
+                          View Results
+                        </a>
+                      )}
+                    </div>
+                  ) : (
+                    <div className="bg-slate-50 border border-slate-200 rounded-xl px-3 py-2">
+                      <p className="text-xs text-slate-500 italic">Awaiting digital results from the lab</p>
+                    </div>
+                  )}
+                  <DocFeedbackWidget labId={req.lab.id} labName={req.lab.name} />
                 </div>
               ))
             )}

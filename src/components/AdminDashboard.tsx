@@ -6,7 +6,7 @@ import {
   Plus, FlaskConical, BarChart3, List, LogOut,
   Building2, Trash2, Eye, EyeOff, RefreshCw, X, Pencil,
   Phone, Upload, Check, MapPin, Users, ChevronRight, ChevronDown, ChevronUp,
-  Code2, Key, Copy, TrendingUp, Link, Sun, Moon,
+  Code2, Key, Copy, TrendingUp, Link, Sun, Moon, Star, GitBranch,
 } from "lucide-react";
 import { useDashTheme } from "@/hooks/useDashTheme";
 import { Button } from "@/components/ui/Button";
@@ -120,6 +120,7 @@ export function AdminDashboard() {
   const [apiLogs, setApiLogs] = useState<ApiLog[]>([]);
   const [apiLogSummary, setApiLogSummary] = useState<ApiLogSummary | null>(null);
   const [expandedLabIntegration, setExpandedLabIntegration] = useState<string | null>(null);
+  const [branchModalLabId, setBranchModalLabId] = useState<string | null>(null);
 
   // Per-lab analytics modal
   type LabAnalytics = {
@@ -722,7 +723,20 @@ export function AdminDashboard() {
                         </div>
                       </div>
                     )}
-                    <p className="text-xs text-slate-600 mt-3">Added {format(new Date(lab.created_at), "dd MMM yyyy")}</p>
+                    <div className="flex items-center justify-between mt-3">
+                      <p className="text-xs text-slate-600">Added {format(new Date(lab.created_at), "dd MMM yyyy")}</p>
+                      {lab.rating_avg != null ? (
+                        <div className="flex items-center gap-1">
+                          {[1, 2, 3, 4, 5].map((i) => (
+                            <Star key={i} className={`w-3 h-3 ${i <= Math.round(lab.rating_avg!) ? "text-amber-400 fill-amber-400" : "text-slate-600"}`} />
+                          ))}
+                          <span className="text-xs text-amber-400 font-semibold ml-0.5">{lab.rating_avg.toFixed(1)}</span>
+                          <span className="text-xs text-slate-600">({lab.rating_count})</span>
+                        </div>
+                      ) : (
+                        <span className="text-xs text-slate-600 italic">No ratings</span>
+                      )}
+                    </div>
 
                     <div className="mt-4 pt-3 border-t border-white/5">
                       <div className="grid grid-cols-2 sm:flex sm:flex-wrap gap-2">
@@ -731,6 +745,12 @@ export function AdminDashboard() {
                           className="flex items-center justify-center gap-1 px-2.5 py-1.5 rounded-lg bg-white/5 hover:bg-white/10 text-slate-400 hover:text-white text-xs transition-colors"
                         >
                           <Pencil className="w-3 h-3" />Edit
+                        </button>
+                        <button
+                          onClick={() => setBranchModalLabId(lab.id)}
+                          className="flex items-center justify-center gap-1 px-2.5 py-1.5 rounded-lg bg-white/5 hover:bg-white/10 text-slate-400 hover:text-white text-xs transition-colors"
+                        >
+                          <GitBranch className="w-3 h-3" />Branches
                         </button>
                         <button
                           onClick={() => handleToggleHidden(lab)}
@@ -1040,6 +1060,12 @@ export function AdminDashboard() {
         const lab = labs.find((l) => l.id === expandedLabIntegration);
         return lab ? (
           <LabIntegrationModal lab={lab} onClose={() => setExpandedLabIntegration(null)} />
+        ) : null;
+      })()}
+      {branchModalLabId && (() => {
+        const lab = labs.find((l) => l.id === branchModalLabId);
+        return lab ? (
+          <LabBranchModal lab={lab} onClose={() => setBranchModalLabId(null)} />
         ) : null;
       })()}
 
@@ -1847,6 +1873,195 @@ function CopyField({ label, value }: { label: string; value: string }) {
     </div>
   );
 }
+
+// ── Lab Branch Management Modal ──────────────────────────────────────────────
+
+interface BranchRecord {
+  id: string;
+  name: string;
+  address: string;
+  phones: string[];
+  is_main: boolean;
+  created_at: string;
+}
+
+function LabBranchModal({ lab, onClose }: { lab: Lab; onClose: () => void }) {
+  const [branches, setBranches] = useState<BranchRecord[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [saving, setSaving] = useState(false);
+  const [editingId, setEditingId] = useState<string | null>(null); // null = new
+  const [showForm, setShowForm] = useState(false);
+
+  const blankForm = () => ({ name: "", address: "", phones: [""], is_main: false });
+  const [form, setForm] = useState(blankForm());
+
+  const fetchBranches = useCallback(async () => {
+    setLoading(true);
+    try {
+      const res = await fetch(`/api/admin/labs/${lab.id}/branches`);
+      const data = await res.json();
+      if (data.success) setBranches(data.branches ?? []);
+    } finally { setLoading(false); }
+  }, [lab.id]);
+
+  useEffect(() => { fetchBranches(); }, [fetchBranches]);
+
+  function openNew() {
+    setEditingId(null);
+    setForm(blankForm());
+    setShowForm(true);
+  }
+
+  function openEdit(b: BranchRecord) {
+    setEditingId(b.id);
+    setForm({ name: b.name, address: b.address, phones: (b.phones as string[]).length ? b.phones as string[] : [""], is_main: b.is_main });
+    setShowForm(true);
+  }
+
+  async function handleSave() {
+    if (!form.name.trim()) { toast.error("Branch name is required"); return; }
+    setSaving(true);
+    try {
+      const phones = form.phones.map((p) => p.trim()).filter(Boolean);
+      const body = { ...form, phones };
+      const url = editingId
+        ? `/api/admin/labs/${lab.id}/branches/${editingId}`
+        : `/api/admin/labs/${lab.id}/branches`;
+      const method = editingId ? "PATCH" : "POST";
+      const res = await fetch(url, { method, headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) });
+      const data = await res.json();
+      if (data.success) { toast.success(editingId ? "Branch updated" : "Branch added"); setShowForm(false); await fetchBranches(); }
+      else toast.error(data.error ?? "Failed to save");
+    } catch { toast.error("Network error"); }
+    finally { setSaving(false); }
+  }
+
+  async function handleDelete(b: BranchRecord) {
+    if (!confirm(`Delete branch "${b.name}"?`)) return;
+    try {
+      const res = await fetch(`/api/admin/labs/${lab.id}/branches/${b.id}`, { method: "DELETE" });
+      const data = await res.json();
+      if (data.success) { toast.success("Branch deleted"); await fetchBranches(); }
+      else toast.error(data.error ?? "Failed");
+    } catch { toast.error("Network error"); }
+  }
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center p-4 bg-black/70 backdrop-blur-sm" onClick={(e) => { if (e.target === e.currentTarget) onClose(); }}>
+      <div className="bg-slate-900 border border-white/10 rounded-2xl w-full max-w-lg max-h-[90vh] overflow-y-auto shadow-2xl animate-slide-up">
+        {/* Header */}
+        <div className="sticky top-0 bg-slate-900 border-b border-white/10 px-5 py-4 flex items-center justify-between rounded-t-2xl">
+          <div>
+            <h2 className="font-semibold text-white text-base flex items-center gap-2">
+              <GitBranch className="w-4 h-4 text-medical-400" />
+              Branches — {lab.name}
+            </h2>
+            <p className="text-xs text-slate-500 mt-0.5">Manage physical locations / collection points</p>
+          </div>
+          <button onClick={onClose} className="p-1.5 rounded-lg hover:bg-white/10 text-slate-400 transition-colors"><X className="w-5 h-5" /></button>
+        </div>
+
+        <div className="p-5 space-y-4">
+          {/* Branch form */}
+          {showForm && (
+            <div className="bg-white/5 border border-white/10 rounded-xl p-4 space-y-3">
+              <h3 className="text-sm font-semibold text-white">{editingId ? "Edit Branch" : "New Branch"}</h3>
+              <div>
+                <label className="text-xs text-slate-400 font-medium mb-1 block">Branch Name *</label>
+                <input value={form.name} onChange={(e) => setForm((f) => ({ ...f, name: e.target.value }))}
+                  placeholder="e.g. Main Branch, Lekki Branch"
+                  className="w-full text-sm rounded-xl border border-white/15 bg-white/5 text-white placeholder-slate-500 px-3 py-2.5 focus:outline-none focus:ring-2 focus:ring-medical-500/50" />
+              </div>
+              <div>
+                <label className="text-xs text-slate-400 font-medium mb-1 block">Address</label>
+                <input value={form.address} onChange={(e) => setForm((f) => ({ ...f, address: e.target.value }))}
+                  placeholder="Street address"
+                  className="w-full text-sm rounded-xl border border-white/15 bg-white/5 text-white placeholder-slate-500 px-3 py-2.5 focus:outline-none focus:ring-2 focus:ring-medical-500/50" />
+              </div>
+              <div>
+                <label className="text-xs text-slate-400 font-medium mb-1 block">Phone Numbers</label>
+                {form.phones.map((ph, i) => (
+                  <div key={i} className="flex gap-2 mb-2">
+                    <input value={ph} onChange={(e) => setForm((f) => { const phones = [...f.phones]; phones[i] = e.target.value; return { ...f, phones }; })}
+                      placeholder={`Phone ${i + 1}`}
+                      className="flex-1 text-sm rounded-xl border border-white/15 bg-white/5 text-white placeholder-slate-500 px-3 py-2.5 focus:outline-none focus:ring-2 focus:ring-medical-500/50" />
+                    {form.phones.length > 1 && (
+                      <button onClick={() => setForm((f) => ({ ...f, phones: f.phones.filter((_, j) => j !== i) }))}
+                        className="p-2.5 rounded-xl bg-red-500/10 text-red-400 hover:bg-red-500/20 transition-colors">
+                        <X className="w-4 h-4" />
+                      </button>
+                    )}
+                  </div>
+                ))}
+                <button onClick={() => setForm((f) => ({ ...f, phones: [...f.phones, ""] }))}
+                  className="text-xs text-medical-400 hover:text-medical-300 flex items-center gap-1 transition-colors">
+                  <Plus className="w-3 h-3" />Add phone
+                </button>
+              </div>
+              <label className="flex items-center gap-2 cursor-pointer">
+                <input type="checkbox" checked={form.is_main} onChange={(e) => setForm((f) => ({ ...f, is_main: e.target.checked }))}
+                  className="rounded border-white/20 bg-white/5 text-medical-500 focus:ring-medical-500/50" />
+                <span className="text-sm text-slate-300">Mark as main branch</span>
+              </label>
+              <div className="flex gap-2 pt-1">
+                <button onClick={handleSave} disabled={saving}
+                  className="flex-1 flex items-center justify-center gap-2 py-2.5 rounded-xl bg-medical-600 hover:bg-medical-500 text-white text-sm font-semibold transition-colors disabled:opacity-50">
+                  {saving ? <RefreshCw className="w-4 h-4 animate-spin" /> : <Check className="w-4 h-4" />}
+                  {editingId ? "Save Changes" : "Add Branch"}
+                </button>
+                <button onClick={() => setShowForm(false)}
+                  className="px-4 py-2.5 rounded-xl bg-white/5 hover:bg-white/10 text-slate-400 hover:text-white text-sm transition-colors">
+                  Cancel
+                </button>
+              </div>
+            </div>
+          )}
+
+          {/* Branch list */}
+          {loading ? (
+            <div className="flex justify-center py-8"><RefreshCw className="w-5 h-5 text-slate-500 animate-spin" /></div>
+          ) : branches.length === 0 && !showForm ? (
+            <div className="text-center py-10">
+              <GitBranch className="w-8 h-8 text-slate-600 mx-auto mb-2" />
+              <p className="text-sm text-slate-400 font-medium">No branches yet</p>
+              <p className="text-xs text-slate-500 mt-1">Add branches for each physical location of this lab</p>
+            </div>
+          ) : (
+            <div className="space-y-2">
+              {branches.map((b) => (
+                <div key={b.id} className="bg-white/5 border border-white/10 rounded-xl px-4 py-3">
+                  <div className="flex items-start justify-between gap-2">
+                    <div className="min-w-0">
+                      <div className="flex items-center gap-2 mb-0.5">
+                        <p className="font-semibold text-white text-sm truncate">{b.name}</p>
+                        {b.is_main && <span className="text-xs bg-medical-600/30 text-medical-300 border border-medical-600/30 px-2 py-0.5 rounded-full font-medium shrink-0">Main</span>}
+                      </div>
+                      {b.address && <p className="text-xs text-slate-400 flex items-center gap-1"><MapPin className="w-3 h-3 shrink-0" />{b.address}</p>}
+                      {(b.phones as string[]).map((ph, i) => <p key={i} className="text-xs text-slate-500 flex items-center gap-1"><Phone className="w-3 h-3 shrink-0" />{ph}</p>)}
+                    </div>
+                    <div className="flex items-center gap-1 shrink-0">
+                      <button onClick={() => openEdit(b)} className="p-1.5 rounded-lg hover:bg-white/10 text-slate-500 hover:text-white transition-colors"><Pencil className="w-3.5 h-3.5" /></button>
+                      <button onClick={() => handleDelete(b)} className="p-1.5 rounded-lg hover:bg-red-500/20 text-slate-500 hover:text-red-400 transition-colors"><Trash2 className="w-3.5 h-3.5" /></button>
+                    </div>
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
+
+          {!showForm && (
+            <button onClick={openNew}
+              className="w-full flex items-center justify-center gap-2 py-2.5 rounded-xl border border-dashed border-white/15 text-slate-400 hover:text-white hover:border-white/30 text-sm transition-colors">
+              <Plus className="w-4 h-4" />Add Branch
+            </button>
+          )}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
 
 type IntegrationTab = "developer" | "team";
 

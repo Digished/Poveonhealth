@@ -22,6 +22,9 @@ export interface Lab {
   service_categories: string[];
   certifications: string[];
   created_at: string;
+  // Computed by admin API — average rating and number of reviews
+  rating_avg?: number | null;
+  rating_count?: number;
 }
 
 export interface ApiLog {

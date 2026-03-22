@@ -19,11 +19,26 @@ export async function GET() {
       return NextResponse.json({ success: false, error: "Admin access required" }, { status: 403 });
     }
 
-    const labs = await prisma.lab.findMany({
-      orderBy: { name: "asc" },
-    });
+    const [labs, ratings] = await Promise.all([
+      prisma.lab.findMany({ orderBy: { name: "asc" } }),
+      prisma.labFeedback.groupBy({
+        by: ["lab_id"],
+        _avg: { rating_overall: true },
+        _count: { id: true },
+      }),
+    ]);
 
-    return NextResponse.json({ success: true, labs });
+    const ratingsMap = Object.fromEntries(
+      ratings.map((r) => [r.lab_id, { avg: r._avg.rating_overall, count: r._count.id }])
+    );
+
+    const labsWithRatings = labs.map((lab) => ({
+      ...lab,
+      rating_avg:   ratingsMap[lab.id]?.avg   ?? null,
+      rating_count: ratingsMap[lab.id]?.count ?? 0,
+    }));
+
+    return NextResponse.json({ success: true, labs: labsWithRatings });
   } catch (error) {
     console.error("Admin labs fetch error:", error);
     return NextResponse.json({ success: false, error: "Failed to load labs" }, { status: 500 });
