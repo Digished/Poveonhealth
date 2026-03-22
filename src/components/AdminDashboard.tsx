@@ -2067,6 +2067,7 @@ const PAGE_PERMISSIONS: { key: keyof LabRole; label: string; description: string
   { key: "can_view_referrals",  label: "Referrals",  description: "View doctor referral stats" },
   { key: "can_view_clients",    label: "Clients",    description: "Browse the patient/client list" },
   { key: "can_view_analytics",  label: "Analytics",  description: "View lab performance analytics" },
+  { key: "can_view_activity",   label: "Activity",   description: "View team activity log" },
 ];
 
 const ACTION_PERMISSIONS: { key: keyof LabRole; label: string; description: string }[] = [
@@ -2090,10 +2091,11 @@ type DraftRole = {
   can_view_referrals:  boolean;
   can_view_clients:    boolean;
   can_view_analytics:  boolean;
+  can_view_activity:   boolean;
 };
 
 function blankRole(): DraftRole {
-  return { name: "", can_view_requests: true, can_mark_seen: false, can_mark_done: false, can_send_results: false, can_manage_team: false, can_manage_api_keys: false, can_view_referrals: false, can_view_clients: false, can_view_analytics: false };
+  return { name: "", can_view_requests: true, can_mark_seen: false, can_mark_done: false, can_send_results: false, can_manage_team: false, can_manage_api_keys: false, can_view_referrals: false, can_view_clients: false, can_view_analytics: false, can_view_activity: false };
 }
 
 function LabTeamTab({ lab }: { lab: Lab }) {
@@ -2165,6 +2167,7 @@ function LabTeamTab({ lab }: { lab: Lab }) {
       can_view_referrals:  role.can_view_referrals,
       can_view_clients:    (role as DraftRole).can_view_clients ?? false,
       can_view_analytics:  (role as DraftRole).can_view_analytics ?? false,
+      can_view_activity:   (role as DraftRole).can_view_activity ?? false,
     });
     setShowNewRole(true);
   }

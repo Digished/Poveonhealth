@@ -6,6 +6,8 @@ import { getLabAuth } from "@/lib/lab-auth";
 import { resend, labSender } from "@/lib/email/resend";
 import { doctorTestsCompleted } from "@/lib/email/templates";
 import { logApiCall } from "@/lib/api-logger";
+import { logLabActivity } from "@/lib/lab-activity";
+import { createServerClient } from "@/lib/supabase/server";
 
 const UpdateStatusSchema = z.object({
   requestId: z.string().uuid(),
@@ -84,6 +86,22 @@ export async function POST(request: NextRequest) {
     if (status === "done") updateData.completed_at = new Date();
 
     await prisma.request.update({ where: { id: requestId }, data: updateData });
+
+    // Log activity
+    try {
+      const supabase = await createServerClient();
+      const { data: { user } } = await supabase.auth.getUser();
+      if (user && auth.auth_method !== "api_key") {
+        const actorRole = user.user_metadata?.role === "lab" ? "owner" : "member";
+        logLabActivity({
+          lab_id: req.lab_id,
+          actor_email: user.email ?? "unknown",
+          actor_role: actorRole,
+          action: status === "seen" ? "request_seen" : "request_done",
+          detail: `Request ${req.code} for ${req.patient_name ?? "patient"} marked as ${status === "seen" ? "Patient Seen" : "Done"}`,
+        });
+      }
+    } catch { /* non-critical */ }
 
     const brand = req.lab.notification_email ? { name: req.lab.name } : undefined;
 

@@ -214,7 +214,7 @@ function ProfilePanel({
           <div>
             <label className="text-xs font-semibold text-slate-500 uppercase tracking-wide block mb-1.5">Sex</label>
             <div className="flex gap-2">
-              {(["male", "female", "other"] as const).map((s) => (
+              {(["male", "female"] as const).map((s) => (
                 <button
                   key={s}
                   type="button"

@@ -7,6 +7,45 @@ import { useRouter, useSearchParams } from "next/navigation";
 
 type Stage = "email" | "pin" | "otp" | "create-pin";
 
+// Defined at module level so React never remounts the inputs on re-render (which would lose focus).
+function PinBoxes({
+  values, setValues, refs, label,
+}: {
+  values: string[];
+  setValues: React.Dispatch<React.SetStateAction<string[]>>;
+  refs: React.MutableRefObject<(HTMLInputElement | null)[]>;
+  label?: string;
+}) {
+  function handleChange(i: number, raw: string) {
+    const digit = raw.replace(/\D/g, "").slice(-1);
+    setValues((prev) => { const next = [...prev]; next[i] = digit; return next; });
+    if (digit && i < values.length - 1) refs.current[i + 1]?.focus();
+  }
+  function handleKeyDown(i: number, e: React.KeyboardEvent<HTMLInputElement>) {
+    if (e.key === "Backspace" && !values[i] && i > 0) refs.current[i - 1]?.focus();
+  }
+  return (
+    <div>
+      {label && <p className="text-xs text-slate-400 mb-3">{label}</p>}
+      <div className="flex gap-3 justify-center">
+        {values.map((digit, i) => (
+          <input
+            key={i}
+            ref={(el) => { refs.current[i] = el; }}
+            type="password"
+            inputMode="numeric"
+            maxLength={2}
+            value={digit}
+            onChange={(e) => handleChange(i, e.target.value)}
+            onKeyDown={(e) => handleKeyDown(i, e)}
+            className="w-14 h-16 text-center text-2xl font-bold text-slate-800 border-2 border-slate-200 rounded-xl bg-white focus:outline-none focus:ring-2 focus:ring-medical-400 focus:border-medical-400 transition"
+          />
+        ))}
+      </div>
+    </div>
+  );
+}
+
 function Spinner() {
   return (
     <svg className="animate-spin w-4 h-4" fill="none" viewBox="0 0 24 24">
@@ -198,29 +237,6 @@ function DocLoginInner() {
       setLoading(false);
     }
   }
-
-  const PinBoxes = ({
-    values, setValues, refs, label
-  }: { values: string[]; setValues: React.Dispatch<React.SetStateAction<string[]>>; refs: React.MutableRefObject<(HTMLInputElement | null)[]>; label?: string }) => (
-    <div>
-      {label && <p className="text-xs text-slate-400 mb-3">{label}</p>}
-      <div className="flex gap-3 justify-center">
-        {values.map((digit, i) => (
-          <input
-            key={i}
-            ref={(el) => { refs.current[i] = el; }}
-            type="password"
-            inputMode="numeric"
-            maxLength={2}
-            value={digit}
-            onChange={(e) => handleDigitChange(values, setValues, refs, 4, i, e.target.value)}
-            onKeyDown={(e) => handleDigitKeyDown(values, refs, i, e)}
-            className="w-14 h-16 text-center text-2xl font-bold text-slate-800 border-2 border-slate-200 rounded-xl bg-white focus:outline-none focus:ring-2 focus:ring-medical-400 focus:border-medical-400 transition"
-          />
-        ))}
-      </div>
-    </div>
-  );
 
   return (
     <div className="min-h-dvh bg-gradient-to-br from-sky-50 via-blue-50 to-indigo-50 flex flex-col items-center justify-center px-4 py-12">

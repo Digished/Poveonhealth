@@ -70,6 +70,7 @@ export interface LabRole {
   can_view_referrals: boolean;
   can_view_clients: boolean;
   can_view_analytics: boolean;
+  can_view_activity: boolean;
   created_at: string;
   _count?: { members: number };
 }

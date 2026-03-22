@@ -8,6 +8,7 @@ import {
   Link2, Paperclip, Send, SkipForward, UserCircle, MapPin, Shield, Layers,
   Users, CreditCard, Filter, ChevronDown, AlertTriangle, Truck, ExternalLink,
   MessageCircle, ChevronLeft, FileImage, Sun, Moon, Pencil, Save, BarChart3, Lock,
+  Menu, Activity, KeyRound, ArrowRight,
 } from "lucide-react";
 import { useDashTheme } from "@/hooks/useDashTheme";
 import { Button } from "@/components/ui/Button";
@@ -52,6 +53,7 @@ interface LabDashboardProps {
   canViewReferrals?: boolean;
   canViewClients?: boolean;
   canViewAnalytics?: boolean;
+  canViewActivity?: boolean;
 }
 
 const TABS: { key: RequestStatus; label: string; icon: React.ReactNode }[] = [
@@ -84,11 +86,12 @@ function scheduleLabel(value: string | null): string | null {
   return value ? (map[value] ?? value) : null;
 }
 
-export function LabDashboard({ lab, isOwner = false, roleName = "Lab Owner", canViewReferrals = false, canViewClients = false, canViewAnalytics = false }: LabDashboardProps) {
+export function LabDashboard({ lab, isOwner = false, roleName = "Lab Owner", canViewReferrals = false, canViewClients = false, canViewAnalytics = false, canViewActivity = false }: LabDashboardProps) {
   const { name: labName, logo_url: labLogoUrl } = lab;
   const router = useRouter();
   const { isLight, toggle, themeClass } = useDashTheme("lab_dash_theme");
-  const [mainView, setMainView] = useState<"requests" | "referrals" | "clients" | "analytics">("requests");
+  const [mainView, setMainView] = useState<"requests" | "referrals" | "clients" | "analytics" | "activity">("requests");
+  const [mobileNavOpen, setMobileNavOpen] = useState(false);
   const [activeTab, setActiveTab] = useState<RequestStatus>("seen");
   const [requests, setRequests] = useState<LabRequest[]>([]);
   const [loading, setLoading] = useState(true);
@@ -209,12 +212,8 @@ export function LabDashboard({ lab, isOwner = false, roleName = "Lab Owner", can
   }, []);
 
   useEffect(() => {
-    if (mainView === "referrals" && (isOwner || canViewReferrals)) {
-      fetchReferrals();
-    }
-    if (mainView === "clients" && (isOwner || canViewClients)) {
-      fetchClients();
-    }
+    if (mainView === "referrals" && (isOwner || canViewReferrals)) fetchReferrals();
+    if (mainView === "clients" && (isOwner || canViewClients)) fetchClients();
   }, [mainView, fetchReferrals, fetchClients, isOwner, canViewReferrals, canViewClients]);
 
   const tabRequests = requests.filter((r) => r.status === activeTab);
@@ -475,14 +474,6 @@ export function LabDashboard({ lab, isOwner = false, roleName = "Lab Owner", can
               {isLight ? <Moon className="w-4 h-4" /> : <Sun className="w-4 h-4" />}
             </button>
             <button
-              onClick={() => fetchRequests(true)}
-              disabled={refreshing}
-              className="p-2 rounded-lg hover:bg-white/10 transition-colors text-slate-400 hover:text-white"
-              title="Refresh"
-            >
-              <RefreshCw className={`w-4 h-4 ${refreshing ? "animate-spin" : ""}`} />
-            </button>
-            <button
               onClick={async () => {
                 setProfileOpen(true);
                 if (isOwner && teamMembers.length === 0) {
@@ -521,60 +512,55 @@ export function LabDashboard({ lab, isOwner = false, roleName = "Lab Owner", can
 
       <div className="max-w-6xl mx-auto px-4 py-8">
         {/* Top-level navigation */}
-        {(isOwner || canViewReferrals || canViewClients || canViewAnalytics) && (
-          <div className="flex gap-1 mb-6 bg-white/5 rounded-xl p-1 w-full sm:w-fit overflow-x-auto">
-            <button
-              onClick={() => setMainView("requests")}
-              className={`flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-medium transition-all ${
-                mainView === "requests"
-                  ? "bg-white/15 text-white shadow-sm"
-                  : "text-slate-400 hover:text-slate-200"
-              }`}
-            >
-              <FlaskConical className="w-4 h-4" />
-              Requests
-            </button>
-            {(isOwner || canViewReferrals) && (
-              <button
-                onClick={() => setMainView("referrals")}
-                className={`flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-medium transition-all ${
-                  mainView === "referrals"
-                    ? "bg-white/15 text-white shadow-sm"
-                    : "text-slate-400 hover:text-slate-200"
-                }`}
-              >
-                <Users className="w-4 h-4" />
-                Referrals
-              </button>
-            )}
-            {(isOwner || canViewClients) && (
-              <button
-                onClick={() => setMainView("clients")}
-                className={`flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-medium transition-all ${
-                  mainView === "clients"
-                    ? "bg-white/15 text-white shadow-sm"
-                    : "text-slate-400 hover:text-slate-200"
-                }`}
-              >
-                <UserCircle className="w-4 h-4" />
-                Clients
-              </button>
-            )}
-            {(isOwner || canViewAnalytics) && (
-              <button
-                onClick={() => setMainView("analytics")}
-                className={`flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-medium transition-all ${
-                  mainView === "analytics"
-                    ? "bg-white/15 text-white shadow-sm"
-                    : "text-slate-400 hover:text-slate-200"
-                }`}
-              >
-                <BarChart3 className="w-4 h-4" />
-                Analytics
-              </button>
-            )}
-          </div>
-        )}
+        {(isOwner || canViewReferrals || canViewClients || canViewAnalytics || canViewActivity) && (() => {
+          const navItems = [
+            { key: "requests" as const, label: "Requests", icon: <FlaskConical className="w-4 h-4" />, show: true },
+            { key: "referrals" as const, label: "Referrals", icon: <Users className="w-4 h-4" />, show: isOwner || canViewReferrals },
+            { key: "clients" as const, label: "Clients", icon: <UserCircle className="w-4 h-4" />, show: isOwner || canViewClients },
+            { key: "analytics" as const, label: "Analytics", icon: <BarChart3 className="w-4 h-4" />, show: isOwner || canViewAnalytics },
+            { key: "activity" as const, label: "Activity", icon: <Activity className="w-4 h-4" />, show: isOwner || canViewActivity },
+          ].filter((item) => item.show);
+          const currentLabel = navItems.find((n) => n.key === mainView)?.label ?? "Requests";
+          return (
+            <div className="mb-6 relative">
+              {/* Mobile: hamburger trigger */}
+              <div className="sm:hidden">
+                <button
+                  onClick={() => setMobileNavOpen((v) => !v)}
+                  className="flex items-center gap-2 px-4 py-2.5 rounded-xl bg-white/5 border border-white/10 text-sm font-medium text-white w-full"
+                >
+                  <Menu className="w-4 h-4 text-slate-400" />
+                  <span className="flex-1 text-left">{currentLabel}</span>
+                  <ChevronDown className={`w-4 h-4 text-slate-400 transition-transform ${mobileNavOpen ? "rotate-180" : ""}`} />
+                </button>
+                {mobileNavOpen && (
+                  <div className="absolute top-full left-0 right-0 mt-1 bg-slate-800 border border-white/10 rounded-xl shadow-xl z-30 overflow-hidden">
+                    {navItems.map((item) => (
+                      <button key={item.key}
+                        onClick={() => { setMainView(item.key); setMobileNavOpen(false); }}
+                        className={`flex items-center gap-3 w-full px-4 py-3 text-sm font-medium transition-colors ${
+                          mainView === item.key ? "bg-white/10 text-white" : "text-slate-300 hover:bg-white/5 hover:text-white"
+                        }`}>
+                        {item.icon}{item.label}
+                      </button>
+                    ))}
+                  </div>
+                )}
+              </div>
+              {/* Desktop: pill row */}
+              <div className="hidden sm:flex gap-1 bg-white/5 rounded-xl p-1 w-fit">
+                {navItems.map((item) => (
+                  <button key={item.key} onClick={() => setMainView(item.key)}
+                    className={`flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-medium transition-all ${
+                      mainView === item.key ? "bg-white/15 text-white shadow-sm" : "text-slate-400 hover:text-slate-200"
+                    }`}>
+                    {item.icon}{item.label}
+                  </button>
+                ))}
+              </div>
+            </div>
+          );
+        })()}
 
         {/* Referrals view */}
         {mainView === "referrals" && (
@@ -1614,6 +1600,11 @@ export function LabDashboard({ lab, isOwner = false, roleName = "Lab Owner", can
             </div>
           );
         })()}
+
+        {/* Activity view */}
+        {mainView === "activity" && (isOwner || canViewActivity) && (
+          <LabActivityView />
+        )}
 
         {/* Requests view */}
         {mainView === "requests" && (
@@ -2692,6 +2683,106 @@ export function LabDashboard({ lab, isOwner = false, roleName = "Lab Owner", can
   );
 }
 
+const ACTION_LABELS: Record<string, { label: string; color: string }> = {
+  login:               { label: "Signed in",          color: "text-emerald-400 bg-emerald-400/10" },
+  logout:              { label: "Signed out",          color: "text-slate-400 bg-white/5" },
+  password_change:     { label: "Password changed",    color: "text-amber-400 bg-amber-400/10" },
+  request_seen:        { label: "Patient seen",        color: "text-blue-400 bg-blue-400/10" },
+  request_done:        { label: "Marked done",         color: "text-emerald-400 bg-emerald-400/10" },
+  results_sent:        { label: "Results sent",        color: "text-medical-400 bg-medical-400/10" },
+  team_member_added:   { label: "Member added",        color: "text-indigo-400 bg-indigo-400/10" },
+  team_member_removed: { label: "Member removed",      color: "text-red-400 bg-red-400/10" },
+};
+
+interface ActivityRecord {
+  id: string;
+  actor_email: string;
+  actor_role: string;
+  action: string;
+  detail: string | null;
+  created_at: string;
+}
+
+function LabActivityView() {
+  const [activities, setActivities] = useState<ActivityRecord[]>([]);
+  const [total, setTotal] = useState(0);
+  const [loadingAct, setLoadingAct] = useState(true);
+  const [offset, setOffset] = useState(0);
+  const PAGE = 50;
+
+  const fetchActivities = useCallback(async (off: number) => {
+    setLoadingAct(true);
+    try {
+      const res = await fetch(`/api/lab/activity?limit=${PAGE}&offset=${off}`);
+      const data = await res.json();
+      if (data.success) { setActivities(data.activities ?? []); setTotal(data.total ?? 0); }
+    } catch { /* ignore */ } finally { setLoadingAct(false); }
+  }, []);
+
+  useEffect(() => { fetchActivities(0); }, [fetchActivities]);
+
+  function loadPage(off: number) { setOffset(off); fetchActivities(off); }
+
+  return (
+    <div className="space-y-4 animate-fade-in">
+      <div className="flex items-center justify-between">
+        <div>
+          <h2 className="font-semibold text-white text-base">Team Activity</h2>
+          <p className="text-xs text-slate-500 mt-0.5">Actions taken by all lab members</p>
+        </div>
+        <span className="text-xs text-slate-500 bg-white/5 border border-white/8 rounded-full px-2.5 py-1">{total} records</span>
+      </div>
+
+      {loadingAct ? (
+        <div className="flex justify-center py-16">
+          <RefreshCw className="w-6 h-6 text-slate-500 animate-spin" />
+        </div>
+      ) : activities.length === 0 ? (
+        <div className="text-center py-16">
+          <Activity className="w-10 h-10 text-slate-600 mx-auto mb-3" />
+          <p className="text-slate-400 font-medium text-sm">No activity recorded yet</p>
+          <p className="text-slate-500 text-xs mt-1">Activity will appear here as team members use the dashboard</p>
+        </div>
+      ) : (
+        <div className="space-y-2">
+          {activities.map((a) => {
+            const meta = ACTION_LABELS[a.action] ?? { label: a.action, color: "text-slate-400 bg-white/5" };
+            return (
+              <div key={a.id} className="bg-white/5 border border-white/8 rounded-xl px-4 py-3 flex items-start gap-3">
+                <div className="mt-0.5 shrink-0">
+                  <span className={`text-xs font-semibold px-2 py-0.5 rounded-full ${meta.color}`}>{meta.label}</span>
+                </div>
+                <div className="flex-1 min-w-0">
+                  <p className="text-xs text-slate-300 truncate">
+                    <span className="font-semibold text-white">{a.actor_email}</span>
+                    {a.actor_role !== "owner" && <span className="text-slate-500 ml-1">({a.actor_role})</span>}
+                  </p>
+                  {a.detail && <p className="text-xs text-slate-500 mt-0.5 leading-relaxed">{a.detail}</p>}
+                </div>
+                <p className="text-xs text-slate-600 shrink-0 mt-0.5">{format(new Date(a.created_at), "dd MMM, HH:mm")}</p>
+              </div>
+            );
+          })}
+        </div>
+      )}
+
+      {total > PAGE && (
+        <div className="flex items-center justify-between pt-2">
+          <button onClick={() => loadPage(Math.max(0, offset - PAGE))} disabled={offset === 0}
+            className="flex items-center gap-1.5 text-xs font-semibold text-slate-400 hover:text-white disabled:opacity-30 transition px-3 py-2 rounded-lg hover:bg-white/5">
+            <ChevronLeft className="w-3.5 h-3.5" />Previous
+          </button>
+          <span className="text-xs text-slate-500">{offset + 1}–{Math.min(offset + PAGE, total)} of {total}</span>
+          <button onClick={() => loadPage(offset + PAGE)} disabled={offset + PAGE >= total}
+            className="flex items-center gap-1.5 text-xs font-semibold text-slate-400 hover:text-white disabled:opacity-30 transition px-3 py-2 rounded-lg hover:bg-white/5">
+            Next<ChevronRight className="w-3.5 h-3.5" />
+          </button>
+        </div>
+      )}
+    </div>
+  );
+}
+
 function DetailRow({ label, children }: { label: string; children: React.ReactNode }) {
   return (
     <div>
@@ -2703,29 +2794,88 @@ function DetailRow({ label, children }: { label: string; children: React.ReactNo
 
 function ChangePasswordModal({ onClose }: { onClose: () => void }) {
   const supabase = createClient();
+  type CPStage = "send" | "verify" | "password";
+  const [stage, setStage] = useState<CPStage>("send");
+  const [userEmail, setUserEmail] = useState("");
+  const [otp, setOtp] = useState(["", "", "", "", "", ""]);
   const [newPassword, setNewPassword] = useState("");
   const [confirmPassword, setConfirmPassword] = useState("");
   const [showNew, setShowNew] = useState(false);
   const [showConfirm, setShowConfirm] = useState(false);
+  const [countdown, setCountdown] = useState(0);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
+  const otpRefs = useRef<(HTMLInputElement | null)[]>([]);
 
-  async function handleSubmit(e: React.FormEvent) {
-    e.preventDefault();
-    setError("");
+  useEffect(() => {
+    supabase.auth.getUser().then(({ data }) => {
+      if (data.user?.email) setUserEmail(data.user.email);
+    });
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  async function sendOtp() {
+    setLoading(true); setError("");
+    try {
+      const res = await fetch("/api/lab/send-otp", {
+        method: "POST", headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ email: userEmail, purpose: "verify" }),
+      });
+      if (!res.ok) { const d = await res.json(); setError(d.error ?? "Failed to send code."); return; }
+      setOtp(["", "", "", "", "", ""]); setCountdown(60);
+      let c = 60; const t = setInterval(() => { c--; setCountdown(c); if (c <= 0) clearInterval(t); }, 1000);
+      setStage("verify");
+      setTimeout(() => otpRefs.current[0]?.focus(), 100);
+    } catch { setError("Network error. Please try again."); }
+    finally { setLoading(false); }
+  }
+
+  function handleOtpChange(i: number, raw: string) {
+    const digit = raw.replace(/\D/g, "").slice(-1);
+    const next = [...otp]; next[i] = digit; setOtp(next);
+    if (digit && i < 5) otpRefs.current[i + 1]?.focus();
+  }
+  function handleOtpKeyDown(i: number, e: React.KeyboardEvent<HTMLInputElement>) {
+    if (e.key === "Backspace" && !otp[i] && i > 0) otpRefs.current[i - 1]?.focus();
+  }
+
+  async function handleVerify(e: React.FormEvent) {
+    e.preventDefault(); setError("");
+    const code = otp.join("");
+    if (code.length !== 6) { setError("Please enter all 6 digits."); return; }
+    setLoading(true);
+    try {
+      const res = await fetch("/api/lab/verify-otp", {
+        method: "POST", headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ email: userEmail, code }),
+      });
+      const data = await res.json();
+      if (!res.ok) { setError(data.error ?? "Invalid code."); return; }
+      setNewPassword(""); setConfirmPassword(""); setStage("password");
+    } catch { setError("Network error. Please try again."); }
+    finally { setLoading(false); }
+  }
+
+  async function handleChangePassword(e: React.FormEvent) {
+    e.preventDefault(); setError("");
     if (newPassword.length < 8) { setError("Password must be at least 8 characters."); return; }
     if (newPassword !== confirmPassword) { setError("Passwords do not match."); return; }
     setLoading(true);
     try {
-      const { error: err } = await supabase.auth.updateUser({ password: newPassword });
-      if (err) { setError(err.message); return; }
+      const res = await fetch("/api/lab/set-password", {
+        method: "POST", headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ email: userEmail, password: newPassword }),
+      });
+      const data = await res.json();
+      if (!res.ok) { setError(data.error ?? "Failed to change password."); return; }
+      fetch("/api/lab/log-activity", {
+        method: "POST", headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ action: "password_change", detail: "Password changed from dashboard" }),
+      }).catch(() => null);
       toast.success("Password changed successfully");
       onClose();
-    } catch {
-      setError("Failed to change password. Please try again.");
-    } finally {
-      setLoading(false);
-    }
+    } catch { setError("Failed to change password. Please try again."); }
+    finally { setLoading(false); }
   }
 
   return (
@@ -2740,49 +2890,87 @@ function ChangePasswordModal({ onClose }: { onClose: () => void }) {
             <X className="w-4 h-4" />
           </button>
         </div>
-        <form onSubmit={handleSubmit} className="p-5 space-y-4">
-          {error && (
-            <p className="text-xs text-red-400 bg-red-500/10 border border-red-500/20 rounded-lg px-3 py-2">{error}</p>
-          )}
-          <div>
-            <label className="text-xs font-medium text-slate-400 mb-1.5 block">New Password</label>
-            <div className="relative">
-              <input
-                type={showNew ? "text" : "password"}
-                value={newPassword}
-                onChange={(e) => setNewPassword(e.target.value)}
-                placeholder="At least 8 characters"
-                className="w-full bg-white/5 border border-white/10 rounded-xl px-3 py-2.5 pr-10 text-white placeholder-slate-600 text-sm focus:outline-none focus:ring-1 focus:ring-medical-500"
-              />
-              <button type="button" onClick={() => setShowNew(v => !v)} className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-500 hover:text-slate-300 transition-colors">
-                {showNew ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+
+        {stage === "send" && (
+          <div className="p-5 space-y-4">
+            {error && <p className="text-xs text-red-400 bg-red-500/10 border border-red-500/20 rounded-lg px-3 py-2">{error}</p>}
+            <p className="text-sm text-slate-300">
+              To confirm your identity, we&apos;ll send a one-time code to{" "}
+              <span className="font-semibold text-white">{userEmail || "your email"}</span>.
+            </p>
+            <div className="flex gap-3 pt-1">
+              <button type="button" onClick={onClose} className="flex-1 py-2.5 rounded-xl border border-white/10 text-slate-400 font-semibold text-sm hover:bg-white/5 transition">Cancel</button>
+              <button type="button" onClick={sendOtp} disabled={loading || !userEmail}
+                className="flex-1 flex items-center justify-center gap-2 py-2.5 rounded-xl bg-medical-600 hover:bg-medical-500 disabled:opacity-60 text-white font-semibold text-sm transition">
+                {loading ? <RefreshCw className="w-4 h-4 animate-spin" /> : <><KeyRound className="w-4 h-4" />Send Code</>}
               </button>
             </div>
           </div>
-          <div>
-            <label className="text-xs font-medium text-slate-400 mb-1.5 block">Confirm New Password</label>
-            <div className="relative">
-              <input
-                type={showConfirm ? "text" : "password"}
-                value={confirmPassword}
-                onChange={(e) => setConfirmPassword(e.target.value)}
-                placeholder="Repeat new password"
-                className="w-full bg-white/5 border border-white/10 rounded-xl px-3 py-2.5 pr-10 text-white placeholder-slate-600 text-sm focus:outline-none focus:ring-1 focus:ring-medical-500"
-              />
-              <button type="button" onClick={() => setShowConfirm(v => !v)} className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-500 hover:text-slate-300 transition-colors">
-                {showConfirm ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+        )}
+
+        {stage === "verify" && (
+          <form onSubmit={handleVerify} className="p-5 space-y-4">
+            {error && <p className="text-xs text-red-400 bg-red-500/10 border border-red-500/20 rounded-lg px-3 py-2">{error}</p>}
+            <p className="text-xs text-slate-400 text-center">Enter the 6-digit code sent to <span className="text-white font-semibold">{userEmail}</span></p>
+            <div className="flex gap-2 justify-center">
+              {otp.map((digit, i) => (
+                <input key={i} ref={(el) => { otpRefs.current[i] = el; }}
+                  type="tel" inputMode="numeric" maxLength={2} value={digit}
+                  onChange={(e) => handleOtpChange(i, e.target.value)}
+                  onKeyDown={(e) => handleOtpKeyDown(i, e)}
+                  style={{ height: "48px" }}
+                  className="w-10 text-center text-lg font-bold text-white border border-white/20 rounded-xl bg-white/5 focus:outline-none focus:ring-1 focus:ring-medical-500 transition" />
+              ))}
+            </div>
+            <div className="flex gap-3 pt-1">
+              <button type="button" onClick={onClose} className="flex-1 py-2.5 rounded-xl border border-white/10 text-slate-400 font-semibold text-sm hover:bg-white/5 transition">Cancel</button>
+              <button type="submit" disabled={loading || otp.join("").length !== 6}
+                className="flex-1 flex items-center justify-center gap-2 py-2.5 rounded-xl bg-medical-600 hover:bg-medical-500 disabled:opacity-60 text-white font-semibold text-sm transition">
+                {loading ? <RefreshCw className="w-4 h-4 animate-spin" /> : <><ArrowRight className="w-4 h-4" />Verify</>}
               </button>
             </div>
-          </div>
-          <div className="flex gap-3 pt-1">
-            <button type="button" onClick={onClose} className="flex-1 py-2.5 rounded-xl border border-white/10 text-slate-400 font-semibold text-sm hover:bg-white/5 transition">
-              Cancel
-            </button>
-            <button type="submit" disabled={loading} className="flex-1 py-2.5 rounded-xl bg-medical-600 hover:bg-medical-500 disabled:opacity-60 text-white font-semibold text-sm transition">
-              {loading ? "Changing…" : "Change Password"}
-            </button>
-          </div>
-        </form>
+            <p className="text-center text-xs text-slate-500">
+              {countdown > 0 ? `Resend in ${countdown}s` :
+                <button type="button" onClick={sendOtp} disabled={loading}
+                  className="text-medical-400 hover:text-medical-300 underline underline-offset-2 transition">Resend code</button>
+              }
+            </p>
+          </form>
+        )}
+
+        {stage === "password" && (
+          <form onSubmit={handleChangePassword} className="p-5 space-y-4">
+            {error && <p className="text-xs text-red-400 bg-red-500/10 border border-red-500/20 rounded-lg px-3 py-2">{error}</p>}
+            <div>
+              <label className="text-xs font-medium text-slate-400 mb-1.5 block">New Password</label>
+              <div className="relative">
+                <input type={showNew ? "text" : "password"} value={newPassword}
+                  onChange={(e) => setNewPassword(e.target.value)} placeholder="At least 8 characters"
+                  className="w-full bg-white/5 border border-white/10 rounded-xl px-3 py-2.5 pr-10 text-white placeholder-slate-600 text-sm focus:outline-none focus:ring-1 focus:ring-medical-500" />
+                <button type="button" onClick={() => setShowNew((v) => !v)} className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-500 hover:text-slate-300 transition-colors">
+                  {showNew ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+                </button>
+              </div>
+            </div>
+            <div>
+              <label className="text-xs font-medium text-slate-400 mb-1.5 block">Confirm New Password</label>
+              <div className="relative">
+                <input type={showConfirm ? "text" : "password"} value={confirmPassword}
+                  onChange={(e) => setConfirmPassword(e.target.value)} placeholder="Repeat new password"
+                  className="w-full bg-white/5 border border-white/10 rounded-xl px-3 py-2.5 pr-10 text-white placeholder-slate-600 text-sm focus:outline-none focus:ring-1 focus:ring-medical-500" />
+                <button type="button" onClick={() => setShowConfirm((v) => !v)} className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-500 hover:text-slate-300 transition-colors">
+                  {showConfirm ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+                </button>
+              </div>
+            </div>
+            <div className="flex gap-3 pt-1">
+              <button type="button" onClick={onClose} className="flex-1 py-2.5 rounded-xl border border-white/10 text-slate-400 font-semibold text-sm hover:bg-white/5 transition">Cancel</button>
+              <button type="submit" disabled={loading} className="flex-1 py-2.5 rounded-xl bg-medical-600 hover:bg-medical-500 disabled:opacity-60 text-white font-semibold text-sm transition">
+                {loading ? "Changing…" : "Change Password"}
+              </button>
+            </div>
+          </form>
+        )}
       </div>
     </div>
   );

@@ -5,6 +5,8 @@ import { getLabAuth } from "@/lib/lab-auth";
 import { resend, labSender } from "@/lib/email/resend";
 import { labResultsDoctor, labResultsPatient } from "@/lib/email/templates";
 import { logApiCall } from "@/lib/api-logger";
+import { logLabActivity } from "@/lib/lab-activity";
+import { createServerClient } from "@/lib/supabase/server";
 
 export async function POST(request: NextRequest) {
   const start = Date.now();
@@ -161,6 +163,21 @@ export async function POST(request: NextRequest) {
         })
         .catch((e) => console.error("[email] results to patient error:", e));
     }
+
+    // Log activity
+    try {
+      const supabase = await createServerClient();
+      const { data: { user } } = await supabase.auth.getUser();
+      if (user && auth.auth_method !== "api_key") {
+        logLabActivity({
+          lab_id: req.lab_id,
+          actor_email: user.email ?? "unknown",
+          actor_role: user.user_metadata?.role === "lab" ? "owner" : "member",
+          action: "results_sent",
+          detail: `Results sent for ${req.patient_name ?? "patient"} (${req.code})`,
+        });
+      }
+    } catch { /* non-critical */ }
 
     logApiCall({ method: "POST", path: "/api/requests/send-results", status: 200, lab_id: req.lab_id, duration_ms: Date.now() - start });
     return NextResponse.json({ success: true, status: req.status === "seen" ? "done" : req.status });

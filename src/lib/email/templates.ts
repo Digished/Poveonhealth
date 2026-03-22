@@ -611,6 +611,40 @@ export function patientOtpEmail({
 }
 
 // =============================================================================
+// TEMPLATE: Lab — One-Time Passcode (password reset / verification)
+// =============================================================================
+export function labOtpEmail({
+  email,
+  otp,
+  purpose,
+}: {
+  email: string;
+  otp: string;
+  purpose: "reset" | "verify";
+}) {
+  const title = purpose === "reset" ? "Password Reset Code" : "Verification Code";
+  const desc = purpose === "reset"
+    ? "Use the code below to reset your lab dashboard password. It expires in <strong>10 minutes</strong>."
+    : "Use the code below to verify your identity before changing your password. It expires in <strong>10 minutes</strong>.";
+  return base(`
+    <h2 style="margin:0 0 8px;color:#0259a0;font-size:20px;font-weight:700;">${title}</h2>
+    <p style="margin:0 0 24px;color:#4b5563;font-size:15px;">${desc}</p>
+
+    <div style="background:#f0f7ff;border:2px dashed #0270c3;border-radius:8px;padding:24px;text-align:center;margin:24px 0;">
+      <p style="margin:0 0 6px;color:#0259a0;font-size:12px;font-weight:600;text-transform:uppercase;letter-spacing:1px;">One-Time Code</p>
+      <p style="margin:0;color:#0259a0;font-size:40px;font-weight:800;letter-spacing:10px;font-family:monospace;">${otp}</p>
+    </div>
+
+    ${divider}
+
+    <p style="margin:0 0 8px;color:#6b7280;font-size:13px;">Account: <strong style="color:#1e3a5f;">${email}</strong></p>
+    <p style="margin:12px 0 0;color:#dc2626;font-size:13px;font-weight:500;">
+      If you did not request this code, please secure your account immediately.
+    </p>
+  `);
+}
+
+// =============================================================================
 // TEMPLATE: Lab — New Request Notification
 // =============================================================================
 export function labNewRequest({

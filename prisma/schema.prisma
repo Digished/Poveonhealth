@@ -97,6 +97,7 @@ model LabRole {
   can_view_referrals   Boolean  @default(false)
   can_view_clients     Boolean  @default(false)
   can_view_analytics   Boolean  @default(false)
+  can_view_activity    Boolean  @default(false)
   created_at           DateTime @default(now())
 
   lab     Lab         @relation(fields: [lab_id], references: [id], onDelete: Cascade)
@@ -304,6 +305,34 @@ model PatientProfile {
 
   @@index([phone])
   @@map("patient_profiles")
+}
+
+// One-time passcodes for lab password reset / identity verification
+model LabOtp {
+  id         String   @id @default(uuid())
+  email      String
+  code_hash  String   // SHA-256 of the 6-digit OTP
+  purpose    String   @default("reset") // "reset" | "verify"
+  expires_at DateTime
+  used       Boolean  @default(false)
+  created_at DateTime @default(now())
+
+  @@index([email])
+  @@map("lab_otps")
+}
+
+// Audit trail of team member actions within a lab
+model LabActivity {
+  id          String   @id @default(uuid())
+  lab_id      String
+  actor_email String
+  actor_role  String   @default("owner")
+  action      String   // e.g. "login" | "password_change" | "request_seen" | "request_done" | "results_sent" | "team_member_added" | "team_member_removed"
+  detail      String?
+  created_at  DateTime @default(now())
+
+  @@index([lab_id, created_at])
+  @@map("lab_activities")
 }
 
 // Tracks API calls for analytics — written asynchronously, never blocks responses

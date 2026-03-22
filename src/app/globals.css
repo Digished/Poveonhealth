@@ -217,6 +217,11 @@
 .dash-light .border-white\/3 { border-color: #e2e8f0 !important; }
 .dash-light .hover\:border-white\/20:hover { border-color: #cbd5e1 !important; }
 
+/* Security Notice in admin logs — amber tones look washed out in light mode */
+.dash-light .bg-amber-500\/8   { background-color: #fef3c7 !important; }
+.dash-light .border-amber-500\/20 { border-color: #fcd34d !important; }
+.dash-light .text-amber-200\/70 { color: #92400e !important; }
+
 /* Scrollbar */
 ::-webkit-scrollbar {
   width: 6px;
