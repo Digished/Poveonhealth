@@ -875,6 +875,25 @@ export function DoctorRequestForm({
   const [patientInfoOpen, setPatientInfoOpen] = useState(false);
   const [scheduleOpen, setScheduleOpen] = useState(false);
 
+  // Auto-fill patient name from profile when patient email is entered
+  useEffect(() => {
+    const email = form.patient_email;
+    if (!email || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) return;
+    const timer = setTimeout(() => {
+      fetch(`/api/patient/profile?email=${encodeURIComponent(email)}`)
+        .then((r) => r.ok ? r.json() : null)
+        .then((data) => {
+          if (data?.success && data.name && !form.patient_name) {
+            set("patient_name", data.name);
+            setPatientInfoOpen(true);
+          }
+        })
+        .catch(() => null);
+    }, 600);
+    return () => clearTimeout(timer);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [form.patient_email]);
+
   const fetchLabs = useCallback(() => {
     setLabsLoading(true);
     fetch("/api/labs")

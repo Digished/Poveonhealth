@@ -31,6 +31,7 @@ interface ReferralDoctor {
   months: Record<string, number>;
   tests: string[];
   last_referral: string;
+  recent_requests?: { id: string; code: string; tests: string; test_image_url: string | null; created_at: string }[];
 }
 
 interface LabDashboardProps {
@@ -636,13 +637,43 @@ export function LabDashboard({ lab, isOwner = false, roleName = "Lab Owner", can
                             </div>
                           )}
                           <div>
-                            <p className="text-xs text-slate-500 font-medium mb-1.5">Tests Referred</p>
+                            <p className="text-xs text-slate-500 font-medium mb-1.5">Tests Referred ({doc.tests.length})</p>
                             <div className="flex flex-wrap gap-1.5">
-                              {doc.tests.map((t) => (
+                              {(expandedDoctor === doc.doctor_email ? doc.tests : doc.tests.slice(0, 6)).map((t) => (
                                 <span key={t} className="text-xs bg-medical-900/50 text-medical-300 border border-medical-800/30 px-2 py-0.5 rounded-full">{t}</span>
                               ))}
                             </div>
+                            {doc.tests.length > 6 && (
+                              <button
+                                type="button"
+                                className="mt-2 text-xs text-medical-400 hover:text-medical-300 font-medium transition"
+                                onClick={(e) => { e.stopPropagation(); setExpandedDoctor(expandedDoctor === `${doc.doctor_email}_tests` ? doc.doctor_email : `${doc.doctor_email}_tests`); }}
+                              >
+                                {expandedDoctor === `${doc.doctor_email}_tests` ? "Show less" : `+${doc.tests.length - 6} more tests`}
+                              </button>
+                            )}
                           </div>
+                          {doc.recent_requests && doc.recent_requests.some((r) => r.test_image_url) && (
+                            <div>
+                              <p className="text-xs text-slate-500 font-medium mb-1.5">Request Images</p>
+                              <div className="space-y-1.5">
+                                {doc.recent_requests.filter((r) => r.test_image_url).map((r) => (
+                                  <a
+                                    key={r.id}
+                                    href={r.test_image_url!}
+                                    target="_blank"
+                                    rel="noopener noreferrer"
+                                    className="flex items-center gap-2 px-3 py-2 rounded-xl bg-blue-500/10 border border-blue-500/20 hover:bg-blue-500/20 transition text-xs font-medium text-blue-300"
+                                    onClick={(e) => e.stopPropagation()}
+                                  >
+                                    <FileImage className="w-3.5 h-3.5 shrink-0" />
+                                    <span className="truncate">{new Date(r.created_at).toLocaleDateString("en-GB", { day: "numeric", month: "short", year: "numeric" })} — {r.tests.slice(0, 40)}{r.tests.length > 40 ? "…" : ""}</span>
+                                    <ExternalLink className="w-3 h-3 shrink-0 ml-auto opacity-60" />
+                                  </a>
+                                ))}
+                              </div>
+                            </div>
+                          )}
                           <div>
                             <p className="text-xs text-slate-500 font-medium mb-1.5">Bank Details</p>
                             {doc.doctor_bank_name || doc.doctor_account_number ? (

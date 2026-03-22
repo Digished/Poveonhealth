@@ -33,7 +33,9 @@ export async function GET(request: NextRequest) {
       doctor_account_number: true,
       doctor_account_name: true,
       tests: true,
+      test_image_url: true,
       created_at: true,
+      code: true,
     },
     orderBy: { created_at: "desc" },
   });
@@ -69,6 +71,7 @@ export async function GET(request: NextRequest) {
     months: Record<string, number>;
     tests: Set<string>;
     last_referral: string;
+    recent_requests: { id: string; code: string; tests: string; test_image_url: string | null; created_at: string }[];
   }>();
 
   for (const r of filtered) {
@@ -90,6 +93,7 @@ export async function GET(request: NextRequest) {
         months: {},
         tests: new Set(),
         last_referral: r.created_at.toISOString(),
+        recent_requests: [],
       });
     }
 
@@ -104,6 +108,17 @@ export async function GET(request: NextRequest) {
     if (r.created_at.toISOString() > doc.last_referral) {
       doc.last_referral = r.created_at.toISOString();
     }
+
+    // Keep the 5 most recent requests (already ordered desc)
+    if (doc.recent_requests.length < 5) {
+      doc.recent_requests.push({
+        id: r.id,
+        code: r.code,
+        tests: r.tests,
+        test_image_url: r.test_image_url,
+        created_at: r.created_at.toISOString(),
+      });
+    }
   }
 
   const referrals = Array.from(doctorMap.values())
@@ -111,6 +126,7 @@ export async function GET(request: NextRequest) {
     .map((d) => ({
       ...d,
       tests: Array.from(d.tests).sort(),
+      recent_requests: d.recent_requests,
     }));
 
   // Build available filter options from ALL requests (not just filtered)

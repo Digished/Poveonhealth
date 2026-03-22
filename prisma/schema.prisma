@@ -277,6 +277,17 @@ model PatientSession {
   @@map("patient_sessions")
 }
 
+// Patient profile — name and contact info set by the patient via portal
+// Used for global auto-fill when doctor enters the patient's email
+model PatientProfile {
+  email      String    @id
+  name       String?
+  phone      String?
+  updated_at DateTime  @updatedAt
+
+  @@map("patient_profiles")
+}
+
 // Tracks API calls for analytics — written asynchronously, never blocks responses
 model ApiLog {
   id          String   @id @default(uuid())

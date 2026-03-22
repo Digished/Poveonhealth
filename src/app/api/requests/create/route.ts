@@ -174,18 +174,20 @@ export async function POST(request: NextRequest) {
     ];
 
     if (data.patient_email) {
+      const patientAppUrl = process.env.NEXT_PUBLIC_APP_URL ?? "";
       sends.push(
         resend.emails.send({
           from: labSender(lab),
           to: data.patient_email,
           subject: `Your Lab Request Code — ${code}`,
           html: patientRequestCode({
-            patientName: data.patient_name || "Patient",
+            patientName: data.patient_name || "",
             code,
             labName: lab.name,
             labAddress,
             labPhones,
             brand,
+            requestPageUrl: patientAppUrl ? `${patientAppUrl}/r/${code}` : undefined,
           }),
         }).then(({ error }) => { if (error) console.error("[email] patient code:", JSON.stringify(error)); })
       );

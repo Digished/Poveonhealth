@@ -153,18 +153,23 @@ export function patientRequestCode({
   const phoneLines = labPhones.length
     ? labPhones.map((p) => `<p style="margin:2px 0;color:#1e3a5f;font-size:14px;">📞 ${p}</p>`).join("")
     : "";
+  const greeting = patientName ? `Dear ${patientName},<br><br>` : "";
   const viewRequestButton = requestPageUrl
-    ? `<div style="text-align:center;margin:20px 0;">
-        <a href="${requestPageUrl}" style="display:inline-block;background:#0270c3;color:#ffffff;text-decoration:none;padding:14px 32px;border-radius:8px;font-weight:600;font-size:15px;">
-          View Request Details
+    ? `<div style="text-align:center;margin:24px 0 8px;">
+        <a href="${requestPageUrl}" style="display:inline-block;background:#0270c3;color:#ffffff;text-decoration:none;padding:14px 32px;border-radius:10px;font-weight:700;font-size:15px;letter-spacing:0.2px;">
+          View Request &amp; Lab Details
+        </a>
+      </div>
+      <div style="text-align:center;margin:8px 0 0;">
+        <a href="${requestPageUrl.replace(/\/r\/.*/, "/login")}" style="display:inline-block;background:#f0f7ff;color:#0259a0;text-decoration:none;padding:10px 24px;border-radius:10px;font-weight:600;font-size:13px;border:1px solid #bfdbfe;">
+          Manage in Patient Portal
         </a>
       </div>`
     : "";
   return base(`
     <h2 style="margin:0 0 8px;color:#0259a0;font-size:20px;font-weight:700;">Your Lab Test Request</h2>
     <p style="margin:0 0 24px;color:#4b5563;font-size:15px;">
-      Dear ${patientName},<br><br>
-      Your doctor has sent a laboratory test request on your behalf to <strong>${labName}</strong>.
+      ${greeting}Your doctor has sent a laboratory test request on your behalf to <strong>${labName}</strong>.
       Please present the code below when you arrive at the laboratory.
     </p>
 
