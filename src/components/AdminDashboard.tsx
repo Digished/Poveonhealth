@@ -6,8 +6,9 @@ import {
   Plus, FlaskConical, BarChart3, List, LogOut,
   Building2, Trash2, Eye, EyeOff, RefreshCw, X, Pencil,
   Phone, Upload, Check, MapPin, Users, ChevronRight, ChevronDown, ChevronUp,
-  Code2, Key, Copy, TrendingUp, Link,
+  Code2, Key, Copy, TrendingUp, Link, Sun, Moon,
 } from "lucide-react";
+import { useDashTheme } from "@/hooks/useDashTheme";
 import { Button } from "@/components/ui/Button";
 import { Input, Textarea } from "@/components/ui/Input";
 import { StatusBadge, Badge } from "@/components/ui/Badge";
@@ -99,6 +100,7 @@ function refLink(code: string) {
 
 export function AdminDashboard() {
   const router = useRouter();
+  const { isLight, toggle, themeClass } = useDashTheme("admin_dash_theme");
   const [activeTab, setActiveTab] = useState<AdminTab>("metrics");
   const [labs, setLabs] = useState<Lab[]>([]);
   const [requests, setRequests] = useState<LabRequest[]>([]);
@@ -313,7 +315,7 @@ export function AdminDashboard() {
   }
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-slate-900 via-medical-950 to-slate-900 text-white">
+    <div className={`min-h-screen bg-gradient-to-br from-slate-900 via-medical-950 to-slate-900 text-white transition-colors duration-300 ${themeClass}`}>
       <header className="border-b border-white/10 bg-white/5 backdrop-blur-sm sticky top-0 z-10">
         <div className="max-w-7xl mx-auto px-4 py-4 flex items-center justify-between">
           <div className="flex items-center gap-3">
@@ -326,6 +328,13 @@ export function AdminDashboard() {
             </div>
           </div>
           <div className="flex items-center gap-2">
+            <button
+              onClick={toggle}
+              className="p-2 rounded-lg hover:bg-white/10 text-slate-400 hover:text-white transition-colors"
+              title={isLight ? "Switch to dark mode" : "Switch to light mode"}
+            >
+              {isLight ? <Moon className="w-4 h-4" /> : <Sun className="w-4 h-4" />}
+            </button>
             <button onClick={() => fetchData()} className="p-2 rounded-lg hover:bg-white/10 text-slate-400 hover:text-white transition-colors">
               <RefreshCw className={`w-4 h-4 ${loading ? "animate-spin" : ""}`} />
             </button>

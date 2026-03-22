@@ -865,6 +865,7 @@ export function DoctorRequestForm({
   const [selectedBranchId, setSelectedBranchId] = useState<string>("");
   // Image upload state
   const [imageUploading, setImageUploading] = useState(false);
+  const [imageUploadProgress, setImageUploadProgress] = useState(0);
   const [testImageUrl, setTestImageUrl] = useState<string | null>(null);
   const [imageUploadError, setImageUploadError] = useState<string | null>(null);
   // Critical / ambulance state
@@ -1015,7 +1016,8 @@ export function DoctorRequestForm({
     }
     if (s === 2) {
       if (!form.patient_phone) errs.patient_phone = "Required";
-      if (form.patient_email && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(form.patient_email))
+      if (!form.patient_email.trim()) errs.patient_email = "Patient email is required";
+      else if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(form.patient_email))
         errs.patient_email = "Invalid email";
       if (clinicalMode === "type") {
         if (!form.diagnosis.trim()) errs.diagnosis = "Required";
@@ -1152,7 +1154,7 @@ export function DoctorRequestForm({
     }
     if (step === 2) {
       const phoneOk = !!form.patient_phone;
-      const emailOk = !form.patient_email || /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(form.patient_email);
+      const emailOk = !!form.patient_email && /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(form.patient_email);
       if (clinicalMode === "picture") return phoneOk && emailOk && !!testImageUrl;
       return phoneOk && emailOk && form.diagnosis.trim().length > 0 && form.tests.trim().length > 0;
     }
@@ -1502,14 +1504,14 @@ export function DoctorRequestForm({
                   <div className="flex-1 pb-5 min-w-0">
                     <div className="flex flex-col gap-1">
                       <label htmlFor="patient_email" className="text-sm font-medium text-slate-700 flex items-center gap-2">
-                        Patient Email
-                        <span className="text-xs bg-amber-100 text-amber-700 px-2 py-0.5 rounded-full font-medium">Recommended</span>
+                        Patient Email <span className="text-red-500 ml-0.5">*</span>
+                        <span className="text-xs bg-sky-100 text-sky-700 px-2 py-0.5 rounded-full font-medium">Tracks patient details</span>
                       </label>
                       <Input
                         id="patient_email"
                         type="email"
                         placeholder="patient@example.com"
-                        hint="Patient will receive their request code & results by email"
+                        hint="Used to send request code, track results, and auto-fill patient details from their portal"
                         value={form.patient_email}
                         onChange={(e) => set("patient_email", e.target.value)}
                         error={errors.patient_email}
@@ -1603,10 +1605,13 @@ export function DoctorRequestForm({
                             </div>
                             <div>
                               <p className="text-sm font-semibold text-medical-700">Uploading your image…</p>
-                              <p className="text-xs text-slate-400 mt-1">Please wait, this only takes a moment</p>
+                              <p className="text-xs text-slate-400 mt-1">{imageUploadProgress < 100 ? `${imageUploadProgress}%` : "Processing…"}</p>
                             </div>
-                            <div className="w-full max-w-[180px] bg-medical-100 rounded-full h-1.5 overflow-hidden">
-                              <div className="h-full bg-medical-500 rounded-full animate-pulse" style={{ width: "70%" }} />
+                            <div className="w-full max-w-[200px] bg-medical-100 rounded-full h-2 overflow-hidden">
+                              <div
+                                className="h-full bg-medical-500 rounded-full transition-all duration-300"
+                                style={{ width: `${imageUploadProgress}%` }}
+                              />
                             </div>
                           </div>
                         ) : (
@@ -1622,27 +1627,54 @@ export function DoctorRequestForm({
                               type="file"
                               accept="image/jpeg,image/png,image/webp,image/heic,.heic"
                               className="sr-only"
-                              onChange={async (e) => {
+                              onChange={(e) => {
                                 const file = e.target.files?.[0];
                                 if (!file) return;
+                                // Client-side validation
+                                const MAX_MB = 10;
+                                if (file.size > MAX_MB * 1024 * 1024) {
+                                  setImageUploadError(`File is too large (${(file.size / 1024 / 1024).toFixed(1)} MB). Maximum is ${MAX_MB} MB.`);
+                                  e.target.value = "";
+                                  return;
+                                }
+                                const allowed = ["image/jpeg", "image/png", "image/webp", "image/heic"];
+                                if (!allowed.includes(file.type) && !file.name.toLowerCase().endsWith(".heic")) {
+                                  setImageUploadError(`Unsupported format: ${file.type || file.name.split(".").pop()?.toUpperCase()}. Please use JPEG, PNG, WebP, or HEIC.`);
+                                  e.target.value = "";
+                                  return;
+                                }
                                 setImageUploading(true);
+                                setImageUploadProgress(0);
                                 setImageUploadError(null);
-                                try {
-                                  const fd = new FormData();
-                                  fd.append("file", file);
-                                  const res = await fetch("/api/requests/upload-image", { method: "POST", body: fd });
-                                  const data = await res.json();
-                                  if (data.url) {
-                                    setTestImageUrl(data.url);
-                                  } else {
-                                    setImageUploadError(data.error ?? "Upload failed");
+                                const fd = new FormData();
+                                fd.append("file", file);
+                                const xhr = new XMLHttpRequest();
+                                xhr.upload.onprogress = (ev) => {
+                                  if (ev.lengthComputable) setImageUploadProgress(Math.round((ev.loaded / ev.total) * 100));
+                                };
+                                xhr.onload = () => {
+                                  try {
+                                    const data = JSON.parse(xhr.responseText);
+                                    if (data.url) {
+                                      setTestImageUrl(data.url);
+                                      setImageUploadProgress(100);
+                                    } else {
+                                      setImageUploadError(data.error ?? "Upload failed. Please try again.");
+                                    }
+                                  } catch {
+                                    setImageUploadError("Upload failed. Please try again.");
+                                  } finally {
+                                    setImageUploading(false);
+                                    e.target.value = "";
                                   }
-                                } catch {
-                                  setImageUploadError("Upload failed. Please try again.");
-                                } finally {
+                                };
+                                xhr.onerror = () => {
+                                  setImageUploadError("Network error. Check your connection and try again.");
                                   setImageUploading(false);
                                   e.target.value = "";
-                                }
+                                };
+                                xhr.open("POST", "/api/requests/upload-image");
+                                xhr.send(fd);
                               }}
                             />
                           </label>

@@ -45,22 +45,9 @@ interface Request {
 }
 
 interface EditForm {
-  patient_name: string;
-  dob: string;
-  sex: string;
-  address: string;
-  patient_email: string;
-  patient_phone: string;
-  doctor_prefix: string;
-  doctor_name: string;
-  doctor_phone: string;
-  doctor_hospital: string;
-  doctor_bank_name: string;
-  doctor_account_number: string;
-  doctor_account_name: string;
-  schedule: string;
-  diagnosis: string;
   tests: string;
+  diagnosis: string;
+  schedule: string;
 }
 
 const STATUS_CONFIG: Record<string, { label: string; color: string; icon: React.ReactNode }> = {
@@ -121,22 +108,9 @@ function EditModal({
   onSaved: (updated: Request) => void;
 }) {
   const [form, setForm] = useState<EditForm>({
-    patient_name: req.patient_name ?? "",
-    dob: toDateInputValue(req.dob),
-    sex: req.sex ?? "",
-    address: req.address ?? "",
-    patient_email: req.patient_email ?? "",
-    patient_phone: req.patient_phone ?? "",
-    doctor_prefix: req.doctor_prefix ?? "",
-    doctor_name: req.doctor_name,
-    doctor_phone: req.doctor_phone ?? "",
-    doctor_hospital: req.doctor_hospital ?? "",
-    doctor_bank_name: req.doctor_bank_name ?? "",
-    doctor_account_number: req.doctor_account_number ?? "",
-    doctor_account_name: req.doctor_account_name ?? "",
-    schedule: req.schedule ?? "",
-    diagnosis: req.diagnosis ?? "",
     tests: req.tests,
+    diagnosis: req.diagnosis ?? "",
+    schedule: req.schedule ?? "",
   });
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState("");
@@ -148,7 +122,6 @@ function EditModal({
 
   async function handleSave() {
     setError("");
-    if (!form.doctor_name.trim()) { setError("Doctor name is required."); return; }
     if (!form.tests.trim()) { setError("Tests are required."); return; }
     setSaving(true);
     try {
@@ -157,22 +130,9 @@ function EditModal({
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           requestId: req.id,
-          patient_name: form.patient_name.trim(),
-          dob: form.dob,
-          sex: form.sex,
-          address: form.address.trim() || undefined,
-          patient_email: form.patient_email.trim() || undefined,
-          patient_phone: form.patient_phone.trim() || undefined,
-          doctor_prefix: form.doctor_prefix || undefined,
-          doctor_name: form.doctor_name.trim(),
-          doctor_phone: form.doctor_phone.trim() || undefined,
-          doctor_hospital: form.doctor_hospital.trim() || undefined,
-          doctor_bank_name: form.doctor_bank_name.trim() || undefined,
-          doctor_account_number: form.doctor_account_number.trim() || undefined,
-          doctor_account_name: form.doctor_account_name.trim() || undefined,
-          schedule: form.schedule || undefined,
-          diagnosis: form.diagnosis.trim() || undefined,
           tests: form.tests.trim(),
+          diagnosis: form.diagnosis.trim() || undefined,
+          schedule: form.schedule || undefined,
         }),
       });
       const data = await res.json();
@@ -181,33 +141,16 @@ function EditModal({
         return;
       }
       toast.success("Request updated successfully.");
-      // Build updated request object for optimistic UI
-      const updated: Request = {
-        ...req,
-        patient_name: form.patient_name.trim(),
-        dob: form.dob,
-        sex: form.sex,
-        address: form.address.trim() || null,
-        patient_email: form.patient_email.trim() || null,
-        patient_phone: form.patient_phone.trim() || null,
-        doctor_prefix: form.doctor_prefix || null,
-        doctor_name: form.doctor_name.trim(),
-        doctor_phone: form.doctor_phone.trim() || null,
-        doctor_hospital: form.doctor_hospital.trim() || null,
-        doctor_bank_name: form.doctor_bank_name.trim() || null,
-        doctor_account_number: form.doctor_account_number.trim() || null,
-        doctor_account_name: form.doctor_account_name.trim() || null,
-        schedule: form.schedule || null,
-        diagnosis: form.diagnosis.trim() || null,
-        tests: form.tests.trim(),
-      };
-      onSaved(updated);
+      onSaved({ ...req, tests: form.tests.trim(), diagnosis: form.diagnosis.trim() || null, schedule: form.schedule || null });
     } catch {
       setError("Network error. Please try again.");
     } finally {
       setSaving(false);
     }
   }
+
+  const inputCls = "w-full px-3 py-2.5 rounded-xl border border-slate-200 bg-white text-slate-800 text-sm focus:outline-none focus:ring-2 focus:ring-amber-400 focus:border-transparent transition";
+  const readCls = "text-sm text-slate-700 bg-slate-50 border border-slate-100 rounded-xl px-3 py-2.5";
 
   return (
     <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center p-0 sm:p-4 bg-black/40 backdrop-blur-sm">
@@ -230,177 +173,41 @@ function EditModal({
           </button>
         </div>
 
-        {/* Editable notice */}
+        {/* Info notice */}
         <div className="mx-5 mt-4 flex items-start gap-2 bg-amber-50 border border-amber-100 rounded-xl px-3 py-2.5">
           <AlertCircle className="w-4 h-4 text-amber-500 shrink-0 mt-0.5" />
           <p className="text-xs text-amber-700">
-            Editing is only available while the request is pending (before the lab processes it).
+            You can update the tests and diagnosis. Patient details can only be updated by the patient or the lab.
           </p>
         </div>
 
         {/* Scrollable form */}
         <div className="overflow-y-auto flex-1 px-5 py-4 space-y-5">
 
-          {/* Patient section */}
+          {/* Read-only patient info */}
           <div>
-            <p className="text-xs font-semibold text-slate-400 uppercase tracking-wider mb-3">Patient Details</p>
-            <div className="space-y-3">
+            <p className="text-xs font-semibold text-slate-400 uppercase tracking-wider mb-3">Patient (read-only)</p>
+            <div className="grid grid-cols-2 gap-2">
               <div>
-                <label className="text-xs font-medium text-slate-600 block mb-1">Full Name *</label>
-                <input
-                  type="text"
-                  value={form.patient_name}
-                  onChange={(e) => set("patient_name", e.target.value)}
-                  className="w-full px-3 py-2.5 rounded-xl border border-slate-200 bg-white text-slate-800 text-sm focus:outline-none focus:ring-2 focus:ring-amber-400 focus:border-transparent transition"
-                  placeholder="Patient full name"
-                />
-              </div>
-              <div className="grid grid-cols-2 gap-3">
-                <div>
-                  <label className="text-xs font-medium text-slate-600 block mb-1">Date of Birth *</label>
-                  <input
-                    type="date"
-                    value={form.dob}
-                    onChange={(e) => set("dob", e.target.value)}
-                    className="w-full px-3 py-2.5 rounded-xl border border-slate-200 bg-white text-slate-800 text-sm focus:outline-none focus:ring-2 focus:ring-amber-400 focus:border-transparent transition"
-                  />
-                </div>
-                <div>
-                  <label className="text-xs font-medium text-slate-600 block mb-1">Sex *</label>
-                  <select
-                    value={form.sex}
-                    onChange={(e) => set("sex", e.target.value)}
-                    className="w-full px-3 py-2.5 rounded-xl border border-slate-200 bg-white text-slate-800 text-sm focus:outline-none focus:ring-2 focus:ring-amber-400 focus:border-transparent transition"
-                  >
-                    <option value="">Select</option>
-                    <option value="male">Male</option>
-                    <option value="female">Female</option>
-                  </select>
-                </div>
+                <p className="text-xs text-slate-400 mb-1">Name</p>
+                <p className={readCls}>{req.patient_name ?? "—"}</p>
               </div>
               <div>
-                <label className="text-xs font-medium text-slate-600 block mb-1">Phone</label>
-                <input
-                  type="tel"
-                  value={form.patient_phone}
-                  onChange={(e) => set("patient_phone", e.target.value)}
-                  className="w-full px-3 py-2.5 rounded-xl border border-slate-200 bg-white text-slate-800 text-sm focus:outline-none focus:ring-2 focus:ring-amber-400 focus:border-transparent transition"
-                  placeholder="Patient phone number"
-                />
+                <p className="text-xs text-slate-400 mb-1">DOB</p>
+                <p className={readCls}>{formatDob(req.dob)}</p>
               </div>
               <div>
-                <label className="text-xs font-medium text-slate-600 block mb-1">Email</label>
-                <input
-                  type="email"
-                  value={form.patient_email}
-                  onChange={(e) => set("patient_email", e.target.value)}
-                  className="w-full px-3 py-2.5 rounded-xl border border-slate-200 bg-white text-slate-800 text-sm focus:outline-none focus:ring-2 focus:ring-amber-400 focus:border-transparent transition"
-                  placeholder="patient@email.com"
-                />
+                <p className="text-xs text-slate-400 mb-1">Sex</p>
+                <p className={`${readCls} capitalize`}>{req.sex ?? "—"}</p>
               </div>
               <div>
-                <label className="text-xs font-medium text-slate-600 block mb-1">Address</label>
-                <input
-                  type="text"
-                  value={form.address}
-                  onChange={(e) => set("address", e.target.value)}
-                  className="w-full px-3 py-2.5 rounded-xl border border-slate-200 bg-white text-slate-800 text-sm focus:outline-none focus:ring-2 focus:ring-amber-400 focus:border-transparent transition"
-                  placeholder="Patient address"
-                />
+                <p className="text-xs text-slate-400 mb-1">Phone</p>
+                <p className={readCls}>{req.patient_phone ?? "—"}</p>
               </div>
             </div>
           </div>
 
-          {/* Doctor section */}
-          <div>
-            <p className="text-xs font-semibold text-slate-400 uppercase tracking-wider mb-3">Doctor / Provider Details</p>
-            <div className="space-y-3">
-              <div className="grid grid-cols-3 gap-3">
-                <div>
-                  <label className="text-xs font-medium text-slate-600 block mb-1">Prefix</label>
-                  <select
-                    value={form.doctor_prefix}
-                    onChange={(e) => set("doctor_prefix", e.target.value)}
-                    className="w-full px-3 py-2.5 rounded-xl border border-slate-200 bg-white text-slate-800 text-sm focus:outline-none focus:ring-2 focus:ring-amber-400 focus:border-transparent transition"
-                  >
-                    <option value="">None</option>
-                    {PROFESSIONAL_PREFIXES.map((p) => (
-                      <option key={p} value={p}>{p}</option>
-                    ))}
-                  </select>
-                </div>
-                <div className="col-span-2">
-                  <label className="text-xs font-medium text-slate-600 block mb-1">Full Name *</label>
-                  <input
-                    type="text"
-                    value={form.doctor_name}
-                    onChange={(e) => set("doctor_name", e.target.value)}
-                    className="w-full px-3 py-2.5 rounded-xl border border-slate-200 bg-white text-slate-800 text-sm focus:outline-none focus:ring-2 focus:ring-amber-400 focus:border-transparent transition"
-                    placeholder="Doctor full name"
-                  />
-                </div>
-              </div>
-              <div>
-                <label className="text-xs font-medium text-slate-600 block mb-1">Phone</label>
-                <input
-                  type="tel"
-                  value={form.doctor_phone}
-                  onChange={(e) => set("doctor_phone", e.target.value)}
-                  className="w-full px-3 py-2.5 rounded-xl border border-slate-200 bg-white text-slate-800 text-sm focus:outline-none focus:ring-2 focus:ring-amber-400 focus:border-transparent transition"
-                  placeholder="Doctor phone"
-                />
-              </div>
-              <div>
-                <label className="text-xs font-medium text-slate-600 block mb-1">Hospital / Clinic</label>
-                <input
-                  type="text"
-                  value={form.doctor_hospital}
-                  onChange={(e) => set("doctor_hospital", e.target.value)}
-                  className="w-full px-3 py-2.5 rounded-xl border border-slate-200 bg-white text-slate-800 text-sm focus:outline-none focus:ring-2 focus:ring-amber-400 focus:border-transparent transition"
-                  placeholder="Hospital or clinic name"
-                />
-              </div>
-            </div>
-          </div>
-
-          {/* Bank details */}
-          <div>
-            <p className="text-xs font-semibold text-slate-400 uppercase tracking-wider mb-3">Bank Details (optional)</p>
-            <div className="space-y-3">
-              <div>
-                <label className="text-xs font-medium text-slate-600 block mb-1">Bank Name</label>
-                <input
-                  type="text"
-                  value={form.doctor_bank_name}
-                  onChange={(e) => set("doctor_bank_name", e.target.value)}
-                  className="w-full px-3 py-2.5 rounded-xl border border-slate-200 bg-white text-slate-800 text-sm focus:outline-none focus:ring-2 focus:ring-amber-400 focus:border-transparent transition"
-                  placeholder="Bank name"
-                />
-              </div>
-              <div>
-                <label className="text-xs font-medium text-slate-600 block mb-1">Account Number</label>
-                <input
-                  type="text"
-                  value={form.doctor_account_number}
-                  onChange={(e) => set("doctor_account_number", e.target.value)}
-                  className="w-full px-3 py-2.5 rounded-xl border border-slate-200 bg-white text-slate-800 text-sm focus:outline-none focus:ring-2 focus:ring-amber-400 focus:border-transparent transition"
-                  placeholder="Account number"
-                />
-              </div>
-              <div>
-                <label className="text-xs font-medium text-slate-600 block mb-1">Account Name</label>
-                <input
-                  type="text"
-                  value={form.doctor_account_name}
-                  onChange={(e) => set("doctor_account_name", e.target.value)}
-                  className="w-full px-3 py-2.5 rounded-xl border border-slate-200 bg-white text-slate-800 text-sm focus:outline-none focus:ring-2 focus:ring-amber-400 focus:border-transparent transition"
-                  placeholder="Account holder name"
-                />
-              </div>
-            </div>
-          </div>
-
-          {/* Tests & diagnosis */}
+          {/* Tests & diagnosis — editable */}
           <div>
             <p className="text-xs font-semibold text-slate-400 uppercase tracking-wider mb-3">Tests & Diagnosis</p>
             <div className="space-y-3">
@@ -410,7 +217,7 @@ function EditModal({
                   value={form.tests}
                   onChange={(e) => set("tests", e.target.value)}
                   rows={3}
-                  className="w-full px-3 py-2.5 rounded-xl border border-slate-200 bg-white text-slate-800 text-sm focus:outline-none focus:ring-2 focus:ring-amber-400 focus:border-transparent transition resize-none"
+                  className={`${inputCls} resize-none`}
                   placeholder="List of tests requested"
                 />
               </div>
@@ -420,7 +227,7 @@ function EditModal({
                   value={form.diagnosis}
                   onChange={(e) => set("diagnosis", e.target.value)}
                   rows={2}
-                  className="w-full px-3 py-2.5 rounded-xl border border-slate-200 bg-white text-slate-800 text-sm focus:outline-none focus:ring-2 focus:ring-amber-400 focus:border-transparent transition resize-none"
+                  className={`${inputCls} resize-none`}
                   placeholder="Clinical notes or diagnosis"
                 />
               </div>
@@ -429,7 +236,7 @@ function EditModal({
                 <select
                   value={form.schedule}
                   onChange={(e) => set("schedule", e.target.value)}
-                  className="w-full px-3 py-2.5 rounded-xl border border-slate-200 bg-white text-slate-800 text-sm focus:outline-none focus:ring-2 focus:ring-amber-400 focus:border-transparent transition"
+                  className={inputCls}
                 >
                   <option value="">Not specified</option>
                   <option value="today">Today</option>

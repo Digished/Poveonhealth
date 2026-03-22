@@ -7,8 +7,9 @@ import {
   ChevronRight, Calendar, Stethoscope, LogOut, Eye, EyeOff, Phone, X,
   Link2, Paperclip, Send, SkipForward, UserCircle, MapPin, Shield, Layers,
   Users, CreditCard, Filter, ChevronDown, AlertTriangle, Truck, ExternalLink,
-  MessageCircle, ChevronLeft, FileImage,
+  MessageCircle, ChevronLeft, FileImage, Sun, Moon, Pencil, Save,
 } from "lucide-react";
+import { useDashTheme } from "@/hooks/useDashTheme";
 import { Button } from "@/components/ui/Button";
 import { Input } from "@/components/ui/Input";
 import { StatusBadge } from "@/components/ui/Badge";
@@ -75,6 +76,7 @@ function scheduleLabel(value: string | null): string | null {
 export function LabDashboard({ lab, isOwner = false, roleName = "Lab Owner", canViewReferrals = false }: LabDashboardProps) {
   const { name: labName, logo_url: labLogoUrl } = lab;
   const router = useRouter();
+  const { isLight, toggle, themeClass } = useDashTheme("lab_dash_theme");
   const [mainView, setMainView] = useState<"requests" | "referrals" | "clients">("requests");
   const [activeTab, setActiveTab] = useState<RequestStatus>("incoming");
   const [requests, setRequests] = useState<LabRequest[]>([]);
@@ -113,6 +115,11 @@ export function LabDashboard({ lab, isOwner = false, roleName = "Lab Owner", can
   const [availableMonths, setAvailableMonths] = useState<string[]>([]);
   const [availableTests, setAvailableTests] = useState<string[]>([]);
   const [expandedDoctor, setExpandedDoctor] = useState<string | null>(null);
+
+  // Patient info edit modal state
+  const [editPatientRequest, setEditPatientRequest] = useState<LabRequest | null>(null);
+  const [editPatientForm, setEditPatientForm] = useState({ patient_name: "", patient_phone: "", patient_email: "", dob: "", sex: "", address: "" });
+  const [savingPatient, setSavingPatient] = useState(false);
 
   // Results modal state
   const [resultsModalRequest, setResultsModalRequest] = useState<LabRequest | null>(null);
@@ -372,6 +379,50 @@ export function LabDashboard({ lab, isOwner = false, roleName = "Lab Owner", can
     router.refresh();
   }
 
+  function openEditPatient(req: LabRequest) {
+    setEditPatientRequest(req);
+    setEditPatientForm({
+      patient_name: req.patient_name ?? "",
+      patient_phone: req.patient_phone ?? "",
+      patient_email: req.patient_email ?? "",
+      dob: req.dob ? req.dob.slice(0, 10) : "",
+      sex: req.sex ?? "",
+      address: req.address ?? "",
+    });
+  }
+
+  async function handleSavePatient() {
+    if (!editPatientRequest) return;
+    setSavingPatient(true);
+    try {
+      const res = await fetch("/api/lab/requests/update-patient", {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ requestId: editPatientRequest.id, ...editPatientForm }),
+      });
+      const data = await res.json();
+      if (!data.success) { toast.error(data.error ?? "Failed to save"); return; }
+      toast.success("Patient info updated");
+      // Optimistic update
+      const updated: LabRequest = {
+        ...editPatientRequest,
+        patient_name: editPatientForm.patient_name || null,
+        patient_phone: editPatientForm.patient_phone || null,
+        patient_email: editPatientForm.patient_email || null,
+        dob: editPatientForm.dob || null,
+        sex: editPatientForm.sex || null,
+        address: editPatientForm.address || null,
+      };
+      setRequests((prev) => prev.map((r) => r.id === updated.id ? updated : r));
+      if (selectedRequest?.id === updated.id) setSelectedRequest(updated);
+      setEditPatientRequest(null);
+    } catch {
+      toast.error("Network error");
+    } finally {
+      setSavingPatient(false);
+    }
+  }
+
   const counts = {
     incoming: requests.filter((r) => r.status === "incoming").length,
     seen: requests.filter((r) => r.status === "seen").length,
@@ -381,7 +432,7 @@ export function LabDashboard({ lab, isOwner = false, roleName = "Lab Owner", can
   const isRevealed = selectedRequest?.status !== "incoming";
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-slate-900 via-medical-950 to-slate-900 text-white">
+    <div className={`min-h-screen bg-gradient-to-br from-slate-900 via-medical-950 to-slate-900 text-white transition-colors duration-300 ${themeClass}`}>
       {/* Top bar */}
       <header className="border-b border-white/10 backdrop-blur-sm bg-white/5 sticky top-0 z-10">
         <div className="max-w-6xl mx-auto px-4 py-4 flex items-center justify-between">
@@ -399,6 +450,13 @@ export function LabDashboard({ lab, isOwner = false, roleName = "Lab Owner", can
             </div>
           </div>
           <div className="flex items-center gap-2">
+            <button
+              onClick={toggle}
+              className="p-2 rounded-lg hover:bg-white/10 transition-colors text-slate-400 hover:text-white"
+              title={isLight ? "Switch to dark mode" : "Switch to light mode"}
+            >
+              {isLight ? <Moon className="w-4 h-4" /> : <Sun className="w-4 h-4" />}
+            </button>
             <button
               onClick={() => fetchRequests(true)}
               disabled={refreshing}
@@ -1078,6 +1136,17 @@ export function LabDashboard({ lab, isOwner = false, roleName = "Lab Owner", can
                     <DetailRow label="Code">
                       <span className="font-mono font-bold text-medical-400">{selectedRequest.code}</span>
                     </DetailRow>
+                    <div className="flex items-center justify-between">
+                      <span className="text-xs text-slate-400 font-medium uppercase tracking-wider">Patient</span>
+                      <button
+                        onClick={() => openEditPatient(selectedRequest)}
+                        className="inline-flex items-center gap-1 text-xs text-medical-400 hover:text-medical-300 transition-colors"
+                        title="Edit patient info"
+                      >
+                        <Pencil className="w-3 h-3" />
+                        Edit
+                      </button>
+                    </div>
                     {selectedRequest.patient_name && (
                       <DetailRow label="Patient Name">{selectedRequest.patient_name}</DetailRow>
                     )}
@@ -1655,9 +1724,18 @@ export function LabDashboard({ lab, isOwner = false, roleName = "Lab Owner", can
                       <p className="text-xs text-slate-500 font-medium mb-0.5">Code</p>
                       <p className="font-mono font-bold text-medical-400">{selectedRequest.code}</p>
                     </div>
-                    <div>
-                      <p className="text-xs text-slate-500 font-medium mb-0.5">Patient Name</p>
-                      <p className="text-slate-200">{selectedRequest.patient_name}</p>
+                    <div className="flex items-center justify-between">
+                      <div>
+                        <p className="text-xs text-slate-500 font-medium mb-0.5">Patient Name</p>
+                        <p className="text-slate-200">{selectedRequest.patient_name ?? "—"}</p>
+                      </div>
+                      <button
+                        onClick={() => { openEditPatient(selectedRequest); setMobileDetailOpen(false); }}
+                        className="inline-flex items-center gap-1.5 text-xs font-medium text-medical-400 hover:text-medical-300 bg-medical-600/20 hover:bg-medical-600/30 px-3 py-1.5 rounded-lg transition"
+                      >
+                        <Pencil className="w-3 h-3" />
+                        Edit Patient
+                      </button>
                     </div>
                   </>
                 ) : null}
@@ -1824,6 +1902,77 @@ export function LabDashboard({ lab, isOwner = false, roleName = "Lab Owner", can
             </div>
           </div>
         )}
+      {/* Patient info edit modal */}
+      {editPatientRequest && (
+        <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center p-0 sm:p-4 bg-black/60 backdrop-blur-sm">
+          <div className="w-full sm:max-w-md bg-slate-900 border border-white/15 rounded-t-3xl sm:rounded-3xl shadow-2xl max-h-[90dvh] flex flex-col">
+            <div className="flex items-center gap-3 px-5 py-4 border-b border-white/10 shrink-0">
+              <div className="w-8 h-8 rounded-xl bg-medical-600/30 flex items-center justify-center shrink-0">
+                <UserCircle className="w-4 h-4 text-medical-400" />
+              </div>
+              <div className="flex-1 min-w-0">
+                <p className="text-sm font-bold text-white">Edit Patient Info</p>
+                <p className="text-xs text-slate-400 font-mono">{editPatientRequest.code}</p>
+              </div>
+              <button
+                onClick={() => setEditPatientRequest(null)}
+                className="w-8 h-8 rounded-xl bg-white/5 hover:bg-white/10 flex items-center justify-center text-slate-400 hover:text-white transition shrink-0"
+              >
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+            <div className="overflow-y-auto flex-1 px-5 py-4 space-y-4">
+              <p className="text-xs text-slate-400">Changes will also reflect on the patient&apos;s portal profile.</p>
+              {[
+                { key: "patient_name", label: "Full Name", type: "text", placeholder: "Patient full name" },
+                { key: "patient_phone", label: "Phone", type: "tel", placeholder: "+234 800 000 0000" },
+                { key: "patient_email", label: "Email", type: "email", placeholder: "patient@email.com" },
+                { key: "dob", label: "Date of Birth", type: "date", placeholder: "" },
+                { key: "address", label: "Address", type: "text", placeholder: "Home address" },
+              ].map(({ key, label, type, placeholder }) => (
+                <div key={key}>
+                  <label className="text-xs font-medium text-slate-400 block mb-1">{label}</label>
+                  <input
+                    type={type}
+                    value={editPatientForm[key as keyof typeof editPatientForm]}
+                    onChange={(e) => setEditPatientForm((f) => ({ ...f, [key]: e.target.value }))}
+                    placeholder={placeholder}
+                    className="w-full px-3 py-2.5 rounded-xl border border-white/10 bg-white/5 text-white text-sm focus:outline-none focus:ring-2 focus:ring-medical-500 focus:border-medical-400 placeholder-slate-500 transition"
+                  />
+                </div>
+              ))}
+              <div>
+                <label className="text-xs font-medium text-slate-400 block mb-1">Sex</label>
+                <select
+                  value={editPatientForm.sex}
+                  onChange={(e) => setEditPatientForm((f) => ({ ...f, sex: e.target.value }))}
+                  className="w-full px-3 py-2.5 rounded-xl border border-white/10 bg-white/5 text-white text-sm focus:outline-none focus:ring-2 focus:ring-medical-500 transition"
+                >
+                  <option value="">Not specified</option>
+                  <option value="male">Male</option>
+                  <option value="female">Female</option>
+                  <option value="other">Other</option>
+                </select>
+              </div>
+            </div>
+            <div className="px-5 py-4 border-t border-white/10 flex gap-3 shrink-0">
+              <button
+                onClick={() => setEditPatientRequest(null)}
+                className="flex-1 py-2.5 rounded-xl border border-white/10 text-slate-400 font-semibold text-sm hover:bg-white/5 transition"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={handleSavePatient}
+                disabled={savingPatient}
+                className="flex-1 flex items-center justify-center gap-2 py-2.5 rounded-xl bg-medical-600 hover:bg-medical-500 disabled:opacity-60 text-white font-semibold text-sm transition shadow-sm"
+              >
+                {savingPatient ? <RefreshCw className="w-4 h-4 animate-spin" /> : <><Save className="w-4 h-4" /> Save</>}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
       </div>
     </div>
   );
