@@ -121,6 +121,40 @@ export function AdminDashboard() {
   const [apiLogSummary, setApiLogSummary] = useState<ApiLogSummary | null>(null);
   const [expandedLabIntegration, setExpandedLabIntegration] = useState<string | null>(null);
 
+  // Per-lab analytics modal
+  type LabAnalytics = {
+    total: number; done: number; seen: number; incoming: number; completionRate: number;
+    monthlyStatus: Record<string, { incoming: number; seen: number; done: number; total: number }>;
+    topTests: { name: string; total: number; done: number }[];
+    topDoctors: { name: string; email: string; prefix: string | null; total: number; done: number }[];
+    sexCounts: Record<string, number>;
+    schedCounts: Record<string, number>;
+    availableMonths: string[];
+    availableTests: string[];
+  };
+  const [labAnalyticsLabId, setLabAnalyticsLabId] = useState<string | null>(null);
+  const [labAnalyticsLabName, setLabAnalyticsLabName] = useState<string>("");
+  const [labAnalytics, setLabAnalytics] = useState<LabAnalytics | null>(null);
+  const [labAnalyticsLoading, setLabAnalyticsLoading] = useState(false);
+  const [labAnalyticsMonth, setLabAnalyticsMonth] = useState("");
+  const [labAnalyticsStatus, setLabAnalyticsStatus] = useState("");
+  const [labAnalyticsTest, setLabAnalyticsTest] = useState("");
+
+  const fetchLabAnalytics = useCallback(async (labId: string, month = "", status = "", test = "") => {
+    setLabAnalyticsLoading(true);
+    try {
+      const p = new URLSearchParams();
+      if (month) p.set("month", month);
+      if (status) p.set("status", status);
+      if (test) p.set("test", test);
+      const res = await fetch(`/api/admin/labs/${labId}/analytics?${p}`);
+      const data = await res.json();
+      if (data.success) setLabAnalytics(data);
+    } catch { /* non-critical */ } finally {
+      setLabAnalyticsLoading(false);
+    }
+  }, []);
+
   const fetchApiLogs = useCallback(async () => {
     try {
       const res = await fetch("/api/admin/api-logs");
@@ -706,6 +740,20 @@ export function AdminDashboard() {
                         {lab.hidden ? "Show" : "Hide"}
                       </button>
                       <button
+                        onClick={() => {
+                          setLabAnalyticsLabId(lab.id);
+                          setLabAnalyticsLabName(lab.name);
+                          setLabAnalytics(null);
+                          setLabAnalyticsMonth("");
+                          setLabAnalyticsStatus("");
+                          setLabAnalyticsTest("");
+                          fetchLabAnalytics(lab.id);
+                        }}
+                        className="flex items-center gap-1 px-2.5 py-1.5 rounded-lg bg-emerald-500/10 hover:bg-emerald-500/20 text-emerald-400 hover:text-emerald-300 text-xs transition-colors"
+                      >
+                        <BarChart3 className="w-3 h-3" />Stats
+                      </button>
+                      <button
                         onClick={() => setExpandedLabIntegration(lab.id)}
                         className="flex items-center gap-1 px-2.5 py-1.5 rounded-lg bg-blue-500/10 hover:bg-blue-500/20 text-blue-400 hover:text-blue-300 text-xs transition-colors"
                       >
@@ -992,6 +1040,251 @@ export function AdminDashboard() {
           <LabIntegrationModal lab={lab} onClose={() => setExpandedLabIntegration(null)} />
         ) : null;
       })()}
+
+      {/* Per-lab analytics modal */}
+      {labAnalyticsLabId && (
+        <div
+          className="fixed inset-0 z-50 flex items-end sm:items-center justify-center p-4"
+          style={{ backgroundColor: "rgba(2,6,23,0.85)", backdropFilter: "blur(6px)" }}
+          onClick={() => setLabAnalyticsLabId(null)}
+        >
+          <div
+            className="w-full max-w-2xl bg-slate-900 border border-white/10 rounded-3xl shadow-2xl overflow-hidden max-h-[92vh] flex flex-col"
+            onClick={(e) => e.stopPropagation()}
+          >
+            {/* Header */}
+            <div className="px-5 pt-5 pb-4 border-b border-white/10 flex items-center justify-between gap-3 shrink-0">
+              <div className="flex items-center gap-2 min-w-0">
+                <BarChart3 className="w-5 h-5 text-emerald-400 shrink-0" />
+                <div className="min-w-0">
+                  <p className="font-bold text-white truncate">{labAnalyticsLabName}</p>
+                  <p className="text-xs text-slate-500">Lab Analytics</p>
+                </div>
+              </div>
+              <button type="button" onClick={() => setLabAnalyticsLabId(null)} className="p-1.5 rounded-xl hover:bg-white/10 text-slate-400 hover:text-white transition-colors shrink-0">
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            {/* Filters */}
+            <div className="px-5 py-3 border-b border-white/5 flex flex-wrap gap-2 shrink-0">
+              <select
+                value={labAnalyticsMonth}
+                onChange={(e) => {
+                  setLabAnalyticsMonth(e.target.value);
+                  fetchLabAnalytics(labAnalyticsLabId, e.target.value, labAnalyticsStatus, labAnalyticsTest);
+                }}
+                className="bg-white/5 border border-white/10 rounded-xl px-3 py-1.5 text-xs text-slate-200 outline-none cursor-pointer"
+              >
+                <option value="" className="bg-slate-800">All months</option>
+                {(labAnalytics?.availableMonths ?? []).map((m) => {
+                  const [y, mo] = m.split("-");
+                  const lbl = new Date(Number(y), Number(mo) - 1).toLocaleDateString("en-GB", { month: "long", year: "numeric" });
+                  return <option key={m} value={m} className="bg-slate-800">{lbl}</option>;
+                })}
+              </select>
+              <select
+                value={labAnalyticsStatus}
+                onChange={(e) => {
+                  setLabAnalyticsStatus(e.target.value);
+                  fetchLabAnalytics(labAnalyticsLabId, labAnalyticsMonth, e.target.value, labAnalyticsTest);
+                }}
+                className="bg-white/5 border border-white/10 rounded-xl px-3 py-1.5 text-xs text-slate-200 outline-none cursor-pointer"
+              >
+                <option value="" className="bg-slate-800">All statuses</option>
+                <option value="incoming" className="bg-slate-800">Incoming</option>
+                <option value="seen" className="bg-slate-800">Patient Seen</option>
+                <option value="done" className="bg-slate-800">Completed</option>
+              </select>
+              <select
+                value={labAnalyticsTest}
+                onChange={(e) => {
+                  setLabAnalyticsTest(e.target.value);
+                  fetchLabAnalytics(labAnalyticsLabId, labAnalyticsMonth, labAnalyticsStatus, e.target.value);
+                }}
+                className="bg-white/5 border border-white/10 rounded-xl px-3 py-1.5 text-xs text-slate-200 outline-none cursor-pointer min-w-[140px]"
+              >
+                <option value="" className="bg-slate-800">All tests</option>
+                {(labAnalytics?.availableTests ?? []).map((t) => (
+                  <option key={t} value={t} className="bg-slate-800">{t}</option>
+                ))}
+              </select>
+              {(labAnalyticsMonth || labAnalyticsStatus || labAnalyticsTest) && (
+                <button
+                  type="button"
+                  onClick={() => { setLabAnalyticsMonth(""); setLabAnalyticsStatus(""); setLabAnalyticsTest(""); fetchLabAnalytics(labAnalyticsLabId); }}
+                  className="text-xs text-slate-400 hover:text-white px-2.5 py-1.5 rounded-xl hover:bg-white/10 border border-white/10 transition-colors"
+                >
+                  Clear
+                </button>
+              )}
+            </div>
+
+            {/* Body */}
+            <div className="overflow-y-auto flex-1 px-5 py-4 space-y-5">
+              {labAnalyticsLoading ? (
+                <div className="flex items-center justify-center py-16">
+                  <RefreshCw className="w-6 h-6 text-slate-400 animate-spin" />
+                </div>
+              ) : labAnalytics ? (
+                <>
+                  {/* Summary stats */}
+                  <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+                    {[
+                      { label: "Total", value: labAnalytics.total, color: "text-white" },
+                      { label: "Completed", value: labAnalytics.done, color: "text-emerald-400" },
+                      { label: "Patient Seen", value: labAnalytics.seen, color: "text-blue-400" },
+                      { label: "Completion %", value: `${labAnalytics.completionRate}%`, color: "text-medical-300" },
+                    ].map((s) => (
+                      <div key={s.label} className="bg-white/5 border border-white/10 rounded-2xl p-4">
+                        <p className="text-xs text-slate-500 font-semibold uppercase tracking-wider mb-1">{s.label}</p>
+                        <p className={`text-2xl font-bold ${s.color}`}>{s.value}</p>
+                      </div>
+                    ))}
+                  </div>
+
+                  {/* Monthly Status stacked bar chart */}
+                  {(() => {
+                    const months6: { key: string; label: string }[] = [];
+                    for (let i = 5; i >= 0; i--) {
+                      const d = new Date(); d.setDate(1); d.setMonth(d.getMonth() - i);
+                      months6.push({ key: d.toISOString().slice(0, 7), label: d.toLocaleDateString("en-GB", { month: "short" }) });
+                    }
+                    const maxVal = Math.max(1, ...months6.map(({ key }) => labAnalytics.monthlyStatus[key]?.total ?? 0));
+                    const barW = 36; const gap = 14; const colW = barW + gap; const chartH = 70; const labelY = chartH + 14;
+                    const svgW = months6.length * colW + gap;
+                    return (
+                      <div className="bg-white/5 border border-white/10 rounded-2xl p-4">
+                        <div className="flex items-center justify-between mb-2">
+                          <p className="text-xs font-semibold text-slate-400 uppercase tracking-wider">Monthly Activity</p>
+                          <div className="flex gap-3">
+                            {[{ l: "Incoming", c: "#f59e0b" }, { l: "Seen", c: "#60a5fa" }, { l: "Done", c: "#10b981" }].map((s) => (
+                              <div key={s.l} className="flex items-center gap-1">
+                                <span className="w-2 h-2 rounded-sm" style={{ backgroundColor: s.c }} />
+                                <span className="text-xs text-slate-500">{s.l}</span>
+                              </div>
+                            ))}
+                          </div>
+                        </div>
+                        <div className="overflow-x-auto">
+                          <svg viewBox={`0 0 ${svgW} ${labelY + 4}`} style={{ minWidth: `${Math.max(svgW, 220)}px`, height: `${labelY + 8}px`, width: "100%" }} preserveAspectRatio="none">
+                            {months6.map(({ key, label }, mi) => {
+                              const ms = labAnalytics.monthlyStatus[key] ?? { incoming: 0, seen: 0, done: 0, total: 0 };
+                              const x = mi * colW + gap / 2;
+                              let y = chartH;
+                              const segs = [
+                                { h: (ms.incoming / maxVal) * chartH, color: "#f59e0b", v: ms.incoming },
+                                { h: (ms.seen / maxVal) * chartH, color: "#60a5fa", v: ms.seen },
+                                { h: (ms.done / maxVal) * chartH, color: "#10b981", v: ms.done },
+                              ];
+                              const totalH = segs.reduce((a, s) => a + s.h, 0);
+                              return (
+                                <g key={key}>
+                                  {segs.map((seg, si) => { y -= seg.h; return seg.h > 0 ? <rect key={si} x={x} y={y} width={barW} height={seg.h} fill={seg.color} opacity="0.85" /> : null; })}
+                                  {ms.total > 0 && <text x={x + barW / 2} y={chartH - totalH - 2} textAnchor="middle" fill="white" fontSize="8">{ms.total}</text>}
+                                  <text x={x + barW / 2} y={labelY} textAnchor="middle" fill="#94a3b8" fontSize="9">{label}</text>
+                                </g>
+                              );
+                            })}
+                          </svg>
+                        </div>
+                      </div>
+                    );
+                  })()}
+
+                  {/* Top tests */}
+                  {labAnalytics.topTests.length > 0 && (
+                    <div className="bg-white/5 border border-white/10 rounded-2xl p-4">
+                      <p className="text-xs font-semibold text-slate-400 uppercase tracking-wider mb-3">Top Tests</p>
+                      <div className="space-y-2">
+                        {labAnalytics.topTests.slice(0, 12).map((t, idx) => {
+                          const maxT = labAnalytics.topTests[0].total;
+                          const pct = Math.round((t.total / maxT) * 100);
+                          const donePct = t.total > 0 ? Math.round((t.done / t.total) * 100) : 0;
+                          return (
+                            <div key={t.name} className="flex items-center gap-3">
+                              <span className="text-xs text-slate-600 w-4 text-right shrink-0">{idx + 1}</span>
+                              <div className="flex-1 min-w-0">
+                                <div className="flex justify-between text-xs mb-0.5">
+                                  <span className="text-slate-300 truncate">{t.name}</span>
+                                  <span className="text-slate-500 ml-2 shrink-0">{t.total} req · <span className="text-emerald-400">{t.done} done</span></span>
+                                </div>
+                                <div className="h-1.5 rounded-full bg-white/10 overflow-hidden relative">
+                                  <div className="h-full rounded-full absolute left-0 top-0 bg-white/20" style={{ width: `${pct}%` }} />
+                                  <div className="h-full rounded-full absolute left-0 top-0 bg-emerald-500" style={{ width: `${Math.round((t.done / labAnalytics.topTests[0].total) * 100)}%` }} />
+                                </div>
+                              </div>
+                            </div>
+                          );
+                        })}
+                      </div>
+                    </div>
+                  )}
+
+                  {/* Top doctors */}
+                  {labAnalytics.topDoctors.length > 0 && (
+                    <div className="bg-white/5 border border-white/10 rounded-2xl p-4">
+                      <p className="text-xs font-semibold text-slate-400 uppercase tracking-wider mb-3">Top Referring Doctors</p>
+                      <div className="space-y-2">
+                        {labAnalytics.topDoctors.map((doc, idx) => (
+                          <div key={doc.email} className="flex items-center gap-3">
+                            <span className="text-xs text-slate-600 w-4 text-right shrink-0">{idx + 1}</span>
+                            <div className="flex-1 min-w-0">
+                              <div className="flex justify-between text-xs">
+                                <span className="text-slate-300 truncate">{[doc.prefix, doc.name].filter(Boolean).join(" ")}</span>
+                                <span className="text-slate-500 shrink-0 ml-2">{doc.total} · <span className="text-emerald-400">{doc.done} done</span></span>
+                              </div>
+                              <p className="text-xs text-slate-600 truncate">{doc.email}</p>
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+
+                  {/* Demographics 2-col */}
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                    {/* Sex */}
+                    <div className="bg-white/5 border border-white/10 rounded-2xl p-4">
+                      <p className="text-xs font-semibold text-slate-400 uppercase tracking-wider mb-3">Sex</p>
+                      {Object.entries(labAnalytics.sexCounts).map(([s, count]) => {
+                        const tot = Object.values(labAnalytics.sexCounts).reduce((a, b) => a + b, 0) || 1;
+                        const pct = Math.round((count / tot) * 100);
+                        return (
+                          <div key={s} className="mb-2">
+                            <div className="flex justify-between text-xs mb-0.5">
+                              <span className="text-slate-300 capitalize">{s}</span>
+                              <span className="text-slate-500">{count} ({pct}%)</span>
+                            </div>
+                            <div className="h-1.5 rounded-full bg-white/10 overflow-hidden">
+                              <div className="h-full rounded-full bg-medical-500" style={{ width: `${pct}%` }} />
+                            </div>
+                          </div>
+                        );
+                      })}
+                    </div>
+                    {/* Schedule */}
+                    <div className="bg-white/5 border border-white/10 rounded-2xl p-4">
+                      <p className="text-xs font-semibold text-slate-400 uppercase tracking-wider mb-3">Schedule Preference</p>
+                      <div className="flex flex-wrap gap-2">
+                        {Object.entries(labAnalytics.schedCounts).map(([key, cnt]) => {
+                          const lblMap: Record<string, string> = { today: "Today", this_week: "This Week", this_month: "This Month", not_sure: "Not Sure" };
+                          return (
+                            <div key={key} className="flex flex-col items-center bg-white/5 border border-white/10 rounded-xl px-3 py-2 min-w-[70px]">
+                              <span className="text-lg font-bold text-white">{cnt}</span>
+                              <span className="text-xs text-slate-500 text-center mt-0.5">{lblMap[key] ?? key}</span>
+                            </div>
+                          );
+                        })}
+                      </div>
+                    </div>
+                  </div>
+                </>
+              ) : null}
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

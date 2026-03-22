@@ -32,7 +32,7 @@ interface ReferralDoctor {
   months: Record<string, number>;
   tests: string[];
   last_referral: string;
-  recent_requests?: { id: string; code: string; tests: string; test_image_url: string | null; created_at: string }[];
+  recent_requests?: { id: string; code: string; status: string; tests: string; test_image_url: string | null; created_at: string; patient_name: string | null; patient_phone: string | null }[];
 }
 
 interface LabDashboardProps {
@@ -53,7 +53,6 @@ interface LabDashboardProps {
 }
 
 const TABS: { key: RequestStatus; label: string; icon: React.ReactNode }[] = [
-  { key: "incoming", label: "Incoming", icon: <Clock className="w-4 h-4" /> },
   { key: "seen", label: "Patient Seen", icon: <Eye className="w-4 h-4" /> },
   { key: "done", label: "Done", icon: <CheckCircle className="w-4 h-4" /> },
 ];
@@ -61,6 +60,16 @@ const TABS: { key: RequestStatus; label: string; icon: React.ReactNode }[] = [
 function calcAge(dob: string | null): number | null {
   if (!dob) return null;
   return differenceInYears(new Date(), new Date(dob));
+}
+
+/** Normalise a raw tests string to comma-separated display */
+function displayTests(raw: string | null | undefined): string {
+  if (!raw || raw === "See attached image") return raw ?? "";
+  return raw
+    .split(/[,\n]+/)
+    .map((t) => t.trim())
+    .filter(Boolean)
+    .join(", ");
 }
 
 function scheduleLabel(value: string | null): string | null {
@@ -78,7 +87,7 @@ export function LabDashboard({ lab, isOwner = false, roleName = "Lab Owner", can
   const router = useRouter();
   const { isLight, toggle, themeClass } = useDashTheme("lab_dash_theme");
   const [mainView, setMainView] = useState<"requests" | "referrals" | "clients" | "analytics">("requests");
-  const [activeTab, setActiveTab] = useState<RequestStatus>("incoming");
+  const [activeTab, setActiveTab] = useState<RequestStatus>("seen");
   const [requests, setRequests] = useState<LabRequest[]>([]);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
@@ -115,6 +124,11 @@ export function LabDashboard({ lab, isOwner = false, roleName = "Lab Owner", can
   const [availableMonths, setAvailableMonths] = useState<string[]>([]);
   const [availableTests, setAvailableTests] = useState<string[]>([]);
   const [expandedDoctor, setExpandedDoctor] = useState<string | null>(null);
+
+  // Analytics filters
+  const [analyticsTestFilter, setAnalyticsTestFilter] = useState("");
+  const [analyticsStatusFilter, setAnalyticsStatusFilter] = useState<"" | "incoming" | "seen" | "done">("");
+  const [analyticsMonthFilter, setAnalyticsMonthFilter] = useState("");
 
   // Patient info edit modal state
   const [editPatientRequest, setEditPatientRequest] = useState<LabRequest | null>(null);
@@ -727,42 +741,72 @@ export function LabDashboard({ lab, isOwner = false, roleName = "Lab Owner", can
                             </div>
                           </div>
 
-                          {/* All requests */}
+                          {/* All requests — with patient + status per request */}
                           {doc.recent_requests && doc.recent_requests.length > 0 && (
                             <div>
                               <p className="text-xs font-semibold text-slate-500 uppercase tracking-wider mb-2">
                                 Requests ({doc.recent_requests.length})
                               </p>
                               <div className="space-y-2">
-                                {doc.recent_requests.map((r) => (
-                                  <div key={r.id} className="bg-white/5 border border-white/10 rounded-xl px-3 py-3">
-                                    <div className="flex items-start justify-between gap-2 mb-1">
-                                      <p className="text-xs font-mono text-slate-400">{r.code}</p>
-                                      <p className="text-xs text-slate-500 shrink-0">
-                                        {new Date(r.created_at).toLocaleDateString("en-GB", { day: "numeric", month: "short", year: "numeric" })}
-                                      </p>
-                                    </div>
-                                    <p className="text-sm text-slate-300 leading-snug">
-                                      {r.tests === "See attached image" ? (
-                                        <span className="italic text-slate-500">See attached image</span>
-                                      ) : (
-                                        r.tests.slice(0, 80) + (r.tests.length > 80 ? "…" : "")
+                                {doc.recent_requests.map((r) => {
+                                  const statusDot: Record<string, string> = { incoming: "bg-amber-400", seen: "bg-blue-400", done: "bg-emerald-400" };
+                                  const statusLabel: Record<string, string> = { incoming: "Pending", seen: "Patient Seen", done: "Completed" };
+                                  const testDisplay = r.tests === "See attached image"
+                                    ? null
+                                    : r.tests.split(/[,\n]+/).map((t) => t.trim()).filter(Boolean);
+                                  return (
+                                    <div key={r.id} className="bg-white/5 border border-white/10 rounded-xl px-3 py-3 space-y-2">
+                                      {/* Header row: patient name + code + date */}
+                                      <div className="flex items-start justify-between gap-2">
+                                        <div className="flex items-center gap-2 min-w-0">
+                                          <span className={`w-2 h-2 rounded-full shrink-0 ${statusDot[r.status] ?? "bg-slate-400"}`} />
+                                          <div className="min-w-0">
+                                            {r.patient_name && (
+                                              <p className="text-sm font-semibold text-white truncate">{r.patient_name}</p>
+                                            )}
+                                            <p className="text-xs text-slate-500 font-mono">{r.code}</p>
+                                          </div>
+                                        </div>
+                                        <div className="text-right shrink-0">
+                                          <p className={`text-xs font-medium ${statusDot[r.status] === "bg-emerald-400" ? "text-emerald-400" : statusDot[r.status] === "bg-blue-400" ? "text-blue-400" : "text-amber-400"}`}>
+                                            {statusLabel[r.status] ?? r.status}
+                                          </p>
+                                          <p className="text-xs text-slate-500 mt-0.5">
+                                            {new Date(r.created_at).toLocaleDateString("en-GB", { day: "numeric", month: "short", year: "numeric" })}
+                                          </p>
+                                        </div>
+                                      </div>
+                                      {/* Tests as badges */}
+                                      {testDisplay && testDisplay.length > 0 && (
+                                        <div className="flex flex-wrap gap-1">
+                                          {testDisplay.map((t, ti) => (
+                                            <span key={ti} className="text-xs bg-medical-900/50 text-medical-300 border border-medical-800/30 px-2 py-0.5 rounded-full">{t}</span>
+                                          ))}
+                                        </div>
                                       )}
-                                    </p>
-                                    {r.test_image_url && (
-                                      <a
-                                        href={r.test_image_url}
-                                        target="_blank"
-                                        rel="noopener noreferrer"
-                                        className="mt-2 inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-blue-500/10 border border-blue-500/20 hover:bg-blue-500/20 transition text-xs font-medium text-blue-300"
-                                      >
-                                        <FileImage className="w-3.5 h-3.5" />
-                                        View image
-                                        <ExternalLink className="w-3 h-3 opacity-60 ml-0.5" />
-                                      </a>
-                                    )}
-                                  </div>
-                                ))}
+                                      {r.tests === "See attached image" && (
+                                        <p className="text-xs italic text-slate-500">See attached image</p>
+                                      )}
+                                      {r.patient_phone && (
+                                        <a href={`tel:${r.patient_phone}`} className="inline-flex items-center gap-1 text-xs text-blue-400 hover:underline">
+                                          <Phone className="w-3 h-3" />{r.patient_phone}
+                                        </a>
+                                      )}
+                                      {r.test_image_url && (
+                                        <a
+                                          href={r.test_image_url}
+                                          target="_blank"
+                                          rel="noopener noreferrer"
+                                          className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-blue-500/10 border border-blue-500/20 hover:bg-blue-500/20 transition text-xs font-medium text-blue-300"
+                                        >
+                                          <FileImage className="w-3.5 h-3.5" />
+                                          View image
+                                          <ExternalLink className="w-3 h-3 opacity-60 ml-0.5" />
+                                        </a>
+                                      )}
+                                    </div>
+                                  );
+                                })}
                               </div>
                             </div>
                           )}
@@ -915,7 +959,7 @@ export function LabDashboard({ lab, isOwner = false, roleName = "Lab Owner", can
                             <p className="text-xs text-slate-400">{new Date(req.created_at).toLocaleDateString("en-GB", { day: "numeric", month: "long", year: "numeric" })}</p>
                             <StatusBadge status={req.status} />
                           </div>
-                          <p className="text-sm text-white font-medium leading-snug line-clamp-2">{req.tests}</p>
+                          <p className="text-sm text-white font-medium leading-snug line-clamp-2">{displayTests(req.tests)}</p>
                           {req.diagnosis && <p className="text-xs text-slate-500 mt-1 line-clamp-1">{req.diagnosis}</p>}
                           {req.test_image_url && (
                             <a
@@ -942,18 +986,37 @@ export function LabDashboard({ lab, isOwner = false, roleName = "Lab Owner", can
 
         {/* Analytics view */}
         {mainView === "analytics" && (() => {
+          // Build filter options from all requests
+          const allAnalyticsMonths = Array.from(new Set(requests.map((r) => r.created_at.slice(0, 7)))).sort().reverse();
+          const allAnalyticsTests = Array.from(new Set(
+            requests.flatMap((r) => r.tests && r.tests !== "See attached image"
+              ? r.tests.split(/[,\n]+/).map((t) => t.trim()).filter(Boolean)
+              : [])
+          )).sort();
+
+          // Apply filters
+          const filteredRequests = requests.filter((r) => {
+            if (analyticsMonthFilter && r.created_at.slice(0, 7) !== analyticsMonthFilter) return false;
+            if (analyticsStatusFilter && r.status !== analyticsStatusFilter) return false;
+            if (analyticsTestFilter) {
+              const tests = r.tests ? r.tests.split(/[,\n]+/).map((t) => t.trim().toLowerCase()) : [];
+              if (!tests.includes(analyticsTestFilter.toLowerCase())) return false;
+            }
+            return true;
+          });
+
           const analyticsMetrics = (() => {
-            const total = requests.length;
-            const done = requests.filter((r) => r.status === "done").length;
+            const total = filteredRequests.length;
+            const done = filteredRequests.filter((r) => r.status === "done").length;
             const completionRate = total > 0 ? Math.round((done / total) * 100) : 0;
             const todayStr = new Date().toISOString().slice(0, 10);
-            const seenToday = requests.filter((r) => {
+            const seenToday = filteredRequests.filter((r) => {
               const sa = (r as any).seen_at;
               return sa && String(sa).slice(0, 10) === todayStr;
             }).length;
             let avgPerMonth = 0;
             if (total > 0) {
-              const sorted = [...requests].sort(
+              const sorted = [...filteredRequests].sort(
                 (a, b) => new Date(a.created_at).getTime() - new Date(b.created_at).getTime()
               );
               const first = new Date(sorted[0].created_at);
@@ -965,9 +1028,9 @@ export function LabDashboard({ lab, isOwner = false, roleName = "Lab Owner", can
               avgPerMonth = Math.round((total / months) * 10) / 10;
             }
 
-            // Monthly trend (last 6 months)
+            // Monthly trend (last 6 months) — total requests
             const monthCounts: Record<string, number> = {};
-            requests.forEach((r) => {
+            filteredRequests.forEach((r) => {
               const key = r.created_at.slice(0, 7);
               monthCounts[key] = (monthCounts[key] ?? 0) + 1;
             });
@@ -981,15 +1044,29 @@ export function LabDashboard({ lab, isOwner = false, roleName = "Lab Owner", can
               last6.push({ label, key, count: monthCounts[key] ?? 0 });
             }
 
+            // Monthly breakdown by status (incoming / seen / done) — last 6 months
+            const monthStatusCounts: Record<string, { incoming: number; seen: number; done: number }> = {};
+            filteredRequests.forEach((r) => {
+              const key = r.created_at.slice(0, 7);
+              if (!monthStatusCounts[key]) monthStatusCounts[key] = { incoming: 0, seen: 0, done: 0 };
+              if (r.status in monthStatusCounts[key]) monthStatusCounts[key][r.status as "incoming" | "seen" | "done"]++;
+            });
+            const last6Status = last6.map((m) => ({
+              ...m,
+              incoming: monthStatusCounts[m.key]?.incoming ?? 0,
+              seen: monthStatusCounts[m.key]?.seen ?? 0,
+              done: monthStatusCounts[m.key]?.done ?? 0,
+            }));
+
             // Status breakdown
             const statusCounts = { incoming: 0, seen: 0, done: 0 };
-            requests.forEach((r) => {
+            filteredRequests.forEach((r) => {
               if (r.status in statusCounts) statusCounts[r.status as keyof typeof statusCounts]++;
             });
 
             // Sex demographics
             const sexCounts: Record<string, number> = {};
-            requests.forEach((r) => {
+            filteredRequests.forEach((r) => {
               const s = (r.sex ?? "unknown").toLowerCase();
               const key = ["male", "female", "other"].includes(s) ? s : "unknown";
               sexCounts[key] = (sexCounts[key] ?? 0) + 1;
@@ -997,7 +1074,7 @@ export function LabDashboard({ lab, isOwner = false, roleName = "Lab Owner", can
 
             // Top 10 tests
             const testCounts: Record<string, number> = {};
-            requests.forEach((r) => {
+            filteredRequests.forEach((r) => {
               if (!r.tests) return;
               r.tests
                 .split(/[,\n]+/)
@@ -1018,15 +1095,15 @@ export function LabDashboard({ lab, isOwner = false, roleName = "Lab Owner", can
               this_month: 0,
               not_sure: 0,
             };
-            requests.forEach((r) => {
+            filteredRequests.forEach((r) => {
               const s = (r as any).schedule ?? "not_sure";
               if (s in schedCounts) schedCounts[s]++;
             });
 
             // Tests completed (done) — all-time count per test name
             const doneTestCounts: Record<string, number> = {};
-            const doneByMonth: Record<string, Record<string, number>> = {}; // month -> test -> count
-            requests
+            const doneByMonth: Record<string, Record<string, number>> = {};
+            filteredRequests
               .filter((r) => r.status === "done")
               .forEach((r) => {
                 if (!r.tests || r.tests === "See attached image") return;
@@ -1064,6 +1141,7 @@ export function LabDashboard({ lab, isOwner = false, roleName = "Lab Owner", can
               seenToday,
               avgPerMonth,
               last6,
+              last6Status,
               statusCounts,
               sexCounts,
               top10Tests,
@@ -1082,6 +1160,7 @@ export function LabDashboard({ lab, isOwner = false, roleName = "Lab Owner", can
             seenToday,
             avgPerMonth,
             last6,
+            last6Status,
             statusCounts,
             sexCounts,
             top10Tests,
@@ -1105,8 +1184,60 @@ export function LabDashboard({ lab, isOwner = false, roleName = "Lab Owner", can
             not_sure: "Not Sure",
           };
 
+          const hasFilter = !!(analyticsMonthFilter || analyticsStatusFilter || analyticsTestFilter);
+
           return (
             <div className="space-y-5">
+              {/* Filter row */}
+              <div className="flex flex-wrap gap-2">
+                <select
+                  value={analyticsMonthFilter}
+                  onChange={(e) => setAnalyticsMonthFilter(e.target.value)}
+                  className="bg-white/5 border border-white/10 rounded-xl px-3 py-2 text-sm text-slate-200 outline-none cursor-pointer"
+                >
+                  <option value="" className="bg-slate-800">All months</option>
+                  {allAnalyticsMonths.map((m) => {
+                    const [y, mo] = m.split("-");
+                    const lbl = new Date(Number(y), Number(mo) - 1).toLocaleDateString("en-GB", { month: "long", year: "numeric" });
+                    return <option key={m} value={m} className="bg-slate-800">{lbl}</option>;
+                  })}
+                </select>
+                <select
+                  value={analyticsStatusFilter}
+                  onChange={(e) => setAnalyticsStatusFilter(e.target.value as typeof analyticsStatusFilter)}
+                  className="bg-white/5 border border-white/10 rounded-xl px-3 py-2 text-sm text-slate-200 outline-none cursor-pointer"
+                >
+                  <option value="" className="bg-slate-800">All statuses</option>
+                  <option value="incoming" className="bg-slate-800">Incoming</option>
+                  <option value="seen" className="bg-slate-800">Patient Seen</option>
+                  <option value="done" className="bg-slate-800">Completed</option>
+                </select>
+                <select
+                  value={analyticsTestFilter}
+                  onChange={(e) => setAnalyticsTestFilter(e.target.value)}
+                  className="bg-white/5 border border-white/10 rounded-xl px-3 py-2 text-sm text-slate-200 outline-none cursor-pointer min-w-[160px]"
+                >
+                  <option value="" className="bg-slate-800">All tests</option>
+                  {allAnalyticsTests.map((t) => (
+                    <option key={t} value={t} className="bg-slate-800">{t}</option>
+                  ))}
+                </select>
+                {hasFilter && (
+                  <button
+                    type="button"
+                    onClick={() => { setAnalyticsMonthFilter(""); setAnalyticsStatusFilter(""); setAnalyticsTestFilter(""); }}
+                    className="flex items-center gap-1.5 px-3 py-2 text-sm text-slate-400 hover:text-white rounded-xl hover:bg-white/10 transition-colors border border-white/10"
+                  >
+                    <X className="w-3.5 h-3.5" /> Clear
+                  </button>
+                )}
+                {hasFilter && (
+                  <span className="self-center text-xs text-slate-500 ml-auto">
+                    {filteredRequests.length} of {requests.length} requests
+                  </span>
+                )}
+              </div>
+
               {/* Summary Stats */}
               <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
                 {[
@@ -1174,6 +1305,64 @@ export function LabDashboard({ lab, isOwner = false, roleName = "Lab Owner", can
                       );
                     })}
                   </svg>
+                </div>
+
+                {/* Monthly Status Breakdown — stacked bar chart */}
+                <div className="bg-white/5 border border-white/10 rounded-2xl p-5">
+                  <p className="text-xs font-semibold text-slate-400 uppercase tracking-wider mb-2">
+                    Monthly by Status (Last 6 Months)
+                  </p>
+                  {/* Legend */}
+                  <div className="flex gap-4 mb-3">
+                    {[{ label: "Incoming", color: "#f59e0b" }, { label: "Seen", color: "#60a5fa" }, { label: "Done", color: "#10b981" }].map((s) => (
+                      <div key={s.label} className="flex items-center gap-1.5">
+                        <span className="w-2.5 h-2.5 rounded-sm shrink-0" style={{ backgroundColor: s.color }} />
+                        <span className="text-xs text-slate-400">{s.label}</span>
+                      </div>
+                    ))}
+                  </div>
+                  {(() => {
+                    const barW = 36;
+                    const gap = 14;
+                    const colW = barW + gap;
+                    const svgW = last6Status.length * colW + gap;
+                    const chartH = 80;
+                    const labelY = chartH + 14;
+                    const maxVal = Math.max(1, ...last6Status.map((m) => m.incoming + m.seen + m.done));
+                    return (
+                      <div className="overflow-x-auto">
+                        <svg viewBox={`0 0 ${svgW} ${labelY + 4}`} className="w-full" style={{ minWidth: `${Math.max(svgW, 220)}px`, height: `${labelY + 8}px` }} preserveAspectRatio="none">
+                          {last6Status.map((m, i) => {
+                            const x = i * colW + gap / 2;
+                            const total = m.incoming + m.seen + m.done;
+                            const inH = (m.incoming / maxVal) * chartH;
+                            const seH = (m.seen / maxVal) * chartH;
+                            const doH = (m.done / maxVal) * chartH;
+                            let y = chartH;
+                            const segs = [
+                              { h: inH, color: "#f59e0b", v: m.incoming },
+                              { h: seH, color: "#60a5fa", v: m.seen },
+                              { h: doH, color: "#10b981", v: m.done },
+                            ];
+                            return (
+                              <g key={m.key}>
+                                {segs.map((seg, si) => {
+                                  y -= seg.h;
+                                  return seg.h > 0 ? (
+                                    <rect key={si} x={x} y={y} width={barW} height={seg.h} rx={si === 0 ? 0 : 0} fill={seg.color} opacity="0.85" />
+                                  ) : null;
+                                })}
+                                {total > 0 && (
+                                  <text x={x + barW / 2} y={chartH - (m.incoming + m.seen + m.done) / maxVal * chartH - 3} textAnchor="middle" fill="white" fontSize="8">{total}</text>
+                                )}
+                                <text x={x + barW / 2} y={labelY} textAnchor="middle" fill="#94a3b8" fontSize="9">{m.label}</text>
+                              </g>
+                            );
+                          })}
+                        </svg>
+                      </div>
+                    );
+                  })()}
                 </div>
 
                 {/* Status Breakdown */}
@@ -1512,16 +1701,7 @@ export function LabDashboard({ lab, isOwner = false, roleName = "Lab Owner", can
               ))}
             </div>
 
-            {activeTab === "incoming" && tabRequests.length > 0 && (
-              <div className="flex items-center gap-2 mb-3 px-1">
-                <EyeOff className="w-3.5 h-3.5 text-slate-500 shrink-0" />
-                <p className="text-xs text-slate-500">
-                  Patient names and codes are hidden until the code is entered above.
-                </p>
-              </div>
-            )}
-
-            <div className="space-y-2">
+<div className="space-y-2">
               {loading ? (
                 <div className="text-center py-16 text-slate-400">
                   <RefreshCw className="w-8 h-8 mx-auto mb-3 animate-spin opacity-50" />
@@ -1569,7 +1749,7 @@ export function LabDashboard({ lab, isOwner = false, roleName = "Lab Owner", can
                             </div>
                             <p className="text-sm text-slate-300 line-clamp-2">
                               <span className="text-slate-500 font-medium">Tests: </span>
-                              {req.tests}
+                              {displayTests(req.tests)}
                             </p>
                             <div className="flex items-center gap-2 mt-1 flex-wrap">
                               <p className="text-xs text-slate-500 flex items-center gap-1">
@@ -1604,7 +1784,7 @@ export function LabDashboard({ lab, isOwner = false, roleName = "Lab Owner", can
                             </div>
                             <p className="mt-1.5 text-xs text-slate-400 line-clamp-1">
                               <span className="text-slate-500 font-medium">Tests: </span>
-                              {req.tests}
+                              {displayTests(req.tests)}
                             </p>
                             {scheduleLabel(req.schedule) && (
                               <span className="mt-1 inline-flex text-xs bg-emerald-900/40 text-emerald-400 border border-emerald-800/30 px-2 py-0.5 rounded-full">

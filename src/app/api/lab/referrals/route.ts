@@ -24,6 +24,8 @@ export async function GET(request: NextRequest) {
     },
     select: {
       id: true,
+      code: true,
+      status: true,
       doctor_name: true,
       doctor_email: true,
       doctor_prefix: true,
@@ -35,7 +37,8 @@ export async function GET(request: NextRequest) {
       tests: true,
       test_image_url: true,
       created_at: true,
-      code: true,
+      patient_name: true,
+      patient_phone: true,
     },
     orderBy: { created_at: "desc" },
   });
@@ -71,7 +74,7 @@ export async function GET(request: NextRequest) {
     months: Record<string, number>;
     tests: Set<string>;
     last_referral: string;
-    recent_requests: { id: string; code: string; tests: string; test_image_url: string | null; created_at: string }[];
+    recent_requests: { id: string; code: string; status: string; tests: string; test_image_url: string | null; created_at: string; patient_name: string | null; patient_phone: string | null }[];
   }>();
 
   for (const r of filtered) {
@@ -110,15 +113,17 @@ export async function GET(request: NextRequest) {
     }
 
     // Keep the 5 most recent requests (already ordered desc)
-    if (doc.recent_requests.length < 5) {
-      doc.recent_requests.push({
-        id: r.id,
-        code: r.code,
-        tests: r.tests,
-        test_image_url: r.test_image_url,
-        created_at: r.created_at.toISOString(),
-      });
-    }
+    // Keep all requests (not just 5) so the popup can show full history
+    doc.recent_requests.push({
+      id: r.id,
+      code: r.code,
+      status: r.status,
+      tests: r.tests,
+      test_image_url: r.test_image_url,
+      created_at: r.created_at.toISOString(),
+      patient_name: r.patient_name,
+      patient_phone: r.patient_phone,
+    });
   }
 
   const referrals = Array.from(doctorMap.values())

@@ -1049,8 +1049,14 @@ export function DoctorRequestForm({
         if (!form.diagnosis.trim()) errs.diagnosis = "Required";
         if (!form.tests.trim()) errs.tests = "Required";
       }
-      if (clinicalMode === "picture" && !testImageUrl) {
-        setImageUploadError("Please upload a test request image");
+      if (clinicalMode === "picture") {
+        if (!testImageUrl) {
+          setImageUploadError("Please upload a test request image");
+        } else {
+          // Image uploaded — also require tests and diagnosis
+          if (!form.tests.trim()) errs.tests = "Required";
+          if (!form.diagnosis.trim()) errs.diagnosis = "Required";
+        }
       }
     }
     if (s === 3) {
@@ -1601,9 +1607,18 @@ export function DoctorRequestForm({
                           required
                           placeholder="e.g. FBC, LFT, Serum electrolytes, Fasting glucose, Urinalysis…"
                           rows={4}
-                          hint="List all tests separated by commas or new lines"
+                          hint="Separate tests with commas — they will be auto-normalised"
                           value={form.tests}
                           onChange={(e) => set("tests", e.target.value)}
+                          onBlur={(e) => {
+                            const normalised = e.target.value
+                              .split(/[,\n]+/)
+                              .map((t) => t.trim())
+                              .filter(Boolean)
+                              .map((t) => t.charAt(0).toUpperCase() + t.slice(1))
+                              .join(", ");
+                            if (normalised !== e.target.value) set("tests", normalised);
+                          }}
                           error={errors.tests}
                         />
                       </div>
@@ -1808,15 +1823,27 @@ export function DoctorRequestForm({
                           <div className="space-y-3 pt-1">
                             <Textarea
                               label={imageExtracting ? "Tests Requested (scanning…)" : "Tests Requested"}
+                              required
                               placeholder={imageExtracting ? "AI is reading the slip…" : "AI will pre-fill this. You can also type or edit here."}
                               rows={3}
                               value={form.tests}
                               onChange={(e) => set("tests", e.target.value)}
-                              hint="Review and edit the AI-extracted tests before submitting"
+                              onBlur={(e) => {
+                                // Normalise on blur: split by comma/newline, trim, capitalise, rejoin
+                                const normalised = e.target.value
+                                  .split(/[,\n]+/)
+                                  .map((t) => t.trim())
+                                  .filter(Boolean)
+                                  .map((t) => t.charAt(0).toUpperCase() + t.slice(1))
+                                  .join(", ");
+                                if (normalised !== e.target.value) set("tests", normalised);
+                              }}
+                              hint="Review and confirm the AI-extracted tests before submitting"
                               error={errors.tests}
                             />
                             <Textarea
                               label="Diagnosis / Clinical Notes"
+                              required
                               placeholder={imageExtracting ? "Extracting…" : "Extracted from slip, or add manually"}
                               rows={2}
                               value={form.diagnosis}
