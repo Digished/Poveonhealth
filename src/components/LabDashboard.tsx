@@ -603,150 +603,107 @@ export function LabDashboard({ lab, isOwner = false, roleName = "Lab Owner", can
               </div>
             ) : (
               <>
-                {/* Desktop table */}
-                <div className="hidden md:block overflow-x-auto rounded-2xl border border-white/10">
-                  <table className="w-full text-sm">
-                    <thead>
-                      <tr className="border-b border-white/10 bg-white/5">
-                        <th className="text-left px-4 py-3 text-xs font-semibold text-slate-400 uppercase tracking-wider">Doctor</th>
-                        <th className="text-left px-4 py-3 text-xs font-semibold text-slate-400 uppercase tracking-wider">Tests Referred</th>
-                        <th className="text-center px-4 py-3 text-xs font-semibold text-slate-400 uppercase tracking-wider">Total</th>
-                        <th className="text-left px-4 py-3 text-xs font-semibold text-slate-400 uppercase tracking-wider">Bank Details</th>
-                        <th className="text-left px-4 py-3 text-xs font-semibold text-slate-400 uppercase tracking-wider">Last Referral</th>
-                      </tr>
-                    </thead>
-                    <tbody className="divide-y divide-white/5">
-                      {referrals.map((doc) => (
-                        <tr key={doc.doctor_email} className="hover:bg-white/5 transition-colors">
-                          <td className="px-4 py-4">
-                            <p className="font-semibold text-white">
-                              {[doc.doctor_prefix, doc.doctor_name].filter(Boolean).join(" ")}
-                            </p>
-                            <p className="text-xs text-slate-400 mt-0.5">{doc.doctor_email}</p>
-                            {doc.doctor_hospital && (
-                              <p className="text-xs text-slate-500 mt-0.5">{doc.doctor_hospital}</p>
-                            )}
-                            {doc.doctor_phone && (
-                              <a href={`tel:${doc.doctor_phone}`} className="text-xs text-blue-400 hover:underline flex items-center gap-1 mt-0.5">
-                                <Phone className="w-3 h-3" />{doc.doctor_phone}
-                              </a>
-                            )}
-                          </td>
-                          <td className="px-4 py-4">
-                            <div className="flex flex-wrap gap-1 max-w-xs">
-                              {doc.tests.slice(0, 4).map((t) => (
-                                <span key={t} className="text-xs bg-medical-900/50 text-medical-300 border border-medical-800/30 px-2 py-0.5 rounded-full">{t}</span>
-                              ))}
-                              {doc.tests.length > 4 && (
-                                <span className="text-xs text-slate-500">+{doc.tests.length - 4} more</span>
-                              )}
-                            </div>
-                          </td>
-                          <td className="px-4 py-4 text-center">
-                            <span className="text-xl font-bold text-white">{doc.total_referrals}</span>
-                          </td>
-                          <td className="px-4 py-4">
-                            {doc.doctor_bank_name || doc.doctor_account_number ? (
-                              <div className="flex items-start gap-2">
-                                <CreditCard className="w-4 h-4 text-emerald-400 shrink-0 mt-0.5" />
-                                <div>
-                                  {doc.doctor_bank_name && <p className="text-white font-medium text-xs">{doc.doctor_bank_name}</p>}
-                                  {doc.doctor_account_number && <p className="font-mono text-xs text-slate-300">{doc.doctor_account_number}</p>}
-                                  {doc.doctor_account_name && <p className="text-xs text-slate-400">{doc.doctor_account_name}</p>}
-                                </div>
-                              </div>
-                            ) : (
-                              <span className="text-xs text-slate-600 italic">No bank details</span>
-                            )}
-                          </td>
-                          <td className="px-4 py-4 text-xs text-slate-400">
-                            {new Date(doc.last_referral).toLocaleDateString("en-GB", { day: "numeric", month: "short", year: "numeric" })}
-                          </td>
-                        </tr>
-                      ))}
-                    </tbody>
-                  </table>
+                {/* Doctor cards — unified for all screen sizes, each opens a popup */}
+                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
+                  {referrals.map((doc) => (
+                    <button
+                      key={doc.doctor_email}
+                      type="button"
+                      onClick={() => setExpandedDoctor(doc.doctor_email)}
+                      className="text-left bg-white/5 hover:bg-white/10 border border-white/10 hover:border-white/20 rounded-2xl p-4 transition-all group"
+                    >
+                      <div className="flex items-start gap-3 mb-3">
+                        <div className="w-10 h-10 rounded-full bg-medical-600/20 border border-medical-500/30 flex items-center justify-center shrink-0">
+                          <Stethoscope className="w-5 h-5 text-medical-400" />
+                        </div>
+                        <div className="flex-1 min-w-0">
+                          <p className="font-semibold text-white truncate leading-tight">
+                            {[doc.doctor_prefix, doc.doctor_name].filter(Boolean).join(" ")}
+                          </p>
+                          {doc.doctor_hospital && (
+                            <p className="text-xs text-slate-500 truncate mt-0.5">{doc.doctor_hospital}</p>
+                          )}
+                        </div>
+                        <span className="shrink-0 text-xs font-bold bg-medical-900/50 text-medical-300 border border-medical-800/30 px-2 py-0.5 rounded-full">
+                          {doc.total_referrals}
+                        </span>
+                      </div>
+                      <div className="flex flex-wrap gap-1 mb-3">
+                        {doc.tests.slice(0, 3).map((t) => (
+                          <span key={t} className="text-xs bg-white/5 text-slate-400 border border-white/10 px-2 py-0.5 rounded-full">{t}</span>
+                        ))}
+                        {doc.tests.length > 3 && (
+                          <span className="text-xs text-slate-500">+{doc.tests.length - 3} more</span>
+                        )}
+                      </div>
+                      <p className="text-xs text-slate-500">
+                        Last: {new Date(doc.last_referral).toLocaleDateString("en-GB", { day: "numeric", month: "short", year: "numeric" })}
+                      </p>
+                    </button>
+                  ))}
                 </div>
 
-                {/* Mobile cards */}
-                <div className="md:hidden space-y-3">
-                  {referrals.map((doc) => (
-                    <div key={doc.doctor_email} className="bg-white/5 border border-white/10 rounded-2xl overflow-hidden">
-                      <button
-                        className="w-full text-left px-4 py-4 flex items-start justify-between gap-3"
-                        onClick={() => setExpandedDoctor(expandedDoctor === doc.doctor_email ? null : doc.doctor_email)}
+                {/* Doctor detail popup */}
+                {expandedDoctor && (() => {
+                  const doc = referrals.find((d) => d.doctor_email === expandedDoctor);
+                  if (!doc) return null;
+                  return (
+                    <div
+                      className="fixed inset-0 z-50 flex items-end sm:items-center justify-center p-4"
+                      style={{ backgroundColor: "rgba(15,23,42,0.8)", backdropFilter: "blur(4px)" }}
+                      onClick={() => setExpandedDoctor(null)}
+                    >
+                      <div
+                        className="w-full max-w-lg bg-slate-900 border border-white/10 rounded-3xl shadow-2xl overflow-hidden max-h-[88vh] flex flex-col"
+                        onClick={(e) => e.stopPropagation()}
                       >
-                        <div className="flex-1 min-w-0">
-                          <div className="flex items-center gap-2 mb-1">
-                            <p className="font-semibold text-white truncate">
-                              {[doc.doctor_prefix, doc.doctor_name].filter(Boolean).join(" ")}
-                            </p>
-                            <span className="shrink-0 text-xs font-bold bg-medical-900/50 text-medical-300 border border-medical-800/30 px-2 py-0.5 rounded-full">
-                              {doc.total_referrals} refs
-                            </span>
+                        {/* Header */}
+                        <div className="px-5 pt-5 pb-4 border-b border-white/10 flex items-start justify-between gap-3 shrink-0">
+                          <div className="flex items-center gap-3 min-w-0">
+                            <div className="w-11 h-11 rounded-2xl bg-medical-600/20 border border-medical-500/30 flex items-center justify-center shrink-0">
+                              <Stethoscope className="w-6 h-6 text-medical-400" />
+                            </div>
+                            <div className="min-w-0">
+                              <p className="font-bold text-white text-base leading-tight truncate">
+                                {[doc.doctor_prefix, doc.doctor_name].filter(Boolean).join(" ")}
+                              </p>
+                              <p className="text-xs text-slate-400 truncate mt-0.5">{doc.doctor_email}</p>
+                            </div>
                           </div>
-                          <p className="text-xs text-slate-400 truncate">{doc.doctor_email}</p>
+                          <button type="button" onClick={() => setExpandedDoctor(null)} className="p-1.5 rounded-xl hover:bg-white/10 text-slate-400 hover:text-white transition-colors shrink-0">
+                            <X className="w-5 h-5" />
+                          </button>
                         </div>
-                        <ChevronDown className={`w-4 h-4 text-slate-400 shrink-0 mt-1 transition-transform ${expandedDoctor === doc.doctor_email ? "rotate-180" : ""}`} />
-                      </button>
 
-                      {expandedDoctor === doc.doctor_email && (
-                        <div className="border-t border-white/10 px-4 py-4 space-y-4">
+                        {/* Quick stats */}
+                        <div className="px-5 py-3 flex gap-5 border-b border-white/5 bg-white/3 shrink-0">
+                          <div>
+                            <p className="text-xs text-slate-500">Total Referrals</p>
+                            <p className="text-xl font-bold text-white">{doc.total_referrals}</p>
+                          </div>
                           {doc.doctor_hospital && (
-                            <div>
-                              <p className="text-xs text-slate-500 font-medium mb-1">Hospital / Clinic</p>
-                              <p className="text-sm text-slate-300">{doc.doctor_hospital}</p>
+                            <div className="min-w-0">
+                              <p className="text-xs text-slate-500">Hospital / Clinic</p>
+                              <p className="text-sm font-semibold text-slate-300 truncate">{doc.doctor_hospital}</p>
                             </div>
                           )}
                           {doc.doctor_phone && (
                             <div>
-                              <p className="text-xs text-slate-500 font-medium mb-1">Phone</p>
-                              <a href={`tel:${doc.doctor_phone}`} className="text-blue-400 hover:underline text-sm flex items-center gap-1">
+                              <p className="text-xs text-slate-500">Phone</p>
+                              <a href={`tel:${doc.doctor_phone}`} className="text-sm text-blue-400 hover:underline flex items-center gap-1">
                                 <Phone className="w-3 h-3" />{doc.doctor_phone}
                               </a>
                             </div>
                           )}
-                          <div>
-                            <p className="text-xs text-slate-500 font-medium mb-1.5">Tests Referred ({doc.tests.length})</p>
-                            <div className="flex flex-wrap gap-1.5">
-                              {(expandedDoctor === doc.doctor_email ? doc.tests : doc.tests.slice(0, 6)).map((t) => (
-                                <span key={t} className="text-xs bg-medical-900/50 text-medical-300 border border-medical-800/30 px-2 py-0.5 rounded-full">{t}</span>
-                              ))}
-                            </div>
-                            {doc.tests.length > 6 && (
-                              <button
-                                type="button"
-                                className="mt-2 text-xs text-medical-400 hover:text-medical-300 font-medium transition"
-                                onClick={(e) => { e.stopPropagation(); setExpandedDoctor(expandedDoctor === `${doc.doctor_email}_tests` ? doc.doctor_email : `${doc.doctor_email}_tests`); }}
-                              >
-                                {expandedDoctor === `${doc.doctor_email}_tests` ? "Show less" : `+${doc.tests.length - 6} more tests`}
-                              </button>
-                            )}
-                          </div>
-                          {doc.recent_requests && doc.recent_requests.some((r) => r.test_image_url) && (
+                        </div>
+
+                        {/* Scrollable body */}
+                        <div className="overflow-y-auto flex-1 px-5 py-4 space-y-5">
+
+                          {/* Bank details */}
+                          {(doc.doctor_bank_name || doc.doctor_account_number) && (
                             <div>
-                              <p className="text-xs text-slate-500 font-medium mb-1.5">Request Images</p>
-                              <div className="space-y-1.5">
-                                {doc.recent_requests.filter((r) => r.test_image_url).map((r) => (
-                                  <a
-                                    key={r.id}
-                                    href={r.test_image_url!}
-                                    target="_blank"
-                                    rel="noopener noreferrer"
-                                    className="flex items-center gap-2 px-3 py-2 rounded-xl bg-blue-500/10 border border-blue-500/20 hover:bg-blue-500/20 transition text-xs font-medium text-blue-300"
-                                    onClick={(e) => e.stopPropagation()}
-                                  >
-                                    <FileImage className="w-3.5 h-3.5 shrink-0" />
-                                    <span className="truncate">{new Date(r.created_at).toLocaleDateString("en-GB", { day: "numeric", month: "short", year: "numeric" })} — {r.tests.slice(0, 40)}{r.tests.length > 40 ? "…" : ""}</span>
-                                    <ExternalLink className="w-3 h-3 shrink-0 ml-auto opacity-60" />
-                                  </a>
-                                ))}
-                              </div>
-                            </div>
-                          )}
-                          <div>
-                            <p className="text-xs text-slate-500 font-medium mb-1.5">Bank Details</p>
-                            {doc.doctor_bank_name || doc.doctor_account_number ? (
+                              <p className="text-xs font-semibold text-slate-500 uppercase tracking-wider mb-2">Bank Details</p>
                               <div className="bg-white/5 rounded-xl p-3 flex items-start gap-2">
                                 <CreditCard className="w-4 h-4 text-emerald-400 shrink-0 mt-0.5" />
                                 <div>
@@ -755,12 +712,64 @@ export function LabDashboard({ lab, isOwner = false, roleName = "Lab Owner", can
                                   {doc.doctor_account_name && <p className="text-xs text-slate-400">{doc.doctor_account_name}</p>}
                                 </div>
                               </div>
-                            ) : (
-                              <p className="text-sm text-slate-500 italic">No bank details provided</p>
-                            )}
-                          </div>
+                            </div>
+                          )}
+
+                          {/* Tests referred */}
                           <div>
-                            <p className="text-xs text-slate-500 font-medium mb-1">Monthly Breakdown</p>
+                            <p className="text-xs font-semibold text-slate-500 uppercase tracking-wider mb-2">
+                              Tests Referred ({doc.tests.length})
+                            </p>
+                            <div className="flex flex-wrap gap-1.5">
+                              {doc.tests.map((t) => (
+                                <span key={t} className="text-xs bg-medical-900/50 text-medical-300 border border-medical-800/30 px-2 py-0.5 rounded-full">{t}</span>
+                              ))}
+                            </div>
+                          </div>
+
+                          {/* All requests */}
+                          {doc.recent_requests && doc.recent_requests.length > 0 && (
+                            <div>
+                              <p className="text-xs font-semibold text-slate-500 uppercase tracking-wider mb-2">
+                                Requests ({doc.recent_requests.length})
+                              </p>
+                              <div className="space-y-2">
+                                {doc.recent_requests.map((r) => (
+                                  <div key={r.id} className="bg-white/5 border border-white/10 rounded-xl px-3 py-3">
+                                    <div className="flex items-start justify-between gap-2 mb-1">
+                                      <p className="text-xs font-mono text-slate-400">{r.code}</p>
+                                      <p className="text-xs text-slate-500 shrink-0">
+                                        {new Date(r.created_at).toLocaleDateString("en-GB", { day: "numeric", month: "short", year: "numeric" })}
+                                      </p>
+                                    </div>
+                                    <p className="text-sm text-slate-300 leading-snug">
+                                      {r.tests === "See attached image" ? (
+                                        <span className="italic text-slate-500">See attached image</span>
+                                      ) : (
+                                        r.tests.slice(0, 80) + (r.tests.length > 80 ? "…" : "")
+                                      )}
+                                    </p>
+                                    {r.test_image_url && (
+                                      <a
+                                        href={r.test_image_url}
+                                        target="_blank"
+                                        rel="noopener noreferrer"
+                                        className="mt-2 inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-blue-500/10 border border-blue-500/20 hover:bg-blue-500/20 transition text-xs font-medium text-blue-300"
+                                      >
+                                        <FileImage className="w-3.5 h-3.5" />
+                                        View image
+                                        <ExternalLink className="w-3 h-3 opacity-60 ml-0.5" />
+                                      </a>
+                                    )}
+                                  </div>
+                                ))}
+                              </div>
+                            </div>
+                          )}
+
+                          {/* Monthly breakdown */}
+                          <div>
+                            <p className="text-xs font-semibold text-slate-500 uppercase tracking-wider mb-2">Monthly Breakdown</p>
                             <div className="flex flex-wrap gap-2">
                               {Object.entries(doc.months).sort((a, b) => b[0].localeCompare(a[0])).map(([ym, count]) => {
                                 const [year, month] = ym.split("-");
@@ -773,12 +782,11 @@ export function LabDashboard({ lab, isOwner = false, roleName = "Lab Owner", can
                               })}
                             </div>
                           </div>
-                          <p className="text-xs text-slate-500">Last referral: {new Date(doc.last_referral).toLocaleDateString("en-GB", { day: "numeric", month: "long", year: "numeric" })}</p>
                         </div>
-                      )}
+                      </div>
                     </div>
-                  ))}
-                </div>
+                  );
+                })()}
               </>
             )}
           </div>
@@ -1015,6 +1023,41 @@ export function LabDashboard({ lab, isOwner = false, roleName = "Lab Owner", can
               if (s in schedCounts) schedCounts[s]++;
             });
 
+            // Tests completed (done) — all-time count per test name
+            const doneTestCounts: Record<string, number> = {};
+            const doneByMonth: Record<string, Record<string, number>> = {}; // month -> test -> count
+            requests
+              .filter((r) => r.status === "done")
+              .forEach((r) => {
+                if (!r.tests || r.tests === "See attached image") return;
+                const monthKey = r.created_at.slice(0, 7);
+                r.tests
+                  .split(/[,\n]+/)
+                  .map((t: string) => t.trim())
+                  .filter(Boolean)
+                  .forEach((t: string) => {
+                    doneTestCounts[t] = (doneTestCounts[t] ?? 0) + 1;
+                    if (!doneByMonth[monthKey]) doneByMonth[monthKey] = {};
+                    doneByMonth[monthKey][t] = (doneByMonth[monthKey][t] ?? 0) + 1;
+                  });
+              });
+            const topDoneTests = Object.entries(doneTestCounts)
+              .sort((a, b) => b[1] - a[1])
+              .slice(0, 15);
+
+            // Build last-6-month keys for done tests monthly chart
+            const doneMonthKeys: { key: string; label: string }[] = [];
+            for (let i = 5; i >= 0; i--) {
+              const d = new Date(); d.setDate(1); d.setMonth(d.getMonth() - i);
+              doneMonthKeys.push({
+                key: d.toISOString().slice(0, 7),
+                label: d.toLocaleDateString("en-GB", { month: "short" }),
+              });
+            }
+            // Top 5 done tests for the monthly chart
+            const top5DoneTests = topDoneTests.slice(0, 5).map(([name]) => name);
+            const DONE_COLORS = ["#10b981", "#0e8fe5", "#f59e0b", "#8b5cf6", "#ec4899"];
+
             return {
               total,
               completionRate,
@@ -1025,6 +1068,11 @@ export function LabDashboard({ lab, isOwner = false, roleName = "Lab Owner", can
               sexCounts,
               top10Tests,
               schedCounts,
+              topDoneTests,
+              doneByMonth,
+              doneMonthKeys,
+              top5DoneTests,
+              DONE_COLORS,
             };
           })();
 
@@ -1038,6 +1086,11 @@ export function LabDashboard({ lab, isOwner = false, roleName = "Lab Owner", can
             sexCounts,
             top10Tests,
             schedCounts,
+            topDoneTests,
+            doneByMonth,
+            doneMonthKeys,
+            top5DoneTests,
+            DONE_COLORS,
           } = analyticsMetrics;
 
           const maxMonthly = Math.max(...last6.map((m) => m.count), 1);
@@ -1211,7 +1264,7 @@ export function LabDashboard({ lab, isOwner = false, roleName = "Lab Owner", can
               {/* Top 10 Tests */}
               <div className="bg-white/5 border border-white/10 rounded-2xl p-5">
                 <p className="text-xs font-semibold text-slate-400 uppercase tracking-wider mb-4">
-                  Top 10 Tests
+                  Top 10 Tests (All Requests)
                 </p>
                 {top10Tests.length === 0 ? (
                   <p className="text-slate-500 text-sm">No test data available.</p>
@@ -1242,6 +1295,117 @@ export function LabDashboard({ lab, isOwner = false, roleName = "Lab Owner", can
                   </div>
                 )}
               </div>
+
+              {/* Tests Completed (Done) — All-Time */}
+              <div className="bg-white/5 border border-white/10 rounded-2xl p-5">
+                <div className="flex items-center gap-2 mb-4">
+                  <CheckCircle className="w-4 h-4 text-emerald-400" />
+                  <p className="text-xs font-semibold text-slate-400 uppercase tracking-wider">
+                    Tests Completed — All-Time
+                  </p>
+                </div>
+                {topDoneTests.length === 0 ? (
+                  <p className="text-slate-500 text-sm">No completed tests recorded yet.</p>
+                ) : (
+                  <div className="space-y-2">
+                    {topDoneTests.map(([name, count], idx) => {
+                      const maxDone = topDoneTests[0][1];
+                      const pct = Math.round((count / maxDone) * 100);
+                      return (
+                        <div key={name} className="flex items-center gap-3">
+                          <span className="text-xs text-slate-500 w-5 text-right shrink-0">{idx + 1}</span>
+                          <div className="flex-1 min-w-0">
+                            <div className="flex justify-between text-sm mb-0.5">
+                              <span className="text-slate-300 truncate">{name}</span>
+                              <span className="text-emerald-400 font-semibold ml-2 shrink-0">{count}</span>
+                            </div>
+                            <div className="h-1.5 rounded-full bg-white/10 overflow-hidden">
+                              <div className="h-full rounded-full bg-emerald-500" style={{ width: `${pct}%` }} />
+                            </div>
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
+                )}
+              </div>
+
+              {/* Tests Completed — Monthly Trend (Top 5 Tests) */}
+              {top5DoneTests.length > 0 && (
+                <div className="bg-white/5 border border-white/10 rounded-2xl p-5">
+                  <div className="flex items-center gap-2 mb-1">
+                    <CheckCircle className="w-4 h-4 text-emerald-400" />
+                    <p className="text-xs font-semibold text-slate-400 uppercase tracking-wider">
+                      Tests Completed — Monthly (Top {top5DoneTests.length})
+                    </p>
+                  </div>
+                  {/* Legend */}
+                  <div className="flex flex-wrap gap-x-4 gap-y-1 mb-4 mt-2">
+                    {top5DoneTests.map((name, ci) => (
+                      <div key={name} className="flex items-center gap-1.5">
+                        <span className="w-2.5 h-2.5 rounded-sm shrink-0" style={{ backgroundColor: DONE_COLORS[ci] }} />
+                        <span className="text-xs text-slate-400 truncate max-w-[140px]">{name}</span>
+                      </div>
+                    ))}
+                  </div>
+                  {/* Grouped bar chart */}
+                  {(() => {
+                    const barW = 10;
+                    const gapBetween = 3;
+                    const groupW = top5DoneTests.length * (barW + gapBetween) + 12;
+                    const svgW = doneMonthKeys.length * groupW;
+                    const maxVal = Math.max(
+                      1,
+                      ...doneMonthKeys.flatMap(({ key }) =>
+                        top5DoneTests.map((name) => doneByMonth[key]?.[name] ?? 0)
+                      )
+                    );
+                    const chartH = 80;
+                    const labelY = chartH + 18;
+                    return (
+                      <div className="overflow-x-auto">
+                        <svg
+                          viewBox={`0 0 ${svgW} ${labelY + 4}`}
+                          className="w-full"
+                          style={{ minWidth: `${Math.max(svgW, 280)}px`, height: `${labelY + 8}px` }}
+                          preserveAspectRatio="none"
+                        >
+                          {doneMonthKeys.map(({ key, label }, mi) => {
+                            const groupX = mi * groupW + 6;
+                            return (
+                              <g key={key}>
+                                {top5DoneTests.map((name, ci) => {
+                                  const val = doneByMonth[key]?.[name] ?? 0;
+                                  const barH = val > 0 ? Math.max((val / maxVal) * chartH, 3) : 0;
+                                  const x = groupX + ci * (barW + gapBetween);
+                                  const y = chartH - barH;
+                                  return (
+                                    <g key={name}>
+                                      <rect x={x} y={y} width={barW} height={barH} rx="2" fill={DONE_COLORS[ci]} opacity="0.85" />
+                                      {val > 0 && (
+                                        <text x={x + barW / 2} y={y - 2} textAnchor="middle" fill="white" fontSize="7">{val}</text>
+                                      )}
+                                    </g>
+                                  );
+                                })}
+                                <text
+                                  x={groupX + (top5DoneTests.length * (barW + gapBetween)) / 2}
+                                  y={labelY}
+                                  textAnchor="middle"
+                                  fill="#94a3b8"
+                                  fontSize="9"
+                                >
+                                  {label}
+                                </text>
+                              </g>
+                            );
+                          })}
+                        </svg>
+                      </div>
+                    );
+                  })()}
+                </div>
+              )}
             </div>
           );
         })()}
