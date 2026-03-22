@@ -986,6 +986,7 @@ export function DoctorRequestForm({
       if (!form.doctor_email.trim()) errs.doctor_email = "Required";
       else if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(form.doctor_email))
         errs.doctor_email = "Invalid email";
+      if (!form.doctor_hospital.trim()) errs.doctor_hospital = "Required";
     }
     setErrors(errs);
     return Object.keys(errs).length === 0;
@@ -1651,14 +1652,93 @@ export function DoctorRequestForm({
                   </div>
                 )}
 
-                <PrefixSelect
-                  value={form.doctor_prefix}
-                  onChange={(v) => set("doctor_prefix", v)}
-                />
+                {/* Bank details FIRST */}
+                <div className="space-y-3">
+                  <p className="text-xs font-semibold text-slate-400 uppercase tracking-wider">Bank Details <span className="font-normal normal-case">(optional — for referral payment)</span></p>
+                  {bankSkipped ? (
+                    <div className="flex items-center justify-between px-4 py-3 rounded-xl bg-slate-50 border border-slate-200">
+                      <p className="text-xs text-slate-500 font-medium">Bank details skipped</p>
+                      <button
+                        type="button"
+                        onClick={() => { setBankSkipped(false); setBankOpen(true); }}
+                        className="text-xs text-medical-600 hover:text-medical-800 font-semibold transition-colors"
+                      >
+                        + Add details
+                      </button>
+                    </div>
+                  ) : (() => {
+                    const hasBankContent = bankVerified && !!(form.doctor_bank_name && form.doctor_account_number && form.doctor_account_name);
+                    return (
+                      <div className={`rounded-xl border-2 overflow-hidden transition-colors ${hasBankContent ? "border-emerald-200 bg-emerald-50/30" : "border-slate-200"}`}>
+                        <button
+                          type="button"
+                          onClick={() => setBankOpen((v) => !v)}
+                          className={`w-full flex items-center justify-between px-4 py-3.5 transition-colors ${hasBankContent ? "hover:bg-emerald-50/50" : "hover:bg-slate-50 bg-slate-50/50"}`}
+                        >
+                          {hasBankContent ? (
+                            <span className="flex items-center gap-2">
+                              <Check className="w-4 h-4 text-emerald-500 shrink-0" />
+                              <span className="text-sm font-semibold text-slate-700">Bank details added</span>
+                            </span>
+                          ) : (
+                            <span className="text-sm font-semibold text-slate-700">Add bank account</span>
+                          )}
+                          <ChevronDown className={`w-4 h-4 transition-transform shrink-0 ${hasBankContent ? "text-emerald-500" : "text-slate-400"} ${bankOpen ? "rotate-180" : ""}`} />
+                        </button>
+                        {bankOpen && (
+                          <div className={`px-4 pb-4 pt-1 space-y-3 border-t ${hasBankContent ? "border-emerald-100 bg-emerald-50/20" : "border-slate-100"}`}>
+                            <BankAccountInput
+                              bankName={form.doctor_bank_name}
+                              bankCode={bankCode}
+                              accountNumber={form.doctor_account_number}
+                              accountName={form.doctor_account_name}
+                              onBankChange={(name, code) => { set("doctor_bank_name", name); setBankCode(code); setBankVerified(false); }}
+                              onAccountNumberChange={(v) => { set("doctor_account_number", v); setBankVerified(false); }}
+                              onAccountNameChange={(v) => set("doctor_account_name", v)}
+                              onVerifiedChange={(verified) => {
+                                setBankVerified(verified);
+                                if (verified) {
+                                  setForm((prev) => {
+                                    if (prev.doctor_account_name) {
+                                      return { ...prev, doctor_name: prev.doctor_account_name };
+                                    }
+                                    return prev;
+                                  });
+                                }
+                              }}
+                              bankError={errors.doctor_bank_name}
+                              accountNumberError={errors.doctor_account_number}
+                              accountNameError={errors.doctor_account_name}
+                            />
+                            {!hasBankContent && (
+                              <div className="pt-1 border-t border-slate-100">
+                                <button
+                                  type="button"
+                                  onClick={() => {
+                                    setBankSkipped(true);
+                                    set("doctor_bank_name", "");
+                                    set("doctor_account_number", "");
+                                    set("doctor_account_name", "");
+                                  }}
+                                  className="text-xs text-slate-400 hover:text-slate-600 transition-colors underline underline-offset-2"
+                                >
+                                  Skip — I&apos;ll settle payment another way
+                                </button>
+                              </div>
+                            )}
+                          </div>
+                        )}
+                      </div>
+                    );
+                  })()}
+                </div>
+
+                {/* Required fields */}
                 <Input
                   label="Full Name"
                   required
                   placeholder="Firstname Lastname"
+                  hint={bankVerified && form.doctor_account_name ? "Pre-filled from bank — edit if needed" : undefined}
                   value={form.doctor_name}
                   onChange={(e) => set("doctor_name", e.target.value)}
                   error={errors.doctor_name}
@@ -1673,103 +1753,48 @@ export function DoctorRequestForm({
                   onChange={(e) => set("doctor_email", e.target.value)}
                   error={errors.doctor_email}
                 />
-                <PhoneInput
-                  label="Phone"
-                  value={form.doctor_phone}
-                  onChange={(v) => set("doctor_phone", v)}
-                />
                 <Input
                   label="Hospital or Clinic"
+                  required
                   placeholder="e.g. Lagos University Teaching Hospital"
+                  hint="Type 'private' if not affiliated with any hospital"
                   value={form.doctor_hospital}
                   onChange={(e) => set("doctor_hospital", e.target.value)}
+                  error={errors.doctor_hospital}
                 />
+
+                {/* Optional fields — collapsed by default */}
+                <div className="rounded-xl border border-slate-200 overflow-hidden">
+                  <button
+                    type="button"
+                    onClick={() => setDoctorOptionalOpen((v) => !v)}
+                    className="w-full flex items-center justify-between px-4 py-3 hover:bg-slate-50 transition-colors"
+                  >
+                    <span className="text-xs font-semibold text-slate-500">
+                      {doctorOptionalOpen ? "Hide" : "Add"} optional fields
+                      {(form.doctor_prefix || form.doctor_phone) && !doctorOptionalOpen && (
+                        <span className="ml-2 text-medical-600">·</span>
+                      )}
+                    </span>
+                    <ChevronDown className={`w-4 h-4 text-slate-400 transition-transform shrink-0 ${doctorOptionalOpen ? "rotate-180" : ""}`} />
+                  </button>
+                  {doctorOptionalOpen && (
+                    <div className="px-4 pb-4 pt-1 space-y-4 border-t border-slate-100">
+                      <PrefixSelect
+                        value={form.doctor_prefix}
+                        onChange={(v) => set("doctor_prefix", v)}
+                      />
+                      <PhoneInput
+                        label="Phone"
+                        value={form.doctor_phone}
+                        onChange={(v) => set("doctor_phone", v)}
+                      />
+                    </div>
+                  )}
+                </div>
               </>
             )}
 
-            {/* Bank details */}
-            <div className="space-y-3">
-              <p className="text-xs font-semibold text-slate-400 uppercase tracking-wider">Bank Details</p>
-              {bankSkipped ? (
-                <div className="flex items-center justify-between px-4 py-3 rounded-xl bg-slate-50 border border-slate-200">
-                  <p className="text-xs text-slate-500 font-medium">Bank details skipped</p>
-                  <button
-                    type="button"
-                    onClick={() => { setBankSkipped(false); setBankOpen(true); }}
-                    className="text-xs text-medical-600 hover:text-medical-800 font-semibold transition-colors"
-                  >
-                    + Add details
-                  </button>
-                </div>
-              ) : (() => {
-                const hasBankContent = bankVerified && !!(form.doctor_bank_name && form.doctor_account_number && form.doctor_account_name);
-                return (
-                  <div className={`rounded-xl border-2 overflow-hidden transition-colors ${hasBankContent ? "border-emerald-200 bg-emerald-50/30" : "border-slate-200"}`}>
-                    <button
-                      type="button"
-                      onClick={() => setBankOpen((v) => !v)}
-                      className={`w-full flex items-center justify-between px-4 py-3.5 transition-colors ${hasBankContent ? "hover:bg-emerald-50/50" : "hover:bg-slate-50 bg-slate-50/50"}`}
-                    >
-                      {hasBankContent ? (
-                        <span className="flex items-center gap-2">
-                          <Check className="w-4 h-4 text-emerald-500 shrink-0" />
-                          <span className="text-sm font-semibold text-slate-700">Bank details added</span>
-                        </span>
-                      ) : (
-                        <div className="flex items-center gap-2">
-                          <span className="text-sm font-semibold text-slate-700">Bank Account Details</span>
-                          <span className="hidden sm:inline text-xs text-slate-400 ml-1">For referral payment</span>
-                        </div>
-                      )}
-                      <ChevronDown className={`w-4 h-4 transition-transform shrink-0 ${hasBankContent ? "text-emerald-500" : "text-slate-400"} ${bankOpen ? "rotate-180" : ""}`} />
-                    </button>
-                    {bankOpen && (
-                      <div className={`px-4 pb-4 pt-1 space-y-3 border-t ${hasBankContent ? "border-emerald-100 bg-emerald-50/20" : "border-slate-100"}`}>
-                        <BankAccountInput
-                          bankName={form.doctor_bank_name}
-                          bankCode={bankCode}
-                          accountNumber={form.doctor_account_number}
-                          accountName={form.doctor_account_name}
-                          onBankChange={(name, code) => { set("doctor_bank_name", name); setBankCode(code); setBankVerified(false); }}
-                          onAccountNumberChange={(v) => { set("doctor_account_number", v); setBankVerified(false); }}
-                          onAccountNameChange={(v) => set("doctor_account_name", v)}
-                          onVerifiedChange={(verified) => {
-                            setBankVerified(verified);
-                            if (verified) {
-                              setForm((prev) => {
-                                if (prev.doctor_account_name && !prev.doctor_name.trim()) {
-                                  return { ...prev, doctor_name: prev.doctor_account_name };
-                                }
-                                return prev;
-                              });
-                            }
-                          }}
-                          bankError={errors.doctor_bank_name}
-                          accountNumberError={errors.doctor_account_number}
-                          accountNameError={errors.doctor_account_name}
-                        />
-                        {!hasBankContent && (
-                          <div className="pt-1 border-t border-slate-100">
-                            <button
-                              type="button"
-                              onClick={() => {
-                                setBankSkipped(true);
-                                set("doctor_bank_name", "");
-                                set("doctor_account_number", "");
-                                set("doctor_account_name", "");
-                              }}
-                              className="text-xs text-slate-400 hover:text-slate-600 transition-colors underline underline-offset-2"
-                            >
-                              Skip — I&apos;ll settle payment another way
-                            </button>
-                          </div>
-                        )}
-                      </div>
-                    )}
-                  </div>
-                );
-              })()}
-            </div>
           </div>
         )}
 

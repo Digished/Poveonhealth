@@ -17,7 +17,7 @@ const CreateRequestSchema = z.object({
   doctor_name: z.string().min(2).max(200),
   doctor_email: z.string().email(),
   doctor_phone: z.string().max(50).optional().or(z.literal("")),
-  doctor_hospital: z.string().max(200).optional().or(z.literal("")),
+  doctor_hospital: z.string().min(1).max(200),
   doctor_bank_name: z.string().max(100).optional().or(z.literal("")),
   doctor_account_number: z.string().max(20).optional().or(z.literal("")),
   doctor_account_name: z.string().max(200).optional().or(z.literal("")),
