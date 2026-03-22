@@ -45,12 +45,12 @@ model Lab {
 model LabBranch {
   id            String   @id @default(uuid())
   lab_id        String   // parent lab
-  branch_lab_id String   // the branch (must be an existing Lab)
+  branch_lab_id String?  // the branch (must be an existing Lab); nullable to allow migration from old schema
   is_main       Boolean  @default(false)
   created_at    DateTime @default(now())
 
   lab        Lab       @relation("BranchParent", fields: [lab_id], references: [id], onDelete: Cascade)
-  branch_lab Lab       @relation("BranchChild",  fields: [branch_lab_id], references: [id], onDelete: Cascade)
+  branch_lab Lab?      @relation("BranchChild",  fields: [branch_lab_id], references: [id], onDelete: Cascade)
   requests   Request[]
 
   @@unique([lab_id, branch_lab_id])

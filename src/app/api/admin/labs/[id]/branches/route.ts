@@ -20,13 +20,13 @@ export async function GET(
   const { id } = await params;
 
   const branches = await prisma.labBranch.findMany({
-    where: { lab_id: id },
+    where: { lab_id: id, branch_lab_id: { not: null } },
     include: {
       branch_lab: { select: { id: true, name: true, address: true, phones: true, whatsapp: true } },
     },
     orderBy: [{ is_main: "desc" }],
   });
-  return NextResponse.json({ success: true, branches });
+  return NextResponse.json({ success: true, branches: branches.filter((b) => b.branch_lab !== null) });
 }
 
 /** POST /api/admin/labs/[id]/branches — link an existing lab as a branch */

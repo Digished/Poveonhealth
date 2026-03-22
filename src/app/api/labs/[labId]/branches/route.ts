@@ -19,16 +19,18 @@ export async function GET(
       orderBy: [{ is_main: "desc" }],
     });
 
-    // Return branch_lab data in the shape the form expects
-    const result = branches.map((b) => ({
-      id: b.id,
-      branch_lab_id: b.branch_lab_id,
-      name: b.branch_lab.name,
-      address: b.branch_lab.address,
-      phones: b.branch_lab.phones as string[],
-      whatsapp: b.branch_lab.whatsapp,
-      is_main: b.is_main,
-    }));
+    // Filter out stale rows that have no linked branch_lab (migrated from old schema)
+    const result = branches
+      .filter((b) => b.branch_lab !== null)
+      .map((b) => ({
+        id: b.id,
+        branch_lab_id: b.branch_lab_id,
+        name: b.branch_lab!.name,
+        address: b.branch_lab!.address,
+        phones: b.branch_lab!.phones as string[],
+        whatsapp: b.branch_lab!.whatsapp,
+        is_main: b.is_main,
+      }));
 
     return NextResponse.json({ branches: result });
   } catch {

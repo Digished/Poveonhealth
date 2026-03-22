@@ -33,12 +33,12 @@ export default async function LabSlugPage({ params }: LabSlugPageProps) {
           <DoctorRequestForm
             preselectedLabId={lab.id}
             preselectedLabName={lab.name}
-            branches={rawBranches.map((b) => ({
+            branches={rawBranches.filter((b) => b.branch_lab !== null).map((b) => ({
               id: b.id,
               is_main: b.is_main,
-              name: b.branch_lab.name,
-              address: b.branch_lab.address ?? "",
-              phones: (b.branch_lab.phones ?? []) as string[],
+              name: b.branch_lab!.name,
+              address: b.branch_lab!.address ?? "",
+              phones: (b.branch_lab!.phones ?? []) as string[],
             }))}
           />
         </div>
