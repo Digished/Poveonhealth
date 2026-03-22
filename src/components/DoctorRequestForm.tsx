@@ -875,6 +875,27 @@ export function DoctorRequestForm({
   const [patientInfoOpen, setPatientInfoOpen] = useState(false);
   const [scheduleOpen, setScheduleOpen] = useState(false);
 
+  // Auto-fill from patient profile when phone is entered
+  useEffect(() => {
+    const phone = form.patient_phone;
+    const digits = phone.replace(/\D/g, "");
+    if (digits.length < 7) return;
+    const timer = setTimeout(() => {
+      fetch(`/api/patient/profile?phone=${encodeURIComponent(phone)}`)
+        .then((r) => r.ok ? r.json() : null)
+        .then((data) => {
+          if (data?.success) {
+            if (data.name && !form.patient_name) { set("patient_name", data.name); setPatientInfoOpen(true); }
+            if (data.dob && !form.dob) set("dob", data.dob);
+            if (data.sex && !form.sex) set("sex", data.sex);
+          }
+        })
+        .catch(() => null);
+    }, 700);
+    return () => clearTimeout(timer);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [form.patient_phone]);
+
   // Auto-fill patient name from profile when patient email is entered
   useEffect(() => {
     const email = form.patient_email;
@@ -883,9 +904,10 @@ export function DoctorRequestForm({
       fetch(`/api/patient/profile?email=${encodeURIComponent(email)}`)
         .then((r) => r.ok ? r.json() : null)
         .then((data) => {
-          if (data?.success && data.name && !form.patient_name) {
-            set("patient_name", data.name);
-            setPatientInfoOpen(true);
+          if (data?.success) {
+            if (data.name && !form.patient_name) { set("patient_name", data.name); setPatientInfoOpen(true); }
+            if (data.dob && !form.dob) set("dob", data.dob);
+            if (data.sex && !form.sex) set("sex", data.sex);
           }
         })
         .catch(() => null);

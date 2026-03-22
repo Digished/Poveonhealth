@@ -278,13 +278,17 @@ model PatientSession {
 }
 
 // Patient profile — name and contact info set by the patient via portal
-// Used for global auto-fill when doctor enters the patient's email
+// Used for global auto-fill when doctor enters the patient's email or phone
 model PatientProfile {
   email      String    @id
   name       String?
-  phone      String?
+  phone      String?   // stored with country code e.g. "+2348001234567"
+  dob        String?   // ISO date string "YYYY-MM-DD"
+  sex        String?   // "male" | "female" | "other"
+  address    String?
   updated_at DateTime  @updatedAt
 
+  @@index([phone])
   @@map("patient_profiles")
 }
 

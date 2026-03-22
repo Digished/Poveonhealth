@@ -33,6 +33,65 @@ interface ReferralGroup {
 // Shared white input class for dark-background modals
 const whiteInput = "bg-white border-slate-200 text-slate-800 placeholder-slate-300";
 
+const COUNTRY_CODES = [
+  { code: "+234", label: "🇳🇬 NG +234" },
+  { code: "+1",   label: "🇺🇸 US +1" },
+  { code: "+44",  label: "🇬🇧 UK +44" },
+  { code: "+27",  label: "🇿🇦 ZA +27" },
+  { code: "+233", label: "🇬🇭 GH +233" },
+  { code: "+254", label: "🇰🇪 KE +254" },
+  { code: "+256", label: "🇺🇬 UG +256" },
+  { code: "+255", label: "🇹🇿 TZ +255" },
+  { code: "+251", label: "🇪🇹 ET +251" },
+  { code: "+212", label: "🇲🇦 MA +212" },
+  { code: "+20",  label: "🇪🇬 EG +20" },
+  { code: "+971", label: "🇦🇪 UAE +971" },
+  { code: "+91",  label: "🇮🇳 IN +91" },
+  { code: "+86",  label: "🇨🇳 CN +86" },
+];
+
+function parseWaCode(full: string): { dial: string; local: string } {
+  for (const c of COUNTRY_CODES) {
+    if (full.startsWith(c.code)) {
+      return { dial: c.code, local: full.slice(c.code.length).trimStart() };
+    }
+  }
+  return { dial: "+234", local: full.startsWith("+") ? full.replace(/^\+\d{1,4}/, "").trimStart() : full };
+}
+
+function WhatsAppNumberInput({
+  value,
+  onChange,
+  inputClass,
+}: {
+  value: string;
+  onChange: (v: string) => void;
+  inputClass: string;
+}) {
+  const { dial, local } = parseWaCode(value);
+  return (
+    <div className="flex gap-1 flex-1">
+      <select
+        value={dial}
+        onChange={(e) => onChange(e.target.value + (local ? " " + local : ""))}
+        className={`shrink-0 rounded-xl border px-2 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-medical-500 ${inputClass}`}
+        style={{ minWidth: "7rem" }}
+      >
+        {COUNTRY_CODES.map((c) => (
+          <option key={c.code} value={c.code}>{c.label}</option>
+        ))}
+      </select>
+      <input
+        value={local}
+        onChange={(e) => onChange(dial + " " + e.target.value)}
+        placeholder="800 000 0000"
+        className={`flex-1 min-w-0 rounded-xl border px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-medical-500 ${inputClass}`}
+        type="tel"
+      />
+    </div>
+  );
+}
+
 function refLink(code: string) {
   const origin = typeof window !== "undefined" ? window.location.origin : "";
   return `${origin}/?ref=${code}`;
@@ -1098,11 +1157,10 @@ function CreateLabModal({ onClose, onSuccess }: { onClose: () => void; onSuccess
               <div className="space-y-2">
                 {whatsappNumbers.map((num, i) => (
                   <div key={i} className="flex gap-2">
-                    <input
-                      className={`flex-1 rounded-xl border px-4 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-medical-500 ${whiteInput}`}
-                      placeholder="+234 800 000 0000"
+                    <WhatsAppNumberInput
                       value={num}
-                      onChange={(e) => { const next = [...whatsappNumbers]; next[i] = e.target.value; setWhatsappNumbers(next); }}
+                      onChange={(v) => { const next = [...whatsappNumbers]; next[i] = v; setWhatsappNumbers(next); }}
+                      inputClass={whiteInput}
                     />
                     {whatsappNumbers.length > 1 && (
                       <button type="button" onClick={() => setWhatsappNumbers(whatsappNumbers.filter((_, j) => j !== i))}
@@ -1110,10 +1168,10 @@ function CreateLabModal({ onClose, onSuccess }: { onClose: () => void; onSuccess
                     )}
                   </div>
                 ))}
-                <button type="button" onClick={() => setWhatsappNumbers([...whatsappNumbers, ""])}
+                <button type="button" onClick={() => setWhatsappNumbers([...whatsappNumbers, "+234 "])}
                   className="text-xs text-medical-400 hover:text-medical-300 font-medium transition-colors">+ Add another number</button>
               </div>
-              <p className="text-xs text-slate-500 mt-1">Used for patient contact buttons. Include country code.</p>
+              <p className="text-xs text-slate-500 mt-1">Select country code then enter the local number.</p>
             </div>
             <div>
               <label className="text-sm font-medium text-slate-300 block mb-1">
@@ -1161,9 +1219,9 @@ function EditLabModal({ lab, onClose, onSuccess }: { lab: Lab; onClose: () => vo
   const [whatsappNumbers, setWhatsappNumbers] = useState<string[]>(() => {
     try {
       const p = JSON.parse(lab.whatsapp ?? "[]");
-      return Array.isArray(p) ? (p.length ? p : [""]) : lab.whatsapp ? [lab.whatsapp] : [""];
+      return Array.isArray(p) ? (p.length ? p : ["+234 "]) : lab.whatsapp ? [lab.whatsapp] : ["+234 "];
     } catch {
-      return lab.whatsapp ? [lab.whatsapp] : [""];
+      return lab.whatsapp ? [lab.whatsapp] : ["+234 "];
     }
   });
   const [requestEmail, setRequestEmail] = useState(lab.request_email ?? "");
@@ -1282,11 +1340,10 @@ function EditLabModal({ lab, onClose, onSuccess }: { lab: Lab; onClose: () => vo
             <div className="space-y-2">
               {whatsappNumbers.map((num, i) => (
                 <div key={i} className="flex gap-2">
-                  <input
-                    className={`flex-1 rounded-xl border px-4 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-medical-500 ${whiteInput}`}
-                    placeholder="+234 800 000 0000"
+                  <WhatsAppNumberInput
                     value={num}
-                    onChange={(e) => { const next = [...whatsappNumbers]; next[i] = e.target.value; setWhatsappNumbers(next); }}
+                    onChange={(v) => { const next = [...whatsappNumbers]; next[i] = v; setWhatsappNumbers(next); }}
+                    inputClass={whiteInput}
                   />
                   {whatsappNumbers.length > 1 && (
                     <button type="button" onClick={() => setWhatsappNumbers(whatsappNumbers.filter((_, j) => j !== i))}
@@ -1294,10 +1351,10 @@ function EditLabModal({ lab, onClose, onSuccess }: { lab: Lab; onClose: () => vo
                   )}
                 </div>
               ))}
-              <button type="button" onClick={() => setWhatsappNumbers([...whatsappNumbers, ""])}
+              <button type="button" onClick={() => setWhatsappNumbers([...whatsappNumbers, "+234 "])}
                 className="text-xs text-medical-400 hover:text-medical-300 transition-colors">+ Add another number</button>
             </div>
-            <p className="text-xs text-slate-500 mt-1">Used for patient contact buttons. Include country code.</p>
+            <p className="text-xs text-slate-500 mt-1">Select country code then enter the local number.</p>
           </div>
           <div>
             <label className="text-sm font-medium text-slate-300 block mb-1">
