@@ -13,7 +13,7 @@ import { useDashTheme } from "@/hooks/useDashTheme";
 import { Button } from "@/components/ui/Button";
 import { Input } from "@/components/ui/Input";
 import { StatusBadge } from "@/components/ui/Badge";
-import type { LabRequest, RequestStatus } from "@/lib/types";
+import type { LabRequest, RequestStatus, Sex } from "@/lib/types";
 import { SERVICE_CATEGORIES } from "@/lib/constants";
 import { format, differenceInYears } from "date-fns";
 import { createClient } from "@/lib/supabase/client";
@@ -410,7 +410,7 @@ export function LabDashboard({ lab, isOwner = false, roleName = "Lab Owner", can
         patient_phone: editPatientForm.patient_phone || null,
         patient_email: editPatientForm.patient_email || null,
         dob: editPatientForm.dob || null,
-        sex: editPatientForm.sex || null,
+        sex: (editPatientForm.sex || null) as Sex | null,
         address: editPatientForm.address || null,
       };
       setRequests((prev) => prev.map((r) => r.id === updated.id ? updated : r));
