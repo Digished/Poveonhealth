@@ -21,9 +21,9 @@ interface Lab {
 interface Request {
   id: string;
   code: string;
-  patient_name: string;
-  dob: string;
-  sex: string;
+  patient_name: string | null;
+  dob: string | null;
+  sex: string | null;
   address: string | null;
   patient_email: string | null;
   patient_phone: string | null;
@@ -99,13 +99,15 @@ function formatDate(iso: string) {
   });
 }
 
-function formatDob(iso: string) {
-  return new Date(iso).toLocaleDateString("en-GB", {
-    day: "numeric", month: "short", year: "numeric",
-  });
+function formatDob(iso: string | null) {
+  if (!iso) return "—";
+  try {
+    return new Date(iso).toLocaleDateString("en-GB", { day: "numeric", month: "short", year: "numeric" });
+  } catch { return iso; }
 }
 
-function toDateInputValue(iso: string) {
+function toDateInputValue(iso: string | null) {
+  if (!iso) return "";
   return iso.slice(0, 10);
 }
 
@@ -119,9 +121,9 @@ function EditModal({
   onSaved: (updated: Request) => void;
 }) {
   const [form, setForm] = useState<EditForm>({
-    patient_name: req.patient_name,
+    patient_name: req.patient_name ?? "",
     dob: toDateInputValue(req.dob),
-    sex: req.sex,
+    sex: req.sex ?? "",
     address: req.address ?? "",
     patient_email: req.patient_email ?? "",
     patient_phone: req.patient_phone ?? "",
@@ -146,12 +148,8 @@ function EditModal({
 
   async function handleSave() {
     setError("");
-    if (!form.patient_name.trim()) { setError("Patient name is required."); return; }
-    if (!form.dob) { setError("Date of birth is required."); return; }
-    if (!form.sex) { setError("Sex is required."); return; }
     if (!form.doctor_name.trim()) { setError("Doctor name is required."); return; }
     if (!form.tests.trim()) { setError("Tests are required."); return; }
-
     setSaving(true);
     try {
       const res = await fetch("/api/requests/edit", {
@@ -521,7 +519,7 @@ function RequestCard({
           <p className="text-sm font-bold text-slate-800 mt-0.5 truncate">{req.lab.name}</p>
           <div className="flex items-center gap-1.5 mt-0.5">
             <User className="w-3 h-3 text-slate-400 shrink-0" />
-            <span className="text-xs text-slate-500 truncate">{req.patient_name}</span>
+            <span className="text-xs text-slate-500 truncate">{req.patient_name ?? "—"}</span>
             <span className="text-slate-300">·</span>
             <span className="text-xs text-slate-400">{formatDate(req.created_at)}</span>
           </div>
@@ -541,7 +539,7 @@ function RequestCard({
             <div className="space-y-1.5 text-sm">
               <div className="flex gap-2">
                 <span className="text-slate-400 w-24 shrink-0">Name</span>
-                <span className="text-slate-700 font-medium">{req.patient_name}</span>
+                <span className="text-slate-700 font-medium">{req.patient_name ?? "—"}</span>
               </div>
               <div className="flex gap-2">
                 <span className="text-slate-400 w-24 shrink-0">Date of Birth</span>
@@ -549,7 +547,7 @@ function RequestCard({
               </div>
               <div className="flex gap-2">
                 <span className="text-slate-400 w-24 shrink-0">Sex</span>
-                <span className="text-slate-700 font-medium capitalize">{req.sex}</span>
+                <span className="text-slate-700 font-medium capitalize">{req.sex ?? "—"}</span>
               </div>
               {req.patient_phone && (
                 <div className="flex gap-2">

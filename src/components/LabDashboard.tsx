@@ -93,6 +93,7 @@ export function LabDashboard({ lab, isOwner = false, roleName = "Lab Owner", can
   // Clients state
   type ClientRecord = {
     patient_phone: string;
+    patient_email: string | null;
     patient_name: string | null;
     visit_count: number;
     first_visit: string;

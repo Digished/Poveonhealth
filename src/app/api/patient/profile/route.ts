@@ -76,5 +76,14 @@ export async function PATCH(req: NextRequest) {
     create: { email, ...parsed.data },
   });
 
+  // Propagate name change to all existing Request records for this patient
+  // so lab dashboards and reports reflect the patient's self-updated name
+  if (parsed.data.name) {
+    await prisma.request.updateMany({
+      where: { patient_email: email },
+      data: { patient_name: parsed.data.name },
+    }).catch(() => null); // non-blocking — don't fail the profile save if this errors
+  }
+
   return NextResponse.json({ success: true, profile });
 }

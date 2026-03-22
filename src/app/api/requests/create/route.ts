@@ -174,7 +174,11 @@ export async function POST(request: NextRequest) {
     ];
 
     if (data.patient_email) {
-      const patientAppUrl = process.env.NEXT_PUBLIC_APP_URL ?? "";
+      // Derive the app base URL — env var preferred, fallback to inferred origin
+      const envUrl = process.env.NEXT_PUBLIC_APP_URL ?? "";
+      const reqHost = request.headers.get("x-forwarded-host") || request.headers.get("host") || "";
+      const reqProto = request.headers.get("x-forwarded-proto") || "https";
+      const patientAppUrl = envUrl || (reqHost ? `${reqProto}://${reqHost}` : "");
       sends.push(
         resend.emails.send({
           from: labSender(lab),

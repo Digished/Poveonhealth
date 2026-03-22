@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { CheckCircle, Copy, Check, MapPin, Phone, RotateCcw, FlaskConical, Pencil } from "lucide-react";
 import { Button } from "@/components/ui/Button";
 
@@ -22,6 +22,11 @@ export function SuccessScreen({
   onReset,
 }: SuccessScreenProps) {
   const [copied, setCopied] = useState(false);
+
+  // Scroll to top when success screen mounts
+  useEffect(() => {
+    window.scrollTo({ top: 0, behavior: "smooth" });
+  }, []);
 
   async function copyCode() {
     try {
