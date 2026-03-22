@@ -16,7 +16,7 @@ export async function GET(req: NextRequest) {
     const requests = await prisma.request.findMany({
       where: { doctor_email: session.doctor_email },
       orderBy: { created_at: "desc" },
-      include: { lab: { select: { name: true, address: true, phones: true, logo_url: true } } },
+      include: { lab: { select: { name: true, address: true, phones: true, logo_url: true, whatsapp: true } } },
     });
 
     return NextResponse.json({

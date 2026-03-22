@@ -371,15 +371,62 @@ function RequestCard({ req }: { req: LabRequest }) {
   );
 }
 
-function PatientSecuritySection() {
+/** Compact card for the Results tab — shows a completed request with its result link/note */
+function ResultCard({ req }: { req: LabRequest }) {
+  const st = STATUS_MAP[req.status] ?? { label: req.status, cls: "bg-slate-100 text-slate-600 border border-slate-200" };
+  return (
+    <div className="bg-white rounded-2xl shadow-sm border border-emerald-100 overflow-hidden">
+      <div className="p-4">
+        <div className="flex items-start justify-between gap-3 mb-2">
+          <div>
+            <div className="flex items-center gap-1.5 mb-1">
+              <FlaskConical className="w-3.5 h-3.5 text-sky-500 shrink-0" />
+              <p className="text-sm font-semibold text-slate-800">{req.lab.name}</p>
+            </div>
+            <p className="text-xs text-slate-400 font-mono">{req.code}</p>
+          </div>
+          <span className={`text-xs font-semibold px-2.5 py-0.5 rounded-full shrink-0 ${st.cls}`}>{st.label}</span>
+        </div>
+        {req.tests && req.tests !== "See attached image" && (
+          <div className="mb-3"><TestTags tests={req.tests} /></div>
+        )}
+        <div className="bg-emerald-50 border border-emerald-200 rounded-xl p-3">
+          <p className="text-xs font-semibold text-emerald-700 mb-1.5 flex items-center gap-1.5">
+            <BadgeCheck className="w-3.5 h-3.5" />Results Available
+          </p>
+          {req.result_note && (
+            <p className="text-sm text-emerald-800 mb-2 leading-relaxed">{req.result_note}</p>
+          )}
+          {req.result_link && (
+            <a href={req.result_link} target="_blank" rel="noopener noreferrer"
+              className="inline-flex items-center gap-1.5 text-xs font-semibold bg-emerald-600 hover:bg-emerald-700 text-white px-3 py-1.5 rounded-lg transition">
+              <ExternalLink className="w-3 h-3" />View Results
+            </a>
+          )}
+        </div>
+        <p className="text-xs text-slate-400 mt-2">Completed: {formatDate(req.completed_at ?? req.created_at)}</p>
+      </div>
+    </div>
+  );
+}
+
+function PatientSecuritySection({ email }: { email: string }) {
   const [hasPin, setHasPin] = useState<boolean | null>(null);
-  const [open, setOpen] = useState(false);
+  type SecStage = "idle" | "pre_send" | "verify" | "form";
+  const [stage, setStage] = useState<SecStage>("idle");
   const [mode, setMode] = useState<"set" | "change" | "remove">("set");
+  // OTP
+  const [otpCode, setOtpCode] = useState("");
+  const [otpSending, setOtpSending] = useState(false);
+  const [otpVerifying, setOtpVerifying] = useState(false);
+  const [otpCountdown, setOtpCountdown] = useState(0);
+  const [otpError, setOtpError] = useState("");
+  // PIN form
   const [pin, setPin] = useState("");
   const [confirmPin, setConfirmPin] = useState("");
   const [showPin, setShowPin] = useState(false);
   const [saving, setSaving] = useState(false);
-  const [error, setError] = useState("");
+  const [formError, setFormError] = useState("");
   const [success, setSuccess] = useState("");
 
   useEffect(() => {
@@ -389,79 +436,170 @@ function PatientSecuritySection() {
       .catch(() => setHasPin(false));
   }, []);
 
-  function openPanel(m: "set" | "change" | "remove") {
-    setMode(m); setOpen(true); setPin(""); setConfirmPin(""); setError(""); setSuccess("");
+  useEffect(() => {
+    if (otpCountdown <= 0) return;
+    const t = setTimeout(() => setOtpCountdown((v) => v - 1), 1000);
+    return () => clearTimeout(t);
+  }, [otpCountdown]);
+
+  function startAction(m: "set" | "change" | "remove") {
+    setMode(m); setStage("pre_send"); setOtpCode(""); setOtpError(""); setSuccess("");
+  }
+
+  async function sendOtp() {
+    setOtpSending(true); setOtpError("");
+    try {
+      const res = await fetch("/api/patient/send-otp", {
+        method: "POST", headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ email }),
+      });
+      const data = await res.json();
+      if (!res.ok) { setOtpError(data.error ?? "Failed to send code."); return; }
+      setStage("verify"); setOtpCountdown(60); setOtpCode("");
+    } catch { setOtpError("Network error."); }
+    finally { setOtpSending(false); }
+  }
+
+  async function verifyOtp() {
+    if (otpCode.replace(/\D/g, "").length < 6) { setOtpError("Enter the full 6-digit code."); return; }
+    setOtpVerifying(true); setOtpError("");
+    try {
+      const res = await fetch("/api/patient/check-otp", {
+        method: "POST", headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ email, code: otpCode.trim() }),
+      });
+      const data = await res.json();
+      if (!res.ok) { setOtpError(data.error ?? "Invalid code."); return; }
+      setStage("form"); setPin(""); setConfirmPin(""); setFormError("");
+    } catch { setOtpError("Network error."); }
+    finally { setOtpVerifying(false); }
   }
 
   async function savePin() {
     if (mode !== "remove") {
-      if (!/^\d{4}$/.test(pin)) { setError("PIN must be exactly 4 digits."); return; }
-      if (pin !== confirmPin) { setError("PINs do not match."); return; }
+      if (!/^\d{4}$/.test(pin)) { setFormError("PIN must be exactly 4 digits."); return; }
+      if (pin !== confirmPin) { setFormError("PINs do not match."); return; }
     }
-    setSaving(true); setError(""); setSuccess("");
+    setSaving(true); setFormError(""); setSuccess("");
     try {
       const res = await fetch("/api/patient/set-pin", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
+        method: "POST", headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ pin: mode === "remove" ? "" : pin }),
       });
       const data = await res.json();
       if (data.success) {
         setHasPin(mode !== "remove");
         setSuccess(mode === "remove" ? "PIN removed." : "PIN saved successfully.");
-        setOpen(false);
+        setStage("idle");
       } else {
-        setError(data.error ?? "Failed to save. Please try again.");
+        setFormError(data.error ?? "Failed to save. Please try again.");
       }
-    } catch {
-      setError("Network error. Please try again.");
-    } finally {
-      setSaving(false);
-    }
+    } catch { setFormError("Network error. Please try again."); }
+    finally { setSaving(false); }
   }
 
   if (hasPin === null) return null;
 
   return (
     <div className="bg-white/80 backdrop-blur-sm rounded-2xl border border-white/60 shadow-sm overflow-hidden">
-      <div className="px-4 py-4">
-        <div className="flex items-center justify-between mb-3">
-          <div className="flex items-center gap-2">
-            <Shield className="w-4 h-4 text-sky-500" />
-            <h2 className="text-sm font-bold text-slate-800">Security</h2>
-          </div>
+      <div className="px-4 py-4 space-y-3">
+        <div className="flex items-center gap-2">
+          <Shield className="w-4 h-4 text-sky-500" />
+          <h2 className="text-sm font-bold text-slate-800">Security</h2>
         </div>
-        {success && <p className="text-xs text-emerald-700 bg-emerald-50 border border-emerald-100 rounded-xl px-3 py-2 mb-3">{success}</p>}
-        <p className="text-xs text-slate-500 mb-3">
-          {hasPin
-            ? "You have a 4-digit login PIN set. Use it for quick sign-in."
-            : "Set a 4-digit PIN for faster login — no need for an email code every time."}
-        </p>
-        {!open ? (
-          <div className="flex flex-wrap gap-2">
-            {!hasPin && (
-              <button onClick={() => openPanel("set")}
-                className="flex items-center gap-1.5 text-xs font-semibold px-3 py-2 rounded-xl bg-sky-500 text-white hover:bg-sky-600 transition">
-                <Shield className="w-3.5 h-3.5" />Set up PIN
+
+        {success && (
+          <p className="text-xs text-emerald-700 bg-emerald-50 border border-emerald-100 rounded-xl px-3 py-2 flex items-center gap-1.5">
+            <Check className="w-3.5 h-3.5" />{success}
+          </p>
+        )}
+
+        {stage === "idle" && (
+          <>
+            <p className="text-xs text-slate-500">
+              {hasPin ? "4-digit PIN active — used for quick sign-in." : "Set a PIN for faster login — no email code needed each time."}
+            </p>
+            <div className="flex flex-wrap gap-2">
+              {!hasPin && (
+                <button onClick={() => startAction("set")}
+                  className="flex items-center gap-1.5 text-xs font-semibold px-3 py-2 rounded-xl bg-sky-500 text-white hover:bg-sky-600 transition">
+                  <Shield className="w-3.5 h-3.5" />Set up PIN
+                </button>
+              )}
+              {hasPin && (
+                <>
+                  <button onClick={() => startAction("change")}
+                    className="flex items-center gap-1.5 text-xs font-semibold px-3 py-2 rounded-xl bg-sky-50 text-sky-700 border border-sky-100 hover:bg-sky-100 transition">
+                    <Shield className="w-3.5 h-3.5" />Change PIN
+                  </button>
+                  <button onClick={() => startAction("remove")}
+                    className="flex items-center gap-1.5 text-xs font-semibold px-3 py-2 rounded-xl bg-red-50 text-red-600 border border-red-100 hover:bg-red-100 transition">
+                    <X className="w-3.5 h-3.5" />Remove PIN
+                  </button>
+                </>
+              )}
+            </div>
+          </>
+        )}
+
+        {stage === "pre_send" && (
+          <div className="space-y-3">
+            <div className="bg-sky-50 border border-sky-100 rounded-xl px-3 py-3">
+              <p className="text-xs font-semibold text-sky-700 mb-1">Identity Verification Required</p>
+              <p className="text-xs text-sky-600">We&apos;ll send a 6-digit code to <span className="font-semibold">{email}</span> to confirm it&apos;s you.</p>
+            </div>
+            {otpError && <p className="text-xs text-red-600 bg-red-50 border border-red-100 rounded-xl px-3 py-2">{otpError}</p>}
+            <div className="flex gap-2">
+              <button onClick={sendOtp} disabled={otpSending}
+                className="flex-1 flex items-center justify-center gap-2 py-2.5 rounded-xl bg-sky-500 text-white text-sm font-semibold hover:bg-sky-600 transition disabled:opacity-50">
+                {otpSending ? <RefreshCw className="w-4 h-4 animate-spin" /> : <Shield className="w-4 h-4" />}
+                {otpSending ? "Sending…" : "Send Code"}
+              </button>
+              <button onClick={() => setStage("idle")}
+                className="px-4 py-2.5 rounded-xl bg-slate-100 text-slate-600 text-sm font-semibold hover:bg-slate-200 transition">
+                Cancel
+              </button>
+            </div>
+          </div>
+        )}
+
+        {stage === "verify" && (
+          <div className="space-y-3">
+            <p className="text-xs text-slate-500">Enter the 6-digit code sent to <span className="font-semibold text-slate-700">{email}</span></p>
+            <input
+              type="text" inputMode="numeric" maxLength={6}
+              value={otpCode}
+              onChange={(e) => setOtpCode(e.target.value.replace(/\D/g, "").slice(0, 6))}
+              placeholder="000000"
+              className="w-full text-center text-xl font-bold tracking-[0.4em] px-3 py-3 border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-sky-400 bg-white"
+            />
+            {otpError && <p className="text-xs text-red-600 bg-red-50 border border-red-100 rounded-xl px-3 py-2">{otpError}</p>}
+            <div className="flex gap-2">
+              <button onClick={verifyOtp} disabled={otpVerifying || otpCode.length < 6}
+                className="flex-1 flex items-center justify-center gap-2 py-2.5 rounded-xl bg-sky-500 text-white text-sm font-semibold hover:bg-sky-600 transition disabled:opacity-50">
+                {otpVerifying ? <RefreshCw className="w-4 h-4 animate-spin" /> : <Check className="w-4 h-4" />}
+                {otpVerifying ? "Verifying…" : "Verify"}
+              </button>
+              <button onClick={() => setStage("idle")}
+                className="px-4 py-2.5 rounded-xl bg-slate-100 text-slate-600 text-sm font-semibold hover:bg-slate-200 transition">
+                Cancel
+              </button>
+            </div>
+            {otpCountdown > 0 ? (
+              <p className="text-xs text-slate-400 text-center">Resend in {otpCountdown}s</p>
+            ) : (
+              <button onClick={sendOtp} disabled={otpSending}
+                className="w-full text-xs text-sky-600 hover:text-sky-700 font-medium text-center py-1 transition">
+                {otpSending ? "Sending…" : "Resend code"}
               </button>
             )}
-            {hasPin && (
-              <>
-                <button onClick={() => openPanel("change")}
-                  className="flex items-center gap-1.5 text-xs font-semibold px-3 py-2 rounded-xl bg-sky-50 text-sky-700 border border-sky-100 hover:bg-sky-100 transition">
-                  <Shield className="w-3.5 h-3.5" />Change PIN
-                </button>
-                <button onClick={() => openPanel("remove")}
-                  className="flex items-center gap-1.5 text-xs font-semibold px-3 py-2 rounded-xl bg-red-50 text-red-600 border border-red-100 hover:bg-red-100 transition">
-                  <X className="w-3.5 h-3.5" />Remove PIN
-                </button>
-              </>
-            )}
           </div>
-        ) : (
+        )}
+
+        {stage === "form" && (
           <div className="space-y-3">
             {mode === "remove" ? (
-              <p className="text-sm text-slate-600">Are you sure you want to remove your login PIN? You&apos;ll need an email code to log in.</p>
+              <p className="text-sm text-slate-600">Remove your login PIN? You&apos;ll need an email code each time you log in.</p>
             ) : (
               <>
                 <div>
@@ -469,10 +607,7 @@ function PatientSecuritySection() {
                     {mode === "change" ? "New PIN" : "Create a 4-digit PIN"}
                   </label>
                   <div className="relative">
-                    <input
-                      type={showPin ? "text" : "password"}
-                      inputMode="numeric"
-                      maxLength={4}
+                    <input type={showPin ? "text" : "password"} inputMode="numeric" maxLength={4}
                       value={pin}
                       onChange={(e) => setPin(e.target.value.replace(/\D/g, "").slice(0, 4))}
                       placeholder="••••"
@@ -486,10 +621,7 @@ function PatientSecuritySection() {
                 </div>
                 <div>
                   <label className="text-xs font-semibold text-slate-500 uppercase tracking-wide block mb-1.5">Confirm PIN</label>
-                  <input
-                    type={showPin ? "text" : "password"}
-                    inputMode="numeric"
-                    maxLength={4}
+                  <input type={showPin ? "text" : "password"} inputMode="numeric" maxLength={4}
                     value={confirmPin}
                     onChange={(e) => setConfirmPin(e.target.value.replace(/\D/g, "").slice(0, 4))}
                     placeholder="••••"
@@ -498,7 +630,7 @@ function PatientSecuritySection() {
                 </div>
               </>
             )}
-            {error && <p className="text-xs text-red-600 bg-red-50 border border-red-100 rounded-xl px-3 py-2">{error}</p>}
+            {formError && <p className="text-xs text-red-600 bg-red-50 border border-red-100 rounded-xl px-3 py-2">{formError}</p>}
             <div className="flex gap-2 pt-1">
               <button onClick={savePin} disabled={saving}
                 className={`flex-1 flex items-center justify-center gap-2 py-2.5 rounded-xl text-sm font-semibold transition disabled:opacity-50 ${
@@ -507,7 +639,7 @@ function PatientSecuritySection() {
                 {saving ? <RefreshCw className="w-4 h-4 animate-spin" /> : <Check className="w-4 h-4" />}
                 {saving ? "Saving…" : mode === "remove" ? "Remove PIN" : "Save PIN"}
               </button>
-              <button onClick={() => setOpen(false)}
+              <button onClick={() => setStage("idle")}
                 className="px-4 py-2.5 rounded-xl bg-slate-100 text-slate-600 text-sm font-semibold hover:bg-slate-200 transition">
                 Cancel
               </button>
@@ -527,6 +659,7 @@ export default function DashboardPage() {
   const [loading, setLoading] = useState(true);
   const [loggingOut, setLoggingOut] = useState(false);
   const [editingProfile, setEditingProfile] = useState(false);
+  const [activeTab, setActiveTab] = useState<"tests" | "results" | "security">("tests");
   const [statusFilter, setStatusFilter] = useState<string>("all");
   const [labFilter, setLabFilter] = useState<string>("all");
   const [searchQuery, setSearchQuery] = useState("");
@@ -644,11 +777,63 @@ export default function DashboardPage() {
           </>
         )}
 
-        {!loading && (
+        {/* Tab Navigation */}
+        {!loading && patientEmail && (
+          <div className="flex gap-1 bg-white/60 rounded-xl p-1 border border-white/60 shadow-sm">
+            {(["tests", "results", "security"] as const).map((tab) => {
+              const labels = { tests: "My Tests", results: "Results", security: "Security" };
+              const counts = { tests: requests.length, results: requests.filter((r) => r.status === "done" && (r.result_link || r.result_note)).length, security: 0 };
+              return (
+                <button key={tab} onClick={() => setActiveTab(tab)}
+                  className={`flex-1 flex items-center justify-center gap-1.5 py-2 rounded-lg text-xs font-semibold transition-all ${
+                    activeTab === tab ? "bg-white text-slate-800 shadow-sm" : "text-slate-500 hover:text-slate-700"
+                  }`}>
+                  {tab === "tests" && <ClipboardList className="w-3.5 h-3.5" />}
+                  {tab === "results" && <BadgeCheck className="w-3.5 h-3.5" />}
+                  {tab === "security" && <Shield className="w-3.5 h-3.5" />}
+                  {labels[tab]}
+                  {counts[tab] > 0 && (
+                    <span className={`text-xs px-1.5 py-0.5 rounded-full font-bold ${
+                      activeTab === tab ? "bg-slate-100 text-slate-600" : "bg-slate-200/60 text-slate-500"
+                    }`}>{counts[tab]}</span>
+                  )}
+                </button>
+              );
+            })}
+          </div>
+        )}
+
+        {/* Security Tab */}
+        {!loading && patientEmail && activeTab === "security" && (
+          <PatientSecuritySection email={patientEmail} />
+        )}
+
+        {/* Results Tab — completed tests with results */}
+        {!loading && activeTab === "results" && (
+          <div className="space-y-4">
+            {requests.filter((r) => r.status === "done" && (r.result_link || r.result_note)).length === 0 ? (
+              <div className="flex flex-col items-center justify-center py-16 text-center">
+                <div className="w-14 h-14 rounded-2xl bg-white border border-slate-100 shadow-sm flex items-center justify-center mb-3">
+                  <BadgeCheck className="w-7 h-7 text-slate-200" />
+                </div>
+                <h2 className="text-slate-700 font-semibold text-sm mb-1">No results yet</h2>
+                <p className="text-slate-400 text-xs max-w-xs">Your lab results will appear here once they&apos;ve been sent by the lab.</p>
+              </div>
+            ) : (
+              requests.filter((r) => r.status === "done" && (r.result_link || r.result_note)).map((req) => (
+                <ResultCard key={req.id} req={req} />
+              ))
+            )}
+          </div>
+        )}
+
+        {/* Tests Tab */}
+        {!loading && activeTab === "tests" && (
+          <>
           <div>
             <div className="flex items-center justify-between gap-3 mb-3">
               <div className="flex items-center gap-2">
-                <h2 className="text-sm font-bold text-slate-700">Test Requests</h2>
+                <h2 className="text-sm font-bold text-slate-700">All Tests</h2>
                 <span className="text-xs text-slate-400 bg-white/70 border border-slate-100 rounded-full px-2 py-0.5">
                   {filtered.length}{filtered.length !== requests.length ? ` of ${requests.length}` : ""}
                 </span>
@@ -718,41 +903,39 @@ export default function DashboardPage() {
               </div>
             )}
           </div>
+
+          {/* Request list */}
+          {filtered.length > 0 ? (
+            <div className="space-y-4">
+              {filtered.map((req) => <RequestCard key={req.id} req={req} />)}
+            </div>
+          ) : requests.length === 0 ? (
+            <div className="flex flex-col items-center justify-center py-16 text-center">
+              <div className="w-16 h-16 rounded-2xl bg-white border border-slate-100 shadow-sm flex items-center justify-center mb-4">
+                <ClipboardList className="w-8 h-8 text-slate-300" />
+              </div>
+              <h2 className="text-slate-700 font-semibold text-base mb-1">No test requests yet</h2>
+              <p className="text-slate-400 text-sm max-w-xs">When a doctor sends a request to your email, it will appear here.</p>
+            </div>
+          ) : (
+            <div className="flex flex-col items-center justify-center py-12 text-center">
+              <div className="w-12 h-12 rounded-2xl bg-white border border-slate-100 shadow-sm flex items-center justify-center mb-3">
+                <Filter className="w-6 h-6 text-slate-300" />
+              </div>
+              <h2 className="text-slate-600 font-semibold text-sm mb-1">No results match your filters</h2>
+              <button onClick={() => { setStatusFilter("all"); setLabFilter("all"); setSearchQuery(""); }}
+                className="text-xs text-sky-600 hover:text-sky-700 font-medium mt-1 underline underline-offset-2">
+                Clear filters
+              </button>
+            </div>
+          )}
+          </>
         )}
 
-        {loading ? (
+        {loading && activeTab === "tests" && (
           <><SkeletonCard /><SkeletonCard /><SkeletonCard /></>
-        ) : filtered.length > 0 ? (
-          <div className="space-y-4">
-            {filtered.map((req) => <RequestCard key={req.id} req={req} />)}
-          </div>
-        ) : requests.length === 0 ? (
-          <div className="flex flex-col items-center justify-center py-16 text-center">
-            <div className="w-16 h-16 rounded-2xl bg-white border border-slate-100 shadow-sm flex items-center justify-center mb-4">
-              <ClipboardList className="w-8 h-8 text-slate-300" />
-            </div>
-            <h2 className="text-slate-700 font-semibold text-base mb-1">No test requests yet</h2>
-            <p className="text-slate-400 text-sm max-w-xs">When a doctor sends a request to your email, it will appear here.</p>
-          </div>
-        ) : (
-          <div className="flex flex-col items-center justify-center py-12 text-center">
-            <div className="w-12 h-12 rounded-2xl bg-white border border-slate-100 shadow-sm flex items-center justify-center mb-3">
-              <Filter className="w-6 h-6 text-slate-300" />
-            </div>
-            <h2 className="text-slate-600 font-semibold text-sm mb-1">No results match your filters</h2>
-            <button onClick={() => { setStatusFilter("all"); setLabFilter("all"); setSearchQuery(""); }}
-              className="text-xs text-sky-600 hover:text-sky-700 font-medium mt-1 underline underline-offset-2">
-              Clear filters
-            </button>
-          </div>
         )}
       </main>
-
-      {!loading && patientEmail && (
-        <div className="max-w-2xl mx-auto px-4 pb-4">
-          <PatientSecuritySection />
-        </div>
-      )}
 
       <footer className="pb-8 pt-2 flex items-center justify-center gap-1.5">
         <PoveonLogo className="w-4 h-4 opacity-30" />

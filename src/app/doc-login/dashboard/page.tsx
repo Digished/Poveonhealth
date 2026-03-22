@@ -3,9 +3,9 @@
 import { useState, useEffect, useCallback, useRef, Suspense } from "react";
 import { useRouter } from "next/navigation";
 import {
-  FlaskConical, LogOut, RefreshCw, Building2, User,
+  FlaskConical, LogOut, Building2, User,
   CalendarDays, TestTube2, ChevronDown, ChevronUp,
-  Clock, CheckCircle, Eye, MapPin, Phone, X, Shield, EyeOff,
+  Clock, CheckCircle, Eye, MapPin, Phone, X, Shield, EyeOff, RefreshCw, MessageCircle,
 } from "lucide-react";
 import { PoveonLogo } from "@/components/PoveonLogo";
 
@@ -14,6 +14,7 @@ interface Lab {
   address: string;
   phones: string[];
   logo_url: string | null;
+  whatsapp?: string | null;
 }
 
 interface Request {
@@ -97,6 +98,9 @@ function RequestCard({ req }: { req: Request }) {
   const [expanded, setExpanded] = useState(false);
   const status = STATUS_CONFIG[req.status] ?? STATUS_CONFIG.incoming;
   const phones = Array.isArray(req.lab.phones) ? req.lab.phones : [];
+  const whatsapps: string[] = req.lab.whatsapp
+    ? (() => { try { const p = JSON.parse(req.lab.whatsapp!); return Array.isArray(p) ? p.filter(Boolean) : [req.lab.whatsapp!]; } catch { return [req.lab.whatsapp!]; } })()
+    : [];
 
   return (
     <div className="bg-white rounded-2xl border border-slate-100 shadow-sm overflow-hidden">
@@ -210,10 +214,20 @@ function RequestCard({ req }: { req: Request }) {
               </div>
             )}
             {phones.length > 0 && (
-              <div className="flex items-center gap-1.5 text-xs text-slate-500">
+              <div className="flex flex-wrap items-center gap-1.5 text-xs text-slate-500">
                 <Phone className="w-3 h-3 shrink-0" />
                 {phones.map((p, i) => (
                   <a key={i} href={`tel:${p}`} className="text-medical-600 font-medium">{p}</a>
+                ))}
+              </div>
+            )}
+            {whatsapps.length > 0 && (
+              <div className="flex flex-wrap gap-1.5 mt-1">
+                {whatsapps.map((wa, i) => (
+                  <a key={i} href={`https://wa.me/${wa.replace(/\D/g, "")}`} target="_blank" rel="noopener noreferrer"
+                    className="inline-flex items-center gap-1 text-xs font-semibold text-white bg-green-500 hover:bg-green-600 transition px-2.5 py-1 rounded-full">
+                    <MessageCircle className="w-3 h-3" />WhatsApp
+                  </a>
                 ))}
               </div>
             )}
@@ -283,6 +297,7 @@ function DocDashboardInner() {
   const [error, setError] = useState("");
   const [filter, setFilter] = useState<"all" | "incoming" | "seen" | "done">("all");
   const [loggingOut, setLoggingOut] = useState(false);
+  const [activeTab, setActiveTab] = useState<"requests" | "results" | "security">("requests");
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -328,29 +343,100 @@ function DocDashboardInner() {
           </div>
           <div className="flex-1 min-w-0">
             <p className="text-sm font-bold text-slate-800 leading-tight">Doctor Portal</p>
+            {doctorEmail && <p className="text-xs text-slate-400 truncate">{doctorEmail}</p>}
           </div>
-          <button
-            type="button"
-            onClick={load}
-            disabled={loading}
-            className="w-8 h-8 rounded-xl bg-slate-100 hover:bg-slate-200 flex items-center justify-center transition text-slate-500 shrink-0"
-            title="Refresh"
-          >
-            <RefreshCw className={`w-4 h-4 ${loading ? "animate-spin" : ""}`} />
-          </button>
           <button
             type="button"
             onClick={handleLogout}
             disabled={loggingOut}
-            className="w-8 h-8 rounded-xl bg-slate-100 hover:bg-red-50 hover:text-red-600 flex items-center justify-center transition text-slate-500 shrink-0"
-            title="Sign out"
+            className="flex items-center gap-1.5 text-xs font-semibold text-slate-500 hover:text-red-600 disabled:opacity-50 transition px-3 py-1.5 rounded-lg hover:bg-red-50 shrink-0"
           >
-            <LogOut className="w-4 h-4" />
+            <LogOut className="w-3.5 h-3.5" />
+            <span className="hidden sm:inline">{loggingOut ? "Signing out…" : "Sign out"}</span>
           </button>
         </div>
       </header>
 
       <main className="max-w-2xl mx-auto px-4 py-5 space-y-4">
+        {/* Tab Navigation */}
+        {!loading && (
+          <div className="flex gap-1 bg-white/60 rounded-xl p-1 border border-white/60 shadow-sm">
+            {(["requests", "results", "security"] as const).map((tab) => {
+              const labels = { requests: "Referrals", results: "Results", security: "Security" };
+              const resultCount = requests.filter((r) => r.status === "done" && (r.result_link || r.result_note)).length;
+              const tabCount = tab === "requests" ? requests.length : tab === "results" ? resultCount : 0;
+              return (
+                <button key={tab} onClick={() => setActiveTab(tab)}
+                  className={`flex-1 flex items-center justify-center gap-1.5 py-2 rounded-lg text-xs font-semibold transition-all ${
+                    activeTab === tab ? "bg-white text-slate-800 shadow-sm" : "text-slate-500 hover:text-slate-700"
+                  }`}>
+                  {tab === "requests" && <FlaskConical className="w-3.5 h-3.5" />}
+                  {tab === "results" && <CheckCircle className="w-3.5 h-3.5" />}
+                  {tab === "security" && <Shield className="w-3.5 h-3.5" />}
+                  {labels[tab]}
+                  {tabCount > 0 && (
+                    <span className={`text-xs px-1.5 py-0.5 rounded-full font-bold ${
+                      activeTab === tab ? "bg-slate-100 text-slate-600" : "bg-slate-200/60 text-slate-500"
+                    }`}>{tabCount}</span>
+                  )}
+                </button>
+              );
+            })}
+          </div>
+        )}
+
+        {/* Security Tab */}
+        {!loading && activeTab === "security" && doctorEmail && (
+          <DocSecuritySection email={doctorEmail} />
+        )}
+
+        {/* Results Tab */}
+        {!loading && activeTab === "results" && (
+          <div className="space-y-4">
+            {requests.filter((r) => r.status === "done" && (r.result_link || r.result_note)).length === 0 ? (
+              <div className="bg-white rounded-2xl border border-slate-100 p-8 text-center">
+                <CheckCircle className="w-10 h-10 text-slate-200 mx-auto mb-3" />
+                <p className="text-sm font-semibold text-slate-600">No results yet</p>
+                <p className="text-xs text-slate-400 mt-1">Results will appear here once labs have sent them.</p>
+              </div>
+            ) : (
+              requests.filter((r) => r.status === "done" && (r.result_link || r.result_note)).map((req) => (
+                <div key={req.id} className="bg-white rounded-2xl border border-emerald-100 shadow-sm p-4 space-y-2">
+                  <div className="flex items-center gap-2">
+                    {req.lab.logo_url ? (
+                      <img src={req.lab.logo_url} alt={req.lab.name} className="w-8 h-8 rounded-lg object-cover ring-1 ring-slate-100" />
+                    ) : (
+                      <div className="w-8 h-8 rounded-lg bg-medical-50 border border-medical-100 flex items-center justify-center">
+                        <Building2 className="w-4 h-4 text-medical-500" />
+                      </div>
+                    )}
+                    <div>
+                      <p className="text-sm font-bold text-slate-800">{req.lab.name}</p>
+                      <p className="text-xs text-slate-400 font-mono">{req.code}</p>
+                    </div>
+                  </div>
+                  <p className="text-xs text-slate-500">Patient: <span className="font-medium text-slate-700">{req.patient_name ?? "—"}</span></p>
+                  <div className="bg-emerald-50 border border-emerald-200 rounded-xl p-3">
+                    <p className="text-xs font-semibold text-emerald-700 mb-1.5 flex items-center gap-1.5">
+                      <CheckCircle className="w-3.5 h-3.5" />Results Available
+                    </p>
+                    {req.result_note && <p className="text-sm text-emerald-800 mb-2">{req.result_note}</p>}
+                    {req.result_link && (
+                      <a href={req.result_link} target="_blank" rel="noopener noreferrer"
+                        className="inline-flex items-center gap-1.5 text-xs font-semibold bg-emerald-600 hover:bg-emerald-700 text-white px-3 py-1.5 rounded-lg transition">
+                        View Results
+                      </a>
+                    )}
+                  </div>
+                </div>
+              ))
+            )}
+          </div>
+        )}
+
+        {/* Requests Tab — summary chips + list */}
+        {activeTab === "requests" && (
+          <>
         {/* Summary chips */}
         <div className="flex gap-2 flex-wrap">
           {(["all", "incoming", "seen", "done"] as const).map((s) => {
@@ -415,12 +501,25 @@ function DocDashboardInner() {
         )}
 
         {/* Request list */}
-        {filtered.map((req) => (
-          <RequestCard key={req.id} req={req} />
-        ))}
-
-        {/* Security settings */}
-        {!loading && <DocSecuritySection />}
+        {loading ? (
+          <div className="space-y-3">
+            {[1, 2, 3].map((i) => (
+              <div key={i} className="bg-white rounded-2xl border border-slate-100 p-4 animate-pulse">
+                <div className="flex gap-3"><div className="w-10 h-10 rounded-xl bg-slate-100" /><div className="flex-1 space-y-2"><div className="h-3 bg-slate-100 rounded w-1/3" /><div className="h-4 bg-slate-100 rounded w-2/3" /></div></div>
+              </div>
+            ))}
+          </div>
+        ) : filtered.length === 0 ? (
+          <div className="bg-white rounded-2xl border border-slate-100 p-8 text-center">
+            <TestTube2 className="w-10 h-10 text-slate-200 mx-auto mb-3" />
+            <p className="text-sm font-semibold text-slate-600">{filter === "all" ? "No referrals yet" : `No ${filter} requests`}</p>
+            <p className="text-xs text-slate-400 mt-1">{filter === "all" ? "Requests you submit will appear here." : "Try switching to a different filter."}</p>
+          </div>
+        ) : (
+          filtered.map((req) => <RequestCard key={req.id} req={req} />)
+        )}
+          </>
+        )}
       </main>
 
       {/* Footer */}
@@ -432,126 +531,239 @@ function DocDashboardInner() {
   );
 }
 
-function DocSecuritySection() {
+function DocSecuritySection({ email }: { email: string }) {
   const [hasPin, setHasPin] = useState<boolean | null>(null);
-  const [showForm, setShowForm] = useState(false);
-  const [newPin, setNewPin] = useState(["", "", "", ""]);
-  const [confirmPin, setConfirmPin] = useState(["", "", "", ""]);
+  type SecStage = "idle" | "pre_send" | "verify" | "form";
+  const [stage, setStage] = useState<SecStage>("idle");
+  const [mode, setMode] = useState<"set" | "change" | "remove">("set");
+  const [otpCode, setOtpCode] = useState("");
+  const [otpSending, setOtpSending] = useState(false);
+  const [otpVerifying, setOtpVerifying] = useState(false);
+  const [otpCountdown, setOtpCountdown] = useState(0);
+  const [otpError, setOtpError] = useState("");
+  const [pin, setPin] = useState("");
+  const [confirmPin, setConfirmPin] = useState("");
   const [showPin, setShowPin] = useState(false);
   const [saving, setSaving] = useState(false);
-  const [error, setError] = useState("");
-  const pinRefs = { new: [useRef<HTMLInputElement>(null), useRef<HTMLInputElement>(null), useRef<HTMLInputElement>(null), useRef<HTMLInputElement>(null)], confirm: [useRef<HTMLInputElement>(null), useRef<HTMLInputElement>(null), useRef<HTMLInputElement>(null), useRef<HTMLInputElement>(null)] };
+  const [formError, setFormError] = useState("");
+  const [success, setSuccess] = useState("");
 
   useEffect(() => {
-    fetch("/api/doc-login/me")
-      .then((r) => r.json())
-      .then((d) => {
-        if (d.success) {
-          fetch("/api/doc-login/check-pin", {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ email: d.doctor_email }),
-          }).then((r) => r.json()).then((data) => setHasPin(data.hasPin));
-        }
-      })
-      .catch(() => {});
-  }, []);
+    fetch("/api/doc-login/check-pin", {
+      method: "POST", headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ email }),
+    }).then((r) => r.json()).then((d) => setHasPin(!!d.hasPin)).catch(() => setHasPin(false));
+  }, [email]);
 
-  function handleDigit(
-    arr: string[], setArr: React.Dispatch<React.SetStateAction<string[]>>,
-    refs: React.RefObject<HTMLInputElement>[], index: number, value: string
-  ) {
-    const digit = value.replace(/\D/g, "").slice(-1);
-    const next = [...arr]; next[index] = digit; setArr(next);
-    if (digit && index < 3) refs[index + 1].current?.focus();
+  useEffect(() => {
+    if (otpCountdown <= 0) return;
+    const t = setTimeout(() => setOtpCountdown((v) => v - 1), 1000);
+    return () => clearTimeout(t);
+  }, [otpCountdown]);
+
+  function startAction(m: "set" | "change" | "remove") {
+    setMode(m); setStage("pre_send"); setOtpCode(""); setOtpError(""); setSuccess("");
   }
 
-  async function handleSavePin(e: React.FormEvent) {
-    e.preventDefault();
-    setError("");
-    const p1 = newPin.join(""); const p2 = confirmPin.join("");
-    if (p1.length !== 4) { setError("Enter all 4 digits."); return; }
-    if (p1 !== p2) { setError("PINs do not match."); return; }
-    setSaving(true);
+  async function sendOtp() {
+    setOtpSending(true); setOtpError("");
     try {
-      const res = await fetch("/api/doc-login/set-pin", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ pin: p1 }),
+      const res = await fetch("/api/doc-login/send-otp", {
+        method: "POST", headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ email }),
       });
       const data = await res.json();
-      if (!res.ok) { setError(data.error ?? "Failed."); return; }
-      setHasPin(true); setShowForm(false);
-      setNewPin(["", "", "", ""]); setConfirmPin(["", "", "", ""]);
-    } catch { setError("Network error."); }
+      if (!res.ok) { setOtpError(data.error ?? "Failed to send code."); return; }
+      setStage("verify"); setOtpCountdown(60); setOtpCode("");
+    } catch { setOtpError("Network error."); }
+    finally { setOtpSending(false); }
+  }
+
+  async function verifyOtp() {
+    if (otpCode.replace(/\D/g, "").length < 6) { setOtpError("Enter the full 6-digit code."); return; }
+    setOtpVerifying(true); setOtpError("");
+    try {
+      const res = await fetch("/api/doc-login/check-otp", {
+        method: "POST", headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ email, code: otpCode.trim() }),
+      });
+      const data = await res.json();
+      if (!res.ok) { setOtpError(data.error ?? "Invalid code."); return; }
+      setStage("form"); setPin(""); setConfirmPin(""); setFormError("");
+    } catch { setOtpError("Network error."); }
+    finally { setOtpVerifying(false); }
+  }
+
+  async function savePin() {
+    if (mode !== "remove") {
+      if (!/^\d{4}$/.test(pin)) { setFormError("PIN must be exactly 4 digits."); return; }
+      if (pin !== confirmPin) { setFormError("PINs do not match."); return; }
+    }
+    setSaving(true); setFormError(""); setSuccess("");
+    try {
+      const res = await fetch("/api/doc-login/set-pin", {
+        method: "POST", headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ pin: mode === "remove" ? "" : pin }),
+      });
+      const data = await res.json();
+      if (data.success || res.ok) {
+        setHasPin(mode !== "remove");
+        setSuccess(mode === "remove" ? "PIN removed." : "PIN saved successfully.");
+        setStage("idle");
+      } else {
+        setFormError(data.error ?? "Failed to save.");
+      }
+    } catch { setFormError("Network error."); }
     finally { setSaving(false); }
   }
 
-  async function handleRemovePin() {
-    if (!confirm("Remove your PIN? You'll need to use an email code to log in.")) return;
-    setSaving(true);
-    try {
-      await fetch("/api/doc-login/set-pin", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ pin: "" }),
-      });
-      setHasPin(false);
-    } catch {} finally { setSaving(false); }
-  }
-
-  const PinRow = ({ values, setValues, refs, label }: { values: string[]; setValues: React.Dispatch<React.SetStateAction<string[]>>; refs: React.RefObject<HTMLInputElement>[]; label: string }) => (
-    <div>
-      <p className="text-xs text-slate-500 mb-1.5">{label}</p>
-      <div className="flex gap-2">
-        {values.map((d, i) => (
-          <input key={i} ref={refs[i]} type={showPin ? "text" : "password"} inputMode="numeric" maxLength={2} value={d}
-            onChange={(e) => handleDigit(values, setValues, refs, i, e.target.value)}
-            onKeyDown={(e) => { if (e.key === "Backspace" && !d && i > 0) refs[i - 1].current?.focus(); }}
-            className="w-12 h-12 text-center text-lg font-bold text-slate-800 border-2 border-slate-200 rounded-xl bg-white focus:outline-none focus:ring-2 focus:ring-medical-400 focus:border-medical-400 transition" />
-        ))}
-      </div>
-    </div>
-  );
+  if (hasPin === null) return null;
 
   return (
-    <div className="bg-white rounded-2xl border border-slate-100 p-4 mt-2">
-      <div className="flex items-center justify-between mb-2">
-        <p className="text-xs font-semibold text-slate-500 flex items-center gap-1.5">
-          <Shield className="w-3.5 h-3.5" />Security
-        </p>
-        {hasPin && !showForm && (
-          <div className="flex gap-2">
-            <button onClick={() => setShowForm(true)} className="text-xs text-medical-600 hover:underline">Change PIN</button>
-            <button onClick={handleRemovePin} disabled={saving} className="text-xs text-red-500 hover:underline">Remove PIN</button>
+    <div className="bg-white/80 backdrop-blur-sm rounded-2xl border border-white/60 shadow-sm overflow-hidden">
+      <div className="px-4 py-4 space-y-3">
+        <div className="flex items-center gap-2">
+          <Shield className="w-4 h-4 text-medical-500" />
+          <h2 className="text-sm font-bold text-slate-800">Security</h2>
+        </div>
+
+        {success && (
+          <p className="text-xs text-emerald-700 bg-emerald-50 border border-emerald-100 rounded-xl px-3 py-2">
+            {success}
+          </p>
+        )}
+
+        {stage === "idle" && (
+          <>
+            <p className="text-xs text-slate-500">
+              {hasPin ? "4-digit PIN active — used for quick sign-in." : "Set a PIN for faster login — no email code needed each time."}
+            </p>
+            <div className="flex flex-wrap gap-2">
+              {!hasPin && (
+                <button onClick={() => startAction("set")}
+                  className="flex items-center gap-1.5 text-xs font-semibold px-3 py-2 rounded-xl bg-medical-500 text-white hover:bg-medical-600 transition">
+                  <Shield className="w-3.5 h-3.5" />Set up PIN
+                </button>
+              )}
+              {hasPin && (
+                <>
+                  <button onClick={() => startAction("change")}
+                    className="flex items-center gap-1.5 text-xs font-semibold px-3 py-2 rounded-xl bg-medical-50 text-medical-700 border border-medical-100 hover:bg-medical-100 transition">
+                    <Shield className="w-3.5 h-3.5" />Change PIN
+                  </button>
+                  <button onClick={() => startAction("remove")}
+                    className="flex items-center gap-1.5 text-xs font-semibold px-3 py-2 rounded-xl bg-red-50 text-red-600 border border-red-100 hover:bg-red-100 transition">
+                    <X className="w-3.5 h-3.5" />Remove PIN
+                  </button>
+                </>
+              )}
+            </div>
+          </>
+        )}
+
+        {stage === "pre_send" && (
+          <div className="space-y-3">
+            <div className="bg-medical-50 border border-medical-100 rounded-xl px-3 py-3">
+              <p className="text-xs font-semibold text-medical-700 mb-1">Identity Verification Required</p>
+              <p className="text-xs text-medical-600">We&apos;ll send a 6-digit code to <span className="font-semibold">{email}</span>.</p>
+            </div>
+            {otpError && <p className="text-xs text-red-600 bg-red-50 border border-red-100 rounded-xl px-3 py-2">{otpError}</p>}
+            <div className="flex gap-2">
+              <button onClick={sendOtp} disabled={otpSending}
+                className="flex-1 flex items-center justify-center gap-2 py-2.5 rounded-xl bg-medical-500 text-white text-sm font-semibold hover:bg-medical-600 transition disabled:opacity-50">
+                {otpSending ? <RefreshCw className="w-4 h-4 animate-spin" /> : <Shield className="w-4 h-4" />}
+                {otpSending ? "Sending…" : "Send Code"}
+              </button>
+              <button onClick={() => setStage("idle")}
+                className="px-4 py-2.5 rounded-xl bg-slate-100 text-slate-600 text-sm font-semibold hover:bg-slate-200 transition">
+                Cancel
+              </button>
+            </div>
           </div>
         )}
-        {!hasPin && !showForm && (
-          <button onClick={() => setShowForm(true)} className="text-xs text-medical-600 hover:underline">Set up PIN</button>
+
+        {stage === "verify" && (
+          <div className="space-y-3">
+            <p className="text-xs text-slate-500">Enter the 6-digit code sent to <span className="font-semibold text-slate-700">{email}</span></p>
+            <input
+              type="text" inputMode="numeric" maxLength={6}
+              value={otpCode}
+              onChange={(e) => setOtpCode(e.target.value.replace(/\D/g, "").slice(0, 6))}
+              placeholder="000000"
+              className="w-full text-center text-xl font-bold tracking-[0.4em] px-3 py-3 border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-medical-400 bg-white"
+            />
+            {otpError && <p className="text-xs text-red-600 bg-red-50 border border-red-100 rounded-xl px-3 py-2">{otpError}</p>}
+            <div className="flex gap-2">
+              <button onClick={verifyOtp} disabled={otpVerifying || otpCode.length < 6}
+                className="flex-1 flex items-center justify-center gap-2 py-2.5 rounded-xl bg-medical-500 text-white text-sm font-semibold hover:bg-medical-600 transition disabled:opacity-50">
+                {otpVerifying ? <RefreshCw className="w-4 h-4 animate-spin" /> : null}
+                {otpVerifying ? "Verifying…" : "Verify"}
+              </button>
+              <button onClick={() => setStage("idle")}
+                className="px-4 py-2.5 rounded-xl bg-slate-100 text-slate-600 text-sm font-semibold hover:bg-slate-200 transition">
+                Cancel
+              </button>
+            </div>
+            {otpCountdown > 0 ? (
+              <p className="text-xs text-slate-400 text-center">Resend in {otpCountdown}s</p>
+            ) : (
+              <button onClick={sendOtp} disabled={otpSending}
+                className="w-full text-xs text-medical-600 hover:text-medical-700 font-medium text-center py-1">
+                {otpSending ? "Sending…" : "Resend code"}
+              </button>
+            )}
+          </div>
+        )}
+
+        {stage === "form" && (
+          <div className="space-y-3">
+            {mode === "remove" ? (
+              <p className="text-sm text-slate-600">Remove your login PIN? You&apos;ll need an email code each time.</p>
+            ) : (
+              <>
+                <div>
+                  <label className="text-xs font-semibold text-slate-500 uppercase tracking-wide block mb-1.5">
+                    {mode === "change" ? "New PIN" : "Create a 4-digit PIN"}
+                  </label>
+                  <div className="relative">
+                    <input type={showPin ? "text" : "password"} inputMode="numeric" maxLength={4}
+                      value={pin} onChange={(e) => setPin(e.target.value.replace(/\D/g, "").slice(0, 4))}
+                      placeholder="••••"
+                      className="w-full text-sm px-3 py-2.5 border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-medical-400 bg-white pr-10 tracking-[0.5em]"
+                    />
+                    <button type="button" onClick={() => setShowPin((v) => !v)}
+                      className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600 transition">
+                      {showPin ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+                    </button>
+                  </div>
+                </div>
+                <div>
+                  <label className="text-xs font-semibold text-slate-500 uppercase tracking-wide block mb-1.5">Confirm PIN</label>
+                  <input type={showPin ? "text" : "password"} inputMode="numeric" maxLength={4}
+                    value={confirmPin} onChange={(e) => setConfirmPin(e.target.value.replace(/\D/g, "").slice(0, 4))}
+                    placeholder="••••"
+                    className="w-full text-sm px-3 py-2.5 border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-medical-400 bg-white tracking-[0.5em]"
+                  />
+                </div>
+              </>
+            )}
+            {formError && <p className="text-xs text-red-600 bg-red-50 border border-red-100 rounded-xl px-3 py-2">{formError}</p>}
+            <div className="flex gap-2 pt-1">
+              <button onClick={savePin} disabled={saving}
+                className={`flex-1 flex items-center justify-center gap-2 py-2.5 rounded-xl text-sm font-semibold transition disabled:opacity-50 ${
+                  mode === "remove" ? "bg-red-500 text-white hover:bg-red-600" : "bg-medical-500 text-white hover:bg-medical-600"
+                }`}>
+                {saving ? <RefreshCw className="w-4 h-4 animate-spin" /> : null}
+                {saving ? "Saving…" : mode === "remove" ? "Remove PIN" : "Save PIN"}
+              </button>
+              <button onClick={() => setStage("idle")}
+                className="px-4 py-2.5 rounded-xl bg-slate-100 text-slate-600 text-sm font-semibold hover:bg-slate-200 transition">
+                Cancel
+              </button>
+            </div>
+          </div>
         )}
       </div>
-      {hasPin !== null && !showForm && (
-        <p className="text-xs text-slate-400">{hasPin ? "4-digit PIN is active — used for quick login." : "No PIN set — you log in with an email code each time."}</p>
-      )}
-      {showForm && (
-        <form onSubmit={handleSavePin} className="mt-3 space-y-3">
-          <div className="flex items-center gap-2 justify-end mb-1">
-            <button type="button" onClick={() => setShowPin(v => !v)} className="text-xs text-slate-400 flex items-center gap-1">
-              <EyeOff className="w-3 h-3" />{showPin ? "Hide" : "Show"} digits
-            </button>
-          </div>
-          <PinRow values={newPin} setValues={setNewPin} refs={pinRefs.new} label="New PIN" />
-          <PinRow values={confirmPin} setValues={setConfirmPin} refs={pinRefs.confirm} label="Confirm PIN" />
-          {error && <p className="text-xs text-red-600">{error}</p>}
-          <div className="flex gap-2 pt-1">
-            <button type="button" onClick={() => { setShowForm(false); setNewPin(["","","",""]); setConfirmPin(["","","",""]); setError(""); }}
-              className="flex-1 py-2 rounded-xl border border-slate-200 text-slate-500 text-xs font-medium hover:bg-slate-50 transition">Cancel</button>
-            <button type="submit" disabled={saving}
-              className="flex-1 py-2 rounded-xl bg-medical-600 hover:bg-medical-700 disabled:opacity-60 text-white text-xs font-semibold transition">
-              {saving ? "Saving…" : "Save PIN"}</button>
-          </div>
-        </form>
-      )}
     </div>
   );
 }

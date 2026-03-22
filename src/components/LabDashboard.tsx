@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, useCallback, useRef, useMemo } from "react";
+import { useState, useEffect, useCallback, useRef, useMemo, startTransition } from "react";
 import { toast } from "react-hot-toast";
 import {
   Search, RefreshCw, CheckCircle, Clock, FlaskConical,
@@ -512,7 +512,7 @@ export function LabDashboard({ lab, isOwner = false, roleName = "Lab Owner", can
 
       <div className="max-w-6xl mx-auto px-4 py-8">
         {/* Top-level navigation */}
-        {(isOwner || canViewReferrals || canViewClients || canViewAnalytics || canViewActivity) && (() => {
+        {(() => {
           const navItems = [
             { key: "requests" as const, label: "Requests", icon: <FlaskConical className="w-4 h-4" />, show: true },
             { key: "referrals" as const, label: "Referrals", icon: <Users className="w-4 h-4" />, show: isOwner || canViewReferrals },
@@ -520,28 +520,33 @@ export function LabDashboard({ lab, isOwner = false, roleName = "Lab Owner", can
             { key: "analytics" as const, label: "Analytics", icon: <BarChart3 className="w-4 h-4" />, show: isOwner || canViewAnalytics },
             { key: "activity" as const, label: "Activity", icon: <Activity className="w-4 h-4" />, show: isOwner || canViewActivity },
           ].filter((item) => item.show);
-          const currentLabel = navItems.find((n) => n.key === mainView)?.label ?? "Requests";
+          if (navItems.length <= 1) return null;
+          const currentItem = navItems.find((n) => n.key === mainView) ?? navItems[0];
           return (
-            <div className="mb-6 relative">
-              {/* Mobile: hamburger trigger */}
+            <div className="mb-6">
+              {/* Mobile: hamburger trigger + inline dropdown */}
               <div className="sm:hidden">
                 <button
                   onClick={() => setMobileNavOpen((v) => !v)}
-                  className="flex items-center gap-2 px-4 py-2.5 rounded-xl bg-white/5 border border-white/10 text-sm font-medium text-white w-full"
+                  className="flex items-center gap-2.5 px-4 py-3 rounded-xl bg-white/8 border border-white/12 text-sm font-semibold text-white w-full active:bg-white/15 transition-colors"
                 >
-                  <Menu className="w-4 h-4 text-slate-400" />
-                  <span className="flex-1 text-left">{currentLabel}</span>
-                  <ChevronDown className={`w-4 h-4 text-slate-400 transition-transform ${mobileNavOpen ? "rotate-180" : ""}`} />
+                  <span className="text-slate-300">{currentItem.icon}</span>
+                  <span className="flex-1 text-left">{currentItem.label}</span>
+                  <ChevronDown className={`w-4 h-4 text-slate-400 transition-transform duration-200 ${mobileNavOpen ? "rotate-180" : ""}`} />
                 </button>
                 {mobileNavOpen && (
-                  <div className="absolute top-full left-0 right-0 mt-1 bg-slate-800 border border-white/10 rounded-xl shadow-xl z-30 overflow-hidden">
+                  <div className="mt-1.5 rounded-xl border border-white/10 bg-slate-800 overflow-hidden shadow-2xl">
                     {navItems.map((item) => (
                       <button key={item.key}
                         onClick={() => { setMainView(item.key); setMobileNavOpen(false); }}
-                        className={`flex items-center gap-3 w-full px-4 py-3 text-sm font-medium transition-colors ${
-                          mainView === item.key ? "bg-white/10 text-white" : "text-slate-300 hover:bg-white/5 hover:text-white"
+                        className={`flex items-center gap-3 w-full px-4 py-3.5 text-sm font-medium transition-colors border-b border-white/5 last:border-0 ${
+                          mainView === item.key
+                            ? "bg-white/12 text-white"
+                            : "text-slate-300 active:bg-white/8"
                         }`}>
-                        {item.icon}{item.label}
+                        <span className={mainView === item.key ? "text-white" : "text-slate-500"}>{item.icon}</span>
+                        {item.label}
+                        {mainView === item.key && <ChevronRight className="w-3.5 h-3.5 ml-auto text-white/40" />}
                       </button>
                     ))}
                   </div>
@@ -625,7 +630,7 @@ export function LabDashboard({ lab, isOwner = false, roleName = "Lab Owner", can
                     <button
                       key={doc.doctor_email}
                       type="button"
-                      onClick={() => setExpandedDoctor(doc.doctor_email)}
+                      onClick={() => startTransition(() => setExpandedDoctor(doc.doctor_email))}
                       className="text-left bg-white/5 hover:bg-white/10 border border-white/10 hover:border-white/20 rounded-2xl p-4 transition-all group"
                     >
                       <div className="flex items-start gap-3 mb-3">
@@ -2748,18 +2753,18 @@ function LabActivityView() {
           {activities.map((a) => {
             const meta = ACTION_LABELS[a.action] ?? { label: a.action, color: "text-slate-400 bg-white/5" };
             return (
-              <div key={a.id} className="bg-white/5 border border-white/8 rounded-xl px-4 py-3 flex items-start gap-3">
-                <div className="mt-0.5 shrink-0">
-                  <span className={`text-xs font-semibold px-2 py-0.5 rounded-full ${meta.color}`}>{meta.label}</span>
+              <div key={a.id} className="bg-white/5 border border-white/8 rounded-xl px-3 py-3 sm:px-4">
+                {/* Top row: badge + timestamp */}
+                <div className="flex items-center justify-between gap-2 mb-1.5">
+                  <span className={`text-xs font-semibold px-2 py-0.5 rounded-full shrink-0 ${meta.color}`}>{meta.label}</span>
+                  <p className="text-xs text-slate-600 shrink-0">{format(new Date(a.created_at), "dd MMM, HH:mm")}</p>
                 </div>
-                <div className="flex-1 min-w-0">
-                  <p className="text-xs text-slate-300 truncate">
-                    <span className="font-semibold text-white">{a.actor_email}</span>
-                    {a.actor_role !== "owner" && <span className="text-slate-500 ml-1">({a.actor_role})</span>}
-                  </p>
-                  {a.detail && <p className="text-xs text-slate-500 mt-0.5 leading-relaxed">{a.detail}</p>}
-                </div>
-                <p className="text-xs text-slate-600 shrink-0 mt-0.5">{format(new Date(a.created_at), "dd MMM, HH:mm")}</p>
+                {/* Actor */}
+                <p className="text-xs text-slate-300 break-all">
+                  <span className="font-semibold text-white">{a.actor_email}</span>
+                  {a.actor_role !== "owner" && <span className="text-slate-500 ml-1">({a.actor_role})</span>}
+                </p>
+                {a.detail && <p className="text-xs text-slate-500 mt-1 leading-relaxed">{a.detail}</p>}
               </div>
             );
           })}
