@@ -894,6 +894,41 @@ export function DoctorRequestForm({
     confidence: "high" | "medium" | "low"; low_confidence_items: string[];
   } | null>(null);
   const [extractionDismissed, setExtractionDismissed] = useState(false);
+  // AI test normalisation state
+  const [normalisingTests, setNormalisingTests] = useState(false);
+
+  async function normaliseTests(raw: string): Promise<void> {
+    // Always do local normalisation first (split/trim/capitalise)
+    const localNorm = raw
+      .split(/[,\n]+/)
+      .map((t) => t.trim())
+      .filter(Boolean)
+      .map((t) => t.charAt(0).toUpperCase() + t.slice(1))
+      .join(", ");
+    set("tests", localNorm);
+
+    // Then try AI correction
+    if (!localNorm.trim()) return;
+    setNormalisingTests(true);
+    try {
+      const res = await fetch("/api/requests/normalize-tests", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ tests: localNorm }),
+      });
+      if (res.ok) {
+        const data = await res.json();
+        if (data.success && Array.isArray(data.normalised) && data.normalised.length > 0) {
+          set("tests", data.normalised.join(", "));
+        }
+      }
+    } catch {
+      // silently fall back to local normalisation
+    } finally {
+      setNormalisingTests(false);
+    }
+  }
+
   // Critical / ambulance state
   const [isCritical, setIsCritical] = useState(false);
   const [needsAmbulance, setNeedsAmbulance] = useState(false);
@@ -1607,18 +1642,10 @@ export function DoctorRequestForm({
                           required
                           placeholder="e.g. FBC, LFT, Serum electrolytes, Fasting glucose, Urinalysis…"
                           rows={4}
-                          hint="Separate tests with commas — they will be auto-normalised"
+                          hint={normalisingTests ? "Checking test names…" : "Separate tests with commas — AI will correct spelling"}
                           value={form.tests}
                           onChange={(e) => set("tests", e.target.value)}
-                          onBlur={(e) => {
-                            const normalised = e.target.value
-                              .split(/[,\n]+/)
-                              .map((t) => t.trim())
-                              .filter(Boolean)
-                              .map((t) => t.charAt(0).toUpperCase() + t.slice(1))
-                              .join(", ");
-                            if (normalised !== e.target.value) set("tests", normalised);
-                          }}
+                          onBlur={(e) => { if (e.target.value.trim()) normaliseTests(e.target.value); }}
                           error={errors.tests}
                         />
                       </div>
@@ -1828,17 +1855,9 @@ export function DoctorRequestForm({
                               rows={3}
                               value={form.tests}
                               onChange={(e) => set("tests", e.target.value)}
-                              onBlur={(e) => {
-                                // Normalise on blur: split by comma/newline, trim, capitalise, rejoin
-                                const normalised = e.target.value
-                                  .split(/[,\n]+/)
-                                  .map((t) => t.trim())
-                                  .filter(Boolean)
-                                  .map((t) => t.charAt(0).toUpperCase() + t.slice(1))
-                                  .join(", ");
-                                if (normalised !== e.target.value) set("tests", normalised);
-                              }}
-                              hint="Review and confirm the AI-extracted tests before submitting"
+                              onBlur={(e) => { if (e.target.value.trim()) normaliseTests(e.target.value); }}
+                              hint={normalisingTests ? "Checking test names…" : "Review and confirm — AI will also correct spelling"}
+
                               error={errors.tests}
                             />
                             <Textarea

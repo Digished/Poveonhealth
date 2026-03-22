@@ -30,13 +30,6 @@ export default async function LabSlugPage({ params }: LabSlugPageProps) {
       {/* Scrollable content area — page never scrolls, only this div does */}
       <main className="flex-1 overflow-y-auto overflow-x-hidden">
         <div className="max-w-2xl mx-auto px-4 pb-2">
-          {/* Lab name banner */}
-          <div className="mt-6 mb-4 rounded-xl bg-white/60 backdrop-blur-sm border border-blue-100 px-4 py-3 text-center shadow-sm">
-            <p className="text-xl font-semibold text-slate-800">
-              {lab.name}
-            </p>
-          </div>
-
           <DoctorRequestForm
             preselectedLabId={lab.id}
             preselectedLabName={lab.name}

@@ -50,6 +50,8 @@ interface LabDashboardProps {
   isOwner?: boolean;
   roleName?: string;
   canViewReferrals?: boolean;
+  canViewClients?: boolean;
+  canViewAnalytics?: boolean;
 }
 
 const TABS: { key: RequestStatus; label: string; icon: React.ReactNode }[] = [
@@ -82,7 +84,7 @@ function scheduleLabel(value: string | null): string | null {
   return value ? (map[value] ?? value) : null;
 }
 
-export function LabDashboard({ lab, isOwner = false, roleName = "Lab Owner", canViewReferrals = false }: LabDashboardProps) {
+export function LabDashboard({ lab, isOwner = false, roleName = "Lab Owner", canViewReferrals = false, canViewClients = false, canViewAnalytics = false }: LabDashboardProps) {
   const { name: labName, logo_url: labLogoUrl } = lab;
   const router = useRouter();
   const { isLight, toggle, themeClass } = useDashTheme("lab_dash_theme");
@@ -209,10 +211,10 @@ export function LabDashboard({ lab, isOwner = false, roleName = "Lab Owner", can
     if (mainView === "referrals" && (isOwner || canViewReferrals)) {
       fetchReferrals();
     }
-    if (mainView === "clients") {
+    if (mainView === "clients" && (isOwner || canViewClients)) {
       fetchClients();
     }
-  }, [mainView, fetchReferrals, fetchClients, isOwner, canViewReferrals]);
+  }, [mainView, fetchReferrals, fetchClients, isOwner, canViewReferrals, canViewClients]);
 
   const tabRequests = requests.filter((r) => r.status === activeTab);
 
@@ -510,8 +512,8 @@ export function LabDashboard({ lab, isOwner = false, roleName = "Lab Owner", can
       </header>
 
       <div className="max-w-6xl mx-auto px-4 py-8">
-        {/* Top-level navigation: Requests / Referrals */}
-        {(isOwner || canViewReferrals) && (
+        {/* Top-level navigation */}
+        {(isOwner || canViewReferrals || canViewClients || canViewAnalytics) && (
           <div className="flex gap-1 mb-6 bg-white/5 rounded-xl p-1 w-full sm:w-fit overflow-x-auto">
             <button
               onClick={() => setMainView("requests")}
@@ -524,39 +526,45 @@ export function LabDashboard({ lab, isOwner = false, roleName = "Lab Owner", can
               <FlaskConical className="w-4 h-4" />
               Requests
             </button>
-            <button
-              onClick={() => setMainView("referrals")}
-              className={`flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-medium transition-all ${
-                mainView === "referrals"
-                  ? "bg-white/15 text-white shadow-sm"
-                  : "text-slate-400 hover:text-slate-200"
-              }`}
-            >
-              <Users className="w-4 h-4" />
-              Referrals
-            </button>
-            <button
-              onClick={() => setMainView("clients")}
-              className={`flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-medium transition-all ${
-                mainView === "clients"
-                  ? "bg-white/15 text-white shadow-sm"
-                  : "text-slate-400 hover:text-slate-200"
-              }`}
-            >
-              <UserCircle className="w-4 h-4" />
-              Clients
-            </button>
-            <button
-              onClick={() => setMainView("analytics")}
-              className={`flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-medium transition-all ${
-                mainView === "analytics"
-                  ? "bg-white/15 text-white shadow-sm"
-                  : "text-slate-400 hover:text-slate-200"
-              }`}
-            >
-              <BarChart3 className="w-4 h-4" />
-              Analytics
-            </button>
+            {(isOwner || canViewReferrals) && (
+              <button
+                onClick={() => setMainView("referrals")}
+                className={`flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-medium transition-all ${
+                  mainView === "referrals"
+                    ? "bg-white/15 text-white shadow-sm"
+                    : "text-slate-400 hover:text-slate-200"
+                }`}
+              >
+                <Users className="w-4 h-4" />
+                Referrals
+              </button>
+            )}
+            {(isOwner || canViewClients) && (
+              <button
+                onClick={() => setMainView("clients")}
+                className={`flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-medium transition-all ${
+                  mainView === "clients"
+                    ? "bg-white/15 text-white shadow-sm"
+                    : "text-slate-400 hover:text-slate-200"
+                }`}
+              >
+                <UserCircle className="w-4 h-4" />
+                Clients
+              </button>
+            )}
+            {(isOwner || canViewAnalytics) && (
+              <button
+                onClick={() => setMainView("analytics")}
+                className={`flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-medium transition-all ${
+                  mainView === "analytics"
+                    ? "bg-white/15 text-white shadow-sm"
+                    : "text-slate-400 hover:text-slate-200"
+                }`}
+              >
+                <BarChart3 className="w-4 h-4" />
+                Analytics
+              </button>
+            )}
           </div>
         )}
 

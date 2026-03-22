@@ -155,6 +155,35 @@
 /* Scrollbar in light mode */
 .dash-light::-webkit-scrollbar-thumb { background: rgba(100, 116, 139, 0.35); }
 
+/* ── Modal theme overrides (light mode) ──────────────────────────────────── */
+/* Modals use fixed bg-slate-900/bg-slate-800 which don't inherit .dash-light */
+.dash-light .bg-slate-900   { background-color: #ffffff !important; }
+.dash-light .bg-slate-800   { background-color: #f8fafc !important; }
+.dash-light .bg-slate-800\/95 { background-color: rgba(248,250,252,0.97) !important; }
+.dash-light .bg-slate-900\/95 { background-color: rgba(255,255,255,0.97) !important; }
+
+/* Modal text overrides */
+.dash-light .bg-slate-900 .text-white  { color: #0f172a !important; }
+.dash-light .bg-slate-900 .text-slate-200 { color: #334155 !important; }
+.dash-light .bg-slate-900 .text-slate-300 { color: #475569 !important; }
+.dash-light .bg-slate-900 .text-slate-400 { color: #64748b !important; }
+.dash-light .bg-slate-800 .text-white  { color: #0f172a !important; }
+.dash-light .bg-slate-800 .text-slate-200 { color: #334155 !important; }
+.dash-light .bg-slate-800 .text-slate-300 { color: #475569 !important; }
+.dash-light .bg-slate-800 .text-slate-400 { color: #64748b !important; }
+
+/* Modal border overrides */
+.dash-light .bg-slate-900 .border-white\/10 { border-color: #e2e8f0 !important; }
+.dash-light .bg-slate-900 .border-white\/20 { border-color: #cbd5e1 !important; }
+.dash-light .bg-slate-800 .border-white\/10 { border-color: #e2e8f0 !important; }
+.dash-light .bg-slate-800 .border-white\/20 { border-color: #cbd5e1 !important; }
+
+/* Modal inner cards */
+.dash-light .bg-slate-900 .bg-white\/5  { background-color: #f1f5f9 !important; }
+.dash-light .bg-slate-900 .bg-white\/10 { background-color: #e2e8f0 !important; }
+.dash-light .bg-slate-800 .bg-white\/5  { background-color: #f1f5f9 !important; }
+.dash-light .bg-slate-800 .bg-white\/10 { background-color: #e2e8f0 !important; }
+
 /* Scrollbar */
 ::-webkit-scrollbar {
   width: 6px;

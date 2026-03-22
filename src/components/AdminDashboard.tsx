@@ -724,48 +724,50 @@ export function AdminDashboard() {
                     )}
                     <p className="text-xs text-slate-600 mt-3">Added {format(new Date(lab.created_at), "dd MMM yyyy")}</p>
 
-                    <div className="flex items-center gap-2 mt-4 pt-3 border-t border-white/5">
-                      <button
-                        onClick={() => setEditLab(lab)}
-                        className="flex items-center gap-1 px-2.5 py-1.5 rounded-lg bg-white/5 hover:bg-white/10 text-slate-400 hover:text-white text-xs transition-colors"
-                      >
-                        <Pencil className="w-3 h-3" />Edit
-                      </button>
-                      <button
-                        onClick={() => handleToggleHidden(lab)}
-                        disabled={togglingId === lab.id}
-                        className="flex items-center gap-1 px-2.5 py-1.5 rounded-lg bg-white/5 hover:bg-white/10 text-slate-400 hover:text-white text-xs transition-colors"
-                      >
-                        {lab.hidden ? <Eye className="w-3 h-3" /> : <EyeOff className="w-3 h-3" />}
-                        {lab.hidden ? "Show" : "Hide"}
-                      </button>
-                      <button
-                        onClick={() => {
-                          setLabAnalyticsLabId(lab.id);
-                          setLabAnalyticsLabName(lab.name);
-                          setLabAnalytics(null);
-                          setLabAnalyticsMonth("");
-                          setLabAnalyticsStatus("");
-                          setLabAnalyticsTest("");
-                          fetchLabAnalytics(lab.id);
-                        }}
-                        className="flex items-center gap-1 px-2.5 py-1.5 rounded-lg bg-emerald-500/10 hover:bg-emerald-500/20 text-emerald-400 hover:text-emerald-300 text-xs transition-colors"
-                      >
-                        <BarChart3 className="w-3 h-3" />Stats
-                      </button>
-                      <button
-                        onClick={() => setExpandedLabIntegration(lab.id)}
-                        className="flex items-center gap-1 px-2.5 py-1.5 rounded-lg bg-blue-500/10 hover:bg-blue-500/20 text-blue-400 hover:text-blue-300 text-xs transition-colors"
-                      >
-                        <Code2 className="w-3 h-3" />Dev
-                      </button>
-                      <button
-                        onClick={() => handleDeleteLab(lab)}
-                        disabled={deletingId === lab.id}
-                        className="flex items-center gap-1 px-2.5 py-1.5 rounded-lg bg-red-500/10 hover:bg-red-500/20 text-red-400 hover:text-red-300 text-xs transition-colors ml-auto"
-                      >
-                        <Trash2 className="w-3 h-3" />Delete
-                      </button>
+                    <div className="mt-4 pt-3 border-t border-white/5">
+                      <div className="grid grid-cols-2 sm:flex sm:flex-wrap gap-2">
+                        <button
+                          onClick={() => setEditLab(lab)}
+                          className="flex items-center justify-center gap-1 px-2.5 py-1.5 rounded-lg bg-white/5 hover:bg-white/10 text-slate-400 hover:text-white text-xs transition-colors"
+                        >
+                          <Pencil className="w-3 h-3" />Edit
+                        </button>
+                        <button
+                          onClick={() => handleToggleHidden(lab)}
+                          disabled={togglingId === lab.id}
+                          className="flex items-center justify-center gap-1 px-2.5 py-1.5 rounded-lg bg-white/5 hover:bg-white/10 text-slate-400 hover:text-white text-xs transition-colors"
+                        >
+                          {lab.hidden ? <Eye className="w-3 h-3" /> : <EyeOff className="w-3 h-3" />}
+                          {lab.hidden ? "Show" : "Hide"}
+                        </button>
+                        <button
+                          onClick={() => {
+                            setLabAnalyticsLabId(lab.id);
+                            setLabAnalyticsLabName(lab.name);
+                            setLabAnalytics(null);
+                            setLabAnalyticsMonth("");
+                            setLabAnalyticsStatus("");
+                            setLabAnalyticsTest("");
+                            fetchLabAnalytics(lab.id);
+                          }}
+                          className="flex items-center justify-center gap-1 px-2.5 py-1.5 rounded-lg bg-emerald-500/10 hover:bg-emerald-500/20 text-emerald-400 hover:text-emerald-300 text-xs transition-colors"
+                        >
+                          <BarChart3 className="w-3 h-3" />Stats
+                        </button>
+                        <button
+                          onClick={() => setExpandedLabIntegration(lab.id)}
+                          className="flex items-center justify-center gap-1 px-2.5 py-1.5 rounded-lg bg-blue-500/10 hover:bg-blue-500/20 text-blue-400 hover:text-blue-300 text-xs transition-colors"
+                        >
+                          <Code2 className="w-3 h-3" />Dev
+                        </button>
+                        <button
+                          onClick={() => handleDeleteLab(lab)}
+                          disabled={deletingId === lab.id}
+                          className="col-span-2 sm:col-span-1 flex items-center justify-center gap-1 px-2.5 py-1.5 rounded-lg bg-red-500/10 hover:bg-red-500/20 text-red-400 hover:text-red-300 text-xs transition-colors sm:ml-auto"
+                        >
+                          <Trash2 className="w-3 h-3" />Delete
+                        </button>
+                      </div>
                     </div>
                   </div>
                 ))}
@@ -2060,15 +2062,22 @@ function LabDeveloperTab({ lab }: { lab: Lab }) {
 
 // ── Team & Roles Tab ───────────────────────────────────────────────────────
 
-const PERMISSION_LABELS: { key: keyof LabRole; label: string }[] = [
-  { key: "can_view_requests",   label: "View requests"   },
-  { key: "can_mark_seen",       label: "Mark seen"       },
-  { key: "can_mark_done",       label: "Mark done"       },
-  { key: "can_send_results",    label: "Send results"    },
-  { key: "can_manage_team",     label: "Manage team"     },
-  { key: "can_manage_api_keys", label: "Manage API keys" },
-  { key: "can_view_referrals",  label: "View referrals"  },
+const PAGE_PERMISSIONS: { key: keyof LabRole; label: string; description: string }[] = [
+  { key: "can_view_requests",   label: "Requests",   description: "View and search patient requests" },
+  { key: "can_view_referrals",  label: "Referrals",  description: "View doctor referral stats" },
+  { key: "can_view_clients",    label: "Clients",    description: "Browse the patient/client list" },
+  { key: "can_view_analytics",  label: "Analytics",  description: "View lab performance analytics" },
 ];
+
+const ACTION_PERMISSIONS: { key: keyof LabRole; label: string; description: string }[] = [
+  { key: "can_mark_seen",       label: "Mark as Seen",     description: "Confirm patient arrived at lab" },
+  { key: "can_mark_done",       label: "Mark as Done",     description: "Mark tests as completed" },
+  { key: "can_send_results",    label: "Send Results",     description: "Email results to doctors" },
+  { key: "can_manage_team",     label: "Manage Team",      description: "Invite/remove staff members" },
+  { key: "can_manage_api_keys", label: "Manage API Keys",  description: "Create and revoke API keys" },
+];
+
+const ALL_PERMISSION_LABELS = [...PAGE_PERMISSIONS, ...ACTION_PERMISSIONS];
 
 type DraftRole = {
   name: string;
@@ -2079,10 +2088,12 @@ type DraftRole = {
   can_manage_team:     boolean;
   can_manage_api_keys: boolean;
   can_view_referrals:  boolean;
+  can_view_clients:    boolean;
+  can_view_analytics:  boolean;
 };
 
 function blankRole(): DraftRole {
-  return { name: "", can_view_requests: true, can_mark_seen: false, can_mark_done: false, can_send_results: false, can_manage_team: false, can_manage_api_keys: false, can_view_referrals: false };
+  return { name: "", can_view_requests: true, can_mark_seen: false, can_mark_done: false, can_send_results: false, can_manage_team: false, can_manage_api_keys: false, can_view_referrals: false, can_view_clients: false, can_view_analytics: false };
 }
 
 function LabTeamTab({ lab }: { lab: Lab }) {
@@ -2152,6 +2163,8 @@ function LabTeamTab({ lab }: { lab: Lab }) {
       can_manage_team:     role.can_manage_team,
       can_manage_api_keys: role.can_manage_api_keys,
       can_view_referrals:  role.can_view_referrals,
+      can_view_clients:    (role as DraftRole).can_view_clients ?? false,
+      can_view_analytics:  (role as DraftRole).can_view_analytics ?? false,
     });
     setShowNewRole(true);
   }
@@ -2231,7 +2244,7 @@ function LabTeamTab({ lab }: { lab: Lab }) {
                 <div>
                   <p className="text-xs font-medium text-slate-300">{r.name}</p>
                   <p className="text-xs text-slate-600 mt-0.5">
-                    {PERMISSION_LABELS.filter((p) => r[p.key as keyof LabRole]).map((p) => p.label).join(" · ") || "No permissions"}
+                    {ALL_PERMISSION_LABELS.filter((p) => r[p.key as keyof LabRole]).map((p) => p.label).join(" · ") || "No permissions"}
                     {(r._count?.members ?? 0) > 0 && <span className="ml-2 text-slate-500">· {r._count?.members} member{(r._count?.members ?? 0) !== 1 ? "s" : ""}</span>}
                   </p>
                 </div>
@@ -2250,7 +2263,7 @@ function LabTeamTab({ lab }: { lab: Lab }) {
 
         {/* Role editor */}
         {showNewRole && (
-          <div className="mt-3 bg-slate-950/60 border border-blue-500/20 rounded-xl p-3 space-y-3">
+          <div className="mt-3 bg-slate-950/60 border border-blue-500/20 rounded-xl p-4 space-y-4">
             <p className="text-xs font-semibold text-blue-300">{editingRole ? `Edit: ${editingRole.name}` : "New Role"}</p>
             <input
               value={draftRole.name}
@@ -2258,26 +2271,76 @@ function LabTeamTab({ lab }: { lab: Lab }) {
               placeholder="Role name (e.g. Front Desk, Lab Scientist)"
               className="w-full bg-slate-900 border border-white/10 text-slate-200 placeholder-slate-600 rounded-lg px-3 py-2 text-xs focus:outline-none focus:ring-1 focus:ring-blue-500"
             />
-            <div className="grid grid-cols-2 gap-1.5">
-              {PERMISSION_LABELS.map(({ key, label }) => (
-                <label key={key} className="flex items-center gap-2 cursor-pointer group">
-                  <input
-                    type="checkbox"
-                    checked={!!draftRole[key as keyof DraftRole]}
-                    onChange={(e) => setDraftRole((d) => ({ ...d, [key]: e.target.checked }))}
-                    className="accent-blue-500 w-3.5 h-3.5 shrink-0"
-                  />
-                  <span className="text-xs text-slate-400 group-hover:text-slate-200 transition-colors">{label}</span>
-                </label>
-              ))}
+
+            {/* Pages section */}
+            <div>
+              <p className="text-xs font-semibold text-slate-400 uppercase tracking-wider mb-2">Pages visible</p>
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                {PAGE_PERMISSIONS.map(({ key, label, description }) => {
+                  const checked = !!draftRole[key as keyof DraftRole];
+                  return (
+                    <label
+                      key={key}
+                      className={`flex items-center gap-3 p-3 rounded-xl border cursor-pointer transition-all ${
+                        checked
+                          ? "bg-blue-500/10 border-blue-500/40 text-slate-200"
+                          : "bg-white/3 border-white/8 text-slate-500 hover:border-white/20"
+                      }`}
+                    >
+                      <input
+                        type="checkbox"
+                        checked={checked}
+                        onChange={(e) => setDraftRole((d) => ({ ...d, [key]: e.target.checked }))}
+                        className="accent-blue-500 w-3.5 h-3.5 shrink-0"
+                      />
+                      <div className="min-w-0">
+                        <p className="text-xs font-medium leading-tight">{label}</p>
+                        <p className="text-xs text-slate-600 mt-0.5 leading-tight">{description}</p>
+                      </div>
+                    </label>
+                  );
+                })}
+              </div>
             </div>
-            <div className="flex gap-2">
+
+            {/* Actions section */}
+            <div>
+              <p className="text-xs font-semibold text-slate-400 uppercase tracking-wider mb-2">Actions allowed</p>
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                {ACTION_PERMISSIONS.map(({ key, label, description }) => {
+                  const checked = !!draftRole[key as keyof DraftRole];
+                  return (
+                    <label
+                      key={key}
+                      className={`flex items-center gap-3 p-3 rounded-xl border cursor-pointer transition-all ${
+                        checked
+                          ? "bg-emerald-500/10 border-emerald-500/30 text-slate-200"
+                          : "bg-white/3 border-white/8 text-slate-500 hover:border-white/20"
+                      }`}
+                    >
+                      <input
+                        type="checkbox"
+                        checked={checked}
+                        onChange={(e) => setDraftRole((d) => ({ ...d, [key]: e.target.checked }))}
+                        className="accent-emerald-500 w-3.5 h-3.5 shrink-0"
+                      />
+                      <div className="min-w-0">
+                        <p className="text-xs font-medium leading-tight">{label}</p>
+                        <p className="text-xs text-slate-600 mt-0.5 leading-tight">{description}</p>
+                      </div>
+                    </label>
+                  );
+                })}
+              </div>
+            </div>
+
+            <div className="flex gap-2 pt-1">
               <button onClick={() => { setShowNewRole(false); setEditingRole(null); setDraftRole(blankRole()); }}
-                className="flex-1 px-3 py-1.5 rounded-lg bg-white/5 hover:bg-white/10 text-slate-400 text-xs transition-colors">
+                className="flex-1 px-3 py-2 rounded-lg bg-white/5 hover:bg-white/10 text-slate-400 text-xs transition-colors">
                 Cancel
               </button>
               <button onClick={handleSaveRole} disabled={savingRole}
-                className="flex-1 px-3 py-1.5 rounded-lg bg-blue-600 hover:bg-blue-500 text-white text-xs font-medium transition-colors disabled:opacity-50">
+                className="flex-1 px-3 py-2 rounded-lg bg-blue-600 hover:bg-blue-500 text-white text-xs font-medium transition-colors disabled:opacity-50">
                 {savingRole ? "Saving…" : editingRole ? "Save Changes" : "Create Role"}
               </button>
             </div>
