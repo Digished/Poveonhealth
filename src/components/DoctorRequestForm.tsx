@@ -885,6 +885,15 @@ export function DoctorRequestForm({
   const [imageUploadProgress, setImageUploadProgress] = useState(0);
   const [testImageUrl, setTestImageUrl] = useState<string | null>(null);
   const [imageUploadError, setImageUploadError] = useState<string | null>(null);
+  // AI extraction state
+  const [imageExtracting, setImageExtracting] = useState(false);
+  const [extractionResult, setExtractionResult] = useState<{
+    tests_text: string; tests: string[]; diagnosis: string;
+    patient_name: string; dob: string; sex: string;
+    doctor_name: string; doctor_prefix: string; schedule_hint: string;
+    confidence: "high" | "medium" | "low"; low_confidence_items: string[];
+  } | null>(null);
+  const [extractionDismissed, setExtractionDismissed] = useState(false);
   // Critical / ambulance state
   const [isCritical, setIsCritical] = useState(false);
   const [needsAmbulance, setNeedsAmbulance] = useState(false);
@@ -1603,17 +1612,83 @@ export function DoctorRequestForm({
                     {/* Picture mode: image upload */}
                     {clinicalMode === "picture" && (
                       <div className="space-y-3 animate-fade-in-up">
-                        <p className="text-sm text-slate-500">Upload a photo of the physical test request slip — the lab will read it directly.</p>
+                        <p className="text-sm text-slate-500">Upload a photo of the physical test request slip — we&apos;ll read it with AI and pre-fill the form for you.</p>
                         {testImageUrl ? (
-                          <div className="flex items-center gap-3 rounded-xl border border-emerald-200 bg-emerald-50/40 px-4 py-3">
-                            <img src={testImageUrl} alt="Uploaded test request slip" className="w-14 h-14 rounded-lg object-cover border border-emerald-200 shrink-0" />
-                            <div className="flex-1 min-w-0">
-                              <p className="text-sm font-semibold text-emerald-700 flex items-center gap-1.5"><Check className="w-4 h-4" /> Image uploaded</p>
-                              <p className="text-xs text-slate-400 mt-0.5 truncate">{testImageUrl.split("/").pop()}</p>
+                          <div className="space-y-2">
+                            {/* Image thumbnail row */}
+                            <div className="flex items-center gap-3 rounded-xl border border-emerald-200 bg-emerald-50/40 px-4 py-3">
+                              <img src={testImageUrl} alt="Uploaded test request slip" className="w-14 h-14 rounded-lg object-cover border border-emerald-200 shrink-0" />
+                              <div className="flex-1 min-w-0">
+                                <p className="text-sm font-semibold text-emerald-700 flex items-center gap-1.5">
+                                  <Check className="w-4 h-4" /> Image uploaded
+                                </p>
+                                {imageExtracting ? (
+                                  <p className="text-xs text-medical-600 mt-0.5 flex items-center gap-1">
+                                    <RefreshCw className="w-3 h-3 animate-spin" /> Scanning with AI…
+                                  </p>
+                                ) : extractionResult && !extractionDismissed ? (
+                                  <p className="text-xs text-emerald-600 mt-0.5 flex items-center gap-1">
+                                    <Check className="w-3 h-3" /> Fields pre-filled
+                                    {extractionResult.confidence === "low" && <span className="text-amber-600"> — low confidence, please review</span>}
+                                  </p>
+                                ) : (
+                                  <p className="text-xs text-slate-400 mt-0.5 truncate">{testImageUrl.split("/").pop()}</p>
+                                )}
+                              </div>
+                              <button type="button" onClick={() => { setTestImageUrl(null); setImageUploadError(null); setExtractionResult(null); setExtractionDismissed(false); }} className="p-1.5 rounded-lg hover:bg-emerald-100 text-emerald-400 hover:text-emerald-700 transition-colors shrink-0" aria-label="Remove uploaded image">
+                                <X className="w-4 h-4" />
+                              </button>
                             </div>
-                            <button type="button" onClick={() => { setTestImageUrl(null); setImageUploadError(null); }} className="p-1.5 rounded-lg hover:bg-emerald-100 text-emerald-400 hover:text-emerald-700 transition-colors shrink-0" aria-label="Remove uploaded image">
-                              <X className="w-4 h-4" />
-                            </button>
+
+                            {/* AI extraction result card */}
+                            {extractionResult && !extractionDismissed && !imageExtracting && (
+                              <div className={`rounded-xl border px-4 py-3 space-y-2 ${extractionResult.confidence === "low" ? "bg-amber-50 border-amber-200" : "bg-sky-50 border-sky-200"}`}>
+                                <div className="flex items-center justify-between gap-2">
+                                  <p className={`text-xs font-semibold flex items-center gap-1.5 ${extractionResult.confidence === "low" ? "text-amber-700" : "text-sky-700"}`}>
+                                    <span className="inline-block w-1.5 h-1.5 rounded-full bg-current" />
+                                    AI extracted from image
+                                    {extractionResult.confidence === "high" && <span className="font-normal text-sky-600"> — high confidence</span>}
+                                    {extractionResult.confidence === "medium" && <span className="font-normal text-sky-600"> — please review</span>}
+                                    {extractionResult.confidence === "low" && <span className="font-normal text-amber-600"> — low confidence, verify carefully</span>}
+                                  </p>
+                                  <button type="button" onClick={() => setExtractionDismissed(true)} className="text-slate-400 hover:text-slate-600 transition-colors shrink-0" aria-label="Dismiss">
+                                    <X className="w-3.5 h-3.5" />
+                                  </button>
+                                </div>
+
+                                {extractionResult.tests.length > 0 && (
+                                  <div>
+                                    <p className="text-xs text-slate-500 mb-1">Tests found:</p>
+                                    <div className="flex flex-wrap gap-1">
+                                      {extractionResult.tests.map((t, i) => (
+                                        <span key={i} className={`text-xs px-2 py-0.5 rounded-full border font-medium ${extractionResult.low_confidence_items.includes(t) ? "bg-amber-100 border-amber-200 text-amber-700" : "bg-white border-slate-200 text-slate-700"}`}>
+                                          {extractionResult.low_confidence_items.includes(t) && "⚠ "}{t}
+                                        </span>
+                                      ))}
+                                    </div>
+                                  </div>
+                                )}
+
+                                {extractionResult.diagnosis && (
+                                  <p className="text-xs text-slate-600"><span className="font-medium">Diagnosis:</span> {extractionResult.diagnosis}</p>
+                                )}
+
+                                {(extractionResult.patient_name || extractionResult.dob || extractionResult.sex) && (
+                                  <p className="text-xs text-slate-500">
+                                    Patient details also pre-filled below where fields were empty.
+                                  </p>
+                                )}
+
+                                {extractionResult.low_confidence_items.length > 0 && (
+                                  <p className="text-xs text-amber-700 flex items-start gap-1">
+                                    <span className="shrink-0">⚠</span>
+                                    <span>Please verify: {extractionResult.low_confidence_items.join(", ")}</span>
+                                  </p>
+                                )}
+
+                                <p className="text-xs text-slate-400 italic">All fields are editable — review before submitting.</p>
+                              </div>
+                            )}
                           </div>
                         ) : imageUploading ? (
                           <div className="flex flex-col items-center gap-4 rounded-2xl border-2 border-dashed border-medical-300 bg-medical-50/30 px-6 py-10 text-center">
@@ -1675,6 +1750,36 @@ export function DoctorRequestForm({
                                     if (data.url) {
                                       setTestImageUrl(data.url);
                                       setImageUploadProgress(100);
+                                      // Kick off AI extraction immediately
+                                      setImageExtracting(true);
+                                      setExtractionResult(null);
+                                      setExtractionDismissed(false);
+                                      fetch("/api/requests/extract-from-image", {
+                                        method: "POST",
+                                        headers: { "Content-Type": "application/json" },
+                                        body: JSON.stringify({ imageUrl: data.url }),
+                                      })
+                                        .then((r) => r.json())
+                                        .then((res) => {
+                                          if (res.success && res.extracted) {
+                                            setExtractionResult(res.extracted);
+                                            // Auto-fill tests & diagnosis immediately
+                                            setForm((prev) => ({
+                                              ...prev,
+                                              tests: res.extracted.tests_text || prev.tests,
+                                              diagnosis: res.extracted.diagnosis || prev.diagnosis,
+                                              // Only fill patient/doctor fields if currently empty
+                                              patient_name: prev.patient_name || res.extracted.patient_name,
+                                              dob: prev.dob || res.extracted.dob,
+                                              sex: prev.sex || res.extracted.sex,
+                                              doctor_name: prev.doctor_name || res.extracted.doctor_name,
+                                              doctor_prefix: prev.doctor_prefix || res.extracted.doctor_prefix,
+                                              schedule: prev.schedule || res.extracted.schedule_hint,
+                                            }));
+                                          }
+                                        })
+                                        .catch(() => { /* silent — user continues manually */ })
+                                        .finally(() => setImageExtracting(false));
                                     } else {
                                       setImageUploadError(data.error ?? "Upload failed. Please try again.");
                                     }
@@ -1697,6 +1802,29 @@ export function DoctorRequestForm({
                           </label>
                         )}
                         {imageUploadError && <p className="text-xs text-red-600 font-medium">{imageUploadError}</p>}
+
+                        {/* Editable review area — shown after extraction so doctor can confirm/correct */}
+                        {testImageUrl && !imageUploading && (
+                          <div className="space-y-3 pt-1">
+                            <Textarea
+                              label={imageExtracting ? "Tests Requested (scanning…)" : "Tests Requested"}
+                              placeholder={imageExtracting ? "AI is reading the slip…" : "AI will pre-fill this. You can also type or edit here."}
+                              rows={3}
+                              value={form.tests}
+                              onChange={(e) => set("tests", e.target.value)}
+                              hint="Review and edit the AI-extracted tests before submitting"
+                              error={errors.tests}
+                            />
+                            <Textarea
+                              label="Diagnosis / Clinical Notes"
+                              placeholder={imageExtracting ? "Extracting…" : "Extracted from slip, or add manually"}
+                              rows={2}
+                              value={form.diagnosis}
+                              onChange={(e) => set("diagnosis", e.target.value)}
+                              error={errors.diagnosis}
+                            />
+                          </div>
+                        )}
                       </div>
                     )}
                   </div>
