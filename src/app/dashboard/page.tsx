@@ -7,7 +7,7 @@ import {
   LogOut, Phone, MapPin, Calendar, Stethoscope, FlaskConical,
   ClipboardList, User, ChevronDown, ChevronUp, FileImage, ExternalLink,
   Pencil, Check, X, RefreshCw, MessageCircle, Filter, Search, UserCircle,
-  BadgeCheck,
+  BadgeCheck, Shield, EyeOff, Eye,
 } from "lucide-react";
 
 interface Lab {
@@ -26,6 +26,8 @@ interface LabRequest {
   schedule: string | null;
   diagnosis: string | null;
   test_image_url: string | null;
+  result_link: string | null;
+  result_note: string | null;
   created_at: string;
   seen_at: string | null;
   completed_at: string | null;
@@ -329,6 +331,23 @@ function RequestCard({ req }: { req: LabRequest }) {
             {req.seen_at && <span>Arrived: {formatDate(req.seen_at)}</span>}
             {req.completed_at && <span>Completed: {formatDate(req.completed_at)}</span>}
           </div>
+          {/* Results card */}
+          {req.status === "done" && (req.result_link || req.result_note) && (
+            <div className="bg-emerald-50 border border-emerald-200 rounded-xl p-3">
+              <p className="text-xs font-semibold text-emerald-700 mb-1.5 flex items-center gap-1.5">
+                <BadgeCheck className="w-3.5 h-3.5" />Results Available
+              </p>
+              {req.result_note && (
+                <p className="text-sm text-emerald-800 mb-2 leading-relaxed">{req.result_note}</p>
+              )}
+              {req.result_link && (
+                <a href={req.result_link} target="_blank" rel="noopener noreferrer"
+                  className="inline-flex items-center gap-1.5 text-xs font-semibold bg-emerald-600 hover:bg-emerald-700 text-white px-3 py-1.5 rounded-lg transition">
+                  <ExternalLink className="w-3 h-3" />View Results
+                </a>
+              )}
+            </div>
+          )}
           {(phones.length > 0 || whatsapps.length > 0) && (
             <div className="pt-2 border-t border-slate-50 flex flex-wrap gap-2">
               {phones.map((phone, i) => (
@@ -348,6 +367,154 @@ function RequestCard({ req }: { req: LabRequest }) {
           )}
         </div>
       )}
+    </div>
+  );
+}
+
+function PatientSecuritySection() {
+  const [hasPin, setHasPin] = useState<boolean | null>(null);
+  const [open, setOpen] = useState(false);
+  const [mode, setMode] = useState<"set" | "change" | "remove">("set");
+  const [pin, setPin] = useState("");
+  const [confirmPin, setConfirmPin] = useState("");
+  const [showPin, setShowPin] = useState(false);
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState("");
+  const [success, setSuccess] = useState("");
+
+  useEffect(() => {
+    fetch("/api/patient/check-pin", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({}) })
+      .then((r) => r.json())
+      .then((d) => setHasPin(!!d.hasPin))
+      .catch(() => setHasPin(false));
+  }, []);
+
+  function openPanel(m: "set" | "change" | "remove") {
+    setMode(m); setOpen(true); setPin(""); setConfirmPin(""); setError(""); setSuccess("");
+  }
+
+  async function savePin() {
+    if (mode !== "remove") {
+      if (!/^\d{4}$/.test(pin)) { setError("PIN must be exactly 4 digits."); return; }
+      if (pin !== confirmPin) { setError("PINs do not match."); return; }
+    }
+    setSaving(true); setError(""); setSuccess("");
+    try {
+      const res = await fetch("/api/patient/set-pin", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ pin: mode === "remove" ? "" : pin }),
+      });
+      const data = await res.json();
+      if (data.success) {
+        setHasPin(mode !== "remove");
+        setSuccess(mode === "remove" ? "PIN removed." : "PIN saved successfully.");
+        setOpen(false);
+      } else {
+        setError(data.error ?? "Failed to save. Please try again.");
+      }
+    } catch {
+      setError("Network error. Please try again.");
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  if (hasPin === null) return null;
+
+  return (
+    <div className="bg-white/80 backdrop-blur-sm rounded-2xl border border-white/60 shadow-sm overflow-hidden">
+      <div className="px-4 py-4">
+        <div className="flex items-center justify-between mb-3">
+          <div className="flex items-center gap-2">
+            <Shield className="w-4 h-4 text-sky-500" />
+            <h2 className="text-sm font-bold text-slate-800">Security</h2>
+          </div>
+        </div>
+        {success && <p className="text-xs text-emerald-700 bg-emerald-50 border border-emerald-100 rounded-xl px-3 py-2 mb-3">{success}</p>}
+        <p className="text-xs text-slate-500 mb-3">
+          {hasPin
+            ? "You have a 4-digit login PIN set. Use it for quick sign-in."
+            : "Set a 4-digit PIN for faster login — no need for an email code every time."}
+        </p>
+        {!open ? (
+          <div className="flex flex-wrap gap-2">
+            {!hasPin && (
+              <button onClick={() => openPanel("set")}
+                className="flex items-center gap-1.5 text-xs font-semibold px-3 py-2 rounded-xl bg-sky-500 text-white hover:bg-sky-600 transition">
+                <Shield className="w-3.5 h-3.5" />Set up PIN
+              </button>
+            )}
+            {hasPin && (
+              <>
+                <button onClick={() => openPanel("change")}
+                  className="flex items-center gap-1.5 text-xs font-semibold px-3 py-2 rounded-xl bg-sky-50 text-sky-700 border border-sky-100 hover:bg-sky-100 transition">
+                  <Shield className="w-3.5 h-3.5" />Change PIN
+                </button>
+                <button onClick={() => openPanel("remove")}
+                  className="flex items-center gap-1.5 text-xs font-semibold px-3 py-2 rounded-xl bg-red-50 text-red-600 border border-red-100 hover:bg-red-100 transition">
+                  <X className="w-3.5 h-3.5" />Remove PIN
+                </button>
+              </>
+            )}
+          </div>
+        ) : (
+          <div className="space-y-3">
+            {mode === "remove" ? (
+              <p className="text-sm text-slate-600">Are you sure you want to remove your login PIN? You&apos;ll need an email code to log in.</p>
+            ) : (
+              <>
+                <div>
+                  <label className="text-xs font-semibold text-slate-500 uppercase tracking-wide block mb-1.5">
+                    {mode === "change" ? "New PIN" : "Create a 4-digit PIN"}
+                  </label>
+                  <div className="relative">
+                    <input
+                      type={showPin ? "text" : "password"}
+                      inputMode="numeric"
+                      maxLength={4}
+                      value={pin}
+                      onChange={(e) => setPin(e.target.value.replace(/\D/g, "").slice(0, 4))}
+                      placeholder="••••"
+                      className="w-full text-sm px-3 py-2.5 border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-sky-400 bg-white pr-10 tracking-[0.5em]"
+                    />
+                    <button type="button" onClick={() => setShowPin((v) => !v)}
+                      className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600 transition">
+                      {showPin ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+                    </button>
+                  </div>
+                </div>
+                <div>
+                  <label className="text-xs font-semibold text-slate-500 uppercase tracking-wide block mb-1.5">Confirm PIN</label>
+                  <input
+                    type={showPin ? "text" : "password"}
+                    inputMode="numeric"
+                    maxLength={4}
+                    value={confirmPin}
+                    onChange={(e) => setConfirmPin(e.target.value.replace(/\D/g, "").slice(0, 4))}
+                    placeholder="••••"
+                    className="w-full text-sm px-3 py-2.5 border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-sky-400 bg-white tracking-[0.5em]"
+                  />
+                </div>
+              </>
+            )}
+            {error && <p className="text-xs text-red-600 bg-red-50 border border-red-100 rounded-xl px-3 py-2">{error}</p>}
+            <div className="flex gap-2 pt-1">
+              <button onClick={savePin} disabled={saving}
+                className={`flex-1 flex items-center justify-center gap-2 py-2.5 rounded-xl text-sm font-semibold transition disabled:opacity-50 ${
+                  mode === "remove" ? "bg-red-500 text-white hover:bg-red-600" : "bg-sky-500 text-white hover:bg-sky-600"
+                }`}>
+                {saving ? <RefreshCw className="w-4 h-4 animate-spin" /> : <Check className="w-4 h-4" />}
+                {saving ? "Saving…" : mode === "remove" ? "Remove PIN" : "Save PIN"}
+              </button>
+              <button onClick={() => setOpen(false)}
+                className="px-4 py-2.5 rounded-xl bg-slate-100 text-slate-600 text-sm font-semibold hover:bg-slate-200 transition">
+                Cancel
+              </button>
+            </div>
+          </div>
+        )}
+      </div>
     </div>
   );
 }
@@ -580,6 +747,12 @@ export default function DashboardPage() {
           </div>
         )}
       </main>
+
+      {!loading && patientEmail && (
+        <div className="max-w-2xl mx-auto px-4 pb-4">
+          <PatientSecuritySection />
+        </div>
+      )}
 
       <footer className="pb-8 pt-2 flex items-center justify-center gap-1.5">
         <PoveonLogo className="w-4 h-4 opacity-30" />

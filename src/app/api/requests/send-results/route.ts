@@ -97,13 +97,15 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    // Mark as done only if still in "seen" state
-    if (req.status === "seen") {
-      await prisma.request.update({
-        where: { id: requestId },
-        data: { status: "done", completed_at: new Date() },
-      });
-    }
+    // Mark as done and persist result data
+    await prisma.request.update({
+      where: { id: requestId },
+      data: {
+        ...(req.status === "seen" ? { status: "done", completed_at: new Date() } : {}),
+        ...(resultLink ? { result_link: resultLink } : {}),
+        ...(note ? { result_note: note } : {}),
+      },
+    });
 
     // Build email attachments from uploaded PDFs
     const attachments: { filename: string; content: Buffer }[] = await Promise.all(

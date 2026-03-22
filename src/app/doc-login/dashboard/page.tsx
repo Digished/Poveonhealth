@@ -1,11 +1,11 @@
 "use client";
 
-import { useState, useEffect, useCallback, Suspense } from "react";
+import { useState, useEffect, useCallback, useRef, Suspense } from "react";
 import { useRouter } from "next/navigation";
 import {
   FlaskConical, LogOut, RefreshCw, Building2, User,
   CalendarDays, TestTube2, ChevronDown, ChevronUp,
-  Clock, CheckCircle, Eye, MapPin, Phone, X,
+  Clock, CheckCircle, Eye, MapPin, Phone, X, Shield, EyeOff,
 } from "lucide-react";
 import { PoveonLogo } from "@/components/PoveonLogo";
 
@@ -37,6 +37,8 @@ interface Request {
   diagnosis: string | null;
   schedule: string | null;
   status: string;
+  result_link: string | null;
+  result_note: string | null;
   created_at: string;
   seen_at: string | null;
   completed_at: string | null;
@@ -217,6 +219,29 @@ function RequestCard({ req }: { req: Request }) {
             )}
           </div>
 
+          {/* Results — shown when lab has sent results */}
+          {req.status === "done" && (req.result_link || req.result_note) && (
+            <div className="bg-emerald-50 border border-emerald-200 rounded-xl p-3">
+              <p className="text-xs font-semibold text-emerald-700 uppercase tracking-wider mb-2 flex items-center gap-1.5">
+                <CheckCircle className="w-3.5 h-3.5" />
+                Results Available
+              </p>
+              {req.result_note && (
+                <p className="text-sm text-emerald-800 mb-2 leading-relaxed">{req.result_note}</p>
+              )}
+              {req.result_link && (
+                <a
+                  href={req.result_link}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="inline-flex items-center gap-1.5 text-xs font-semibold text-emerald-700 hover:text-emerald-900 underline underline-offset-2 transition"
+                >
+                  View Results Online →
+                </a>
+              )}
+            </div>
+          )}
+
           {/* Timeline */}
           <div>
             <p className="text-xs font-semibold text-slate-400 uppercase tracking-wider mb-2">Timeline</p>
@@ -393,6 +418,9 @@ function DocDashboardInner() {
         {filtered.map((req) => (
           <RequestCard key={req.id} req={req} />
         ))}
+
+        {/* Security settings */}
+        {!loading && <DocSecuritySection />}
       </main>
 
       {/* Footer */}
@@ -400,6 +428,130 @@ function DocDashboardInner() {
         <PoveonLogo className="w-4 h-4 opacity-40" />
         <span>© {new Date().getFullYear()} Poveon. All rights reserved.</span>
       </div>
+    </div>
+  );
+}
+
+function DocSecuritySection() {
+  const [hasPin, setHasPin] = useState<boolean | null>(null);
+  const [showForm, setShowForm] = useState(false);
+  const [newPin, setNewPin] = useState(["", "", "", ""]);
+  const [confirmPin, setConfirmPin] = useState(["", "", "", ""]);
+  const [showPin, setShowPin] = useState(false);
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState("");
+  const pinRefs = { new: [useRef<HTMLInputElement>(null), useRef<HTMLInputElement>(null), useRef<HTMLInputElement>(null), useRef<HTMLInputElement>(null)], confirm: [useRef<HTMLInputElement>(null), useRef<HTMLInputElement>(null), useRef<HTMLInputElement>(null), useRef<HTMLInputElement>(null)] };
+
+  useEffect(() => {
+    fetch("/api/doc-login/me")
+      .then((r) => r.json())
+      .then((d) => {
+        if (d.success) {
+          fetch("/api/doc-login/check-pin", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ email: d.doctor_email }),
+          }).then((r) => r.json()).then((data) => setHasPin(data.hasPin));
+        }
+      })
+      .catch(() => {});
+  }, []);
+
+  function handleDigit(
+    arr: string[], setArr: React.Dispatch<React.SetStateAction<string[]>>,
+    refs: React.RefObject<HTMLInputElement>[], index: number, value: string
+  ) {
+    const digit = value.replace(/\D/g, "").slice(-1);
+    const next = [...arr]; next[index] = digit; setArr(next);
+    if (digit && index < 3) refs[index + 1].current?.focus();
+  }
+
+  async function handleSavePin(e: React.FormEvent) {
+    e.preventDefault();
+    setError("");
+    const p1 = newPin.join(""); const p2 = confirmPin.join("");
+    if (p1.length !== 4) { setError("Enter all 4 digits."); return; }
+    if (p1 !== p2) { setError("PINs do not match."); return; }
+    setSaving(true);
+    try {
+      const res = await fetch("/api/doc-login/set-pin", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ pin: p1 }),
+      });
+      const data = await res.json();
+      if (!res.ok) { setError(data.error ?? "Failed."); return; }
+      setHasPin(true); setShowForm(false);
+      setNewPin(["", "", "", ""]); setConfirmPin(["", "", "", ""]);
+    } catch { setError("Network error."); }
+    finally { setSaving(false); }
+  }
+
+  async function handleRemovePin() {
+    if (!confirm("Remove your PIN? You'll need to use an email code to log in.")) return;
+    setSaving(true);
+    try {
+      await fetch("/api/doc-login/set-pin", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ pin: "" }),
+      });
+      setHasPin(false);
+    } catch {} finally { setSaving(false); }
+  }
+
+  const PinRow = ({ values, setValues, refs, label }: { values: string[]; setValues: React.Dispatch<React.SetStateAction<string[]>>; refs: React.RefObject<HTMLInputElement>[]; label: string }) => (
+    <div>
+      <p className="text-xs text-slate-500 mb-1.5">{label}</p>
+      <div className="flex gap-2">
+        {values.map((d, i) => (
+          <input key={i} ref={refs[i]} type={showPin ? "text" : "password"} inputMode="numeric" maxLength={2} value={d}
+            onChange={(e) => handleDigit(values, setValues, refs, i, e.target.value)}
+            onKeyDown={(e) => { if (e.key === "Backspace" && !d && i > 0) refs[i - 1].current?.focus(); }}
+            className="w-12 h-12 text-center text-lg font-bold text-slate-800 border-2 border-slate-200 rounded-xl bg-white focus:outline-none focus:ring-2 focus:ring-medical-400 focus:border-medical-400 transition" />
+        ))}
+      </div>
+    </div>
+  );
+
+  return (
+    <div className="bg-white rounded-2xl border border-slate-100 p-4 mt-2">
+      <div className="flex items-center justify-between mb-2">
+        <p className="text-xs font-semibold text-slate-500 flex items-center gap-1.5">
+          <Shield className="w-3.5 h-3.5" />Security
+        </p>
+        {hasPin && !showForm && (
+          <div className="flex gap-2">
+            <button onClick={() => setShowForm(true)} className="text-xs text-medical-600 hover:underline">Change PIN</button>
+            <button onClick={handleRemovePin} disabled={saving} className="text-xs text-red-500 hover:underline">Remove PIN</button>
+          </div>
+        )}
+        {!hasPin && !showForm && (
+          <button onClick={() => setShowForm(true)} className="text-xs text-medical-600 hover:underline">Set up PIN</button>
+        )}
+      </div>
+      {hasPin !== null && !showForm && (
+        <p className="text-xs text-slate-400">{hasPin ? "4-digit PIN is active — used for quick login." : "No PIN set — you log in with an email code each time."}</p>
+      )}
+      {showForm && (
+        <form onSubmit={handleSavePin} className="mt-3 space-y-3">
+          <div className="flex items-center gap-2 justify-end mb-1">
+            <button type="button" onClick={() => setShowPin(v => !v)} className="text-xs text-slate-400 flex items-center gap-1">
+              <EyeOff className="w-3 h-3" />{showPin ? "Hide" : "Show"} digits
+            </button>
+          </div>
+          <PinRow values={newPin} setValues={setNewPin} refs={pinRefs.new} label="New PIN" />
+          <PinRow values={confirmPin} setValues={setConfirmPin} refs={pinRefs.confirm} label="Confirm PIN" />
+          {error && <p className="text-xs text-red-600">{error}</p>}
+          <div className="flex gap-2 pt-1">
+            <button type="button" onClick={() => { setShowForm(false); setNewPin(["","","",""]); setConfirmPin(["","","",""]); setError(""); }}
+              className="flex-1 py-2 rounded-xl border border-slate-200 text-slate-500 text-xs font-medium hover:bg-slate-50 transition">Cancel</button>
+            <button type="submit" disabled={saving}
+              className="flex-1 py-2 rounded-xl bg-medical-600 hover:bg-medical-700 disabled:opacity-60 text-white text-xs font-semibold transition">
+              {saving ? "Saving…" : "Save PIN"}</button>
+          </div>
+        </form>
+      )}
     </div>
   );
 }

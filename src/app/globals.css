@@ -184,6 +184,39 @@
 .dash-light .bg-slate-800 .bg-white\/5  { background-color: #f1f5f9 !important; }
 .dash-light .bg-slate-800 .bg-white\/10 { background-color: #e2e8f0 !important; }
 
+/* Dev section / role editor dark panels */
+.dash-light .bg-slate-950\/70 { background-color: #f1f5f9 !important; }
+.dash-light .bg-slate-950\/60 { background-color: #f1f5f9 !important; }
+.dash-light .bg-slate-950\/40 { background-color: #f8fafc !important; }
+.dash-light .bg-slate-950\/30 { background-color: #f8fafc !important; }
+.dash-light .border-white\/6  { border-color: #e2e8f0 !important; }
+.dash-light .border-white\/8  { border-color: #e2e8f0 !important; }
+
+/* Dev section code text — keep readable */
+.dash-light .bg-slate-950\/70 .text-slate-200,
+.dash-light .bg-slate-950\/60 .text-slate-200,
+.dash-light .bg-slate-950\/40 .text-slate-200 { color: #1e293b !important; }
+.dash-light .bg-slate-950\/70 .text-slate-400,
+.dash-light .bg-slate-950\/60 .text-slate-400,
+.dash-light .bg-slate-950\/40 .text-slate-400 { color: #64748b !important; }
+.dash-light .bg-slate-950\/70 .text-emerald-400 { color: #059669 !important; }
+.dash-light .bg-slate-950\/70 .text-blue-400   { color: #2563eb !important; }
+.dash-light .bg-slate-950\/60 .text-emerald-400 { color: #059669 !important; }
+.dash-light .bg-slate-950\/60 .text-blue-400   { color: #2563eb !important; }
+.dash-light .placeholder-slate-600::placeholder  { color: #94a3b8 !important; }
+
+/* WhatsApp & phone/email badges in lab cards */
+.dash-light .bg-green-900\/30  { background-color: #dcfce7 !important; }
+.dash-light .text-green-400    { color: #16a34a !important; }
+.dash-light .border-green-800\/30 { border-color: #86efac !important; }
+.dash-light .bg-blue-900\/30   { background-color: #dbeafe !important; }
+.dash-light .border-blue-800\/30  { border-color: #93c5fd !important; }
+
+/* Misc very-low-opacity backgrounds used in dev/role sections */
+.dash-light .bg-white\/3   { background-color: #f8fafc !important; }
+.dash-light .border-white\/3 { border-color: #e2e8f0 !important; }
+.dash-light .hover\:border-white\/20:hover { border-color: #cbd5e1 !important; }
+
 /* Scrollbar */
 ::-webkit-scrollbar {
   width: 6px;

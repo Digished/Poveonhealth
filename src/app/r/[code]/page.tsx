@@ -39,15 +39,13 @@ export default async function RequestDetailPage({ params }: Props) {
 
   const request = await prisma.request.findUnique({
     where: { code },
-    include: {
+    select: {
+      id: true, code: true, status: true, tests: true, test_image_url: true,
+      schedule: true, patient_name: true, result_link: true, result_note: true,
       lab: {
         select: {
-          name: true,
-          address: true,
-          phones: true,
-          whatsapp: true,
-          logo_url: true,
-          description: true,
+          name: true, address: true, phones: true, whatsapp: true,
+          logo_url: true, description: true,
         },
       },
     },
@@ -195,6 +193,34 @@ export default async function RequestDetailPage({ params }: Props) {
               <p className="text-xs text-slate-400 font-medium">Preferred visit</p>
               <p className="text-sm font-semibold text-slate-700">{SCHEDULE_LABELS[request.schedule]}</p>
             </div>
+          </div>
+        )}
+
+        {/* Results card — shown when tests are done and results have been shared */}
+        {request.status === "done" && (request.result_link || request.result_note) && (
+          <div className="bg-emerald-50 border border-emerald-200 rounded-2xl p-5">
+            <p className="text-xs font-semibold text-emerald-700 uppercase tracking-wider mb-3 flex items-center gap-1.5">
+              <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
+              </svg>
+              Test Results Available
+            </p>
+            {request.result_note && (
+              <p className="text-sm text-emerald-800 mb-3 leading-relaxed">{request.result_note}</p>
+            )}
+            {request.result_link && (
+              <a
+                href={request.result_link}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="inline-flex items-center gap-2 bg-emerald-600 hover:bg-emerald-700 text-white font-semibold text-sm px-4 py-2.5 rounded-xl transition shadow-sm"
+              >
+                <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14" />
+                </svg>
+                View Results Online
+              </a>
+            )}
           </div>
         )}
 

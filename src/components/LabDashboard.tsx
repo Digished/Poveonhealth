@@ -7,7 +7,7 @@ import {
   ChevronRight, Calendar, Stethoscope, LogOut, Eye, EyeOff, Phone, X,
   Link2, Paperclip, Send, SkipForward, UserCircle, MapPin, Shield, Layers,
   Users, CreditCard, Filter, ChevronDown, AlertTriangle, Truck, ExternalLink,
-  MessageCircle, ChevronLeft, FileImage, Sun, Moon, Pencil, Save, BarChart3,
+  MessageCircle, ChevronLeft, FileImage, Sun, Moon, Pencil, Save, BarChart3, Lock,
 } from "lucide-react";
 import { useDashTheme } from "@/hooks/useDashTheme";
 import { Button } from "@/components/ui/Button";
@@ -100,6 +100,7 @@ export function LabDashboard({ lab, isOwner = false, roleName = "Lab Owner", can
   const [selectedRequest, setSelectedRequest] = useState<LabRequest | null>(null);
   const [mobileDetailOpen, setMobileDetailOpen] = useState(false);
   const [profileOpen, setProfileOpen] = useState(false);
+  const [changePasswordOpen, setChangePasswordOpen] = useState(false);
   const [teamMembers, setTeamMembers] = useState<{ id: string; email: string; role: { name: string }; last_sign_in_at: string | null }[]>([]);
   const [teamLoading, setTeamLoading] = useState(false);
 
@@ -499,6 +500,13 @@ export function LabDashboard({ lab, isOwner = false, roleName = "Lab Owner", can
               title="Lab Profile"
             >
               <UserCircle className="w-4 h-4" />
+            </button>
+            <button
+              onClick={() => setChangePasswordOpen(true)}
+              className="p-2 rounded-lg hover:bg-white/10 transition-colors text-slate-400 hover:text-white"
+              title="Change Password"
+            >
+              <Lock className="w-4 h-4" />
             </button>
             <button
               onClick={handleSignOut}
@@ -2410,6 +2418,9 @@ export function LabDashboard({ lab, isOwner = false, roleName = "Lab Owner", can
         </div>
         )} {/* end mainView === "requests" */}
 
+        {/* Change Password modal */}
+        {changePasswordOpen && <ChangePasswordModal onClose={() => setChangePasswordOpen(false)} />}
+
         {/* Mobile detail modal */}
         {mainView === "requests" && mobileDetailOpen && selectedRequest && (
           <div className="fixed inset-0 z-40 lg:hidden flex items-end bg-black/60 backdrop-blur-sm">
@@ -2686,6 +2697,93 @@ function DetailRow({ label, children }: { label: string; children: React.ReactNo
     <div>
       <p className="text-xs text-slate-500 font-medium mb-0.5">{label}</p>
       <div className="text-slate-200">{children}</div>
+    </div>
+  );
+}
+
+function ChangePasswordModal({ onClose }: { onClose: () => void }) {
+  const supabase = createClient();
+  const [newPassword, setNewPassword] = useState("");
+  const [confirmPassword, setConfirmPassword] = useState("");
+  const [showNew, setShowNew] = useState(false);
+  const [showConfirm, setShowConfirm] = useState(false);
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState("");
+
+  async function handleSubmit(e: React.FormEvent) {
+    e.preventDefault();
+    setError("");
+    if (newPassword.length < 8) { setError("Password must be at least 8 characters."); return; }
+    if (newPassword !== confirmPassword) { setError("Passwords do not match."); return; }
+    setLoading(true);
+    try {
+      const { error: err } = await supabase.auth.updateUser({ password: newPassword });
+      if (err) { setError(err.message); return; }
+      toast.success("Password changed successfully");
+      onClose();
+    } catch {
+      setError("Failed to change password. Please try again.");
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm px-4">
+      <div className="bg-slate-900 border border-white/15 rounded-2xl w-full max-w-sm shadow-2xl animate-slide-up">
+        <div className="flex items-center justify-between p-5 border-b border-white/10">
+          <div className="flex items-center gap-2">
+            <Lock className="w-4 h-4 text-medical-400" />
+            <p className="font-semibold text-white text-sm">Change Password</p>
+          </div>
+          <button onClick={onClose} className="p-1.5 rounded-lg hover:bg-white/10 text-slate-400 transition-colors">
+            <X className="w-4 h-4" />
+          </button>
+        </div>
+        <form onSubmit={handleSubmit} className="p-5 space-y-4">
+          {error && (
+            <p className="text-xs text-red-400 bg-red-500/10 border border-red-500/20 rounded-lg px-3 py-2">{error}</p>
+          )}
+          <div>
+            <label className="text-xs font-medium text-slate-400 mb-1.5 block">New Password</label>
+            <div className="relative">
+              <input
+                type={showNew ? "text" : "password"}
+                value={newPassword}
+                onChange={(e) => setNewPassword(e.target.value)}
+                placeholder="At least 8 characters"
+                className="w-full bg-white/5 border border-white/10 rounded-xl px-3 py-2.5 pr-10 text-white placeholder-slate-600 text-sm focus:outline-none focus:ring-1 focus:ring-medical-500"
+              />
+              <button type="button" onClick={() => setShowNew(v => !v)} className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-500 hover:text-slate-300 transition-colors">
+                {showNew ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+              </button>
+            </div>
+          </div>
+          <div>
+            <label className="text-xs font-medium text-slate-400 mb-1.5 block">Confirm New Password</label>
+            <div className="relative">
+              <input
+                type={showConfirm ? "text" : "password"}
+                value={confirmPassword}
+                onChange={(e) => setConfirmPassword(e.target.value)}
+                placeholder="Repeat new password"
+                className="w-full bg-white/5 border border-white/10 rounded-xl px-3 py-2.5 pr-10 text-white placeholder-slate-600 text-sm focus:outline-none focus:ring-1 focus:ring-medical-500"
+              />
+              <button type="button" onClick={() => setShowConfirm(v => !v)} className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-500 hover:text-slate-300 transition-colors">
+                {showConfirm ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+              </button>
+            </div>
+          </div>
+          <div className="flex gap-3 pt-1">
+            <button type="button" onClick={onClose} className="flex-1 py-2.5 rounded-xl border border-white/10 text-slate-400 font-semibold text-sm hover:bg-white/5 transition">
+              Cancel
+            </button>
+            <button type="submit" disabled={loading} className="flex-1 py-2.5 rounded-xl bg-medical-600 hover:bg-medical-500 disabled:opacity-60 text-white font-semibold text-sm transition">
+              {loading ? "Changing…" : "Change Password"}
+            </button>
+          </div>
+        </form>
+      </div>
     </div>
   );
 }

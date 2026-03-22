@@ -161,6 +161,8 @@ model Request {
   needs_ambulance       Boolean   @default(false)  // Ambulance service requested
   ambulance_notes       String?   // Pickup address / extra ambulance details
   status                String    @default("incoming")
+  result_link           String?   // URL to online results (stored when lab sends results)
+  result_note           String?   // Lab note sent with results
   created_at            DateTime  @default(now())
   updated_at            DateTime  @default(now()) @updatedAt
   seen_at               DateTime?
@@ -170,6 +172,15 @@ model Request {
   branch        LabBranch? @relation(fields: [branch_id], references: [id])
 
   @@map("requests")
+}
+
+// Doctor profile — stores PIN hash and any profile data for the doctor portal
+model DoctorProfile {
+  email      String   @id
+  pin_hash   String?  // SHA-256 of 4-digit PIN; null = no PIN set
+  updated_at DateTime @updatedAt
+
+  @@map("doctor_profiles")
 }
 
 // One-time passcodes for doctor portal login
@@ -288,6 +299,7 @@ model PatientProfile {
   dob        String?   // ISO date string "YYYY-MM-DD"
   sex        String?   // "male" | "female" | "other"
   address    String?
+  pin_hash   String?   // SHA-256 of 4-digit PIN; null = no PIN set
   updated_at DateTime  @updatedAt
 
   @@index([phone])
