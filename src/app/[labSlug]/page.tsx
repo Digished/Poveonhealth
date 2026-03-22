@@ -32,10 +32,7 @@ export default async function LabSlugPage({ params }: LabSlugPageProps) {
         <div className="max-w-2xl mx-auto px-4 pb-2">
           {/* Lab name banner */}
           <div className="mt-6 mb-4 rounded-xl bg-white/60 backdrop-blur-sm border border-blue-100 px-4 py-3 text-center shadow-sm">
-            <p className="text-sm text-slate-500 font-medium uppercase tracking-wide">
-              Submitting request to
-            </p>
-            <p className="text-xl font-semibold text-slate-800 mt-0.5">
+            <p className="text-xl font-semibold text-slate-800">
               {lab.name}
             </p>
           </div>

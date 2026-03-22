@@ -198,7 +198,7 @@ export async function POST(request: NextRequest) {
       resend.emails.send({
         from: labSender(lab),
         to: lab.request_email,
-        subject: `New Lab Request${isUrgent ? " — URGENT" : ""} — Code: ${code}`,
+        subject: `New Lab Request${isUrgent ? " — URGENT" : ""}`,
         html: labNewRequest({
           labName: lab.name,
           patientName: data.patient_name || "",

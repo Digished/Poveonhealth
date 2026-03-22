@@ -1423,166 +1423,196 @@ export function DoctorRequestForm({
 
         {/* Step 2: Clinical Details */}
         {step === 2 && (
-          <div className="space-y-5">
+          <div className="space-y-4">
             <h2 className="flex items-center gap-2 text-base font-semibold text-slate-700 pb-3 border-b border-slate-100">
               <TestTube2 className="w-4 h-4 text-medical-600" />
               Clinical Details
             </h2>
 
-            {/* Mode toggle */}
-            <div className="space-y-2">
-              <p className="text-xs font-semibold text-slate-400 uppercase tracking-wider">Choose a method</p>
-              <div className="flex gap-2 p-1 bg-slate-100 rounded-2xl">
-                <button
-                  type="button"
-                  onClick={() => setClinicalMode("picture")}
-                  className={`flex-1 flex items-center justify-center gap-2 py-2.5 px-3 rounded-xl text-sm font-semibold transition-all ${
-                    clinicalMode === "picture"
-                      ? "bg-white shadow text-slate-800"
-                      : "text-slate-500 hover:text-slate-700"
-                  }`}
-                >
-                  <Camera className="w-4 h-4" />
-                  Upload Image
-                </button>
-                <button
-                  type="button"
-                  onClick={() => setClinicalMode("type")}
-                  className={`flex-1 flex items-center justify-center gap-2 py-2.5 px-3 rounded-xl text-sm font-semibold transition-all ${
-                    clinicalMode === "type"
-                      ? "bg-white shadow text-slate-800"
-                      : "text-slate-500 hover:text-slate-700"
-                  }`}
-                >
-                  <Stethoscope className="w-4 h-4" />
-                  Type Details
-                </button>
-              </div>
-            </div>
-
-            {/* Patient contact — always shown */}
-            <div className="space-y-4">
-              <PhoneInput
-                label="Patient Phone"
-                required
-                value={form.patient_phone}
-                onChange={(v) => set("patient_phone", v)}
-                error={errors.patient_phone}
-              />
-              <div className="flex flex-col gap-1">
-                <label htmlFor="patient_email" className="text-sm font-medium text-slate-700 flex items-center gap-2">
-                  Patient Email
-                  <span className="text-xs bg-amber-100 text-amber-700 px-2 py-0.5 rounded-full font-medium">Recommended</span>
-                </label>
-                <Input
-                  id="patient_email"
-                  type="email"
-                  placeholder="patient@example.com"
-                  hint="Patient will receive their request code & results by email"
-                  value={form.patient_email}
-                  onChange={(e) => set("patient_email", e.target.value)}
-                  error={errors.patient_email}
-                />
-              </div>
-            </div>
-
-            {/* Divider */}
-            <div className="border-t border-slate-100" />
-
-            {/* Type mode: diagnosis + tests */}
-            {clinicalMode === "type" && (
-              <div className="space-y-4 animate-fade-in-up">
-                <Textarea
-                  label="Diagnosis / Clinical Notes"
-                  required
-                  placeholder="Brief clinical summary or working diagnosis…"
-                  rows={3}
-                  value={form.diagnosis}
-                  onChange={(e) => set("diagnosis", e.target.value)}
-                  error={errors.diagnosis}
-                />
-                <Textarea
-                  label="Laboratory Tests Requested"
-                  required
-                  placeholder="e.g. FBC, LFT, Serum electrolytes, Fasting glucose, Urinalysis…"
-                  rows={4}
-                  hint="List all tests separated by commas or new lines"
-                  value={form.tests}
-                  onChange={(e) => set("tests", e.target.value)}
-                  error={errors.tests}
-                />
-              </div>
-            )}
-
-            {/* Picture mode: image upload */}
-            {clinicalMode === "picture" && (
-              <div className="space-y-3 animate-fade-in-up">
-                <p className="text-sm text-slate-500">Upload a photo of the physical test request slip — the lab will read it directly.</p>
-                {testImageUrl ? (
-                  <div className="flex items-center gap-3 rounded-xl border border-emerald-200 bg-emerald-50/40 px-4 py-3">
-                    <img src={testImageUrl} alt="Uploaded test request slip" className="w-14 h-14 rounded-lg object-cover border border-emerald-200 shrink-0" />
-                    <div className="flex-1 min-w-0">
-                      <p className="text-sm font-semibold text-emerald-700 flex items-center gap-1.5"><Check className="w-4 h-4" /> Image uploaded</p>
-                      <p className="text-xs text-slate-400 mt-0.5 truncate">{testImageUrl.split("/").pop()}</p>
-                    </div>
-                    <button type="button" onClick={() => { setTestImageUrl(null); setImageUploadError(null); }} className="p-1.5 rounded-lg hover:bg-emerald-100 text-emerald-400 hover:text-emerald-700 transition-colors shrink-0" aria-label="Remove uploaded image">
-                      <X className="w-4 h-4" />
-                    </button>
+            <div className="relative pt-1">
+              {/* Substep 1: Patient Phone */}
+              <div className="relative flex gap-4">
+                <div className="flex flex-col items-center shrink-0 pt-1">
+                  <div className={`w-8 h-8 rounded-full flex items-center justify-center text-xs font-bold border-2 transition-all shrink-0 ${form.patient_phone.trim() ? "bg-emerald-500 border-emerald-500 text-white" : "bg-white border-medical-400 text-medical-600"}`}>
+                    {form.patient_phone.trim() ? <Check className="w-4 h-4" /> : "1"}
                   </div>
-                ) : imageUploading ? (
-                  <div className="flex flex-col items-center gap-4 rounded-2xl border-2 border-dashed border-medical-300 bg-medical-50/30 px-6 py-10 text-center">
-                    <div className="w-14 h-14 rounded-2xl bg-medical-100 flex items-center justify-center">
-                      <RefreshCw className="w-7 h-7 text-medical-600 animate-spin" />
+                  <div className="w-0.5 flex-1 min-h-6 bg-slate-200 mt-1" />
+                </div>
+                <div className="flex-1 pb-5 min-w-0">
+                  <PhoneInput
+                    label="Patient Phone"
+                    required
+                    value={form.patient_phone}
+                    onChange={(v) => set("patient_phone", v)}
+                    error={errors.patient_phone}
+                  />
+                </div>
+              </div>
+
+              {/* Substep 2: Patient Email — reveals after phone */}
+              {form.patient_phone.trim() && (
+                <div className="relative flex gap-4 animate-fade-in-up">
+                  <div className="flex flex-col items-center shrink-0 pt-1">
+                    <div className={`w-8 h-8 rounded-full flex items-center justify-center text-xs font-bold border-2 transition-all shrink-0 ${form.patient_email && /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(form.patient_email) ? "bg-emerald-500 border-emerald-500 text-white" : "bg-white border-medical-400 text-medical-600"}`}>
+                      {form.patient_email && /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(form.patient_email) ? <Check className="w-4 h-4" /> : "2"}
                     </div>
-                    <div>
-                      <p className="text-sm font-semibold text-medical-700">Uploading your image…</p>
-                      <p className="text-xs text-slate-400 mt-1">Please wait, this only takes a moment</p>
-                    </div>
-                    <div className="w-full max-w-[180px] bg-medical-100 rounded-full h-1.5 overflow-hidden">
-                      <div className="h-full bg-medical-500 rounded-full animate-pulse" style={{ width: "70%" }} />
+                    <div className="w-0.5 flex-1 min-h-6 bg-slate-200 mt-1" />
+                  </div>
+                  <div className="flex-1 pb-5 min-w-0">
+                    <div className="flex flex-col gap-1">
+                      <label htmlFor="patient_email" className="text-sm font-medium text-slate-700 flex items-center gap-2">
+                        Patient Email
+                        <span className="text-xs bg-amber-100 text-amber-700 px-2 py-0.5 rounded-full font-medium">Recommended</span>
+                      </label>
+                      <Input
+                        id="patient_email"
+                        type="email"
+                        placeholder="patient@example.com"
+                        hint="Patient will receive their request code & results by email"
+                        value={form.patient_email}
+                        onChange={(e) => set("patient_email", e.target.value)}
+                        error={errors.patient_email}
+                      />
                     </div>
                   </div>
-                ) : (
-                  <label className="cursor-pointer">
-                    <div className={`flex flex-col items-center gap-2 rounded-2xl border-2 border-dashed px-6 py-8 transition-colors text-center ${imageUploadError ? "border-red-300 bg-red-50/30" : "border-slate-200 bg-slate-50/50 hover:border-medical-300 hover:bg-medical-50/30"}`}>
-                      <FlaskConical className="w-8 h-8 text-slate-300" />
-                      <div>
-                        <p className="text-sm font-medium text-slate-600">Tap to upload test request slip</p>
-                        <p className="text-xs text-slate-400 mt-0.5">JPEG, PNG, WebP, HEIC — max 10 MB</p>
+                </div>
+              )}
+
+              {/* Substep 3: Clinical Details — upload or type, reveals after phone */}
+              {form.patient_phone.trim() && (
+                <div className="relative flex gap-4 animate-fade-in-up">
+                  <div className="flex flex-col items-center shrink-0 pt-1">
+                    <div className={`w-8 h-8 rounded-full flex items-center justify-center text-xs font-bold border-2 transition-all shrink-0 ${
+                      (clinicalMode === "picture" && testImageUrl) || (clinicalMode === "type" && form.diagnosis.trim() && form.tests.trim())
+                        ? "bg-emerald-500 border-emerald-500 text-white"
+                        : "bg-white border-medical-400 text-medical-600"
+                    }`}>
+                      {(clinicalMode === "picture" && testImageUrl) || (clinicalMode === "type" && form.diagnosis.trim() && form.tests.trim()) ? <Check className="w-4 h-4" /> : "3"}
+                    </div>
+                  </div>
+                  <div className="flex-1 pb-2 min-w-0 space-y-4">
+                    {/* Mode toggle */}
+                    <div className="flex gap-2 p-1 bg-slate-100 rounded-2xl">
+                      <button
+                        type="button"
+                        onClick={() => setClinicalMode("picture")}
+                        className={`flex-1 flex items-center justify-center gap-2 py-2.5 px-3 rounded-xl text-sm font-semibold transition-all ${
+                          clinicalMode === "picture" ? "bg-white shadow text-slate-800" : "text-slate-500 hover:text-slate-700"
+                        }`}
+                      >
+                        <Camera className="w-4 h-4" />
+                        Upload
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => setClinicalMode("type")}
+                        className={`flex-1 flex items-center justify-center gap-2 py-2.5 px-3 rounded-xl text-sm font-semibold transition-all ${
+                          clinicalMode === "type" ? "bg-white shadow text-slate-800" : "text-slate-500 hover:text-slate-700"
+                        }`}
+                      >
+                        <Stethoscope className="w-4 h-4" />
+                        Type
+                      </button>
+                    </div>
+
+                    {/* Type mode: diagnosis + tests */}
+                    {clinicalMode === "type" && (
+                      <div className="space-y-4 animate-fade-in-up">
+                        <Textarea
+                          label="Diagnosis / Clinical Notes"
+                          required
+                          placeholder="Brief clinical summary or working diagnosis…"
+                          rows={3}
+                          value={form.diagnosis}
+                          onChange={(e) => set("diagnosis", e.target.value)}
+                          error={errors.diagnosis}
+                        />
+                        <Textarea
+                          label="Laboratory Tests Requested"
+                          required
+                          placeholder="e.g. FBC, LFT, Serum electrolytes, Fasting glucose, Urinalysis…"
+                          rows={4}
+                          hint="List all tests separated by commas or new lines"
+                          value={form.tests}
+                          onChange={(e) => set("tests", e.target.value)}
+                          error={errors.tests}
+                        />
                       </div>
-                    </div>
-                    <input
-                      type="file"
-                      accept="image/jpeg,image/png,image/webp,image/heic,.heic"
-                      className="sr-only"
-                      onChange={async (e) => {
-                        const file = e.target.files?.[0];
-                        if (!file) return;
-                        setImageUploading(true);
-                        setImageUploadError(null);
-                        try {
-                          const fd = new FormData();
-                          fd.append("file", file);
-                          const res = await fetch("/api/requests/upload-image", { method: "POST", body: fd });
-                          const data = await res.json();
-                          if (data.url) {
-                            setTestImageUrl(data.url);
-                          } else {
-                            setImageUploadError(data.error ?? "Upload failed");
-                          }
-                        } catch {
-                          setImageUploadError("Upload failed. Please try again.");
-                        } finally {
-                          setImageUploading(false);
-                          e.target.value = "";
-                        }
-                      }}
-                    />
-                  </label>
-                )}
-                {imageUploadError && <p className="text-xs text-red-600 font-medium">{imageUploadError}</p>}
-              </div>
-            )}
+                    )}
+
+                    {/* Picture mode: image upload */}
+                    {clinicalMode === "picture" && (
+                      <div className="space-y-3 animate-fade-in-up">
+                        <p className="text-sm text-slate-500">Upload a photo of the physical test request slip — the lab will read it directly.</p>
+                        {testImageUrl ? (
+                          <div className="flex items-center gap-3 rounded-xl border border-emerald-200 bg-emerald-50/40 px-4 py-3">
+                            <img src={testImageUrl} alt="Uploaded test request slip" className="w-14 h-14 rounded-lg object-cover border border-emerald-200 shrink-0" />
+                            <div className="flex-1 min-w-0">
+                              <p className="text-sm font-semibold text-emerald-700 flex items-center gap-1.5"><Check className="w-4 h-4" /> Image uploaded</p>
+                              <p className="text-xs text-slate-400 mt-0.5 truncate">{testImageUrl.split("/").pop()}</p>
+                            </div>
+                            <button type="button" onClick={() => { setTestImageUrl(null); setImageUploadError(null); }} className="p-1.5 rounded-lg hover:bg-emerald-100 text-emerald-400 hover:text-emerald-700 transition-colors shrink-0" aria-label="Remove uploaded image">
+                              <X className="w-4 h-4" />
+                            </button>
+                          </div>
+                        ) : imageUploading ? (
+                          <div className="flex flex-col items-center gap-4 rounded-2xl border-2 border-dashed border-medical-300 bg-medical-50/30 px-6 py-10 text-center">
+                            <div className="w-14 h-14 rounded-2xl bg-medical-100 flex items-center justify-center">
+                              <RefreshCw className="w-7 h-7 text-medical-600 animate-spin" />
+                            </div>
+                            <div>
+                              <p className="text-sm font-semibold text-medical-700">Uploading your image…</p>
+                              <p className="text-xs text-slate-400 mt-1">Please wait, this only takes a moment</p>
+                            </div>
+                            <div className="w-full max-w-[180px] bg-medical-100 rounded-full h-1.5 overflow-hidden">
+                              <div className="h-full bg-medical-500 rounded-full animate-pulse" style={{ width: "70%" }} />
+                            </div>
+                          </div>
+                        ) : (
+                          <label className="cursor-pointer">
+                            <div className={`flex flex-col items-center gap-2 rounded-2xl border-2 border-dashed px-6 py-8 transition-colors text-center ${imageUploadError ? "border-red-300 bg-red-50/30" : "border-slate-200 bg-slate-50/50 hover:border-medical-300 hover:bg-medical-50/30"}`}>
+                              <FlaskConical className="w-8 h-8 text-slate-300" />
+                              <div>
+                                <p className="text-sm font-medium text-slate-600">Tap to upload test request slip</p>
+                                <p className="text-xs text-slate-400 mt-0.5">JPEG, PNG, WebP, HEIC — max 10 MB</p>
+                              </div>
+                            </div>
+                            <input
+                              type="file"
+                              accept="image/jpeg,image/png,image/webp,image/heic,.heic"
+                              className="sr-only"
+                              onChange={async (e) => {
+                                const file = e.target.files?.[0];
+                                if (!file) return;
+                                setImageUploading(true);
+                                setImageUploadError(null);
+                                try {
+                                  const fd = new FormData();
+                                  fd.append("file", file);
+                                  const res = await fetch("/api/requests/upload-image", { method: "POST", body: fd });
+                                  const data = await res.json();
+                                  if (data.url) {
+                                    setTestImageUrl(data.url);
+                                  } else {
+                                    setImageUploadError(data.error ?? "Upload failed");
+                                  }
+                                } catch {
+                                  setImageUploadError("Upload failed. Please try again.");
+                                } finally {
+                                  setImageUploading(false);
+                                  e.target.value = "";
+                                }
+                              }}
+                            />
+                          </label>
+                        )}
+                        {imageUploadError && <p className="text-xs text-red-600 font-medium">{imageUploadError}</p>}
+                      </div>
+                    )}
+                  </div>
+                </div>
+              )}
+            </div>
           </div>
         )}
 
