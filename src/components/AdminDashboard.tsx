@@ -7,6 +7,7 @@ import {
   Building2, Trash2, Eye, EyeOff, RefreshCw, X, Pencil,
   Phone, Upload, Check, MapPin, Users, ChevronRight, ChevronDown, ChevronUp,
   Code2, Key, Copy, TrendingUp, Link, Sun, Moon, Star, GitBranch,
+  Wallet, ArrowUpRight, ArrowDownRight, Settings, CreditCard,
 } from "lucide-react";
 import { useDashTheme } from "@/hooks/useDashTheme";
 import { Button } from "@/components/ui/Button";
@@ -18,7 +19,7 @@ import { format } from "date-fns";
 import { createClient } from "@/lib/supabase/client"; // still used for auth sign-out
 import { useRouter } from "next/navigation";
 
-type AdminTab = "metrics" | "requests" | "referrals" | "labs" | "analytics" | "marketers";
+type AdminTab = "metrics" | "requests" | "referrals" | "labs" | "analytics" | "marketers" | "settings";
 
 interface ReferralGroup {
   key: string;
@@ -121,6 +122,9 @@ export function AdminDashboard() {
   const [apiLogSummary, setApiLogSummary] = useState<ApiLogSummary | null>(null);
   const [expandedLabIntegration, setExpandedLabIntegration] = useState<string | null>(null);
   const [branchModalLabId, setBranchModalLabId] = useState<string | null>(null);
+  const [walletModalLabId, setWalletModalLabId] = useState<string | null>(null);
+  const [revealPrice, setRevealPrice] = useState<string>("");
+  const [savingRevealPrice, setSavingRevealPrice] = useState(false);
 
   // Per-lab analytics modal
   type LabAnalytics = {
@@ -190,6 +194,40 @@ export function AdminDashboard() {
     }
   }, []);
 
+  const fetchSettings = useCallback(async () => {
+    try {
+      const res = await fetch("/api/admin/settings");
+      const data = await res.json();
+      if (data.success) setRevealPrice(data.settings.reveal_price ?? "500");
+    } catch { /* non-critical */ }
+  }, []);
+
+  async function handleSaveRevealPrice() {
+    if (!revealPrice || isNaN(parseFloat(revealPrice)) || parseFloat(revealPrice) < 0) {
+      toast.error("Enter a valid price");
+      return;
+    }
+    setSavingRevealPrice(true);
+    try {
+      const res = await fetch("/api/admin/settings", {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ reveal_price: revealPrice }),
+      });
+      const data = await res.json();
+      if (data.success) {
+        toast.success("Reveal price updated");
+        setRevealPrice(data.settings.reveal_price);
+      } else {
+        toast.error(data.error ?? "Failed to update");
+      }
+    } catch {
+      toast.error("Network error");
+    } finally {
+      setSavingRevealPrice(false);
+    }
+  }
+
   const fetchData = useCallback(async () => {
     setLoading(true);
     try {
@@ -197,6 +235,7 @@ export function AdminDashboard() {
         fetch("/api/admin/requests"),
         fetchLabs(),
         fetchApiLogs(),
+        fetchSettings(),
         fetchMarketers(),
       ]);
       const reqData = await reqRes.json();
@@ -391,6 +430,7 @@ export function AdminDashboard() {
               { key: "labs" as AdminTab, label: "Labs", icon: <Building2 className="w-4 h-4" /> },
               { key: "analytics" as AdminTab, label: "API Analytics", icon: <BarChart3 className="w-4 h-4" /> },
               { key: "marketers" as AdminTab, label: "Marketers", icon: <TrendingUp className="w-4 h-4" /> },
+              { key: "settings" as AdminTab, label: "Settings", icon: <Settings className="w-4 h-4" /> },
             ].map((tab) => (
               <button
                 key={tab.key}
@@ -723,6 +763,15 @@ export function AdminDashboard() {
                         </div>
                       </div>
                     )}
+                    {/* Wallet balance */}
+                    <div className={`mt-3 flex items-center gap-2 px-3 py-2 rounded-xl ${(lab.wallet_balance ?? 0) < 0 ? "bg-red-500/10 border border-red-500/20" : (lab.wallet_balance ?? 0) < 1000 ? "bg-amber-500/10 border border-amber-500/20" : "bg-emerald-500/10 border border-emerald-500/20"}`}>
+                      <Wallet className={`w-3.5 h-3.5 shrink-0 ${(lab.wallet_balance ?? 0) < 0 ? "text-red-400" : (lab.wallet_balance ?? 0) < 1000 ? "text-amber-400" : "text-emerald-400"}`} />
+                      <span className="text-xs text-slate-400 flex-1">Wallet balance</span>
+                      <span className={`text-sm font-bold font-mono ${(lab.wallet_balance ?? 0) < 0 ? "text-red-400" : (lab.wallet_balance ?? 0) < 1000 ? "text-amber-400" : "text-emerald-300"}`}>
+                        ₦{(lab.wallet_balance ?? 0).toLocaleString()}
+                      </span>
+                    </div>
+
                     <div className="flex items-center justify-between mt-3">
                       <p className="text-xs text-slate-600">Added {format(new Date(lab.created_at), "dd MMM yyyy")}</p>
                       {lab.rating_avg != null ? (
@@ -773,6 +822,12 @@ export function AdminDashboard() {
                           className="flex items-center justify-center gap-1 px-2.5 py-1.5 rounded-lg bg-emerald-500/10 hover:bg-emerald-500/20 text-emerald-400 hover:text-emerald-300 text-xs transition-colors"
                         >
                           <BarChart3 className="w-3 h-3" />Stats
+                        </button>
+                        <button
+                          onClick={() => setWalletModalLabId(lab.id)}
+                          className="flex items-center justify-center gap-1 px-2.5 py-1.5 rounded-lg bg-violet-500/10 hover:bg-violet-500/20 text-violet-400 hover:text-violet-300 text-xs transition-colors"
+                        >
+                          <Wallet className="w-3 h-3" />Wallet
                         </button>
                         <button
                           onClick={() => setExpandedLabIntegration(lab.id)}
@@ -936,6 +991,82 @@ export function AdminDashboard() {
           </div>
         )}
 
+        {/* ── SETTINGS ── */}
+        {activeTab === "settings" && (
+          <div className="animate-fade-in space-y-6 max-w-lg">
+            <div>
+              <h2 className="font-semibold text-white">Platform Settings</h2>
+              <p className="text-xs text-slate-500 mt-0.5">Configure system-wide pricing and behaviour</p>
+            </div>
+
+            <div className="bg-white/5 border border-white/10 rounded-2xl p-5 space-y-4">
+              <div className="flex items-center gap-2 mb-1">
+                <CreditCard className="w-4 h-4 text-violet-400" />
+                <p className="font-semibold text-white text-sm">Reveal Pricing</p>
+              </div>
+              <p className="text-xs text-slate-400 leading-relaxed">
+                Each time a lab marks a patient request as <strong className="text-white">Seen</strong>, this amount is deducted from their wallet. The unit is in your local currency (e.g. Naira).
+              </p>
+              <div className="flex gap-2 items-center">
+                <div className="flex-1">
+                  <label className="text-xs text-slate-400 mb-1 block">Price per reveal</label>
+                  <input
+                    type="number"
+                    min="0"
+                    step="1"
+                    value={revealPrice}
+                    onChange={(e) => setRevealPrice(e.target.value)}
+                    className="w-full bg-white/5 border border-white/10 rounded-xl px-3 py-2.5 text-white text-sm placeholder-slate-500 outline-none focus:ring-2 focus:ring-violet-500/50"
+                    placeholder="e.g. 500"
+                  />
+                </div>
+                <button
+                  onClick={handleSaveRevealPrice}
+                  disabled={savingRevealPrice}
+                  className="mt-5 flex items-center gap-1.5 px-4 py-2.5 rounded-xl bg-violet-600 hover:bg-violet-500 text-white text-sm font-medium transition-colors disabled:opacity-50"
+                >
+                  {savingRevealPrice ? <RefreshCw className="w-4 h-4 animate-spin" /> : <Check className="w-4 h-4" />}
+                  Save
+                </button>
+              </div>
+            </div>
+
+            {/* Low balance labs alert */}
+            {labs.filter((l) => (l.wallet_balance ?? 0) < 1000).length > 0 && (
+              <div className="bg-amber-500/8 border border-amber-500/20 rounded-2xl p-5 space-y-3">
+                <p className="text-sm font-semibold text-amber-400 flex items-center gap-2">
+                  <Wallet className="w-4 h-4" />
+                  Labs with low balance (below ₦1,000)
+                </p>
+                {labs.filter((l) => (l.wallet_balance ?? 0) < 1000).map((lab) => (
+                  <div key={lab.id} className="flex items-center justify-between gap-3 bg-white/5 rounded-xl px-4 py-3">
+                    <div className="min-w-0">
+                      <p className="text-sm font-medium text-white truncate">{lab.name}</p>
+                      <p className="text-xs text-slate-400 truncate">{lab.email}</p>
+                      {(lab.phones as string[]).length > 0 && (
+                        <p className="text-xs text-slate-500 flex items-center gap-1 mt-0.5">
+                          <Phone className="w-3 h-3 shrink-0" />{(lab.phones as string[])[0]}
+                        </p>
+                      )}
+                    </div>
+                    <div className="flex flex-col items-end gap-1.5 shrink-0">
+                      <span className={`text-sm font-bold font-mono ${(lab.wallet_balance ?? 0) < 0 ? "text-red-400" : "text-amber-400"}`}>
+                        ₦{(lab.wallet_balance ?? 0).toLocaleString()}
+                      </span>
+                      <button
+                        onClick={() => setWalletModalLabId(lab.id)}
+                        className="text-xs px-2.5 py-1 rounded-lg bg-violet-500/20 hover:bg-violet-500/30 text-violet-300 transition-colors"
+                      >
+                        Top up
+                      </button>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+        )}
+
         {/* ── MARKETERS ── */}
         {activeTab === "marketers" && (
           <div className="animate-fade-in space-y-6">
@@ -1066,6 +1197,12 @@ export function AdminDashboard() {
         const lab = labs.find((l) => l.id === branchModalLabId);
         return lab ? (
           <LabBranchModal lab={lab} onClose={() => setBranchModalLabId(null)} allLabs={labs} />
+        ) : null;
+      })()}
+      {walletModalLabId && (() => {
+        const lab = labs.find((l) => l.id === walletModalLabId);
+        return lab ? (
+          <LabWalletModal lab={lab} onClose={() => { setWalletModalLabId(null); fetchLabs(); }} />
         ) : null;
       })()}
 
@@ -1313,6 +1450,184 @@ export function AdminDashboard() {
           </div>
         </div>
       )}
+    </div>
+  );
+}
+
+// =============================================================================
+// Lab Wallet Modal
+// =============================================================================
+function LabWalletModal({ lab, onClose }: { lab: Lab; onClose: () => void }) {
+  type Txn = { id: string; type: string; direction: string; amount: number; balance_after: number; description: string | null; actor_email: string | null; created_at: string };
+  const [balance, setBalance] = useState<number | null>(null);
+  const [transactions, setTransactions] = useState<Txn[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [amount, setAmount] = useState("");
+  const [direction, setDirection] = useState<"credit" | "debit">("credit");
+  const [description, setDescription] = useState("");
+  const [submitting, setSubmitting] = useState(false);
+
+  const load = useCallback(async () => {
+    setLoading(true);
+    try {
+      const res = await fetch(`/api/admin/labs/${lab.id}/wallet`);
+      const data = await res.json();
+      if (data.success) { setBalance(data.balance); setTransactions(data.transactions); }
+    } catch { /* non-critical */ } finally { setLoading(false); }
+  }, [lab.id]);
+
+  useEffect(() => { load(); }, [load]);
+
+  async function handleSubmit(e: React.FormEvent) {
+    e.preventDefault();
+    const val = parseFloat(amount);
+    if (!val || val <= 0 || isNaN(val)) { toast.error("Enter a valid amount"); return; }
+    setSubmitting(true);
+    try {
+      const res = await fetch(`/api/admin/labs/${lab.id}/wallet`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ direction, amount: val, description: description.trim() || undefined }),
+      });
+      const data = await res.json();
+      if (data.success) {
+        toast.success(direction === "credit" ? "Funds added" : "Funds removed");
+        setAmount(""); setDescription("");
+        setBalance(data.balance);
+        setTransactions((prev) => [data.transaction, ...prev]);
+      } else {
+        toast.error(data.error ?? "Failed");
+      }
+    } catch { toast.error("Network error"); } finally { setSubmitting(false); }
+  }
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center p-3 sm:p-4"
+      style={{ backgroundColor: "rgba(2,6,23,0.88)", backdropFilter: "blur(6px)" }}
+      onClick={onClose}
+    >
+      <div className="w-full max-w-lg bg-slate-900 border border-white/10 rounded-3xl shadow-2xl overflow-hidden max-h-[94vh] flex flex-col"
+        onClick={(e) => e.stopPropagation()}
+      >
+        {/* Header */}
+        <div className="px-5 pt-5 pb-4 border-b border-white/10 flex items-center justify-between gap-3 shrink-0">
+          <div className="flex items-center gap-2 min-w-0">
+            <Wallet className="w-5 h-5 text-violet-400 shrink-0" />
+            <div className="min-w-0">
+              <p className="font-bold text-white truncate">{lab.name}</p>
+              <p className="text-xs text-slate-500">Wallet Management</p>
+            </div>
+          </div>
+          <button onClick={onClose} className="p-1.5 rounded-xl hover:bg-white/10 text-slate-400 hover:text-white transition-colors shrink-0">
+            <X className="w-5 h-5" />
+          </button>
+        </div>
+
+        <div className="flex-1 overflow-y-auto p-5 space-y-5">
+          {/* Balance */}
+          {loading ? (
+            <div className="h-20 bg-white/5 rounded-2xl animate-pulse" />
+          ) : (
+            <div className={`rounded-2xl p-5 text-center border ${balance !== null && balance < 0 ? "bg-red-500/10 border-red-500/20" : balance !== null && balance < 1000 ? "bg-amber-500/10 border-amber-500/20" : "bg-violet-500/10 border-violet-500/20"}`}>
+              <p className="text-xs text-slate-400 mb-1 uppercase tracking-wider">Current Balance</p>
+              <p className={`text-4xl font-bold font-mono ${balance !== null && balance < 0 ? "text-red-400" : balance !== null && balance < 1000 ? "text-amber-400" : "text-violet-300"}`}>
+                ₦{(balance ?? 0).toLocaleString()}
+              </p>
+              {balance !== null && balance < 1000 && (
+                <p className="text-xs text-amber-400/80 mt-2">⚠ Low balance — contact lab to top up</p>
+              )}
+            </div>
+          )}
+
+          {/* Contact info for reminder */}
+          <div className="bg-white/5 border border-white/10 rounded-xl px-4 py-3 space-y-1">
+            <p className="text-xs font-semibold text-slate-400 mb-2">Lab Contact</p>
+            <p className="text-xs text-slate-300">{lab.email}</p>
+            {(lab.phones as string[]).map((ph, i) => (
+              <p key={i} className="text-xs text-slate-400 flex items-center gap-1"><Phone className="w-3 h-3 text-slate-600" />{ph}</p>
+            ))}
+          </div>
+
+          {/* Adjust form */}
+          <form onSubmit={handleSubmit} className="space-y-3">
+            <p className="text-xs font-semibold text-slate-400 uppercase tracking-wider">Adjust Balance</p>
+            <div className="grid grid-cols-2 gap-2">
+              <button
+                type="button"
+                onClick={() => setDirection("credit")}
+                className={`flex items-center justify-center gap-2 py-2.5 rounded-xl border text-sm font-medium transition-all ${direction === "credit" ? "bg-emerald-500/20 border-emerald-500/40 text-emerald-300" : "bg-white/5 border-white/10 text-slate-400 hover:text-white"}`}
+              >
+                <ArrowUpRight className="w-4 h-4" />Top Up
+              </button>
+              <button
+                type="button"
+                onClick={() => setDirection("debit")}
+                className={`flex items-center justify-center gap-2 py-2.5 rounded-xl border text-sm font-medium transition-all ${direction === "debit" ? "bg-red-500/20 border-red-500/40 text-red-300" : "bg-white/5 border-white/10 text-slate-400 hover:text-white"}`}
+              >
+                <ArrowDownRight className="w-4 h-4" />Deduct
+              </button>
+            </div>
+            <input
+              type="number"
+              min="1"
+              step="1"
+              value={amount}
+              onChange={(e) => setAmount(e.target.value)}
+              required
+              placeholder="Amount (₦)"
+              className="w-full bg-white/5 border border-white/10 rounded-xl px-3 py-2.5 text-white text-sm placeholder-slate-500 outline-none focus:ring-2 focus:ring-violet-500/50"
+            />
+            <input
+              type="text"
+              value={description}
+              onChange={(e) => setDescription(e.target.value)}
+              placeholder={direction === "credit" ? "Reason (e.g. Bank transfer received)" : "Reason for deduction"}
+              className="w-full bg-white/5 border border-white/10 rounded-xl px-3 py-2.5 text-white text-sm placeholder-slate-500 outline-none focus:ring-2 focus:ring-violet-500/50"
+            />
+            <button
+              type="submit"
+              disabled={submitting}
+              className={`w-full py-2.5 rounded-xl font-semibold text-sm transition-colors disabled:opacity-50 flex items-center justify-center gap-2 ${direction === "credit" ? "bg-emerald-600 hover:bg-emerald-500 text-white" : "bg-red-600 hover:bg-red-500 text-white"}`}
+            >
+              {submitting ? <RefreshCw className="w-4 h-4 animate-spin" /> : direction === "credit" ? <ArrowUpRight className="w-4 h-4" /> : <ArrowDownRight className="w-4 h-4" />}
+              {direction === "credit" ? "Add Funds" : "Remove Funds"}
+            </button>
+          </form>
+
+          {/* Transaction history */}
+          <div>
+            <p className="text-xs font-semibold text-slate-400 uppercase tracking-wider mb-3">Transaction History</p>
+            {loading ? (
+              <div className="space-y-2">{[...Array(3)].map((_, i) => <div key={i} className="h-14 bg-white/5 rounded-xl animate-pulse" />)}</div>
+            ) : transactions.length === 0 ? (
+              <p className="text-sm text-slate-500 text-center py-6">No transactions yet</p>
+            ) : (
+              <div className="space-y-2">
+                {transactions.map((txn) => (
+                  <div key={txn.id} className="flex items-center gap-3 bg-white/5 border border-white/8 rounded-xl px-4 py-3">
+                    <div className={`w-7 h-7 rounded-lg flex items-center justify-center shrink-0 ${txn.direction === "credit" ? "bg-emerald-500/15" : "bg-red-500/15"}`}>
+                      {txn.direction === "credit"
+                        ? <ArrowUpRight className="w-3.5 h-3.5 text-emerald-400" />
+                        : <ArrowDownRight className="w-3.5 h-3.5 text-red-400" />}
+                    </div>
+                    <div className="flex-1 min-w-0">
+                      <p className="text-xs text-white truncate">{txn.description ?? txn.type}</p>
+                      <p className="text-xs text-slate-500">{format(new Date(txn.created_at), "dd MMM yyyy · HH:mm")}</p>
+                      {txn.actor_email && <p className="text-xs text-slate-600 truncate">by {txn.actor_email}</p>}
+                    </div>
+                    <div className="text-right shrink-0">
+                      <p className={`text-sm font-bold font-mono ${txn.direction === "credit" ? "text-emerald-400" : "text-red-400"}`}>
+                        {txn.direction === "credit" ? "+" : "-"}₦{txn.amount.toLocaleString()}
+                      </p>
+                      <p className="text-xs text-slate-500 font-mono">₦{txn.balance_after.toLocaleString()}</p>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+        </div>
+      </div>
     </div>
   );
 }
@@ -2284,6 +2599,7 @@ const PAGE_PERMISSIONS: { key: keyof LabRole; label: string; description: string
   { key: "can_view_analytics",  label: "Analytics",  description: "View lab performance analytics" },
   { key: "can_view_activity",   label: "Activity",   description: "View team activity log" },
   { key: "can_view_feedback",   label: "Feedback",   description: "View patient and doctor feedback" },
+  { key: "can_view_wallet",     label: "Wallet",     description: "View wallet balance and transactions" },
 ];
 
 const ACTION_PERMISSIONS: { key: keyof LabRole; label: string; description: string }[] = [
@@ -2309,10 +2625,11 @@ type DraftRole = {
   can_view_analytics:  boolean;
   can_view_activity:   boolean;
   can_view_feedback:   boolean;
+  can_view_wallet:     boolean;
 };
 
 function blankRole(): DraftRole {
-  return { name: "", can_view_requests: true, can_mark_seen: false, can_mark_done: false, can_send_results: false, can_manage_team: false, can_manage_api_keys: false, can_view_referrals: false, can_view_clients: false, can_view_analytics: false, can_view_activity: false, can_view_feedback: false };
+  return { name: "", can_view_requests: true, can_mark_seen: false, can_mark_done: false, can_send_results: false, can_manage_team: false, can_manage_api_keys: false, can_view_referrals: false, can_view_clients: false, can_view_analytics: false, can_view_activity: false, can_view_feedback: false, can_view_wallet: false };
 }
 
 function LabTeamTab({ lab }: { lab: Lab }) {
@@ -2386,6 +2703,7 @@ function LabTeamTab({ lab }: { lab: Lab }) {
       can_view_analytics:  (role as DraftRole).can_view_analytics ?? false,
       can_view_activity:   (role as DraftRole).can_view_activity ?? false,
       can_view_feedback:   (role as DraftRole).can_view_feedback ?? false,
+      can_view_wallet:     (role as DraftRole).can_view_wallet ?? false,
     });
     setShowNewRole(true);
   }

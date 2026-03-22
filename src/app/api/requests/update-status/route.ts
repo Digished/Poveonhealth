@@ -8,6 +8,7 @@ import { doctorTestsCompleted } from "@/lib/email/templates";
 import { logApiCall } from "@/lib/api-logger";
 import { logLabActivity } from "@/lib/lab-activity";
 import { createServerClient } from "@/lib/supabase/server";
+import { Decimal } from "@prisma/client/runtime/library";
 
 const UpdateStatusSchema = z.object({
   requestId: z.string().uuid(),
@@ -85,6 +86,47 @@ export async function POST(request: NextRequest) {
     if (status === "seen") updateData.seen_at = new Date();
     if (status === "done") updateData.completed_at = new Date();
 
+    // When marking "seen" — charge the reveal price from the lab's wallet
+    let walletBalance: number | null = null;
+    if (status === "seen") {
+      try {
+        const priceSetting = await prisma.systemSetting.findUnique({ where: { key: "reveal_price" } });
+        const revealPrice = new Decimal(priceSetting?.value ?? "500");
+
+        walletBalance = await prisma.$transaction(async (tx) => {
+          const current = await tx.labWallet.upsert({
+            where: { lab_id: req.lab_id },
+            create: { lab_id: req.lab_id, balance: new Decimal(0) },
+            update: {},
+          });
+
+          const newBalance = new Decimal(current.balance).minus(revealPrice);
+
+          await tx.labWallet.update({
+            where: { lab_id: req.lab_id },
+            data: { balance: newBalance },
+          });
+
+          await tx.walletTransaction.create({
+            data: {
+              lab_id: req.lab_id,
+              type: "deduction",
+              direction: "debit",
+              amount: revealPrice,
+              balance_after: newBalance,
+              description: `Reveal charge — ${req.code} (${req.patient_name ?? "patient"})`,
+              request_id: requestId,
+            },
+          });
+
+          return Number(newBalance);
+        });
+      } catch (e) {
+        // Non-critical: wallet deduction failure should not block the status update
+        console.error("[wallet] deduction failed:", e);
+      }
+    }
+
     await prisma.request.update({ where: { id: requestId }, data: updateData });
 
     // Log activity
@@ -123,7 +165,7 @@ export async function POST(request: NextRequest) {
     }
 
     logApiCall({ method: "POST", path: "/api/requests/update-status", status: 200, lab_id: req.lab_id, duration_ms: Date.now() - start });
-    return NextResponse.json({ success: true, status });
+    return NextResponse.json({ success: true, status, ...(walletBalance !== null ? { wallet_balance: walletBalance } : {}) });
   } catch (error) {
     console.error("Update status error:", error);
     logApiCall({ method: "POST", path: "/api/requests/update-status", status: 500, duration_ms: Date.now() - start });

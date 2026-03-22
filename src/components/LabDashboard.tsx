@@ -8,7 +8,7 @@ import {
   Link2, Paperclip, Send, SkipForward, UserCircle, MapPin, Shield, Layers,
   Users, CreditCard, Filter, ChevronDown, AlertTriangle, Truck, ExternalLink,
   MessageCircle, ChevronLeft, FileImage, Sun, Moon, Pencil, Save, BarChart3, Lock,
-  Menu, Activity, KeyRound, ArrowRight, Star, MessageSquare,
+  Menu, Activity, KeyRound, ArrowRight, Star, MessageSquare, Wallet, ArrowUpRight, ArrowDownRight,
 } from "lucide-react";
 import { useDashTheme } from "@/hooks/useDashTheme";
 import { Button } from "@/components/ui/Button";
@@ -55,6 +55,7 @@ interface LabDashboardProps {
   canViewAnalytics?: boolean;
   canViewActivity?: boolean;
   canViewFeedback?: boolean;
+  canViewWallet?: boolean;
 }
 
 const TABS: { key: RequestStatus; label: string; icon: React.ReactNode }[] = [
@@ -87,11 +88,13 @@ function scheduleLabel(value: string | null): string | null {
   return value ? (map[value] ?? value) : null;
 }
 
-export function LabDashboard({ lab, isOwner = false, roleName = "Lab Owner", canViewReferrals = false, canViewClients = false, canViewAnalytics = false, canViewActivity = false, canViewFeedback = false }: LabDashboardProps) {
+export function LabDashboard({ lab, isOwner = false, roleName = "Lab Owner", canViewReferrals = false, canViewClients = false, canViewAnalytics = false, canViewActivity = false, canViewFeedback = false, canViewWallet = false }: LabDashboardProps) {
   const { name: labName, logo_url: labLogoUrl } = lab;
   const router = useRouter();
   const { isLight, toggle, themeClass } = useDashTheme("lab_dash_theme");
-  const [mainView, setMainView] = useState<"requests" | "referrals" | "clients" | "analytics" | "activity" | "feedback">("requests");
+  const [mainView, setMainView] = useState<"requests" | "referrals" | "clients" | "analytics" | "activity" | "feedback" | "wallet">("requests");
+  const [walletData, setWalletData] = useState<{ balance: number; reveal_price: number; transactions: { id: string; type: string; direction: string; amount: number; balance_after: number; description: string | null; actor_email: string | null; created_at: string }[] } | null>(null);
+  const [walletLoading, setWalletLoading] = useState(false);
   const [mobileNavOpen, setMobileNavOpen] = useState(false);
   const [activeTab, setActiveTab] = useState<RequestStatus>("seen");
   const [requests, setRequests] = useState<LabRequest[]>([]);
@@ -521,6 +524,7 @@ export function LabDashboard({ lab, isOwner = false, roleName = "Lab Owner", can
             { key: "analytics" as const, label: "Analytics", icon: <BarChart3 className="w-4 h-4" />, show: isOwner || canViewAnalytics },
             { key: "activity" as const, label: "Activity", icon: <Activity className="w-4 h-4" />, show: isOwner || canViewActivity },
             { key: "feedback" as const, label: "Feedback", icon: <Star className="w-4 h-4" />, show: isOwner || canViewFeedback },
+            { key: "wallet" as const, label: "Wallet", icon: <Wallet className="w-4 h-4" />, show: isOwner || canViewWallet },
           ].filter((item) => item.show);
           if (navItems.length <= 1) return null;
           const currentItem = navItems.find((n) => n.key === mainView) ?? navItems[0];
@@ -540,7 +544,14 @@ export function LabDashboard({ lab, isOwner = false, roleName = "Lab Owner", can
                   <div className="mt-1.5 rounded-xl border border-white/10 bg-slate-800 overflow-hidden shadow-2xl">
                     {navItems.map((item) => (
                       <button key={item.key}
-                        onClick={() => { setMainView(item.key); setMobileNavOpen(false); }}
+                        onClick={() => {
+                          setMainView(item.key);
+                          setMobileNavOpen(false);
+                          if (item.key === "wallet" && !walletData) {
+                            setWalletLoading(true);
+                            fetch("/api/lab/wallet").then((r) => r.json()).then((d) => { if (d.success) setWalletData(d); }).catch(() => {}).finally(() => setWalletLoading(false));
+                          }
+                        }}
                         className={`flex items-center gap-3 w-full px-4 py-3.5 text-sm font-medium transition-colors border-b border-white/5 last:border-0 ${
                           mainView === item.key
                             ? "bg-white/12 text-white"
@@ -557,7 +568,13 @@ export function LabDashboard({ lab, isOwner = false, roleName = "Lab Owner", can
               {/* Desktop: pill row */}
               <div className="hidden sm:flex gap-1 bg-white/5 rounded-xl p-1 w-fit">
                 {navItems.map((item) => (
-                  <button key={item.key} onClick={() => setMainView(item.key)}
+                  <button key={item.key} onClick={() => {
+                    setMainView(item.key);
+                    if (item.key === "wallet" && !walletData) {
+                      setWalletLoading(true);
+                      fetch("/api/lab/wallet").then((r) => r.json()).then((d) => { if (d.success) setWalletData(d); }).catch(() => {}).finally(() => setWalletLoading(false));
+                    }
+                  }}
                     className={`flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-medium transition-all ${
                       mainView === item.key ? "bg-white/15 text-white shadow-sm" : "text-slate-400 hover:text-slate-200"
                     }`}>
@@ -1616,6 +1633,22 @@ export function LabDashboard({ lab, isOwner = false, roleName = "Lab Owner", can
         {/* Feedback view */}
         {mainView === "feedback" && (isOwner || canViewFeedback) && (
           <LabFeedbackView labId={lab.id} />
+        )}
+
+        {/* Wallet view */}
+        {mainView === "wallet" && (isOwner || canViewWallet) && (
+          <LabWalletView
+            walletData={walletData}
+            loading={walletLoading}
+            onLoad={async () => {
+              setWalletLoading(true);
+              try {
+                const res = await fetch("/api/lab/wallet");
+                const data = await res.json();
+                if (data.success) setWalletData(data);
+              } catch { /* non-critical */ } finally { setWalletLoading(false); }
+            }}
+          />
         )}
 
         {/* Requests view */}
@@ -3001,6 +3034,105 @@ function LabFeedbackView({ labId }: { labId: string }) {
           </button>
         </div>
       )}
+    </div>
+  );
+}
+
+// =============================================================================
+// Lab Wallet View
+// =============================================================================
+type WalletTxn = { id: string; type: string; direction: string; amount: number; balance_after: number; description: string | null; actor_email: string | null; created_at: string };
+type WalletViewData = { balance: number; reveal_price: number; transactions: WalletTxn[] } | null;
+
+function LabWalletView({ walletData, loading, onLoad }: { walletData: WalletViewData; loading: boolean; onLoad: () => void }) {
+  useEffect(() => { if (!walletData) onLoad(); }, [walletData, onLoad]);
+
+  if (loading) {
+    return (
+      <div className="space-y-4 animate-pulse">
+        <div className="h-32 bg-white/5 rounded-2xl" />
+        <div className="h-20 bg-white/5 rounded-2xl" />
+        <div className="h-48 bg-white/5 rounded-2xl" />
+      </div>
+    );
+  }
+
+  const balance = walletData?.balance ?? 0;
+  const revealPrice = walletData?.reveal_price ?? 500;
+  const transactions = walletData?.transactions ?? [];
+  const isLow = balance < revealPrice * 5;
+  const isNegative = balance < 0;
+
+  return (
+    <div className="space-y-6">
+      {/* Balance card */}
+      <div className={`rounded-2xl p-6 text-center border ${isNegative ? "bg-red-500/10 border-red-500/20" : isLow ? "bg-amber-500/10 border-amber-500/20" : "bg-emerald-500/10 border-emerald-500/20"}`}>
+        <Wallet className={`w-8 h-8 mx-auto mb-2 ${isNegative ? "text-red-400" : isLow ? "text-amber-400" : "text-emerald-400"}`} />
+        <p className="text-xs text-slate-400 uppercase tracking-wider mb-1">Wallet Balance</p>
+        <p className={`text-5xl font-bold font-mono ${isNegative ? "text-red-400" : isLow ? "text-amber-400" : "text-emerald-300"}`}>
+          ₦{balance.toLocaleString()}
+        </p>
+        {isNegative && (
+          <p className="mt-3 text-sm text-red-400 font-semibold">Your wallet is overdrawn. Please contact support to top up.</p>
+        )}
+        {!isNegative && isLow && (
+          <p className="mt-3 text-sm text-amber-400">Your balance is running low. Contact your account manager to top up.</p>
+        )}
+      </div>
+
+      {/* Info card */}
+      <div className="bg-white/5 border border-white/10 rounded-2xl px-5 py-4 flex items-start gap-3">
+        <CreditCard className="w-4 h-4 text-slate-400 mt-0.5 shrink-0" />
+        <div className="space-y-1">
+          <p className="text-sm font-semibold text-white">How charges work</p>
+          <p className="text-xs text-slate-400 leading-relaxed">
+            Each time you mark a patient request as <strong className="text-white">Seen</strong> (revealing their full details),
+            <strong className="text-white"> ₦{revealPrice.toLocaleString()}</strong> is deducted from your wallet.
+            Contact your Poveon account manager to top up your balance.
+          </p>
+        </div>
+      </div>
+
+      {/* Transaction history */}
+      <div>
+        <div className="flex items-center justify-between mb-4">
+          <p className="text-sm font-semibold text-white">Transaction History</p>
+          <button onClick={onLoad} className="p-1.5 rounded-lg hover:bg-white/10 text-slate-400 hover:text-white transition-colors">
+            <RefreshCw className="w-3.5 h-3.5" />
+          </button>
+        </div>
+
+        {transactions.length === 0 ? (
+          <div className="bg-white/5 border border-white/10 rounded-2xl p-10 text-center">
+            <Wallet className="w-8 h-8 text-slate-600 mx-auto mb-3" />
+            <p className="text-sm text-slate-400">No transactions yet</p>
+          </div>
+        ) : (
+          <div className="space-y-2">
+            {transactions.map((txn) => (
+              <div key={txn.id} className="flex items-center gap-3 bg-white/5 border border-white/8 rounded-xl px-4 py-3.5">
+                <div className={`w-8 h-8 rounded-xl flex items-center justify-center shrink-0 ${txn.direction === "credit" ? "bg-emerald-500/15" : "bg-red-500/15"}`}>
+                  {txn.direction === "credit"
+                    ? <ArrowUpRight className="w-4 h-4 text-emerald-400" />
+                    : <ArrowDownRight className="w-4 h-4 text-red-400" />}
+                </div>
+                <div className="flex-1 min-w-0">
+                  <p className="text-sm text-white truncate">
+                    {txn.description ?? (txn.type === "topup" ? "Wallet top-up" : txn.type === "deduction" ? "Test reveal charge" : "Adjustment")}
+                  </p>
+                  <p className="text-xs text-slate-500">{format(new Date(txn.created_at), "dd MMM yyyy · HH:mm")}</p>
+                </div>
+                <div className="text-right shrink-0">
+                  <p className={`text-sm font-bold font-mono ${txn.direction === "credit" ? "text-emerald-400" : "text-red-400"}`}>
+                    {txn.direction === "credit" ? "+" : "-"}₦{txn.amount.toLocaleString()}
+                  </p>
+                  <p className="text-xs text-slate-500 font-mono">bal: ₦{txn.balance_after.toLocaleString()}</p>
+                </div>
+              </div>
+            ))}
+          </div>
+        )}
+      </div>
     </div>
   );
 }

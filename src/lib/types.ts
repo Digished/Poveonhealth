@@ -25,6 +25,8 @@ export interface Lab {
   // Computed by admin API — average rating and number of reviews
   rating_avg?: number | null;
   rating_count?: number;
+  // Wallet balance — included in admin labs list
+  wallet_balance?: number | null;
 }
 
 export interface ApiLog {
@@ -75,8 +77,27 @@ export interface LabRole {
   can_view_analytics: boolean;
   can_view_activity: boolean;
   can_view_feedback: boolean;
+  can_view_wallet: boolean;
   created_at: string;
   _count?: { members: number };
+}
+
+export interface WalletTransaction {
+  id: string;
+  lab_id: string;
+  type: "topup" | "deduction" | "adjustment";
+  direction: "credit" | "debit";
+  amount: number;
+  balance_after: number;
+  description: string | null;
+  request_id: string | null;
+  actor_email: string | null;
+  created_at: string;
+}
+
+export interface LabWallet {
+  balance: number;
+  transactions: WalletTransaction[];
 }
 
 export interface LabFeedback {

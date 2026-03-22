@@ -24,6 +24,7 @@ export default async function LabDashboardPage() {
   let canViewAnalytics = true;
   let canViewActivity = true;
   let canViewFeedback = true;
+  let canViewWallet = true;
 
   if (role === "lab") {
     const labUser = await prisma.labUser.findUnique({
@@ -37,7 +38,7 @@ export default async function LabDashboardPage() {
       where: { user_id: user.id },
       select: {
         lab_id: true,
-        role: { select: { name: true, can_view_referrals: true, can_view_clients: true, can_view_analytics: true, can_view_activity: true, can_view_feedback: true } },
+        role: { select: { name: true, can_view_referrals: true, can_view_clients: true, can_view_analytics: true, can_view_activity: true, can_view_feedback: true, can_view_wallet: true } },
       },
     });
     labId = member?.lab_id ?? null;
@@ -47,6 +48,7 @@ export default async function LabDashboardPage() {
     canViewAnalytics = member?.role.can_view_analytics ?? false;
     canViewActivity = member?.role.can_view_activity ?? false;
     canViewFeedback = member?.role.can_view_feedback ?? false;
+    canViewWallet = member?.role.can_view_wallet ?? false;
   }
 
   if (!labId) redirect("/lab-login");
@@ -77,6 +79,7 @@ export default async function LabDashboardPage() {
       canViewAnalytics={canViewAnalytics}
       canViewActivity={canViewActivity}
       canViewFeedback={canViewFeedback}
+      canViewWallet={canViewWallet}
       lab={{
         id: lab.id,
         name: lab.name,
