@@ -7,7 +7,7 @@ import {
   ChevronRight, Calendar, Stethoscope, LogOut, Eye, EyeOff, Phone, X,
   Link2, Paperclip, Send, SkipForward, UserCircle, MapPin, Shield, Layers,
   Users, CreditCard, Filter, ChevronDown, AlertTriangle, Truck, ExternalLink,
-  MessageCircle, ChevronLeft,
+  MessageCircle, ChevronLeft, FileImage,
 } from "lucide-react";
 import { Button } from "@/components/ui/Button";
 import { Input } from "@/components/ui/Input";
@@ -961,10 +961,16 @@ export function LabDashboard({ lab, isOwner = false, roleName = "Lab Owner", can
                           href={selectedRequest.test_image_url}
                           target="_blank"
                           rel="noopener noreferrer"
-                          className="inline-flex items-center gap-1.5 text-blue-400 hover:text-blue-300 hover:underline text-sm"
+                          className="inline-flex items-center gap-3 px-4 py-3 rounded-xl bg-blue-500/10 border border-blue-500/20 hover:bg-blue-500/20 hover:border-blue-500/40 transition-all group"
                         >
-                          <ExternalLink className="w-3.5 h-3.5" />
-                          View Test Request Image
+                          <div className="w-9 h-9 rounded-xl bg-blue-500/20 group-hover:bg-blue-500/30 flex items-center justify-center shrink-0 transition-colors">
+                            <FileImage className="w-4.5 h-4.5 text-blue-400" />
+                          </div>
+                          <div className="min-w-0">
+                            <p className="text-sm font-semibold text-blue-300 leading-tight">Test Request Image</p>
+                            <p className="text-xs text-blue-400/70 mt-0.5">Tap to open</p>
+                          </div>
+                          <ExternalLink className="w-3.5 h-3.5 text-blue-400/60 group-hover:text-blue-300 transition-colors shrink-0 ml-auto" />
                         </a>
                       </DetailRow>
                     )}
@@ -1517,15 +1523,21 @@ export function LabDashboard({ lab, isOwner = false, roleName = "Lab Owner", can
                 {/* Test request image */}
                 {selectedRequest.test_image_url && (
                   <div>
-                    <p className="text-xs text-slate-500 font-medium mb-0.5">Test Request Image</p>
+                    <p className="text-xs text-slate-500 font-medium mb-1.5">Test Request Image</p>
                     <a
                       href={selectedRequest.test_image_url}
                       target="_blank"
                       rel="noopener noreferrer"
-                      className="inline-flex items-center gap-1.5 text-blue-400 hover:text-blue-300 hover:underline text-sm"
+                      className="flex items-center gap-3 px-4 py-3 rounded-xl bg-blue-500/10 border border-blue-500/20 hover:bg-blue-500/20 hover:border-blue-500/40 transition-all group"
                     >
-                      <ExternalLink className="w-3.5 h-3.5" />
-                      View Test Request Image
+                      <div className="w-9 h-9 rounded-xl bg-blue-500/20 group-hover:bg-blue-500/30 flex items-center justify-center shrink-0 transition-colors">
+                        <FileImage className="w-4 h-4 text-blue-400" />
+                      </div>
+                      <div className="min-w-0">
+                        <p className="text-sm font-semibold text-blue-300 leading-tight">Test Request Image</p>
+                        <p className="text-xs text-blue-400/70 mt-0.5">Tap to open</p>
+                      </div>
+                      <ExternalLink className="w-3.5 h-3.5 text-blue-400/60 group-hover:text-blue-300 transition-colors shrink-0 ml-auto" />
                     </a>
                   </div>
                 )}

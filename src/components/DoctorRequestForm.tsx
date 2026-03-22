@@ -8,6 +8,7 @@ import {
   TestTube2, ChevronRight, ChevronLeft, Building2, Check,
   Search, X, PhoneCall, RefreshCw, ChevronDown, Mail,
   Award, Info, Layers, CalendarDays, Clock, Pencil, Camera,
+  AlertTriangle, Truck,
 } from "lucide-react";
 
 function MarsIcon({ className }: { className?: string }) {
@@ -269,7 +270,7 @@ function PrefixSelect({
   return (
     <div className="flex flex-col gap-1">
       <label className="text-sm font-medium text-slate-700">
-        Title / Prefix <span className="text-xs text-slate-400 font-normal">(optional)</span>
+        Title / Prefix <span className="text-red-500 ml-0.5">*</span>
       </label>
 
       {selected ? (
@@ -871,6 +872,9 @@ export function DoctorRequestForm({
   const [isCritical, setIsCritical] = useState(false);
   const [needsAmbulance, setNeedsAmbulance] = useState(false);
   const [ambulanceNotes, setAmbulanceNotes] = useState("");
+  // Step 4 accordion states
+  const [patientInfoOpen, setPatientInfoOpen] = useState(false);
+  const [scheduleOpen, setScheduleOpen] = useState(false);
 
   const fetchLabs = useCallback(() => {
     setLabsLoading(true);
@@ -982,10 +986,12 @@ export function DoctorRequestForm({
       }
     }
     if (s === 3) {
+      if (!form.doctor_prefix.trim()) errs.doctor_prefix = "Please select a title";
       if (!form.doctor_name.trim()) errs.doctor_name = "Required";
       if (!form.doctor_email.trim()) errs.doctor_email = "Required";
       else if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(form.doctor_email))
         errs.doctor_email = "Invalid email";
+      if (!form.doctor_phone.trim()) errs.doctor_phone = "Required";
       if (!form.doctor_hospital.trim()) errs.doctor_hospital = "Required";
     }
     setErrors(errs);
@@ -1047,6 +1053,7 @@ export function DoctorRequestForm({
         body: JSON.stringify({
           ...form,
           tests: clinicalMode === "picture" ? (form.tests || "See attached image") : form.tests,
+          schedule: form.schedule || undefined,
           test_image_url: testImageUrl ?? undefined,
           is_critical: isCritical,
           needs_ambulance: needsAmbulance,
@@ -1111,9 +1118,12 @@ export function DoctorRequestForm({
     }
     if (step === 3) {
       return (
+        form.doctor_prefix.trim().length > 0 &&
         form.doctor_name.trim().length > 0 &&
         form.doctor_email.trim().length > 0 &&
-        /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(form.doctor_email)
+        /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(form.doctor_email) &&
+        form.doctor_phone.trim().length > 0 &&
+        form.doctor_hospital.trim().length > 0
       );
     }
     return true; // step 4 optional
@@ -1652,143 +1662,138 @@ export function DoctorRequestForm({
                   </div>
                 )}
 
-                {/* Bank details FIRST */}
-                <div className="space-y-3">
-                  <p className="text-xs font-semibold text-slate-400 uppercase tracking-wider">Bank Details <span className="font-normal normal-case">(optional — for referral payment)</span></p>
-                  {bankSkipped ? (
-                    <div className="flex items-center justify-between px-4 py-3 rounded-xl bg-slate-50 border border-slate-200">
-                      <p className="text-xs text-slate-500 font-medium">Bank details skipped</p>
-                      <button
-                        type="button"
-                        onClick={() => { setBankSkipped(false); setBankOpen(true); }}
-                        className="text-xs text-medical-600 hover:text-medical-800 font-semibold transition-colors"
-                      >
-                        + Add details
-                      </button>
-                    </div>
-                  ) : (() => {
-                    const hasBankContent = bankVerified && !!(form.doctor_bank_name && form.doctor_account_number && form.doctor_account_name);
-                    return (
-                      <div className={`rounded-xl border-2 overflow-hidden transition-colors ${hasBankContent ? "border-emerald-200 bg-emerald-50/30" : "border-slate-200"}`}>
-                        <button
-                          type="button"
-                          onClick={() => setBankOpen((v) => !v)}
-                          className={`w-full flex items-center justify-between px-4 py-3.5 transition-colors ${hasBankContent ? "hover:bg-emerald-50/50" : "hover:bg-slate-50 bg-slate-50/50"}`}
-                        >
-                          {hasBankContent ? (
-                            <span className="flex items-center gap-2">
-                              <Check className="w-4 h-4 text-emerald-500 shrink-0" />
-                              <span className="text-sm font-semibold text-slate-700">Bank details added</span>
-                            </span>
-                          ) : (
-                            <span className="text-sm font-semibold text-slate-700">Add bank account</span>
-                          )}
-                          <ChevronDown className={`w-4 h-4 transition-transform shrink-0 ${hasBankContent ? "text-emerald-500" : "text-slate-400"} ${bankOpen ? "rotate-180" : ""}`} />
-                        </button>
-                        {bankOpen && (
-                          <div className={`px-4 pb-4 pt-1 space-y-3 border-t ${hasBankContent ? "border-emerald-100 bg-emerald-50/20" : "border-slate-100"}`}>
-                            <BankAccountInput
-                              bankName={form.doctor_bank_name}
-                              bankCode={bankCode}
-                              accountNumber={form.doctor_account_number}
-                              accountName={form.doctor_account_name}
-                              onBankChange={(name, code) => { set("doctor_bank_name", name); setBankCode(code); setBankVerified(false); }}
-                              onAccountNumberChange={(v) => { set("doctor_account_number", v); setBankVerified(false); }}
-                              onAccountNameChange={(v) => set("doctor_account_name", v)}
-                              onVerifiedChange={(verified) => {
-                                setBankVerified(verified);
-                                if (verified) {
-                                  setForm((prev) => {
-                                    if (prev.doctor_account_name) {
-                                      return { ...prev, doctor_name: prev.doctor_account_name };
-                                    }
-                                    return prev;
-                                  });
-                                }
-                              }}
-                              bankError={errors.doctor_bank_name}
-                              accountNumberError={errors.doctor_account_number}
-                              accountNameError={errors.doctor_account_name}
-                            />
-                            {!hasBankContent && (
-                              <div className="pt-1 border-t border-slate-100">
-                                <button
-                                  type="button"
-                                  onClick={() => {
-                                    setBankSkipped(true);
-                                    set("doctor_bank_name", "");
-                                    set("doctor_account_number", "");
-                                    set("doctor_account_name", "");
-                                  }}
-                                  className="text-xs text-slate-400 hover:text-slate-600 transition-colors underline underline-offset-2"
-                                >
-                                  Skip — I&apos;ll settle payment another way
-                                </button>
-                              </div>
+                {/* Bank details FIRST — optional, for referral payment */}
+                {(() => {
+                  const hasBankContent = bankVerified && !!(form.doctor_bank_name && form.doctor_account_number && form.doctor_account_name);
+                  return (
+                    <div className="space-y-2">
+                      <p className="text-xs font-semibold text-slate-400 uppercase tracking-wider">Bank Details <span className="font-normal normal-case">(optional)</span></p>
+                      {bankSkipped ? (
+                        <div className="flex items-center justify-between px-4 py-3 rounded-xl bg-slate-50 border border-slate-200">
+                          <p className="text-xs text-slate-500 font-medium">Bank details skipped</p>
+                          <button type="button" onClick={() => { setBankSkipped(false); setBankOpen(true); }} className="text-xs text-medical-600 hover:text-medical-800 font-semibold transition-colors">
+                            + Add details
+                          </button>
+                        </div>
+                      ) : (
+                        <div className={`rounded-xl border-2 overflow-hidden transition-colors ${hasBankContent ? "border-emerald-200 bg-emerald-50/30" : "border-slate-200"}`}>
+                          <button type="button" onClick={() => setBankOpen((v) => !v)} className={`w-full flex items-center justify-between px-4 py-3.5 transition-colors ${hasBankContent ? "hover:bg-emerald-50/50" : "hover:bg-slate-50 bg-slate-50/50"}`}>
+                            {hasBankContent ? (
+                              <span className="flex items-center gap-2"><Check className="w-4 h-4 text-emerald-500 shrink-0" /><span className="text-sm font-semibold text-slate-700">Bank details added</span></span>
+                            ) : (
+                              <span className="text-sm font-semibold text-slate-700">Add bank account</span>
                             )}
-                          </div>
-                        )}
-                      </div>
-                    );
-                  })()}
-                </div>
-
-                {/* Required fields */}
-                <Input
-                  label="Full Name"
-                  required
-                  placeholder="Firstname Lastname"
-                  hint={bankVerified && form.doctor_account_name ? "Pre-filled from bank — edit if needed" : undefined}
-                  value={form.doctor_name}
-                  onChange={(e) => set("doctor_name", e.target.value)}
-                  error={errors.doctor_name}
-                />
-                <Input
-                  label="Email"
-                  type="email"
-                  required
-                  placeholder="you@hospital.com"
-                  hint="You will receive request updates here"
-                  value={form.doctor_email}
-                  onChange={(e) => set("doctor_email", e.target.value)}
-                  error={errors.doctor_email}
-                />
-                <Input
-                  label="Hospital or Clinic"
-                  required
-                  placeholder="e.g. Lagos University Teaching Hospital"
-                  hint="Type 'private' if not affiliated with any hospital"
-                  value={form.doctor_hospital}
-                  onChange={(e) => set("doctor_hospital", e.target.value)}
-                  error={errors.doctor_hospital}
-                />
-
-                {/* Optional fields — collapsed by default */}
-                <div className="rounded-xl border border-slate-200 overflow-hidden">
-                  <button
-                    type="button"
-                    onClick={() => setDoctorOptionalOpen((v) => !v)}
-                    className="w-full flex items-center justify-between px-4 py-3 hover:bg-slate-50 transition-colors"
-                  >
-                    <span className="text-xs font-semibold text-slate-500">
-                      {doctorOptionalOpen ? "Hide" : "Add"} optional fields
-                      {(form.doctor_prefix || form.doctor_phone) && !doctorOptionalOpen && (
-                        <span className="ml-2 text-medical-600">·</span>
+                            <ChevronDown className={`w-4 h-4 transition-transform shrink-0 ${hasBankContent ? "text-emerald-500" : "text-slate-400"} ${bankOpen ? "rotate-180" : ""}`} />
+                          </button>
+                          {bankOpen && (
+                            <div className={`px-4 pb-4 pt-1 space-y-3 border-t ${hasBankContent ? "border-emerald-100 bg-emerald-50/20" : "border-slate-100"}`}>
+                              <BankAccountInput
+                                bankName={form.doctor_bank_name}
+                                bankCode={bankCode}
+                                accountNumber={form.doctor_account_number}
+                                accountName={form.doctor_account_name}
+                                onBankChange={(name, code) => { set("doctor_bank_name", name); setBankCode(code); setBankVerified(false); }}
+                                onAccountNumberChange={(v) => { set("doctor_account_number", v); setBankVerified(false); }}
+                                onAccountNameChange={(v) => set("doctor_account_name", v)}
+                                onVerifiedChange={(verified) => {
+                                  setBankVerified(verified);
+                                  if (verified) {
+                                    setForm((prev) => {
+                                      if (prev.doctor_account_name) return { ...prev, doctor_name: prev.doctor_account_name };
+                                      return prev;
+                                    });
+                                  }
+                                }}
+                                bankError={errors.doctor_bank_name}
+                                accountNumberError={errors.doctor_account_number}
+                                accountNameError={errors.doctor_account_name}
+                              />
+                              {!hasBankContent && (
+                                <div className="pt-1 border-t border-slate-100">
+                                  <button type="button" onClick={() => { setBankSkipped(true); set("doctor_bank_name", ""); set("doctor_account_number", ""); set("doctor_account_name", ""); }} className="text-xs text-slate-400 hover:text-slate-600 transition-colors underline underline-offset-2">
+                                    Skip — I&apos;ll settle payment another way
+                                  </button>
+                                </div>
+                              )}
+                            </div>
+                          )}
+                        </div>
                       )}
-                    </span>
-                    <ChevronDown className={`w-4 h-4 text-slate-400 transition-transform shrink-0 ${doctorOptionalOpen ? "rotate-180" : ""}`} />
-                  </button>
-                  {doctorOptionalOpen && (
-                    <div className="px-4 pb-4 pt-1 space-y-4 border-t border-slate-100">
-                      <PrefixSelect
-                        value={form.doctor_prefix}
-                        onChange={(v) => set("doctor_prefix", v)}
-                      />
-                      <PhoneInput
-                        label="Phone"
-                        value={form.doctor_phone}
-                        onChange={(v) => set("doctor_phone", v)}
-                      />
+                    </div>
+                  );
+                })()}
+
+                {/* Progressive substep fields */}
+                <div className="relative pt-1">
+                  {/* Substep 1: Title/Prefix */}
+                  <div className="relative flex gap-4">
+                    <div className="flex flex-col items-center shrink-0 pt-1">
+                      <div className={`w-8 h-8 rounded-full flex items-center justify-center text-xs font-bold border-2 transition-all shrink-0 ${form.doctor_prefix ? "bg-emerald-500 border-emerald-500 text-white" : "bg-white border-medical-400 text-medical-600"}`}>
+                        {form.doctor_prefix ? <Check className="w-4 h-4" /> : "1"}
+                      </div>
+                      <div className="w-0.5 flex-1 min-h-6 bg-slate-200 mt-1" />
+                    </div>
+                    <div className="flex-1 pb-5 min-w-0">
+                      <PrefixSelect value={form.doctor_prefix} onChange={(v) => set("doctor_prefix", v)} />
+                    </div>
+                  </div>
+
+                  {/* Substep 2: Full Name */}
+                  {form.doctor_prefix && (
+                    <div className="relative flex gap-4 animate-fade-in-up">
+                      <div className="flex flex-col items-center shrink-0 pt-1">
+                        <div className={`w-8 h-8 rounded-full flex items-center justify-center text-xs font-bold border-2 transition-all shrink-0 ${form.doctor_name.trim().length >= 2 ? "bg-emerald-500 border-emerald-500 text-white" : "bg-white border-medical-400 text-medical-600"}`}>
+                          {form.doctor_name.trim().length >= 2 ? <Check className="w-4 h-4" /> : "2"}
+                        </div>
+                        <div className="w-0.5 flex-1 min-h-6 bg-slate-200 mt-1" />
+                      </div>
+                      <div className="flex-1 pb-5 min-w-0">
+                        <Input label="Full Name" required placeholder="Firstname Lastname" hint={bankVerified && form.doctor_account_name ? "Pre-filled from bank — edit if needed" : undefined} value={form.doctor_name} onChange={(e) => set("doctor_name", e.target.value)} error={errors.doctor_name} />
+                      </div>
+                    </div>
+                  )}
+
+                  {/* Substep 3: Email */}
+                  {form.doctor_prefix && form.doctor_name.trim().length >= 2 && (
+                    <div className="relative flex gap-4 animate-fade-in-up">
+                      <div className="flex flex-col items-center shrink-0 pt-1">
+                        <div className={`w-8 h-8 rounded-full flex items-center justify-center text-xs font-bold border-2 transition-all shrink-0 ${/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(form.doctor_email) ? "bg-emerald-500 border-emerald-500 text-white" : "bg-white border-medical-400 text-medical-600"}`}>
+                          {/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(form.doctor_email) ? <Check className="w-4 h-4" /> : "3"}
+                        </div>
+                        <div className="w-0.5 flex-1 min-h-6 bg-slate-200 mt-1" />
+                      </div>
+                      <div className="flex-1 pb-5 min-w-0">
+                        <Input label="Email" type="email" required placeholder="you@hospital.com" hint="You will receive request updates here" value={form.doctor_email} onChange={(e) => set("doctor_email", e.target.value)} error={errors.doctor_email} />
+                      </div>
+                    </div>
+                  )}
+
+                  {/* Substep 4: Phone */}
+                  {form.doctor_prefix && form.doctor_name.trim().length >= 2 && /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(form.doctor_email) && (
+                    <div className="relative flex gap-4 animate-fade-in-up">
+                      <div className="flex flex-col items-center shrink-0 pt-1">
+                        <div className={`w-8 h-8 rounded-full flex items-center justify-center text-xs font-bold border-2 transition-all shrink-0 ${form.doctor_phone.trim() ? "bg-emerald-500 border-emerald-500 text-white" : "bg-white border-medical-400 text-medical-600"}`}>
+                          {form.doctor_phone.trim() ? <Check className="w-4 h-4" /> : "4"}
+                        </div>
+                        <div className="w-0.5 flex-1 min-h-6 bg-slate-200 mt-1" />
+                      </div>
+                      <div className="flex-1 pb-5 min-w-0">
+                        <PhoneInput label="Phone" required value={form.doctor_phone} onChange={(v) => set("doctor_phone", v)} error={errors.doctor_phone} />
+                      </div>
+                    </div>
+                  )}
+
+                  {/* Substep 5: Hospital */}
+                  {form.doctor_prefix && form.doctor_name.trim().length >= 2 && /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(form.doctor_email) && form.doctor_phone.trim() && (
+                    <div className="relative flex gap-4 animate-fade-in-up">
+                      <div className="flex flex-col items-center shrink-0 pt-1">
+                        <div className={`w-8 h-8 rounded-full flex items-center justify-center text-xs font-bold border-2 transition-all shrink-0 ${form.doctor_hospital.trim() ? "bg-emerald-500 border-emerald-500 text-white" : "bg-white border-medical-400 text-medical-600"}`}>
+                          {form.doctor_hospital.trim() ? <Check className="w-4 h-4" /> : "5"}
+                        </div>
+                      </div>
+                      <div className="flex-1 pb-2 min-w-0">
+                        <Input label="Hospital or Clinic" required placeholder="e.g. Lagos University Teaching Hospital" hint="Type 'private' if not affiliated with any hospital" value={form.doctor_hospital} onChange={(e) => set("doctor_hospital", e.target.value)} error={errors.doctor_hospital} />
+                      </div>
                     </div>
                   )}
                 </div>
@@ -1807,180 +1812,158 @@ export function DoctorRequestForm({
               <span className="text-xs text-slate-400 font-normal ml-1">(all optional)</span>
             </h2>
 
-            {/* Patient information section */}
-            <div className="space-y-4 animate-fade-in-up">
-              <p className="text-xs font-semibold text-slate-400 uppercase tracking-wider">Patient Information</p>
-              <Input
-                label="Patient Full Name"
-                placeholder="e.g. Amara Okonkwo"
-                value={form.patient_name}
-                onChange={(e) => set("patient_name", e.target.value)}
-              />
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                <DobInput
-                  value={form.dob}
-                  onChange={(iso) => set("dob", iso)}
-                />
-                {/* Sex selector */}
-                <div className="flex flex-col gap-1">
-                  <label className="text-sm font-medium text-slate-700">
-                    Sex <span className="text-xs text-slate-400 font-normal">(optional)</span>
-                  </label>
-                  <div className="flex gap-2">
-                    {(["male", "female"] as const).map((s) => (
-                      <button
-                        key={s}
-                        type="button"
-                        onClick={() => set("sex", form.sex === s ? "" : s)}
-                        className={`flex items-center gap-2 px-4 py-2.5 rounded-xl border-2 transition-all text-sm font-semibold ${
-                          form.sex === s
-                            ? "border-medical-400 bg-medical-50 text-medical-700"
-                            : "border-slate-200 bg-white/60 text-slate-500 hover:border-slate-300 hover:bg-slate-50"
-                        }`}
-                      >
-                        {s === "male"
-                          ? <MarsIcon className={`w-4 h-4 ${form.sex === s ? "text-medical-500" : "text-slate-400"}`} />
-                          : <VenusIcon className={`w-4 h-4 ${form.sex === s ? "text-medical-500" : "text-slate-400"}`} />}
-                        {s.charAt(0).toUpperCase() + s.slice(1)}
-                      </button>
-                    ))}
-                  </div>
-                </div>
-              </div>
-
-              {/* Address collapsible */}
-              {form.address ? (
-                <div className="border-2 border-emerald-200 bg-emerald-50/30 rounded-xl overflow-hidden">
-                  <button
-                    type="button"
-                    onClick={() => setContactOpen((v) => !v)}
-                    className="w-full flex items-center justify-between px-4 py-3.5 hover:bg-emerald-50/50 transition-colors"
-                  >
-                    <span className="flex items-center gap-2">
-                      <Check className="w-4 h-4 text-emerald-500 shrink-0" />
-                      <span className="text-sm font-semibold text-slate-700">Address added</span>
-                    </span>
-                    <ChevronDown className={`w-4 h-4 text-emerald-500 transition-transform shrink-0 ${contactOpen ? "rotate-180" : ""}`} />
+            {/* Patient information — collapsible */}
+            {(() => {
+              const hasPatientData = !!(form.patient_name || form.dob || form.sex || form.address);
+              return (
+                <div className={`rounded-xl border-2 overflow-hidden transition-colors ${hasPatientData ? "border-emerald-200 bg-emerald-50/30" : "border-slate-200"}`}>
+                  <button type="button" onClick={() => setPatientInfoOpen((v) => !v)} className={`w-full flex items-center justify-between px-4 py-3.5 transition-colors ${hasPatientData ? "hover:bg-emerald-50/50" : "hover:bg-slate-50 bg-slate-50/50"}`}>
+                    {hasPatientData ? (
+                      <span className="flex items-center gap-2"><Check className="w-4 h-4 text-emerald-500 shrink-0" /><span className="text-sm font-semibold text-slate-700">Patient details added</span></span>
+                    ) : (
+                      <div className="flex items-center gap-2">
+                        <User className="w-4 h-4 text-slate-400 shrink-0" />
+                        <div className="text-left">
+                          <span className="text-sm font-semibold text-slate-700">Patient Details</span>
+                          <span className="text-xs text-slate-400 ml-2">Name, age, sex, address</span>
+                        </div>
+                      </div>
+                    )}
+                    <ChevronDown className={`w-4 h-4 transition-transform shrink-0 ${hasPatientData ? "text-emerald-500" : "text-slate-400"} ${patientInfoOpen ? "rotate-180" : ""}`} />
                   </button>
-                  {contactOpen && (
-                    <div className="px-4 pb-4 pt-1 border-t border-emerald-100 bg-emerald-50/20">
-                      <Input
-                        label="Patient Address"
-                        placeholder="Home address"
-                        value={form.address}
-                        onChange={(e) => set("address", e.target.value)}
-                      />
+                  {patientInfoOpen && (
+                    <div className={`px-4 pb-4 pt-2 space-y-4 border-t ${hasPatientData ? "border-emerald-100 bg-emerald-50/20" : "border-slate-100"}`}>
+                      <Input label="Patient Full Name" placeholder="e.g. Amara Okonkwo" value={form.patient_name} onChange={(e) => set("patient_name", e.target.value)} />
+                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                        <DobInput value={form.dob} onChange={(iso) => set("dob", iso)} />
+                        <div className="flex flex-col gap-1">
+                          <label className="text-sm font-medium text-slate-700">Sex <span className="text-xs text-slate-400 font-normal">(optional)</span></label>
+                          <div className="flex gap-2">
+                            {(["male", "female"] as const).map((s) => (
+                              <button key={s} type="button" onClick={() => set("sex", form.sex === s ? "" : s)} className={`flex items-center gap-2 px-4 py-2.5 rounded-xl border-2 transition-all text-sm font-semibold ${form.sex === s ? "border-medical-400 bg-medical-50 text-medical-700" : "border-slate-200 bg-white/60 text-slate-500 hover:border-slate-300 hover:bg-slate-50"}`}>
+                                {s === "male" ? <MarsIcon className={`w-4 h-4 ${form.sex === s ? "text-medical-500" : "text-slate-400"}`} /> : <VenusIcon className={`w-4 h-4 ${form.sex === s ? "text-medical-500" : "text-slate-400"}`} />}
+                                {s.charAt(0).toUpperCase() + s.slice(1)}
+                              </button>
+                            ))}
+                          </div>
+                        </div>
+                      </div>
+                      {/* Address */}
+                      {form.address ? (
+                        <div className="border-2 border-emerald-200 bg-emerald-50/30 rounded-xl overflow-hidden">
+                          <button type="button" onClick={() => setContactOpen((v) => !v)} className="w-full flex items-center justify-between px-4 py-3 hover:bg-emerald-50/50 transition-colors">
+                            <span className="flex items-center gap-2"><Check className="w-4 h-4 text-emerald-500 shrink-0" /><span className="text-sm font-semibold text-slate-700">Address added</span></span>
+                            <ChevronDown className={`w-4 h-4 text-emerald-500 transition-transform shrink-0 ${contactOpen ? "rotate-180" : ""}`} />
+                          </button>
+                          {contactOpen && <div className="px-4 pb-4 pt-1 border-t border-emerald-100"><Input label="Patient Address" placeholder="Home address" value={form.address} onChange={(e) => set("address", e.target.value)} /></div>}
+                        </div>
+                      ) : (
+                        <div className="border-2 border-slate-200 bg-slate-50/40 rounded-xl overflow-hidden">
+                          <button type="button" onClick={() => setContactOpen((v) => !v)} className="w-full flex items-center justify-between px-4 py-3 hover:bg-slate-50 transition-colors">
+                            <div className="flex items-center gap-2"><MapPin className="w-4 h-4 text-slate-400 shrink-0" /><span className="text-sm font-semibold text-slate-700">Patient Address <span className="text-xs text-slate-400 font-normal ml-1">optional</span></span></div>
+                            <ChevronDown className={`w-4 h-4 text-slate-400 transition-transform shrink-0 ${contactOpen ? "rotate-180" : ""}`} />
+                          </button>
+                          {contactOpen && <div className="px-4 pb-4 pt-1 border-t border-slate-100"><Input label="Patient Address" placeholder="Home address" value={form.address} onChange={(e) => set("address", e.target.value)} /></div>}
+                        </div>
+                      )}
                     </div>
                   )}
                 </div>
-              ) : (
-                <div className="border-2 border-slate-200 bg-slate-50/40 rounded-xl overflow-hidden">
-                  <button
-                    type="button"
-                    onClick={() => setContactOpen((v) => !v)}
-                    className="w-full flex items-center justify-between px-4 py-3.5 hover:bg-slate-50 transition-colors"
-                  >
-                    <div className="flex items-start gap-3">
-                      <MapPin className="w-4 h-4 text-slate-400 shrink-0 mt-0.5" />
-                      <div className="text-left">
-                        <span className="text-sm font-semibold text-slate-700">Patient Address</span>
-                        <p className="text-xs text-slate-400 mt-0.5">Optional — add patient home address</p>
+              );
+            })()}
+
+            {/* Schedule — collapsible */}
+            {(() => {
+              const sl: Record<string, string> = { today: "Today", this_week: "This Week", this_month: "This Month", not_sure: "Not Sure" };
+              return (
+                <div className={`rounded-xl border-2 overflow-hidden transition-colors ${form.schedule ? "border-emerald-200 bg-emerald-50/30" : "border-slate-200"}`}>
+                  <button type="button" onClick={() => setScheduleOpen((v) => !v)} className={`w-full flex items-center justify-between px-4 py-3.5 transition-colors ${form.schedule ? "hover:bg-emerald-50/50" : "hover:bg-slate-50 bg-slate-50/50"}`}>
+                    {form.schedule ? (
+                      <span className="flex items-center gap-2"><Check className="w-4 h-4 text-emerald-500 shrink-0" /><span className="text-sm font-semibold text-slate-700">Schedule: {sl[form.schedule]}</span></span>
+                    ) : (
+                      <div className="flex items-center gap-2">
+                        <CalendarDays className="w-4 h-4 text-slate-400 shrink-0" />
+                        <div className="text-left">
+                          <span className="text-sm font-semibold text-slate-700">Preferred Schedule</span>
+                          <span className="text-xs text-slate-400 ml-2">When will the patient come in?</span>
+                        </div>
+                      </div>
+                    )}
+                    <ChevronDown className={`w-4 h-4 transition-transform shrink-0 ${form.schedule ? "text-emerald-500" : "text-slate-400"} ${scheduleOpen ? "rotate-180" : ""}`} />
+                  </button>
+                  {scheduleOpen && (
+                    <div className={`px-4 pb-4 pt-3 border-t ${form.schedule ? "border-emerald-100 bg-emerald-50/20" : "border-slate-100"}`}>
+                      <div className="grid grid-cols-2 gap-3">
+                        {SCHEDULE_OPTIONS.map((opt) => {
+                          const selected = form.schedule === opt.value;
+                          return (
+                            <button key={opt.value} type="button" onClick={() => { set("schedule", selected ? "" : opt.value); if (!selected) setScheduleOpen(false); }} className={`flex flex-col items-start gap-1.5 p-4 rounded-2xl border-2 transition-all text-left ${selected ? "border-medical-400 bg-medical-50 ring-2 ring-medical-200" : "border-slate-200 bg-white/60 hover:border-slate-300 hover:bg-slate-50"}`}>
+                              <div className={`w-8 h-8 rounded-xl flex items-center justify-center ${selected ? "bg-medical-600" : "bg-slate-100"}`}>
+                                <opt.icon className={`w-4 h-4 ${selected ? "text-white" : "text-slate-400"}`} />
+                              </div>
+                              <span className={`text-sm font-semibold leading-tight ${selected ? "text-medical-800" : "text-slate-700"}`}>{opt.label}</span>
+                              <span className={`text-xs ${selected ? "text-medical-600" : "text-slate-400"}`}>{opt.desc}</span>
+                            </button>
+                          );
+                        })}
                       </div>
                     </div>
-                    <ChevronDown className={`w-4 h-4 text-slate-400 transition-transform shrink-0 ml-3 ${contactOpen ? "rotate-180" : ""}`} />
-                  </button>
-                  {contactOpen && (
-                    <div className="px-4 pb-4 pt-1 border-t border-slate-100 bg-slate-50/20">
-                      <Input
-                        label="Patient Address"
-                        placeholder="Home address"
-                        value={form.address}
-                        onChange={(e) => set("address", e.target.value)}
-                      />
-                    </div>
                   )}
                 </div>
-              )}
-            </div>
+              );
+            })()}
 
-            <div className="border-t border-slate-100" />
-
-            {/* Schedule section */}
+            {/* Critical condition / ambulance — beautiful cards */}
             <div className="space-y-3">
-              <p className="text-xs font-semibold text-slate-400 uppercase tracking-wider">Preferred Schedule</p>
-              <p className="text-sm text-slate-500">When does the patient plan to carry out these tests?</p>
-              <div className="grid grid-cols-2 gap-3">
-                {SCHEDULE_OPTIONS.map((opt) => {
-                  const selected = form.schedule === opt.value;
-                  return (
-                    <button
-                      key={opt.value}
-                      type="button"
-                      onClick={() => set("schedule", selected ? "" : opt.value)}
-                      className={`flex flex-col items-start gap-1.5 p-4 rounded-2xl border-2 transition-all text-left ${
-                        selected
-                          ? "border-medical-400 bg-medical-50 ring-2 ring-medical-200"
-                          : "border-slate-200 bg-white/60 hover:border-slate-300 hover:bg-slate-50"
-                      }`}
-                    >
-                      <div className={`w-8 h-8 rounded-xl flex items-center justify-center ${selected ? "bg-medical-600" : "bg-slate-100"}`}>
-                        <opt.icon className={`w-4 h-4 ${selected ? "text-white" : "text-slate-400"}`} />
-                      </div>
-                      <span className={`text-sm font-semibold leading-tight ${selected ? "text-medical-800" : "text-slate-700"}`}>{opt.label}</span>
-                      <span className={`text-xs ${selected ? "text-medical-600" : "text-slate-400"}`}>{opt.desc}</span>
-                    </button>
-                  );
-                })}
-              </div>
-              {!form.schedule && (
-                <p className="text-xs text-center text-slate-400">You can skip this — it helps the lab plan resources</p>
-              )}
-            </div>
+              <p className="text-xs font-semibold text-slate-400 uppercase tracking-wider">Patient Condition</p>
+              <div className="grid grid-cols-1 gap-3">
+                {/* Critical card */}
+                <button
+                  type="button"
+                  onClick={() => setIsCritical((v) => !v)}
+                  className={`relative flex items-center gap-4 p-4 rounded-2xl border-2 text-left transition-all ${isCritical ? "border-red-400 bg-gradient-to-r from-red-50 to-red-50/30 shadow-sm shadow-red-100" : "border-slate-200 bg-white hover:border-red-200 hover:bg-red-50/20"}`}
+                >
+                  <div className={`w-11 h-11 rounded-2xl flex items-center justify-center shrink-0 transition-all ${isCritical ? "bg-red-500 shadow-md shadow-red-200" : "bg-slate-100"}`}>
+                    <AlertTriangle className={`w-5 h-5 ${isCritical ? "text-white" : "text-slate-400"}`} />
+                  </div>
+                  <div className="flex-1 min-w-0">
+                    <p className={`text-sm font-bold leading-tight ${isCritical ? "text-red-800" : "text-slate-700"}`}>Patient is in critical condition</p>
+                    <p className={`text-xs mt-1 leading-relaxed ${isCritical ? "text-red-500" : "text-slate-400"}`}>Flags request as urgent for immediate lab attention</p>
+                  </div>
+                  <div className={`w-5 h-5 rounded-full border-2 flex items-center justify-center shrink-0 transition-all ${isCritical ? "border-red-500 bg-red-500" : "border-slate-300"}`}>
+                    {isCritical && <Check className="w-3 h-3 text-white" />}
+                  </div>
+                </button>
 
-            {/* Critical condition / ambulance */}
-            <div className="rounded-xl border border-slate-200 bg-slate-50/50 overflow-hidden">
-              <div className="px-4 py-3 space-y-3">
-                <p className="text-xs font-semibold text-slate-500 uppercase tracking-wider">Patient Condition</p>
-                <label className="flex items-start gap-3 cursor-pointer group">
-                  <input
-                    type="checkbox"
-                    checked={isCritical}
-                    onChange={(e) => setIsCritical(e.target.checked)}
-                    className="mt-0.5 w-4 h-4 rounded border-slate-300 text-medical-600 focus:ring-medical-500 focus:ring-offset-0 shrink-0"
-                  />
-                  <div className="min-w-0">
-                    <span className="text-sm font-semibold text-slate-700 group-hover:text-slate-900 transition-colors">
-                      Patient is in critical condition
-                    </span>
-                    <p className="text-xs text-slate-400 mt-0.5">Flag this request as urgent / critical for the lab</p>
+                {/* Ambulance card */}
+                <button
+                  type="button"
+                  onClick={() => setNeedsAmbulance((v) => !v)}
+                  className={`relative flex items-center gap-4 p-4 rounded-2xl border-2 text-left transition-all ${needsAmbulance ? "border-orange-400 bg-gradient-to-r from-orange-50 to-orange-50/30 shadow-sm shadow-orange-100" : "border-slate-200 bg-white hover:border-orange-200 hover:bg-orange-50/20"}`}
+                >
+                  <div className={`w-11 h-11 rounded-2xl flex items-center justify-center shrink-0 transition-all ${needsAmbulance ? "bg-orange-500 shadow-md shadow-orange-200" : "bg-slate-100"}`}>
+                    <Truck className={`w-5 h-5 ${needsAmbulance ? "text-white" : "text-slate-400"}`} />
                   </div>
-                </label>
-                <label className="flex items-start gap-3 cursor-pointer group">
-                  <input
-                    type="checkbox"
-                    checked={needsAmbulance}
-                    onChange={(e) => setNeedsAmbulance(e.target.checked)}
-                    className="mt-0.5 w-4 h-4 rounded border-slate-300 text-medical-600 focus:ring-medical-500 focus:ring-offset-0 shrink-0"
-                  />
-                  <div className="min-w-0">
-                    <span className="text-sm font-semibold text-slate-700 group-hover:text-slate-900 transition-colors">
-                      Request ambulance service
-                    </span>
-                    <p className="text-xs text-slate-400 mt-0.5">Notify the lab that ambulance transport is needed</p>
+                  <div className="flex-1 min-w-0">
+                    <p className={`text-sm font-bold leading-tight ${needsAmbulance ? "text-orange-800" : "text-slate-700"}`}>Request ambulance service</p>
+                    <p className={`text-xs mt-1 leading-relaxed ${needsAmbulance ? "text-orange-500" : "text-slate-400"}`}>Notify the lab that transport is needed</p>
                   </div>
-                </label>
-                {needsAmbulance && (
-                  <div className="animate-fade-in-up">
-                    <Textarea
-                      label="Pickup address / ambulance notes"
-                      placeholder="Patient's pickup address or any relevant notes for the ambulance team…"
-                      rows={2}
-                      value={ambulanceNotes}
-                      onChange={(e) => setAmbulanceNotes(e.target.value)}
-                    />
+                  <div className={`w-5 h-5 rounded-full border-2 flex items-center justify-center shrink-0 transition-all ${needsAmbulance ? "border-orange-500 bg-orange-500" : "border-slate-300"}`}>
+                    {needsAmbulance && <Check className="w-3 h-3 text-white" />}
                   </div>
-                )}
+                </button>
               </div>
+              {needsAmbulance && (
+                <div className="animate-fade-in-up">
+                  <Textarea
+                    label="Pickup address / ambulance notes"
+                    placeholder="Patient's pickup address or any relevant notes for the ambulance team…"
+                    rows={2}
+                    value={ambulanceNotes}
+                    onChange={(e) => setAmbulanceNotes(e.target.value)}
+                  />
+                </div>
+              )}
             </div>
 
             {/* Review summary */}

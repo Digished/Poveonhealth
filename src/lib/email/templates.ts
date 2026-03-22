@@ -610,7 +610,6 @@ export function patientOtpEmail({
 // =============================================================================
 export function labNewRequest({
   labName,
-  requestCode,
   patientName,
   doctorName,
   doctorPhone,
@@ -626,7 +625,6 @@ export function labNewRequest({
   appUrl,
 }: {
   labName: string;
-  requestCode: string;
   patientName: string;
   doctorName: string;
   doctorPhone?: string;
@@ -677,16 +675,11 @@ export function labNewRequest({
 
     ${urgentBanner}
 
-    ${codeBox(requestCode)}
-
-    ${divider}
-
+    ${patientName ? `
     <h3 style="margin:0 0 16px;color:#0259a0;font-size:16px;font-weight:600;">Patient Information</h3>
-
     ${label("Patient Name")}
     ${value(patientName)}
-
-    ${divider}
+    ${divider}` : ""}
 
     <h3 style="margin:0 0 16px;color:#0259a0;font-size:16px;font-weight:600;">Requesting Doctor</h3>
 
