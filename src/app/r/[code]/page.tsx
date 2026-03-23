@@ -1,6 +1,7 @@
 import { notFound } from "next/navigation";
 import { prisma } from "@/lib/prisma";
 import { PoveonLogo } from "@/components/PoveonLogo";
+import { LabSplash } from "@/components/LabSplash";
 import Link from "next/link";
 import LabContactSection from "./LabContactSection";
 import { testsToCategories } from "@/lib/test-categories";
@@ -63,6 +64,9 @@ export default async function RequestDetailPage({ params }: Props) {
 
   return (
     <div className="min-h-dvh bg-gradient-to-br from-sky-50 via-blue-50 to-indigo-50">
+      {/* Branded splash — shows lab logo for ~1.6 s then fades out */}
+      <LabSplash logoUrl={lab.logo_url ?? null} labName={lab.name} />
+
       {/* Header */}
       <header className="bg-white/80 backdrop-blur-sm border-b border-white/60 shadow-sm">
         <div className="max-w-lg mx-auto px-4 py-3 flex items-center justify-between">

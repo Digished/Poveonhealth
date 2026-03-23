@@ -3,6 +3,7 @@ import { prisma } from "@/lib/prisma";
 import { DoctorRequestForm } from "@/components/DoctorRequestForm";
 import { TrustIndicators } from "@/components/TrustIndicators";
 import { PoveonLogo } from "@/components/PoveonLogo";
+import { LabSplash } from "@/components/LabSplash";
 
 interface LabSlugPageProps {
   params: { labSlug: string };
@@ -15,6 +16,7 @@ export default async function LabSlugPage({ params }: LabSlugPageProps) {
       id: true, name: true, hidden: true,
       address: true, phones: true, whatsapp: true,
       email: true, request_email: true,
+      logo_url: true,
     },
   });
 
@@ -64,6 +66,9 @@ export default async function LabSlugPage({ params }: LabSlugPageProps) {
 
   return (
     <div className="h-dvh flex flex-col bg-gradient-to-br from-sky-50 via-blue-50 to-indigo-50 overflow-hidden">
+      {/* Branded splash — fades out after ~1.6 s */}
+      <LabSplash logoUrl={lab.logo_url ?? null} labName={lab.name} />
+
       {/* Scrollable content area — page never scrolls, only this div does */}
       <main className="flex-1 overflow-y-auto overflow-x-hidden">
         <div className="max-w-2xl mx-auto px-4 pb-2">

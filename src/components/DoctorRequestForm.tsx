@@ -1244,6 +1244,11 @@ export function DoctorRequestForm({
     return true; // step 4 optional
   })();
 
+  // Whether the clinical section of step 2 is complete (upload mode: image present; type mode: diagnosis + tests)
+  const clinicalDone =
+    (clinicalMode === "picture" && !!testImageUrl) ||
+    (clinicalMode === "type" && !!form.diagnosis.trim() && testTags.length > 0);
+
   return (
     <div className="animate-fade-in">
       {/* Sticky header + step indicator */}
@@ -1362,18 +1367,18 @@ export function DoctorRequestForm({
                     disabled={!visited}
                     className={`rounded-full flex items-center justify-center transition-all border-2 focus:outline-none ${
                       done
-                        ? "w-7 h-7 bg-slate-700 text-white border-slate-700 cursor-pointer hover:bg-medical-600 hover:border-medical-600"
+                        ? "w-6 h-6 bg-slate-700 text-white border-slate-700 cursor-pointer hover:bg-medical-600 hover:border-medical-600"
                         : active
-                        ? "w-8 h-8 bg-slate-900 text-white border-slate-800 ring-4 ring-slate-900/10 cursor-default"
+                        ? "w-7 h-7 bg-slate-900 text-white border-slate-800 ring-2 ring-slate-900/10 cursor-default"
                         : visited
-                        ? "w-7 h-7 bg-slate-200 text-slate-500 border-slate-300 cursor-pointer hover:bg-medical-100 hover:border-medical-400"
-                        : "w-7 h-7 bg-white text-slate-300 border-slate-200 cursor-default"
+                        ? "w-6 h-6 bg-slate-200 text-slate-500 border-slate-300 cursor-pointer hover:bg-medical-100 hover:border-medical-400"
+                        : "w-6 h-6 bg-white text-slate-300 border-slate-200 cursor-default"
                     }`}
                     aria-label={visited ? `Go to step ${num}: ${s.title}` : s.title}
                   >
                     {done
-                      ? <Check className="w-3 h-3" />
-                      : <Icon className={active ? "w-3.5 h-3.5" : "w-3 h-3"} />}
+                      ? <Check className="w-2.5 h-2.5" />
+                      : <Icon className={active ? "w-3 h-3" : "w-2.5 h-2.5"} />}
                   </button>
                   <p className={`text-xs whitespace-nowrap overflow-hidden transition-all duration-300 ease-in-out hidden sm:block ${
                     scrolled ? "max-h-0 opacity-0 mt-0" : "max-h-5 opacity-100 mt-1"
@@ -1384,7 +1389,7 @@ export function DoctorRequestForm({
                   </p>
                 </div>
                 {i < STEPS.length - 1 && (
-                  <div className={`flex-1 h-0.5 mx-2 mb-4 rounded transition-all ${done ? "bg-slate-400" : "bg-slate-200"}`} />
+                  <div className={`flex-1 h-0.5 mx-1.5 mb-3 rounded transition-all ${done ? "bg-slate-400" : "bg-slate-200"}`} />
                 )}
               </div>
             );
@@ -1556,117 +1561,67 @@ export function DoctorRequestForm({
             </h2>
 
             <div className="relative pt-1">
-              {/* Substep 1: Patient Phone */}
-              <div className="relative flex gap-4">
+              {/* Substep 1: Clinical — upload or type, always visible first */}
+              <div className="relative flex gap-3">
                 <div className="flex flex-col items-center shrink-0 pt-1">
-                  <div className={`w-8 h-8 rounded-full flex items-center justify-center text-xs font-bold border-2 transition-all shrink-0 ${form.patient_phone.trim() ? "bg-emerald-500 border-emerald-500 text-white" : "bg-white border-medical-400 text-medical-600"}`}>
-                    {form.patient_phone.trim() ? <Check className="w-4 h-4" /> : "1"}
+                  <div className={`w-6 h-6 rounded-full flex items-center justify-center text-[10px] font-bold border-2 transition-all shrink-0 ${
+                    clinicalDone ? "bg-emerald-500 border-emerald-500 text-white" : "bg-white border-medical-400 text-medical-600"
+                  }`}>
+                    {clinicalDone ? <Check className="w-3 h-3" /> : "1"}
                   </div>
-                  <div className="w-0.5 flex-1 min-h-6 bg-slate-200 mt-1" />
+                  {clinicalDone && <div className="w-0.5 flex-1 min-h-4 bg-slate-200 mt-1" />}
                 </div>
-                <div className="flex-1 pb-5 min-w-0">
-                  <PhoneInput
-                    label="Patient Phone"
-                    required
-                    value={form.patient_phone}
-                    onChange={(v) => set("patient_phone", v)}
-                    error={errors.patient_phone}
-                  />
-                </div>
-              </div>
+                <div className="flex-1 pb-3 min-w-0 space-y-3">
+                  {/* Mode toggle */}
+                  <div className="flex gap-2 p-1 bg-slate-100 rounded-2xl">
+                    <button
+                      type="button"
+                      onClick={() => setClinicalMode("picture")}
+                      className={`flex-1 flex items-center justify-center gap-2 py-2.5 px-3 rounded-xl text-sm font-semibold transition-all ${
+                        clinicalMode === "picture" ? "bg-white shadow text-slate-800" : "text-slate-500 hover:text-slate-700"
+                      }`}
+                    >
+                      <Camera className="w-4 h-4" />
+                      Upload
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setClinicalMode("type")}
+                      className={`flex-1 flex items-center justify-center gap-2 py-2.5 px-3 rounded-xl text-sm font-semibold transition-all ${
+                        clinicalMode === "type" ? "bg-white shadow text-slate-800" : "text-slate-500 hover:text-slate-700"
+                      }`}
+                    >
+                      <Stethoscope className="w-4 h-4" />
+                      Type
+                    </button>
+                  </div>
 
-              {/* Substep 2: Patient Email — reveals after phone */}
-              {form.patient_phone.trim() && (
-                <div className="relative flex gap-4 animate-fade-in-up">
-                  <div className="flex flex-col items-center shrink-0 pt-1">
-                    <div className={`w-8 h-8 rounded-full flex items-center justify-center text-xs font-bold border-2 transition-all shrink-0 ${form.patient_email && /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(form.patient_email) ? "bg-emerald-500 border-emerald-500 text-white" : "bg-white border-medical-400 text-medical-600"}`}>
-                      {form.patient_email && /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(form.patient_email) ? <Check className="w-4 h-4" /> : "2"}
-                    </div>
-                    <div className="w-0.5 flex-1 min-h-6 bg-slate-200 mt-1" />
-                  </div>
-                  <div className="flex-1 pb-5 min-w-0">
-                    <div className="flex flex-col gap-1">
-                      <label htmlFor="patient_email" className="text-sm font-medium text-slate-700 flex items-center gap-2">
-                        Patient Email <span className="inline-block w-1.5 h-1.5 rounded-full bg-amber-400 ml-0.5 align-middle" aria-label="required" />
-                        <span className="text-xs bg-sky-100 text-sky-700 px-2 py-0.5 rounded-full font-medium">Tracks patient details</span>
-                      </label>
-                      <Input
-                        id="patient_email"
-                        type="email"
-                        placeholder="patient@example.com"
-                        hint="Used to send request code, track results, and auto-fill patient details from their portal"
-                        value={form.patient_email}
-                        onChange={(e) => set("patient_email", e.target.value)}
-                        error={errors.patient_email}
+                  {/* Type mode: diagnosis + tests */}
+                  {clinicalMode === "type" && (
+                    <div className="space-y-4 animate-fade-in-up">
+                      <Textarea
+                        label="Diagnosis / Clinical Notes"
+                        required
+                        placeholder="Brief clinical summary or working diagnosis…"
+                        rows={3}
+                        value={form.diagnosis}
+                        onChange={(e) => set("diagnosis", e.target.value)}
+                        error={errors.diagnosis}
+                      />
+                      <TestTagInput
+                        label="Laboratory Tests Requested"
+                        value={testTags}
+                        onChange={setTestTags}
+                        labId={form.lab_id}
+                        error={errors.tests}
                       />
                     </div>
-                  </div>
-                </div>
-              )}
+                  )}
 
-              {/* Substep 3: Clinical Details — upload or type, reveals after phone */}
-              {form.patient_phone.trim() && (
-                <div className="relative flex gap-4 animate-fade-in-up">
-                  <div className="flex flex-col items-center shrink-0 pt-1">
-                    <div className={`w-8 h-8 rounded-full flex items-center justify-center text-xs font-bold border-2 transition-all shrink-0 ${
-                      (clinicalMode === "picture" && testImageUrl) || (clinicalMode === "type" && form.diagnosis.trim() && testTags.length > 0)
-                        ? "bg-emerald-500 border-emerald-500 text-white"
-                        : "bg-white border-medical-400 text-medical-600"
-                    }`}>
-                      {(clinicalMode === "picture" && testImageUrl) || (clinicalMode === "type" && form.diagnosis.trim() && testTags.length > 0) ? <Check className="w-4 h-4" /> : "3"}
-                    </div>
-                  </div>
-                  <div className="flex-1 pb-2 min-w-0 space-y-4">
-                    {/* Mode toggle */}
-                    <div className="flex gap-2 p-1 bg-slate-100 rounded-2xl">
-                      <button
-                        type="button"
-                        onClick={() => setClinicalMode("picture")}
-                        className={`flex-1 flex items-center justify-center gap-2 py-2.5 px-3 rounded-xl text-sm font-semibold transition-all ${
-                          clinicalMode === "picture" ? "bg-white shadow text-slate-800" : "text-slate-500 hover:text-slate-700"
-                        }`}
-                      >
-                        <Camera className="w-4 h-4" />
-                        Upload
-                      </button>
-                      <button
-                        type="button"
-                        onClick={() => setClinicalMode("type")}
-                        className={`flex-1 flex items-center justify-center gap-2 py-2.5 px-3 rounded-xl text-sm font-semibold transition-all ${
-                          clinicalMode === "type" ? "bg-white shadow text-slate-800" : "text-slate-500 hover:text-slate-700"
-                        }`}
-                      >
-                        <Stethoscope className="w-4 h-4" />
-                        Type
-                      </button>
-                    </div>
-
-                    {/* Type mode: diagnosis + tests */}
-                    {clinicalMode === "type" && (
-                      <div className="space-y-4 animate-fade-in-up">
-                        <Textarea
-                          label="Diagnosis / Clinical Notes"
-                          required
-                          placeholder="Brief clinical summary or working diagnosis…"
-                          rows={3}
-                          value={form.diagnosis}
-                          onChange={(e) => set("diagnosis", e.target.value)}
-                          error={errors.diagnosis}
-                        />
-                        <TestTagInput
-                          label="Laboratory Tests Requested"
-                          value={testTags}
-                          onChange={setTestTags}
-                          labId={form.lab_id}
-                          error={errors.tests}
-                        />
-                      </div>
-                    )}
-
-                    {/* Picture mode: image upload */}
-                    {clinicalMode === "picture" && (
-                      <div className="space-y-3 animate-fade-in-up">
-                        <p className="text-sm text-slate-500">Upload a photo of the physical test request slip — we&apos;ll read it with AI and pre-fill the form for you.</p>
+                  {/* Picture mode: image upload */}
+                  {clinicalMode === "picture" && (
+                    <div className="space-y-3 animate-fade-in-up">
+                      <p className="text-sm text-slate-500">Upload a photo of the physical test request slip — we&apos;ll read it with AI and pre-fill the form for you.</p>
                         {testImageUrl ? (
                           <div className="space-y-2">
                             {/* Image thumbnail row */}
@@ -1883,6 +1838,55 @@ export function DoctorRequestForm({
                         )}
                       </div>
                     )}
+                  </div>
+                </div>
+              </div>
+
+              {/* Substep 2: Patient Phone — reveals when clinical is filled */}
+              {clinicalDone && (
+                <div className="relative flex gap-3 animate-fade-in-up">
+                  <div className="flex flex-col items-center shrink-0 pt-1">
+                    <div className={`w-6 h-6 rounded-full flex items-center justify-center text-[10px] font-bold border-2 transition-all shrink-0 ${form.patient_phone.trim() ? "bg-emerald-500 border-emerald-500 text-white" : "bg-white border-medical-400 text-medical-600"}`}>
+                      {form.patient_phone.trim() ? <Check className="w-3 h-3" /> : "2"}
+                    </div>
+                    {form.patient_phone.trim() && <div className="w-0.5 flex-1 min-h-4 bg-slate-200 mt-1" />}
+                  </div>
+                  <div className="flex-1 pb-3 min-w-0">
+                    <PhoneInput
+                      label="Patient Phone"
+                      required
+                      value={form.patient_phone}
+                      onChange={(v) => set("patient_phone", v)}
+                      error={errors.patient_phone}
+                    />
+                  </div>
+                </div>
+              )}
+
+              {/* Substep 3: Patient Email — reveals after phone */}
+              {clinicalDone && form.patient_phone.trim() && (
+                <div className="relative flex gap-3 animate-fade-in-up">
+                  <div className="flex flex-col items-center shrink-0 pt-1">
+                    <div className={`w-6 h-6 rounded-full flex items-center justify-center text-[10px] font-bold border-2 transition-all shrink-0 ${form.patient_email && /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(form.patient_email) ? "bg-emerald-500 border-emerald-500 text-white" : "bg-white border-medical-400 text-medical-600"}`}>
+                      {form.patient_email && /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(form.patient_email) ? <Check className="w-3 h-3" /> : "3"}
+                    </div>
+                  </div>
+                  <div className="flex-1 pb-2 min-w-0">
+                    <div className="flex flex-col gap-1">
+                      <label htmlFor="patient_email" className="text-sm font-medium text-slate-700 flex items-center gap-2">
+                        Patient Email <span className="inline-block w-1.5 h-1.5 rounded-full bg-amber-400 ml-0.5 align-middle" aria-label="required" />
+                        <span className="text-xs bg-sky-100 text-sky-700 px-2 py-0.5 rounded-full font-medium">Tracks patient details</span>
+                      </label>
+                      <Input
+                        id="patient_email"
+                        type="email"
+                        placeholder="patient@example.com"
+                        hint="Used to send request code, track results, and auto-fill patient details from their portal"
+                        value={form.patient_email}
+                        onChange={(e) => set("patient_email", e.target.value)}
+                        error={errors.patient_email}
+                      />
+                    </div>
                   </div>
                 </div>
               )}
