@@ -93,7 +93,7 @@ export function LabDashboard({ lab, isOwner = false, roleName = "Lab Owner", can
   const router = useRouter();
   const { isLight, toggle, themeClass } = useDashTheme("lab_dash_theme");
   const [mainView, setMainView] = useState<"requests" | "referrals" | "clients" | "analytics" | "activity" | "feedback" | "wallet">("requests");
-  const [walletData, setWalletData] = useState<{ balance: number; reveal_price: number; transactions: { id: string; type: string; direction: string; amount: number; balance_after: number; description: string | null; actor_email: string | null; created_at: string }[] } | null>(null);
+  const [walletData, setWalletData] = useState<{ balance: number; transactions: { id: string; type: string; direction: string; amount: number; balance_after: number; description: string | null; actor_email: string | null; created_at: string; request_id: string | null; test_breakdown: unknown; tests_raw: string | null }[] } | null>(null);
   const [walletLoading, setWalletLoading] = useState(false);
   const [mobileNavOpen, setMobileNavOpen] = useState(false);
   const [mobileHeaderOpen, setMobileHeaderOpen] = useState(false);
@@ -222,21 +222,6 @@ export function LabDashboard({ lab, isOwner = false, roleName = "Lab Owner", can
   }, [mainView, fetchReferrals, fetchClients, isOwner, canViewReferrals, canViewClients]);
 
   const tabRequests = requests.filter((r) => r.status === activeTab);
-
-  // Find a request that matches the code input as user types — auto-switch tab when found
-  const codeNormalized = codeInput.trim().toUpperCase();
-  const codeMatch = codeNormalized.length >= 3
-    ? requests.find((r) => r.code === codeNormalized || r.code.startsWith(codeNormalized))
-    : null;
-
-  // When a match is found in a different tab, switch to that tab automatically
-  useEffect(() => {
-    if (codeMatch && codeMatch.status !== activeTab) {
-      setActiveTab(codeMatch.status as RequestStatus);
-      setSelectedRequest(null);
-    }
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [codeMatch?.id]);
 
   async function handleRetrieve() {
     const code = codeInput.trim().toUpperCase();
@@ -1842,9 +1827,7 @@ export function LabDashboard({ lab, isOwner = false, roleName = "Lab Owner", can
                       }
                     }}
                     className={`w-full text-left p-4 rounded-xl border transition-all ${
-                      codeMatch?.id === req.id
-                        ? "bg-medical-900/60 border-medical-500/60 ring-2 ring-medical-500/40"
-                        : selectedRequest?.id === req.id
+                      selectedRequest?.id === req.id
                         ? "bg-white/15 border-white/30"
                         : "bg-white/5 border-white/10 hover:bg-white/10"
                     }`}
@@ -1859,10 +1842,12 @@ export function LabDashboard({ lab, isOwner = false, roleName = "Lab Owner", can
                                 {req.sex ?? "—"}{req.dob ? ` · ${calcAge(req.dob)} yrs` : ""}
                               </span>
                             </div>
-                            <p className="text-sm text-slate-300 line-clamp-2">
-                              <span className="text-slate-500 font-medium">Tests: </span>
-                              {displayTests(req.tests)}
-                            </p>
+                            <div className="mt-1.5">
+                              <p className="text-xs text-slate-500 font-semibold uppercase tracking-wider mb-1">Tests Requested</p>
+                              <p className="text-sm font-semibold text-white leading-snug line-clamp-2">
+                                {displayTests(req.tests)}
+                              </p>
+                            </div>
                             <div className="flex items-center gap-2 mt-1 flex-wrap">
                               <p className="text-xs text-slate-500 flex items-center gap-1">
                                 <Calendar className="w-3 h-3" />
@@ -1894,10 +1879,12 @@ export function LabDashboard({ lab, isOwner = false, roleName = "Lab Owner", can
                                 {format(new Date(req.created_at), "dd MMM yyyy")}
                               </span>
                             </div>
-                            <p className="mt-1.5 text-xs text-slate-400 line-clamp-1">
-                              <span className="text-slate-500 font-medium">Tests: </span>
-                              {displayTests(req.tests)}
-                            </p>
+                            <div className="mt-1.5">
+                              <p className="text-xs text-slate-500 font-semibold uppercase tracking-wider mb-0.5">Tests</p>
+                              <p className="text-sm font-semibold text-white line-clamp-1">
+                                {displayTests(req.tests)}
+                              </p>
+                            </div>
                             {scheduleLabel(req.schedule) && (
                               <span className="mt-1 inline-flex text-xs bg-emerald-900/40 text-emerald-400 border border-emerald-800/30 px-2 py-0.5 rounded-full">
                                 {scheduleLabel(req.schedule)}
@@ -2369,7 +2356,13 @@ export function LabDashboard({ lab, isOwner = false, roleName = "Lab Owner", can
           );
         })()}
 
-        {/* Lab Profile modal */}
+        </div>
+        )} {/* end mainView === "requests" */}
+
+        {/* Change Password modal */}
+        {changePasswordOpen && <ChangePasswordModal onClose={() => setChangePasswordOpen(false)} />}
+
+        {/* Lab Profile modal — global so it works from any tab */}
         {profileOpen && (
           <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center bg-black/60 backdrop-blur-sm px-0 sm:px-4">
             <div className="w-full sm:max-w-lg bg-slate-900 border border-white/15 rounded-t-2xl sm:rounded-2xl max-h-[92vh] overflow-y-auto animate-slide-up">
@@ -2510,12 +2503,6 @@ export function LabDashboard({ lab, isOwner = false, roleName = "Lab Owner", can
             </div>
           </div>
         )}
-
-        </div>
-        )} {/* end mainView === "requests" */}
-
-        {/* Change Password modal */}
-        {changePasswordOpen && <ChangePasswordModal onClose={() => setChangePasswordOpen(false)} />}
 
         {/* Mobile detail modal */}
         {mainView === "requests" && mobileDetailOpen && selectedRequest && (
@@ -3101,11 +3088,32 @@ function LabFeedbackView({ labId }: { labId: string }) {
 // =============================================================================
 // Lab Wallet View
 // =============================================================================
-type WalletTxn = { id: string; type: string; direction: string; amount: number; balance_after: number; description: string | null; actor_email: string | null; created_at: string };
-type WalletViewData = { balance: number; reveal_price: number; transactions: WalletTxn[] } | null;
+type BreakdownItem = { raw: string; canonical_name: string; category: string; unit_price: number; confidence: number };
+type WalletTxn = {
+  id: string; type: string; direction: string; amount: number; balance_after: number;
+  description: string | null; actor_email: string | null; created_at: string;
+  request_id: string | null; test_breakdown: unknown; tests_raw: string | null;
+};
+type WalletViewData = { balance: number; transactions: WalletTxn[] } | null;
 
 function LabWalletView({ walletData, loading, onLoad }: { walletData: WalletViewData; loading: boolean; onLoad: () => void }) {
+  const [expandedTxn, setExpandedTxn] = useState<string | null>(null);
+  const [showSchedule, setShowSchedule] = useState(false);
+  const [schedule, setSchedule] = useState<{ category: string; tests: { id: string; name: string; effective_price: number; is_custom: boolean; is_rapid_test: boolean }[] }[]>([]);
+  const [scheduleLoading, setScheduleLoading] = useState(false);
+  const [scheduleSearch, setScheduleSearch] = useState("");
+
   useEffect(() => { if (!walletData) onLoad(); }, [walletData, onLoad]);
+
+  async function loadSchedule() {
+    if (schedule.length > 0) { setShowSchedule(true); return; }
+    setScheduleLoading(true);
+    const res = await fetch("/api/lab/price-schedule");
+    const data = await res.json();
+    setSchedule(data.schedule ?? []);
+    setScheduleLoading(false);
+    setShowSchedule(true);
+  }
 
   if (loading) {
     return (
@@ -3118,10 +3126,16 @@ function LabWalletView({ walletData, loading, onLoad }: { walletData: WalletView
   }
 
   const balance = walletData?.balance ?? 0;
-  const revealPrice = walletData?.reveal_price ?? 500;
   const transactions = walletData?.transactions ?? [];
-  const isLow = balance < revealPrice * 5;
   const isNegative = balance < 0;
+  const isLow = !isNegative && balance < 5000;
+
+  const filteredSchedule = scheduleSearch.trim()
+    ? schedule.map((g) => ({
+        ...g,
+        tests: g.tests.filter((t) => t.name.toLowerCase().includes(scheduleSearch.toLowerCase())),
+      })).filter((g) => g.tests.length > 0)
+    : schedule;
 
   return (
     <div className="space-y-6">
@@ -3132,26 +3146,72 @@ function LabWalletView({ walletData, loading, onLoad }: { walletData: WalletView
         <p className={`text-5xl font-bold font-mono ${isNegative ? "text-red-400" : isLow ? "text-amber-400" : "text-emerald-300"}`}>
           ₦{balance.toLocaleString()}
         </p>
-        {isNegative && (
-          <p className="mt-3 text-sm text-red-400 font-semibold">Your wallet is overdrawn. Please contact support to top up.</p>
-        )}
-        {!isNegative && isLow && (
-          <p className="mt-3 text-sm text-amber-400">Your balance is running low. Contact your account manager to top up.</p>
-        )}
+        {isNegative && <p className="mt-3 text-sm text-red-400 font-semibold">Your wallet is overdrawn. Please contact support to top up.</p>}
+        {isLow && <p className="mt-3 text-sm text-amber-400">Your balance is running low. Contact your account manager to top up.</p>}
       </div>
 
       {/* Info card */}
       <div className="bg-white/5 border border-white/10 rounded-2xl px-5 py-4 flex items-start gap-3">
         <CreditCard className="w-4 h-4 text-slate-400 mt-0.5 shrink-0" />
-        <div className="space-y-1">
+        <div className="space-y-1 flex-1">
           <p className="text-sm font-semibold text-white">How charges work</p>
           <p className="text-xs text-slate-400 leading-relaxed">
-            Each time you mark a patient request as <strong className="text-white">Seen</strong> (revealing their full details),
-            <strong className="text-white"> ₦{revealPrice.toLocaleString()}</strong> is deducted from your wallet.
+            Each time you mark a patient request as <strong className="text-white">Seen</strong>, the total price of the requested tests is deducted from your wallet.
+            Prices are calculated per test at the time the request is submitted.
             Contact your Poveon account manager to top up your balance.
           </p>
+          <button
+            onClick={loadSchedule}
+            className="mt-2 text-xs text-medical-400 hover:text-medical-300 underline underline-offset-2"
+          >
+            {showSchedule ? "Hide price schedule" : "View your price schedule →"}
+          </button>
         </div>
       </div>
+
+      {/* Price schedule */}
+      {showSchedule && (
+        <div className="bg-white/5 border border-white/10 rounded-2xl p-5 space-y-4">
+          <div className="flex items-center justify-between">
+            <p className="text-sm font-semibold text-white">Your Price Schedule</p>
+            <button onClick={() => setShowSchedule(false)} className="text-slate-400 hover:text-white text-xs">Hide</button>
+          </div>
+          <input
+            value={scheduleSearch} onChange={(e) => setScheduleSearch(e.target.value)}
+            placeholder="Search test name..."
+            className="w-full bg-white/5 border border-white/10 rounded-xl px-3 py-2 text-white text-sm placeholder-slate-500 outline-none focus:ring-2 focus:ring-medical-500/50"
+          />
+          {scheduleLoading ? (
+            <p className="text-slate-400 text-sm">Loading...</p>
+          ) : filteredSchedule.length === 0 ? (
+            <p className="text-slate-400 text-sm">No tests found.</p>
+          ) : (
+            <div className="space-y-4 max-h-96 overflow-y-auto pr-1">
+              {filteredSchedule.map((group) => (
+                <div key={group.category}>
+                  <p className="text-xs font-semibold text-slate-400 uppercase tracking-wider mb-2">{group.category}</p>
+                  <div className="space-y-1">
+                    {group.tests.map((t) => (
+                      <div key={t.id} className="flex items-center justify-between px-3 py-2 rounded-lg bg-white/5">
+                        <div className="flex items-center gap-2">
+                          <span className="text-sm text-white">{t.name}</span>
+                          {t.is_rapid_test && <span className="text-xs bg-amber-500/20 text-amber-400 px-1.5 py-0.5 rounded-full">rapid</span>}
+                        </div>
+                        <div className="flex items-center gap-2">
+                          <span className={`text-sm font-mono ${t.is_custom ? "text-amber-300 font-semibold" : "text-slate-300"}`}>
+                            ₦{t.effective_price.toLocaleString()}
+                          </span>
+                          {t.is_custom && <span className="text-xs text-amber-500">custom</span>}
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+      )}
 
       {/* Transaction history */}
       <div>
@@ -3169,27 +3229,61 @@ function LabWalletView({ walletData, loading, onLoad }: { walletData: WalletView
           </div>
         ) : (
           <div className="space-y-2">
-            {transactions.map((txn) => (
-              <div key={txn.id} className="flex items-center gap-3 bg-white/5 border border-white/8 rounded-xl px-4 py-3.5">
-                <div className={`w-8 h-8 rounded-xl flex items-center justify-center shrink-0 ${txn.direction === "credit" ? "bg-emerald-500/15" : "bg-red-500/15"}`}>
-                  {txn.direction === "credit"
-                    ? <ArrowUpRight className="w-4 h-4 text-emerald-400" />
-                    : <ArrowDownRight className="w-4 h-4 text-red-400" />}
+            {transactions.map((txn) => {
+              const breakdown = Array.isArray(txn.test_breakdown) ? (txn.test_breakdown as BreakdownItem[]) : null;
+              const hasBreakdown = breakdown && breakdown.length > 0;
+              const isExpanded = expandedTxn === txn.id;
+
+              return (
+                <div key={txn.id} className="bg-white/5 border border-white/8 rounded-xl overflow-hidden">
+                  <div
+                    className={`flex items-center gap-3 px-4 py-3.5 ${hasBreakdown ? "cursor-pointer hover:bg-white/8" : ""}`}
+                    onClick={() => hasBreakdown && setExpandedTxn(isExpanded ? null : txn.id)}
+                  >
+                    <div className={`w-8 h-8 rounded-xl flex items-center justify-center shrink-0 ${txn.direction === "credit" ? "bg-emerald-500/15" : "bg-red-500/15"}`}>
+                      {txn.direction === "credit"
+                        ? <ArrowUpRight className="w-4 h-4 text-emerald-400" />
+                        : <ArrowDownRight className="w-4 h-4 text-red-400" />}
+                    </div>
+                    <div className="flex-1 min-w-0">
+                      <p className="text-sm text-white truncate">
+                        {txn.description ?? (txn.type === "topup" ? "Wallet top-up" : txn.type === "deduction" ? "Request charge" : "Adjustment")}
+                      </p>
+                      <p className="text-xs text-slate-500">{format(new Date(txn.created_at), "dd MMM yyyy · HH:mm")}</p>
+                    </div>
+                    <div className="text-right shrink-0">
+                      <p className={`text-sm font-bold font-mono ${txn.direction === "credit" ? "text-emerald-400" : "text-white"}`}>
+                        {txn.direction === "credit" ? "+" : "-"}₦{txn.amount.toLocaleString()}
+                      </p>
+                      <p className="text-xs text-slate-500 font-mono">bal: ₦{txn.balance_after.toLocaleString()}</p>
+                    </div>
+                    {hasBreakdown && (
+                      <ChevronDown className={`w-4 h-4 text-slate-500 shrink-0 transition-transform ${isExpanded ? "rotate-180" : ""}`} />
+                    )}
+                  </div>
+
+                  {/* Test breakdown drill-down */}
+                  {isExpanded && breakdown && (
+                    <div className="border-t border-white/8 px-4 pb-3 pt-2 space-y-1.5">
+                      <p className="text-xs text-slate-500 font-medium mb-2">Test breakdown</p>
+                      {breakdown.map((item, i) => (
+                        <div key={i} className="flex items-center justify-between text-xs">
+                          <div className="flex items-center gap-2 min-w-0">
+                            <span className="text-white truncate">{item.canonical_name}</span>
+                            <span className="text-slate-500 shrink-0">{item.category}</span>
+                          </div>
+                          <span className="font-mono text-slate-300 shrink-0">₦{item.unit_price.toLocaleString()}</span>
+                        </div>
+                      ))}
+                      <div className="flex items-center justify-between text-xs border-t border-white/8 pt-1.5 mt-1.5">
+                        <span className="text-slate-400 font-medium">Total charged</span>
+                        <span className="font-mono text-white font-bold">₦{txn.amount.toLocaleString()}</span>
+                      </div>
+                    </div>
+                  )}
                 </div>
-                <div className="flex-1 min-w-0">
-                  <p className="text-sm text-white truncate">
-                    {txn.description ?? (txn.type === "topup" ? "Wallet top-up" : txn.type === "deduction" ? "Test reveal charge" : "Adjustment")}
-                  </p>
-                  <p className="text-xs text-slate-500">{format(new Date(txn.created_at), "dd MMM yyyy · HH:mm")}</p>
-                </div>
-                <div className="text-right shrink-0">
-                  <p className={`text-sm font-bold font-mono ${txn.direction === "credit" ? "text-emerald-400" : "text-red-400"}`}>
-                    {txn.direction === "credit" ? "+" : "-"}₦{txn.amount.toLocaleString()}
-                  </p>
-                  <p className="text-xs text-slate-500 font-mono">bal: ₦{txn.balance_after.toLocaleString()}</p>
-                </div>
-              </div>
-            ))}
+              );
+            })}
           </div>
         )}
       </div>

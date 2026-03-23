@@ -1,0 +1,15 @@
+{
+  "compilerOptions": {
+    "lib": ["esnext"],
+    "allowJs": true,
+    "skipLibCheck": true,
+    "strict": true,
+    "esModuleInterop": true,
+    "module": "commonjs",
+    "moduleResolution": "node",
+    "resolveJsonModule": true,
+    "target": "es2020",
+    "outDir": ".seed-out"
+  },
+  "include": ["prisma/seed-tests.ts"]
+}

@@ -1,8 +1,10 @@
 import { notFound } from "next/navigation";
 import { prisma } from "@/lib/prisma";
 import { PoveonLogo } from "@/components/PoveonLogo";
+import { LabSplash } from "@/components/LabSplash";
 import Link from "next/link";
 import LabContactSection from "./LabContactSection";
+import { testsToCategories } from "@/lib/test-categories";
 
 interface Props {
   params: { code: string };
@@ -57,12 +59,14 @@ export default async function RequestDetailPage({ params }: Props) {
   const phones = parsePhones(lab.phones);
   const whatsapps = parseWhatsApp(lab.whatsapp);
   const st = STATUS_MAP[request.status] ?? STATUS_MAP.incoming;
-  const tests = request.tests && request.tests !== "See attached image"
-    ? request.tests.split(/[,\n]/).map((t) => t.trim()).filter(Boolean)
-    : [];
+  const testCategories = testsToCategories(request.tests ?? "");
+  const hasTestImage = request.test_image_url && request.tests === "See attached image";
 
   return (
     <div className="min-h-dvh bg-gradient-to-br from-sky-50 via-blue-50 to-indigo-50">
+      {/* Branded splash — shows lab logo for ~1.6 s then fades out */}
+      <LabSplash logoUrl={lab.logo_url ?? null} labName={lab.name} />
+
       {/* Header */}
       <header className="bg-white/80 backdrop-blur-sm border-b border-white/60 shadow-sm">
         <div className="max-w-lg mx-auto px-4 py-3 flex items-center justify-between">
@@ -142,32 +146,19 @@ export default async function RequestDetailPage({ params }: Props) {
         </div>
 
         {/* Tests card */}
-        {(tests.length > 0 || request.test_image_url) && (
+        {(testCategories.length > 0 || hasTestImage) && (
           <div className="bg-white rounded-2xl shadow-sm border border-slate-100 p-5">
             <p className="text-xs font-semibold text-slate-500 uppercase tracking-wider mb-3">Tests Requested</p>
-            {tests.length > 0 ? (
+            {testCategories.length > 0 ? (
               <div className="flex flex-wrap gap-2">
-                {tests.map((t, i) => (
+                {testCategories.map((cat, i) => (
                   <span key={i} className="text-sm bg-sky-50 text-sky-700 border border-sky-100 px-3 py-1 rounded-full">
-                    {t}
+                    {cat}
                   </span>
                 ))}
               </div>
             ) : (
               <p className="text-sm text-slate-500 italic">See attached test request image</p>
-            )}
-            {request.test_image_url && (
-              <a
-                href={request.test_image_url}
-                target="_blank"
-                rel="noopener noreferrer"
-                className="mt-3 inline-flex items-center gap-2 text-xs font-medium text-blue-600 hover:text-blue-800 transition"
-              >
-                <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15.172 7l-6.586 6.586a2 2 0 102.828 2.828l6.414-6.586a4 4 0 00-5.656-5.656l-6.415 6.585a6 6 0 108.486 8.486L20.5 13" />
-                </svg>
-                View test request image
-              </a>
             )}
           </div>
         )}

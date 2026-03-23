@@ -6,6 +6,7 @@ import { resend, labSender } from "@/lib/email/resend";
 import { doctorPatientArrived } from "@/lib/email/templates";
 import { logApiCall } from "@/lib/api-logger";
 import { getLabAuth } from "@/lib/lab-auth";
+import { deductWallet } from "@/lib/wallet-deduction";
 
 const RetrieveSchema = z.object({
   code: z.string().min(1).max(50).transform((s) => s.trim().toUpperCase()),
@@ -64,12 +65,15 @@ export async function POST(request: NextRequest) {
 
     const brand = req.lab.notification_email ? { name: req.lab.name } : undefined;
 
-    // Move incoming → seen and notify doctor
+    // Move incoming → seen: deduct wallet and notify doctor
     if (req.status === "incoming") {
       await prisma.request.update({
         where: { id: req.id },
         data: { status: "seen", seen_at: new Date() },
       });
+
+      // Wallet deduction — non-critical, does not block the reveal
+      await deductWallet(req);
 
       resend.emails.send({
         from: labSender(req.lab),

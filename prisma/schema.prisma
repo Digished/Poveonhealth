@@ -10,33 +10,35 @@ datasource db {
 
 // Registered laboratories
 model Lab {
-  id                  String    @id @default(uuid())
-  name                String
-  prefix              String    @unique
-  slug                String?   @unique  // URL-friendly identifier e.g. "apexlabs" → /apexlabs
-  address             String    @default("")
-  phones              Json      @default("[]")
-  email               String    @unique
-  description         String    @default("")
-  logo_url            String?
-  whatsapp            String?             // WhatsApp number for FAB contact buttons
-  notification_email  String?             // Branded "from" address for result/notification emails
-  request_email       String?             // Dedicated address for incoming new-request alerts
-  hidden              Boolean   @default(false)
-  service_categories  Json      @default("[]")
-  certifications      Json      @default("[]")
-  created_at          DateTime  @default(now())
+  id                 String   @id @default(uuid())
+  name               String
+  prefix             String   @unique
+  slug               String?  @unique // URL-friendly identifier e.g. "apexlabs" → /apexlabs
+  address            String   @default("")
+  phones             Json     @default("[]")
+  email              String   @unique
+  description        String   @default("")
+  logo_url           String?
+  whatsapp           String? // WhatsApp number for FAB contact buttons
+  notification_email String? // Branded "from" address for result/notification emails
+  request_email      String? // Dedicated address for incoming new-request alerts
+  hidden             Boolean  @default(false)
+  service_categories Json     @default("[]")
+  certifications     Json     @default("[]")
+  created_at         DateTime @default(now())
 
-  lab_users    LabUser[]
-  lab_members  LabMember[]
-  lab_roles    LabRole[]
-  api_keys     LabApiKey[]
-  requests     Request[]
-  branches     LabBranch[]        @relation("BranchParent")  // branches where this lab is the parent
-  branch_of    LabBranch[]        @relation("BranchChild")   // entries where this lab is a branch
-  feedbacks    LabFeedback[]
-  wallet       LabWallet?
-  transactions WalletTransaction[]
+  lab_users       LabUser[]
+  lab_members     LabMember[]
+  lab_roles       LabRole[]
+  api_keys        LabApiKey[]
+  requests        Request[]
+  branches        LabBranch[]         @relation("BranchParent") // branches where this lab is the parent
+  branch_of       LabBranch[]         @relation("BranchChild") // entries where this lab is a branch
+  feedbacks       LabFeedback[]
+  wallet          LabWallet?
+  transactions    WalletTransaction[]
+  lab_test_prices     LabTestPrice[]
+  lab_category_prices LabCategoryPrice[]
 
   @@map("labs")
 }
@@ -44,13 +46,13 @@ model Lab {
 // Links two existing Labs as parent/branch — branches are selected from existing labs
 model LabBranch {
   id            String   @id @default(uuid())
-  lab_id        String   // parent lab
-  branch_lab_id String?  // the branch (must be an existing Lab); nullable to allow migration from old schema
+  lab_id        String // parent lab
+  branch_lab_id String? // the branch (must be an existing Lab); nullable to allow migration from old schema
   is_main       Boolean  @default(false)
   created_at    DateTime @default(now())
 
   lab        Lab       @relation("BranchParent", fields: [lab_id], references: [id], onDelete: Cascade)
-  branch_lab Lab?      @relation("BranchChild",  fields: [branch_lab_id], references: [id], onDelete: Cascade)
+  branch_lab Lab?      @relation("BranchChild", fields: [branch_lab_id], references: [id], onDelete: Cascade)
   requests   Request[]
 
   @@unique([lab_id, branch_lab_id])
@@ -65,7 +67,7 @@ model LabUser {
   lab_id     String
   created_at DateTime @default(now())
 
-  lab        Lab      @relation(fields: [lab_id], references: [id], onDelete: Cascade)
+  lab Lab @relation(fields: [lab_id], references: [id], onDelete: Cascade)
 
   @@map("lab_users")
 }
@@ -79,8 +81,8 @@ model LabMember {
   role_id    String
   created_at DateTime @default(now())
 
-  lab        Lab      @relation(fields: [lab_id], references: [id], onDelete: Cascade)
-  role       LabRole  @relation(fields: [role_id], references: [id])
+  lab  Lab     @relation(fields: [lab_id], references: [id], onDelete: Cascade)
+  role LabRole @relation(fields: [role_id], references: [id])
 
   @@index([lab_id])
   @@map("lab_members")
@@ -88,23 +90,23 @@ model LabMember {
 
 // Granular, lab-defined roles (e.g., "Front Desk", "Results Uploader")
 model LabRole {
-  id                   String   @id @default(uuid())
-  lab_id               String
-  name                 String
+  id                  String   @id @default(uuid())
+  lab_id              String
+  name                String
   // Permission toggles
-  can_view_requests    Boolean  @default(true)
-  can_mark_seen        Boolean  @default(false)
-  can_mark_done        Boolean  @default(false)
-  can_send_results     Boolean  @default(false)
-  can_manage_team      Boolean  @default(false)
-  can_manage_api_keys  Boolean  @default(false)
-  can_view_referrals   Boolean  @default(false)
-  can_view_clients     Boolean  @default(false)
-  can_view_analytics   Boolean  @default(false)
-  can_view_activity    Boolean  @default(false)
-  can_view_feedback    Boolean  @default(false)
-  can_view_wallet      Boolean  @default(false)
-  created_at           DateTime @default(now())
+  can_view_requests   Boolean  @default(true)
+  can_mark_seen       Boolean  @default(false)
+  can_mark_done       Boolean  @default(false)
+  can_send_results    Boolean  @default(false)
+  can_manage_team     Boolean  @default(false)
+  can_manage_api_keys Boolean  @default(false)
+  can_view_referrals  Boolean  @default(false)
+  can_view_clients    Boolean  @default(false)
+  can_view_analytics  Boolean  @default(false)
+  can_view_activity   Boolean  @default(false)
+  can_view_feedback   Boolean  @default(false)
+  can_view_wallet     Boolean  @default(false)
+  created_at          DateTime @default(now())
 
   lab     Lab         @relation(fields: [lab_id], references: [id], onDelete: Cascade)
   members LabMember[]
@@ -116,16 +118,16 @@ model LabRole {
 
 // API keys for LIMS/developer integrations
 model LabApiKey {
-  id          String    @id @default(uuid())
-  lab_id      String
-  name        String
-  key_hash    String    @unique  // SHA-256 hash of the raw key
-  key_prefix  String             // First 8 chars for display (e.g., "pvn_live")
-  last_used   DateTime?
-  expires_at  DateTime?
-  created_at  DateTime  @default(now())
+  id         String    @id @default(uuid())
+  lab_id     String
+  name       String
+  key_hash   String    @unique // SHA-256 hash of the raw key
+  key_prefix String // First 8 chars for display (e.g., "pvn_live")
+  last_used  DateTime?
+  expires_at DateTime?
+  created_at DateTime  @default(now())
 
-  lab         Lab       @relation(fields: [lab_id], references: [id], onDelete: Cascade)
+  lab Lab @relation(fields: [lab_id], references: [id], onDelete: Cascade)
 
   @@index([lab_id])
   @@map("lab_api_keys")
@@ -145,7 +147,7 @@ model Request {
   id                    String    @id @default(uuid())
   code                  String    @unique
   lab_id                String
-  branch_id             String?   // Optional — set when a specific lab branch is selected
+  branch_id             String? // Optional — set when a specific lab branch is selected
   patient_name          String?
   dob                   DateTime? @db.Date
   sex                   String?
@@ -163,22 +165,24 @@ model Request {
   schedule              String?
   diagnosis             String?
   tests                 String
-  test_image_url        String?   // Optional photo/scan of the physical test request slip
-  is_critical           Boolean   @default(false)  // Patient marked as critical
-  needs_ambulance       Boolean   @default(false)  // Ambulance service requested
-  ambulance_notes       String?   // Pickup address / extra ambulance details
+  quoted_price          Decimal?  @db.Decimal(12, 2) // price snapshot at creation time
+  test_breakdown        Json? // [{ raw, canonical_id, canonical_name, category, unit_price, confidence }]
+  test_image_url        String? // Optional photo/scan of the physical test request slip
+  is_critical           Boolean   @default(false) // Patient marked as critical
+  needs_ambulance       Boolean   @default(false) // Ambulance service requested
+  ambulance_notes       String? // Pickup address / extra ambulance details
   status                String    @default("incoming")
-  result_link           String?   // URL to online results (stored when lab sends results)
-  result_note           String?   // Lab note sent with results
-  result_file_urls      String[]  @default([])  // URLs of uploaded result files in Supabase Storage
+  result_link           String? // URL to online results (stored when lab sends results)
+  result_note           String? // Lab note sent with results
+  result_file_urls      String[]  @default([]) // URLs of uploaded result files in Supabase Storage
   created_at            DateTime  @default(now())
   updated_at            DateTime  @default(now()) @updatedAt
   seen_at               DateTime?
   completed_at          DateTime?
 
-  lab           Lab                @relation(fields: [lab_id], references: [id], onDelete: Cascade)
-  branch        LabBranch?         @relation(fields: [branch_id], references: [id])
-  transactions  WalletTransaction[]
+  lab          Lab                 @relation(fields: [lab_id], references: [id], onDelete: Cascade)
+  branch       LabBranch?          @relation(fields: [branch_id], references: [id])
+  transactions WalletTransaction[]
 
   @@map("requests")
 }
@@ -186,7 +190,7 @@ model Request {
 // Doctor profile — stores PIN hash and any profile data for the doctor portal
 model DoctorProfile {
   email      String   @id
-  pin_hash   String?  // SHA-256 of 4-digit PIN; null = no PIN set
+  pin_hash   String? // SHA-256 of 4-digit PIN; null = no PIN set
   updated_at DateTime @updatedAt
 
   @@map("doctor_profiles")
@@ -196,7 +200,7 @@ model DoctorProfile {
 model DoctorOtp {
   id         String   @id @default(uuid())
   email      String
-  code_hash  String   // SHA-256 of the 6-digit OTP
+  code_hash  String // SHA-256 of the 6-digit OTP
   expires_at DateTime
   used       Boolean  @default(false)
   created_at DateTime @default(now())
@@ -222,7 +226,7 @@ model Marketer {
   name       String
   email      String   @unique
   phone      String?
-  code       String   @unique  // Short unique code used in referral links, e.g. "AMAKA001"
+  code       String   @unique // Short unique code used in referral links, e.g. "AMAKA001"
   suspended  Boolean  @default(false)
   created_at DateTime @default(now())
 
@@ -236,9 +240,9 @@ model Marketer {
 // First-touch attribution: links a doctor email to the marketer who referred them
 model DoctorMarketerLink {
   id               String   @id @default(uuid())
-  doctor_email     String   @unique  // One marketer owns a doctor email forever
+  doctor_email     String   @unique // One marketer owns a doctor email forever
   marketer_id      String
-  first_request_id String?  // The request that triggered the attribution
+  first_request_id String? // The request that triggered the attribution
   created_at       DateTime @default(now())
 
   marketer Marketer @relation(fields: [marketer_id], references: [id], onDelete: Cascade)
@@ -251,7 +255,7 @@ model DoctorMarketerLink {
 model MarketerOtp {
   id          String   @id @default(uuid())
   marketer_id String
-  code_hash   String   // SHA-256 of the 6-digit OTP
+  code_hash   String // SHA-256 of the 6-digit OTP
   expires_at  DateTime
   used        Boolean  @default(false)
   created_at  DateTime @default(now())
@@ -279,7 +283,7 @@ model MarketerSession {
 model PatientOtp {
   id         String   @id @default(uuid())
   email      String
-  code_hash  String   // SHA-256 of the 6-digit OTP
+  code_hash  String // SHA-256 of the 6-digit OTP
   expires_at DateTime
   used       Boolean  @default(false)
   created_at DateTime @default(now())
@@ -302,14 +306,14 @@ model PatientSession {
 // Patient profile — name and contact info set by the patient via portal
 // Used for global auto-fill when doctor enters the patient's email or phone
 model PatientProfile {
-  email      String    @id
+  email      String   @id
   name       String?
-  phone      String?   // stored with country code e.g. "+2348001234567"
-  dob        String?   // ISO date string "YYYY-MM-DD"
-  sex        String?   // "male" | "female" | "other"
+  phone      String? // stored with country code e.g. "+2348001234567"
+  dob        String? // ISO date string "YYYY-MM-DD"
+  sex        String? // "male" | "female" | "other"
   address    String?
-  pin_hash   String?   // SHA-256 of 4-digit PIN; null = no PIN set
-  updated_at DateTime  @updatedAt
+  pin_hash   String? // SHA-256 of 4-digit PIN; null = no PIN set
+  updated_at DateTime @updatedAt
 
   @@index([phone])
   @@map("patient_profiles")
@@ -319,7 +323,7 @@ model PatientProfile {
 model LabOtp {
   id         String   @id @default(uuid())
   email      String
-  code_hash  String   // SHA-256 of the 6-digit OTP
+  code_hash  String // SHA-256 of the 6-digit OTP
   purpose    String   @default("reset") // "reset" | "verify"
   expires_at DateTime
   used       Boolean  @default(false)
@@ -335,7 +339,7 @@ model LabActivity {
   lab_id      String
   actor_email String
   actor_role  String   @default("owner")
-  action      String   // e.g. "login" | "password_change" | "request_seen" | "request_done" | "results_sent" | "team_member_added" | "team_member_removed"
+  action      String // e.g. "login" | "password_change" | "request_seen" | "request_done" | "results_sent" | "team_member_added" | "team_member_removed"
   detail      String?
   created_at  DateTime @default(now())
 
@@ -361,21 +365,21 @@ model ApiLog {
 
 // Lab feedback / ratings submitted by patients and doctors
 model LabFeedback {
-  id                  String   @id @default(uuid())
-  lab_id              String
-  lab                 Lab      @relation(fields: [lab_id], references: [id], onDelete: Cascade)
-  reviewer_email      String
-  reviewer_type       String   // "patient" | "doctor"
-  is_anonymous        Boolean  @default(false)
-  display_name        String?  // optional name to show; null = use email prefix
-  rating_overall      Int      // 1–5
-  rating_accuracy     Int?     // 1–5 – test accuracy / reliability
-  rating_speed        Int?     // 1–5 – turnaround time
-  rating_staff        Int?     // 1–5 – staff & professionalism
-  rating_environment  Int?     // 1–5 – cleanliness & environment
-  comment             String?
-  created_at          DateTime @default(now())
-  updated_at          DateTime @updatedAt
+  id                 String   @id @default(uuid())
+  lab_id             String
+  lab                Lab      @relation(fields: [lab_id], references: [id], onDelete: Cascade)
+  reviewer_email     String
+  reviewer_type      String // "patient" | "doctor"
+  is_anonymous       Boolean  @default(false)
+  display_name       String? // optional name to show; null = use email prefix
+  rating_overall     Int // 1–5
+  rating_accuracy    Int? // 1–5 – test accuracy / reliability
+  rating_speed       Int? // 1–5 – turnaround time
+  rating_staff       Int? // 1–5 – staff & professionalism
+  rating_environment Int? // 1–5 – cleanliness & environment
+  comment            String?
+  created_at         DateTime @default(now())
+  updated_at         DateTime @updatedAt
 
   @@unique([lab_id, reviewer_email, reviewer_type])
   @@index([lab_id, created_at])
@@ -407,13 +411,13 @@ model LabWallet {
 model WalletTransaction {
   id            String   @id @default(uuid())
   lab_id        String
-  type          String   // "topup" | "deduction" | "adjustment"
-  direction     String   // "credit" | "debit"
+  type          String // "topup" | "deduction" | "adjustment"
+  direction     String // "credit" | "debit"
   amount        Decimal  @db.Decimal(12, 2)
   balance_after Decimal  @db.Decimal(12, 2)
   description   String?
-  request_id    String?  // populated for "deduction" type
-  actor_email   String?  // admin email for topup/adjustment
+  request_id    String? // populated for "deduction" type
+  actor_email   String? // admin email for topup/adjustment
   created_at    DateTime @default(now())
 
   lab     Lab      @relation(fields: [lab_id], references: [id], onDelete: Cascade)
@@ -421,4 +425,97 @@ model WalletTransaction {
 
   @@index([lab_id, created_at])
   @@map("wallet_transactions")
+}
+
+// ── Test Catalog ──────────────────────────────────────────────────────────────
+
+// One of the 24 canonical test categories (Hematology, X-Ray, etc.)
+model TestCategory {
+  id          String   @id @default(uuid())
+  name        String   @unique // e.g. "Hematology"
+  slug        String   @unique // e.g. "hematology"
+  description String?
+  sort_order  Int      @default(0)
+  base_price  Decimal  @default(0) @db.Decimal(12, 2) // fallback price for unlisted tests in this category
+  created_at  DateTime @default(now())
+
+  tests        CatalogTest[]
+  lab_prices   LabCategoryPrice[]
+
+  @@map("test_categories")
+}
+
+// Per-lab price override for an entire category (used when a test is category-matched but not listed)
+model LabCategoryPrice {
+  id          String   @id @default(uuid())
+  lab_id      String
+  category_id String
+  price       Decimal  @db.Decimal(12, 2)
+  updated_by  String?
+  updated_at  DateTime @updatedAt
+
+  lab      Lab          @relation(fields: [lab_id], references: [id], onDelete: Cascade)
+  category TestCategory @relation(fields: [category_id], references: [id], onDelete: Cascade)
+
+  @@unique([lab_id, category_id])
+  @@map("lab_category_prices")
+}
+
+// A named test that belongs to exactly one category
+model CatalogTest {
+  id             String   @id @default(uuid())
+  category_id    String
+  canonical_name String // e.g. "Full Blood Count"
+  base_price     Decimal  @default(0) @db.Decimal(12, 2)
+  is_rapid_test  Boolean  @default(false)
+  is_active      Boolean  @default(true)
+  created_at     DateTime @default(now())
+
+  category   TestCategory   @relation(fields: [category_id], references: [id], onDelete: Cascade)
+  synonyms   TestSynonym[]
+  lab_prices LabTestPrice[]
+
+  @@unique([category_id, canonical_name])
+  @@map("catalog_tests")
+}
+
+// Alternative names / abbreviations for a CatalogTest (used for resolution)
+model TestSynonym {
+  id              String @id @default(uuid())
+  catalog_test_id String
+  synonym         String // e.g. "FBC", "CBC", "Haemogram"
+
+  catalog_test CatalogTest @relation(fields: [catalog_test_id], references: [id], onDelete: Cascade)
+
+  @@unique([catalog_test_id, synonym])
+  @@index([synonym])
+  @@map("test_synonyms")
+}
+
+// Per-lab price override; when absent, base_price on CatalogTest applies
+model LabTestPrice {
+  id              String   @id @default(uuid())
+  lab_id          String
+  catalog_test_id String
+  price           Decimal  @db.Decimal(12, 2)
+  updated_by      String? // admin email
+  updated_at      DateTime @updatedAt
+
+  lab          Lab         @relation(fields: [lab_id], references: [id], onDelete: Cascade)
+  catalog_test CatalogTest @relation(fields: [catalog_test_id], references: [id], onDelete: Cascade)
+
+  @@unique([lab_id, catalog_test_id])
+  @@map("lab_test_prices")
+}
+
+// Free-text test names that could not be resolved; reviewed by admin
+model UnmappedTest {
+  id               String   @id @default(uuid())
+  raw_name         String   @unique
+  occurrence_count Int      @default(1)
+  last_seen_at     DateTime @default(now())
+  resolved_to      String? // catalog_test_id once mapped by admin
+  status           String   @default("pending") // "pending" | "resolved" | "ignored"
+
+  @@map("unmapped_tests")
 }

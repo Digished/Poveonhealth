@@ -7,7 +7,7 @@ import {
   Building2, Trash2, Eye, EyeOff, RefreshCw, X, Pencil,
   Phone, Upload, Check, MapPin, Users, ChevronRight, ChevronDown, ChevronUp,
   Code2, Key, Copy, TrendingUp, Link, Sun, Moon, Star, GitBranch,
-  Wallet, ArrowUpRight, ArrowDownRight, Settings, CreditCard,
+  Wallet, ArrowUpRight, ArrowDownRight, Settings, CreditCard, MessageCircle, Tag,
 } from "lucide-react";
 import { useDashTheme } from "@/hooks/useDashTheme";
 import { Button } from "@/components/ui/Button";
@@ -19,7 +19,7 @@ import { format } from "date-fns";
 import { createClient } from "@/lib/supabase/client"; // still used for auth sign-out
 import { useRouter } from "next/navigation";
 
-type AdminTab = "metrics" | "requests" | "referrals" | "labs" | "analytics" | "marketers" | "settings";
+type AdminTab = "metrics" | "requests" | "referrals" | "labs" | "analytics" | "marketers" | "settings" | "pricing";
 
 interface ReferralGroup {
   key: string;
@@ -124,8 +124,8 @@ export function AdminDashboard() {
   const [expandedLabIntegration, setExpandedLabIntegration] = useState<string | null>(null);
   const [branchModalLabId, setBranchModalLabId] = useState<string | null>(null);
   const [walletModalLabId, setWalletModalLabId] = useState<string | null>(null);
-  const [revealPrice, setRevealPrice] = useState<string>("");
-  const [savingRevealPrice, setSavingRevealPrice] = useState(false);
+  const [defaultRequestPrice, setDefaultRequestPrice] = useState<string>("500");
+  const [savingSettings, setSavingSettings] = useState(false);
 
   type RevenueData = {
     total_credited: number;
@@ -136,6 +136,7 @@ export function AdminDashboard() {
   };
   const [revenueData, setRevenueData] = useState<RevenueData | null>(null);
   const [revenueLoading, setRevenueLoading] = useState(false);
+  const [expandedTxId, setExpandedTxId] = useState<string | null>(null);
 
   // Per-lab analytics modal
   type LabAnalytics = {
@@ -209,7 +210,9 @@ export function AdminDashboard() {
     try {
       const res = await fetch("/api/admin/settings");
       const data = await res.json();
-      if (data.success) setRevealPrice(data.settings.reveal_price ?? "500");
+      if (data.success) {
+        setDefaultRequestPrice(data.settings.default_request_price ?? "500");
+      }
     } catch { /* non-critical */ }
   }, []);
 
@@ -223,29 +226,31 @@ export function AdminDashboard() {
     finally { setRevenueLoading(false); }
   }, []);
 
-  async function handleSaveRevealPrice() {
-    if (!revealPrice || isNaN(parseFloat(revealPrice)) || parseFloat(revealPrice) < 0) {
-      toast.error("Enter a valid price");
+  async function handleSaveSettings() {
+    if (isNaN(parseFloat(defaultRequestPrice)) || parseFloat(defaultRequestPrice) < 0) {
+      toast.error("Enter a valid default request price");
       return;
     }
-    setSavingRevealPrice(true);
+    setSavingSettings(true);
     try {
       const res = await fetch("/api/admin/settings", {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ reveal_price: revealPrice }),
+        body: JSON.stringify({
+          default_request_price: defaultRequestPrice,
+        }),
       });
       const data = await res.json();
       if (data.success) {
-        toast.success("Reveal price updated");
-        setRevealPrice(data.settings.reveal_price);
+        toast.success("Settings saved");
+        setDefaultRequestPrice(data.settings.default_request_price);
       } else {
         toast.error(data.error ?? "Failed to update");
       }
     } catch {
       toast.error("Network error");
     } finally {
-      setSavingRevealPrice(false);
+      setSavingSettings(false);
     }
   }
 
@@ -453,6 +458,7 @@ export function AdminDashboard() {
             { key: "analytics" as AdminTab, label: "API Analytics", icon: <BarChart3 className="w-4 h-4" /> },
             { key: "marketers" as AdminTab, label: "Marketers", icon: <TrendingUp className="w-4 h-4" /> },
             { key: "settings" as AdminTab, label: "Settings", icon: <Settings className="w-4 h-4" /> },
+            { key: "pricing" as AdminTab, label: "Pricing", icon: <Tag className="w-4 h-4" />, href: "/admin/pricing" },
           ];
           const current = tabs.find((t) => t.key === activeTab) ?? tabs[0];
           return (
@@ -470,16 +476,23 @@ export function AdminDashboard() {
                 {mobileTabOpen && (
                   <div className="absolute top-full left-0 right-0 mt-1.5 rounded-xl border border-white/10 bg-slate-800 shadow-2xl overflow-hidden z-30">
                     {tabs.map((tab) => (
-                      <button key={tab.key}
-                        onClick={() => { setActiveTab(tab.key); setMobileTabOpen(false); }}
-                        className={`flex items-center gap-3 w-full px-4 py-3.5 text-sm font-medium transition-colors border-b border-white/5 last:border-0 ${
-                          activeTab === tab.key ? "bg-white/12 text-white" : "text-slate-300 hover:bg-white/8"
-                        }`}
-                      >
-                        <span className={activeTab === tab.key ? "text-white" : "text-slate-500"}>{tab.icon}</span>
-                        {tab.label}
-                        {activeTab === tab.key && <ChevronRight className="w-3.5 h-3.5 ml-auto text-white/40" />}
-                      </button>
+                      "href" in tab ? (
+                        <a key={tab.key} href={(tab as { href: string }).href}
+                          className="flex items-center gap-3 w-full px-4 py-3.5 text-sm font-medium transition-colors border-b border-white/5 last:border-0 text-slate-300 hover:bg-white/8">
+                          <span className="text-slate-500">{tab.icon}</span>{tab.label}
+                        </a>
+                      ) : (
+                        <button key={tab.key}
+                          onClick={() => { setActiveTab(tab.key); setMobileTabOpen(false); }}
+                          className={`flex items-center gap-3 w-full px-4 py-3.5 text-sm font-medium transition-colors border-b border-white/5 last:border-0 ${
+                            activeTab === tab.key ? "bg-white/12 text-white" : "text-slate-300 hover:bg-white/8"
+                          }`}
+                        >
+                          <span className={activeTab === tab.key ? "text-white" : "text-slate-500"}>{tab.icon}</span>
+                          {tab.label}
+                          {activeTab === tab.key && <ChevronRight className="w-3.5 h-3.5 ml-auto text-white/40" />}
+                        </button>
+                      )
                     ))}
                   </div>
                 )}
@@ -488,13 +501,20 @@ export function AdminDashboard() {
               <div className="hidden md:block overflow-x-auto -mx-4 px-4">
                 <div className="flex gap-1 bg-white/5 rounded-xl p-1 w-max">
                   {tabs.map((tab) => (
-                    <button key={tab.key} onClick={() => setActiveTab(tab.key)}
-                      className={`flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-medium transition-all shrink-0 ${
-                        activeTab === tab.key ? "bg-white/15 text-white" : "text-slate-400 hover:text-white"
-                      }`}
-                    >
-                      {tab.icon}{tab.label}
-                    </button>
+                    "href" in tab ? (
+                      <a key={tab.key} href={(tab as { href: string }).href}
+                        className="flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-medium transition-all shrink-0 text-slate-400 hover:text-white">
+                        {tab.icon}{tab.label}
+                      </a>
+                    ) : (
+                      <button key={tab.key} onClick={() => setActiveTab(tab.key)}
+                        className={`flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-medium transition-all shrink-0 ${
+                          activeTab === tab.key ? "bg-white/15 text-white" : "text-slate-400 hover:text-white"
+                        }`}
+                      >
+                        {tab.icon}{tab.label}
+                      </button>
+                    )
                   ))}
                 </div>
               </div>
@@ -607,19 +627,95 @@ export function AdminDashboard() {
                     {revenueData.recent_transactions.length > 0 && (
                       <div className="bg-white/5 border border-white/10 rounded-2xl p-5">
                         <h3 className="text-sm font-semibold text-slate-300 mb-4">Recent Transactions</h3>
-                        <div className="space-y-2 max-h-80 overflow-y-auto pr-1">
-                          {revenueData.recent_transactions.map((tx) => (
-                            <div key={tx.id} className="flex items-start gap-3 py-2 border-b border-white/5 last:border-0">
-                              <div className={`w-2 h-2 rounded-full mt-1.5 shrink-0 ${tx.direction === "credit" ? "bg-emerald-400" : "bg-rose-400"}`} />
-                              <div className="flex-1 min-w-0">
-                                <p className="text-xs text-white truncate">{tx.description ?? tx.type}</p>
-                                <p className="text-xs text-slate-500 mt-0.5">{tx.lab_name} · {new Date(tx.created_at).toLocaleString("en-GB", { day: "numeric", month: "short", year: "numeric", hour: "2-digit", minute: "2-digit" })}</p>
+                        <div className="space-y-1 max-h-[32rem] overflow-y-auto pr-1">
+                          {revenueData.recent_transactions.map((tx) => {
+                            const isExpanded = expandedTxId === tx.id;
+                            const balanceBefore = tx.direction === "credit"
+                              ? tx.balance_after - tx.amount
+                              : tx.balance_after + tx.amount;
+                            return (
+                              <div key={tx.id} className={`rounded-xl border transition-colors ${isExpanded ? "border-white/10 bg-white/5" : "border-transparent hover:bg-white/3"}`}>
+                                {/* Summary row — click to toggle */}
+                                <button
+                                  onClick={() => setExpandedTxId(isExpanded ? null : tx.id)}
+                                  className="w-full flex items-center gap-3 py-2.5 px-3 text-left"
+                                >
+                                  <div className={`w-7 h-7 rounded-full flex items-center justify-center shrink-0 ${tx.direction === "credit" ? "bg-emerald-500/15" : "bg-rose-500/15"}`}>
+                                    {tx.direction === "credit"
+                                      ? <ArrowUpRight className="w-3.5 h-3.5 text-emerald-400" />
+                                      : <ArrowDownRight className="w-3.5 h-3.5 text-rose-400" />}
+                                  </div>
+                                  <div className="flex-1 min-w-0">
+                                    <div className="flex items-center gap-2 flex-wrap">
+                                      <p className="text-xs text-white font-medium truncate">{tx.description ?? tx.type}</p>
+                                      <span className={`text-[10px] px-1.5 py-0.5 rounded-full font-medium shrink-0 ${
+                                        tx.type === "top_up" ? "bg-emerald-500/15 text-emerald-400" :
+                                        tx.type === "charge" ? "bg-rose-500/15 text-rose-400" :
+                                        tx.type === "refund" ? "bg-amber-500/15 text-amber-400" :
+                                        "bg-slate-500/30 text-slate-400"
+                                      }`}>{tx.type.replace(/_/g, " ")}</span>
+                                    </div>
+                                    <div className="flex items-center gap-2 mt-0.5">
+                                      <p className="text-xs text-slate-500">{tx.lab_name}</p>
+                                      <span className="text-slate-700">·</span>
+                                      <p className="text-xs text-slate-600">{new Date(tx.created_at).toLocaleString("en-GB", { day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" })}</p>
+                                    </div>
+                                  </div>
+                                  <div className="text-right shrink-0">
+                                    <p className={`text-sm font-bold font-mono ${tx.direction === "credit" ? "text-emerald-400" : "text-rose-400"}`}>
+                                      {tx.direction === "credit" ? "+" : "-"}₦{tx.amount.toLocaleString()}
+                                    </p>
+                                    <p className="text-[10px] text-slate-500 font-mono mt-0.5">bal ₦{tx.balance_after.toLocaleString()}</p>
+                                  </div>
+                                  <ChevronDown className={`w-3.5 h-3.5 text-slate-500 shrink-0 transition-transform ${isExpanded ? "rotate-180" : ""}`} />
+                                </button>
+
+                                {/* Expanded detail panel */}
+                                {isExpanded && (
+                                  <div className="px-4 pb-4 pt-1 border-t border-white/8 grid grid-cols-2 sm:grid-cols-3 gap-x-4 gap-y-3">
+                                    <div>
+                                      <p className="text-[10px] text-slate-500 uppercase tracking-wider font-medium">Lab</p>
+                                      <p className="text-xs text-slate-200 mt-0.5">{tx.lab_name}</p>
+                                    </div>
+                                    <div>
+                                      <p className="text-[10px] text-slate-500 uppercase tracking-wider font-medium">Type</p>
+                                      <p className="text-xs text-slate-200 mt-0.5 capitalize">{tx.type.replace(/_/g, " ")}</p>
+                                    </div>
+                                    <div>
+                                      <p className="text-[10px] text-slate-500 uppercase tracking-wider font-medium">Direction</p>
+                                      <p className={`text-xs mt-0.5 font-medium capitalize ${tx.direction === "credit" ? "text-emerald-400" : "text-rose-400"}`}>{tx.direction}</p>
+                                    </div>
+                                    <div>
+                                      <p className="text-[10px] text-slate-500 uppercase tracking-wider font-medium">Amount</p>
+                                      <p className={`text-xs font-bold font-mono mt-0.5 ${tx.direction === "credit" ? "text-emerald-400" : "text-rose-400"}`}>
+                                        {tx.direction === "credit" ? "+" : "-"}₦{tx.amount.toLocaleString()}
+                                      </p>
+                                    </div>
+                                    <div>
+                                      <p className="text-[10px] text-slate-500 uppercase tracking-wider font-medium">Balance before</p>
+                                      <p className="text-xs text-slate-300 font-mono mt-0.5">₦{balanceBefore.toLocaleString()}</p>
+                                    </div>
+                                    <div>
+                                      <p className="text-[10px] text-slate-500 uppercase tracking-wider font-medium">Balance after</p>
+                                      <p className="text-xs text-slate-300 font-mono mt-0.5">₦{tx.balance_after.toLocaleString()}</p>
+                                    </div>
+                                    <div className="col-span-2 sm:col-span-3">
+                                      <p className="text-[10px] text-slate-500 uppercase tracking-wider font-medium">Description</p>
+                                      <p className="text-xs text-slate-300 mt-0.5 break-words">{tx.description ?? "—"}</p>
+                                    </div>
+                                    <div className="col-span-2 sm:col-span-2">
+                                      <p className="text-[10px] text-slate-500 uppercase tracking-wider font-medium">Date & time</p>
+                                      <p className="text-xs text-slate-400 mt-0.5">{new Date(tx.created_at).toLocaleString("en-GB", { weekday: "short", day: "numeric", month: "long", year: "numeric", hour: "2-digit", minute: "2-digit", second: "2-digit" })}</p>
+                                    </div>
+                                    <div>
+                                      <p className="text-[10px] text-slate-500 uppercase tracking-wider font-medium">Transaction ID</p>
+                                      <p className="text-[10px] text-slate-600 font-mono mt-0.5 break-all">{tx.id}</p>
+                                    </div>
+                                  </div>
+                                )}
                               </div>
-                              <p className={`text-xs font-bold font-mono shrink-0 ${tx.direction === "credit" ? "text-emerald-400" : "text-rose-400"}`}>
-                                {tx.direction === "credit" ? "+" : "-"}₦{tx.amount.toLocaleString()}
-                              </p>
-                            </div>
-                          ))}
+                            );
+                          })}
                         </div>
                       </div>
                     )}
@@ -1140,36 +1236,40 @@ export function AdminDashboard() {
               <p className="text-xs text-slate-500 mt-0.5">Configure system-wide pricing and behaviour</p>
             </div>
 
-            <div className="bg-white/5 border border-white/10 rounded-2xl p-5 space-y-4">
-              <div className="flex items-center gap-2 mb-1">
+            <div className="bg-white/5 border border-white/10 rounded-2xl p-5 space-y-5">
+              <div className="flex items-center gap-2">
                 <CreditCard className="w-4 h-4 text-violet-400" />
-                <p className="font-semibold text-white text-sm">Reveal Pricing</p>
+                <p className="font-semibold text-white text-sm">Pricing Defaults</p>
               </div>
               <p className="text-xs text-slate-400 leading-relaxed">
-                Each time a lab marks a patient request as <strong className="text-white">Seen</strong>, this amount is deducted from their wallet. The unit is in your local currency (e.g. Naira).
+                These fallback values are used when a request has no catalog-resolved price.
+                Set real per-test prices in the{" "}
+                <a href="/admin/pricing" className="text-violet-400 hover:underline">Pricing Catalog</a>.
               </p>
-              <div className="flex gap-2 items-center">
-                <div className="flex-1">
-                  <label className="text-xs text-slate-400 mb-1 block">Price per reveal</label>
+
+              <div className="space-y-3">
+                <div>
+                  <label className="text-xs text-slate-400 mb-1 block">
+                    Default request charge (₦) — used for image-only or pre-catalog requests
+                  </label>
                   <input
-                    type="number"
-                    min="0"
-                    step="1"
-                    value={revealPrice}
-                    onChange={(e) => setRevealPrice(e.target.value)}
+                    type="number" min="0" step="1"
+                    value={defaultRequestPrice}
+                    onChange={(e) => setDefaultRequestPrice(e.target.value)}
                     className="w-full bg-white/5 border border-white/10 rounded-xl px-3 py-2.5 text-white text-sm placeholder-slate-500 outline-none focus:ring-2 focus:ring-violet-500/50"
                     placeholder="e.g. 500"
                   />
                 </div>
-                <button
-                  onClick={handleSaveRevealPrice}
-                  disabled={savingRevealPrice}
-                  className="mt-5 flex items-center gap-1.5 px-4 py-2.5 rounded-xl bg-violet-600 hover:bg-violet-500 text-white text-sm font-medium transition-colors disabled:opacity-50"
-                >
-                  {savingRevealPrice ? <RefreshCw className="w-4 h-4 animate-spin" /> : <Check className="w-4 h-4" />}
-                  Save
-                </button>
               </div>
+
+              <button
+                onClick={handleSaveSettings}
+                disabled={savingSettings}
+                className="flex items-center gap-1.5 px-4 py-2.5 rounded-xl bg-violet-600 hover:bg-violet-500 text-white text-sm font-medium transition-colors disabled:opacity-50"
+              >
+                {savingSettings ? <RefreshCw className="w-4 h-4 animate-spin" /> : <Check className="w-4 h-4" />}
+                Save Settings
+              </button>
             </div>
 
             {/* Low balance labs alert */}
@@ -2487,6 +2587,13 @@ function LabBranchModal({ lab, onClose, allLabs }: { lab: Lab; onClose: () => vo
                         </div>
                         {b.branch_lab.address && <p className="text-xs text-slate-400 flex items-center gap-1"><MapPin className="w-3 h-3 shrink-0" />{b.branch_lab.address}</p>}
                         {phones.slice(0, 2).map((ph, i) => <p key={i} className="text-xs text-slate-500 flex items-center gap-1"><Phone className="w-3 h-3 shrink-0" />{ph}</p>)}
+                        {b.branch_lab.whatsapp && (() => {
+                          let waNumbers: string[] = [];
+                          try { const p = JSON.parse(b.branch_lab.whatsapp!); waNumbers = Array.isArray(p) ? p.filter(Boolean) : [b.branch_lab.whatsapp!]; } catch { waNumbers = [b.branch_lab.whatsapp!]; }
+                          return waNumbers.map((num, i) => (
+                            <p key={i} className="text-xs text-emerald-400 flex items-center gap-1"><MessageCircle className="w-3 h-3 shrink-0" />{num}</p>
+                          ));
+                        })()}
                       </div>
                       <div className="flex items-center gap-1 shrink-0">
                         <button onClick={() => handleToggleMain(b)} title={b.is_main ? "Remove main status" : "Set as main"}

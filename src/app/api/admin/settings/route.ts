@@ -11,23 +11,26 @@ async function verifyAdmin() {
   return adminRecord ? user : null;
 }
 
-const ALLOWED_KEYS = ["reveal_price"] as const;
+// default_request_price: flat fallback charge for old/image-only requests that have no quoted_price
+const ALLOWED_KEYS = ["default_request_price"] as const;
 type SettingKey = (typeof ALLOWED_KEYS)[number];
 
-/** GET /api/admin/settings — returns current platform settings */
+const DEFAULTS: Record<SettingKey, string> = {
+  default_request_price: "500",
+};
+
+/** GET /api/admin/settings */
 export async function GET() {
   if (!await verifyAdmin()) return NextResponse.json({ error: "Forbidden" }, { status: 403 });
 
   const rows = await prisma.systemSetting.findMany({ where: { key: { in: [...ALLOWED_KEYS] } } });
-  const settings: Record<string, string> = {};
-  for (const k of ALLOWED_KEYS) {
-    const row = rows.find((r) => r.key === k);
-    settings[k] = row?.value ?? (k === "reveal_price" ? "500" : "");
-  }
+  const settings: Record<SettingKey, string> = { ...DEFAULTS };
+  for (const row of rows) settings[row.key as SettingKey] = row.value;
+
   return NextResponse.json({ success: true, settings });
 }
 
-/** PATCH /api/admin/settings — update one or more settings */
+/** PATCH /api/admin/settings */
 export async function PATCH(request: NextRequest) {
   if (!await verifyAdmin()) return NextResponse.json({ error: "Forbidden" }, { status: 403 });
 
@@ -49,9 +52,8 @@ export async function PATCH(request: NextRequest) {
   if (ops.length === 0) return NextResponse.json({ error: "No valid keys provided" }, { status: 400 });
   await Promise.all(ops);
 
-  // Re-fetch and return updated settings
   const rows = await prisma.systemSetting.findMany({ where: { key: { in: [...ALLOWED_KEYS] } } });
-  const settings: Record<SettingKey, string> = { reveal_price: "500" };
+  const settings: Record<SettingKey, string> = { ...DEFAULTS };
   for (const row of rows) settings[row.key as SettingKey] = row.value;
 
   return NextResponse.json({ success: true, settings });

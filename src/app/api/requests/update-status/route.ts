@@ -8,7 +8,7 @@ import { doctorTestsCompleted } from "@/lib/email/templates";
 import { logApiCall } from "@/lib/api-logger";
 import { logLabActivity } from "@/lib/lab-activity";
 import { createServerClient } from "@/lib/supabase/server";
-import { Decimal } from "@prisma/client/runtime/library";
+import { deductWallet } from "@/lib/wallet-deduction";
 
 const UpdateStatusSchema = z.object({
   requestId: z.string().uuid(),
@@ -86,51 +86,10 @@ export async function POST(request: NextRequest) {
     if (status === "seen") updateData.seen_at = new Date();
     if (status === "done") updateData.completed_at = new Date();
 
-    // When marking "seen" — charge revealPrice × number of tests from the lab's wallet
+    // When marking "seen" — deduct quoted_price from wallet (non-critical)
     let walletBalance: number | null = null;
     if (status === "seen") {
-      try {
-        const priceSetting = await prisma.systemSetting.findUnique({ where: { key: "reveal_price" } });
-        const pricePerTest = new Decimal(priceSetting?.value ?? "500");
-
-        // Count tests: split on comma/newline; "See attached image" counts as 1
-        const testCount = (req.tests && req.tests !== "See attached image")
-          ? Math.max(1, req.tests.split(/[,\n]/).map((t) => t.trim()).filter(Boolean).length)
-          : 1;
-        const totalCharge = pricePerTest.times(testCount);
-
-        walletBalance = await prisma.$transaction(async (tx) => {
-          const current = await tx.labWallet.upsert({
-            where: { lab_id: req.lab_id },
-            create: { lab_id: req.lab_id, balance: new Decimal(0) },
-            update: {},
-          });
-
-          const newBalance = new Decimal(current.balance).minus(totalCharge);
-
-          await tx.labWallet.update({
-            where: { lab_id: req.lab_id },
-            data: { balance: newBalance },
-          });
-
-          await tx.walletTransaction.create({
-            data: {
-              lab_id: req.lab_id,
-              type: "deduction",
-              direction: "debit",
-              amount: totalCharge,
-              balance_after: newBalance,
-              description: `Reveal charge — ${req.code} (${req.patient_name ?? "patient"}) · ${testCount} test${testCount !== 1 ? "s" : ""} × ₦${pricePerTest}`,
-              request_id: requestId,
-            },
-          });
-
-          return Number(newBalance);
-        });
-      } catch (e) {
-        // Non-critical: wallet deduction failure should not block the status update
-        console.error("[wallet] deduction failed:", e);
-      }
+      walletBalance = await deductWallet(req);
     }
 
     await prisma.request.update({ where: { id: requestId }, data: updateData });

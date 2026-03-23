@@ -34,6 +34,8 @@ function VenusIcon({ className }: { className?: string }) {
 }
 import { Button } from "@/components/ui/Button";
 import { Input, Textarea, Select } from "@/components/ui/Input";
+import { TestTagInput, TestTag } from "@/components/ui/TestTagInput";
+import { smartSplitTestNames } from "@/lib/smart-split";
 import { PhoneInput } from "@/components/PhoneInput";
 import { BankAccountInput } from "@/components/BankAccountInput";
 import { DobInput } from "@/components/DobInput";
@@ -58,7 +60,7 @@ interface FormData {
   doctor_account_name: string;
   schedule: string;
   diagnosis: string;
-  tests: string;
+  tests?: string; // used only for error state; rendered via TestTagInput
 }
 
 const INITIAL: FormData = {
@@ -79,7 +81,6 @@ const INITIAL: FormData = {
   doctor_account_name: "",
   schedule: "",
   diagnosis: "",
-  tests: "",
 };
 
 const PROFESSIONAL_PREFIXES = [
@@ -835,30 +836,37 @@ function LearnMoreModal({ onClose }: { onClose: () => void }) {
   );
 }
 
-interface Branch {
-  id: string;
+interface Location {
+  lab_id: string;        // actual lab id — what gets submitted as the request's lab_id
+  lab_branch_id: string | null; // LabBranch record id (provenance tracking, not used for routing)
   name: string;
   address: string;
   phones: string[];
-  is_main: boolean;
+  whatsapp?: string | null;
+  is_main: boolean;    // true = this branch is the highlighted/default one
+  is_parent: boolean;  // true = this entry is the root/parent lab
 }
 
 export function DoctorRequestForm({
   preselectedLabId,
   preselectedLabName,
-  branches = [],
+  locations = [],
 }: {
   preselectedLabId?: string;
   preselectedLabName?: string;
-  branches?: Branch[];
+  locations?: Location[];
 } = {}) {
   const labPreselected = !!preselectedLabId;
-  const hasBranches = branches.length > 0;
-  const startStep = !labPreselected ? 1 : hasBranches ? 1 : 2;
+  // hasLocations = true when there are multiple locations to choose from (parent + at least 1 branch)
+  const hasLocations = locations.length > 1;
+  // Default to the is_main branch if one exists, otherwise the parent (index 0)
+  const defaultLocIdx = locations.length > 0 ? Math.max(0, locations.findIndex((l) => l.is_main)) : 0;
+  const startStep = !labPreselected ? 1 : hasLocations ? 1 : 2;
   const [step, setStep] = useState(startStep);
   const [form, setForm] = useState<FormData>(() => ({
     ...INITIAL,
-    lab_id: preselectedLabId ?? "",
+    // Use the default location's lab_id when preselected, otherwise empty
+    lab_id: (labPreselected && locations.length > 0) ? locations[defaultLocIdx].lab_id : (preselectedLabId ?? ""),
   }));
   const [errors, setErrors] = useState<Partial<FormData>>({});
   const [labs, setLabs] = useState<Lab[]>([]);
@@ -879,7 +887,8 @@ export function DoctorRequestForm({
   const [bankVerified, setBankVerified] = useState(false);
   const [maxStep, setMaxStep] = useState(startStep);
   const [clinicalMode, setClinicalMode] = useState<"type" | "picture">("picture");
-  const [selectedBranchId, setSelectedBranchId] = useState<string>("");
+  // Index into the locations[] array; drives which lab_id is submitted
+  const [selectedLocIdx, setSelectedLocIdx] = useState(defaultLocIdx);
   // Image upload state
   const [imageUploading, setImageUploading] = useState(false);
   const [imageUploadProgress, setImageUploadProgress] = useState(0);
@@ -894,40 +903,8 @@ export function DoctorRequestForm({
     confidence: "high" | "medium" | "low"; low_confidence_items: string[];
   } | null>(null);
   const [extractionDismissed, setExtractionDismissed] = useState(false);
-  // AI test normalisation state
-  const [normalisingTests, setNormalisingTests] = useState(false);
-
-  async function normaliseTests(raw: string): Promise<void> {
-    // Always do local normalisation first (split/trim/capitalise)
-    const localNorm = raw
-      .split(/[,\n]+/)
-      .map((t) => t.trim())
-      .filter(Boolean)
-      .map((t) => t.charAt(0).toUpperCase() + t.slice(1))
-      .join(", ");
-    set("tests", localNorm);
-
-    // Then try AI correction
-    if (!localNorm.trim()) return;
-    setNormalisingTests(true);
-    try {
-      const res = await fetch("/api/requests/normalize-tests", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ tests: localNorm }),
-      });
-      if (res.ok) {
-        const data = await res.json();
-        if (data.success && Array.isArray(data.normalised) && data.normalised.length > 0) {
-          set("tests", data.normalised.join(", "));
-        }
-      }
-    } catch {
-      // silently fall back to local normalisation
-    } finally {
-      setNormalisingTests(false);
-    }
-  }
+  const [testTags, setTestTags] = useState<TestTag[]>([]);
+  const testsString = testTags.map((t) => t.name).join(", ");
 
   // Critical / ambulance state
   const [isCritical, setIsCritical] = useState(false);
@@ -1073,7 +1050,7 @@ export function DoctorRequestForm({
     const errs: Partial<FormData> = {};
     if (s === 1) {
       if (!labPreselected && !form.lab_id) errs.lab_id = "Please select a laboratory";
-      if (labPreselected && hasBranches && !selectedBranchId) errs.lab_id = "Please select a branch";
+      if (labPreselected && hasLocations && selectedLocIdx < 0) errs.lab_id = "Please select a location";
     }
     if (s === 2) {
       if (!form.patient_phone) errs.patient_phone = "Required";
@@ -1082,14 +1059,14 @@ export function DoctorRequestForm({
         errs.patient_email = "Invalid email";
       if (clinicalMode === "type") {
         if (!form.diagnosis.trim()) errs.diagnosis = "Required";
-        if (!form.tests.trim()) errs.tests = "Required";
+        if (testTags.length === 0) errs.tests = "Required";
       }
       if (clinicalMode === "picture") {
         if (!testImageUrl) {
           setImageUploadError("Please upload a test request image");
         } else {
           // Image uploaded — also require tests and diagnosis
-          if (!form.tests.trim()) errs.tests = "Required";
+          if (testTags.length === 0) errs.tests = "Required";
           if (!form.diagnosis.trim()) errs.diagnosis = "Required";
         }
       }
@@ -1148,7 +1125,7 @@ export function DoctorRequestForm({
 
   function handleBack() {
     setErrors({});
-    const minStep = (!labPreselected || hasBranches) ? 1 : 2;
+    const minStep = (!labPreselected || hasLocations) ? 1 : 2;
     setStep((s) => Math.max(minStep, s - 1));
     window.scrollTo({ top: 0, behavior: "smooth" });
   }
@@ -1161,13 +1138,13 @@ export function DoctorRequestForm({
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           ...form,
-          tests: clinicalMode === "picture" ? (form.tests || "See attached image") : form.tests,
+          tests: clinicalMode === "picture" ? (testsString || "See attached image") : testsString,
           schedule: form.schedule || undefined,
           test_image_url: testImageUrl ?? undefined,
           is_critical: isCritical,
           needs_ambulance: needsAmbulance,
           ambulance_notes: ambulanceNotes || undefined,
-          branch_id: selectedBranchId || undefined,
+          // branch_id omitted — lab_id already points to the selected location's lab
         }),
       });
       const data: CreateRequestResponse = await res.json();
@@ -1194,10 +1171,11 @@ export function DoctorRequestForm({
         labPhones={result.lab?.phones ?? []}
         onReset={() => {
           setResult(null);
-          setForm({ ...INITIAL, lab_id: preselectedLabId ?? "" });
+          setForm({ ...INITIAL, lab_id: locations.length > 0 ? locations[defaultLocIdx].lab_id : (preselectedLabId ?? "") });
+          setTestTags([]);
           setStep(startStep);
           setMaxStep(startStep);
-          setSelectedBranchId("");
+          setSelectedLocIdx(defaultLocIdx);
           setClinicalMode("type");
           setTestImageUrl(null);
           setImageUploadError(null);
@@ -1212,18 +1190,47 @@ export function DoctorRequestForm({
 
   const selectedLab = labs.find((l) => l.id === form.lab_id);
 
+  // When preselected with locations, the "effective lab" for display is the selected location.
+  // We synthesise a minimal Lab-shaped object so the header/call modal/details modal always
+  // show the correct contact info (branch's own phones, address, etc.)
+  const selectedLocation = labPreselected && locations.length > 0 ? locations[selectedLocIdx] : null;
+  const displayLab: Lab | null = selectedLab ?? (selectedLocation ? ({
+    id: selectedLocation.lab_id,
+    name: selectedLocation.name,
+    address: selectedLocation.address,
+    phones: selectedLocation.phones as unknown as string[],
+    whatsapp: selectedLocation.whatsapp ?? null,
+    logo_url: null,
+    description: "",
+    service_categories: [],
+    certifications: [],
+    email: "",
+    prefix: "",
+    slug: null,
+    hidden: false,
+    notification_email: null,
+    request_email: null,
+    created_at: "",
+  } as Lab) : null);
+
+  // Helper: select a location by index — updates both UI and the form's lab_id
+  function selectLocation(idx: number) {
+    setSelectedLocIdx(idx);
+    set("lab_id", locations[idx].lab_id);
+  }
+
   // Reactively compute whether the current step's required fields are satisfied.
   const stepValid = (() => {
     if (step === 1) {
       if (!labPreselected) return !!form.lab_id;
-      if (hasBranches) return !!selectedBranchId;
+      if (hasLocations) return selectedLocIdx >= 0;
       return true; // Lab URL, no branches: just confirmation
     }
     if (step === 2) {
       const phoneOk = !!form.patient_phone;
       const emailOk = !!form.patient_email && /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(form.patient_email);
       if (clinicalMode === "picture") return phoneOk && emailOk && !!testImageUrl;
-      return phoneOk && emailOk && form.diagnosis.trim().length > 0 && form.tests.trim().length > 0;
+      return phoneOk && emailOk && form.diagnosis.trim().length > 0 && testTags.length > 0;
     }
     if (step === 3) {
       return (
@@ -1238,6 +1245,11 @@ export function DoctorRequestForm({
     return true; // step 4 optional
   })();
 
+  // Whether the clinical section of step 2 is complete (upload mode: image present; type mode: diagnosis + tests)
+  const clinicalDone =
+    (clinicalMode === "picture" && !!testImageUrl) ||
+    (clinicalMode === "type" && !!form.diagnosis.trim() && testTags.length > 0);
+
   return (
     <div className="animate-fade-in">
       {/* Sticky header + step indicator */}
@@ -1247,16 +1259,16 @@ export function DoctorRequestForm({
 
         {/* Lab info / branding */}
         <div className="mb-4">
-            {selectedLab ? (() => {
-              const phones = (selectedLab.phones as string[] | null) ?? [];
+            {displayLab ? (() => {
+              const phones = (displayLab.phones as string[] | null) ?? [];
               return (
                 <div className="relative overflow-hidden rounded-2xl border border-medical-100 bg-gradient-to-r from-medical-50 via-white to-sky-50 shadow-sm animate-fade-in-up">
                   <div className="absolute -top-6 -right-6 w-28 h-28 bg-medical-100/40 rounded-full blur-2xl pointer-events-none" />
                   <div className="relative px-4 py-3 flex items-center gap-3">
-                    {selectedLab.logo_url ? (
+                    {displayLab.logo_url ? (
                       <img
-                        src={selectedLab.logo_url}
-                        alt={selectedLab.name}
+                        src={displayLab.logo_url}
+                        alt={displayLab.name}
                         className="w-10 h-10 rounded-xl object-cover shrink-0 shadow-sm ring-2 ring-white"
                       />
                     ) : (
@@ -1265,11 +1277,11 @@ export function DoctorRequestForm({
                       </div>
                     )}
                     <div className="min-w-0 flex-1">
-                      <p className="text-sm font-bold text-slate-800 leading-tight truncate">{selectedLab.name}</p>
-                      {selectedLab.address && (
+                      <p className="text-sm font-bold text-slate-800 leading-tight truncate">{displayLab.name}</p>
+                      {displayLab.address && (
                         <p className="text-xs text-slate-400 flex items-start gap-1 mt-0.5 overflow-hidden">
                           <MapPin className="w-3 h-3 shrink-0 text-medical-300 mt-0.5" />
-                          <span className="truncate">{selectedLab.address}</span>
+                          <span className="truncate">{displayLab.address}</span>
                         </p>
                       )}
                       {step > 1 && (
@@ -1289,7 +1301,7 @@ export function DoctorRequestForm({
                           <a
                             href={`tel:${phones[0]}`}
                             className="w-9 h-9 rounded-xl bg-medical-600 hover:bg-medical-700 text-white flex items-center justify-center shadow-sm transition-colors"
-                            title={`Call ${selectedLab.name}`}
+                            title={`Call ${displayLab.name}`}
                           >
                             <PhoneCall className="w-4 h-4" />
                           </a>
@@ -1298,7 +1310,7 @@ export function DoctorRequestForm({
                             type="button"
                             onClick={() => setCallOpen(true)}
                             className="w-9 h-9 rounded-xl bg-medical-600 hover:bg-medical-700 text-white flex items-center justify-center shadow-sm transition-colors"
-                            title={`Call ${selectedLab.name}`}
+                            title={`Call ${displayLab.name}`}
                           >
                             <PhoneCall className="w-4 h-4" />
                           </button>
@@ -1356,18 +1368,18 @@ export function DoctorRequestForm({
                     disabled={!visited}
                     className={`rounded-full flex items-center justify-center transition-all border-2 focus:outline-none ${
                       done
-                        ? "w-7 h-7 bg-slate-700 text-white border-slate-700 cursor-pointer hover:bg-medical-600 hover:border-medical-600"
+                        ? "w-6 h-6 bg-slate-700 text-white border-slate-700 cursor-pointer hover:bg-medical-600 hover:border-medical-600"
                         : active
-                        ? "w-8 h-8 bg-slate-900 text-white border-slate-800 ring-4 ring-slate-900/10 cursor-default"
+                        ? "w-7 h-7 bg-slate-900 text-white border-slate-800 ring-2 ring-slate-900/10 cursor-default"
                         : visited
-                        ? "w-7 h-7 bg-slate-200 text-slate-500 border-slate-300 cursor-pointer hover:bg-medical-100 hover:border-medical-400"
-                        : "w-7 h-7 bg-white text-slate-300 border-slate-200 cursor-default"
+                        ? "w-6 h-6 bg-slate-200 text-slate-500 border-slate-300 cursor-pointer hover:bg-medical-100 hover:border-medical-400"
+                        : "w-6 h-6 bg-white text-slate-300 border-slate-200 cursor-default"
                     }`}
                     aria-label={visited ? `Go to step ${num}: ${s.title}` : s.title}
                   >
                     {done
-                      ? <Check className="w-3 h-3" />
-                      : <Icon className={active ? "w-3.5 h-3.5" : "w-3 h-3"} />}
+                      ? <Check className="w-2.5 h-2.5" />
+                      : <Icon className={active ? "w-3 h-3" : "w-2.5 h-2.5"} />}
                   </button>
                   <p className={`text-xs whitespace-nowrap overflow-hidden transition-all duration-300 ease-in-out hidden sm:block ${
                     scrolled ? "max-h-0 opacity-0 mt-0" : "max-h-5 opacity-100 mt-1"
@@ -1378,7 +1390,7 @@ export function DoctorRequestForm({
                   </p>
                 </div>
                 {i < STEPS.length - 1 && (
-                  <div className={`flex-1 h-0.5 mx-2 mb-4 rounded transition-all ${done ? "bg-slate-400" : "bg-slate-200"}`} />
+                  <div className={`flex-1 h-0.5 mx-1.5 mb-3 rounded transition-all ${done ? "bg-slate-400" : "bg-slate-200"}`} />
                 )}
               </div>
             );
@@ -1455,23 +1467,22 @@ export function DoctorRequestForm({
               </>
             )}
 
-            {/* Lab-specific URL with branches: branch selection */}
-            {labPreselected && hasBranches && (
+            {/* Lab-specific URL with locations: location selection */}
+            {labPreselected && hasLocations && (
               <div className="space-y-4">
                 <h2 className="flex items-center gap-2 text-base font-semibold text-slate-700 pb-3 border-b border-slate-100">
                   <MapPin className="w-4 h-4 text-medical-600" />
-                  Select Branch / Location
+                  Select Location
                 </h2>
-                <p className="text-sm text-slate-500">Choose the {preselectedLabName} branch you are sending this request to.</p>
+                <p className="text-sm text-slate-500">Choose the {preselectedLabName} location you are sending this request to.</p>
                 <div className="space-y-3">
-                  {branches.map((branch) => {
-                    const phones = branch.phones as string[];
-                    const selected = selectedBranchId === branch.id;
+                  {locations.map((loc, idx) => {
+                    const selected = selectedLocIdx === idx;
                     return (
                       <button
-                        key={branch.id}
+                        key={loc.lab_id + idx}
                         type="button"
-                        onClick={() => setSelectedBranchId(branch.id)}
+                        onClick={() => selectLocation(idx)}
                         className={`w-full flex items-start gap-3 p-4 rounded-2xl border-2 text-left transition-all ${
                           selected
                             ? "border-medical-400 bg-medical-50 ring-2 ring-medical-200"
@@ -1483,21 +1494,32 @@ export function DoctorRequestForm({
                         </div>
                         <div className="min-w-0 flex-1">
                           <p className={`text-sm font-semibold leading-tight ${selected ? "text-medical-800" : "text-slate-700"}`}>
-                            {branch.name}
-                            {branch.is_main && <span className="ml-2 text-xs bg-medical-100 text-medical-700 px-2 py-0.5 rounded-full font-medium">Main</span>}
+                            {loc.name}
+                            {loc.is_parent && <span className="ml-2 text-xs bg-slate-100 text-slate-600 px-2 py-0.5 rounded-full font-medium">Main Lab</span>}
+                            {!loc.is_parent && loc.is_main && <span className="ml-2 text-xs bg-medical-100 text-medical-700 px-2 py-0.5 rounded-full font-medium">Main Branch</span>}
                           </p>
-                          {branch.address && (
+                          {loc.address && (
                             <p className="text-xs text-slate-400 flex items-start gap-1 mt-1">
                               <MapPin className="w-3 h-3 shrink-0 mt-0.5" />
-                              {branch.address}
+                              {loc.address}
                             </p>
                           )}
-                          {phones.length > 0 && (
+                          {loc.phones.length > 0 && (
                             <p className="text-xs text-slate-400 flex items-center gap-1 mt-0.5">
                               <Phone className="w-3 h-3 shrink-0" />
-                              {phones[0]}{phones.length > 1 ? ` +${phones.length - 1} more` : ""}
+                              {loc.phones[0]}{loc.phones.length > 1 ? ` +${loc.phones.length - 1} more` : ""}
                             </p>
                           )}
+                          {loc.whatsapp && (() => {
+                            let waNumbers: string[] = [];
+                            try { const p = JSON.parse(loc.whatsapp); waNumbers = Array.isArray(p) ? p.filter(Boolean) : [loc.whatsapp]; } catch { waNumbers = [loc.whatsapp]; }
+                            return waNumbers.map((num, i) => (
+                              <p key={i} className="text-xs text-green-600 flex items-center gap-1 mt-0.5">
+                                <svg className="w-3 h-3 shrink-0" viewBox="0 0 24 24" fill="currentColor"><path d="M17.472 14.382c-.297-.149-1.758-.867-2.03-.967-.273-.099-.471-.148-.67.15-.197.297-.767.966-.94 1.164-.173.199-.347.223-.644.075-.297-.15-1.255-.463-2.39-1.475-.883-.788-1.48-1.761-1.653-2.059-.173-.297-.018-.458.13-.606.134-.133.298-.347.446-.52.149-.174.198-.298.298-.497.099-.198.05-.371-.025-.52-.075-.149-.669-1.612-.916-2.207-.242-.579-.487-.5-.669-.51-.173-.008-.371-.01-.57-.01-.198 0-.52.074-.792.372-.272.297-1.04 1.016-1.04 2.479 0 1.462 1.065 2.875 1.213 3.074.149.198 2.096 3.2 5.077 4.487.709.306 1.262.489 1.694.625.712.227 1.36.195 1.871.118.571-.085 1.758-.719 2.006-1.413.248-.694.248-1.289.173-1.413-.074-.124-.272-.198-.57-.347m-5.421 7.403h-.004a9.87 9.87 0 01-5.031-1.378l-.361-.214-3.741.982.998-3.648-.235-.374a9.86 9.86 0 01-1.51-5.26c.001-5.45 4.436-9.884 9.888-9.884 2.64 0 5.122 1.03 6.988 2.898a9.825 9.825 0 012.893 6.994c-.003 5.45-4.437 9.884-9.885 9.884m8.413-18.297A11.815 11.815 0 0012.05 0C5.495 0 .16 5.335.157 11.892c0 2.096.547 4.142 1.588 5.945L.057 24l6.305-1.654a11.882 11.882 0 005.683 1.448h.005c6.554 0 11.89-5.335 11.893-11.893a11.821 11.821 0 00-3.48-8.413z" /></svg>
+                                {num}
+                              </p>
+                            ));
+                          })()}
                         </div>
                       </button>
                     );
@@ -1507,8 +1529,8 @@ export function DoctorRequestForm({
               </div>
             )}
 
-            {/* Lab-specific URL, no branches: lab confirmation */}
-            {labPreselected && !hasBranches && (
+            {/* Lab-specific URL, no locations: lab confirmation */}
+            {labPreselected && !hasLocations && (
               <div className="space-y-4">
                 <h2 className="flex items-center gap-2 text-base font-semibold text-slate-700 pb-3 border-b border-slate-100">
                   <Building2 className="w-4 h-4 text-medical-600" />
@@ -1540,121 +1562,67 @@ export function DoctorRequestForm({
             </h2>
 
             <div className="relative pt-1">
-              {/* Substep 1: Patient Phone */}
-              <div className="relative flex gap-4">
+              {/* Substep 1: Clinical — upload or type, always visible first */}
+              <div className="relative flex gap-3">
                 <div className="flex flex-col items-center shrink-0 pt-1">
-                  <div className={`w-8 h-8 rounded-full flex items-center justify-center text-xs font-bold border-2 transition-all shrink-0 ${form.patient_phone.trim() ? "bg-emerald-500 border-emerald-500 text-white" : "bg-white border-medical-400 text-medical-600"}`}>
-                    {form.patient_phone.trim() ? <Check className="w-4 h-4" /> : "1"}
+                  <div className={`w-6 h-6 rounded-full flex items-center justify-center text-[10px] font-bold border-2 transition-all shrink-0 ${
+                    clinicalDone ? "bg-emerald-500 border-emerald-500 text-white" : "bg-white border-medical-400 text-medical-600"
+                  }`}>
+                    {clinicalDone ? <Check className="w-3 h-3" /> : "1"}
                   </div>
-                  <div className="w-0.5 flex-1 min-h-6 bg-slate-200 mt-1" />
+                  {clinicalDone && <div className="w-0.5 flex-1 min-h-4 bg-slate-200 mt-1" />}
                 </div>
-                <div className="flex-1 pb-5 min-w-0">
-                  <PhoneInput
-                    label="Patient Phone"
-                    required
-                    value={form.patient_phone}
-                    onChange={(v) => set("patient_phone", v)}
-                    error={errors.patient_phone}
-                  />
-                </div>
-              </div>
+                <div className="flex-1 pb-3 min-w-0 space-y-3">
+                  {/* Mode toggle */}
+                  <div className="flex gap-2 p-1 bg-slate-100 rounded-2xl">
+                    <button
+                      type="button"
+                      onClick={() => setClinicalMode("picture")}
+                      className={`flex-1 flex items-center justify-center gap-2 py-2.5 px-3 rounded-xl text-sm font-semibold transition-all ${
+                        clinicalMode === "picture" ? "bg-white shadow text-slate-800" : "text-slate-500 hover:text-slate-700"
+                      }`}
+                    >
+                      <Camera className="w-4 h-4" />
+                      Upload
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setClinicalMode("type")}
+                      className={`flex-1 flex items-center justify-center gap-2 py-2.5 px-3 rounded-xl text-sm font-semibold transition-all ${
+                        clinicalMode === "type" ? "bg-white shadow text-slate-800" : "text-slate-500 hover:text-slate-700"
+                      }`}
+                    >
+                      <Stethoscope className="w-4 h-4" />
+                      Type
+                    </button>
+                  </div>
 
-              {/* Substep 2: Patient Email — reveals after phone */}
-              {form.patient_phone.trim() && (
-                <div className="relative flex gap-4 animate-fade-in-up">
-                  <div className="flex flex-col items-center shrink-0 pt-1">
-                    <div className={`w-8 h-8 rounded-full flex items-center justify-center text-xs font-bold border-2 transition-all shrink-0 ${form.patient_email && /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(form.patient_email) ? "bg-emerald-500 border-emerald-500 text-white" : "bg-white border-medical-400 text-medical-600"}`}>
-                      {form.patient_email && /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(form.patient_email) ? <Check className="w-4 h-4" /> : "2"}
-                    </div>
-                    <div className="w-0.5 flex-1 min-h-6 bg-slate-200 mt-1" />
-                  </div>
-                  <div className="flex-1 pb-5 min-w-0">
-                    <div className="flex flex-col gap-1">
-                      <label htmlFor="patient_email" className="text-sm font-medium text-slate-700 flex items-center gap-2">
-                        Patient Email <span className="inline-block w-1.5 h-1.5 rounded-full bg-amber-400 ml-0.5 align-middle" aria-label="required" />
-                        <span className="text-xs bg-sky-100 text-sky-700 px-2 py-0.5 rounded-full font-medium">Tracks patient details</span>
-                      </label>
-                      <Input
-                        id="patient_email"
-                        type="email"
-                        placeholder="patient@example.com"
-                        hint="Used to send request code, track results, and auto-fill patient details from their portal"
-                        value={form.patient_email}
-                        onChange={(e) => set("patient_email", e.target.value)}
-                        error={errors.patient_email}
+                  {/* Type mode: diagnosis + tests */}
+                  {clinicalMode === "type" && (
+                    <div className="space-y-4 animate-fade-in-up">
+                      <Textarea
+                        label="Diagnosis / Clinical Notes"
+                        required
+                        placeholder="Brief clinical summary or working diagnosis…"
+                        rows={3}
+                        value={form.diagnosis}
+                        onChange={(e) => set("diagnosis", e.target.value)}
+                        error={errors.diagnosis}
+                      />
+                      <TestTagInput
+                        label="Laboratory Tests Requested"
+                        value={testTags}
+                        onChange={setTestTags}
+                        labId={form.lab_id}
+                        error={errors.tests}
                       />
                     </div>
-                  </div>
-                </div>
-              )}
+                  )}
 
-              {/* Substep 3: Clinical Details — upload or type, reveals after phone */}
-              {form.patient_phone.trim() && (
-                <div className="relative flex gap-4 animate-fade-in-up">
-                  <div className="flex flex-col items-center shrink-0 pt-1">
-                    <div className={`w-8 h-8 rounded-full flex items-center justify-center text-xs font-bold border-2 transition-all shrink-0 ${
-                      (clinicalMode === "picture" && testImageUrl) || (clinicalMode === "type" && form.diagnosis.trim() && form.tests.trim())
-                        ? "bg-emerald-500 border-emerald-500 text-white"
-                        : "bg-white border-medical-400 text-medical-600"
-                    }`}>
-                      {(clinicalMode === "picture" && testImageUrl) || (clinicalMode === "type" && form.diagnosis.trim() && form.tests.trim()) ? <Check className="w-4 h-4" /> : "3"}
-                    </div>
-                  </div>
-                  <div className="flex-1 pb-2 min-w-0 space-y-4">
-                    {/* Mode toggle */}
-                    <div className="flex gap-2 p-1 bg-slate-100 rounded-2xl">
-                      <button
-                        type="button"
-                        onClick={() => setClinicalMode("picture")}
-                        className={`flex-1 flex items-center justify-center gap-2 py-2.5 px-3 rounded-xl text-sm font-semibold transition-all ${
-                          clinicalMode === "picture" ? "bg-white shadow text-slate-800" : "text-slate-500 hover:text-slate-700"
-                        }`}
-                      >
-                        <Camera className="w-4 h-4" />
-                        Upload
-                      </button>
-                      <button
-                        type="button"
-                        onClick={() => setClinicalMode("type")}
-                        className={`flex-1 flex items-center justify-center gap-2 py-2.5 px-3 rounded-xl text-sm font-semibold transition-all ${
-                          clinicalMode === "type" ? "bg-white shadow text-slate-800" : "text-slate-500 hover:text-slate-700"
-                        }`}
-                      >
-                        <Stethoscope className="w-4 h-4" />
-                        Type
-                      </button>
-                    </div>
-
-                    {/* Type mode: diagnosis + tests */}
-                    {clinicalMode === "type" && (
-                      <div className="space-y-4 animate-fade-in-up">
-                        <Textarea
-                          label="Diagnosis / Clinical Notes"
-                          required
-                          placeholder="Brief clinical summary or working diagnosis…"
-                          rows={3}
-                          value={form.diagnosis}
-                          onChange={(e) => set("diagnosis", e.target.value)}
-                          error={errors.diagnosis}
-                        />
-                        <Textarea
-                          label="Laboratory Tests Requested"
-                          required
-                          placeholder="e.g. FBC, LFT, Serum electrolytes, Fasting glucose, Urinalysis…"
-                          rows={4}
-                          hint={normalisingTests ? "Checking test names…" : "Separate tests with commas — AI will correct spelling"}
-                          value={form.tests}
-                          onChange={(e) => set("tests", e.target.value)}
-                          onBlur={(e) => { if (e.target.value.trim()) normaliseTests(e.target.value); }}
-                          error={errors.tests}
-                        />
-                      </div>
-                    )}
-
-                    {/* Picture mode: image upload */}
-                    {clinicalMode === "picture" && (
-                      <div className="space-y-3 animate-fade-in-up">
-                        <p className="text-sm text-slate-500">Upload a photo of the physical test request slip — we&apos;ll read it with AI and pre-fill the form for you.</p>
+                  {/* Picture mode: image upload */}
+                  {clinicalMode === "picture" && (
+                    <div className="space-y-3 animate-fade-in-up">
+                      <p className="text-sm text-slate-500">Upload a photo of the physical test request slip — we&apos;ll read it with AI and pre-fill the form for you.</p>
                         {testImageUrl ? (
                           <div className="space-y-2">
                             {/* Image thumbnail row */}
@@ -1806,9 +1774,16 @@ export function DoctorRequestForm({
                                           if (res.success && res.extracted) {
                                             setExtractionResult(res.extracted);
                                             // Auto-fill tests & diagnosis immediately
+                                            if (Array.isArray(res.extracted.tests) && res.extracted.tests.length > 0) {
+                                              // Smart-split each AI-extracted name (handles "CT scan of leg, back and hand")
+                                              const expanded = res.extracted.tests.flatMap((n: string) => {
+                                                const parts = smartSplitTestNames(n);
+                                                return parts.length > 0 ? parts : [n];
+                                              });
+                                              setTestTags(expanded.map((n: string) => ({ name: n, catalog_test_id: null })));
+                                            }
                                             setForm((prev) => ({
                                               ...prev,
-                                              tests: res.extracted.tests_text || prev.tests,
                                               diagnosis: res.extracted.diagnosis || prev.diagnosis,
                                               // Only fill patient/doctor fields if currently empty
                                               patient_name: prev.patient_name || res.extracted.patient_name,
@@ -1848,17 +1823,13 @@ export function DoctorRequestForm({
                         {/* Editable review area — shown after extraction so doctor can confirm/correct */}
                         {testImageUrl && !imageUploading && (
                           <div className="space-y-3 pt-1">
-                            <Textarea
+                            <TestTagInput
                               label={imageExtracting ? "Tests Requested (scanning…)" : "Tests Requested"}
-                              required
-                              placeholder={imageExtracting ? "AI is reading the slip…" : "AI will pre-fill this. You can also type or edit here."}
-                              rows={3}
-                              value={form.tests}
-                              onChange={(e) => set("tests", e.target.value)}
-                              onBlur={(e) => { if (e.target.value.trim()) normaliseTests(e.target.value); }}
-                              hint={normalisingTests ? "Checking test names…" : "Review and confirm — AI will also correct spelling"}
-
+                              value={testTags}
+                              onChange={setTestTags}
+                              labId={form.lab_id}
                               error={errors.tests}
+                              disabled={imageExtracting}
                             />
                             <Textarea
                               label="Diagnosis / Clinical Notes"
@@ -1873,6 +1844,54 @@ export function DoctorRequestForm({
                         )}
                       </div>
                     )}
+                  </div>
+                </div>
+
+              {/* Substep 2: Patient Phone — reveals when clinical is filled */}
+              {clinicalDone && (
+                <div className="relative flex gap-3 animate-fade-in-up">
+                  <div className="flex flex-col items-center shrink-0 pt-1">
+                    <div className={`w-6 h-6 rounded-full flex items-center justify-center text-[10px] font-bold border-2 transition-all shrink-0 ${form.patient_phone.trim() ? "bg-emerald-500 border-emerald-500 text-white" : "bg-white border-medical-400 text-medical-600"}`}>
+                      {form.patient_phone.trim() ? <Check className="w-3 h-3" /> : "2"}
+                    </div>
+                    {form.patient_phone.trim() && <div className="w-0.5 flex-1 min-h-4 bg-slate-200 mt-1" />}
+                  </div>
+                  <div className="flex-1 pb-3 min-w-0">
+                    <PhoneInput
+                      label="Patient Phone"
+                      required
+                      value={form.patient_phone}
+                      onChange={(v) => set("patient_phone", v)}
+                      error={errors.patient_phone}
+                    />
+                  </div>
+                </div>
+              )}
+
+              {/* Substep 3: Patient Email — reveals after phone */}
+              {clinicalDone && form.patient_phone.trim() && (
+                <div className="relative flex gap-3 animate-fade-in-up">
+                  <div className="flex flex-col items-center shrink-0 pt-1">
+                    <div className={`w-6 h-6 rounded-full flex items-center justify-center text-[10px] font-bold border-2 transition-all shrink-0 ${form.patient_email && /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(form.patient_email) ? "bg-emerald-500 border-emerald-500 text-white" : "bg-white border-medical-400 text-medical-600"}`}>
+                      {form.patient_email && /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(form.patient_email) ? <Check className="w-3 h-3" /> : "3"}
+                    </div>
+                  </div>
+                  <div className="flex-1 pb-2 min-w-0">
+                    <div className="flex flex-col gap-1">
+                      <label htmlFor="patient_email" className="text-sm font-medium text-slate-700 flex items-center gap-2">
+                        Patient Email <span className="inline-block w-1.5 h-1.5 rounded-full bg-amber-400 ml-0.5 align-middle" aria-label="required" />
+                        <span className="text-xs bg-sky-100 text-sky-700 px-2 py-0.5 rounded-full font-medium">Tracks patient details</span>
+                      </label>
+                      <Input
+                        id="patient_email"
+                        type="email"
+                        placeholder="patient@example.com"
+                        hint="Used to send request code, track results, and auto-fill patient details from their portal"
+                        value={form.patient_email}
+                        onChange={(e) => set("patient_email", e.target.value)}
+                        error={errors.patient_email}
+                      />
+                    </div>
                   </div>
                 </div>
               )}
@@ -2276,7 +2295,7 @@ export function DoctorRequestForm({
                 {/* Lab */}
                 <div className="px-4 py-3 flex items-start justify-between gap-3">
                   <p className="text-xs text-slate-400 shrink-0 w-24">Lab</p>
-                  <p className="text-xs font-semibold text-slate-700 text-right truncate">{selectedLab?.name ?? preselectedLabName ?? ""}{selectedBranchId ? ` · ${branches.find((b) => b.id === selectedBranchId)?.name ?? ""}` : ""}</p>
+                  <p className="text-xs font-semibold text-slate-700 text-right truncate">{hasLocations ? (locations[selectedLocIdx]?.name ?? preselectedLabName ?? "") : (selectedLab?.name ?? preselectedLabName ?? "")}</p>
                 </div>
                 {/* Patient */}
                 <div className="px-4 py-3 flex items-start justify-between gap-3">
@@ -2295,7 +2314,7 @@ export function DoctorRequestForm({
                       ? <p className="text-xs font-semibold text-slate-700">{testImageUrl ? "📎 Image attached" : "⚠ No image"}</p>
                       : <>
                           {form.diagnosis && <p className="text-xs text-slate-500 truncate">{form.diagnosis}</p>}
-                          <p className="text-xs font-semibold text-slate-700 truncate">{form.tests}</p>
+                          <p className="text-xs font-semibold text-slate-700 truncate">{testsString}</p>
                         </>
                     }
                     {form.schedule && <p className="text-xs text-medical-600 font-medium mt-0.5">{scheduleLabel(form.schedule)}</p>}
@@ -2367,15 +2386,15 @@ export function DoctorRequestForm({
       </p>
 
       {/* Lab details modal */}
-      {labDetailsOpen && selectedLab && (
-        <LabDetailsModal lab={selectedLab} onClose={() => setLabDetailsOpen(false)} />
+      {labDetailsOpen && displayLab && (
+        <LabDetailsModal lab={displayLab} onClose={() => setLabDetailsOpen(false)} />
       )}
 
       {/* Learn more modal */}
       {learnMoreOpen && <LearnMoreModal onClose={() => setLearnMoreOpen(false)} />}
 
       {/* Call modal — shown when lab has multiple phone numbers */}
-      {callOpen && selectedLab && (
+      {callOpen && displayLab && (
         <div
           className="fixed inset-0 z-50 flex items-end sm:items-center justify-center p-4 animate-backdrop-in"
           style={{ backgroundColor: "rgba(15,23,42,0.45)", backdropFilter: "blur(4px)" }}
@@ -2391,7 +2410,7 @@ export function DoctorRequestForm({
                 <PhoneCall className="w-5 h-5 text-white" />
               </div>
               <div className="flex-1 min-w-0">
-                <h3 className="text-base font-bold text-slate-800 leading-tight truncate">{selectedLab.name}</h3>
+                <h3 className="text-base font-bold text-slate-800 leading-tight truncate">{displayLab.name}</h3>
                 <p className="text-xs text-slate-400 mt-0.5">Select a number to call</p>
               </div>
               <button
@@ -2403,7 +2422,7 @@ export function DoctorRequestForm({
             </div>
             {/* Phone number list */}
             <div className="px-4 py-3 space-y-2 pb-5">
-              {((selectedLab.phones as string[] | null) ?? []).map((ph, i) => (
+              {((displayLab.phones as string[] | null) ?? []).map((ph, i) => (
                 <a
                   key={i}
                   href={`tel:${ph}`}
@@ -2417,6 +2436,27 @@ export function DoctorRequestForm({
                   <PhoneCall className="w-4 h-4 text-medical-400 group-hover:text-medical-600 transition-colors" />
                 </a>
               ))}
+              {(() => {
+                const waNumbers: string[] = displayLab.whatsapp
+                  ? (() => { try { const p = JSON.parse(displayLab.whatsapp); return Array.isArray(p) ? p : [displayLab.whatsapp]; } catch { return [displayLab.whatsapp]; } })()
+                  : [];
+                return waNumbers.filter(Boolean).map((num, i) => (
+                  <a
+                    key={`wa-${i}`}
+                    href={`https://wa.me/${num.replace(/\D/g, "")}`}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    onClick={() => setCallOpen(false)}
+                    className="flex items-center gap-3 w-full px-4 py-3.5 rounded-2xl bg-emerald-50 hover:bg-emerald-100 border border-emerald-100 hover:border-emerald-200 text-emerald-800 font-semibold text-sm transition-all group"
+                  >
+                    <div className="w-8 h-8 rounded-xl bg-emerald-600 group-hover:bg-emerald-700 flex items-center justify-center shrink-0 transition-colors">
+                      <MessageCircle className="w-4 h-4 text-white" />
+                    </div>
+                    <span className="flex-1">{num}</span>
+                    <span className="text-xs bg-emerald-100 text-emerald-700 px-2 py-0.5 rounded-full border border-emerald-200">WhatsApp</span>
+                  </a>
+                ));
+              })()}
             </div>
           </div>
         </div>
