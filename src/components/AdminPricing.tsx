@@ -591,21 +591,21 @@ function CatalogTab() {
 
   return (
     <div className="space-y-4">
-      <div className="flex items-center gap-3">
-        <button onClick={() => setSelectedCat(null)} className="text-slate-400 hover:text-white">
+      <div className="flex items-center gap-2 flex-wrap">
+        <button onClick={() => setSelectedCat(null)} className="text-slate-400 hover:text-white flex-shrink-0">
           <ArrowLeft className="w-4 h-4" />
         </button>
-        <h3 className="text-white font-semibold flex-1">{selectedCat.name}</h3>
+        <h3 className="text-white font-semibold flex-1 min-w-0 truncate">{selectedCat.name}</h3>
         <Button size="sm" variant="secondary" onClick={aiSuggest} loading={aiSuggesting}>
-          <Sparkles className="w-3.5 h-3.5" /> AI Suggest
+          <Sparkles className="w-3.5 h-3.5" /><span className="hidden sm:inline"> AI Suggest</span>
         </Button>
         <Button size="sm" variant="secondary" onClick={() => setShowNewTest((v) => !v)}>
-          <Plus className="w-3.5 h-3.5" /> Add Test
+          <Plus className="w-3.5 h-3.5" /><span className="hidden sm:inline"> Add Test</span>
         </Button>
       </div>
 
       {/* Bulk price row */}
-      <div className="flex items-center gap-2 bg-slate-700/30 rounded-xl px-4 py-2.5">
+      <div className="flex flex-wrap items-center gap-2 bg-slate-700/30 rounded-xl px-4 py-2.5">
         <Tag className="w-3.5 h-3.5 text-slate-400 flex-shrink-0" />
         <span className="text-xs text-slate-400 flex-shrink-0">Bulk price:</span>
         <span className="text-slate-500 text-sm flex-shrink-0">₦</span>
@@ -615,7 +615,7 @@ function CatalogTab() {
           placeholder="e.g. 2500"
           value={bulkPrice}
           onChange={(e) => setBulkPrice(e.target.value)}
-          className="flex-1 min-w-0 bg-slate-700 border border-slate-600 text-white text-sm px-2 py-1 rounded-lg focus:outline-none focus:ring-1 focus:ring-medical-500 placeholder-slate-500"
+          className="flex-1 min-w-[80px] bg-slate-700 border border-slate-600 text-white text-sm px-2 py-1 rounded-lg focus:outline-none focus:ring-1 focus:ring-medical-500 placeholder-slate-500"
         />
         <Button size="sm" onClick={applyBulkPrice} loading={applyingBulk} disabled={!bulkPrice}>
           Apply to all
@@ -806,8 +806,8 @@ function OverridesTab() {
         <p className="text-slate-400 text-sm">Loading...</p>
       ) : (
         <div className="space-y-1">
-          {/* Header */}
-          <div className="grid grid-cols-[1fr_auto_auto_auto_auto] gap-2 px-3 py-1.5 text-xs text-slate-400 font-medium">
+          {/* Header — desktop only */}
+          <div className="hidden sm:grid sm:grid-cols-[1fr_auto_auto_auto_auto] gap-2 px-3 py-1.5 text-xs text-slate-400 font-medium">
             <span>Test · Category</span>
             <span className="text-right w-24">Base</span>
             <span className="text-right w-24">Override</span>
@@ -816,57 +816,83 @@ function OverridesTab() {
           </div>
 
           {filtered.map((row) => (
-            <div key={row.id} className="grid grid-cols-[1fr_auto_auto_auto_auto] gap-2 items-center px-3 py-2.5 rounded-xl bg-slate-700/50 hover:bg-slate-700/70">
+            <div key={row.id} className="px-3 py-2.5 rounded-xl bg-slate-700/50 hover:bg-slate-700/70 space-y-1.5 sm:space-y-0 sm:grid sm:grid-cols-[1fr_auto_auto_auto_auto] sm:gap-2 sm:items-center">
+              {/* Test name + category */}
               <div>
                 <p className="text-sm text-white">{row.canonical_name}</p>
                 <p className="text-xs text-slate-500">{row.category}</p>
               </div>
 
-              <span className="text-sm text-slate-400 font-mono w-24 text-right">{fmt(row.base_price)}</span>
-
-              {/* Override price cell */}
-              {editingRow === row.id ? (
-                <div className="flex items-center gap-1 w-28">
-                  <span className="text-slate-400 text-sm">₦</span>
-                  <input
-                    value={priceInput} onChange={(e) => setPriceInput(e.target.value)}
-                    className="w-20 bg-slate-600 text-white text-sm px-2 py-0.5 rounded border border-slate-500 focus:outline-none focus:ring-1 focus:ring-medical-500"
-                    autoFocus
-                    onKeyDown={(e) => { if (e.key === "Enter") saveOverride(row.id); if (e.key === "Escape") setEditingRow(null); }}
-                  />
+              {/* Mobile: prices in a single row; desktop: separate columns */}
+              <div className="flex items-center gap-3 sm:contents">
+                <div className="flex items-center gap-1 sm:hidden text-xs text-slate-500 font-medium min-w-0">
+                  <span className="text-slate-400 font-mono">{fmt(row.base_price)}</span>
+                  <span className="text-slate-600">→</span>
+                  <span className={`font-mono ${row.override_price !== null ? "text-amber-300 font-semibold" : "text-slate-300"}`}>
+                    {fmt(row.effective_price)}{row.override_price !== null && <span className="text-amber-500 text-xs ml-0.5">custom</span>}
+                  </span>
                 </div>
-              ) : (
-                <button
-                  onClick={() => { setEditingRow(row.id); setPriceInput(String(row.override_price ?? row.base_price)); }}
-                  className="text-sm font-mono text-right w-24 group flex items-center justify-end gap-1"
-                >
-                  {row.override_price !== null
-                    ? <span className="text-amber-400">{fmt(row.override_price)} <span className="text-xs text-amber-500">custom</span></span>
-                    : <span className="text-slate-500">—</span>}
-                  <Pencil className="w-3 h-3 text-slate-500 opacity-0 group-hover:opacity-100" />
-                </button>
-              )}
 
-              <span className={`text-sm font-mono text-right w-24 ${row.override_price !== null ? "text-amber-300 font-semibold" : "text-slate-300"}`}>
-                {fmt(row.effective_price)}
-              </span>
+                {/* Desktop: base price */}
+                <span className="hidden sm:block text-sm text-slate-400 font-mono w-24 text-right">{fmt(row.base_price)}</span>
 
-              <div className="flex items-center gap-1 w-16 justify-end">
-                {editingRow === row.id && (
-                  <>
-                    <button onClick={() => saveOverride(row.id)} disabled={saving} className="text-emerald-400 hover:text-emerald-300">
-                      <Check className="w-4 h-4" />
-                    </button>
-                    <button onClick={() => setEditingRow(null)} className="text-slate-400 hover:text-slate-300">
-                      <X className="w-4 h-4" />
-                    </button>
-                  </>
-                )}
-                {row.override_price !== null && editingRow !== row.id && (
-                  <button onClick={() => clearOverride(row.id)} className="text-slate-500 hover:text-red-400" title="Reset to base">
-                    <X className="w-3.5 h-3.5" />
+                {/* Override edit cell */}
+                {editingRow === row.id ? (
+                  <div className="flex items-center gap-1 sm:w-28">
+                    <span className="text-slate-400 text-sm">₦</span>
+                    <input
+                      value={priceInput} onChange={(e) => setPriceInput(e.target.value)}
+                      className="w-20 bg-slate-600 text-white text-sm px-2 py-0.5 rounded border border-slate-500 focus:outline-none focus:ring-1 focus:ring-medical-500"
+                      autoFocus
+                      onKeyDown={(e) => { if (e.key === "Enter") saveOverride(row.id); if (e.key === "Escape") setEditingRow(null); }}
+                    />
+                  </div>
+                ) : (
+                  <button
+                    onClick={() => { setEditingRow(row.id); setPriceInput(String(row.override_price ?? row.base_price)); }}
+                    className="hidden sm:flex text-sm font-mono text-right w-24 group items-center justify-end gap-1"
+                  >
+                    {row.override_price !== null
+                      ? <span className="text-amber-400">{fmt(row.override_price)} <span className="text-xs text-amber-500">custom</span></span>
+                      : <span className="text-slate-500">—</span>}
+                    <Pencil className="w-3 h-3 text-slate-500 opacity-0 group-hover:opacity-100" />
                   </button>
                 )}
+
+                {/* Desktop: effective price */}
+                <span className={`hidden sm:block text-sm font-mono text-right w-24 ${row.override_price !== null ? "text-amber-300 font-semibold" : "text-slate-300"}`}>
+                  {fmt(row.effective_price)}
+                </span>
+
+                <div className="flex items-center gap-1 sm:w-16 sm:justify-end ml-auto">
+                  {editingRow === row.id ? (
+                    <>
+                      <button onClick={() => saveOverride(row.id)} disabled={saving} className="text-emerald-400 hover:text-emerald-300">
+                        <Check className="w-4 h-4" />
+                      </button>
+                      <button onClick={() => setEditingRow(null)} className="text-slate-400 hover:text-slate-300">
+                        <X className="w-4 h-4" />
+                      </button>
+                    </>
+                  ) : (
+                    <>
+                      {/* Mobile edit button */}
+                      <button
+                        onClick={() => { setEditingRow(row.id); setPriceInput(String(row.override_price ?? row.base_price)); }}
+                        className="sm:hidden text-slate-400 hover:text-white p-1"
+                        title="Edit override"
+                      >
+                        <Pencil className="w-3.5 h-3.5" />
+                      </button>
+                      {row.override_price !== null && (
+                        <button onClick={() => clearOverride(row.id)} className="text-slate-500 hover:text-red-400" title="Reset to base">
+                          <X className="w-3.5 h-3.5" />
+                        </button>
+                      )}
+                    </>
+                  )}
+                </div>
+              </div>
               </div>
             </div>
           ))}
@@ -1003,6 +1029,7 @@ function UnmappedTab({ onBadgeChange }: { onBadgeChange: (n: number) => void }) 
               {mapTarget === item.id && (
                 <div className="border-t border-slate-700 px-4 pb-3 pt-2 space-y-2">
                   <p className="text-xs text-slate-400 font-medium">Map to existing test</p>
+                  <p className="text-xs text-slate-500">The original phrase will be saved as a synonym so it resolves automatically next time.</p>
                   <input
                     value={mapSearch} onChange={(e) => setMapSearch(e.target.value)}
                     placeholder="Search catalog..."
@@ -1026,6 +1053,17 @@ function UnmappedTab({ onBadgeChange }: { onBadgeChange: (n: number) => void }) 
               {createFor === item.id && (
                 <div className="border-t border-slate-700 px-4 pb-3 pt-2 space-y-2">
                   <p className="text-xs text-slate-400 font-medium">Create new test</p>
+                  {/* Compound-test hint: shown when the raw name looks like it references multiple body parts or tests */}
+                  {/\band\b|\+|,/.test(item.raw_name) && (
+                    <div className="bg-amber-500/10 border border-amber-500/30 rounded-lg px-3 py-2">
+                      <p className="text-xs text-amber-400 font-medium">Compound test detected</p>
+                      <p className="text-xs text-amber-300/80 mt-0.5">
+                        &ldquo;{item.raw_name}&rdquo; may refer to multiple tests (e.g. &ldquo;X-ray knee and ankle&rdquo; = two separate line items).
+                        Consider using <strong>Map</strong> to link it to the primary test, or create a composite entry and add each component as a synonym.
+                        The raw phrase will be saved as a synonym automatically.
+                      </p>
+                    </div>
+                  )}
                   <input value={newName} onChange={(e) => setNewName(e.target.value)}
                     placeholder="Canonical name"
                     className="w-full bg-slate-600 border border-slate-500 text-white text-sm px-3 py-1.5 rounded-lg focus:outline-none focus:ring-1 focus:ring-medical-500" />
@@ -1037,6 +1075,7 @@ function UnmappedTab({ onBadgeChange }: { onBadgeChange: (n: number) => void }) 
                   <input value={newSyns} onChange={(e) => setNewSyns(e.target.value)}
                     placeholder="Extra synonyms (comma-separated)"
                     className="w-full bg-slate-600 border border-slate-500 text-white text-sm px-3 py-1.5 rounded-lg focus:outline-none focus:ring-1 focus:ring-medical-500" />
+                  <p className="text-xs text-slate-500">The original phrase is saved as a synonym automatically.</p>
                   <div className="flex gap-2">
                     <Button size="sm" loading={saving} disabled={!newName.trim() || !newCatId}
                       onClick={() => doAction(item.id, "create", {
@@ -1064,6 +1103,14 @@ export function AdminPricing() {
   const [tab, setTab] = useState<PricingTab>("catalog");
   const [unmappedBadge, setUnmappedBadge] = useState(0);
 
+  // Fetch pending count on mount so badge shows without opening the tab
+  useEffect(() => {
+    fetch("/api/admin/pricing/unmapped?status=pending")
+      .then((r) => r.json())
+      .then((d) => setUnmappedBadge(d.pending_count ?? 0))
+      .catch(() => {});
+  }, []);
+
   const tabs: { key: PricingTab; label: string; icon: React.ReactNode; badge?: number }[] = [
     { key: "catalog", label: "Test Catalog", icon: <FlaskConical className="w-4 h-4" /> },
     { key: "overrides", label: "Lab Overrides", icon: <Building2 className="w-4 h-4" /> },
@@ -1071,28 +1118,29 @@ export function AdminPricing() {
   ];
 
   return (
-    <div className="min-h-screen bg-slate-900 p-6">
-      <div className="max-w-5xl mx-auto space-y-6">
+    <div className="min-h-screen bg-slate-900 p-3 sm:p-6">
+      <div className="max-w-5xl mx-auto space-y-4 sm:space-y-6">
         {/* Header */}
         <div className="flex items-center gap-3">
-          <a href="/admin" className="text-slate-400 hover:text-white">
+          <a href="/admin" className="text-slate-400 hover:text-white flex-shrink-0">
             <ArrowLeft className="w-5 h-5" />
           </a>
-          <div>
-            <h1 className="text-xl font-bold text-white">Pricing Catalog</h1>
-            <p className="text-sm text-slate-400">Manage test catalog, per-lab overrides, and resolve unmapped tests</p>
+          <div className="min-w-0">
+            <h1 className="text-lg sm:text-xl font-bold text-white">Pricing Catalog</h1>
+            <p className="text-xs sm:text-sm text-slate-400 hidden sm:block">Manage test catalog, per-lab overrides, and resolve unmapped tests</p>
           </div>
         </div>
 
         {/* Tabs */}
-        <div className="flex gap-1 bg-slate-800 p-1 rounded-xl w-fit">
+        <div className="flex gap-1 bg-slate-800 p-1 rounded-xl overflow-x-auto">
           {tabs.map((t) => (
             <button key={t.key} onClick={() => setTab(t.key)}
-              className={`flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-medium transition-colors relative ${
+              className={`flex items-center gap-1.5 px-3 sm:px-4 py-2 rounded-lg text-xs sm:text-sm font-medium transition-colors relative whitespace-nowrap flex-shrink-0 ${
                 tab === t.key ? "bg-slate-700 text-white" : "text-slate-400 hover:text-white"
               }`}>
               {t.icon}
-              {t.label}
+              <span className="hidden xs:inline sm:inline">{t.label}</span>
+              <span className="inline xs:hidden sm:hidden">{t.label.split(" ")[0]}</span>
               {t.badge ? (
                 <span className="ml-0.5 bg-red-500 text-white text-xs rounded-full w-4 h-4 flex items-center justify-center font-bold">
                   {t.badge > 9 ? "9+" : t.badge}
@@ -1103,7 +1151,7 @@ export function AdminPricing() {
         </div>
 
         {/* Content */}
-        <div className="bg-slate-800 rounded-2xl p-6 min-h-96">
+        <div className="bg-slate-800 rounded-2xl p-3 sm:p-6 min-h-96">
           {tab === "catalog"   && <CatalogTab />}
           {tab === "overrides" && <OverridesTab />}
           {tab === "unmapped"  && <UnmappedTab onBadgeChange={setUnmappedBadge} />}

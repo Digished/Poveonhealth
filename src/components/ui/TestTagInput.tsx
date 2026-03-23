@@ -133,8 +133,6 @@ export function TestTagInput({ value, onChange, labId, error, label, disabled }:
   }
 
   const catalogCount = value.filter((t) => t.catalog_test_id).length;
-  const totalPrice = value.reduce((sum, t) => sum + (t.price ?? 0), 0);
-  const hasPrices = value.some((t) => t.price !== undefined && t.price > 0);
 
   return (
     <div className="flex flex-col gap-1.5">
@@ -171,11 +169,6 @@ export function TestTagInput({ value, onChange, labId, error, label, disabled }:
                 <span className="w-1.5 h-1.5 rounded-full bg-amber-400 flex-shrink-0" title="Rapid test" />
               )}
               <span className="truncate">{tag.name}</span>
-              {tag.price !== undefined && tag.price > 0 && (
-                <span className={`font-mono flex-shrink-0 ${tag.catalog_test_id ? "text-medical-600" : "text-slate-400"}`}>
-                  ₦{tag.price.toLocaleString()}
-                </span>
-              )}
               {!disabled && (
                 <button
                   type="button"
@@ -220,9 +213,6 @@ export function TestTagInput({ value, onChange, labId, error, label, disabled }:
                   <span className="font-medium text-slate-800 truncate">{r.canonical_name}</span>
                   <span className="text-xs text-slate-400 flex-shrink-0 hidden sm:inline">{r.category}</span>
                 </div>
-                <span className="text-sm font-mono font-semibold text-medical-700 flex-shrink-0 ml-3">
-                  ₦{r.effective_price.toLocaleString()}
-                </span>
               </button>
             ))}
             {inputText.trim() && (
@@ -247,11 +237,6 @@ export function TestTagInput({ value, onChange, labId, error, label, disabled }:
               <span className="text-slate-400"> · {value.length - catalogCount} custom</span>
             )}
           </span>
-          {hasPrices && totalPrice > 0 && (
-            <span className="font-mono font-semibold text-medical-700">
-              Est. ₦{totalPrice.toLocaleString()}
-            </span>
-          )}
         </div>
       )}
 
