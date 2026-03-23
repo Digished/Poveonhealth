@@ -139,6 +139,7 @@ export function patientRequestCode({
   labName,
   labAddress,
   labPhones,
+  testCategories,
   brand,
   requestPageUrl,
 }: {
@@ -147,6 +148,7 @@ export function patientRequestCode({
   labName: string;
   labAddress: string;
   labPhones: string[];
+  testCategories?: string[];
   brand?: { name: string };
   requestPageUrl?: string;
 }) {
@@ -166,6 +168,13 @@ export function patientRequestCode({
         </a>
       </div>`
     : "";
+  const testCategoriesSection = testCategories && testCategories.length > 0
+    ? `${divider}
+      <h3 style="margin:0 0 12px;color:#0259a0;font-size:16px;font-weight:600;">Tests Requested</h3>
+      <div style="display:flex;flex-wrap:wrap;gap:8px;">
+        ${testCategories.map((cat) => `<span style="display:inline-block;background:#f0f7ff;color:#0259a0;border:1px solid #bfdbfe;border-radius:20px;padding:5px 14px;font-size:13px;font-weight:600;">${cat}</span>`).join("")}
+      </div>`
+    : "";
   return base(`
     <h2 style="margin:0 0 8px;color:#0259a0;font-size:20px;font-weight:700;">Your Lab Test Request</h2>
     <p style="margin:0 0 24px;color:#4b5563;font-size:15px;">
@@ -176,6 +185,8 @@ export function patientRequestCode({
     ${codeBox(code)}
 
     ${viewRequestButton}
+
+    ${testCategoriesSection}
 
     ${divider}
 

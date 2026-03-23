@@ -4,6 +4,7 @@ import { prisma } from "@/lib/prisma";
 import { generateUniqueCode } from "@/lib/code-generator";
 import { resend, labSender } from "@/lib/email/resend";
 import { doctorRequestConfirmation, patientRequestCode, labNewRequest } from "@/lib/email/templates";
+import { testsToCategories } from "@/lib/test-categories";
 import { logApiCall } from "@/lib/api-logger";
 
 const CreateRequestSchema = z.object({
@@ -190,6 +191,7 @@ export async function POST(request: NextRequest) {
             labName: lab.name,
             labAddress,
             labPhones,
+            testCategories: testsToCategories(data.tests || ""),
             brand,
             requestPageUrl: patientAppUrl ? `${patientAppUrl}/r/${code}` : undefined,
           }),

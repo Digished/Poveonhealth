@@ -3132,7 +3132,8 @@ function LabWalletView({ walletData, loading, onLoad }: { walletData: WalletView
           <p className="text-sm font-semibold text-white">How charges work</p>
           <p className="text-xs text-slate-400 leading-relaxed">
             Each time you mark a patient request as <strong className="text-white">Seen</strong> (revealing their full details),
-            <strong className="text-white"> ₦{revealPrice.toLocaleString()}</strong> is deducted from your wallet.
+            <strong className="text-white"> ₦{revealPrice.toLocaleString()} per test</strong> is deducted from your wallet.
+            A request with 3 tests costs <strong className="text-white">₦{(revealPrice * 3).toLocaleString()}</strong>.
             Contact your Poveon account manager to top up your balance.
           </p>
         </div>
