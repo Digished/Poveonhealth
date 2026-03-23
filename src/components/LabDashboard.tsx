@@ -223,21 +223,6 @@ export function LabDashboard({ lab, isOwner = false, roleName = "Lab Owner", can
 
   const tabRequests = requests.filter((r) => r.status === activeTab);
 
-  // Find a request that matches the code input as user types — auto-switch tab when found
-  const codeNormalized = codeInput.trim().toUpperCase();
-  const codeMatch = codeNormalized.length >= 3
-    ? requests.find((r) => r.code === codeNormalized || r.code.startsWith(codeNormalized))
-    : null;
-
-  // When a match is found in a different tab, switch to that tab automatically
-  useEffect(() => {
-    if (codeMatch && codeMatch.status !== activeTab) {
-      setActiveTab(codeMatch.status as RequestStatus);
-      setSelectedRequest(null);
-    }
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [codeMatch?.id]);
-
   async function handleRetrieve() {
     const code = codeInput.trim().toUpperCase();
     if (!code) return toast.error("Please enter a request code");
@@ -3183,7 +3168,7 @@ function LabWalletView({ walletData, loading, onLoad }: { walletData: WalletView
                   <p className="text-xs text-slate-500">{format(new Date(txn.created_at), "dd MMM yyyy · HH:mm")}</p>
                 </div>
                 <div className="text-right shrink-0">
-                  <p className={`text-sm font-bold font-mono ${txn.direction === "credit" ? "text-emerald-400" : "text-red-400"}`}>
+                  <p className={`text-sm font-bold font-mono ${txn.direction === "credit" ? "text-emerald-400" : "text-white"}`}>
                     {txn.direction === "credit" ? "+" : "-"}₦{txn.amount.toLocaleString()}
                   </p>
                   <p className="text-xs text-slate-500 font-mono">bal: ₦{txn.balance_after.toLocaleString()}</p>

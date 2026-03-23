@@ -28,6 +28,7 @@ export async function GET() {
         description: true,
         logo_url: true,
         phones: true,
+        whatsapp: true,
         service_categories: true,
         certifications: true,
       },

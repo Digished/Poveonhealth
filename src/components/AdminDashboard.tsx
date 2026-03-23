@@ -7,7 +7,7 @@ import {
   Building2, Trash2, Eye, EyeOff, RefreshCw, X, Pencil,
   Phone, Upload, Check, MapPin, Users, ChevronRight, ChevronDown, ChevronUp,
   Code2, Key, Copy, TrendingUp, Link, Sun, Moon, Star, GitBranch,
-  Wallet, ArrowUpRight, ArrowDownRight, Settings, CreditCard,
+  Wallet, ArrowUpRight, ArrowDownRight, Settings, CreditCard, MessageCircle,
 } from "lucide-react";
 import { useDashTheme } from "@/hooks/useDashTheme";
 import { Button } from "@/components/ui/Button";
@@ -2487,6 +2487,13 @@ function LabBranchModal({ lab, onClose, allLabs }: { lab: Lab; onClose: () => vo
                         </div>
                         {b.branch_lab.address && <p className="text-xs text-slate-400 flex items-center gap-1"><MapPin className="w-3 h-3 shrink-0" />{b.branch_lab.address}</p>}
                         {phones.slice(0, 2).map((ph, i) => <p key={i} className="text-xs text-slate-500 flex items-center gap-1"><Phone className="w-3 h-3 shrink-0" />{ph}</p>)}
+                        {b.branch_lab.whatsapp && (() => {
+                          let waNumbers: string[] = [];
+                          try { const p = JSON.parse(b.branch_lab.whatsapp!); waNumbers = Array.isArray(p) ? p.filter(Boolean) : [b.branch_lab.whatsapp!]; } catch { waNumbers = [b.branch_lab.whatsapp!]; }
+                          return waNumbers.map((num, i) => (
+                            <p key={i} className="text-xs text-emerald-400 flex items-center gap-1"><MessageCircle className="w-3 h-3 shrink-0" />{num}</p>
+                          ));
+                        })()}
                       </div>
                       <div className="flex items-center gap-1 shrink-0">
                         <button onClick={() => handleToggleMain(b)} title={b.is_main ? "Remove main status" : "Set as main"}
