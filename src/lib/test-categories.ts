@@ -68,25 +68,29 @@ const RULES: CategoryRule[] = [
   // ── Blood Tests (broad — catches everything else haematology/biochemistry) ──
   {
     category: "Blood Test",
-    keywords:
-      /\bfbc\b|\bcbc\b|\bfull\s+blood\s+count\b|\bcomplete\s+blood\s+count\b|\bhaemogram\b|\bhemogram\b|\bblood\s+group(ing)?\b|\bpcv\b|\bhaematocrit\b|\bhematocrit\b|
-\blft\b|\bliver\s+function\b|\balt\b|\bast\b|\balp\b|\bggT\b|\bggt\b|\bbilirubin\b|\balbumin\b|\btotal\s+protein\b|
-\brft\b|\brenal\s+function\b|\bkidney\s+function\b|\be\s*\/?\s*u\s*\/?\s*cr\b|\burea\b|\bcreatinine\b|\begfr\b|
-\belectrolytes\b|\bserum\s*(electrolytes|sodium|potassium|chloride|calcium|phosphate|magnesium|bicarbonate)\b|\bna\+?\b|\bk\+?\b|
-\bglucose\b|\bblood\s+sugar\b|\bfasting\s*(blood\s*sugar|glucose)\b|\brandom\s*(blood\s*sugar|glucose)\b|\bhba1c\b|\bdiabetes\s+screen\b|\bogtt\b|
-\blipid\s*profile\b|\bcholesterol\b|\btriglycerides?\b|\bhdl\b|\bldl\b|\bvldl\b|
-\bthyroid\b|\btsh\b|\bt3\b|\bt4\b|\bfree\s+t[34]\b|\bthyroxine\b|
-\bferritin\b|\biron\s+(stud|level|panel)\b|\btibc\b|\btransferrin\b|
-\bvitamin\s+[bd12]\b|\bvit\s+[bd12]\b|\bfolate\b|\bvitamin\s+b\d+\b|
-\besr\b|\bcrp\b|\bc.reactive\b|\bsedimentat\b|
-\bwidal\b|\btyphoid\b|\bhiv\b|\bhbsag\b|\bhbv\b|\bhcv\b|\bhepatitis\b|\bvdrl\b|\brpr\b|\bsyphilis\b|
-\bmalaria\s+(antibody|antigen|serology)\b|
-\bpt\b|\binr\b|\baptt\b|\bclotting\b|\bbleeding\s+time\b|\bprothrombin\b|\bd.dimer\b|\bfibrinogen\b|
-\bpsa\b|\bca\s*125\b|\bca\s*19\.9\b|\bca\s*15\.3\b|\bcea\b|\bafp\b|\btumour\s+marker\b|\btumor\s+marker\b|
-\btestosterone\b|\boestrogen\b|\bestrogen\b|\bprogesterone\b|\bfsh\b|\blh\b|\bprolactin\b|\bcortisol\b|\binsulin\b|\bhcg\b|\bpregnancy\s+test\b|
-\brheumatoid\b|\bra\s+factor\b|\banti.?nuclear\b|\bana\b|\bdouble\s+strand\b|\banti.?ccp\b|
-\bcd4\b|\bcomplete\s+metabolic\b|\bcomp\s+metabolic\b|\bbmp\b|\bcmp\b|\bbasic\s+metabolic\b|
-\bblood\s+culture\b|\bserum\b|\bblood\s+film\b|\bperipheral\s+film\b|\bperipheral\s+smear\b/i,
+    keywords: new RegExp(
+      [
+        "\\bfbc\\b|\\bcbc\\b|\\bfull\\s+blood\\s+count\\b|\\bcomplete\\s+blood\\s+count\\b|\\bhaemogram\\b|\\bhemogram\\b|\\bblood\\s+group(ing)?\\b|\\bpcv\\b|\\bhaematocrit\\b|\\bhematocrit\\b",
+        "\\blft\\b|\\bliver\\s+function\\b|\\balt\\b|\\bast\\b|\\balp\\b|\\bggt\\b|\\bbilirubin\\b|\\balbumin\\b|\\btotal\\s+protein\\b",
+        "\\brft\\b|\\brenal\\s+function\\b|\\bkidney\\s+function\\b|\\be\\s*\\/?\\s*u\\s*\\/?\\s*cr\\b|\\burea\\b|\\bcreatinine\\b|\\begfr\\b",
+        "\\belectrolytes\\b|\\bserum\\s*(electrolytes|sodium|potassium|chloride|calcium|phosphate|magnesium|bicarbonate)\\b|\\bna\\+?\\b|\\bk\\+?\\b",
+        "\\bglucose\\b|\\bblood\\s+sugar\\b|\\bfasting\\s*(blood\\s*sugar|glucose)\\b|\\brandom\\s*(blood\\s*sugar|glucose)\\b|\\bhba1c\\b|\\bdiabetes\\s+screen\\b|\\bogtt\\b",
+        "\\blipid\\s*profile\\b|\\bcholesterol\\b|\\btriglycerides?\\b|\\bhdl\\b|\\bldl\\b|\\bvldl\\b",
+        "\\bthyroid\\b|\\btsh\\b|\\bt3\\b|\\bt4\\b|\\bfree\\s+t[34]\\b|\\bthyroxine\\b",
+        "\\bferritin\\b|\\biron\\s+(stud|level|panel)\\b|\\btibc\\b|\\btransferrin\\b",
+        "\\bvitamin\\s+[bd12]\\b|\\bvit\\s+[bd12]\\b|\\bfolate\\b|\\bvitamin\\s+b\\d+\\b",
+        "\\besr\\b|\\bcrp\\b|\\bc.reactive\\b|\\bsedimentat\\b",
+        "\\bwidal\\b|\\btyphoid\\b|\\bhiv\\b|\\bhbsag\\b|\\bhbv\\b|\\bhcv\\b|\\bhepatitis\\b|\\bvdrl\\b|\\brpr\\b|\\bsyphilis\\b",
+        "\\bmalaria\\s+(antibody|antigen|serology)\\b",
+        "\\bpt\\b|\\binr\\b|\\baptt\\b|\\bclotting\\b|\\bbleeding\\s+time\\b|\\bprothrombin\\b|\\bd.dimer\\b|\\bfibrinogen\\b",
+        "\\bpsa\\b|\\bca\\s*125\\b|\\bca\\s*19\\.9\\b|\\bca\\s*15\\.3\\b|\\bcea\\b|\\bafp\\b|\\btumou?r\\s+marker\\b",
+        "\\btestosterone\\b|\\boestrogen\\b|\\bestrogen\\b|\\bprogesterone\\b|\\bfsh\\b|\\blh\\b|\\bprolactin\\b|\\bcortisol\\b|\\binsulin\\b|\\bhcg\\b|\\bpregnancy\\s+test\\b",
+        "\\brheumatoid\\b|\\bra\\s+factor\\b|\\banti.?nuclear\\b|\\bana\\b|\\bdouble\\s+strand\\b|\\banti.?ccp\\b",
+        "\\bcd4\\b|\\bcomplete\\s+metabolic\\b|\\bcomp\\s+metabolic\\b|\\bbmp\\b|\\bcmp\\b|\\bbasic\\s+metabolic\\b",
+        "\\bblood\\s+culture\\b|\\bserum\\b|\\bblood\\s+film\\b|\\bperipheral\\s+film\\b|\\bperipheral\\s+smear\\b",
+      ].join("|"),
+      "i"
+    ),
   },
 ];
 
