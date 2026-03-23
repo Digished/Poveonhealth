@@ -20,6 +20,11 @@ export default async function LabDashboardPage() {
   let labId: string | null = null;
   let roleName = "Lab Owner";
   let canViewReferrals = true;
+  let canViewClients = true;
+  let canViewAnalytics = true;
+  let canViewActivity = true;
+  let canViewFeedback = true;
+  let canViewWallet = true;
 
   if (role === "lab") {
     const labUser = await prisma.labUser.findUnique({
@@ -33,12 +38,17 @@ export default async function LabDashboardPage() {
       where: { user_id: user.id },
       select: {
         lab_id: true,
-        role: { select: { name: true, can_view_referrals: true } },
+        role: { select: { name: true, can_view_referrals: true, can_view_clients: true, can_view_analytics: true, can_view_activity: true, can_view_feedback: true, can_view_wallet: true } },
       },
     });
     labId = member?.lab_id ?? null;
     roleName = member?.role.name ?? "Member";
     canViewReferrals = member?.role.can_view_referrals ?? false;
+    canViewClients = member?.role.can_view_clients ?? false;
+    canViewAnalytics = member?.role.can_view_analytics ?? false;
+    canViewActivity = member?.role.can_view_activity ?? false;
+    canViewFeedback = member?.role.can_view_feedback ?? false;
+    canViewWallet = member?.role.can_view_wallet ?? false;
   }
 
   if (!labId) redirect("/lab-login");
@@ -52,6 +62,7 @@ export default async function LabDashboardPage() {
       address: true,
       description: true,
       phones: true,
+      whatsapp: true,
       service_categories: true,
       certifications: true,
     },
@@ -64,6 +75,11 @@ export default async function LabDashboardPage() {
       isOwner={role === "lab"}
       roleName={roleName}
       canViewReferrals={canViewReferrals}
+      canViewClients={canViewClients}
+      canViewAnalytics={canViewAnalytics}
+      canViewActivity={canViewActivity}
+      canViewFeedback={canViewFeedback}
+      canViewWallet={canViewWallet}
       lab={{
         id: lab.id,
         name: lab.name,
@@ -71,6 +87,7 @@ export default async function LabDashboardPage() {
         address: lab.address,
         description: lab.description,
         phones: lab.phones as string[],
+        whatsapp: lab.whatsapp,
         service_categories: lab.service_categories as string[],
         certifications: lab.certifications as string[],
       }}

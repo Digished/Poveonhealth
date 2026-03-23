@@ -45,7 +45,14 @@ export async function POST(req: NextRequest) {
       data: { doctor_email: normalised, expires_at: expiresAt },
     });
 
-    const res = NextResponse.json({ success: true });
+    // Let the client know if they should be prompted to create a PIN
+    const profile = await prisma.doctorProfile.findUnique({
+      where: { email: normalised },
+      select: { pin_hash: true },
+    });
+    const should_create_pin = !profile?.pin_hash;
+
+    const res = NextResponse.json({ success: true, should_create_pin });
     res.cookies.set("doc_token", session.id, {
       httpOnly: true,
       secure: process.env.NODE_ENV === "production",

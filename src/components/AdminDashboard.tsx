@@ -6,8 +6,10 @@ import {
   Plus, FlaskConical, BarChart3, List, LogOut,
   Building2, Trash2, Eye, EyeOff, RefreshCw, X, Pencil,
   Phone, Upload, Check, MapPin, Users, ChevronRight, ChevronDown, ChevronUp,
-  Code2, Key, Copy, TrendingUp, Link,
+  Code2, Key, Copy, TrendingUp, Link, Sun, Moon, Star, GitBranch,
+  Wallet, ArrowUpRight, ArrowDownRight, Settings, CreditCard,
 } from "lucide-react";
+import { useDashTheme } from "@/hooks/useDashTheme";
 import { Button } from "@/components/ui/Button";
 import { Input, Textarea } from "@/components/ui/Input";
 import { StatusBadge, Badge } from "@/components/ui/Badge";
@@ -17,7 +19,7 @@ import { format } from "date-fns";
 import { createClient } from "@/lib/supabase/client"; // still used for auth sign-out
 import { useRouter } from "next/navigation";
 
-type AdminTab = "metrics" | "requests" | "referrals" | "labs" | "analytics" | "marketers";
+type AdminTab = "metrics" | "requests" | "referrals" | "labs" | "analytics" | "marketers" | "settings";
 
 interface ReferralGroup {
   key: string;
@@ -33,6 +35,65 @@ interface ReferralGroup {
 // Shared white input class for dark-background modals
 const whiteInput = "bg-white border-slate-200 text-slate-800 placeholder-slate-300";
 
+const COUNTRY_CODES = [
+  { code: "+234", label: "🇳🇬 NG +234" },
+  { code: "+1",   label: "🇺🇸 US +1" },
+  { code: "+44",  label: "🇬🇧 UK +44" },
+  { code: "+27",  label: "🇿🇦 ZA +27" },
+  { code: "+233", label: "🇬🇭 GH +233" },
+  { code: "+254", label: "🇰🇪 KE +254" },
+  { code: "+256", label: "🇺🇬 UG +256" },
+  { code: "+255", label: "🇹🇿 TZ +255" },
+  { code: "+251", label: "🇪🇹 ET +251" },
+  { code: "+212", label: "🇲🇦 MA +212" },
+  { code: "+20",  label: "🇪🇬 EG +20" },
+  { code: "+971", label: "🇦🇪 UAE +971" },
+  { code: "+91",  label: "🇮🇳 IN +91" },
+  { code: "+86",  label: "🇨🇳 CN +86" },
+];
+
+function parseWaCode(full: string): { dial: string; local: string } {
+  for (const c of COUNTRY_CODES) {
+    if (full.startsWith(c.code)) {
+      return { dial: c.code, local: full.slice(c.code.length).trimStart() };
+    }
+  }
+  return { dial: "+234", local: full.startsWith("+") ? full.replace(/^\+\d{1,4}/, "").trimStart() : full };
+}
+
+function WhatsAppNumberInput({
+  value,
+  onChange,
+  inputClass,
+}: {
+  value: string;
+  onChange: (v: string) => void;
+  inputClass: string;
+}) {
+  const { dial, local } = parseWaCode(value);
+  return (
+    <div className="flex gap-1 flex-1">
+      <select
+        value={dial}
+        onChange={(e) => onChange(e.target.value + (local ? " " + local : ""))}
+        className={`shrink-0 rounded-xl border px-2 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-medical-500 ${inputClass}`}
+        style={{ minWidth: "7rem" }}
+      >
+        {COUNTRY_CODES.map((c) => (
+          <option key={c.code} value={c.code}>{c.label}</option>
+        ))}
+      </select>
+      <input
+        value={local}
+        onChange={(e) => onChange(dial + " " + e.target.value)}
+        placeholder="800 000 0000"
+        className={`flex-1 min-w-0 rounded-xl border px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-medical-500 ${inputClass}`}
+        type="tel"
+      />
+    </div>
+  );
+}
+
 function refLink(code: string) {
   const origin = typeof window !== "undefined" ? window.location.origin : "";
   return `${origin}/?ref=${code}`;
@@ -40,7 +101,9 @@ function refLink(code: string) {
 
 export function AdminDashboard() {
   const router = useRouter();
+  const { isLight, toggle, themeClass } = useDashTheme("admin_dash_theme");
   const [activeTab, setActiveTab] = useState<AdminTab>("metrics");
+  const [mobileTabOpen, setMobileTabOpen] = useState(false);
   const [labs, setLabs] = useState<Lab[]>([]);
   const [requests, setRequests] = useState<LabRequest[]>([]);
   const [metrics, setMetrics] = useState<AdminMetrics | null>(null);
@@ -59,6 +122,54 @@ export function AdminDashboard() {
   const [apiLogs, setApiLogs] = useState<ApiLog[]>([]);
   const [apiLogSummary, setApiLogSummary] = useState<ApiLogSummary | null>(null);
   const [expandedLabIntegration, setExpandedLabIntegration] = useState<string | null>(null);
+  const [branchModalLabId, setBranchModalLabId] = useState<string | null>(null);
+  const [walletModalLabId, setWalletModalLabId] = useState<string | null>(null);
+  const [revealPrice, setRevealPrice] = useState<string>("");
+  const [savingRevealPrice, setSavingRevealPrice] = useState(false);
+
+  type RevenueData = {
+    total_credited: number;
+    total_debited: number;
+    wallets: { lab_id: string; lab_name: string; balance: number }[];
+    recent_transactions: { id: string; lab_id: string; lab_name: string; type: string; direction: string; amount: number; balance_after: number; description: string | null; created_at: string }[];
+    by_lab: { lab_id: string; lab_name: string; total_credited: number; total_debited: number; balance: number | { toNumber?: () => number } }[];
+  };
+  const [revenueData, setRevenueData] = useState<RevenueData | null>(null);
+  const [revenueLoading, setRevenueLoading] = useState(false);
+
+  // Per-lab analytics modal
+  type LabAnalytics = {
+    total: number; done: number; seen: number; incoming: number; completionRate: number;
+    monthlyStatus: Record<string, { incoming: number; seen: number; done: number; total: number }>;
+    topTests: { name: string; total: number; done: number }[];
+    topDoctors: { name: string; email: string; prefix: string | null; total: number; done: number }[];
+    sexCounts: Record<string, number>;
+    schedCounts: Record<string, number>;
+    availableMonths: string[];
+    availableTests: string[];
+  };
+  const [labAnalyticsLabId, setLabAnalyticsLabId] = useState<string | null>(null);
+  const [labAnalyticsLabName, setLabAnalyticsLabName] = useState<string>("");
+  const [labAnalytics, setLabAnalytics] = useState<LabAnalytics | null>(null);
+  const [labAnalyticsLoading, setLabAnalyticsLoading] = useState(false);
+  const [labAnalyticsMonth, setLabAnalyticsMonth] = useState("");
+  const [labAnalyticsStatus, setLabAnalyticsStatus] = useState("");
+  const [labAnalyticsTest, setLabAnalyticsTest] = useState("");
+
+  const fetchLabAnalytics = useCallback(async (labId: string, month = "", status = "", test = "") => {
+    setLabAnalyticsLoading(true);
+    try {
+      const p = new URLSearchParams();
+      if (month) p.set("month", month);
+      if (status) p.set("status", status);
+      if (test) p.set("test", test);
+      const res = await fetch(`/api/admin/labs/${labId}/analytics?${p}`);
+      const data = await res.json();
+      if (data.success) setLabAnalytics(data);
+    } catch { /* non-critical */ } finally {
+      setLabAnalyticsLoading(false);
+    }
+  }, []);
 
   const fetchApiLogs = useCallback(async () => {
     try {
@@ -94,6 +205,50 @@ export function AdminDashboard() {
     }
   }, []);
 
+  const fetchSettings = useCallback(async () => {
+    try {
+      const res = await fetch("/api/admin/settings");
+      const data = await res.json();
+      if (data.success) setRevealPrice(data.settings.reveal_price ?? "500");
+    } catch { /* non-critical */ }
+  }, []);
+
+  const fetchRevenue = useCallback(async () => {
+    setRevenueLoading(true);
+    try {
+      const res = await fetch("/api/admin/revenue");
+      const data = await res.json();
+      if (data.success) setRevenueData(data);
+    } catch { /* non-critical */ }
+    finally { setRevenueLoading(false); }
+  }, []);
+
+  async function handleSaveRevealPrice() {
+    if (!revealPrice || isNaN(parseFloat(revealPrice)) || parseFloat(revealPrice) < 0) {
+      toast.error("Enter a valid price");
+      return;
+    }
+    setSavingRevealPrice(true);
+    try {
+      const res = await fetch("/api/admin/settings", {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ reveal_price: revealPrice }),
+      });
+      const data = await res.json();
+      if (data.success) {
+        toast.success("Reveal price updated");
+        setRevealPrice(data.settings.reveal_price);
+      } else {
+        toast.error(data.error ?? "Failed to update");
+      }
+    } catch {
+      toast.error("Network error");
+    } finally {
+      setSavingRevealPrice(false);
+    }
+  }
+
   const fetchData = useCallback(async () => {
     setLoading(true);
     try {
@@ -101,7 +256,9 @@ export function AdminDashboard() {
         fetch("/api/admin/requests"),
         fetchLabs(),
         fetchApiLogs(),
+        fetchSettings(),
         fetchMarketers(),
+        fetchRevenue(),
       ]);
       const reqData = await reqRes.json();
       if (reqData.success) {
@@ -113,7 +270,7 @@ export function AdminDashboard() {
     } finally {
       setLoading(false);
     }
-  }, [fetchLabs, fetchMarketers]);
+  }, [fetchLabs, fetchMarketers, fetchRevenue]);
 
   useEffect(() => { fetchData(); }, [fetchData]);
 
@@ -254,7 +411,7 @@ export function AdminDashboard() {
   }
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-slate-900 via-medical-950 to-slate-900 text-white">
+    <div className={`min-h-screen bg-gradient-to-br from-slate-900 via-medical-950 to-slate-900 text-white transition-colors duration-300 ${themeClass}`}>
       <header className="border-b border-white/10 bg-white/5 backdrop-blur-sm sticky top-0 z-10">
         <div className="max-w-7xl mx-auto px-4 py-4 flex items-center justify-between">
           <div className="flex items-center gap-3">
@@ -267,6 +424,13 @@ export function AdminDashboard() {
             </div>
           </div>
           <div className="flex items-center gap-2">
+            <button
+              onClick={toggle}
+              className="p-2 rounded-lg hover:bg-white/10 text-slate-400 hover:text-white transition-colors"
+              title={isLight ? "Switch to dark mode" : "Switch to light mode"}
+            >
+              {isLight ? <Moon className="w-4 h-4" /> : <Sun className="w-4 h-4" />}
+            </button>
             <button onClick={() => fetchData()} className="p-2 rounded-lg hover:bg-white/10 text-slate-400 hover:text-white transition-colors">
               <RefreshCw className={`w-4 h-4 ${loading ? "animate-spin" : ""}`} />
             </button>
@@ -279,28 +443,64 @@ export function AdminDashboard() {
       </header>
 
       <div className="max-w-7xl mx-auto px-4 py-5 md:py-8">
-        <div className="overflow-x-auto -mx-4 px-4 mb-6 md:mb-8">
-          <div className="flex gap-1 bg-white/5 rounded-xl p-1 w-max">
-            {[
-              { key: "metrics" as AdminTab, label: "Metrics", icon: <BarChart3 className="w-4 h-4" /> },
-              { key: "requests" as AdminTab, label: "All Requests", icon: <List className="w-4 h-4" /> },
-              { key: "referrals" as AdminTab, label: "Referrals", icon: <Users className="w-4 h-4" /> },
-              { key: "labs" as AdminTab, label: "Labs", icon: <Building2 className="w-4 h-4" /> },
-              { key: "analytics" as AdminTab, label: "API Analytics", icon: <BarChart3 className="w-4 h-4" /> },
-              { key: "marketers" as AdminTab, label: "Marketers", icon: <TrendingUp className="w-4 h-4" /> },
-            ].map((tab) => (
-              <button
-                key={tab.key}
-                onClick={() => setActiveTab(tab.key)}
-                className={`flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-medium transition-all shrink-0 ${
-                  activeTab === tab.key ? "bg-white/15 text-white" : "text-slate-400 hover:text-white"
-                }`}
-              >
-                {tab.icon}{tab.label}
-              </button>
-            ))}
-          </div>
-        </div>
+        {/* Tab nav — dropdown on mobile, scroll row on desktop */}
+        {(() => {
+          const tabs = [
+            { key: "metrics" as AdminTab, label: "Metrics", icon: <BarChart3 className="w-4 h-4" /> },
+            { key: "requests" as AdminTab, label: "All Requests", icon: <List className="w-4 h-4" /> },
+            { key: "referrals" as AdminTab, label: "Referrals", icon: <Users className="w-4 h-4" /> },
+            { key: "labs" as AdminTab, label: "Labs", icon: <Building2 className="w-4 h-4" /> },
+            { key: "analytics" as AdminTab, label: "API Analytics", icon: <BarChart3 className="w-4 h-4" /> },
+            { key: "marketers" as AdminTab, label: "Marketers", icon: <TrendingUp className="w-4 h-4" /> },
+            { key: "settings" as AdminTab, label: "Settings", icon: <Settings className="w-4 h-4" /> },
+          ];
+          const current = tabs.find((t) => t.key === activeTab) ?? tabs[0];
+          return (
+            <div className="mb-6 md:mb-8">
+              {/* Mobile dropdown */}
+              <div className="md:hidden relative">
+                <button
+                  onClick={() => setMobileTabOpen((v) => !v)}
+                  className="flex items-center gap-2.5 w-full px-4 py-3 rounded-xl bg-white/8 border border-white/12 text-sm font-semibold text-white"
+                >
+                  <span className="text-slate-300">{current.icon}</span>
+                  <span className="flex-1 text-left">{current.label}</span>
+                  <ChevronDown className={`w-4 h-4 text-slate-400 transition-transform duration-200 ${mobileTabOpen ? "rotate-180" : ""}`} />
+                </button>
+                {mobileTabOpen && (
+                  <div className="absolute top-full left-0 right-0 mt-1.5 rounded-xl border border-white/10 bg-slate-800 shadow-2xl overflow-hidden z-30">
+                    {tabs.map((tab) => (
+                      <button key={tab.key}
+                        onClick={() => { setActiveTab(tab.key); setMobileTabOpen(false); }}
+                        className={`flex items-center gap-3 w-full px-4 py-3.5 text-sm font-medium transition-colors border-b border-white/5 last:border-0 ${
+                          activeTab === tab.key ? "bg-white/12 text-white" : "text-slate-300 hover:bg-white/8"
+                        }`}
+                      >
+                        <span className={activeTab === tab.key ? "text-white" : "text-slate-500"}>{tab.icon}</span>
+                        {tab.label}
+                        {activeTab === tab.key && <ChevronRight className="w-3.5 h-3.5 ml-auto text-white/40" />}
+                      </button>
+                    ))}
+                  </div>
+                )}
+              </div>
+              {/* Desktop scroll row */}
+              <div className="hidden md:block overflow-x-auto -mx-4 px-4">
+                <div className="flex gap-1 bg-white/5 rounded-xl p-1 w-max">
+                  {tabs.map((tab) => (
+                    <button key={tab.key} onClick={() => setActiveTab(tab.key)}
+                      className={`flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-medium transition-all shrink-0 ${
+                        activeTab === tab.key ? "bg-white/15 text-white" : "text-slate-400 hover:text-white"
+                      }`}
+                    >
+                      {tab.icon}{tab.label}
+                    </button>
+                  ))}
+                </div>
+              </div>
+            </div>
+          );
+        })()}
 
         {/* ── METRICS ── */}
         {activeTab === "metrics" && (
@@ -341,6 +541,90 @@ export function AdminDashboard() {
                     {metrics.byLab.length === 0 && <p className="text-sm text-slate-500 text-center py-4">No data yet</p>}
                   </div>
                 </div>
+
+                {/* ── Revenue & Transactions ── */}
+                {revenueLoading ? (
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                    {[...Array(2)].map((_, i) => (
+                      <div key={i} className="bg-white/5 border border-white/10 rounded-2xl p-5 animate-pulse h-24" />
+                    ))}
+                  </div>
+                ) : revenueData && (
+                  <>
+                    {/* Revenue summary cards */}
+                    <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+                      <div className="bg-gradient-to-br from-emerald-500/20 to-emerald-600/10 border border-emerald-500/30 rounded-2xl p-5">
+                        <p className="text-xs text-slate-400 font-medium uppercase tracking-wider mb-1">Total Topups</p>
+                        <p className="text-3xl font-bold text-white">₦{revenueData.total_credited.toLocaleString()}</p>
+                      </div>
+                      <div className="bg-gradient-to-br from-rose-500/20 to-rose-600/10 border border-rose-500/30 rounded-2xl p-5">
+                        <p className="text-xs text-slate-400 font-medium uppercase tracking-wider mb-1">Total Revenue (Reveal Charges)</p>
+                        <p className="text-3xl font-bold text-white">₦{revenueData.total_debited.toLocaleString()}</p>
+                      </div>
+                      <div className="bg-gradient-to-br from-violet-500/20 to-violet-600/10 border border-violet-500/30 rounded-2xl p-5">
+                        <p className="text-xs text-slate-400 font-medium uppercase tracking-wider mb-1">Outstanding Balances</p>
+                        <p className="text-3xl font-bold text-white">
+                          ₦{revenueData.wallets.reduce((s, w) => s + (w.balance > 0 ? w.balance : 0), 0).toLocaleString()}
+                        </p>
+                      </div>
+                    </div>
+
+                    {/* Per-lab wallet breakdown */}
+                    {revenueData.by_lab.length > 0 && (
+                      <div className="bg-white/5 border border-white/10 rounded-2xl p-5">
+                        <div className="flex items-center justify-between mb-4">
+                          <h3 className="text-sm font-semibold text-slate-300">Lab Wallet Breakdown</h3>
+                          <button
+                            onClick={fetchRevenue}
+                            className="flex items-center gap-1.5 text-xs text-slate-400 hover:text-white transition px-2 py-1 rounded-lg hover:bg-white/10"
+                          >
+                            <RefreshCw className="w-3 h-3" />Refresh
+                          </button>
+                        </div>
+                        <div className="space-y-2 max-h-64 overflow-y-auto pr-1">
+                          {revenueData.by_lab.map((row) => {
+                            const bal = typeof row.balance === "object" && row.balance !== null && "toNumber" in row.balance
+                              ? (row.balance as { toNumber: () => number }).toNumber()
+                              : Number(row.balance);
+                            return (
+                              <div key={row.lab_id} className="flex items-center gap-3 py-2 border-b border-white/5 last:border-0">
+                                <p className="text-sm text-white flex-1 min-w-0 truncate">{row.lab_name}</p>
+                                <div className="flex items-center gap-3 text-xs shrink-0">
+                                  <span className="text-emerald-400 font-mono">+₦{row.total_credited.toLocaleString()}</span>
+                                  <span className="text-rose-400 font-mono">-₦{row.total_debited.toLocaleString()}</span>
+                                  <span className={`font-bold font-mono ${bal < 0 ? "text-red-400" : bal < 500 ? "text-amber-400" : "text-slate-300"}`}>
+                                    ₦{bal.toLocaleString()}
+                                  </span>
+                                </div>
+                              </div>
+                            );
+                          })}
+                        </div>
+                      </div>
+                    )}
+
+                    {/* Recent transactions */}
+                    {revenueData.recent_transactions.length > 0 && (
+                      <div className="bg-white/5 border border-white/10 rounded-2xl p-5">
+                        <h3 className="text-sm font-semibold text-slate-300 mb-4">Recent Transactions</h3>
+                        <div className="space-y-2 max-h-80 overflow-y-auto pr-1">
+                          {revenueData.recent_transactions.map((tx) => (
+                            <div key={tx.id} className="flex items-start gap-3 py-2 border-b border-white/5 last:border-0">
+                              <div className={`w-2 h-2 rounded-full mt-1.5 shrink-0 ${tx.direction === "credit" ? "bg-emerald-400" : "bg-rose-400"}`} />
+                              <div className="flex-1 min-w-0">
+                                <p className="text-xs text-white truncate">{tx.description ?? tx.type}</p>
+                                <p className="text-xs text-slate-500 mt-0.5">{tx.lab_name} · {new Date(tx.created_at).toLocaleString("en-GB", { day: "numeric", month: "short", year: "numeric", hour: "2-digit", minute: "2-digit" })}</p>
+                              </div>
+                              <p className={`text-xs font-bold font-mono shrink-0 ${tx.direction === "credit" ? "text-emerald-400" : "text-rose-400"}`}>
+                                {tx.direction === "credit" ? "+" : "-"}₦{tx.amount.toLocaleString()}
+                              </p>
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+                    )}
+                  </>
+                )}
               </>
             ) : (
               <p className="text-slate-500 text-center py-16">No data available</p>
@@ -562,6 +846,31 @@ export function AdminDashboard() {
                         <span>✉</span> {lab.notification_email}
                       </p>
                     )}
+                    {(lab.slug || lab.whatsapp || lab.request_email) && (
+                      <div className="flex flex-wrap items-center gap-1.5 mb-1">
+                        {lab.slug && (
+                          <a
+                            href={`/${lab.slug}`}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            className="text-xs text-blue-400 hover:text-blue-300 underline underline-offset-2 font-mono"
+                            title={`Direct URL: poveon.com/${lab.slug}`}
+                          >
+                            /{lab.slug}
+                          </a>
+                        )}
+                        {lab.whatsapp && (
+                          <span className="inline-flex items-center gap-1 text-xs bg-green-900/30 text-green-400 border border-green-800/30 px-1.5 py-0.5 rounded-full" title={`WhatsApp: ${lab.whatsapp}`}>
+                            <Phone className="w-2.5 h-2.5" />WA
+                          </span>
+                        )}
+                        {lab.request_email && (
+                          <span className="inline-flex items-center gap-1 text-xs bg-blue-900/30 text-blue-400 border border-blue-800/30 px-1.5 py-0.5 rounded-full" title={`Request email: ${lab.request_email}`}>
+                            <span>✉</span> Requests
+                          </span>
+                        )}
+                      </div>
+                    )}
                     {lab.address && (
                       <p className="text-xs text-slate-500 flex items-start gap-1 mt-0.5">
                         <MapPin className="w-3 h-3 text-slate-600 mt-0.5 shrink-0" />{lab.address}
@@ -595,36 +904,86 @@ export function AdminDashboard() {
                         </div>
                       </div>
                     )}
-                    <p className="text-xs text-slate-600 mt-3">Added {format(new Date(lab.created_at), "dd MMM yyyy")}</p>
+                    {/* Wallet balance */}
+                    <div className={`mt-3 flex items-center gap-2 px-3 py-2 rounded-xl ${(lab.wallet_balance ?? 0) < 0 ? "bg-red-500/10 border border-red-500/20" : (lab.wallet_balance ?? 0) < 1000 ? "bg-amber-500/10 border border-amber-500/20" : "bg-emerald-500/10 border border-emerald-500/20"}`}>
+                      <Wallet className={`w-3.5 h-3.5 shrink-0 ${(lab.wallet_balance ?? 0) < 0 ? "text-red-400" : (lab.wallet_balance ?? 0) < 1000 ? "text-amber-400" : "text-emerald-400"}`} />
+                      <span className="text-xs text-slate-400 flex-1">Wallet balance</span>
+                      <span className={`text-sm font-bold font-mono ${(lab.wallet_balance ?? 0) < 0 ? "text-red-400" : (lab.wallet_balance ?? 0) < 1000 ? "text-amber-400" : "text-emerald-300"}`}>
+                        ₦{(lab.wallet_balance ?? 0).toLocaleString()}
+                      </span>
+                    </div>
 
-                    <div className="flex items-center gap-2 mt-4 pt-3 border-t border-white/5">
-                      <button
-                        onClick={() => setEditLab(lab)}
-                        className="flex items-center gap-1 px-2.5 py-1.5 rounded-lg bg-white/5 hover:bg-white/10 text-slate-400 hover:text-white text-xs transition-colors"
-                      >
-                        <Pencil className="w-3 h-3" />Edit
-                      </button>
-                      <button
-                        onClick={() => handleToggleHidden(lab)}
-                        disabled={togglingId === lab.id}
-                        className="flex items-center gap-1 px-2.5 py-1.5 rounded-lg bg-white/5 hover:bg-white/10 text-slate-400 hover:text-white text-xs transition-colors"
-                      >
-                        {lab.hidden ? <Eye className="w-3 h-3" /> : <EyeOff className="w-3 h-3" />}
-                        {lab.hidden ? "Show" : "Hide"}
-                      </button>
-                      <button
-                        onClick={() => setExpandedLabIntegration(lab.id)}
-                        className="flex items-center gap-1 px-2.5 py-1.5 rounded-lg bg-blue-500/10 hover:bg-blue-500/20 text-blue-400 hover:text-blue-300 text-xs transition-colors"
-                      >
-                        <Code2 className="w-3 h-3" />Dev
-                      </button>
-                      <button
-                        onClick={() => handleDeleteLab(lab)}
-                        disabled={deletingId === lab.id}
-                        className="flex items-center gap-1 px-2.5 py-1.5 rounded-lg bg-red-500/10 hover:bg-red-500/20 text-red-400 hover:text-red-300 text-xs transition-colors ml-auto"
-                      >
-                        <Trash2 className="w-3 h-3" />Delete
-                      </button>
+                    <div className="flex items-center justify-between mt-3">
+                      <p className="text-xs text-slate-600">Added {format(new Date(lab.created_at), "dd MMM yyyy")}</p>
+                      {lab.rating_avg != null ? (
+                        <div className="flex items-center gap-1">
+                          {[1, 2, 3, 4, 5].map((i) => (
+                            <Star key={i} className={`w-3 h-3 ${i <= Math.round(lab.rating_avg!) ? "text-amber-400 fill-amber-400" : "text-slate-600"}`} />
+                          ))}
+                          <span className="text-xs text-amber-400 font-semibold ml-0.5">{lab.rating_avg.toFixed(1)}</span>
+                          <span className="text-xs text-slate-600">({lab.rating_count})</span>
+                        </div>
+                      ) : (
+                        <span className="text-xs text-slate-600 italic">No ratings</span>
+                      )}
+                    </div>
+
+                    <div className="mt-4 pt-3 border-t border-white/5">
+                      <div className="grid grid-cols-2 sm:flex sm:flex-wrap gap-2">
+                        <button
+                          onClick={() => setEditLab(lab)}
+                          className="flex items-center justify-center gap-1 px-2.5 py-1.5 rounded-lg bg-white/5 hover:bg-white/10 text-slate-400 hover:text-white text-xs transition-colors"
+                        >
+                          <Pencil className="w-3 h-3" />Edit
+                        </button>
+                        <button
+                          onClick={() => setBranchModalLabId(lab.id)}
+                          className="flex items-center justify-center gap-1 px-2.5 py-1.5 rounded-lg bg-white/5 hover:bg-white/10 text-slate-400 hover:text-white text-xs transition-colors"
+                        >
+                          <GitBranch className="w-3 h-3" />Branches
+                        </button>
+                        <button
+                          onClick={() => handleToggleHidden(lab)}
+                          disabled={togglingId === lab.id}
+                          className="flex items-center justify-center gap-1 px-2.5 py-1.5 rounded-lg bg-white/5 hover:bg-white/10 text-slate-400 hover:text-white text-xs transition-colors"
+                        >
+                          {lab.hidden ? <Eye className="w-3 h-3" /> : <EyeOff className="w-3 h-3" />}
+                          {lab.hidden ? "Show" : "Hide"}
+                        </button>
+                        <button
+                          onClick={() => {
+                            setLabAnalyticsLabId(lab.id);
+                            setLabAnalyticsLabName(lab.name);
+                            setLabAnalytics(null);
+                            setLabAnalyticsMonth("");
+                            setLabAnalyticsStatus("");
+                            setLabAnalyticsTest("");
+                            fetchLabAnalytics(lab.id);
+                          }}
+                          className="flex items-center justify-center gap-1 px-2.5 py-1.5 rounded-lg bg-emerald-500/10 hover:bg-emerald-500/20 text-emerald-400 hover:text-emerald-300 text-xs transition-colors"
+                        >
+                          <BarChart3 className="w-3 h-3" />Stats
+                        </button>
+                        <button
+                          onClick={() => setWalletModalLabId(lab.id)}
+                          className="flex items-center justify-center gap-1 px-2.5 py-1.5 rounded-lg bg-violet-500/10 hover:bg-violet-500/20 text-violet-400 hover:text-violet-300 text-xs transition-colors"
+                        >
+                          <Wallet className="w-3 h-3" />Wallet
+                        </button>
+                        <button
+                          onClick={() => setExpandedLabIntegration(lab.id)}
+                          className="flex items-center justify-center gap-1 px-2.5 py-1.5 rounded-lg bg-blue-500/10 hover:bg-blue-500/20 text-blue-400 hover:text-blue-300 text-xs transition-colors"
+                        >
+                          <Code2 className="w-3 h-3" />Dev
+                        </button>
+                        <button
+                          onClick={() => handleDeleteLab(lab)}
+                          disabled={deletingId === lab.id}
+                          className="col-span-2 sm:col-span-1 flex items-center justify-center gap-1 px-2.5 py-1.5 rounded-lg bg-red-500/10 hover:bg-red-500/20 text-red-400 hover:text-red-300 text-xs transition-colors sm:ml-auto"
+                        >
+                          <Trash2 className="w-3 h-3" />Delete
+                        </button>
+                      </div>
                     </div>
                   </div>
                 ))}
@@ -773,6 +1132,82 @@ export function AdminDashboard() {
           </div>
         )}
 
+        {/* ── SETTINGS ── */}
+        {activeTab === "settings" && (
+          <div className="animate-fade-in space-y-6 max-w-lg">
+            <div>
+              <h2 className="font-semibold text-white">Platform Settings</h2>
+              <p className="text-xs text-slate-500 mt-0.5">Configure system-wide pricing and behaviour</p>
+            </div>
+
+            <div className="bg-white/5 border border-white/10 rounded-2xl p-5 space-y-4">
+              <div className="flex items-center gap-2 mb-1">
+                <CreditCard className="w-4 h-4 text-violet-400" />
+                <p className="font-semibold text-white text-sm">Reveal Pricing</p>
+              </div>
+              <p className="text-xs text-slate-400 leading-relaxed">
+                Each time a lab marks a patient request as <strong className="text-white">Seen</strong>, this amount is deducted from their wallet. The unit is in your local currency (e.g. Naira).
+              </p>
+              <div className="flex gap-2 items-center">
+                <div className="flex-1">
+                  <label className="text-xs text-slate-400 mb-1 block">Price per reveal</label>
+                  <input
+                    type="number"
+                    min="0"
+                    step="1"
+                    value={revealPrice}
+                    onChange={(e) => setRevealPrice(e.target.value)}
+                    className="w-full bg-white/5 border border-white/10 rounded-xl px-3 py-2.5 text-white text-sm placeholder-slate-500 outline-none focus:ring-2 focus:ring-violet-500/50"
+                    placeholder="e.g. 500"
+                  />
+                </div>
+                <button
+                  onClick={handleSaveRevealPrice}
+                  disabled={savingRevealPrice}
+                  className="mt-5 flex items-center gap-1.5 px-4 py-2.5 rounded-xl bg-violet-600 hover:bg-violet-500 text-white text-sm font-medium transition-colors disabled:opacity-50"
+                >
+                  {savingRevealPrice ? <RefreshCw className="w-4 h-4 animate-spin" /> : <Check className="w-4 h-4" />}
+                  Save
+                </button>
+              </div>
+            </div>
+
+            {/* Low balance labs alert */}
+            {labs.filter((l) => (l.wallet_balance ?? 0) < 1000).length > 0 && (
+              <div className="bg-amber-500/8 border border-amber-500/20 rounded-2xl p-5 space-y-3">
+                <p className="text-sm font-semibold text-amber-400 flex items-center gap-2">
+                  <Wallet className="w-4 h-4" />
+                  Labs with low balance (below ₦1,000)
+                </p>
+                {labs.filter((l) => (l.wallet_balance ?? 0) < 1000).map((lab) => (
+                  <div key={lab.id} className="flex items-center justify-between gap-3 bg-white/5 rounded-xl px-4 py-3">
+                    <div className="min-w-0">
+                      <p className="text-sm font-medium text-white truncate">{lab.name}</p>
+                      <p className="text-xs text-slate-400 truncate">{lab.email}</p>
+                      {(lab.phones as string[]).length > 0 && (
+                        <p className="text-xs text-slate-500 flex items-center gap-1 mt-0.5">
+                          <Phone className="w-3 h-3 shrink-0" />{(lab.phones as string[])[0]}
+                        </p>
+                      )}
+                    </div>
+                    <div className="flex flex-col items-end gap-1.5 shrink-0">
+                      <span className={`text-sm font-bold font-mono ${(lab.wallet_balance ?? 0) < 0 ? "text-red-400" : "text-amber-400"}`}>
+                        ₦{(lab.wallet_balance ?? 0).toLocaleString()}
+                      </span>
+                      <button
+                        onClick={() => setWalletModalLabId(lab.id)}
+                        className="text-xs px-2.5 py-1 rounded-lg bg-violet-500/20 hover:bg-violet-500/30 text-violet-300 transition-colors"
+                      >
+                        Top up
+                      </button>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+        )}
+
         {/* ── MARKETERS ── */}
         {activeTab === "marketers" && (
           <div className="animate-fade-in space-y-6">
@@ -899,6 +1334,441 @@ export function AdminDashboard() {
           <LabIntegrationModal lab={lab} onClose={() => setExpandedLabIntegration(null)} />
         ) : null;
       })()}
+      {branchModalLabId && (() => {
+        const lab = labs.find((l) => l.id === branchModalLabId);
+        return lab ? (
+          <LabBranchModal lab={lab} onClose={() => setBranchModalLabId(null)} allLabs={labs} />
+        ) : null;
+      })()}
+      {walletModalLabId && (() => {
+        const lab = labs.find((l) => l.id === walletModalLabId);
+        return lab ? (
+          <LabWalletModal lab={lab} onClose={() => { setWalletModalLabId(null); fetchLabs(); }} />
+        ) : null;
+      })()}
+
+      {/* Per-lab analytics modal */}
+      {labAnalyticsLabId && (
+        <div
+          className="fixed inset-0 z-50 flex items-end sm:items-center justify-center p-4"
+          style={{ backgroundColor: "rgba(2,6,23,0.85)", backdropFilter: "blur(6px)" }}
+          onClick={() => setLabAnalyticsLabId(null)}
+        >
+          <div
+            className="w-full max-w-2xl bg-slate-900 border border-white/10 rounded-3xl shadow-2xl overflow-hidden max-h-[92vh] flex flex-col"
+            onClick={(e) => e.stopPropagation()}
+          >
+            {/* Header */}
+            <div className="px-5 pt-5 pb-4 border-b border-white/10 flex items-center justify-between gap-3 shrink-0">
+              <div className="flex items-center gap-2 min-w-0">
+                <BarChart3 className="w-5 h-5 text-emerald-400 shrink-0" />
+                <div className="min-w-0">
+                  <p className="font-bold text-white truncate">{labAnalyticsLabName}</p>
+                  <p className="text-xs text-slate-500">Lab Analytics</p>
+                </div>
+              </div>
+              <button type="button" onClick={() => setLabAnalyticsLabId(null)} className="p-1.5 rounded-xl hover:bg-white/10 text-slate-400 hover:text-white transition-colors shrink-0">
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            {/* Filters */}
+            <div className="px-5 py-3 border-b border-white/5 flex flex-wrap gap-2 shrink-0">
+              <select
+                value={labAnalyticsMonth}
+                onChange={(e) => {
+                  setLabAnalyticsMonth(e.target.value);
+                  fetchLabAnalytics(labAnalyticsLabId, e.target.value, labAnalyticsStatus, labAnalyticsTest);
+                }}
+                className="bg-white/5 border border-white/10 rounded-xl px-3 py-1.5 text-xs text-slate-200 outline-none cursor-pointer"
+              >
+                <option value="" className="bg-slate-800">All months</option>
+                {(labAnalytics?.availableMonths ?? []).map((m) => {
+                  const [y, mo] = m.split("-");
+                  const lbl = new Date(Number(y), Number(mo) - 1).toLocaleDateString("en-GB", { month: "long", year: "numeric" });
+                  return <option key={m} value={m} className="bg-slate-800">{lbl}</option>;
+                })}
+              </select>
+              <select
+                value={labAnalyticsStatus}
+                onChange={(e) => {
+                  setLabAnalyticsStatus(e.target.value);
+                  fetchLabAnalytics(labAnalyticsLabId, labAnalyticsMonth, e.target.value, labAnalyticsTest);
+                }}
+                className="bg-white/5 border border-white/10 rounded-xl px-3 py-1.5 text-xs text-slate-200 outline-none cursor-pointer"
+              >
+                <option value="" className="bg-slate-800">All statuses</option>
+                <option value="incoming" className="bg-slate-800">Incoming</option>
+                <option value="seen" className="bg-slate-800">Patient Seen</option>
+                <option value="done" className="bg-slate-800">Completed</option>
+              </select>
+              <select
+                value={labAnalyticsTest}
+                onChange={(e) => {
+                  setLabAnalyticsTest(e.target.value);
+                  fetchLabAnalytics(labAnalyticsLabId, labAnalyticsMonth, labAnalyticsStatus, e.target.value);
+                }}
+                className="bg-white/5 border border-white/10 rounded-xl px-3 py-1.5 text-xs text-slate-200 outline-none cursor-pointer min-w-[140px]"
+              >
+                <option value="" className="bg-slate-800">All tests</option>
+                {(labAnalytics?.availableTests ?? []).map((t) => (
+                  <option key={t} value={t} className="bg-slate-800">{t}</option>
+                ))}
+              </select>
+              {(labAnalyticsMonth || labAnalyticsStatus || labAnalyticsTest) && (
+                <button
+                  type="button"
+                  onClick={() => { setLabAnalyticsMonth(""); setLabAnalyticsStatus(""); setLabAnalyticsTest(""); fetchLabAnalytics(labAnalyticsLabId); }}
+                  className="text-xs text-slate-400 hover:text-white px-2.5 py-1.5 rounded-xl hover:bg-white/10 border border-white/10 transition-colors"
+                >
+                  Clear
+                </button>
+              )}
+            </div>
+
+            {/* Body */}
+            <div className="overflow-y-auto flex-1 px-5 py-4 space-y-5">
+              {labAnalyticsLoading ? (
+                <div className="flex items-center justify-center py-16">
+                  <RefreshCw className="w-6 h-6 text-slate-400 animate-spin" />
+                </div>
+              ) : labAnalytics ? (
+                <>
+                  {/* Summary stats */}
+                  <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+                    {[
+                      { label: "Total", value: labAnalytics.total, color: "text-white" },
+                      { label: "Completed", value: labAnalytics.done, color: "text-emerald-400" },
+                      { label: "Patient Seen", value: labAnalytics.seen, color: "text-blue-400" },
+                      { label: "Completion %", value: `${labAnalytics.completionRate}%`, color: "text-medical-300" },
+                    ].map((s) => (
+                      <div key={s.label} className="bg-white/5 border border-white/10 rounded-2xl p-4">
+                        <p className="text-xs text-slate-500 font-semibold uppercase tracking-wider mb-1">{s.label}</p>
+                        <p className={`text-2xl font-bold ${s.color}`}>{s.value}</p>
+                      </div>
+                    ))}
+                  </div>
+
+                  {/* Monthly Status stacked bar chart */}
+                  {(() => {
+                    const months6: { key: string; label: string }[] = [];
+                    for (let i = 5; i >= 0; i--) {
+                      const d = new Date(); d.setDate(1); d.setMonth(d.getMonth() - i);
+                      months6.push({ key: d.toISOString().slice(0, 7), label: d.toLocaleDateString("en-GB", { month: "short" }) });
+                    }
+                    const maxVal = Math.max(1, ...months6.map(({ key }) => labAnalytics.monthlyStatus[key]?.total ?? 0));
+                    const barW = 36; const gap = 14; const colW = barW + gap; const chartH = 70; const labelY = chartH + 14;
+                    const svgW = months6.length * colW + gap;
+                    return (
+                      <div className="bg-white/5 border border-white/10 rounded-2xl p-4">
+                        <div className="flex items-center justify-between mb-2">
+                          <p className="text-xs font-semibold text-slate-400 uppercase tracking-wider">Monthly Activity</p>
+                          <div className="flex gap-3">
+                            {[{ l: "Incoming", c: "#f59e0b" }, { l: "Seen", c: "#60a5fa" }, { l: "Done", c: "#10b981" }].map((s) => (
+                              <div key={s.l} className="flex items-center gap-1">
+                                <span className="w-2 h-2 rounded-sm" style={{ backgroundColor: s.c }} />
+                                <span className="text-xs text-slate-500">{s.l}</span>
+                              </div>
+                            ))}
+                          </div>
+                        </div>
+                        <div className="overflow-x-auto">
+                          <svg viewBox={`0 0 ${svgW} ${labelY + 4}`} style={{ minWidth: `${Math.max(svgW, 220)}px`, height: `${labelY + 8}px`, width: "100%" }} preserveAspectRatio="none">
+                            {months6.map(({ key, label }, mi) => {
+                              const ms = labAnalytics.monthlyStatus[key] ?? { incoming: 0, seen: 0, done: 0, total: 0 };
+                              const x = mi * colW + gap / 2;
+                              let y = chartH;
+                              const segs = [
+                                { h: (ms.incoming / maxVal) * chartH, color: "#f59e0b", v: ms.incoming },
+                                { h: (ms.seen / maxVal) * chartH, color: "#60a5fa", v: ms.seen },
+                                { h: (ms.done / maxVal) * chartH, color: "#10b981", v: ms.done },
+                              ];
+                              const totalH = segs.reduce((a, s) => a + s.h, 0);
+                              return (
+                                <g key={key}>
+                                  {segs.map((seg, si) => { y -= seg.h; return seg.h > 0 ? <rect key={si} x={x} y={y} width={barW} height={seg.h} fill={seg.color} opacity="0.85" /> : null; })}
+                                  {ms.total > 0 && <text x={x + barW / 2} y={chartH - totalH - 2} textAnchor="middle" fill="white" fontSize="8">{ms.total}</text>}
+                                  <text x={x + barW / 2} y={labelY} textAnchor="middle" fill="#94a3b8" fontSize="9">{label}</text>
+                                </g>
+                              );
+                            })}
+                          </svg>
+                        </div>
+                      </div>
+                    );
+                  })()}
+
+                  {/* Top tests */}
+                  {labAnalytics.topTests.length > 0 && (
+                    <div className="bg-white/5 border border-white/10 rounded-2xl p-4">
+                      <p className="text-xs font-semibold text-slate-400 uppercase tracking-wider mb-3">Top Tests</p>
+                      <div className="space-y-2">
+                        {labAnalytics.topTests.slice(0, 12).map((t, idx) => {
+                          const maxT = labAnalytics.topTests[0].total;
+                          const pct = Math.round((t.total / maxT) * 100);
+                          const donePct = t.total > 0 ? Math.round((t.done / t.total) * 100) : 0;
+                          return (
+                            <div key={t.name} className="flex items-center gap-3">
+                              <span className="text-xs text-slate-600 w-4 text-right shrink-0">{idx + 1}</span>
+                              <div className="flex-1 min-w-0">
+                                <div className="flex justify-between text-xs mb-0.5">
+                                  <span className="text-slate-300 truncate">{t.name}</span>
+                                  <span className="text-slate-500 ml-2 shrink-0">{t.total} req · <span className="text-emerald-400">{t.done} done</span></span>
+                                </div>
+                                <div className="h-1.5 rounded-full bg-white/10 overflow-hidden relative">
+                                  <div className="h-full rounded-full absolute left-0 top-0 bg-white/20" style={{ width: `${pct}%` }} />
+                                  <div className="h-full rounded-full absolute left-0 top-0 bg-emerald-500" style={{ width: `${Math.round((t.done / labAnalytics.topTests[0].total) * 100)}%` }} />
+                                </div>
+                              </div>
+                            </div>
+                          );
+                        })}
+                      </div>
+                    </div>
+                  )}
+
+                  {/* Top doctors */}
+                  {labAnalytics.topDoctors.length > 0 && (
+                    <div className="bg-white/5 border border-white/10 rounded-2xl p-4">
+                      <p className="text-xs font-semibold text-slate-400 uppercase tracking-wider mb-3">Top Referring Doctors</p>
+                      <div className="space-y-2">
+                        {labAnalytics.topDoctors.map((doc, idx) => (
+                          <div key={doc.email} className="flex items-center gap-3">
+                            <span className="text-xs text-slate-600 w-4 text-right shrink-0">{idx + 1}</span>
+                            <div className="flex-1 min-w-0">
+                              <div className="flex justify-between text-xs">
+                                <span className="text-slate-300 truncate">{[doc.prefix, doc.name].filter(Boolean).join(" ")}</span>
+                                <span className="text-slate-500 shrink-0 ml-2">{doc.total} · <span className="text-emerald-400">{doc.done} done</span></span>
+                              </div>
+                              <p className="text-xs text-slate-600 truncate">{doc.email}</p>
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+
+                  {/* Demographics 2-col */}
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                    {/* Sex */}
+                    <div className="bg-white/5 border border-white/10 rounded-2xl p-4">
+                      <p className="text-xs font-semibold text-slate-400 uppercase tracking-wider mb-3">Sex</p>
+                      {Object.entries(labAnalytics.sexCounts).map(([s, count]) => {
+                        const tot = Object.values(labAnalytics.sexCounts).reduce((a, b) => a + b, 0) || 1;
+                        const pct = Math.round((count / tot) * 100);
+                        return (
+                          <div key={s} className="mb-2">
+                            <div className="flex justify-between text-xs mb-0.5">
+                              <span className="text-slate-300 capitalize">{s}</span>
+                              <span className="text-slate-500">{count} ({pct}%)</span>
+                            </div>
+                            <div className="h-1.5 rounded-full bg-white/10 overflow-hidden">
+                              <div className="h-full rounded-full bg-medical-500" style={{ width: `${pct}%` }} />
+                            </div>
+                          </div>
+                        );
+                      })}
+                    </div>
+                    {/* Schedule */}
+                    <div className="bg-white/5 border border-white/10 rounded-2xl p-4">
+                      <p className="text-xs font-semibold text-slate-400 uppercase tracking-wider mb-3">Schedule Preference</p>
+                      <div className="flex flex-wrap gap-2">
+                        {Object.entries(labAnalytics.schedCounts).map(([key, cnt]) => {
+                          const lblMap: Record<string, string> = { today: "Today", this_week: "This Week", this_month: "This Month", not_sure: "Not Sure" };
+                          return (
+                            <div key={key} className="flex flex-col items-center bg-white/5 border border-white/10 rounded-xl px-3 py-2 min-w-[70px]">
+                              <span className="text-lg font-bold text-white">{cnt}</span>
+                              <span className="text-xs text-slate-500 text-center mt-0.5">{lblMap[key] ?? key}</span>
+                            </div>
+                          );
+                        })}
+                      </div>
+                    </div>
+                  </div>
+                </>
+              ) : null}
+            </div>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+// =============================================================================
+// Lab Wallet Modal
+// =============================================================================
+function LabWalletModal({ lab, onClose }: { lab: Lab; onClose: () => void }) {
+  type Txn = { id: string; type: string; direction: string; amount: number; balance_after: number; description: string | null; actor_email: string | null; created_at: string };
+  const [balance, setBalance] = useState<number | null>(null);
+  const [transactions, setTransactions] = useState<Txn[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [amount, setAmount] = useState("");
+  const [direction, setDirection] = useState<"credit" | "debit">("credit");
+  const [description, setDescription] = useState("");
+  const [submitting, setSubmitting] = useState(false);
+
+  const load = useCallback(async () => {
+    setLoading(true);
+    try {
+      const res = await fetch(`/api/admin/labs/${lab.id}/wallet`);
+      const data = await res.json();
+      if (data.success) { setBalance(data.balance); setTransactions(data.transactions); }
+    } catch { /* non-critical */ } finally { setLoading(false); }
+  }, [lab.id]);
+
+  useEffect(() => { load(); }, [load]);
+
+  async function handleSubmit(e: React.FormEvent) {
+    e.preventDefault();
+    const val = parseFloat(amount);
+    if (!val || val <= 0 || isNaN(val)) { toast.error("Enter a valid amount"); return; }
+    setSubmitting(true);
+    try {
+      const res = await fetch(`/api/admin/labs/${lab.id}/wallet`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ direction, amount: val, description: description.trim() || undefined }),
+      });
+      const data = await res.json();
+      if (data.success) {
+        toast.success(direction === "credit" ? "Funds added" : "Funds removed");
+        setAmount(""); setDescription("");
+        setBalance(data.balance);
+        setTransactions((prev) => [data.transaction, ...prev]);
+      } else {
+        toast.error(data.error ?? "Failed");
+      }
+    } catch { toast.error("Network error"); } finally { setSubmitting(false); }
+  }
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center p-3 sm:p-4"
+      style={{ backgroundColor: "rgba(2,6,23,0.88)", backdropFilter: "blur(6px)" }}
+      onClick={onClose}
+    >
+      <div className="w-full max-w-lg bg-slate-900 border border-white/10 rounded-3xl shadow-2xl overflow-hidden max-h-[94vh] flex flex-col"
+        onClick={(e) => e.stopPropagation()}
+      >
+        {/* Header */}
+        <div className="px-5 pt-5 pb-4 border-b border-white/10 flex items-center justify-between gap-3 shrink-0">
+          <div className="flex items-center gap-2 min-w-0">
+            <Wallet className="w-5 h-5 text-violet-400 shrink-0" />
+            <div className="min-w-0">
+              <p className="font-bold text-white truncate">{lab.name}</p>
+              <p className="text-xs text-slate-500">Wallet Management</p>
+            </div>
+          </div>
+          <button onClick={onClose} className="p-1.5 rounded-xl hover:bg-white/10 text-slate-400 hover:text-white transition-colors shrink-0">
+            <X className="w-5 h-5" />
+          </button>
+        </div>
+
+        <div className="flex-1 overflow-y-auto p-5 space-y-5">
+          {/* Balance */}
+          {loading ? (
+            <div className="h-20 bg-white/5 rounded-2xl animate-pulse" />
+          ) : (
+            <div className={`rounded-2xl p-5 text-center border ${balance !== null && balance < 0 ? "bg-red-500/10 border-red-500/20" : balance !== null && balance < 1000 ? "bg-amber-500/10 border-amber-500/20" : "bg-violet-500/10 border-violet-500/20"}`}>
+              <p className="text-xs text-slate-400 mb-1 uppercase tracking-wider">Current Balance</p>
+              <p className={`text-4xl font-bold font-mono ${balance !== null && balance < 0 ? "text-red-400" : balance !== null && balance < 1000 ? "text-amber-400" : "text-violet-300"}`}>
+                ₦{(balance ?? 0).toLocaleString()}
+              </p>
+              {balance !== null && balance < 1000 && (
+                <p className="text-xs text-amber-400/80 mt-2">⚠ Low balance — contact lab to top up</p>
+              )}
+            </div>
+          )}
+
+          {/* Contact info for reminder */}
+          <div className="bg-white/5 border border-white/10 rounded-xl px-4 py-3 space-y-1">
+            <p className="text-xs font-semibold text-slate-400 mb-2">Lab Contact</p>
+            <p className="text-xs text-slate-300">{lab.email}</p>
+            {(lab.phones as string[]).map((ph, i) => (
+              <p key={i} className="text-xs text-slate-400 flex items-center gap-1"><Phone className="w-3 h-3 text-slate-600" />{ph}</p>
+            ))}
+          </div>
+
+          {/* Adjust form */}
+          <form onSubmit={handleSubmit} className="space-y-3">
+            <p className="text-xs font-semibold text-slate-400 uppercase tracking-wider">Adjust Balance</p>
+            <div className="grid grid-cols-2 gap-2">
+              <button
+                type="button"
+                onClick={() => setDirection("credit")}
+                className={`flex items-center justify-center gap-2 py-2.5 rounded-xl border text-sm font-medium transition-all ${direction === "credit" ? "bg-emerald-500/20 border-emerald-500/40 text-emerald-300" : "bg-white/5 border-white/10 text-slate-400 hover:text-white"}`}
+              >
+                <ArrowUpRight className="w-4 h-4" />Top Up
+              </button>
+              <button
+                type="button"
+                onClick={() => setDirection("debit")}
+                className={`flex items-center justify-center gap-2 py-2.5 rounded-xl border text-sm font-medium transition-all ${direction === "debit" ? "bg-red-500/20 border-red-500/40 text-red-300" : "bg-white/5 border-white/10 text-slate-400 hover:text-white"}`}
+              >
+                <ArrowDownRight className="w-4 h-4" />Deduct
+              </button>
+            </div>
+            <input
+              type="number"
+              min="1"
+              step="1"
+              value={amount}
+              onChange={(e) => setAmount(e.target.value)}
+              required
+              placeholder="Amount (₦)"
+              className="w-full bg-white/5 border border-white/10 rounded-xl px-3 py-2.5 text-white text-sm placeholder-slate-500 outline-none focus:ring-2 focus:ring-violet-500/50"
+            />
+            <input
+              type="text"
+              value={description}
+              onChange={(e) => setDescription(e.target.value)}
+              placeholder={direction === "credit" ? "Reason (e.g. Bank transfer received)" : "Reason for deduction"}
+              className="w-full bg-white/5 border border-white/10 rounded-xl px-3 py-2.5 text-white text-sm placeholder-slate-500 outline-none focus:ring-2 focus:ring-violet-500/50"
+            />
+            <button
+              type="submit"
+              disabled={submitting}
+              className={`w-full py-2.5 rounded-xl font-semibold text-sm transition-colors disabled:opacity-50 flex items-center justify-center gap-2 ${direction === "credit" ? "bg-emerald-600 hover:bg-emerald-500 text-white" : "bg-red-600 hover:bg-red-500 text-white"}`}
+            >
+              {submitting ? <RefreshCw className="w-4 h-4 animate-spin" /> : direction === "credit" ? <ArrowUpRight className="w-4 h-4" /> : <ArrowDownRight className="w-4 h-4" />}
+              {direction === "credit" ? "Add Funds" : "Remove Funds"}
+            </button>
+          </form>
+
+          {/* Transaction history */}
+          <div>
+            <p className="text-xs font-semibold text-slate-400 uppercase tracking-wider mb-3">Transaction History</p>
+            {loading ? (
+              <div className="space-y-2">{[...Array(3)].map((_, i) => <div key={i} className="h-14 bg-white/5 rounded-xl animate-pulse" />)}</div>
+            ) : transactions.length === 0 ? (
+              <p className="text-sm text-slate-500 text-center py-6">No transactions yet</p>
+            ) : (
+              <div className="space-y-2">
+                {transactions.map((txn) => (
+                  <div key={txn.id} className="flex items-center gap-3 bg-white/5 border border-white/8 rounded-xl px-4 py-3">
+                    <div className={`w-7 h-7 rounded-lg flex items-center justify-center shrink-0 ${txn.direction === "credit" ? "bg-emerald-500/15" : "bg-red-500/15"}`}>
+                      {txn.direction === "credit"
+                        ? <ArrowUpRight className="w-3.5 h-3.5 text-emerald-400" />
+                        : <ArrowDownRight className="w-3.5 h-3.5 text-red-400" />}
+                    </div>
+                    <div className="flex-1 min-w-0">
+                      <p className="text-xs text-white truncate">{txn.description ?? txn.type}</p>
+                      <p className="text-xs text-slate-500">{format(new Date(txn.created_at), "dd MMM yyyy · HH:mm")}</p>
+                      {txn.actor_email && <p className="text-xs text-slate-600 truncate">by {txn.actor_email}</p>}
+                    </div>
+                    <div className="text-right shrink-0">
+                      <p className={`text-sm font-bold font-mono ${txn.direction === "credit" ? "text-emerald-400" : "text-red-400"}`}>
+                        {txn.direction === "credit" ? "+" : "-"}₦{txn.amount.toLocaleString()}
+                      </p>
+                      <p className="text-xs text-slate-500 font-mono">₦{txn.balance_after.toLocaleString()}</p>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+        </div>
+      </div>
     </div>
   );
 }
@@ -913,6 +1783,10 @@ function CreateLabModal({ onClose, onSuccess }: { onClose: () => void; onSuccess
   const [description, setDescription] = useState("");
   const [phones, setPhones] = useState("");
   const [notificationEmail, setNotificationEmail] = useState("");
+  const [slug, setSlug] = useState("");
+  const [slugError, setSlugError] = useState("");
+  const [whatsappNumbers, setWhatsappNumbers] = useState<string[]>([""]);
+  const [requestEmail, setRequestEmail] = useState("");
   const [tempPassword, setTempPassword] = useState("");
   const [showPassword, setShowPassword] = useState(false);
   const [loading, setLoading] = useState(false);
@@ -945,12 +1819,27 @@ function CreateLabModal({ onClose, onSuccess }: { onClose: () => void; onSuccess
       toast.error("Name, email and address are required");
       return;
     }
+    if (slug.trim() && !/^[a-z0-9-]+$/.test(slug.trim())) {
+      setSlugError("Only lowercase letters, numbers, and hyphens allowed");
+      return;
+    }
     setLoading(true);
     try {
       const res = await fetch("/api/admin/create-lab", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ name: name.trim(), email: email.trim(), address: address.trim(), description: description.trim() || undefined, phones: phoneList, notification_email: notificationEmail.trim() || undefined, tempPassword: tempPassword.trim() || undefined }),
+        body: JSON.stringify({
+          name: name.trim(),
+          email: email.trim(),
+          address: address.trim(),
+          description: description.trim() || undefined,
+          phones: phoneList,
+          notification_email: notificationEmail.trim() || undefined,
+          slug: slug.trim() || undefined,
+          whatsapp: JSON.stringify(whatsappNumbers.map((n) => n.trim()).filter(Boolean)) || undefined,
+          request_email: requestEmail.trim() || undefined,
+          tempPassword: tempPassword.trim() || undefined,
+        }),
       });
       const data = await res.json();
       if (data.success) {
@@ -1031,6 +1920,58 @@ function CreateLabModal({ onClose, onSuccess }: { onClose: () => void; onSuccess
                 Emails to doctors &amp; patients will come from this address. Must be verified in Resend first. Leave blank to use notifications@poveon.com.
               </p>
             </div>
+            <div>
+              <label className="text-sm font-medium text-slate-300 block mb-1">
+                Lab URL Slug <span className="text-xs text-slate-500">(optional)</span>
+              </label>
+              <input
+                className={`w-full rounded-xl border px-4 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-medical-500 ${whiteInput} ${slugError ? "border-red-400" : ""}`}
+                placeholder="e.g. apexlabs"
+                value={slug}
+                onChange={(e) => { setSlug(e.target.value); setSlugError(""); }}
+              />
+              {slugError ? (
+                <p className="text-xs text-red-400 mt-1">{slugError}</p>
+              ) : (
+                <p className="text-xs text-slate-500 mt-1">Creates a direct URL: poveon.com/[slug]. Lowercase letters, numbers, hyphens only.</p>
+              )}
+            </div>
+            <div>
+              <label className="text-sm font-medium text-slate-300 block mb-1">
+                WhatsApp Numbers <span className="text-xs text-slate-500">(optional)</span>
+              </label>
+              <div className="space-y-2">
+                {whatsappNumbers.map((num, i) => (
+                  <div key={i} className="flex gap-2">
+                    <WhatsAppNumberInput
+                      value={num}
+                      onChange={(v) => { const next = [...whatsappNumbers]; next[i] = v; setWhatsappNumbers(next); }}
+                      inputClass={whiteInput}
+                    />
+                    {whatsappNumbers.length > 1 && (
+                      <button type="button" onClick={() => setWhatsappNumbers(whatsappNumbers.filter((_, j) => j !== i))}
+                        className="px-3 py-2 rounded-xl bg-red-900/30 text-red-400 hover:bg-red-900/50 transition-colors text-xs font-bold shrink-0">✕</button>
+                    )}
+                  </div>
+                ))}
+                <button type="button" onClick={() => setWhatsappNumbers([...whatsappNumbers, "+234 "])}
+                  className="text-xs text-medical-400 hover:text-medical-300 font-medium transition-colors">+ Add another number</button>
+              </div>
+              <p className="text-xs text-slate-500 mt-1">Select country code then enter the local number.</p>
+            </div>
+            <div>
+              <label className="text-sm font-medium text-slate-300 block mb-1">
+                New Request Notification Email <span className="text-xs text-slate-500">(optional)</span>
+              </label>
+              <input
+                type="email"
+                className={`w-full rounded-xl border px-4 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-medical-500 ${whiteInput}`}
+                placeholder="requests@apexlabs.com"
+                value={requestEmail}
+                onChange={(e) => setRequestEmail(e.target.value)}
+              />
+              <p className="text-xs text-slate-500 mt-1">New test requests will be emailed to this address.</p>
+            </div>
             <div className="relative">
               <label className="text-sm font-medium text-slate-300 block mb-1">Temporary Password <span className="text-xs text-slate-500">(optional)</span></label>
               <input type={showPassword ? "text" : "password"} className={`w-full rounded-xl border px-4 py-2.5 pr-10 text-sm focus:outline-none focus:ring-2 focus:ring-medical-500 ${whiteInput}`} placeholder="Leave blank to auto-generate" value={tempPassword} onChange={(e) => setTempPassword(e.target.value)} />
@@ -1059,6 +2000,17 @@ function EditLabModal({ lab, onClose, onSuccess }: { lab: Lab; onClose: () => vo
   const [description, setDescription] = useState(lab.description ?? "");
   const [phones, setPhones] = useState((lab.phones as string[]).join("\n"));
   const [notificationEmail, setNotificationEmail] = useState(lab.notification_email ?? "");
+  const [slug, setSlug] = useState(lab.slug ?? "");
+  const [slugError, setSlugError] = useState("");
+  const [whatsappNumbers, setWhatsappNumbers] = useState<string[]>(() => {
+    try {
+      const p = JSON.parse(lab.whatsapp ?? "[]");
+      return Array.isArray(p) ? (p.length ? p : ["+234 "]) : lab.whatsapp ? [lab.whatsapp] : ["+234 "];
+    } catch {
+      return lab.whatsapp ? [lab.whatsapp] : ["+234 "];
+    }
+  });
+  const [requestEmail, setRequestEmail] = useState(lab.request_email ?? "");
   const [selectedCategories, setSelectedCategories] = useState<string[]>((lab.service_categories as string[]) ?? []);
   const [selectedCerts, setSelectedCerts] = useState<string[]>((lab.certifications as string[]) ?? []);
   const [loading, setLoading] = useState(false);
@@ -1093,12 +2045,16 @@ function EditLabModal({ lab, onClose, onSuccess }: { lab: Lab; onClose: () => vo
       toast.error("Name and address are required");
       return;
     }
+    if (slug.trim() && !/^[a-z0-9-]+$/.test(slug.trim())) {
+      setSlugError("Only lowercase letters, numbers, and hyphens allowed");
+      return;
+    }
     setLoading(true);
     try {
       const res = await fetch(`/api/admin/labs/${lab.id}`, {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ name: name.trim(), address: address.trim(), description: description.trim(), phones: phoneList, notification_email: notificationEmail.trim() || null, service_categories: selectedCategories, certifications: selectedCerts }),
+        body: JSON.stringify({ name: name.trim(), address: address.trim(), description: description.trim(), phones: phoneList, notification_email: notificationEmail.trim() || null, service_categories: selectedCategories, certifications: selectedCerts, slug: slug.trim() || null, whatsapp: JSON.stringify(whatsappNumbers.map(n => n.trim()).filter(Boolean)) || null, request_email: requestEmail.trim() || null }),
       });
       const data = await res.json();
       if (data.success) {
@@ -1146,6 +2102,58 @@ function EditLabModal({ lab, onClose, onSuccess }: { lab: Lab; onClose: () => vo
             <p className="text-xs text-slate-500 mt-1">
               When set, all patient &amp; doctor emails for this lab will come from this address and display the lab&apos;s name. Must be verified in Resend. Leave blank to use notifications@poveon.com.
             </p>
+          </div>
+          <div>
+            <label className="text-sm font-medium text-slate-300 block mb-1">
+              Lab URL Slug <span className="text-xs text-slate-500">(optional)</span>
+            </label>
+            <input
+              className={`w-full rounded-xl border px-4 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-medical-500 ${whiteInput} ${slugError ? "border-red-400" : ""}`}
+              placeholder="e.g. apexlabs"
+              value={slug}
+              onChange={(e) => { setSlug(e.target.value); setSlugError(""); }}
+            />
+            {slugError ? (
+              <p className="text-xs text-red-400 mt-1">{slugError}</p>
+            ) : (
+              <p className="text-xs text-slate-500 mt-1">Creates a direct URL: poveon.com/[slug]. Lowercase letters, numbers, hyphens only.</p>
+            )}
+          </div>
+          <div>
+            <label className="text-sm font-medium text-slate-300 block mb-1">
+              WhatsApp Numbers <span className="text-xs text-slate-500">(optional)</span>
+            </label>
+            <div className="space-y-2">
+              {whatsappNumbers.map((num, i) => (
+                <div key={i} className="flex gap-2">
+                  <WhatsAppNumberInput
+                    value={num}
+                    onChange={(v) => { const next = [...whatsappNumbers]; next[i] = v; setWhatsappNumbers(next); }}
+                    inputClass={whiteInput}
+                  />
+                  {whatsappNumbers.length > 1 && (
+                    <button type="button" onClick={() => setWhatsappNumbers(whatsappNumbers.filter((_, j) => j !== i))}
+                      className="px-3 py-2 rounded-xl bg-red-900/30 text-red-400 hover:bg-red-900/50 transition-colors text-sm">✕</button>
+                  )}
+                </div>
+              ))}
+              <button type="button" onClick={() => setWhatsappNumbers([...whatsappNumbers, "+234 "])}
+                className="text-xs text-medical-400 hover:text-medical-300 transition-colors">+ Add another number</button>
+            </div>
+            <p className="text-xs text-slate-500 mt-1">Select country code then enter the local number.</p>
+          </div>
+          <div>
+            <label className="text-sm font-medium text-slate-300 block mb-1">
+              New Request Notification Email <span className="text-xs text-slate-500">(optional)</span>
+            </label>
+            <input
+              type="email"
+              className={`w-full rounded-xl border px-4 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-medical-500 ${whiteInput}`}
+              placeholder="requests@apexlabs.com"
+              value={requestEmail}
+              onChange={(e) => setRequestEmail(e.target.value)}
+            />
+            <p className="text-xs text-slate-500 mt-1">New test requests will be emailed to this address.</p>
           </div>
 
           <SearchableCheckboxGroup
@@ -1321,6 +2329,195 @@ function CopyField({ label, value }: { label: string; value: string }) {
     </div>
   );
 }
+
+// ── Lab Branch Management Modal ──────────────────────────────────────────────
+
+interface BranchRecord {
+  id: string;
+  branch_lab_id: string;
+  is_main: boolean;
+  branch_lab: { id: string; name: string; address: string; phones: unknown; whatsapp?: string | null };
+}
+
+function LabBranchModal({ lab, onClose, allLabs }: { lab: Lab; onClose: () => void; allLabs: Lab[] }) {
+  const [branches, setBranches] = useState<BranchRecord[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [saving, setSaving] = useState(false);
+  const [showPicker, setShowPicker] = useState(false);
+  const [selectedLabId, setSelectedLabId] = useState("");
+  const [isMain, setIsMain] = useState(false);
+  const [search, setSearch] = useState("");
+
+  const fetchBranches = useCallback(async () => {
+    setLoading(true);
+    try {
+      const res = await fetch(`/api/admin/labs/${lab.id}/branches`);
+      const data = await res.json();
+      if (data.success) setBranches(data.branches ?? []);
+    } finally { setLoading(false); }
+  }, [lab.id]);
+
+  useEffect(() => { fetchBranches(); }, [fetchBranches]);
+
+  // Labs that can still be added: exclude self, already-linked, and labs that ARE the parent themselves
+  const linkedIds = new Set(branches.map((b) => b.branch_lab_id));
+  const availableLabs = allLabs.filter(
+    (l) => l.id !== lab.id && !linkedIds.has(l.id)
+  );
+  const filteredAvailable = search.trim()
+    ? availableLabs.filter((l) => l.name.toLowerCase().includes(search.toLowerCase()) || l.address.toLowerCase().includes(search.toLowerCase()))
+    : availableLabs;
+
+  async function handleLink() {
+    if (!selectedLabId) { toast.error("Select a lab to add as a branch"); return; }
+    setSaving(true);
+    try {
+      const res = await fetch(`/api/admin/labs/${lab.id}/branches`, {
+        method: "POST", headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ branch_lab_id: selectedLabId, is_main: isMain }),
+      });
+      const data = await res.json();
+      if (data.success) {
+        toast.success("Branch linked");
+        setShowPicker(false); setSelectedLabId(""); setIsMain(false); setSearch("");
+        await fetchBranches();
+      } else { toast.error(data.error ?? "Failed"); }
+    } catch { toast.error("Network error"); }
+    finally { setSaving(false); }
+  }
+
+  async function handleToggleMain(b: BranchRecord) {
+    const newMain = !b.is_main;
+    try {
+      const res = await fetch(`/api/admin/labs/${lab.id}/branches/${b.id}`, {
+        method: "PATCH", headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ is_main: newMain }),
+      });
+      const data = await res.json();
+      if (data.success) { await fetchBranches(); }
+      else toast.error(data.error ?? "Failed");
+    } catch { toast.error("Network error"); }
+  }
+
+  async function handleUnlink(b: BranchRecord) {
+    if (!confirm(`Unlink "${b.branch_lab.name}" as a branch of ${lab.name}?`)) return;
+    try {
+      const res = await fetch(`/api/admin/labs/${lab.id}/branches/${b.id}`, { method: "DELETE" });
+      const data = await res.json();
+      if (data.success) { toast.success("Branch unlinked"); await fetchBranches(); }
+      else toast.error(data.error ?? "Failed");
+    } catch { toast.error("Network error"); }
+  }
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center p-4 bg-black/70 backdrop-blur-sm" onClick={(e) => { if (e.target === e.currentTarget) onClose(); }}>
+      <div className="bg-slate-900 border border-white/10 rounded-2xl w-full max-w-lg max-h-[90vh] overflow-y-auto shadow-2xl animate-slide-up">
+        {/* Header */}
+        <div className="sticky top-0 bg-slate-900 border-b border-white/10 px-5 py-4 flex items-center justify-between rounded-t-2xl">
+          <div>
+            <h2 className="font-semibold text-white text-base flex items-center gap-2">
+              <GitBranch className="w-4 h-4 text-medical-400" />
+              Branch Setup — {lab.name}
+            </h2>
+            <p className="text-xs text-slate-500 mt-0.5">Link existing labs as branches of this lab</p>
+          </div>
+          <button onClick={onClose} className="p-1.5 rounded-lg hover:bg-white/10 text-slate-400 transition-colors"><X className="w-5 h-5" /></button>
+        </div>
+
+        <div className="p-5 space-y-4">
+          {/* Lab picker panel */}
+          {showPicker && (
+            <div className="bg-white/5 border border-white/10 rounded-xl p-4 space-y-3">
+              <h3 className="text-sm font-semibold text-white">Select a Lab to Add as Branch</h3>
+              <input
+                value={search} onChange={(e) => setSearch(e.target.value)}
+                placeholder="Search labs by name or address…"
+                className="w-full text-sm rounded-xl border border-white/15 bg-white/5 text-white placeholder-slate-500 px-3 py-2.5 focus:outline-none focus:ring-2 focus:ring-medical-500/50"
+              />
+              <div className="max-h-52 overflow-y-auto space-y-1">
+                {filteredAvailable.length === 0 ? (
+                  <p className="text-xs text-slate-500 text-center py-4">{availableLabs.length === 0 ? "All labs are already linked" : "No labs match your search"}</p>
+                ) : filteredAvailable.map((l) => (
+                  <button key={l.id} onClick={() => setSelectedLabId(l.id)}
+                    className={`w-full text-left px-3 py-2.5 rounded-xl text-sm transition-colors ${selectedLabId === l.id ? "bg-medical-600 text-white" : "hover:bg-white/8 text-slate-300"}`}>
+                    <p className="font-semibold">{l.name}</p>
+                    {l.address && <p className={`text-xs ${selectedLabId === l.id ? "text-medical-200" : "text-slate-500"}`}>{l.address}</p>}
+                  </button>
+                ))}
+              </div>
+              <label className="flex items-center gap-2 cursor-pointer">
+                <input type="checkbox" checked={isMain} onChange={(e) => setIsMain(e.target.checked)}
+                  className="rounded border-white/20 bg-white/5 text-medical-500" />
+                <span className="text-sm text-slate-300">Mark as the main branch</span>
+              </label>
+              <div className="flex gap-2 pt-1">
+                <button onClick={handleLink} disabled={saving || !selectedLabId}
+                  className="flex-1 flex items-center justify-center gap-2 py-2.5 rounded-xl bg-medical-600 hover:bg-medical-500 text-white text-sm font-semibold disabled:opacity-50 transition-colors">
+                  {saving ? <RefreshCw className="w-4 h-4 animate-spin" /> : <Check className="w-4 h-4" />}
+                  Link as Branch
+                </button>
+                <button onClick={() => { setShowPicker(false); setSelectedLabId(""); setSearch(""); }}
+                  className="px-4 py-2.5 rounded-xl bg-white/5 hover:bg-white/10 text-slate-400 hover:text-white text-sm transition-colors">
+                  Cancel
+                </button>
+              </div>
+            </div>
+          )}
+
+          {/* Linked branches list */}
+          {loading ? (
+            <div className="flex justify-center py-8"><RefreshCw className="w-5 h-5 text-slate-500 animate-spin" /></div>
+          ) : branches.length === 0 && !showPicker ? (
+            <div className="text-center py-10">
+              <GitBranch className="w-8 h-8 text-slate-600 mx-auto mb-2" />
+              <p className="text-sm text-slate-400 font-medium">No branches linked</p>
+              <p className="text-xs text-slate-500 mt-1">Link existing labs as physical branches of {lab.name}</p>
+            </div>
+          ) : (
+            <div className="space-y-2">
+              {branches.map((b) => {
+                const phones = b.branch_lab.phones as string[];
+                return (
+                  <div key={b.id} className="bg-white/5 border border-white/10 rounded-xl px-4 py-3">
+                    <div className="flex items-start justify-between gap-2">
+                      <div className="min-w-0">
+                        <div className="flex items-center gap-2 mb-0.5">
+                          <p className="font-semibold text-white text-sm truncate">{b.branch_lab.name}</p>
+                          {b.is_main && <span className="text-xs bg-medical-600/30 text-medical-300 border border-medical-600/30 px-2 py-0.5 rounded-full font-medium shrink-0">Main</span>}
+                        </div>
+                        {b.branch_lab.address && <p className="text-xs text-slate-400 flex items-center gap-1"><MapPin className="w-3 h-3 shrink-0" />{b.branch_lab.address}</p>}
+                        {phones.slice(0, 2).map((ph, i) => <p key={i} className="text-xs text-slate-500 flex items-center gap-1"><Phone className="w-3 h-3 shrink-0" />{ph}</p>)}
+                      </div>
+                      <div className="flex items-center gap-1 shrink-0">
+                        <button onClick={() => handleToggleMain(b)} title={b.is_main ? "Remove main status" : "Set as main"}
+                          className={`p-1.5 rounded-lg transition-colors ${b.is_main ? "text-medical-400 hover:bg-medical-500/20" : "text-slate-500 hover:text-medical-400 hover:bg-white/10"}`}>
+                          <Star className="w-3.5 h-3.5" />
+                        </button>
+                        <button onClick={() => handleUnlink(b)} title="Unlink branch"
+                          className="p-1.5 rounded-lg hover:bg-red-500/20 text-slate-500 hover:text-red-400 transition-colors">
+                          <Trash2 className="w-3.5 h-3.5" />
+                        </button>
+                      </div>
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          )}
+
+          {!showPicker && (
+            <button onClick={() => setShowPicker(true)}
+              className="w-full flex items-center justify-center gap-2 py-2.5 rounded-xl border border-dashed border-white/15 text-slate-400 hover:text-white hover:border-white/30 text-sm transition-colors">
+              <Plus className="w-4 h-4" />Link Existing Lab as Branch
+            </button>
+          )}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
 
 type IntegrationTab = "developer" | "team";
 
@@ -1536,15 +2733,25 @@ function LabDeveloperTab({ lab }: { lab: Lab }) {
 
 // ── Team & Roles Tab ───────────────────────────────────────────────────────
 
-const PERMISSION_LABELS: { key: keyof LabRole; label: string }[] = [
-  { key: "can_view_requests",   label: "View requests"   },
-  { key: "can_mark_seen",       label: "Mark seen"       },
-  { key: "can_mark_done",       label: "Mark done"       },
-  { key: "can_send_results",    label: "Send results"    },
-  { key: "can_manage_team",     label: "Manage team"     },
-  { key: "can_manage_api_keys", label: "Manage API keys" },
-  { key: "can_view_referrals",  label: "View referrals"  },
+const PAGE_PERMISSIONS: { key: keyof LabRole; label: string; description: string }[] = [
+  { key: "can_view_requests",   label: "Requests",   description: "View and search patient requests" },
+  { key: "can_view_referrals",  label: "Referrals",  description: "View doctor referral stats" },
+  { key: "can_view_clients",    label: "Clients",    description: "Browse the patient/client list" },
+  { key: "can_view_analytics",  label: "Analytics",  description: "View lab performance analytics" },
+  { key: "can_view_activity",   label: "Activity",   description: "View team activity log" },
+  { key: "can_view_feedback",   label: "Feedback",   description: "View patient and doctor feedback" },
+  { key: "can_view_wallet",     label: "Wallet",     description: "View wallet balance and transactions" },
 ];
+
+const ACTION_PERMISSIONS: { key: keyof LabRole; label: string; description: string }[] = [
+  { key: "can_mark_seen",       label: "Mark as Seen",     description: "Confirm patient arrived at lab" },
+  { key: "can_mark_done",       label: "Mark as Done",     description: "Mark tests as completed" },
+  { key: "can_send_results",    label: "Send Results",     description: "Email results to doctors" },
+  { key: "can_manage_team",     label: "Manage Team",      description: "Invite/remove staff members" },
+  { key: "can_manage_api_keys", label: "Manage API Keys",  description: "Create and revoke API keys" },
+];
+
+const ALL_PERMISSION_LABELS = [...PAGE_PERMISSIONS, ...ACTION_PERMISSIONS];
 
 type DraftRole = {
   name: string;
@@ -1555,10 +2762,15 @@ type DraftRole = {
   can_manage_team:     boolean;
   can_manage_api_keys: boolean;
   can_view_referrals:  boolean;
+  can_view_clients:    boolean;
+  can_view_analytics:  boolean;
+  can_view_activity:   boolean;
+  can_view_feedback:   boolean;
+  can_view_wallet:     boolean;
 };
 
 function blankRole(): DraftRole {
-  return { name: "", can_view_requests: true, can_mark_seen: false, can_mark_done: false, can_send_results: false, can_manage_team: false, can_manage_api_keys: false, can_view_referrals: false };
+  return { name: "", can_view_requests: true, can_mark_seen: false, can_mark_done: false, can_send_results: false, can_manage_team: false, can_manage_api_keys: false, can_view_referrals: false, can_view_clients: false, can_view_analytics: false, can_view_activity: false, can_view_feedback: false, can_view_wallet: false };
 }
 
 function LabTeamTab({ lab }: { lab: Lab }) {
@@ -1628,6 +2840,11 @@ function LabTeamTab({ lab }: { lab: Lab }) {
       can_manage_team:     role.can_manage_team,
       can_manage_api_keys: role.can_manage_api_keys,
       can_view_referrals:  role.can_view_referrals,
+      can_view_clients:    (role as DraftRole).can_view_clients ?? false,
+      can_view_analytics:  (role as DraftRole).can_view_analytics ?? false,
+      can_view_activity:   (role as DraftRole).can_view_activity ?? false,
+      can_view_feedback:   (role as DraftRole).can_view_feedback ?? false,
+      can_view_wallet:     (role as DraftRole).can_view_wallet ?? false,
     });
     setShowNewRole(true);
   }
@@ -1707,7 +2924,7 @@ function LabTeamTab({ lab }: { lab: Lab }) {
                 <div>
                   <p className="text-xs font-medium text-slate-300">{r.name}</p>
                   <p className="text-xs text-slate-600 mt-0.5">
-                    {PERMISSION_LABELS.filter((p) => r[p.key as keyof LabRole]).map((p) => p.label).join(" · ") || "No permissions"}
+                    {ALL_PERMISSION_LABELS.filter((p) => r[p.key as keyof LabRole]).map((p) => p.label).join(" · ") || "No permissions"}
                     {(r._count?.members ?? 0) > 0 && <span className="ml-2 text-slate-500">· {r._count?.members} member{(r._count?.members ?? 0) !== 1 ? "s" : ""}</span>}
                   </p>
                 </div>
@@ -1726,7 +2943,7 @@ function LabTeamTab({ lab }: { lab: Lab }) {
 
         {/* Role editor */}
         {showNewRole && (
-          <div className="mt-3 bg-slate-950/60 border border-blue-500/20 rounded-xl p-3 space-y-3">
+          <div className="mt-3 bg-slate-950/60 border border-blue-500/20 rounded-xl p-4 space-y-4">
             <p className="text-xs font-semibold text-blue-300">{editingRole ? `Edit: ${editingRole.name}` : "New Role"}</p>
             <input
               value={draftRole.name}
@@ -1734,26 +2951,76 @@ function LabTeamTab({ lab }: { lab: Lab }) {
               placeholder="Role name (e.g. Front Desk, Lab Scientist)"
               className="w-full bg-slate-900 border border-white/10 text-slate-200 placeholder-slate-600 rounded-lg px-3 py-2 text-xs focus:outline-none focus:ring-1 focus:ring-blue-500"
             />
-            <div className="grid grid-cols-2 gap-1.5">
-              {PERMISSION_LABELS.map(({ key, label }) => (
-                <label key={key} className="flex items-center gap-2 cursor-pointer group">
-                  <input
-                    type="checkbox"
-                    checked={!!draftRole[key as keyof DraftRole]}
-                    onChange={(e) => setDraftRole((d) => ({ ...d, [key]: e.target.checked }))}
-                    className="accent-blue-500 w-3.5 h-3.5 shrink-0"
-                  />
-                  <span className="text-xs text-slate-400 group-hover:text-slate-200 transition-colors">{label}</span>
-                </label>
-              ))}
+
+            {/* Pages section */}
+            <div>
+              <p className="text-xs font-semibold text-slate-400 uppercase tracking-wider mb-2">Pages visible</p>
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                {PAGE_PERMISSIONS.map(({ key, label, description }) => {
+                  const checked = !!draftRole[key as keyof DraftRole];
+                  return (
+                    <label
+                      key={key}
+                      className={`flex items-center gap-3 p-3 rounded-xl border cursor-pointer transition-all ${
+                        checked
+                          ? "bg-blue-500/10 border-blue-500/40 text-slate-200"
+                          : "bg-white/3 border-white/8 text-slate-500 hover:border-white/20"
+                      }`}
+                    >
+                      <input
+                        type="checkbox"
+                        checked={checked}
+                        onChange={(e) => setDraftRole((d) => ({ ...d, [key]: e.target.checked }))}
+                        className="accent-blue-500 w-3.5 h-3.5 shrink-0"
+                      />
+                      <div className="min-w-0">
+                        <p className="text-xs font-medium leading-tight">{label}</p>
+                        <p className="text-xs text-slate-600 mt-0.5 leading-tight">{description}</p>
+                      </div>
+                    </label>
+                  );
+                })}
+              </div>
             </div>
-            <div className="flex gap-2">
+
+            {/* Actions section */}
+            <div>
+              <p className="text-xs font-semibold text-slate-400 uppercase tracking-wider mb-2">Actions allowed</p>
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                {ACTION_PERMISSIONS.map(({ key, label, description }) => {
+                  const checked = !!draftRole[key as keyof DraftRole];
+                  return (
+                    <label
+                      key={key}
+                      className={`flex items-center gap-3 p-3 rounded-xl border cursor-pointer transition-all ${
+                        checked
+                          ? "bg-emerald-500/10 border-emerald-500/30 text-slate-200"
+                          : "bg-white/3 border-white/8 text-slate-500 hover:border-white/20"
+                      }`}
+                    >
+                      <input
+                        type="checkbox"
+                        checked={checked}
+                        onChange={(e) => setDraftRole((d) => ({ ...d, [key]: e.target.checked }))}
+                        className="accent-emerald-500 w-3.5 h-3.5 shrink-0"
+                      />
+                      <div className="min-w-0">
+                        <p className="text-xs font-medium leading-tight">{label}</p>
+                        <p className="text-xs text-slate-600 mt-0.5 leading-tight">{description}</p>
+                      </div>
+                    </label>
+                  );
+                })}
+              </div>
+            </div>
+
+            <div className="flex gap-2 pt-1">
               <button onClick={() => { setShowNewRole(false); setEditingRole(null); setDraftRole(blankRole()); }}
-                className="flex-1 px-3 py-1.5 rounded-lg bg-white/5 hover:bg-white/10 text-slate-400 text-xs transition-colors">
+                className="flex-1 px-3 py-2 rounded-lg bg-white/5 hover:bg-white/10 text-slate-400 text-xs transition-colors">
                 Cancel
               </button>
               <button onClick={handleSaveRole} disabled={savingRole}
-                className="flex-1 px-3 py-1.5 rounded-lg bg-blue-600 hover:bg-blue-500 text-white text-xs font-medium transition-colors disabled:opacity-50">
+                className="flex-1 px-3 py-2 rounded-lg bg-blue-600 hover:bg-blue-500 text-white text-xs font-medium transition-colors disabled:opacity-50">
                 {savingRole ? "Saving…" : editingRole ? "Save Changes" : "Create Role"}
               </button>
             </div>

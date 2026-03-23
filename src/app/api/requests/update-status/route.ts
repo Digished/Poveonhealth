@@ -6,6 +6,9 @@ import { getLabAuth } from "@/lib/lab-auth";
 import { resend, labSender } from "@/lib/email/resend";
 import { doctorTestsCompleted } from "@/lib/email/templates";
 import { logApiCall } from "@/lib/api-logger";
+import { logLabActivity } from "@/lib/lab-activity";
+import { createServerClient } from "@/lib/supabase/server";
+import { Decimal } from "@prisma/client/runtime/library";
 
 const UpdateStatusSchema = z.object({
   requestId: z.string().uuid(),
@@ -83,7 +86,70 @@ export async function POST(request: NextRequest) {
     if (status === "seen") updateData.seen_at = new Date();
     if (status === "done") updateData.completed_at = new Date();
 
+    // When marking "seen" — charge revealPrice × number of tests from the lab's wallet
+    let walletBalance: number | null = null;
+    if (status === "seen") {
+      try {
+        const priceSetting = await prisma.systemSetting.findUnique({ where: { key: "reveal_price" } });
+        const pricePerTest = new Decimal(priceSetting?.value ?? "500");
+
+        // Count tests: split on comma/newline; "See attached image" counts as 1
+        const testCount = (req.tests && req.tests !== "See attached image")
+          ? Math.max(1, req.tests.split(/[,\n]/).map((t) => t.trim()).filter(Boolean).length)
+          : 1;
+        const totalCharge = pricePerTest.times(testCount);
+
+        walletBalance = await prisma.$transaction(async (tx) => {
+          const current = await tx.labWallet.upsert({
+            where: { lab_id: req.lab_id },
+            create: { lab_id: req.lab_id, balance: new Decimal(0) },
+            update: {},
+          });
+
+          const newBalance = new Decimal(current.balance).minus(totalCharge);
+
+          await tx.labWallet.update({
+            where: { lab_id: req.lab_id },
+            data: { balance: newBalance },
+          });
+
+          await tx.walletTransaction.create({
+            data: {
+              lab_id: req.lab_id,
+              type: "deduction",
+              direction: "debit",
+              amount: totalCharge,
+              balance_after: newBalance,
+              description: `Reveal charge — ${req.code} (${req.patient_name ?? "patient"}) · ${testCount} test${testCount !== 1 ? "s" : ""} × ₦${pricePerTest}`,
+              request_id: requestId,
+            },
+          });
+
+          return Number(newBalance);
+        });
+      } catch (e) {
+        // Non-critical: wallet deduction failure should not block the status update
+        console.error("[wallet] deduction failed:", e);
+      }
+    }
+
     await prisma.request.update({ where: { id: requestId }, data: updateData });
+
+    // Log activity
+    try {
+      const supabase = await createServerClient();
+      const { data: { user } } = await supabase.auth.getUser();
+      if (user && auth.auth_method !== "api_key") {
+        const actorRole = user.user_metadata?.role === "lab" ? "owner" : "member";
+        logLabActivity({
+          lab_id: req.lab_id,
+          actor_email: user.email ?? "unknown",
+          actor_role: actorRole,
+          action: status === "seen" ? "request_seen" : "request_done",
+          detail: `Request ${req.code} for ${req.patient_name ?? "patient"} marked as ${status === "seen" ? "Patient Seen" : "Done"}`,
+        });
+      }
+    } catch { /* non-critical */ }
 
     const brand = req.lab.notification_email ? { name: req.lab.name } : undefined;
 
@@ -92,10 +158,10 @@ export async function POST(request: NextRequest) {
       resend.emails.send({
         from: labSender(req.lab),
         to: req.doctor_email,
-        subject: `Tests Completed — ${req.patient_name}`,
+        subject: `Tests Completed — ${req.patient_name ?? "Patient"}`,
         html: doctorTestsCompleted({
           doctorName: req.doctor_name,
-          patientName: req.patient_name,
+          patientName: req.patient_name ?? "Patient",
           labName: req.lab.name,
           code: req.code,
           brand,
@@ -105,7 +171,7 @@ export async function POST(request: NextRequest) {
     }
 
     logApiCall({ method: "POST", path: "/api/requests/update-status", status: 200, lab_id: req.lab_id, duration_ms: Date.now() - start });
-    return NextResponse.json({ success: true, status });
+    return NextResponse.json({ success: true, status, ...(walletBalance !== null ? { wallet_balance: walletBalance } : {}) });
   } catch (error) {
     console.error("Update status error:", error);
     logApiCall({ method: "POST", path: "/api/requests/update-status", status: 500, duration_ms: Date.now() - start });

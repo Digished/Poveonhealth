@@ -1,29 +1,29 @@
 "use client";
 
-import { useState, useEffect, useCallback, Suspense } from "react";
-import { useRouter, useSearchParams } from "next/navigation";
+import { useState, useEffect, useCallback, useRef, Suspense } from "react";
+import { useRouter } from "next/navigation";
 import {
-  FlaskConical, LogOut, RefreshCw, Building2, User,
+  FlaskConical, LogOut, Building2, User,
   CalendarDays, TestTube2, ChevronDown, ChevronUp,
-  Clock, CheckCircle, Eye, MapPin, Phone, Mail,
-  Pencil, X, Save, AlertCircle,
+  Clock, CheckCircle, Eye, MapPin, Phone, X, Shield, EyeOff, RefreshCw, MessageCircle, Star, MessageSquare, ExternalLink,
 } from "lucide-react";
 import { PoveonLogo } from "@/components/PoveonLogo";
-import { toast } from "react-hot-toast";
 
 interface Lab {
+  id: string;
   name: string;
   address: string;
   phones: string[];
   logo_url: string | null;
+  whatsapp?: string | null;
 }
 
 interface Request {
   id: string;
   code: string;
-  patient_name: string;
-  dob: string;
-  sex: string;
+  patient_name: string | null;
+  dob: string | null;
+  sex: string | null;
   address: string | null;
   patient_email: string | null;
   patient_phone: string | null;
@@ -35,32 +35,17 @@ interface Request {
   doctor_account_number: string | null;
   doctor_account_name: string | null;
   tests: string;
+  test_image_url: string | null;
   diagnosis: string | null;
   schedule: string | null;
   status: string;
+  result_link: string | null;
+  result_note: string | null;
+  result_file_urls: string[];
   created_at: string;
   seen_at: string | null;
   completed_at: string | null;
   lab: Lab;
-}
-
-interface EditForm {
-  patient_name: string;
-  dob: string;
-  sex: string;
-  address: string;
-  patient_email: string;
-  patient_phone: string;
-  doctor_prefix: string;
-  doctor_name: string;
-  doctor_phone: string;
-  doctor_hospital: string;
-  doctor_bank_name: string;
-  doctor_account_number: string;
-  doctor_account_name: string;
-  schedule: string;
-  diagnosis: string;
-  tests: string;
 }
 
 const STATUS_CONFIG: Record<string, { label: string; color: string; icon: React.ReactNode }> = {
@@ -99,398 +84,25 @@ function formatDate(iso: string) {
   });
 }
 
-function formatDob(iso: string) {
-  return new Date(iso).toLocaleDateString("en-GB", {
-    day: "numeric", month: "short", year: "numeric",
-  });
+function formatDob(iso: string | null) {
+  if (!iso) return "—";
+  try {
+    return new Date(iso).toLocaleDateString("en-GB", { day: "numeric", month: "short", year: "numeric" });
+  } catch { return iso; }
 }
 
-function toDateInputValue(iso: string) {
+function toDateInputValue(iso: string | null) {
+  if (!iso) return "";
   return iso.slice(0, 10);
 }
 
-function EditModal({
-  req,
-  onClose,
-  onSaved,
-}: {
-  req: Request;
-  onClose: () => void;
-  onSaved: (updated: Request) => void;
-}) {
-  const [form, setForm] = useState<EditForm>({
-    patient_name: req.patient_name,
-    dob: toDateInputValue(req.dob),
-    sex: req.sex,
-    address: req.address ?? "",
-    patient_email: req.patient_email ?? "",
-    patient_phone: req.patient_phone ?? "",
-    doctor_prefix: req.doctor_prefix ?? "",
-    doctor_name: req.doctor_name,
-    doctor_phone: req.doctor_phone ?? "",
-    doctor_hospital: req.doctor_hospital ?? "",
-    doctor_bank_name: req.doctor_bank_name ?? "",
-    doctor_account_number: req.doctor_account_number ?? "",
-    doctor_account_name: req.doctor_account_name ?? "",
-    schedule: req.schedule ?? "",
-    diagnosis: req.diagnosis ?? "",
-    tests: req.tests,
-  });
-  const [saving, setSaving] = useState(false);
-  const [error, setError] = useState("");
-
-  function set(field: keyof EditForm, value: string) {
-    setForm((f) => ({ ...f, [field]: value }));
-    setError("");
-  }
-
-  async function handleSave() {
-    setError("");
-    if (!form.patient_name.trim()) { setError("Patient name is required."); return; }
-    if (!form.dob) { setError("Date of birth is required."); return; }
-    if (!form.sex) { setError("Sex is required."); return; }
-    if (!form.doctor_name.trim()) { setError("Doctor name is required."); return; }
-    if (!form.tests.trim()) { setError("Tests are required."); return; }
-
-    setSaving(true);
-    try {
-      const res = await fetch("/api/requests/edit", {
-        method: "PATCH",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          requestId: req.id,
-          patient_name: form.patient_name.trim(),
-          dob: form.dob,
-          sex: form.sex,
-          address: form.address.trim() || undefined,
-          patient_email: form.patient_email.trim() || undefined,
-          patient_phone: form.patient_phone.trim() || undefined,
-          doctor_prefix: form.doctor_prefix || undefined,
-          doctor_name: form.doctor_name.trim(),
-          doctor_phone: form.doctor_phone.trim() || undefined,
-          doctor_hospital: form.doctor_hospital.trim() || undefined,
-          doctor_bank_name: form.doctor_bank_name.trim() || undefined,
-          doctor_account_number: form.doctor_account_number.trim() || undefined,
-          doctor_account_name: form.doctor_account_name.trim() || undefined,
-          schedule: form.schedule || undefined,
-          diagnosis: form.diagnosis.trim() || undefined,
-          tests: form.tests.trim(),
-        }),
-      });
-      const data = await res.json();
-      if (!data.success) {
-        setError(data.error ?? "Failed to save changes.");
-        return;
-      }
-      toast.success("Request updated successfully.");
-      // Build updated request object for optimistic UI
-      const updated: Request = {
-        ...req,
-        patient_name: form.patient_name.trim(),
-        dob: form.dob,
-        sex: form.sex,
-        address: form.address.trim() || null,
-        patient_email: form.patient_email.trim() || null,
-        patient_phone: form.patient_phone.trim() || null,
-        doctor_prefix: form.doctor_prefix || null,
-        doctor_name: form.doctor_name.trim(),
-        doctor_phone: form.doctor_phone.trim() || null,
-        doctor_hospital: form.doctor_hospital.trim() || null,
-        doctor_bank_name: form.doctor_bank_name.trim() || null,
-        doctor_account_number: form.doctor_account_number.trim() || null,
-        doctor_account_name: form.doctor_account_name.trim() || null,
-        schedule: form.schedule || null,
-        diagnosis: form.diagnosis.trim() || null,
-        tests: form.tests.trim(),
-      };
-      onSaved(updated);
-    } catch {
-      setError("Network error. Please try again.");
-    } finally {
-      setSaving(false);
-    }
-  }
-
-  return (
-    <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center p-0 sm:p-4 bg-black/40 backdrop-blur-sm">
-      <div className="w-full sm:max-w-lg bg-white rounded-t-3xl sm:rounded-3xl shadow-2xl max-h-[90dvh] flex flex-col">
-        {/* Modal header */}
-        <div className="flex items-center gap-3 px-5 py-4 border-b border-slate-100">
-          <div className="w-8 h-8 rounded-xl bg-amber-100 flex items-center justify-center shrink-0">
-            <Pencil className="w-4 h-4 text-amber-600" />
-          </div>
-          <div className="flex-1 min-w-0">
-            <p className="text-sm font-bold text-slate-800">Edit Request</p>
-            <p className="text-xs text-slate-400 font-mono">{req.code}</p>
-          </div>
-          <button
-            type="button"
-            onClick={onClose}
-            className="w-8 h-8 rounded-xl bg-slate-100 hover:bg-slate-200 flex items-center justify-center text-slate-500 transition shrink-0"
-          >
-            <X className="w-4 h-4" />
-          </button>
-        </div>
-
-        {/* Editable notice */}
-        <div className="mx-5 mt-4 flex items-start gap-2 bg-amber-50 border border-amber-100 rounded-xl px-3 py-2.5">
-          <AlertCircle className="w-4 h-4 text-amber-500 shrink-0 mt-0.5" />
-          <p className="text-xs text-amber-700">
-            Editing is only available while the request is pending (before the lab processes it).
-          </p>
-        </div>
-
-        {/* Scrollable form */}
-        <div className="overflow-y-auto flex-1 px-5 py-4 space-y-5">
-
-          {/* Patient section */}
-          <div>
-            <p className="text-xs font-semibold text-slate-400 uppercase tracking-wider mb-3">Patient Details</p>
-            <div className="space-y-3">
-              <div>
-                <label className="text-xs font-medium text-slate-600 block mb-1">Full Name *</label>
-                <input
-                  type="text"
-                  value={form.patient_name}
-                  onChange={(e) => set("patient_name", e.target.value)}
-                  className="w-full px-3 py-2.5 rounded-xl border border-slate-200 bg-white text-slate-800 text-sm focus:outline-none focus:ring-2 focus:ring-amber-400 focus:border-transparent transition"
-                  placeholder="Patient full name"
-                />
-              </div>
-              <div className="grid grid-cols-2 gap-3">
-                <div>
-                  <label className="text-xs font-medium text-slate-600 block mb-1">Date of Birth *</label>
-                  <input
-                    type="date"
-                    value={form.dob}
-                    onChange={(e) => set("dob", e.target.value)}
-                    className="w-full px-3 py-2.5 rounded-xl border border-slate-200 bg-white text-slate-800 text-sm focus:outline-none focus:ring-2 focus:ring-amber-400 focus:border-transparent transition"
-                  />
-                </div>
-                <div>
-                  <label className="text-xs font-medium text-slate-600 block mb-1">Sex *</label>
-                  <select
-                    value={form.sex}
-                    onChange={(e) => set("sex", e.target.value)}
-                    className="w-full px-3 py-2.5 rounded-xl border border-slate-200 bg-white text-slate-800 text-sm focus:outline-none focus:ring-2 focus:ring-amber-400 focus:border-transparent transition"
-                  >
-                    <option value="">Select</option>
-                    <option value="male">Male</option>
-                    <option value="female">Female</option>
-                  </select>
-                </div>
-              </div>
-              <div>
-                <label className="text-xs font-medium text-slate-600 block mb-1">Phone</label>
-                <input
-                  type="tel"
-                  value={form.patient_phone}
-                  onChange={(e) => set("patient_phone", e.target.value)}
-                  className="w-full px-3 py-2.5 rounded-xl border border-slate-200 bg-white text-slate-800 text-sm focus:outline-none focus:ring-2 focus:ring-amber-400 focus:border-transparent transition"
-                  placeholder="Patient phone number"
-                />
-              </div>
-              <div>
-                <label className="text-xs font-medium text-slate-600 block mb-1">Email</label>
-                <input
-                  type="email"
-                  value={form.patient_email}
-                  onChange={(e) => set("patient_email", e.target.value)}
-                  className="w-full px-3 py-2.5 rounded-xl border border-slate-200 bg-white text-slate-800 text-sm focus:outline-none focus:ring-2 focus:ring-amber-400 focus:border-transparent transition"
-                  placeholder="patient@email.com"
-                />
-              </div>
-              <div>
-                <label className="text-xs font-medium text-slate-600 block mb-1">Address</label>
-                <input
-                  type="text"
-                  value={form.address}
-                  onChange={(e) => set("address", e.target.value)}
-                  className="w-full px-3 py-2.5 rounded-xl border border-slate-200 bg-white text-slate-800 text-sm focus:outline-none focus:ring-2 focus:ring-amber-400 focus:border-transparent transition"
-                  placeholder="Patient address"
-                />
-              </div>
-            </div>
-          </div>
-
-          {/* Doctor section */}
-          <div>
-            <p className="text-xs font-semibold text-slate-400 uppercase tracking-wider mb-3">Doctor / Provider Details</p>
-            <div className="space-y-3">
-              <div className="grid grid-cols-3 gap-3">
-                <div>
-                  <label className="text-xs font-medium text-slate-600 block mb-1">Prefix</label>
-                  <select
-                    value={form.doctor_prefix}
-                    onChange={(e) => set("doctor_prefix", e.target.value)}
-                    className="w-full px-3 py-2.5 rounded-xl border border-slate-200 bg-white text-slate-800 text-sm focus:outline-none focus:ring-2 focus:ring-amber-400 focus:border-transparent transition"
-                  >
-                    <option value="">None</option>
-                    {PROFESSIONAL_PREFIXES.map((p) => (
-                      <option key={p} value={p}>{p}</option>
-                    ))}
-                  </select>
-                </div>
-                <div className="col-span-2">
-                  <label className="text-xs font-medium text-slate-600 block mb-1">Full Name *</label>
-                  <input
-                    type="text"
-                    value={form.doctor_name}
-                    onChange={(e) => set("doctor_name", e.target.value)}
-                    className="w-full px-3 py-2.5 rounded-xl border border-slate-200 bg-white text-slate-800 text-sm focus:outline-none focus:ring-2 focus:ring-amber-400 focus:border-transparent transition"
-                    placeholder="Doctor full name"
-                  />
-                </div>
-              </div>
-              <div>
-                <label className="text-xs font-medium text-slate-600 block mb-1">Phone</label>
-                <input
-                  type="tel"
-                  value={form.doctor_phone}
-                  onChange={(e) => set("doctor_phone", e.target.value)}
-                  className="w-full px-3 py-2.5 rounded-xl border border-slate-200 bg-white text-slate-800 text-sm focus:outline-none focus:ring-2 focus:ring-amber-400 focus:border-transparent transition"
-                  placeholder="Doctor phone"
-                />
-              </div>
-              <div>
-                <label className="text-xs font-medium text-slate-600 block mb-1">Hospital / Clinic</label>
-                <input
-                  type="text"
-                  value={form.doctor_hospital}
-                  onChange={(e) => set("doctor_hospital", e.target.value)}
-                  className="w-full px-3 py-2.5 rounded-xl border border-slate-200 bg-white text-slate-800 text-sm focus:outline-none focus:ring-2 focus:ring-amber-400 focus:border-transparent transition"
-                  placeholder="Hospital or clinic name"
-                />
-              </div>
-            </div>
-          </div>
-
-          {/* Bank details */}
-          <div>
-            <p className="text-xs font-semibold text-slate-400 uppercase tracking-wider mb-3">Bank Details (optional)</p>
-            <div className="space-y-3">
-              <div>
-                <label className="text-xs font-medium text-slate-600 block mb-1">Bank Name</label>
-                <input
-                  type="text"
-                  value={form.doctor_bank_name}
-                  onChange={(e) => set("doctor_bank_name", e.target.value)}
-                  className="w-full px-3 py-2.5 rounded-xl border border-slate-200 bg-white text-slate-800 text-sm focus:outline-none focus:ring-2 focus:ring-amber-400 focus:border-transparent transition"
-                  placeholder="Bank name"
-                />
-              </div>
-              <div>
-                <label className="text-xs font-medium text-slate-600 block mb-1">Account Number</label>
-                <input
-                  type="text"
-                  value={form.doctor_account_number}
-                  onChange={(e) => set("doctor_account_number", e.target.value)}
-                  className="w-full px-3 py-2.5 rounded-xl border border-slate-200 bg-white text-slate-800 text-sm focus:outline-none focus:ring-2 focus:ring-amber-400 focus:border-transparent transition"
-                  placeholder="Account number"
-                />
-              </div>
-              <div>
-                <label className="text-xs font-medium text-slate-600 block mb-1">Account Name</label>
-                <input
-                  type="text"
-                  value={form.doctor_account_name}
-                  onChange={(e) => set("doctor_account_name", e.target.value)}
-                  className="w-full px-3 py-2.5 rounded-xl border border-slate-200 bg-white text-slate-800 text-sm focus:outline-none focus:ring-2 focus:ring-amber-400 focus:border-transparent transition"
-                  placeholder="Account holder name"
-                />
-              </div>
-            </div>
-          </div>
-
-          {/* Tests & diagnosis */}
-          <div>
-            <p className="text-xs font-semibold text-slate-400 uppercase tracking-wider mb-3">Tests & Diagnosis</p>
-            <div className="space-y-3">
-              <div>
-                <label className="text-xs font-medium text-slate-600 block mb-1">Tests Requested *</label>
-                <textarea
-                  value={form.tests}
-                  onChange={(e) => set("tests", e.target.value)}
-                  rows={3}
-                  className="w-full px-3 py-2.5 rounded-xl border border-slate-200 bg-white text-slate-800 text-sm focus:outline-none focus:ring-2 focus:ring-amber-400 focus:border-transparent transition resize-none"
-                  placeholder="List of tests requested"
-                />
-              </div>
-              <div>
-                <label className="text-xs font-medium text-slate-600 block mb-1">Diagnosis / Notes</label>
-                <textarea
-                  value={form.diagnosis}
-                  onChange={(e) => set("diagnosis", e.target.value)}
-                  rows={2}
-                  className="w-full px-3 py-2.5 rounded-xl border border-slate-200 bg-white text-slate-800 text-sm focus:outline-none focus:ring-2 focus:ring-amber-400 focus:border-transparent transition resize-none"
-                  placeholder="Clinical notes or diagnosis"
-                />
-              </div>
-              <div>
-                <label className="text-xs font-medium text-slate-600 block mb-1">Preferred Schedule</label>
-                <select
-                  value={form.schedule}
-                  onChange={(e) => set("schedule", e.target.value)}
-                  className="w-full px-3 py-2.5 rounded-xl border border-slate-200 bg-white text-slate-800 text-sm focus:outline-none focus:ring-2 focus:ring-amber-400 focus:border-transparent transition"
-                >
-                  <option value="">Not specified</option>
-                  <option value="today">Today</option>
-                  <option value="this_week">This Week</option>
-                  <option value="this_month">This Month</option>
-                  <option value="not_sure">Not Sure</option>
-                </select>
-              </div>
-            </div>
-          </div>
-
-          {error && (
-            <div className="flex items-center gap-2 bg-red-50 border border-red-100 rounded-xl px-3 py-2.5">
-              <AlertCircle className="w-4 h-4 text-red-500 shrink-0" />
-              <p className="text-xs text-red-600">{error}</p>
-            </div>
-          )}
-        </div>
-
-        {/* Footer actions */}
-        <div className="px-5 py-4 border-t border-slate-100 flex gap-3">
-          <button
-            type="button"
-            onClick={onClose}
-            className="flex-1 py-2.5 rounded-xl border border-slate-200 text-slate-600 font-semibold text-sm hover:bg-slate-50 transition"
-          >
-            Cancel
-          </button>
-          <button
-            type="button"
-            onClick={handleSave}
-            disabled={saving}
-            className="flex-1 flex items-center justify-center gap-2 py-2.5 rounded-xl bg-amber-500 hover:bg-amber-600 disabled:opacity-60 disabled:cursor-not-allowed text-white font-semibold text-sm transition shadow-sm"
-          >
-            {saving ? (
-              <svg className="animate-spin w-4 h-4" fill="none" viewBox="0 0 24 24">
-                <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
-                <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 5.373 0 0 12h4z" />
-              </svg>
-            ) : (
-              <><Save className="w-4 h-4" /> Save Changes</>
-            )}
-          </button>
-        </div>
-      </div>
-    </div>
-  );
-}
-
-function RequestCard({
-  req,
-  onEditClick,
-}: {
-  req: Request;
-  onEditClick: (req: Request) => void;
-}) {
+function RequestCard({ req }: { req: Request }) {
   const [expanded, setExpanded] = useState(false);
   const status = STATUS_CONFIG[req.status] ?? STATUS_CONFIG.incoming;
   const phones = Array.isArray(req.lab.phones) ? req.lab.phones : [];
+  const whatsapps: string[] = req.lab.whatsapp
+    ? (() => { try { const p = JSON.parse(req.lab.whatsapp!); return Array.isArray(p) ? p.filter(Boolean) : [req.lab.whatsapp!]; } catch { return [req.lab.whatsapp!]; } })()
+    : [];
 
   return (
     <div className="bg-white rounded-2xl border border-slate-100 shadow-sm overflow-hidden">
@@ -521,7 +133,7 @@ function RequestCard({
           <p className="text-sm font-bold text-slate-800 mt-0.5 truncate">{req.lab.name}</p>
           <div className="flex items-center gap-1.5 mt-0.5">
             <User className="w-3 h-3 text-slate-400 shrink-0" />
-            <span className="text-xs text-slate-500 truncate">{req.patient_name}</span>
+            <span className="text-xs text-slate-500 truncate">{req.patient_name ?? "—"}</span>
             <span className="text-slate-300">·</span>
             <span className="text-xs text-slate-400">{formatDate(req.created_at)}</span>
           </div>
@@ -541,7 +153,7 @@ function RequestCard({
             <div className="space-y-1.5 text-sm">
               <div className="flex gap-2">
                 <span className="text-slate-400 w-24 shrink-0">Name</span>
-                <span className="text-slate-700 font-medium">{req.patient_name}</span>
+                <span className="text-slate-700 font-medium">{req.patient_name ?? "—"}</span>
               </div>
               <div className="flex gap-2">
                 <span className="text-slate-400 w-24 shrink-0">Date of Birth</span>
@@ -549,7 +161,7 @@ function RequestCard({
               </div>
               <div className="flex gap-2">
                 <span className="text-slate-400 w-24 shrink-0">Sex</span>
-                <span className="text-slate-700 font-medium capitalize">{req.sex}</span>
+                <span className="text-slate-700 font-medium capitalize">{req.sex ?? "—"}</span>
               </div>
               {req.patient_phone && (
                 <div className="flex gap-2">
@@ -604,14 +216,47 @@ function RequestCard({
               </div>
             )}
             {phones.length > 0 && (
-              <div className="flex items-center gap-1.5 text-xs text-slate-500">
+              <div className="flex flex-wrap items-center gap-1.5 text-xs text-slate-500">
                 <Phone className="w-3 h-3 shrink-0" />
                 {phones.map((p, i) => (
                   <a key={i} href={`tel:${p}`} className="text-medical-600 font-medium">{p}</a>
                 ))}
               </div>
             )}
+            {whatsapps.length > 0 && (
+              <div className="flex flex-wrap gap-1.5 mt-1">
+                {whatsapps.map((wa, i) => (
+                  <a key={i} href={`https://wa.me/${wa.replace(/\D/g, "")}`} target="_blank" rel="noopener noreferrer"
+                    className="inline-flex items-center gap-1 text-xs font-semibold text-white bg-green-500 hover:bg-green-600 transition px-2.5 py-1 rounded-full">
+                    <MessageCircle className="w-3 h-3" />WhatsApp
+                  </a>
+                ))}
+              </div>
+            )}
           </div>
+
+          {/* Results — shown when lab has sent results */}
+          {req.status === "done" && (req.result_link || req.result_note || req.result_file_urls?.length > 0) && (
+            <div className="bg-emerald-50 border border-emerald-200 rounded-xl p-3 space-y-2">
+              <p className="text-xs font-semibold text-emerald-700 uppercase tracking-wider flex items-center gap-1.5">
+                <CheckCircle className="w-3.5 h-3.5" />Results Available
+              </p>
+              {req.result_note && <p className="text-sm text-emerald-800 leading-relaxed">{req.result_note}</p>}
+              {req.result_link && (
+                <a href={req.result_link} target="_blank" rel="noopener noreferrer"
+                  className="inline-flex items-center gap-1.5 text-xs font-semibold text-emerald-700 hover:text-emerald-900 underline underline-offset-2 transition">
+                  View Results Online →
+                </a>
+              )}
+              {req.result_file_urls?.map((url, i) => (
+                <a key={i} href={url} target="_blank" rel="noopener noreferrer"
+                  className="flex items-center gap-1.5 text-xs font-semibold text-emerald-700 hover:text-emerald-900 bg-emerald-100 hover:bg-emerald-200 px-3 py-1.5 rounded-lg transition w-fit">
+                  <ExternalLink className="w-3 h-3 shrink-0" />
+                  {req.result_file_urls.length > 1 ? `Result File ${i + 1}` : "Download Result File"}
+                </a>
+              ))}
+            </div>
+          )}
 
           {/* Timeline */}
           <div>
@@ -639,16 +284,199 @@ function RequestCard({
             </div>
           </div>
 
-          {/* Edit button — only for pending (incoming) requests */}
-          {req.status === "incoming" && (
-            <button
-              type="button"
-              onClick={() => onEditClick(req)}
-              className="w-full flex items-center justify-center gap-2 py-2.5 rounded-xl border border-amber-200 bg-amber-50 hover:bg-amber-100 text-amber-700 font-semibold text-sm transition"
-            >
-              <Pencil className="w-4 h-4" />
-              Edit Request
-            </button>
+          <DocFeedbackWidget labId={req.lab.id} labName={req.lab.name} />
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ─── Doc Feedback Widget ──────────────────────────────────────────────────────
+function DocStarRow({ value, onChange }: { value: number; onChange?: (v: number) => void }) {
+  return (
+    <div className="flex gap-0.5">
+      {[1, 2, 3, 4, 5].map((s) => (
+        <button key={s} type="button" onClick={() => onChange?.(s)} className="hover:scale-110 transition">
+          <Star className={`w-5 h-5 ${s <= value ? "fill-amber-400 text-amber-400" : "text-slate-200 fill-slate-100"} transition`} />
+        </button>
+      ))}
+    </div>
+  );
+}
+
+const DOC_RATING_ASPECTS = [
+  { key: "rating_accuracy",    label: "Test Accuracy" },
+  { key: "rating_speed",       label: "Speed / Turnaround" },
+  { key: "rating_staff",       label: "Staff & Professionalism" },
+  { key: "rating_environment", label: "Cleanliness & Environment" },
+] as const;
+
+type DocFeedbackForm = {
+  rating_overall: number; rating_accuracy: number; rating_speed: number;
+  rating_staff: number; rating_environment: number;
+  comment: string; is_anonymous: boolean; display_name: string;
+};
+
+function DocFeedbackWidget({ labId, labName }: { labId: string; labName: string }) {
+  const [open, setOpen] = useState(false);
+  const [existing, setExisting] = useState<DocFeedbackForm | null>(null);
+  const [loadingExisting, setLoadingExisting] = useState(false);
+  const [form, setForm] = useState<DocFeedbackForm>({
+    rating_overall: 0, rating_accuracy: 0, rating_speed: 0,
+    rating_staff: 0, rating_environment: 0,
+    comment: "", is_anonymous: false, display_name: "",
+  });
+  const [saving, setSaving] = useState(false);
+  const [saved, setSaved] = useState(false);
+  const [error, setError] = useState("");
+
+  function loadExisting() {
+    setLoadingExisting(true);
+    fetch(`/api/feedback/${labId}`, { method: "PATCH" })
+      .then((r) => r.json())
+      .then((d) => {
+        if (d.feedback) {
+          const fb = d.feedback;
+          const f: DocFeedbackForm = {
+            rating_overall: fb.rating_overall ?? 0,
+            rating_accuracy: fb.rating_accuracy ?? 0,
+            rating_speed: fb.rating_speed ?? 0,
+            rating_staff: fb.rating_staff ?? 0,
+            rating_environment: fb.rating_environment ?? 0,
+            comment: fb.comment ?? "",
+            is_anonymous: fb.is_anonymous ?? false,
+            display_name: fb.display_name ?? "",
+          };
+          setExisting(f); setForm(f);
+        }
+      })
+      .catch(() => {})
+      .finally(() => setLoadingExisting(false));
+  }
+
+  function toggle() {
+    if (!open && existing === null && !loadingExisting) loadExisting();
+    setOpen((v) => !v); setSaved(false); setError("");
+  }
+
+  async function submit() {
+    if (form.rating_overall === 0) { setError("Please give an overall rating."); return; }
+    setSaving(true); setError("");
+    try {
+      const res = await fetch(`/api/feedback/${labId}`, {
+        method: "POST", headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          ...form,
+          rating_accuracy: form.rating_accuracy || null,
+          rating_speed: form.rating_speed || null,
+          rating_staff: form.rating_staff || null,
+          rating_environment: form.rating_environment || null,
+          display_name: form.display_name.trim() || null,
+          comment: form.comment.trim() || null,
+        }),
+      });
+      const data = await res.json();
+      if (!res.ok) { setError(data.error ?? "Failed."); return; }
+      setExisting(form); setSaved(true); setOpen(false);
+    } catch { setError("Network error."); }
+    finally { setSaving(false); }
+  }
+
+  const hasRated = existing !== null && existing.rating_overall > 0;
+
+  return (
+    <div>
+      <button onClick={toggle}
+        className={`w-full flex items-center justify-between gap-3 px-4 py-3 rounded-xl border transition-colors ${
+          hasRated
+            ? "bg-amber-50 border-amber-200 hover:bg-amber-100"
+            : "bg-sky-50 border-sky-200 hover:bg-sky-100"
+        }`}>
+        <div className="flex items-center gap-2.5">
+          <div className={`w-7 h-7 rounded-lg flex items-center justify-center shrink-0 ${hasRated ? "bg-amber-100" : "bg-sky-100"}`}>
+            <Star className={`w-4 h-4 ${hasRated ? "fill-amber-500 text-amber-500" : "text-sky-500"}`} />
+          </div>
+          <div className="text-left">
+            <p className={`text-xs font-bold ${hasRated ? "text-amber-700" : "text-sky-700"}`}>
+              {saved ? "Rating saved!" : hasRated ? "Your rating" : `Rate ${labName}`}
+            </p>
+            {hasRated && !open ? (
+              <div className="flex gap-0.5 mt-0.5">
+                {[1,2,3,4,5].map((s) => (
+                  <Star key={s} className={`w-3 h-3 ${s <= existing.rating_overall ? "fill-amber-400 text-amber-400" : "text-amber-200 fill-amber-50"}`} />
+                ))}
+              </div>
+            ) : (
+              <p className={`text-xs ${hasRated ? "text-amber-500" : "text-sky-500"}`}>
+                {hasRated ? `${existing.rating_overall}/5 · tap to update` : "Share your experience with this lab"}
+              </p>
+            )}
+          </div>
+        </div>
+        <ChevronDown className={`w-4 h-4 text-slate-400 transition-transform shrink-0 ${open ? "rotate-180" : ""}`} />
+      </button>
+
+      {open && (
+        <div className="mt-3 space-y-4">
+          {loadingExisting ? (
+            <div className="flex justify-center py-4"><RefreshCw className="w-5 h-5 text-slate-300 animate-spin" /></div>
+          ) : (
+            <>
+              <div>
+                <p className="text-xs font-semibold text-slate-600 mb-2">Overall Experience <span className="text-red-400">*</span></p>
+                <DocStarRow value={form.rating_overall} onChange={(v) => setForm((f) => ({ ...f, rating_overall: v }))} />
+              </div>
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                {DOC_RATING_ASPECTS.map(({ key, label }) => (
+                  <div key={key}>
+                    <p className="text-xs text-slate-500 mb-1.5">{label}</p>
+                    <DocStarRow value={form[key]} onChange={(v) => setForm((f) => ({ ...f, [key]: v }))} />
+                  </div>
+                ))}
+              </div>
+              <div>
+                <label className="text-xs font-semibold text-slate-500 uppercase tracking-wide block mb-1.5">
+                  <MessageSquare className="w-3 h-3 inline mr-1" />Comment (optional)
+                </label>
+                <textarea rows={2} maxLength={500}
+                  value={form.comment}
+                  onChange={(e) => setForm((f) => ({ ...f, comment: e.target.value }))}
+                  placeholder="Share your experience…"
+                  className="w-full text-sm px-3 py-2.5 border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-medical-400 bg-white resize-none"
+                />
+              </div>
+              <div className="flex flex-col sm:flex-row gap-3 items-start sm:items-center">
+                <button type="button" onClick={() => setForm((f) => ({ ...f, is_anonymous: !f.is_anonymous }))}
+                  className={`flex items-center gap-2 text-xs font-semibold px-3 py-2 rounded-xl border transition ${
+                    form.is_anonymous ? "bg-slate-800 text-white border-slate-800" : "bg-white text-slate-600 border-slate-200 hover:border-slate-300"
+                  }`}>
+                  <div className={`w-3.5 h-3.5 rounded-full border-2 flex items-center justify-center ${form.is_anonymous ? "border-white" : "border-slate-400"}`}>
+                    {form.is_anonymous && <div className="w-1.5 h-1.5 rounded-full bg-white" />}
+                  </div>
+                  Stay anonymous
+                </button>
+                {!form.is_anonymous && (
+                  <input type="text" maxLength={60}
+                    value={form.display_name}
+                    onChange={(e) => setForm((f) => ({ ...f, display_name: e.target.value }))}
+                    placeholder="Your name (optional)"
+                    className="flex-1 text-xs px-3 py-2 border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-medical-400 bg-white"
+                  />
+                )}
+              </div>
+              {error && <p className="text-xs text-red-600 bg-red-50 border border-red-100 rounded-xl px-3 py-2">{error}</p>}
+              <div className="flex gap-2">
+                <button onClick={submit} disabled={saving || form.rating_overall === 0}
+                  className="flex-1 flex items-center justify-center gap-2 py-2.5 rounded-xl bg-medical-500 text-white text-sm font-semibold hover:bg-medical-600 transition disabled:opacity-50">
+                  {saving ? <RefreshCw className="w-4 h-4 animate-spin" /> : <Star className="w-4 h-4" />}
+                  {saving ? "Saving…" : hasRated ? "Update Rating" : "Submit Rating"}
+                </button>
+                <button onClick={() => setOpen(false)}
+                  className="px-4 py-2.5 rounded-xl bg-slate-100 text-slate-600 text-sm font-semibold hover:bg-slate-200 transition">
+                  Cancel
+                </button>
+              </div>
+            </>
           )}
         </div>
       )}
@@ -658,8 +486,6 @@ function RequestCard({
 
 function DocDashboardInner() {
   const router = useRouter();
-  const searchParams = useSearchParams();
-  const editIdFromUrl = searchParams.get("edit");
 
   const [doctorEmail, setDoctorEmail] = useState("");
   const [requests, setRequests] = useState<Request[]>([]);
@@ -667,7 +493,7 @@ function DocDashboardInner() {
   const [error, setError] = useState("");
   const [filter, setFilter] = useState<"all" | "incoming" | "seen" | "done">("all");
   const [loggingOut, setLoggingOut] = useState(false);
-  const [editingRequest, setEditingRequest] = useState<Request | null>(null);
+  const [activeTab, setActiveTab] = useState<"requests" | "results" | "security">("requests");
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -688,28 +514,10 @@ function DocDashboardInner() {
 
   useEffect(() => { load(); }, [load]);
 
-  // Auto-open edit modal when ?edit=<id> is present in URL
-  useEffect(() => {
-    if (!editIdFromUrl || !requests.length) return;
-    const target = requests.find((r) => r.id === editIdFromUrl);
-    if (target && target.status === "incoming") {
-      setEditingRequest(target);
-      // Clean the URL param without triggering navigation
-      const url = new URL(window.location.href);
-      url.searchParams.delete("edit");
-      window.history.replaceState({}, "", url.toString());
-    }
-  }, [editIdFromUrl, requests]);
-
   async function handleLogout() {
     setLoggingOut(true);
     await fetch("/api/doc-login/logout", { method: "POST" });
     router.replace("/doc-login");
-  }
-
-  function handleSaved(updated: Request) {
-    setRequests((prev) => prev.map((r) => r.id === updated.id ? updated : r));
-    setEditingRequest(null);
   }
 
   const filtered = filter === "all" ? requests : requests.filter((r) => r.status === filter);
@@ -723,15 +531,6 @@ function DocDashboardInner() {
 
   return (
     <div className="min-h-dvh bg-gradient-to-br from-sky-50 via-blue-50 to-indigo-50">
-      {/* Edit modal */}
-      {editingRequest && (
-        <EditModal
-          req={editingRequest}
-          onClose={() => setEditingRequest(null)}
-          onSaved={handleSaved}
-        />
-      )}
-
       {/* Header */}
       <header className="sticky top-0 z-10 bg-white/80 backdrop-blur-md border-b border-white/60">
         <div className="max-w-2xl mx-auto px-4 py-3 flex items-center gap-3">
@@ -740,34 +539,114 @@ function DocDashboardInner() {
           </div>
           <div className="flex-1 min-w-0">
             <p className="text-sm font-bold text-slate-800 leading-tight">Doctor Portal</p>
-            {doctorEmail && (
-              <p className="text-xs text-slate-400 truncate flex items-center gap-1">
-                <Mail className="w-3 h-3 shrink-0" />{doctorEmail}
-              </p>
-            )}
+            {doctorEmail && <p className="text-xs text-slate-400 truncate">{doctorEmail}</p>}
           </div>
-          <button
-            type="button"
-            onClick={load}
-            disabled={loading}
-            className="w-8 h-8 rounded-xl bg-slate-100 hover:bg-slate-200 flex items-center justify-center transition text-slate-500 shrink-0"
-            title="Refresh"
-          >
-            <RefreshCw className={`w-4 h-4 ${loading ? "animate-spin" : ""}`} />
-          </button>
           <button
             type="button"
             onClick={handleLogout}
             disabled={loggingOut}
-            className="w-8 h-8 rounded-xl bg-slate-100 hover:bg-red-50 hover:text-red-600 flex items-center justify-center transition text-slate-500 shrink-0"
-            title="Sign out"
+            className="flex items-center gap-1.5 text-xs font-semibold text-slate-500 hover:text-red-600 disabled:opacity-50 transition px-3 py-1.5 rounded-lg hover:bg-red-50 shrink-0"
           >
-            <LogOut className="w-4 h-4" />
+            <LogOut className="w-3.5 h-3.5" />
+            <span className="hidden sm:inline">{loggingOut ? "Signing out…" : "Sign out"}</span>
           </button>
         </div>
       </header>
 
       <main className="max-w-2xl mx-auto px-4 py-5 space-y-4">
+        {/* Tab Navigation */}
+        {!loading && (
+          <div className="flex gap-1 bg-white/60 rounded-xl p-1 border border-white/60 shadow-sm">
+            {(["requests", "results", "security"] as const).map((tab) => {
+              const labels = { requests: "Referrals", results: "Results", security: "Security" };
+              const resultCount = requests.filter((r) => r.status === "done").length;
+              const tabCount = tab === "requests" ? requests.length : tab === "results" ? resultCount : 0;
+              return (
+                <button key={tab} onClick={() => setActiveTab(tab)}
+                  className={`flex-1 flex items-center justify-center gap-1.5 py-2 rounded-lg text-xs font-semibold transition-all ${
+                    activeTab === tab ? "bg-white text-slate-800 shadow-sm" : "text-slate-500 hover:text-slate-700"
+                  }`}>
+                  {tab === "requests" && <FlaskConical className="w-3.5 h-3.5" />}
+                  {tab === "results" && <CheckCircle className="w-3.5 h-3.5" />}
+                  {tab === "security" && <Shield className="w-3.5 h-3.5" />}
+                  {labels[tab]}
+                  {tabCount > 0 && (
+                    <span className={`text-xs px-1.5 py-0.5 rounded-full font-bold ${
+                      activeTab === tab ? "bg-slate-100 text-slate-600" : "bg-slate-200/60 text-slate-500"
+                    }`}>{tabCount}</span>
+                  )}
+                </button>
+              );
+            })}
+          </div>
+        )}
+
+        {/* Security Tab */}
+        {!loading && activeTab === "security" && doctorEmail && (
+          <DocSecuritySection email={doctorEmail} />
+        )}
+
+        {/* Results Tab */}
+        {!loading && activeTab === "results" && (
+          <div className="space-y-4">
+            {requests.filter((r) => r.status === "done").length === 0 ? (
+              <div className="bg-white rounded-2xl border border-slate-100 p-8 text-center">
+                <CheckCircle className="w-10 h-10 text-slate-200 mx-auto mb-3" />
+                <p className="text-sm font-semibold text-slate-600">No completed tests yet</p>
+                <p className="text-xs text-slate-400 mt-1">Tests marked as done by the lab will appear here.</p>
+              </div>
+            ) : (
+              requests.filter((r) => r.status === "done").map((req) => (
+                <div key={req.id} className="bg-white rounded-2xl border border-emerald-100 shadow-sm p-4 space-y-2">
+                  <div className="flex items-center gap-2">
+                    {req.lab.logo_url ? (
+                      <img src={req.lab.logo_url} alt={req.lab.name} className="w-8 h-8 rounded-lg object-cover ring-1 ring-slate-100" />
+                    ) : (
+                      <div className="w-8 h-8 rounded-lg bg-medical-50 border border-medical-100 flex items-center justify-center">
+                        <Building2 className="w-4 h-4 text-medical-500" />
+                      </div>
+                    )}
+                    <div>
+                      <p className="text-sm font-bold text-slate-800">{req.lab.name}</p>
+                      <p className="text-xs text-slate-400 font-mono">{req.code}</p>
+                    </div>
+                  </div>
+                  <p className="text-xs text-slate-500">Patient: <span className="font-medium text-slate-700">{req.patient_name ?? "—"}</span></p>
+                  {(req.result_link || req.result_note || req.result_file_urls?.length > 0) ? (
+                    <div className="bg-emerald-50 border border-emerald-200 rounded-xl p-3 space-y-2">
+                      <p className="text-xs font-semibold text-emerald-700 flex items-center gap-1.5">
+                        <CheckCircle className="w-3.5 h-3.5" />Results Available
+                      </p>
+                      {req.result_note && <p className="text-sm text-emerald-800">{req.result_note}</p>}
+                      {req.result_link && (
+                        <a href={req.result_link} target="_blank" rel="noopener noreferrer"
+                          className="inline-flex items-center gap-1.5 text-xs font-semibold bg-emerald-600 hover:bg-emerald-700 text-white px-3 py-1.5 rounded-lg transition">
+                          View Results Online
+                        </a>
+                      )}
+                      {req.result_file_urls?.map((url, i) => (
+                        <a key={i} href={url} target="_blank" rel="noopener noreferrer"
+                          className="flex items-center gap-1.5 text-xs font-semibold text-emerald-700 hover:text-emerald-900 bg-emerald-100 hover:bg-emerald-200 px-3 py-1.5 rounded-lg transition w-fit">
+                          <ExternalLink className="w-3 h-3 shrink-0" />
+                          {req.result_file_urls.length > 1 ? `Result File ${i + 1}` : "Download Result File"}
+                        </a>
+                      ))}
+                    </div>
+                  ) : (
+                    <div className="bg-slate-50 border border-slate-200 rounded-xl px-3 py-2">
+                      <p className="text-xs text-slate-500 italic">Awaiting digital results from the lab</p>
+                    </div>
+                  )}
+                  <DocFeedbackWidget labId={req.lab.id} labName={req.lab.name} />
+                </div>
+              ))
+            )}
+          </div>
+        )}
+
+        {/* Requests Tab — summary chips + list */}
+        {activeTab === "requests" && (
+          <>
         {/* Summary chips */}
         <div className="flex gap-2 flex-wrap">
           {(["all", "incoming", "seen", "done"] as const).map((s) => {
@@ -832,15 +711,268 @@ function DocDashboardInner() {
         )}
 
         {/* Request list */}
-        {filtered.map((req) => (
-          <RequestCard key={req.id} req={req} onEditClick={setEditingRequest} />
-        ))}
+        {loading ? (
+          <div className="space-y-3">
+            {[1, 2, 3].map((i) => (
+              <div key={i} className="bg-white rounded-2xl border border-slate-100 p-4 animate-pulse">
+                <div className="flex gap-3"><div className="w-10 h-10 rounded-xl bg-slate-100" /><div className="flex-1 space-y-2"><div className="h-3 bg-slate-100 rounded w-1/3" /><div className="h-4 bg-slate-100 rounded w-2/3" /></div></div>
+              </div>
+            ))}
+          </div>
+        ) : filtered.length === 0 ? (
+          <div className="bg-white rounded-2xl border border-slate-100 p-8 text-center">
+            <TestTube2 className="w-10 h-10 text-slate-200 mx-auto mb-3" />
+            <p className="text-sm font-semibold text-slate-600">{filter === "all" ? "No referrals yet" : `No ${filter} requests`}</p>
+            <p className="text-xs text-slate-400 mt-1">{filter === "all" ? "Requests you submit will appear here." : "Try switching to a different filter."}</p>
+          </div>
+        ) : (
+          filtered.map((req) => <RequestCard key={req.id} req={req} />)
+        )}
+          </>
+        )}
       </main>
 
       {/* Footer */}
       <div className="max-w-2xl mx-auto px-4 py-4 flex items-center justify-center gap-2 text-xs text-slate-400">
         <PoveonLogo className="w-4 h-4 opacity-40" />
         <span>© {new Date().getFullYear()} Poveon. All rights reserved.</span>
+      </div>
+    </div>
+  );
+}
+
+function DocSecuritySection({ email }: { email: string }) {
+  const [hasPin, setHasPin] = useState<boolean | null>(null);
+  type SecStage = "idle" | "pre_send" | "verify" | "form";
+  const [stage, setStage] = useState<SecStage>("idle");
+  const [mode, setMode] = useState<"set" | "change" | "remove">("set");
+  const [otpCode, setOtpCode] = useState("");
+  const [otpSending, setOtpSending] = useState(false);
+  const [otpVerifying, setOtpVerifying] = useState(false);
+  const [otpCountdown, setOtpCountdown] = useState(0);
+  const [otpError, setOtpError] = useState("");
+  const [pin, setPin] = useState("");
+  const [confirmPin, setConfirmPin] = useState("");
+  const [showPin, setShowPin] = useState(false);
+  const [saving, setSaving] = useState(false);
+  const [formError, setFormError] = useState("");
+  const [success, setSuccess] = useState("");
+
+  useEffect(() => {
+    fetch("/api/doc-login/check-pin", {
+      method: "POST", headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ email }),
+    }).then((r) => r.json()).then((d) => setHasPin(!!d.hasPin)).catch(() => setHasPin(false));
+  }, [email]);
+
+  useEffect(() => {
+    if (otpCountdown <= 0) return;
+    const t = setTimeout(() => setOtpCountdown((v) => v - 1), 1000);
+    return () => clearTimeout(t);
+  }, [otpCountdown]);
+
+  function startAction(m: "set" | "change" | "remove") {
+    setMode(m); setStage("pre_send"); setOtpCode(""); setOtpError(""); setSuccess("");
+  }
+
+  async function sendOtp() {
+    setOtpSending(true); setOtpError("");
+    try {
+      const res = await fetch("/api/doc-login/send-otp", {
+        method: "POST", headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ email }),
+      });
+      const data = await res.json();
+      if (!res.ok) { setOtpError(data.error ?? "Failed to send code."); return; }
+      setStage("verify"); setOtpCountdown(60); setOtpCode("");
+    } catch { setOtpError("Network error."); }
+    finally { setOtpSending(false); }
+  }
+
+  async function verifyOtp() {
+    if (otpCode.replace(/\D/g, "").length < 6) { setOtpError("Enter the full 6-digit code."); return; }
+    setOtpVerifying(true); setOtpError("");
+    try {
+      const res = await fetch("/api/doc-login/check-otp", {
+        method: "POST", headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ email, code: otpCode.trim() }),
+      });
+      const data = await res.json();
+      if (!res.ok) { setOtpError(data.error ?? "Invalid code."); return; }
+      setStage("form"); setPin(""); setConfirmPin(""); setFormError("");
+    } catch { setOtpError("Network error."); }
+    finally { setOtpVerifying(false); }
+  }
+
+  async function savePin() {
+    if (mode !== "remove") {
+      if (!/^\d{4}$/.test(pin)) { setFormError("PIN must be exactly 4 digits."); return; }
+      if (pin !== confirmPin) { setFormError("PINs do not match."); return; }
+    }
+    setSaving(true); setFormError(""); setSuccess("");
+    try {
+      const res = await fetch("/api/doc-login/set-pin", {
+        method: "POST", headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ pin: mode === "remove" ? "" : pin }),
+      });
+      const data = await res.json();
+      if (data.success || res.ok) {
+        setHasPin(mode !== "remove");
+        setSuccess(mode === "remove" ? "PIN removed." : "PIN saved successfully.");
+        setStage("idle");
+      } else {
+        setFormError(data.error ?? "Failed to save.");
+      }
+    } catch { setFormError("Network error."); }
+    finally { setSaving(false); }
+  }
+
+  if (hasPin === null) return null;
+
+  return (
+    <div className="bg-white/80 backdrop-blur-sm rounded-2xl border border-white/60 shadow-sm overflow-hidden">
+      <div className="px-4 py-4 space-y-3">
+        <div className="flex items-center gap-2">
+          <Shield className="w-4 h-4 text-medical-500" />
+          <h2 className="text-sm font-bold text-slate-800">Security</h2>
+        </div>
+
+        {success && (
+          <p className="text-xs text-emerald-700 bg-emerald-50 border border-emerald-100 rounded-xl px-3 py-2">
+            {success}
+          </p>
+        )}
+
+        {stage === "idle" && (
+          <>
+            <p className="text-xs text-slate-500">
+              {hasPin ? "4-digit PIN active — used for quick sign-in." : "Set a PIN for faster login — no email code needed each time."}
+            </p>
+            <div className="flex flex-wrap gap-2">
+              {!hasPin && (
+                <button onClick={() => startAction("set")}
+                  className="flex items-center gap-1.5 text-xs font-semibold px-3 py-2 rounded-xl bg-medical-500 text-white hover:bg-medical-600 transition">
+                  <Shield className="w-3.5 h-3.5" />Set up PIN
+                </button>
+              )}
+              {hasPin && (
+                <>
+                  <button onClick={() => startAction("change")}
+                    className="flex items-center gap-1.5 text-xs font-semibold px-3 py-2 rounded-xl bg-medical-50 text-medical-700 border border-medical-100 hover:bg-medical-100 transition">
+                    <Shield className="w-3.5 h-3.5" />Change PIN
+                  </button>
+                  <button onClick={() => startAction("remove")}
+                    className="flex items-center gap-1.5 text-xs font-semibold px-3 py-2 rounded-xl bg-red-50 text-red-600 border border-red-100 hover:bg-red-100 transition">
+                    <X className="w-3.5 h-3.5" />Remove PIN
+                  </button>
+                </>
+              )}
+            </div>
+          </>
+        )}
+
+        {stage === "pre_send" && (
+          <div className="space-y-3">
+            <div className="bg-medical-50 border border-medical-100 rounded-xl px-3 py-3">
+              <p className="text-xs font-semibold text-medical-700 mb-1">Identity Verification Required</p>
+              <p className="text-xs text-medical-600">We&apos;ll send a 6-digit code to <span className="font-semibold">{email}</span>.</p>
+            </div>
+            {otpError && <p className="text-xs text-red-600 bg-red-50 border border-red-100 rounded-xl px-3 py-2">{otpError}</p>}
+            <div className="flex gap-2">
+              <button onClick={sendOtp} disabled={otpSending}
+                className="flex-1 flex items-center justify-center gap-2 py-2.5 rounded-xl bg-medical-500 text-white text-sm font-semibold hover:bg-medical-600 transition disabled:opacity-50">
+                {otpSending ? <RefreshCw className="w-4 h-4 animate-spin" /> : <Shield className="w-4 h-4" />}
+                {otpSending ? "Sending…" : "Send Code"}
+              </button>
+              <button onClick={() => setStage("idle")}
+                className="px-4 py-2.5 rounded-xl bg-slate-100 text-slate-600 text-sm font-semibold hover:bg-slate-200 transition">
+                Cancel
+              </button>
+            </div>
+          </div>
+        )}
+
+        {stage === "verify" && (
+          <div className="space-y-3">
+            <p className="text-xs text-slate-500">Enter the 6-digit code sent to <span className="font-semibold text-slate-700">{email}</span></p>
+            <input
+              type="text" inputMode="numeric" maxLength={6}
+              value={otpCode}
+              onChange={(e) => setOtpCode(e.target.value.replace(/\D/g, "").slice(0, 6))}
+              placeholder="000000"
+              className="w-full text-center text-xl font-bold tracking-[0.4em] px-3 py-3 border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-medical-400 bg-white"
+            />
+            {otpError && <p className="text-xs text-red-600 bg-red-50 border border-red-100 rounded-xl px-3 py-2">{otpError}</p>}
+            <div className="flex gap-2">
+              <button onClick={verifyOtp} disabled={otpVerifying || otpCode.length < 6}
+                className="flex-1 flex items-center justify-center gap-2 py-2.5 rounded-xl bg-medical-500 text-white text-sm font-semibold hover:bg-medical-600 transition disabled:opacity-50">
+                {otpVerifying ? <RefreshCw className="w-4 h-4 animate-spin" /> : null}
+                {otpVerifying ? "Verifying…" : "Verify"}
+              </button>
+              <button onClick={() => setStage("idle")}
+                className="px-4 py-2.5 rounded-xl bg-slate-100 text-slate-600 text-sm font-semibold hover:bg-slate-200 transition">
+                Cancel
+              </button>
+            </div>
+            {otpCountdown > 0 ? (
+              <p className="text-xs text-slate-400 text-center">Resend in {otpCountdown}s</p>
+            ) : (
+              <button onClick={sendOtp} disabled={otpSending}
+                className="w-full text-xs text-medical-600 hover:text-medical-700 font-medium text-center py-1">
+                {otpSending ? "Sending…" : "Resend code"}
+              </button>
+            )}
+          </div>
+        )}
+
+        {stage === "form" && (
+          <div className="space-y-3">
+            {mode === "remove" ? (
+              <p className="text-sm text-slate-600">Remove your login PIN? You&apos;ll need an email code each time.</p>
+            ) : (
+              <>
+                <div>
+                  <label className="text-xs font-semibold text-slate-500 uppercase tracking-wide block mb-1.5">
+                    {mode === "change" ? "New PIN" : "Create a 4-digit PIN"}
+                  </label>
+                  <div className="relative">
+                    <input type={showPin ? "text" : "password"} inputMode="numeric" maxLength={4}
+                      value={pin} onChange={(e) => setPin(e.target.value.replace(/\D/g, "").slice(0, 4))}
+                      placeholder="••••"
+                      className="w-full text-sm px-3 py-2.5 border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-medical-400 bg-white pr-10 tracking-[0.5em]"
+                    />
+                    <button type="button" onClick={() => setShowPin((v) => !v)}
+                      className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600 transition">
+                      {showPin ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+                    </button>
+                  </div>
+                </div>
+                <div>
+                  <label className="text-xs font-semibold text-slate-500 uppercase tracking-wide block mb-1.5">Confirm PIN</label>
+                  <input type={showPin ? "text" : "password"} inputMode="numeric" maxLength={4}
+                    value={confirmPin} onChange={(e) => setConfirmPin(e.target.value.replace(/\D/g, "").slice(0, 4))}
+                    placeholder="••••"
+                    className="w-full text-sm px-3 py-2.5 border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-medical-400 bg-white tracking-[0.5em]"
+                  />
+                </div>
+              </>
+            )}
+            {formError && <p className="text-xs text-red-600 bg-red-50 border border-red-100 rounded-xl px-3 py-2">{formError}</p>}
+            <div className="flex gap-2 pt-1">
+              <button onClick={savePin} disabled={saving}
+                className={`flex-1 flex items-center justify-center gap-2 py-2.5 rounded-xl text-sm font-semibold transition disabled:opacity-50 ${
+                  mode === "remove" ? "bg-red-500 text-white hover:bg-red-600" : "bg-medical-500 text-white hover:bg-medical-600"
+                }`}>
+                {saving ? <RefreshCw className="w-4 h-4 animate-spin" /> : null}
+                {saving ? "Saving…" : mode === "remove" ? "Remove PIN" : "Save PIN"}
+              </button>
+              <button onClick={() => setStage("idle")}
+                className="px-4 py-2.5 rounded-xl bg-slate-100 text-slate-600 text-sm font-semibold hover:bg-slate-200 transition">
+                Cancel
+              </button>
+            </div>
+          </div>
+        )}
       </div>
     </div>
   );

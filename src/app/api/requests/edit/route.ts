@@ -2,24 +2,13 @@ import { NextRequest, NextResponse } from "next/server";
 import { z } from "zod";
 import { prisma } from "@/lib/prisma";
 
+// Doctors can only edit tests, diagnosis, schedule, and test_image_url — not patient or doctor info
 const EditRequestSchema = z.object({
   requestId: z.string().uuid(),
-  patient_name: z.string().min(2).max(200),
-  dob: z.string().regex(/^\d{4}-\d{2}-\d{2}$/, "Invalid date format"),
-  sex: z.enum(["male", "female"]),
-  address: z.string().max(500).optional().or(z.literal("")),
-  patient_email: z.string().email().optional().or(z.literal("")),
-  patient_phone: z.string().max(50).optional().or(z.literal("")),
-  doctor_prefix: z.string().max(30).optional().or(z.literal("")),
-  doctor_name: z.string().min(2).max(200),
-  doctor_phone: z.string().max(50).optional().or(z.literal("")),
-  doctor_hospital: z.string().max(200).optional().or(z.literal("")),
-  doctor_bank_name: z.string().max(100).optional().or(z.literal("")),
-  doctor_account_number: z.string().max(20).optional().or(z.literal("")),
-  doctor_account_name: z.string().max(200).optional().or(z.literal("")),
-  schedule: z.enum(["today", "this_week", "this_month", "not_sure"]).optional(),
-  diagnosis: z.string().max(2000).optional().or(z.literal("")),
   tests: z.string().min(2).max(2000),
+  test_image_url: z.string().url().nullable().optional(),
+  diagnosis: z.string().max(2000).optional().or(z.literal("")),
+  schedule: z.enum(["today", "this_week", "this_month", "not_sure"]).optional(),
 });
 
 export async function PATCH(request: NextRequest) {
@@ -67,26 +56,14 @@ export async function PATCH(request: NextRequest) {
       );
     }
 
-    // Apply the update
+    // Apply the update — only tests, test_image_url, diagnosis, and schedule
     await prisma.request.update({
       where: { id: data.requestId },
       data: {
-        patient_name: data.patient_name,
-        dob: new Date(data.dob),
-        sex: data.sex,
-        address: data.address || null,
-        patient_email: data.patient_email || null,
-        patient_phone: data.patient_phone || null,
-        doctor_prefix: data.doctor_prefix || null,
-        doctor_name: data.doctor_name,
-        doctor_phone: data.doctor_phone || null,
-        doctor_hospital: data.doctor_hospital || null,
-        doctor_bank_name: data.doctor_bank_name || null,
-        doctor_account_number: data.doctor_account_number || null,
-        doctor_account_name: data.doctor_account_name || null,
-        schedule: data.schedule || null,
-        diagnosis: data.diagnosis || null,
         tests: data.tests,
+        test_image_url: data.test_image_url !== undefined ? data.test_image_url : undefined,
+        diagnosis: data.diagnosis || null,
+        schedule: data.schedule || null,
       },
     });
 

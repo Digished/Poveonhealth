@@ -9,16 +9,24 @@ export interface Lab {
   id: string;
   name: string;
   prefix: string;
+  slug: string | null;
   address: string;
   description: string;
   phones: string[];
   email: string;
   notification_email: string | null;
   logo_url: string | null;
+  whatsapp: string | null;
+  request_email: string | null;
   hidden: boolean;
   service_categories: string[];
   certifications: string[];
   created_at: string;
+  // Computed by admin API — average rating and number of reviews
+  rating_avg?: number | null;
+  rating_count?: number;
+  // Wallet balance — included in admin labs list
+  wallet_balance?: number | null;
 }
 
 export interface ApiLog {
@@ -65,8 +73,48 @@ export interface LabRole {
   can_manage_team: boolean;
   can_manage_api_keys: boolean;
   can_view_referrals: boolean;
+  can_view_clients: boolean;
+  can_view_analytics: boolean;
+  can_view_activity: boolean;
+  can_view_feedback: boolean;
+  can_view_wallet: boolean;
   created_at: string;
   _count?: { members: number };
+}
+
+export interface WalletTransaction {
+  id: string;
+  lab_id: string;
+  type: "topup" | "deduction" | "adjustment";
+  direction: "credit" | "debit";
+  amount: number;
+  balance_after: number;
+  description: string | null;
+  request_id: string | null;
+  actor_email: string | null;
+  created_at: string;
+}
+
+export interface LabWallet {
+  balance: number;
+  transactions: WalletTransaction[];
+}
+
+export interface LabFeedback {
+  id: string;
+  lab_id: string;
+  reviewer_email: string;
+  reviewer_type: "patient" | "doctor";
+  is_anonymous: boolean;
+  display_name: string | null;
+  rating_overall: number;
+  rating_accuracy: number | null;
+  rating_speed: number | null;
+  rating_staff: number | null;
+  rating_environment: number | null;
+  comment: string | null;
+  created_at: string;
+  updated_at: string;
 }
 
 export interface LabMember {
@@ -84,9 +132,9 @@ export interface LabRequest {
   id: string;
   code: string;
   lab_id: string;
-  patient_name: string;
-  dob: string;
-  sex: Sex;
+  patient_name: string | null;
+  dob: string | null;
+  sex: Sex | null;
   address: string | null;
   patient_email: string | null;
   patient_phone: string | null;
@@ -103,20 +151,25 @@ export interface LabRequest {
   tests: string;
   status: RequestStatus;
   created_at: string;
+  updated_at: string | null;
   seen_at: string | null;
   completed_at: string | null;
+  test_image_url: string | null;
+  is_critical: boolean | null;
+  needs_ambulance: boolean | null;
   // Joined field from lab relation (Prisma relation name is "lab")
   lab?: {
     name: string;
     address: string;
+    whatsapp?: string | null;
   };
 }
 
 // API request/response types
 export interface CreateRequestPayload {
-  patient_name: string;
-  dob: string;
-  sex: Sex;
+  patient_name?: string;
+  dob?: string;
+  sex?: Sex;
   address?: string;
   patient_email?: string;
   patient_phone?: string;

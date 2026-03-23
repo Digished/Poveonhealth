@@ -73,6 +73,23 @@ export async function middleware(request: NextRequest) {
     }
   }
 
+  // ── Patient Dashboard ──────────────────────────────────────────────────────
+  if (pathname.startsWith("/dashboard")) {
+    const token = request.cookies.get("patient_token")?.value;
+    if (!token) {
+      return NextResponse.redirect(new URL("/login", request.url));
+    }
+    // Session validity is checked in the API; middleware only verifies cookie presence
+  }
+
+  // ── Redirect authenticated patients away from login page ──────────────────
+  if (pathname === "/login") {
+    const token = request.cookies.get("patient_token")?.value;
+    if (token) {
+      return NextResponse.redirect(new URL("/dashboard", request.url));
+    }
+  }
+
   return response;
 }
 
@@ -84,5 +101,7 @@ export const config = {
     "/lab-login",
     "/scale",
     "/scale/dashboard/:path*",
+    "/dashboard/:path*",
+    "/login",
   ],
 };

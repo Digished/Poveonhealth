@@ -1,7 +1,7 @@
 "use client";
 
-import { useState } from "react";
-import { CheckCircle, Copy, Check, MapPin, Phone, RotateCcw, FlaskConical, Pencil } from "lucide-react";
+import { useState, useEffect } from "react";
+import { CheckCircle, Copy, Check, MapPin, Phone, RotateCcw, FlaskConical } from "lucide-react";
 import { Button } from "@/components/ui/Button";
 
 interface SuccessScreenProps {
@@ -22,6 +22,11 @@ export function SuccessScreen({
   onReset,
 }: SuccessScreenProps) {
   const [copied, setCopied] = useState(false);
+
+  // Scroll to top when success screen mounts
+  useEffect(() => {
+    window.scrollTo({ top: 0, behavior: "smooth" });
+  }, []);
 
   async function copyCode() {
     try {
@@ -140,15 +145,6 @@ export function SuccessScreen({
       </div>
 
       <div className="flex flex-col sm:flex-row items-center justify-center gap-3">
-        {requestId && (
-          <a
-            href={`/doc-login?edit=${requestId}`}
-            className="inline-flex items-center gap-2 bg-amber-50 hover:bg-amber-100 border border-amber-200 text-amber-700 font-semibold text-sm px-5 py-2.5 rounded-xl transition"
-          >
-            <Pencil className="w-4 h-4" />
-            Edit Request
-          </a>
-        )}
         <Button variant="ghost" onClick={onReset} className="gap-2">
           <RotateCcw className="w-4 h-4" />
           Submit another request
