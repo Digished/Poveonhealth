@@ -2,6 +2,7 @@ export const dynamic = "force-dynamic";
 import { NextRequest, NextResponse } from "next/server";
 import { createServerClient } from "@/lib/supabase/server";
 import { prisma } from "@/lib/prisma";
+import { Prisma } from "@prisma/client";
 import OpenAI from "openai";
 
 async function verifyAdmin() {
@@ -24,7 +25,7 @@ export async function GET(request: NextRequest) {
   const categoryId = searchParams.get("category_id");
   const q = searchParams.get("q")?.trim() ?? "";
 
-  let where: Parameters<typeof prisma.catalogTest.findMany>[0]["where"] = {};
+  let where: Prisma.CatalogTestWhereInput = {};
 
   if (categoryId) {
     where = { category_id: categoryId };
