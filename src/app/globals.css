@@ -240,6 +240,22 @@
 .dash-light .border-amber-500\/20 { border-color: #fcd34d !important; }
 .dash-light .text-amber-200\/70 { color: #92400e !important; }
 
+/* AdminPricing slate-700/800 panels — not covered by the defaults above */
+.dash-light .bg-slate-700\/50  { background-color: #f1f5f9 !important; }
+.dash-light .bg-slate-700\/30  { background-color: #f8fafc !important; }
+.dash-light .bg-slate-700      { background-color: #e2e8f0 !important; }
+.dash-light .hover\:bg-slate-700:hover       { background-color: #e2e8f0 !important; }
+.dash-light .hover\:bg-slate-700\/70:hover   { background-color: #e9eef5 !important; }
+.dash-light .hover\:bg-slate-700\/80:hover   { background-color: #e2e8f0 !important; }
+.dash-light .bg-slate-800\/60               { background-color: #f8fafc !important; }
+.dash-light .hover\:bg-slate-800\/80:hover   { background-color: #f1f5f9 !important; }
+.dash-light .bg-slate-600                   { background-color: #e2e8f0 !important; }
+.dash-light .border-slate-600               { border-color: #cbd5e1 !important; }
+.dash-light .border-slate-500               { border-color: #d1d5db !important; }
+.dash-light .border-slate-700\/50           { border-color: #e2e8f0 !important; }
+.dash-light .text-amber-300                 { color: #b45309 !important; }
+.dash-light .text-amber-500                 { color: #92400e !important; }
+
 /* Scrollbar */
 ::-webkit-scrollbar {
   width: 6px;

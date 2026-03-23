@@ -20,7 +20,20 @@ export async function GET() {
     include: { _count: { select: { tests: true } } },
   });
 
-  return NextResponse.json({ success: true, categories });
+  // Count tests with base_price > 0 per category
+  const pricedCounts = await prisma.catalogTest.groupBy({
+    by: ["category_id"],
+    where: { base_price: { gt: 0 } },
+    _count: { id: true },
+  });
+  const pricedMap = Object.fromEntries(pricedCounts.map((r) => [r.category_id, r._count.id]));
+
+  const result = categories.map((cat) => ({
+    ...cat,
+    priced_count: pricedMap[cat.id] ?? 0,
+  }));
+
+  return NextResponse.json({ success: true, categories: result });
 }
 
 /** POST /api/admin/pricing/categories — create a new category */

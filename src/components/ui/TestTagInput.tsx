@@ -1,7 +1,9 @@
 "use client";
 
-import { useState, useEffect, useRef } from "react";
+import { useState, useEffect, useRef, useCallback } from "react";
+import { createPortal } from "react-dom";
 import { X } from "lucide-react";
+import { smartSplitTestNames } from "@/lib/smart-split";
 
 export type TestTag = {
   name: string;
@@ -33,10 +35,37 @@ export function TestTagInput({ value, onChange, labId, error, label, disabled }:
   const [results, setResults] = useState<CatalogResult[]>([]);
   const [activeIdx, setActiveIdx] = useState(-1);
   const [open, setOpen] = useState(false);
+  const [mounted, setMounted] = useState(false);
+  const [dropdownPos, setDropdownPos] = useState({ top: 0, left: 0, width: 0 });
+
   const inputRef = useRef<HTMLInputElement>(null);
   const containerRef = useRef<HTMLDivElement>(null);
 
-  // Debounced catalog search
+  useEffect(() => { setMounted(true); }, []);
+
+  // ── Dropdown position (portal — bypasses overflow:hidden ancestors) ─────────
+  const updateDropdownPos = useCallback(() => {
+    if (!containerRef.current) return;
+    const rect = containerRef.current.getBoundingClientRect();
+    setDropdownPos({ top: rect.bottom + 4, left: rect.left, width: rect.width });
+  }, []);
+
+  useEffect(() => {
+    if (open) updateDropdownPos();
+  }, [open, updateDropdownPos]);
+
+  useEffect(() => {
+    if (!open) return;
+    // re-position on scroll anywhere (including inside overflow containers)
+    window.addEventListener("scroll", updateDropdownPos, true);
+    window.addEventListener("resize", updateDropdownPos);
+    return () => {
+      window.removeEventListener("scroll", updateDropdownPos, true);
+      window.removeEventListener("resize", updateDropdownPos);
+    };
+  }, [open, updateDropdownPos]);
+
+  // ── Debounced catalog search ───────────────────────────────────────────────
   useEffect(() => {
     const q = inputText.trim();
     if (q.length < 2) { setResults([]); setOpen(false); return; }
@@ -53,7 +82,7 @@ export function TestTagInput({ value, onChange, labId, error, label, disabled }:
     return () => clearTimeout(t);
   }, [inputText, labId]);
 
-  // Close dropdown on outside click
+  // ── Close on outside click ────────────────────────────────────────────────
   useEffect(() => {
     function onMouseDown(e: MouseEvent) {
       if (containerRef.current && !containerRef.current.contains(e.target as Node)) {
@@ -64,6 +93,7 @@ export function TestTagInput({ value, onChange, labId, error, label, disabled }:
     return () => document.removeEventListener("mousedown", onMouseDown);
   }, []);
 
+  // ── Tag actions ───────────────────────────────────────────────────────────
   function addCatalogTag(r: CatalogResult) {
     if (value.some((t) => t.name.toLowerCase() === r.canonical_name.toLowerCase())) {
       setInputText(""); setOpen(false); return;
@@ -90,22 +120,18 @@ export function TestTagInput({ value, onChange, labId, error, label, disabled }:
     inputRef.current?.focus();
   }
 
-  /** Split text on commas/semicolons/"and" and add each part as a separate tag */
-  function addSplitFreeTextTags(raw: string) {
-    const parts = raw
-      .split(/[,;]|\band\b/i)
-      .map((s) => s.trim())
-      .filter(Boolean);
+  /**
+   * Split input text intelligently (handles imaging prefixes + comma/and lists)
+   * and add each resulting test as a separate tag.
+   */
+  function addSplitTags(raw: string) {
+    const names = smartSplitTestNames(raw);
+    if (names.length === 0) return;
+    if (names.length === 1) { addFreeTextTag(names[0]); return; }
 
-    if (parts.length <= 1) {
-      addFreeTextTag(raw);
-      return;
-    }
-
-    const newTags = parts
-      .filter((name) => !value.some((t) => t.name.toLowerCase() === name.toLowerCase()))
-      .map((name) => ({ name, catalog_test_id: null as string | null }));
-
+    const newTags = names
+      .filter((n) => !value.some((t) => t.name.toLowerCase() === n.toLowerCase()))
+      .map((n) => ({ name: n, catalog_test_id: null as string | null }));
     if (newTags.length > 0) onChange([...value, ...newTags]);
     setInputText(""); setResults([]); setOpen(false); setActiveIdx(-1);
     inputRef.current?.focus();
@@ -115,16 +141,15 @@ export function TestTagInput({ value, onChange, labId, error, label, disabled }:
     onChange(value.filter((_, i) => i !== idx));
   }
 
+  // ── Keyboard handler ──────────────────────────────────────────────────────
   function handleKeyDown(e: React.KeyboardEvent<HTMLInputElement>) {
     if (e.key === "ArrowDown") {
-      e.preventDefault();
-      e.stopPropagation();
+      e.preventDefault(); e.stopPropagation();
       setActiveIdx((i) => Math.min(i + 1, results.length - 1));
       return;
     }
     if (e.key === "ArrowUp") {
-      e.preventDefault();
-      e.stopPropagation();
+      e.preventDefault(); e.stopPropagation();
       setActiveIdx((i) => Math.max(i - 1, -1));
       return;
     }
@@ -139,11 +164,11 @@ export function TestTagInput({ value, onChange, labId, error, label, disabled }:
     }
     if (e.key === "Enter") {
       e.preventDefault();
-      e.stopPropagation(); // prevent parent form from advancing to next field
+      e.stopPropagation(); // prevent parent glass-card from advancing to next field
       if (activeIdx >= 0 && results[activeIdx]) {
         addCatalogTag(results[activeIdx]);
       } else if (inputText.trim()) {
-        addSplitFreeTextTags(inputText); // handles comma/and splitting automatically
+        addSplitTags(inputText);
       }
       return;
     }
@@ -152,12 +177,58 @@ export function TestTagInput({ value, onChange, labId, error, label, disabled }:
       if (activeIdx >= 0 && results[activeIdx]) {
         addCatalogTag(results[activeIdx]);
       } else {
-        addSplitFreeTextTags(inputText);
+        addSplitTags(inputText);
       }
     }
   }
 
   const catalogCount = value.filter((t) => t.catalog_test_id).length;
+
+  // ── Dropdown portal ───────────────────────────────────────────────────────
+  const dropdown = open && results.length > 0 && mounted ? createPortal(
+    <div
+      style={{
+        position: "fixed",
+        top: dropdownPos.top,
+        left: dropdownPos.left,
+        width: dropdownPos.width,
+        zIndex: 99999,
+        background: "#ffffff",
+        border: "1px solid #e2e8f0",
+        boxShadow: "0 8px 32px rgba(0,0,0,0.18), 0 2px 8px rgba(0,0,0,0.10)",
+        borderRadius: "12px",
+        overflow: "hidden",
+      }}
+    >
+      {results.map((r, i) => (
+        <button
+          key={r.id}
+          type="button"
+          onMouseDown={(e) => { e.preventDefault(); addCatalogTag(r); }}
+          style={{ background: activeIdx === i ? "#f0f9ff" : undefined }}
+          className="w-full flex items-center justify-between px-4 py-2.5 text-left text-sm transition-colors hover:bg-slate-50"
+        >
+          <div className="flex items-center gap-2 min-w-0">
+            {r.is_rapid_test && (
+              <span className="w-1.5 h-1.5 rounded-full bg-amber-400 flex-shrink-0" title="Rapid test" />
+            )}
+            <span className="font-medium text-slate-800 truncate">{r.canonical_name}</span>
+            <span className="text-xs text-slate-400 flex-shrink-0 hidden sm:inline">{r.category}</span>
+          </div>
+        </button>
+      ))}
+      {inputText.trim() && (
+        <button
+          type="button"
+          onMouseDown={(e) => { e.preventDefault(); addFreeTextTag(inputText); }}
+          className="w-full flex items-center gap-2 px-4 py-2.5 text-left text-sm text-slate-500 hover:bg-slate-50 border-t border-slate-100 transition-colors"
+        >
+          <span>Add &ldquo;<span className="font-medium text-slate-700">{inputText.trim()}</span>&rdquo; as custom test</span>
+        </button>
+      )}
+    </div>,
+    document.body
+  ) : null;
 
   return (
     <div className="flex flex-col gap-1.5">
@@ -209,7 +280,7 @@ export function TestTagInput({ value, onChange, labId, error, label, disabled }:
           <input
             ref={inputRef}
             value={inputText}
-            onChange={(e) => { setInputText(e.target.value); }}
+            onChange={(e) => setInputText(e.target.value)}
             onKeyDown={handleKeyDown}
             onFocus={() => { if (results.length > 0) setOpen(true); }}
             disabled={disabled}
@@ -218,47 +289,8 @@ export function TestTagInput({ value, onChange, labId, error, label, disabled }:
           />
         </div>
 
-        {/* Dropdown — solid opaque background, very high z-index to clear all page layers */}
-        {open && results.length > 0 && (
-          <div
-            className="absolute z-[9999] top-full mt-1 left-0 right-0 rounded-xl overflow-hidden"
-            style={{
-              background: "#ffffff",
-              border: "1px solid #e2e8f0",
-              boxShadow: "0 8px 32px rgba(0,0,0,0.18), 0 2px 8px rgba(0,0,0,0.10)",
-            }}
-          >
-            {results.map((r, i) => (
-              <button
-                key={r.id}
-                type="button"
-                onMouseDown={(e) => { e.preventDefault(); addCatalogTag(r); }}
-                className={[
-                  "w-full flex items-center justify-between px-4 py-2.5 text-left text-sm transition-colors",
-                  activeIdx === i ? "bg-medical-50" : "hover:bg-slate-50",
-                ].join(" ")}
-                style={{ background: activeIdx === i ? undefined : undefined }}
-              >
-                <div className="flex items-center gap-2 min-w-0">
-                  {r.is_rapid_test && (
-                    <span className="w-1.5 h-1.5 rounded-full bg-amber-400 flex-shrink-0" title="Rapid test" />
-                  )}
-                  <span className="font-medium text-slate-800 truncate">{r.canonical_name}</span>
-                  <span className="text-xs text-slate-400 flex-shrink-0 hidden sm:inline">{r.category}</span>
-                </div>
-              </button>
-            ))}
-            {inputText.trim() && (
-              <button
-                type="button"
-                onMouseDown={(e) => { e.preventDefault(); addFreeTextTag(inputText); }}
-                className="w-full flex items-center gap-2 px-4 py-2.5 text-left text-sm text-slate-500 hover:bg-slate-50 border-t border-slate-100 transition-colors"
-              >
-                <span>Add &ldquo;<span className="font-medium text-slate-700">{inputText.trim()}</span>&rdquo; as custom test</span>
-              </button>
-            )}
-          </div>
-        )}
+        {/* Dropdown rendered via portal to escape overflow:hidden ancestors */}
+        {dropdown}
       </div>
 
       {/* Summary row */}

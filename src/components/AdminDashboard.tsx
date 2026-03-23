@@ -626,17 +626,37 @@ export function AdminDashboard() {
                     {revenueData.recent_transactions.length > 0 && (
                       <div className="bg-white/5 border border-white/10 rounded-2xl p-5">
                         <h3 className="text-sm font-semibold text-slate-300 mb-4">Recent Transactions</h3>
-                        <div className="space-y-2 max-h-80 overflow-y-auto pr-1">
+                        <div className="space-y-1 max-h-96 overflow-y-auto pr-1">
                           {revenueData.recent_transactions.map((tx) => (
-                            <div key={tx.id} className="flex items-start gap-3 py-2 border-b border-white/5 last:border-0">
-                              <div className={`w-2 h-2 rounded-full mt-1.5 shrink-0 ${tx.direction === "credit" ? "bg-emerald-400" : "bg-rose-400"}`} />
-                              <div className="flex-1 min-w-0">
-                                <p className="text-xs text-white truncate">{tx.description ?? tx.type}</p>
-                                <p className="text-xs text-slate-500 mt-0.5">{tx.lab_name} · {new Date(tx.created_at).toLocaleString("en-GB", { day: "numeric", month: "short", year: "numeric", hour: "2-digit", minute: "2-digit" })}</p>
+                            <div key={tx.id} className="flex items-start gap-3 py-2.5 px-3 rounded-xl hover:bg-white/5 transition-colors border-b border-white/5 last:border-0">
+                              {/* Direction indicator */}
+                              <div className={`w-7 h-7 rounded-full flex items-center justify-center shrink-0 mt-0.5 ${tx.direction === "credit" ? "bg-emerald-500/15" : "bg-rose-500/15"}`}>
+                                {tx.direction === "credit"
+                                  ? <ArrowUpRight className={`w-3.5 h-3.5 text-emerald-400`} />
+                                  : <ArrowDownRight className={`w-3.5 h-3.5 text-rose-400`} />}
                               </div>
-                              <p className={`text-xs font-bold font-mono shrink-0 ${tx.direction === "credit" ? "text-emerald-400" : "text-rose-400"}`}>
-                                {tx.direction === "credit" ? "+" : "-"}₦{tx.amount.toLocaleString()}
-                              </p>
+                              <div className="flex-1 min-w-0">
+                                <div className="flex items-center gap-2 flex-wrap">
+                                  <p className="text-xs text-white font-medium truncate">{tx.description ?? tx.type}</p>
+                                  <span className={`text-[10px] px-1.5 py-0.5 rounded-full font-medium shrink-0 ${
+                                    tx.type === "top_up" ? "bg-emerald-500/15 text-emerald-400" :
+                                    tx.type === "charge" ? "bg-rose-500/15 text-rose-400" :
+                                    tx.type === "refund" ? "bg-amber-500/15 text-amber-400" :
+                                    "bg-slate-500/30 text-slate-400"
+                                  }`}>{tx.type.replace(/_/g, " ")}</span>
+                                </div>
+                                <div className="flex items-center gap-2 mt-0.5">
+                                  <p className="text-xs text-slate-500">{tx.lab_name}</p>
+                                  <span className="text-slate-700">·</span>
+                                  <p className="text-xs text-slate-600">{new Date(tx.created_at).toLocaleString("en-GB", { day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" })}</p>
+                                </div>
+                              </div>
+                              <div className="text-right shrink-0">
+                                <p className={`text-sm font-bold font-mono ${tx.direction === "credit" ? "text-emerald-400" : "text-rose-400"}`}>
+                                  {tx.direction === "credit" ? "+" : "-"}₦{tx.amount.toLocaleString()}
+                                </p>
+                                <p className="text-[10px] text-slate-500 font-mono mt-0.5">bal ₦{tx.balance_after.toLocaleString()}</p>
+                              </div>
                             </div>
                           ))}
                         </div>

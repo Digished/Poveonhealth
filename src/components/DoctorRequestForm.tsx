@@ -35,6 +35,7 @@ function VenusIcon({ className }: { className?: string }) {
 import { Button } from "@/components/ui/Button";
 import { Input, Textarea, Select } from "@/components/ui/Input";
 import { TestTagInput, TestTag } from "@/components/ui/TestTagInput";
+import { smartSplitTestNames } from "@/lib/smart-split";
 import { PhoneInput } from "@/components/PhoneInput";
 import { BankAccountInput } from "@/components/BankAccountInput";
 import { DobInput } from "@/components/DobInput";
@@ -1774,7 +1775,12 @@ export function DoctorRequestForm({
                                             setExtractionResult(res.extracted);
                                             // Auto-fill tests & diagnosis immediately
                                             if (Array.isArray(res.extracted.tests) && res.extracted.tests.length > 0) {
-                                              setTestTags(res.extracted.tests.map((name: string) => ({ name, catalog_test_id: null })));
+                                              // Smart-split each AI-extracted name (handles "CT scan of leg, back and hand")
+                                              const expanded = res.extracted.tests.flatMap((n: string) => {
+                                                const parts = smartSplitTestNames(n);
+                                                return parts.length > 0 ? parts : [n];
+                                              });
+                                              setTestTags(expanded.map((n: string) => ({ name: n, catalog_test_id: null })));
                                             }
                                             setForm((prev) => ({
                                               ...prev,

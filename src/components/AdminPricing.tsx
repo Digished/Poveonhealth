@@ -18,6 +18,7 @@ type Category = {
   slug: string;
   description: string | null;
   sort_order: number;
+  priced_count: number;
   _count: { tests: number };
 };
 
@@ -85,6 +86,7 @@ type TestRowProps = {
   showCategory?: boolean;
   selected?: boolean;
   onToggleSelect?: () => void;
+  labOverridePrice?: number | null;
 };
 
 function TestRow({
@@ -92,7 +94,7 @@ function TestRow({
   editingPrice, priceInput, setPriceInput, onStartEditPrice, onSavePrice, onCancelPrice,
   onToggleActive, onDelete, onRemoveSynonym,
   addingSynFor, newSynInput, setNewSynInput, onStartAddSyn, onAddSynonym, onCancelAddSyn,
-  showCategory, selected, onToggleSelect,
+  showCategory, selected, onToggleSelect, labOverridePrice,
 }: TestRowProps) {
   return (
     <div className={`rounded-xl overflow-hidden ${selected ? "ring-1 ring-medical-500" : ""} ${test.is_active ? "bg-slate-700/50" : "bg-slate-800/30 opacity-60"}`}>
@@ -145,7 +147,12 @@ function TestRow({
             onClick={() => onStartEditPrice(test.id, test.base_price)}
             className="text-sm text-slate-300 hover:text-white font-mono flex items-center gap-1 group"
           >
-            {fmt(test.base_price)}
+            <span>{fmt(test.base_price)}</span>
+            {labOverridePrice !== undefined && labOverridePrice !== null && (
+              <span className="text-xs text-amber-400 font-semibold ml-0.5" title="Lab override price">
+                → {fmt(labOverridePrice)}
+              </span>
+            )}
             <Pencil className="w-3 h-3 opacity-0 group-hover:opacity-100 transition-opacity" />
           </button>
         )}
@@ -235,6 +242,11 @@ function CatalogTab() {
   const [loadingCats, setLoadingCats] = useState(true);
   const [loadingTests, setLoadingTests] = useState(false);
 
+  // Lab override price context
+  const [labs, setLabs] = useState<Lab[]>([]);
+  const [viewLabId, setViewLabId] = useState<string>("");
+  const [labOverrides, setLabOverrides] = useState<Map<string, number>>(new Map());
+
   // Global search
   const [globalSearch, setGlobalSearch] = useState("");
   const [searchResults, setSearchResults] = useState<CatalogTest[]>([]);
@@ -280,6 +292,25 @@ function CatalogTab() {
     setCategories(data.categories ?? []);
     setLoadingCats(false);
   }, []);
+
+  // Fetch labs for the price-context picker
+  useEffect(() => {
+    fetch("/api/admin/labs").then((r) => r.json()).then((d) => setLabs(d.labs ?? []));
+  }, []);
+
+  // Load lab override prices when viewLabId or selectedCat changes
+  useEffect(() => {
+    if (!viewLabId || !selectedCat) { setLabOverrides(new Map()); return; }
+    fetch(`/api/admin/pricing/overrides?lab_id=${viewLabId}`)
+      .then((r) => r.json())
+      .then((d) => {
+        const map = new Map<string, number>();
+        for (const row of (d.rows ?? [])) {
+          if (row.override_price !== null) map.set(row.id, row.override_price);
+        }
+        setLabOverrides(map);
+      });
+  }, [viewLabId, selectedCat]);
 
   async function seedCategories() {
     setSeeding(true);
@@ -674,6 +705,11 @@ function CatalogTab() {
                   <span className="text-xs text-slate-400 bg-slate-600 px-2 py-0.5 rounded-full">
                     {cat._count.tests} tests
                   </span>
+                  {cat.priced_count > 0 && (
+                    <span className="text-xs text-emerald-400 bg-emerald-500/10 px-2 py-0.5 rounded-full">
+                      {cat.priced_count} priced
+                    </span>
+                  )}
                   <ChevronRight className="w-4 h-4 text-slate-500" />
                 </div>
               </button>
@@ -700,6 +736,23 @@ function CatalogTab() {
           <Plus className="w-3.5 h-3.5" /><span className="hidden sm:inline"> Add Test</span>
         </Button>
       </div>
+
+      {/* Lab price-context picker */}
+      {labs.length > 0 && (
+        <div className="flex items-center gap-2 bg-slate-700/30 rounded-xl px-3 py-2">
+          <Building2 className="w-3.5 h-3.5 text-slate-400 flex-shrink-0" />
+          <span className="text-xs text-slate-400 flex-shrink-0">View prices for:</span>
+          <select
+            value={viewLabId}
+            onChange={(e) => setViewLabId(e.target.value)}
+            className="flex-1 bg-slate-700 border border-slate-600 text-white text-xs px-2 py-1 rounded-lg focus:outline-none focus:ring-1 focus:ring-medical-500"
+          >
+            <option value="">— base price only —</option>
+            {labs.map((l) => <option key={l.id} value={l.id}>{l.name}</option>)}
+          </select>
+          {viewLabId && <span className="text-xs text-amber-400 whitespace-nowrap">Lab overrides shown in amber</span>}
+        </div>
+      )}
 
       {/* Bulk price row */}
       <div className="flex flex-wrap items-center gap-2 bg-slate-700/30 rounded-xl px-4 py-2.5">
@@ -787,6 +840,7 @@ function CatalogTab() {
               onCancelAddSyn={() => setAddingSynFor(null)}
               selected={selectedIds.has(test.id)}
               onToggleSelect={() => toggleSelect(test.id)}
+              labOverridePrice={viewLabId ? (labOverrides.get(test.id) ?? null) : undefined}
             />
           ))}
         </div>
@@ -822,6 +876,11 @@ function OverridesTab() {
   const [editingCatRow, setEditingCatRow] = useState<string | null>(null);
   const [catPriceInput, setCatPriceInput] = useState("");
   const [savingCat, setSavingCat] = useState(false);
+  // Sub-tab within selected lab view
+  const [overridesSubTab, setOverridesSubTab] = useState<"category" | "test">("category");
+  // Bulk override for all tests
+  const [bulkOverridePrice, setBulkOverridePrice] = useState("");
+  const [applyingBulkOverride, setApplyingBulkOverride] = useState(false);
 
   useEffect(() => {
     fetch("/api/admin/labs")
@@ -940,6 +999,26 @@ function OverridesTab() {
     else toast.error("Failed");
   }
 
+  async function applyBulkOverride() {
+    if (!selectedLab) return;
+    const price = parseFloat(bulkOverridePrice);
+    if (isNaN(price) || price < 0) { toast.error("Enter a valid price"); return; }
+    if (!confirm(`Set override price ₦${price.toLocaleString()} for ALL tests at ${selectedLab.name}?`)) return;
+    setApplyingBulkOverride(true);
+    const res = await fetch("/api/admin/pricing/overrides", {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ lab_id: selectedLab.id, price }),
+    });
+    if (res.ok) {
+      const d = await res.json();
+      toast.success(`Override set for ${d.updated} tests`);
+      setBulkOverridePrice("");
+      loadOverrides(selectedLab);
+    } else toast.error("Failed");
+    setApplyingBulkOverride(false);
+  }
+
   const filtered = rows.filter((r) =>
     r.canonical_name.toLowerCase().includes(search.toLowerCase()) ||
     r.category.toLowerCase().includes(search.toLowerCase())
@@ -1045,220 +1124,127 @@ function OverridesTab() {
 
   return (
     <div className="space-y-4">
-      <div className="flex items-center gap-3">
-        <button onClick={() => setSelectedLab(null)} className="text-slate-400 hover:text-white">
+      {/* Lab header */}
+      <div className="flex items-center gap-3 flex-wrap">
+        <button onClick={() => { setSelectedLab(null); setOverridesSubTab("category"); }} className="text-slate-400 hover:text-white">
           <ArrowLeft className="w-4 h-4" />
         </button>
-        <h3 className="text-white font-semibold flex-1">{selectedLab.name}</h3>
+        <h3 className="text-white font-semibold flex-1 min-w-0 truncate">{selectedLab.name}</h3>
         <Button size="sm" variant="danger" onClick={clearAllOverrides}>
-          Clear All
+          Clear All Tests
         </Button>
       </div>
 
-      <input
-        value={search} onChange={(e) => setSearch(e.target.value)}
-        placeholder="Search test name or category..."
-        className="w-full bg-slate-700 border border-slate-600 text-white text-sm px-3 py-2 rounded-xl placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-medical-500"
-      />
+      {/* Sub-tabs */}
+      <div className="flex gap-1 bg-slate-700/50 p-1 rounded-xl">
+        <button
+          onClick={() => setOverridesSubTab("category")}
+          className={`flex-1 flex items-center justify-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium transition-colors ${
+            overridesSubTab === "category" ? "bg-slate-600 text-white" : "text-slate-400 hover:text-white"
+          }`}
+        >
+          <Tag className="w-3.5 h-3.5" />
+          <span>Category Overrides</span>
+        </button>
+        <button
+          onClick={() => setOverridesSubTab("test")}
+          className={`flex-1 flex items-center justify-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium transition-colors ${
+            overridesSubTab === "test" ? "bg-slate-600 text-white" : "text-slate-400 hover:text-white"
+          }`}
+        >
+          <FlaskConical className="w-3.5 h-3.5" />
+          <span>Individual Tests</span>
+          {rows.filter((r) => r.override_price !== null).length > 0 && (
+            <span className="bg-amber-500/20 text-amber-400 text-xs px-1.5 py-0.5 rounded-full">
+              {rows.filter((r) => r.override_price !== null).length}
+            </span>
+          )}
+        </button>
+      </div>
 
       {loading ? (
         <p className="text-slate-400 text-sm">Loading...</p>
-      ) : (
+      ) : overridesSubTab === "category" ? (
+        /* ── Category Overrides sub-tab ── */
         <div className="space-y-1">
-          {/* Header — desktop only */}
-          <div className="hidden sm:grid sm:grid-cols-[1fr_auto_auto_auto_auto] gap-2 px-3 py-1.5 text-xs text-slate-400 font-medium">
-            <span>Test · Category</span>
-            <span className="text-right w-24">Base</span>
-            <span className="text-right w-24">Override</span>
+          <p className="text-xs text-slate-400 px-1">Fallback prices for tests matched by category but not listed in the catalog. Global defaults can also be set from the main overrides page.</p>
+          <div className="hidden sm:grid sm:grid-cols-[1fr_auto_auto_auto_auto] gap-2 px-3 py-1.5 text-xs text-slate-400 font-medium mt-2">
+            <span>Category · Listed tests</span>
+            <span className="text-right w-24">Global</span>
+            <span className="text-right w-24">Lab override</span>
             <span className="text-right w-24">Effective</span>
-            <span className="w-16" />
+            <span className="w-14" />
           </div>
-
-          {/* Category-level pricing section */}
-          {catRows.length > 0 && (
-            <div className="pt-2">
-              <div className="flex items-center gap-2 px-1 pb-2">
-                <Tag className="w-3.5 h-3.5 text-medical-400" />
-                <p className="text-xs font-semibold text-medical-400 uppercase tracking-wider">Category Fallback Prices</p>
-                <span className="text-xs text-slate-500 ml-1">— applied to tests matched by category but not listed in the catalog</span>
-              </div>
-              <div className="hidden sm:grid sm:grid-cols-[1fr_auto_auto_auto_auto] gap-2 px-3 py-1.5 text-xs text-slate-400 font-medium">
-                <span>Category · Tests</span>
-                <span className="text-right w-24">Global</span>
-                <span className="text-right w-24">Override</span>
-                <span className="text-right w-24">Effective</span>
-                <span className="w-16" />
-              </div>
-              {catRows.map((cat) => (
-                <div key={cat.id} className="px-3 py-2.5 rounded-xl bg-slate-800/60 hover:bg-slate-800/80 space-y-1.5 sm:space-y-0 sm:grid sm:grid-cols-[1fr_auto_auto_auto_auto] sm:gap-2 sm:items-center mb-1">
-                  <div>
-                    <p className="text-sm text-slate-200 font-medium">{cat.name}</p>
-                    <p className="text-xs text-slate-500">{cat.test_count} listed test{cat.test_count !== 1 ? "s" : ""}</p>
-                  </div>
-                  {/* Mobile */}
-                  <div className="flex items-center gap-3 sm:contents">
-                    <div className="flex items-center gap-1 sm:hidden text-xs text-slate-500 font-medium">
-                      <span className="text-slate-400 font-mono">{fmt(cat.base_price)}</span>
-                      <span className="text-slate-600">→</span>
-                      <span className={`font-mono ${cat.override_price !== null ? "text-amber-300 font-semibold" : "text-slate-300"}`}>
-                        {fmt(cat.effective_price)}{cat.override_price !== null && <span className="text-amber-500 text-xs ml-0.5">custom</span>}
-                      </span>
-                    </div>
-                    {/* Desktop: global base price (editable) */}
-                    {editingCatRow === `global:${cat.id}` ? (
-                      <div className="hidden sm:flex items-center gap-1 w-24 justify-end">
-                        <span className="text-slate-400 text-sm">₦</span>
-                        <input
-                          value={catPriceInput} onChange={(e) => setCatPriceInput(e.target.value)}
-                          className="w-16 bg-slate-600 text-white text-sm px-2 py-0.5 rounded border border-slate-500 focus:outline-none focus:ring-1 focus:ring-medical-500"
-                          autoFocus
-                          onKeyDown={(e) => { if (e.key === "Enter") saveGlobalCatPrice(cat.id); if (e.key === "Escape") setEditingCatRow(null); }}
-                        />
-                      </div>
-                    ) : (
-                      <button
-                        onClick={() => { setEditingCatRow(`global:${cat.id}`); setCatPriceInput(String(cat.base_price)); }}
-                        className="hidden sm:flex text-sm font-mono text-right w-24 group items-center justify-end gap-1"
-                        title="Edit global category price"
-                      >
-                        <span className="text-slate-400">{fmt(cat.base_price)}</span>
-                        <Pencil className="w-3 h-3 text-slate-500 opacity-0 group-hover:opacity-100" />
-                      </button>
-                    )}
-                    {/* Desktop: lab override */}
-                    {editingCatRow === cat.id ? (
-                      <div className="hidden sm:flex items-center gap-1 w-24 justify-end">
-                        <span className="text-slate-400 text-sm">₦</span>
-                        <input
-                          value={catPriceInput} onChange={(e) => setCatPriceInput(e.target.value)}
-                          className="w-16 bg-slate-600 text-white text-sm px-2 py-0.5 rounded border border-slate-500 focus:outline-none focus:ring-1 focus:ring-medical-500"
-                          autoFocus
-                          onKeyDown={(e) => { if (e.key === "Enter") saveCatOverride(cat.id); if (e.key === "Escape") setEditingCatRow(null); }}
-                        />
-                      </div>
-                    ) : (
-                      <button
-                        onClick={() => { setEditingCatRow(cat.id); setCatPriceInput(String(cat.override_price ?? cat.base_price)); }}
-                        className="hidden sm:flex text-sm font-mono text-right w-24 group items-center justify-end gap-1"
-                      >
-                        {cat.override_price !== null
-                          ? <span className="text-amber-400">{fmt(cat.override_price)} <span className="text-xs text-amber-500">custom</span></span>
-                          : <span className="text-slate-500">—</span>}
-                        <Pencil className="w-3 h-3 text-slate-500 opacity-0 group-hover:opacity-100" />
-                      </button>
-                    )}
-                    {/* Desktop: effective */}
-                    <span className={`hidden sm:block text-sm font-mono text-right w-24 ${cat.override_price !== null ? "text-amber-300 font-semibold" : "text-slate-300"}`}>
-                      {fmt(cat.effective_price)}
-                    </span>
-                    <div className="flex items-center gap-1 sm:w-16 sm:justify-end ml-auto">
-                      {(editingCatRow === cat.id || editingCatRow === `global:${cat.id}`) ? (
-                        <>
-                          <button
-                            onClick={() => editingCatRow === `global:${cat.id}` ? saveGlobalCatPrice(cat.id) : saveCatOverride(cat.id)}
-                            disabled={savingCat}
-                            className="text-emerald-400 hover:text-emerald-300"
-                          >
-                            <Check className="w-4 h-4" />
-                          </button>
-                          <button onClick={() => setEditingCatRow(null)} className="text-slate-400 hover:text-slate-300">
-                            <X className="w-4 h-4" />
-                          </button>
-                        </>
-                      ) : (
-                        <>
-                          <button
-                            onClick={() => { setEditingCatRow(cat.id); setCatPriceInput(String(cat.override_price ?? cat.base_price)); }}
-                            className="sm:hidden text-slate-400 hover:text-white p-1"
-                            title="Edit lab override"
-                          >
-                            <Pencil className="w-3.5 h-3.5" />
-                          </button>
-                          {cat.override_price !== null && (
-                            <button onClick={() => clearCatOverride(cat.id)} className="text-slate-500 hover:text-red-400" title="Reset to global">
-                              <X className="w-3.5 h-3.5" />
-                            </button>
-                          )}
-                        </>
-                      )}
-                    </div>
-                  </div>
-                </div>
-              ))}
-            </div>
-          )}
-
-          {filtered.map((row) => (
-            <div key={row.id} className="px-3 py-2.5 rounded-xl bg-slate-700/50 hover:bg-slate-700/70 space-y-1.5 sm:space-y-0 sm:grid sm:grid-cols-[1fr_auto_auto_auto_auto] sm:gap-2 sm:items-center">
-              {/* Test name + category */}
+          {catRows.map((cat) => (
+            <div key={cat.id} className="px-3 py-2.5 rounded-xl bg-slate-800/60 hover:bg-slate-800/80 space-y-1.5 sm:space-y-0 sm:grid sm:grid-cols-[1fr_auto_auto_auto_auto] sm:gap-2 sm:items-center">
               <div>
-                <p className="text-sm text-white">{row.canonical_name}</p>
-                <p className="text-xs text-slate-500">{row.category}</p>
+                <p className="text-sm text-slate-200 font-medium">{cat.name}</p>
+                <p className="text-xs text-slate-500">{cat.test_count} listed test{cat.test_count !== 1 ? "s" : ""}</p>
               </div>
-
-              {/* Mobile: prices in a single row; desktop: separate columns */}
-              <div className="flex items-center gap-3 sm:contents">
-                <div className="flex items-center gap-1 sm:hidden text-xs text-slate-500 font-medium min-w-0">
-                  <span className="text-slate-400 font-mono">{fmt(row.base_price)}</span>
+              {/* Mobile summary */}
+              <div className="flex items-center gap-2 sm:contents">
+                <div className="flex items-center gap-1 sm:hidden text-xs font-medium">
+                  <span className="text-slate-400 font-mono">{fmt(cat.base_price)}</span>
                   <span className="text-slate-600">→</span>
-                  <span className={`font-mono ${row.override_price !== null ? "text-amber-300 font-semibold" : "text-slate-300"}`}>
-                    {fmt(row.effective_price)}{row.override_price !== null && <span className="text-amber-500 text-xs ml-0.5">custom</span>}
+                  <span className={`font-mono ${cat.override_price !== null ? "text-amber-300 font-semibold" : "text-slate-300"}`}>
+                    {fmt(cat.effective_price)}{cat.override_price !== null && <span className="text-amber-500 text-xs ml-0.5">custom</span>}
                   </span>
                 </div>
-
-                {/* Desktop: base price */}
-                <span className="hidden sm:block text-sm text-slate-400 font-mono w-24 text-right">{fmt(row.base_price)}</span>
-
-                {/* Override edit cell */}
-                {editingRow === row.id ? (
-                  <div className="flex items-center gap-1 sm:w-28">
+                {/* Desktop: global (editable) */}
+                {editingCatRow === `global:${cat.id}` ? (
+                  <div className="hidden sm:flex items-center gap-1 w-24 justify-end">
                     <span className="text-slate-400 text-sm">₦</span>
-                    <input
-                      value={priceInput} onChange={(e) => setPriceInput(e.target.value)}
-                      className="w-20 bg-slate-600 text-white text-sm px-2 py-0.5 rounded border border-slate-500 focus:outline-none focus:ring-1 focus:ring-medical-500"
-                      autoFocus
-                      onKeyDown={(e) => { if (e.key === "Enter") saveOverride(row.id); if (e.key === "Escape") setEditingRow(null); }}
-                    />
+                    <input value={catPriceInput} onChange={(e) => setCatPriceInput(e.target.value)}
+                      className="w-16 bg-slate-600 text-white text-sm px-2 py-0.5 rounded border border-slate-500 focus:outline-none focus:ring-1 focus:ring-medical-500"
+                      autoFocus onKeyDown={(e) => { if (e.key === "Enter") saveGlobalCatPrice(cat.id); if (e.key === "Escape") setEditingCatRow(null); }} />
                   </div>
                 ) : (
-                  <button
-                    onClick={() => { setEditingRow(row.id); setPriceInput(String(row.override_price ?? row.base_price)); }}
-                    className="hidden sm:flex text-sm font-mono text-right w-24 group items-center justify-end gap-1"
-                  >
-                    {row.override_price !== null
-                      ? <span className="text-amber-400">{fmt(row.override_price)} <span className="text-xs text-amber-500">custom</span></span>
+                  <button onClick={() => { setEditingCatRow(`global:${cat.id}`); setCatPriceInput(String(cat.base_price)); }}
+                    className="hidden sm:flex text-sm font-mono w-24 justify-end group items-center gap-1" title="Edit global price">
+                    <span className="text-slate-400">{fmt(cat.base_price)}</span>
+                    <Pencil className="w-3 h-3 text-slate-500 opacity-0 group-hover:opacity-100" />
+                  </button>
+                )}
+                {/* Desktop: lab override */}
+                {editingCatRow === cat.id ? (
+                  <div className="hidden sm:flex items-center gap-1 w-24 justify-end">
+                    <span className="text-slate-400 text-sm">₦</span>
+                    <input value={catPriceInput} onChange={(e) => setCatPriceInput(e.target.value)}
+                      className="w-16 bg-slate-600 text-white text-sm px-2 py-0.5 rounded border border-slate-500 focus:outline-none focus:ring-1 focus:ring-medical-500"
+                      autoFocus onKeyDown={(e) => { if (e.key === "Enter") saveCatOverride(cat.id); if (e.key === "Escape") setEditingCatRow(null); }} />
+                  </div>
+                ) : (
+                  <button onClick={() => { setEditingCatRow(cat.id); setCatPriceInput(String(cat.override_price ?? cat.base_price)); }}
+                    className="hidden sm:flex text-sm font-mono w-24 justify-end group items-center gap-1">
+                    {cat.override_price !== null
+                      ? <span className="text-amber-400">{fmt(cat.override_price)} <span className="text-xs text-amber-500">lab</span></span>
                       : <span className="text-slate-500">—</span>}
                     <Pencil className="w-3 h-3 text-slate-500 opacity-0 group-hover:opacity-100" />
                   </button>
                 )}
-
-                {/* Desktop: effective price */}
-                <span className={`hidden sm:block text-sm font-mono text-right w-24 ${row.override_price !== null ? "text-amber-300 font-semibold" : "text-slate-300"}`}>
-                  {fmt(row.effective_price)}
+                {/* Desktop: effective */}
+                <span className={`hidden sm:block text-sm font-mono w-24 text-right ${cat.override_price !== null ? "text-amber-300 font-semibold" : "text-slate-300"}`}>
+                  {fmt(cat.effective_price)}
                 </span>
-
-                <div className="flex items-center gap-1 sm:w-16 sm:justify-end ml-auto">
-                  {editingRow === row.id ? (
+                <div className="flex items-center gap-1 sm:w-14 sm:justify-end ml-auto">
+                  {(editingCatRow === cat.id || editingCatRow === `global:${cat.id}`) ? (
                     <>
-                      <button onClick={() => saveOverride(row.id)} disabled={saving} className="text-emerald-400 hover:text-emerald-300">
+                      <button onClick={() => editingCatRow === `global:${cat.id}` ? saveGlobalCatPrice(cat.id) : saveCatOverride(cat.id)}
+                        disabled={savingCat} className="text-emerald-400 hover:text-emerald-300">
                         <Check className="w-4 h-4" />
                       </button>
-                      <button onClick={() => setEditingRow(null)} className="text-slate-400 hover:text-slate-300">
+                      <button onClick={() => setEditingCatRow(null)} className="text-slate-400 hover:text-slate-300">
                         <X className="w-4 h-4" />
                       </button>
                     </>
                   ) : (
                     <>
-                      {/* Mobile edit button */}
-                      <button
-                        onClick={() => { setEditingRow(row.id); setPriceInput(String(row.override_price ?? row.base_price)); }}
-                        className="sm:hidden text-slate-400 hover:text-white p-1"
-                        title="Edit override"
-                      >
+                      <button onClick={() => { setEditingCatRow(cat.id); setCatPriceInput(String(cat.override_price ?? cat.base_price)); }}
+                        className="sm:hidden text-slate-400 hover:text-white p-1" title="Edit lab override">
                         <Pencil className="w-3.5 h-3.5" />
                       </button>
-                      {row.override_price !== null && (
-                        <button onClick={() => clearOverride(row.id)} className="text-slate-500 hover:text-red-400" title="Reset to base">
+                      {cat.override_price !== null && (
+                        <button onClick={() => clearCatOverride(cat.id)} className="text-slate-500 hover:text-red-400" title="Reset to global">
                           <X className="w-3.5 h-3.5" />
                         </button>
                       )}
@@ -1268,6 +1254,104 @@ function OverridesTab() {
               </div>
             </div>
           ))}
+        </div>
+      ) : (
+        /* ── Individual Test Overrides sub-tab ── */
+        <div className="space-y-3">
+          {/* Bulk override row */}
+          <div className="flex flex-wrap items-center gap-2 bg-slate-700/30 rounded-xl px-4 py-2.5">
+            <Tag className="w-3.5 h-3.5 text-slate-400 flex-shrink-0" />
+            <span className="text-xs text-slate-400 flex-shrink-0">Set all overrides to:</span>
+            <span className="text-slate-500 text-sm flex-shrink-0">₦</span>
+            <input
+              type="number" min={0} placeholder="e.g. 3000"
+              value={bulkOverridePrice} onChange={(e) => setBulkOverridePrice(e.target.value)}
+              className="flex-1 min-w-[80px] bg-slate-700 border border-slate-600 text-white text-sm px-2 py-1 rounded-lg focus:outline-none focus:ring-1 focus:ring-medical-500 placeholder-slate-500"
+            />
+            <Button size="sm" onClick={applyBulkOverride} loading={applyingBulkOverride} disabled={!bulkOverridePrice}>
+              Apply to all
+            </Button>
+          </div>
+
+          {/* Search */}
+          <input
+            value={search} onChange={(e) => setSearch(e.target.value)}
+            placeholder="Search test name or category..."
+            className="w-full bg-slate-700 border border-slate-600 text-white text-sm px-3 py-2 rounded-xl placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-medical-500"
+          />
+
+          {/* Test list */}
+          <div className="space-y-1">
+            <div className="hidden sm:grid sm:grid-cols-[1fr_auto_auto_auto_auto] gap-2 px-3 py-1.5 text-xs text-slate-400 font-medium">
+              <span>Test · Category</span>
+              <span className="text-right w-24">Base</span>
+              <span className="text-right w-24">Override</span>
+              <span className="text-right w-24">Effective</span>
+              <span className="w-14" />
+            </div>
+            {filtered.map((row) => (
+              <div key={row.id} className="px-3 py-2.5 rounded-xl bg-slate-700/50 hover:bg-slate-700/70 space-y-1.5 sm:space-y-0 sm:grid sm:grid-cols-[1fr_auto_auto_auto_auto] sm:gap-2 sm:items-center">
+                <div>
+                  <p className="text-sm text-white">{row.canonical_name}</p>
+                  <p className="text-xs text-slate-500">{row.category}</p>
+                </div>
+                <div className="flex items-center gap-3 sm:contents">
+                  {/* Mobile summary */}
+                  <div className="flex items-center gap-1 sm:hidden text-xs font-medium min-w-0">
+                    <span className="text-slate-400 font-mono">{fmt(row.base_price)}</span>
+                    <span className="text-slate-600">→</span>
+                    <span className={`font-mono ${row.override_price !== null ? "text-amber-300 font-semibold" : "text-slate-300"}`}>
+                      {fmt(row.effective_price)}{row.override_price !== null && <span className="text-amber-500 text-xs ml-0.5">custom</span>}
+                    </span>
+                  </div>
+                  <span className="hidden sm:block text-sm text-slate-400 font-mono w-24 text-right">{fmt(row.base_price)}</span>
+                  {editingRow === row.id ? (
+                    <div className="flex items-center gap-1 sm:w-28">
+                      <span className="text-slate-400 text-sm">₦</span>
+                      <input value={priceInput} onChange={(e) => setPriceInput(e.target.value)}
+                        className="w-20 bg-slate-600 text-white text-sm px-2 py-0.5 rounded border border-slate-500 focus:outline-none focus:ring-1 focus:ring-medical-500"
+                        autoFocus onKeyDown={(e) => { if (e.key === "Enter") saveOverride(row.id); if (e.key === "Escape") setEditingRow(null); }} />
+                    </div>
+                  ) : (
+                    <button onClick={() => { setEditingRow(row.id); setPriceInput(String(row.override_price ?? row.base_price)); }}
+                      className="hidden sm:flex text-sm font-mono w-24 justify-end group items-center gap-1">
+                      {row.override_price !== null
+                        ? <span className="text-amber-400">{fmt(row.override_price)} <span className="text-xs text-amber-500">custom</span></span>
+                        : <span className="text-slate-500">—</span>}
+                      <Pencil className="w-3 h-3 text-slate-500 opacity-0 group-hover:opacity-100" />
+                    </button>
+                  )}
+                  <span className={`hidden sm:block text-sm font-mono w-24 text-right ${row.override_price !== null ? "text-amber-300 font-semibold" : "text-slate-300"}`}>
+                    {fmt(row.effective_price)}
+                  </span>
+                  <div className="flex items-center gap-1 sm:w-14 sm:justify-end ml-auto">
+                    {editingRow === row.id ? (
+                      <>
+                        <button onClick={() => saveOverride(row.id)} disabled={saving} className="text-emerald-400 hover:text-emerald-300">
+                          <Check className="w-4 h-4" />
+                        </button>
+                        <button onClick={() => setEditingRow(null)} className="text-slate-400 hover:text-slate-300">
+                          <X className="w-4 h-4" />
+                        </button>
+                      </>
+                    ) : (
+                      <>
+                        <button onClick={() => { setEditingRow(row.id); setPriceInput(String(row.override_price ?? row.base_price)); }}
+                          className="sm:hidden text-slate-400 hover:text-white p-1" title="Edit override">
+                          <Pencil className="w-3.5 h-3.5" />
+                        </button>
+                        {row.override_price !== null && (
+                          <button onClick={() => clearOverride(row.id)} className="text-slate-500 hover:text-red-400" title="Reset to base">
+                            <X className="w-3.5 h-3.5" />
+                          </button>
+                        )}
+                      </>
+                    )}
+                  </div>
+                </div>
+              </div>
+            ))}
+          </div>
         </div>
       )}
     </div>

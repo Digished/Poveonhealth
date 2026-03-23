@@ -86,6 +86,40 @@ export async function PUT(request: NextRequest) {
 }
 
 /**
+ * PATCH /api/admin/pricing/overrides
+ * Bulk-set override price for all active tests in a category (or all tests).
+ * Body: { lab_id, price, category_id? }
+ */
+export async function PATCH(request: NextRequest) {
+  const admin = await verifyAdmin();
+  if (!admin) return NextResponse.json({ error: "Forbidden" }, { status: 403 });
+
+  const { lab_id, price, category_id } = await request.json() as {
+    lab_id?: string; price?: number; category_id?: string;
+  };
+
+  if (!lab_id || price === undefined) {
+    return NextResponse.json({ error: "lab_id and price are required" }, { status: 400 });
+  }
+
+  const tests = await prisma.catalogTest.findMany({
+    where: { is_active: true, ...(category_id ? { category_id } : {}) },
+    select: { id: true },
+  });
+
+  const upserts = tests.map((t) =>
+    prisma.labTestPrice.upsert({
+      where: { lab_id_catalog_test_id: { lab_id, catalog_test_id: t.id } },
+      create: { lab_id, catalog_test_id: t.id, price, updated_by: admin.email ?? undefined },
+      update: { price, updated_by: admin.email ?? undefined },
+    })
+  );
+
+  await Promise.all(upserts);
+  return NextResponse.json({ success: true, updated: tests.length });
+}
+
+/**
  * DELETE /api/admin/pricing/overrides
  * Clear a lab-specific override (reverts to base price).
  * Body: { lab_id, catalog_test_id } or { lab_id } to clear all for that lab.
