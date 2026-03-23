@@ -1827,9 +1827,7 @@ export function LabDashboard({ lab, isOwner = false, roleName = "Lab Owner", can
                       }
                     }}
                     className={`w-full text-left p-4 rounded-xl border transition-all ${
-                      codeMatch?.id === req.id
-                        ? "bg-medical-900/60 border-medical-500/60 ring-2 ring-medical-500/40"
-                        : selectedRequest?.id === req.id
+                      selectedRequest?.id === req.id
                         ? "bg-white/15 border-white/30"
                         : "bg-white/5 border-white/10 hover:bg-white/10"
                     }`}
