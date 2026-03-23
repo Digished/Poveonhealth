@@ -4,7 +4,7 @@ import { useState, useEffect, useCallback } from "react";
 import { toast } from "react-hot-toast";
 import {
   FlaskConical, Tag, Building2, AlertCircle, Plus, Pencil, Trash2,
-  Check, X, ChevronDown, ChevronRight, RefreshCw, Sparkles, ArrowLeft,
+  Check, X, ChevronDown, ChevronRight, RefreshCw, Sparkles, ArrowLeft, Search,
 } from "lucide-react";
 import { Button } from "@/components/ui/Button";
 import { Input } from "@/components/ui/Input";
@@ -31,6 +31,7 @@ type CatalogTest = {
   is_rapid_test: boolean;
   is_active: boolean;
   synonyms: TestSynonym[];
+  category?: { id: string; name: string };
 };
 
 type OverrideRow = {
@@ -60,6 +61,133 @@ type PricingTab = "catalog" | "overrides" | "unmapped";
 
 const fmt = (n: number) => `₦${n.toLocaleString()}`;
 
+// ── Shared TestRow component ───────────────────────────────────────────────────
+
+type TestRowProps = {
+  test: CatalogTest;
+  expanded: boolean;
+  onToggleExpand: () => void;
+  editingPrice: string | null;
+  priceInput: string;
+  setPriceInput: (v: string) => void;
+  onStartEditPrice: (id: string, current: number) => void;
+  onSavePrice: (id: string) => void;
+  onCancelPrice: () => void;
+  onToggleActive: (test: CatalogTest) => void;
+  onDelete: (id: string, name: string) => void;
+  onRemoveSynonym: (testId: string, synId: string) => void;
+  addingSynFor: string | null;
+  newSynInput: string;
+  setNewSynInput: (v: string) => void;
+  onStartAddSyn: (id: string) => void;
+  onAddSynonym: (id: string) => void;
+  onCancelAddSyn: () => void;
+  showCategory?: boolean;
+};
+
+function TestRow({
+  test, expanded, onToggleExpand,
+  editingPrice, priceInput, setPriceInput, onStartEditPrice, onSavePrice, onCancelPrice,
+  onToggleActive, onDelete, onRemoveSynonym,
+  addingSynFor, newSynInput, setNewSynInput, onStartAddSyn, onAddSynonym, onCancelAddSyn,
+  showCategory,
+}: TestRowProps) {
+  return (
+    <div className={`rounded-xl overflow-hidden ${test.is_active ? "bg-slate-700/50" : "bg-slate-800/30 opacity-60"}`}>
+      <div className="flex items-center gap-3 px-4 py-3">
+        <button onClick={onToggleExpand} className="text-slate-400 hover:text-white flex-shrink-0">
+          {expanded ? <ChevronDown className="w-4 h-4" /> : <ChevronRight className="w-4 h-4" />}
+        </button>
+
+        <div className="flex-1 min-w-0">
+          <div className="flex items-center gap-2 flex-wrap">
+            <span className="text-sm text-white font-medium truncate">{test.canonical_name}</span>
+            {test.is_rapid_test && (
+              <span className="text-xs bg-amber-500/20 text-amber-400 px-1.5 py-0.5 rounded-full flex-shrink-0">rapid</span>
+            )}
+            {!test.is_active && (
+              <span className="text-xs bg-slate-600 text-slate-400 px-1.5 py-0.5 rounded-full flex-shrink-0">inactive</span>
+            )}
+            {showCategory && test.category && (
+              <span className="text-xs bg-slate-600/70 text-slate-400 px-1.5 py-0.5 rounded-full flex-shrink-0">{test.category.name}</span>
+            )}
+          </div>
+          <p className="text-xs text-slate-500">{test.synonyms.length} synonym{test.synonyms.length !== 1 ? "s" : ""}</p>
+        </div>
+
+        {/* Inline price edit */}
+        {editingPrice === test.id ? (
+          <div className="flex items-center gap-1">
+            <span className="text-slate-400 text-sm">₦</span>
+            <input
+              value={priceInput}
+              onChange={(e) => setPriceInput(e.target.value)}
+              className="w-24 bg-slate-600 text-white text-sm px-2 py-1 rounded-lg border border-slate-500 focus:outline-none focus:ring-1 focus:ring-medical-500"
+              autoFocus
+              onKeyDown={(e) => { if (e.key === "Enter") onSavePrice(test.id); if (e.key === "Escape") onCancelPrice(); }}
+            />
+            <button onClick={() => onSavePrice(test.id)} className="text-emerald-400 hover:text-emerald-300"><Check className="w-4 h-4" /></button>
+            <button onClick={onCancelPrice} className="text-slate-400 hover:text-slate-300"><X className="w-4 h-4" /></button>
+          </div>
+        ) : (
+          <button
+            onClick={() => onStartEditPrice(test.id, test.base_price)}
+            className="text-sm text-slate-300 hover:text-white font-mono flex items-center gap-1 group"
+          >
+            {fmt(test.base_price)}
+            <Pencil className="w-3 h-3 opacity-0 group-hover:opacity-100 transition-opacity" />
+          </button>
+        )}
+
+        <button onClick={() => onToggleActive(test)}
+          className={`w-6 h-6 rounded-full flex items-center justify-center flex-shrink-0 ${test.is_active ? "bg-emerald-500/20 text-emerald-400 hover:bg-emerald-500/30" : "bg-slate-600 text-slate-400 hover:bg-slate-500"}`}>
+          <Check className="w-3 h-3" />
+        </button>
+        <button onClick={() => onDelete(test.id, test.canonical_name)} className="text-slate-500 hover:text-red-400 flex-shrink-0">
+          <Trash2 className="w-3.5 h-3.5" />
+        </button>
+      </div>
+
+      {expanded && (
+        <div className="px-4 pb-3 border-t border-slate-700/50 pt-2 space-y-2">
+          <div className="flex items-center justify-between">
+            <p className="text-xs text-slate-400 font-medium">Synonyms</p>
+            {addingSynFor !== test.id && (
+              <button onClick={() => onStartAddSyn(test.id)} className="text-xs text-medical-400 hover:text-medical-300 flex items-center gap-1">
+                <Plus className="w-3 h-3" /> Add
+              </button>
+            )}
+          </div>
+          <div className="flex flex-wrap gap-1.5">
+            {test.synonyms.map((syn) => (
+              <span key={syn.id} className="flex items-center gap-1 text-xs bg-slate-600 text-slate-300 px-2 py-0.5 rounded-full">
+                {syn.synonym}
+                <button onClick={() => onRemoveSynonym(test.id, syn.id)} className="text-slate-400 hover:text-red-400">
+                  <X className="w-2.5 h-2.5" />
+                </button>
+              </span>
+            ))}
+          </div>
+          {addingSynFor === test.id && (
+            <div className="flex gap-2 items-center">
+              <input
+                value={newSynInput}
+                onChange={(e) => setNewSynInput(e.target.value)}
+                placeholder="e.g. FBC or Full Haemogram"
+                className="flex-1 bg-slate-600 border border-slate-500 text-white text-xs px-2 py-1.5 rounded-lg focus:outline-none focus:ring-1 focus:ring-medical-500 placeholder-slate-400"
+                autoFocus
+                onKeyDown={(e) => { if (e.key === "Enter") onAddSynonym(test.id); if (e.key === "Escape") onCancelAddSyn(); }}
+              />
+              <button onClick={() => onAddSynonym(test.id)} className="text-emerald-400 hover:text-emerald-300"><Check className="w-4 h-4" /></button>
+              <button onClick={onCancelAddSyn} className="text-slate-400 hover:text-slate-300"><X className="w-4 h-4" /></button>
+            </div>
+          )}
+        </div>
+      )}
+    </div>
+  );
+}
+
 // ── Tab: Test Catalog ─────────────────────────────────────────────────────────
 
 function CatalogTab() {
@@ -69,6 +197,11 @@ function CatalogTab() {
   const [expandedTest, setExpandedTest] = useState<string | null>(null);
   const [loadingCats, setLoadingCats] = useState(true);
   const [loadingTests, setLoadingTests] = useState(false);
+
+  // Global search
+  const [globalSearch, setGlobalSearch] = useState("");
+  const [searchResults, setSearchResults] = useState<CatalogTest[]>([]);
+  const [searching, setSearching] = useState(false);
 
   // Seed state
   const [seeding, setSeeding] = useState(false);
@@ -94,6 +227,10 @@ function CatalogTab() {
   // Bulk price
   const [bulkPrice, setBulkPrice] = useState("");
   const [applyingBulk, setApplyingBulk] = useState(false);
+
+  // Add synonym
+  const [addingSynFor, setAddingSynFor] = useState<string | null>(null);
+  const [newSynInput, setNewSynInput] = useState("");
 
   const fetchCategories = useCallback(async () => {
     setLoadingCats(true);
@@ -130,6 +267,19 @@ function CatalogTab() {
     if (selectedCat) fetchTests(selectedCat.id);
     else setTests([]);
   }, [selectedCat, fetchTests]);
+
+  // Debounced global search
+  useEffect(() => {
+    if (!globalSearch.trim()) { setSearchResults([]); return; }
+    const t = setTimeout(async () => {
+      setSearching(true);
+      const res = await fetch(`/api/admin/pricing/tests?q=${encodeURIComponent(globalSearch.trim())}`);
+      const data = await res.json();
+      setSearchResults(data.tests ?? []);
+      setSearching(false);
+    }, 300);
+    return () => clearTimeout(t);
+  }, [globalSearch]);
 
   async function addCategory() {
     if (!newCatName.trim()) return;
@@ -198,6 +348,16 @@ function CatalogTab() {
     setApplyingBulk(false);
   }
 
+  function refreshAfterMutation() {
+    if (selectedCat) fetchTests(selectedCat.id);
+    else if (globalSearch.trim()) {
+      // re-run the search to get fresh data
+      fetch(`/api/admin/pricing/tests?q=${encodeURIComponent(globalSearch.trim())}`)
+        .then((r) => r.json())
+        .then((d) => setSearchResults(d.tests ?? []));
+    }
+  }
+
   async function savePrice(testId: string) {
     const price = parseFloat(priceInput);
     if (isNaN(price)) { toast.error("Invalid price"); return; }
@@ -209,7 +369,7 @@ function CatalogTab() {
     if (res.ok) {
       toast.success("Price updated");
       setEditingPrice(null);
-      if (selectedCat) fetchTests(selectedCat.id);
+      refreshAfterMutation();
     } else toast.error("Failed to update price");
   }
 
@@ -219,9 +379,8 @@ function CatalogTab() {
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ id: test.id, is_active: !test.is_active }),
     });
-    if (res.ok) {
-      if (selectedCat) fetchTests(selectedCat.id);
-    } else toast.error("Failed");
+    if (res.ok) refreshAfterMutation();
+    else toast.error("Failed");
   }
 
   async function deleteTest(testId: string, name: string) {
@@ -230,6 +389,10 @@ function CatalogTab() {
     if (res.ok) {
       toast.success("Test deleted");
       if (selectedCat) { fetchTests(selectedCat.id); fetchCategories(); }
+      else if (globalSearch.trim()) {
+        setSearchResults((prev) => prev.filter((t) => t.id !== testId));
+        fetchCategories();
+      }
     } else toast.error("Failed to delete");
   }
 
@@ -239,7 +402,28 @@ function CatalogTab() {
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ id: testId, remove_synonym_ids: [synId] }),
     });
-    if (res.ok && selectedCat) fetchTests(selectedCat.id);
+    if (res.ok) {
+      if (selectedCat) fetchTests(selectedCat.id);
+      else if (globalSearch) setSearchResults((prev) =>
+        prev.map((t) => t.id === testId ? { ...t, synonyms: t.synonyms.filter((s) => s.id !== synId) } : t)
+      );
+    }
+  }
+
+  async function addSynonym(testId: string) {
+    const syn = newSynInput.trim();
+    if (!syn) return;
+    const res = await fetch("/api/admin/pricing/tests", {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ id: testId, add_synonyms: [syn] }),
+    });
+    if (res.ok) {
+      toast.success("Synonym added");
+      setNewSynInput("");
+      setAddingSynFor(null);
+      refreshAfterMutation();
+    } else toast.error("Failed to add synonym");
   }
 
   async function aiSuggest() {
@@ -298,7 +482,63 @@ function CatalogTab() {
           </div>
         </div>
 
+        {/* Global test search */}
+        <div className="relative">
+          <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-slate-400 pointer-events-none" />
+          <input
+            value={globalSearch}
+            onChange={(e) => setGlobalSearch(e.target.value)}
+            placeholder="Search tests across all categories…"
+            className="w-full bg-slate-700 border border-slate-600 text-white text-sm pl-9 pr-4 py-2 rounded-xl placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-medical-500"
+          />
+          {globalSearch && (
+            <button onClick={() => setGlobalSearch("")} className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-white">
+              <X className="w-3.5 h-3.5" />
+            </button>
+          )}
+        </div>
+
+        {/* Search results */}
+        {globalSearch.trim() && (
+          <div className="space-y-1">
+            {searching ? (
+              <p className="text-slate-400 text-sm px-1">Searching…</p>
+            ) : searchResults.length === 0 ? (
+              <p className="text-slate-400 text-sm px-1">No tests found for &ldquo;{globalSearch}&rdquo;</p>
+            ) : (
+              <>
+                <p className="text-xs text-slate-500 px-1">{searchResults.length} result{searchResults.length !== 1 ? "s" : ""}</p>
+                {searchResults.map((test) => (
+                  <TestRow
+                    key={test.id}
+                    test={test}
+                    expanded={expandedTest === test.id}
+                    onToggleExpand={() => setExpandedTest(expandedTest === test.id ? null : test.id)}
+                    editingPrice={editingPrice}
+                    priceInput={priceInput}
+                    setPriceInput={setPriceInput}
+                    onStartEditPrice={(id) => { setEditingPrice(id); setPriceInput(String(test.base_price)); }}
+                    onSavePrice={savePrice}
+                    onCancelPrice={() => setEditingPrice(null)}
+                    onToggleActive={toggleActive}
+                    onDelete={deleteTest}
+                    onRemoveSynonym={removeSynonym}
+                    addingSynFor={addingSynFor}
+                    newSynInput={newSynInput}
+                    setNewSynInput={setNewSynInput}
+                    onStartAddSyn={(id) => { setAddingSynFor(id); setNewSynInput(""); }}
+                    onAddSynonym={addSynonym}
+                    onCancelAddSyn={() => setAddingSynFor(null)}
+                    showCategory
+                  />
+                ))}
+              </>
+            )}
+          </div>
+        )}
+
         {/* New category */}
+        {!globalSearch.trim() && (
         <div className="bg-slate-700/50 rounded-xl p-4 space-y-2">
           <p className="text-xs text-slate-400 font-medium">Add Category</p>
           <Input
@@ -317,8 +557,9 @@ function CatalogTab() {
             <Plus className="w-3.5 h-3.5" /> Add Category
           </Button>
         </div>
+        )}
 
-        {loadingCats ? (
+        {!globalSearch.trim() && (loadingCats ? (
           <p className="text-slate-400 text-sm">Loading...</p>
         ) : (
           <div className="space-y-1">
@@ -341,7 +582,7 @@ function CatalogTab() {
               </button>
             ))}
           </div>
-        )}
+        ))}
       </div>
     );
   }
@@ -411,80 +652,27 @@ function CatalogTab() {
       ) : (
         <div className="space-y-1">
           {tests.map((test) => (
-            <div key={test.id} className={`rounded-xl overflow-hidden ${test.is_active ? "bg-slate-700/50" : "bg-slate-800/30 opacity-60"}`}>
-              <div className="flex items-center gap-3 px-4 py-3">
-                <button onClick={() => setExpandedTest(expandedTest === test.id ? null : test.id)}
-                  className="text-slate-400 hover:text-white flex-shrink-0">
-                  {expandedTest === test.id
-                    ? <ChevronDown className="w-4 h-4" />
-                    : <ChevronRight className="w-4 h-4" />}
-                </button>
-
-                <div className="flex-1 min-w-0">
-                  <div className="flex items-center gap-2">
-                    <span className="text-sm text-white font-medium truncate">{test.canonical_name}</span>
-                    {test.is_rapid_test && (
-                      <span className="text-xs bg-amber-500/20 text-amber-400 px-1.5 py-0.5 rounded-full flex-shrink-0">rapid</span>
-                    )}
-                    {!test.is_active && (
-                      <span className="text-xs bg-slate-600 text-slate-400 px-1.5 py-0.5 rounded-full flex-shrink-0">inactive</span>
-                    )}
-                  </div>
-                  <p className="text-xs text-slate-500">{test.synonyms.length} synonym{test.synonyms.length !== 1 ? "s" : ""}</p>
-                </div>
-
-                {/* Inline price edit */}
-                {editingPrice === test.id ? (
-                  <div className="flex items-center gap-1">
-                    <span className="text-slate-400 text-sm">₦</span>
-                    <input
-                      value={priceInput}
-                      onChange={(e) => setPriceInput(e.target.value)}
-                      className="w-24 bg-slate-600 text-white text-sm px-2 py-1 rounded-lg border border-slate-500 focus:outline-none focus:ring-1 focus:ring-medical-500"
-                      autoFocus
-                      onKeyDown={(e) => { if (e.key === "Enter") savePrice(test.id); if (e.key === "Escape") setEditingPrice(null); }}
-                    />
-                    <button onClick={() => savePrice(test.id)} className="text-emerald-400 hover:text-emerald-300"><Check className="w-4 h-4" /></button>
-                    <button onClick={() => setEditingPrice(null)} className="text-slate-400 hover:text-slate-300"><X className="w-4 h-4" /></button>
-                  </div>
-                ) : (
-                  <button
-                    onClick={() => { setEditingPrice(test.id); setPriceInput(String(test.base_price)); }}
-                    className="text-sm text-slate-300 hover:text-white font-mono flex items-center gap-1 group"
-                  >
-                    {fmt(test.base_price)}
-                    <Pencil className="w-3 h-3 opacity-0 group-hover:opacity-100 transition-opacity" />
-                  </button>
-                )}
-
-                <button onClick={() => toggleActive(test)}
-                  className={`w-6 h-6 rounded-full flex items-center justify-center flex-shrink-0 ${test.is_active ? "bg-emerald-500/20 text-emerald-400 hover:bg-emerald-500/30" : "bg-slate-600 text-slate-400 hover:bg-slate-500"}`}>
-                  <Check className="w-3 h-3" />
-                </button>
-                <button onClick={() => deleteTest(test.id, test.canonical_name)}
-                  className="text-slate-500 hover:text-red-400 flex-shrink-0">
-                  <Trash2 className="w-3.5 h-3.5" />
-                </button>
-              </div>
-
-              {expandedTest === test.id && (
-                <div className="px-4 pb-3 border-t border-slate-700/50 pt-2">
-                  <p className="text-xs text-slate-400 mb-2 font-medium">Synonyms</p>
-                  <div className="flex flex-wrap gap-1.5">
-                    {test.synonyms.map((syn) => (
-                      <span key={syn.id}
-                        className="flex items-center gap-1 text-xs bg-slate-600 text-slate-300 px-2 py-0.5 rounded-full">
-                        {syn.synonym}
-                        <button onClick={() => removeSynonym(test.id, syn.id)}
-                          className="text-slate-400 hover:text-red-400">
-                          <X className="w-2.5 h-2.5" />
-                        </button>
-                      </span>
-                    ))}
-                  </div>
-                </div>
-              )}
-            </div>
+            <TestRow
+              key={test.id}
+              test={test}
+              expanded={expandedTest === test.id}
+              onToggleExpand={() => setExpandedTest(expandedTest === test.id ? null : test.id)}
+              editingPrice={editingPrice}
+              priceInput={priceInput}
+              setPriceInput={setPriceInput}
+              onStartEditPrice={(id) => { setEditingPrice(id); setPriceInput(String(test.base_price)); }}
+              onSavePrice={savePrice}
+              onCancelPrice={() => setEditingPrice(null)}
+              onToggleActive={toggleActive}
+              onDelete={deleteTest}
+              onRemoveSynonym={removeSynonym}
+              addingSynFor={addingSynFor}
+              newSynInput={newSynInput}
+              setNewSynInput={setNewSynInput}
+              onStartAddSyn={(id) => { setAddingSynFor(id); setNewSynInput(""); }}
+              onAddSynonym={addSynonym}
+              onCancelAddSyn={() => setAddingSynFor(null)}
+            />
           ))}
         </div>
       )}
@@ -496,6 +684,7 @@ function CatalogTab() {
 
 function OverridesTab() {
   const [labs, setLabs] = useState<Lab[]>([]);
+  const [labSearch, setLabSearch] = useState("");
   const [selectedLab, setSelectedLab] = useState<Lab | null>(null);
   const [rows, setRows] = useState<OverrideRow[]>([]);
   const [loading, setLoading] = useState(false);
@@ -565,16 +754,32 @@ function OverridesTab() {
   );
 
   if (!selectedLab) {
+    const visibleLabs = labSearch.trim()
+      ? labs.filter((l) => l.name.toLowerCase().includes(labSearch.toLowerCase()))
+      : labs;
     return (
       <div className="space-y-3">
         <h3 className="text-white font-semibold">Select a Lab</h3>
-        {labs.map((lab) => (
-          <button key={lab.id} onClick={() => loadOverrides(lab)}
-            className="w-full flex items-center justify-between px-4 py-3 rounded-xl bg-slate-700/50 hover:bg-slate-700 text-left">
-            <span className="text-sm text-white">{lab.name}</span>
-            <ChevronRight className="w-4 h-4 text-slate-500" />
-          </button>
-        ))}
+        <div className="relative">
+          <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-slate-400 pointer-events-none" />
+          <input
+            value={labSearch}
+            onChange={(e) => setLabSearch(e.target.value)}
+            placeholder="Search labs…"
+            className="w-full bg-slate-700 border border-slate-600 text-white text-sm pl-9 pr-4 py-2 rounded-xl placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-medical-500"
+          />
+        </div>
+        {visibleLabs.length === 0 ? (
+          <p className="text-slate-400 text-sm">No labs match &ldquo;{labSearch}&rdquo;</p>
+        ) : (
+          visibleLabs.map((lab) => (
+            <button key={lab.id} onClick={() => loadOverrides(lab)}
+              className="w-full flex items-center justify-between px-4 py-3 rounded-xl bg-slate-700/50 hover:bg-slate-700 text-left">
+              <span className="text-sm text-white">{lab.name}</span>
+              <ChevronRight className="w-4 h-4 text-slate-500" />
+            </button>
+          ))
+        )}
       </div>
     );
   }

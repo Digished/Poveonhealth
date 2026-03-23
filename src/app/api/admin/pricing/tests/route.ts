@@ -14,18 +14,37 @@ async function verifyAdmin() {
 
 /**
  * GET /api/admin/pricing/tests?category_id=xxx
- * Returns all tests in the category with their synonyms and base price.
+ *      /api/admin/pricing/tests?q=fbc          (cross-category search)
+ * Returns tests with their synonyms and base price.
  */
 export async function GET(request: NextRequest) {
   if (!await verifyAdmin()) return NextResponse.json({ error: "Forbidden" }, { status: 403 });
 
   const { searchParams } = new URL(request.url);
   const categoryId = searchParams.get("category_id");
+  const q = searchParams.get("q")?.trim() ?? "";
+
+  let where: Parameters<typeof prisma.catalogTest.findMany>[0]["where"] = {};
+
+  if (categoryId) {
+    where = { category_id: categoryId };
+  } else if (q) {
+    where = {
+      OR: [
+        { canonical_name: { contains: q, mode: "insensitive" } },
+        { synonyms: { some: { synonym: { contains: q, mode: "insensitive" } } } },
+      ],
+    };
+  }
 
   const tests = await prisma.catalogTest.findMany({
-    where: categoryId ? { category_id: categoryId } : {},
+    where,
     orderBy: { canonical_name: "asc" },
-    include: { synonyms: { orderBy: { synonym: "asc" } } },
+    include: {
+      synonyms: { orderBy: { synonym: "asc" } },
+      category: { select: { id: true, name: true } },
+    },
+    ...(q && !categoryId ? { take: 50 } : {}),
   });
 
   return NextResponse.json({ success: true, tests });
