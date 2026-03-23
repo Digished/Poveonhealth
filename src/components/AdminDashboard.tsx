@@ -7,7 +7,7 @@ import {
   Building2, Trash2, Eye, EyeOff, RefreshCw, X, Pencil,
   Phone, Upload, Check, MapPin, Users, ChevronRight, ChevronDown, ChevronUp,
   Code2, Key, Copy, TrendingUp, Link, Sun, Moon, Star, GitBranch,
-  Wallet, ArrowUpRight, ArrowDownRight, Settings, CreditCard, MessageCircle,
+  Wallet, ArrowUpRight, ArrowDownRight, Settings, CreditCard, MessageCircle, Tag,
 } from "lucide-react";
 import { useDashTheme } from "@/hooks/useDashTheme";
 import { Button } from "@/components/ui/Button";
@@ -19,7 +19,7 @@ import { format } from "date-fns";
 import { createClient } from "@/lib/supabase/client"; // still used for auth sign-out
 import { useRouter } from "next/navigation";
 
-type AdminTab = "metrics" | "requests" | "referrals" | "labs" | "analytics" | "marketers" | "settings";
+type AdminTab = "metrics" | "requests" | "referrals" | "labs" | "analytics" | "marketers" | "settings" | "pricing";
 
 interface ReferralGroup {
   key: string;
@@ -453,6 +453,7 @@ export function AdminDashboard() {
             { key: "analytics" as AdminTab, label: "API Analytics", icon: <BarChart3 className="w-4 h-4" /> },
             { key: "marketers" as AdminTab, label: "Marketers", icon: <TrendingUp className="w-4 h-4" /> },
             { key: "settings" as AdminTab, label: "Settings", icon: <Settings className="w-4 h-4" /> },
+            { key: "pricing" as AdminTab, label: "Pricing", icon: <Tag className="w-4 h-4" />, href: "/admin/pricing" },
           ];
           const current = tabs.find((t) => t.key === activeTab) ?? tabs[0];
           return (
@@ -470,16 +471,23 @@ export function AdminDashboard() {
                 {mobileTabOpen && (
                   <div className="absolute top-full left-0 right-0 mt-1.5 rounded-xl border border-white/10 bg-slate-800 shadow-2xl overflow-hidden z-30">
                     {tabs.map((tab) => (
-                      <button key={tab.key}
-                        onClick={() => { setActiveTab(tab.key); setMobileTabOpen(false); }}
-                        className={`flex items-center gap-3 w-full px-4 py-3.5 text-sm font-medium transition-colors border-b border-white/5 last:border-0 ${
-                          activeTab === tab.key ? "bg-white/12 text-white" : "text-slate-300 hover:bg-white/8"
-                        }`}
-                      >
-                        <span className={activeTab === tab.key ? "text-white" : "text-slate-500"}>{tab.icon}</span>
-                        {tab.label}
-                        {activeTab === tab.key && <ChevronRight className="w-3.5 h-3.5 ml-auto text-white/40" />}
-                      </button>
+                      "href" in tab ? (
+                        <a key={tab.key} href={(tab as { href: string }).href}
+                          className="flex items-center gap-3 w-full px-4 py-3.5 text-sm font-medium transition-colors border-b border-white/5 last:border-0 text-slate-300 hover:bg-white/8">
+                          <span className="text-slate-500">{tab.icon}</span>{tab.label}
+                        </a>
+                      ) : (
+                        <button key={tab.key}
+                          onClick={() => { setActiveTab(tab.key); setMobileTabOpen(false); }}
+                          className={`flex items-center gap-3 w-full px-4 py-3.5 text-sm font-medium transition-colors border-b border-white/5 last:border-0 ${
+                            activeTab === tab.key ? "bg-white/12 text-white" : "text-slate-300 hover:bg-white/8"
+                          }`}
+                        >
+                          <span className={activeTab === tab.key ? "text-white" : "text-slate-500"}>{tab.icon}</span>
+                          {tab.label}
+                          {activeTab === tab.key && <ChevronRight className="w-3.5 h-3.5 ml-auto text-white/40" />}
+                        </button>
+                      )
                     ))}
                   </div>
                 )}
@@ -488,13 +496,20 @@ export function AdminDashboard() {
               <div className="hidden md:block overflow-x-auto -mx-4 px-4">
                 <div className="flex gap-1 bg-white/5 rounded-xl p-1 w-max">
                   {tabs.map((tab) => (
-                    <button key={tab.key} onClick={() => setActiveTab(tab.key)}
-                      className={`flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-medium transition-all shrink-0 ${
-                        activeTab === tab.key ? "bg-white/15 text-white" : "text-slate-400 hover:text-white"
-                      }`}
-                    >
-                      {tab.icon}{tab.label}
-                    </button>
+                    "href" in tab ? (
+                      <a key={tab.key} href={(tab as { href: string }).href}
+                        className="flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-medium transition-all shrink-0 text-slate-400 hover:text-white">
+                        {tab.icon}{tab.label}
+                      </a>
+                    ) : (
+                      <button key={tab.key} onClick={() => setActiveTab(tab.key)}
+                        className={`flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-medium transition-all shrink-0 ${
+                          activeTab === tab.key ? "bg-white/15 text-white" : "text-slate-400 hover:text-white"
+                        }`}
+                      >
+                        {tab.icon}{tab.label}
+                      </button>
+                    )
                   ))}
                 </div>
               </div>
