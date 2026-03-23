@@ -73,12 +73,10 @@ async function effectiveCategoryPrice(categoryId: string, labId: string | null):
 async function othersResult(raw: string, labId: string | null): Promise<ResolvedTest> {
   const cat = await prisma.testCategory.findUnique({
     where: { slug: "others-uncategorized" },
-    select: { name: true },
+    select: { id: true, name: true },
   });
 
-  // Check for a system-level default price setting
-  const setting = await prisma.systemSetting.findUnique({ where: { key: "default_test_price" } });
-  const price = setting ? Number(setting.value) : 0;
+  const price = cat ? await effectiveCategoryPrice(cat.id, labId) : 0;
 
   return {
     raw,

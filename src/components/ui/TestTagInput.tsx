@@ -90,6 +90,27 @@ export function TestTagInput({ value, onChange, labId, error, label, disabled }:
     inputRef.current?.focus();
   }
 
+  /** Split text on commas/semicolons/"and" and add each part as a separate tag */
+  function addSplitFreeTextTags(raw: string) {
+    const parts = raw
+      .split(/[,;]|\band\b/i)
+      .map((s) => s.trim())
+      .filter(Boolean);
+
+    if (parts.length <= 1) {
+      addFreeTextTag(raw);
+      return;
+    }
+
+    const newTags = parts
+      .filter((name) => !value.some((t) => t.name.toLowerCase() === name.toLowerCase()))
+      .map((name) => ({ name, catalog_test_id: null as string | null }));
+
+    if (newTags.length > 0) onChange([...value, ...newTags]);
+    setInputText(""); setResults([]); setOpen(false); setActiveIdx(-1);
+    inputRef.current?.focus();
+  }
+
   function removeTag(idx: number) {
     onChange(value.filter((_, i) => i !== idx));
   }
@@ -122,7 +143,7 @@ export function TestTagInput({ value, onChange, labId, error, label, disabled }:
       if (activeIdx >= 0 && results[activeIdx]) {
         addCatalogTag(results[activeIdx]);
       } else if (inputText.trim()) {
-        addFreeTextTag(inputText);
+        addSplitFreeTextTags(inputText); // handles comma/and splitting automatically
       }
       return;
     }
@@ -131,7 +152,7 @@ export function TestTagInput({ value, onChange, labId, error, label, disabled }:
       if (activeIdx >= 0 && results[activeIdx]) {
         addCatalogTag(results[activeIdx]);
       } else {
-        addFreeTextTag(inputText);
+        addSplitFreeTextTags(inputText);
       }
     }
   }
@@ -197,10 +218,10 @@ export function TestTagInput({ value, onChange, labId, error, label, disabled }:
           />
         </div>
 
-        {/* Dropdown — solid opaque background */}
+        {/* Dropdown — solid opaque background, very high z-index to clear all page layers */}
         {open && results.length > 0 && (
           <div
-            className="absolute z-50 top-full mt-1 left-0 right-0 rounded-xl overflow-hidden"
+            className="absolute z-[9999] top-full mt-1 left-0 right-0 rounded-xl overflow-hidden"
             style={{
               background: "#ffffff",
               border: "1px solid #e2e8f0",

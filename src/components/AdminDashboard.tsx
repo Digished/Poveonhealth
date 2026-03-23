@@ -125,7 +125,6 @@ export function AdminDashboard() {
   const [branchModalLabId, setBranchModalLabId] = useState<string | null>(null);
   const [walletModalLabId, setWalletModalLabId] = useState<string | null>(null);
   const [defaultRequestPrice, setDefaultRequestPrice] = useState<string>("500");
-  const [defaultTestPrice, setDefaultTestPrice] = useState<string>("0");
   const [savingSettings, setSavingSettings] = useState(false);
 
   type RevenueData = {
@@ -212,7 +211,6 @@ export function AdminDashboard() {
       const data = await res.json();
       if (data.success) {
         setDefaultRequestPrice(data.settings.default_request_price ?? "500");
-        setDefaultTestPrice(data.settings.default_test_price ?? "0");
       }
     } catch { /* non-critical */ }
   }, []);
@@ -239,14 +237,12 @@ export function AdminDashboard() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           default_request_price: defaultRequestPrice,
-          default_test_price: defaultTestPrice,
         }),
       });
       const data = await res.json();
       if (data.success) {
         toast.success("Settings saved");
         setDefaultRequestPrice(data.settings.default_request_price);
-        setDefaultTestPrice(data.settings.default_test_price);
       } else {
         toast.error(data.error ?? "Failed to update");
       }
@@ -1185,18 +1181,6 @@ export function AdminDashboard() {
                     onChange={(e) => setDefaultRequestPrice(e.target.value)}
                     className="w-full bg-white/5 border border-white/10 rounded-xl px-3 py-2.5 text-white text-sm placeholder-slate-500 outline-none focus:ring-2 focus:ring-violet-500/50"
                     placeholder="e.g. 500"
-                  />
-                </div>
-                <div>
-                  <label className="text-xs text-slate-400 mb-1 block">
-                    Default per-test price (₦) — used when a test has no catalog base price set
-                  </label>
-                  <input
-                    type="number" min="0" step="1"
-                    value={defaultTestPrice}
-                    onChange={(e) => setDefaultTestPrice(e.target.value)}
-                    className="w-full bg-white/5 border border-white/10 rounded-xl px-3 py-2.5 text-white text-sm placeholder-slate-500 outline-none focus:ring-2 focus:ring-violet-500/50"
-                    placeholder="e.g. 0"
                   />
                 </div>
               </div>

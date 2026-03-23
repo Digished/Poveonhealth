@@ -12,13 +12,11 @@ async function verifyAdmin() {
 }
 
 // default_request_price: flat fallback charge for old/image-only requests that have no quoted_price
-// default_test_price:    per-test base price used by resolve-tests when no catalog price is set
-const ALLOWED_KEYS = ["default_request_price", "default_test_price"] as const;
+const ALLOWED_KEYS = ["default_request_price"] as const;
 type SettingKey = (typeof ALLOWED_KEYS)[number];
 
 const DEFAULTS: Record<SettingKey, string> = {
   default_request_price: "500",
-  default_test_price: "0",
 };
 
 /** GET /api/admin/settings */

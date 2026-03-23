@@ -827,6 +827,10 @@ function OverridesTab() {
     fetch("/api/admin/labs")
       .then((r) => r.json())
       .then((d) => setLabs(d.labs ?? []));
+    // Load global category prices (no lab) on mount
+    fetch("/api/admin/pricing/category-prices")
+      .then((r) => r.json())
+      .then((d) => setCatRows(d.rows ?? []));
   }, []);
 
   async function loadOverrides(lab: Lab) {
@@ -946,28 +950,95 @@ function OverridesTab() {
       ? labs.filter((l) => l.name.toLowerCase().includes(labSearch.toLowerCase()))
       : labs;
     return (
-      <div className="space-y-3">
-        <h3 className="text-white font-semibold">Select a Lab</h3>
-        <div className="relative">
-          <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-slate-400 pointer-events-none" />
-          <input
-            value={labSearch}
-            onChange={(e) => setLabSearch(e.target.value)}
-            placeholder="Search labs…"
-            className="w-full bg-slate-700 border border-slate-600 text-white text-sm pl-9 pr-4 py-2 rounded-xl placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-medical-500"
-          />
-        </div>
-        {visibleLabs.length === 0 ? (
-          <p className="text-slate-400 text-sm">No labs match &ldquo;{labSearch}&rdquo;</p>
-        ) : (
-          visibleLabs.map((lab) => (
-            <button key={lab.id} onClick={() => loadOverrides(lab)}
-              className="w-full flex items-center justify-between px-4 py-3 rounded-xl bg-slate-700/50 hover:bg-slate-700 text-left">
-              <span className="text-sm text-white">{lab.name}</span>
-              <ChevronRight className="w-4 h-4 text-slate-500" />
-            </button>
-          ))
+      <div className="space-y-6">
+        {/* Global category prices — editable without selecting a lab */}
+        {catRows.length > 0 && (
+          <div className="space-y-2">
+            <div className="flex items-center gap-2">
+              <Tag className="w-3.5 h-3.5 text-medical-400" />
+              <h3 className="text-white font-semibold">Global Category Prices</h3>
+            </div>
+            <p className="text-xs text-slate-400">Default fallback prices applied when a test is matched to a category but not listed in the catalog. Per-lab overrides layer on top.</p>
+            <div className="hidden sm:grid sm:grid-cols-[1fr_auto_auto] gap-2 px-3 py-1.5 text-xs text-slate-400 font-medium">
+              <span>Category · Tests</span>
+              <span className="text-right w-28">Global Price</span>
+              <span className="w-20" />
+            </div>
+            {catRows.map((cat) => (
+              <div key={cat.id} className="px-3 py-2.5 rounded-xl bg-slate-800/60 hover:bg-slate-800/80 sm:grid sm:grid-cols-[1fr_auto_auto] sm:gap-2 sm:items-center space-y-1.5 sm:space-y-0">
+                <div>
+                  <p className="text-sm text-slate-200 font-medium">{cat.name}</p>
+                  <p className="text-xs text-slate-500">{cat.test_count} listed test{cat.test_count !== 1 ? "s" : ""}</p>
+                </div>
+                {editingCatRow === `global:${cat.id}` ? (
+                  <div className="flex items-center gap-1 w-28 justify-end">
+                    <span className="text-slate-400 text-sm">₦</span>
+                    <input
+                      value={catPriceInput} onChange={(e) => setCatPriceInput(e.target.value)}
+                      className="w-20 bg-slate-600 text-white text-sm px-2 py-0.5 rounded border border-slate-500 focus:outline-none focus:ring-1 focus:ring-medical-500"
+                      autoFocus
+                      onKeyDown={(e) => { if (e.key === "Enter") saveGlobalCatPrice(cat.id); if (e.key === "Escape") setEditingCatRow(null); }}
+                    />
+                  </div>
+                ) : (
+                  <button
+                    onClick={() => { setEditingCatRow(`global:${cat.id}`); setCatPriceInput(String(cat.base_price)); }}
+                    className="flex text-sm font-mono w-28 justify-end group items-center gap-1"
+                    title="Edit global price"
+                  >
+                    <span className="text-slate-300">{fmt(cat.base_price)}</span>
+                    <Pencil className="w-3 h-3 text-slate-500 opacity-0 group-hover:opacity-100" />
+                  </button>
+                )}
+                <div className="flex items-center gap-1 w-20 justify-end">
+                  {editingCatRow === `global:${cat.id}` ? (
+                    <>
+                      <button onClick={() => saveGlobalCatPrice(cat.id)} disabled={savingCat} className="text-emerald-400 hover:text-emerald-300">
+                        <Check className="w-4 h-4" />
+                      </button>
+                      <button onClick={() => setEditingCatRow(null)} className="text-slate-400 hover:text-slate-300">
+                        <X className="w-4 h-4" />
+                      </button>
+                    </>
+                  ) : (
+                    <button
+                      onClick={() => { setEditingCatRow(`global:${cat.id}`); setCatPriceInput(String(cat.base_price)); }}
+                      className="text-slate-400 hover:text-white p-1"
+                      title="Edit"
+                    >
+                      <Pencil className="w-3.5 h-3.5" />
+                    </button>
+                  )}
+                </div>
+              </div>
+            ))}
+          </div>
         )}
+
+        {/* Lab list */}
+        <div className="space-y-3">
+          <h3 className="text-white font-semibold">Per-Lab Price Overrides</h3>
+          <div className="relative">
+            <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-slate-400 pointer-events-none" />
+            <input
+              value={labSearch}
+              onChange={(e) => setLabSearch(e.target.value)}
+              placeholder="Search labs…"
+              className="w-full bg-slate-700 border border-slate-600 text-white text-sm pl-9 pr-4 py-2 rounded-xl placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-medical-500"
+            />
+          </div>
+          {visibleLabs.length === 0 ? (
+            <p className="text-slate-400 text-sm">No labs match &ldquo;{labSearch}&rdquo;</p>
+          ) : (
+            visibleLabs.map((lab) => (
+              <button key={lab.id} onClick={() => loadOverrides(lab)}
+                className="w-full flex items-center justify-between px-4 py-3 rounded-xl bg-slate-700/50 hover:bg-slate-700 text-left">
+                <span className="text-sm text-white">{lab.name}</span>
+                <ChevronRight className="w-4 h-4 text-slate-500" />
+              </button>
+            ))
+          )}
+        </div>
       </div>
     );
   }
