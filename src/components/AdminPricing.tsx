@@ -253,9 +253,15 @@ function CatalogTab() {
     if (res.ok) {
       const data = await res.json();
       const suggestions = data.suggestions as { name: string; is_rapid_test: boolean; synonyms: string[] }[];
-      toast.success(`Got ${suggestions.length} suggestions — adding...`);
+      if (suggestions.length === 0) {
+        toast.success("No new tests to add — catalog looks complete for this category");
+        setAiSuggesting(false);
+        return;
+      }
+      toast.success(`Got ${suggestions.length} new suggestions — adding...`);
+      let added = 0;
       for (const s of suggestions) {
-        await fetch("/api/admin/pricing/tests", {
+        const r = await fetch("/api/admin/pricing/tests", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
@@ -266,8 +272,9 @@ function CatalogTab() {
             synonyms: s.synonyms,
           }),
         });
+        if (r.ok) added++;
       }
-      toast.success("AI suggestions added");
+      toast.success(`Added ${added} tests`);
       fetchTests(selectedCat.id);
       fetchCategories();
     } else toast.error("AI suggest failed");

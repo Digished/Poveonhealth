@@ -53,26 +53,47 @@ export async function POST(request: NextRequest) {
   if (body.action === "ai_suggest") {
     if (!body.category_id) return NextResponse.json({ error: "category_id required" }, { status: 400 });
 
-    const category = await prisma.testCategory.findUnique({ where: { id: body.category_id } });
+    const [category, existingTests] = await Promise.all([
+      prisma.testCategory.findUnique({ where: { id: body.category_id } }),
+      prisma.catalogTest.findMany({
+        where: { category_id: body.category_id },
+        select: { canonical_name: true },
+      }),
+    ]);
     if (!category) return NextResponse.json({ error: "Category not found" }, { status: 404 });
+
+    const existingNames = existingTests.map((t) => t.canonical_name);
+    const alreadyHave = existingNames.length
+      ? `\nAlready in catalog (do NOT repeat these):\n${existingNames.map((n) => `- ${n}`).join("\n")}`
+      : "";
 
     const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
     const response = await openai.chat.completions.create({
       model: "gpt-4o-mini",
-      temperature: 0.2,
+      temperature: 0.4,
       messages: [
-        { role: "system", content: "Return only a JSON array, no prose." },
+        { role: "system", content: "Return only a valid JSON array, no prose, no markdown fences." },
         {
           role: "user",
-          content: `Suggest 10 common lab tests for the category "${category.name}" used in Nigeria.
-Return: [{ "name": string, "is_rapid_test": boolean, "synonyms": string[] }]`,
+          content: `Suggest 25 distinct lab/diagnostic tests for the category "${category.name}" (${category.description}) as used in Nigerian hospitals and diagnostic centres.${alreadyHave}
+
+Return exactly 25 NEW tests not already listed above.
+Format: [{ "name": string, "is_rapid_test": boolean, "synonyms": string[] }]
+- "name" must be the canonical clinical name used in Nigeria
+- "synonyms" should include common abbreviations and alternate names (2–5 entries)
+- "is_rapid_test" true only for point-of-care bedside tests`,
         },
       ],
     });
 
     const raw = response.choices[0].message.content?.trim() ?? "[]";
     const json = raw.replace(/^```[a-z]*\n?/i, "").replace(/\n?```$/i, "").trim();
-    const suggestions = JSON.parse(json);
+    const allSuggestions = JSON.parse(json) as { name: string; is_rapid_test: boolean; synonyms: string[] }[];
+
+    // Filter out any names the model ignored despite being told not to repeat
+    const existingLower = new Set(existingNames.map((n) => n.toLowerCase()));
+    const suggestions = allSuggestions.filter((s) => !existingLower.has(s.name.toLowerCase()));
+
     return NextResponse.json({ success: true, suggestions });
   }
 
