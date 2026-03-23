@@ -835,30 +835,37 @@ function LearnMoreModal({ onClose }: { onClose: () => void }) {
   );
 }
 
-interface Branch {
-  id: string;
+interface Location {
+  lab_id: string;        // actual lab id — what gets submitted as the request's lab_id
+  lab_branch_id: string | null; // LabBranch record id (provenance tracking, not used for routing)
   name: string;
   address: string;
   phones: string[];
-  is_main: boolean;
+  whatsapp?: string | null;
+  is_main: boolean;    // true = this branch is the highlighted/default one
+  is_parent: boolean;  // true = this entry is the root/parent lab
 }
 
 export function DoctorRequestForm({
   preselectedLabId,
   preselectedLabName,
-  branches = [],
+  locations = [],
 }: {
   preselectedLabId?: string;
   preselectedLabName?: string;
-  branches?: Branch[];
+  locations?: Location[];
 } = {}) {
   const labPreselected = !!preselectedLabId;
-  const hasBranches = branches.length > 0;
-  const startStep = !labPreselected ? 1 : hasBranches ? 1 : 2;
+  // hasLocations = true when there are multiple locations to choose from (parent + at least 1 branch)
+  const hasLocations = locations.length > 1;
+  // Default to the is_main branch if one exists, otherwise the parent (index 0)
+  const defaultLocIdx = locations.length > 0 ? Math.max(0, locations.findIndex((l) => l.is_main)) : 0;
+  const startStep = !labPreselected ? 1 : hasLocations ? 1 : 2;
   const [step, setStep] = useState(startStep);
   const [form, setForm] = useState<FormData>(() => ({
     ...INITIAL,
-    lab_id: preselectedLabId ?? "",
+    // Use the default location's lab_id when preselected, otherwise empty
+    lab_id: (labPreselected && locations.length > 0) ? locations[defaultLocIdx].lab_id : (preselectedLabId ?? ""),
   }));
   const [errors, setErrors] = useState<Partial<FormData>>({});
   const [labs, setLabs] = useState<Lab[]>([]);
@@ -879,7 +886,8 @@ export function DoctorRequestForm({
   const [bankVerified, setBankVerified] = useState(false);
   const [maxStep, setMaxStep] = useState(startStep);
   const [clinicalMode, setClinicalMode] = useState<"type" | "picture">("picture");
-  const [selectedBranchId, setSelectedBranchId] = useState<string>("");
+  // Index into the locations[] array; drives which lab_id is submitted
+  const [selectedLocIdx, setSelectedLocIdx] = useState(defaultLocIdx);
   // Image upload state
   const [imageUploading, setImageUploading] = useState(false);
   const [imageUploadProgress, setImageUploadProgress] = useState(0);
@@ -1073,7 +1081,7 @@ export function DoctorRequestForm({
     const errs: Partial<FormData> = {};
     if (s === 1) {
       if (!labPreselected && !form.lab_id) errs.lab_id = "Please select a laboratory";
-      if (labPreselected && hasBranches && !selectedBranchId) errs.lab_id = "Please select a branch";
+      if (labPreselected && hasLocations && selectedLocIdx < 0) errs.lab_id = "Please select a location";
     }
     if (s === 2) {
       if (!form.patient_phone) errs.patient_phone = "Required";
@@ -1148,7 +1156,7 @@ export function DoctorRequestForm({
 
   function handleBack() {
     setErrors({});
-    const minStep = (!labPreselected || hasBranches) ? 1 : 2;
+    const minStep = (!labPreselected || hasLocations) ? 1 : 2;
     setStep((s) => Math.max(minStep, s - 1));
     window.scrollTo({ top: 0, behavior: "smooth" });
   }
@@ -1167,7 +1175,7 @@ export function DoctorRequestForm({
           is_critical: isCritical,
           needs_ambulance: needsAmbulance,
           ambulance_notes: ambulanceNotes || undefined,
-          branch_id: selectedBranchId || undefined,
+          // branch_id omitted — lab_id already points to the selected location's lab
         }),
       });
       const data: CreateRequestResponse = await res.json();
@@ -1194,10 +1202,10 @@ export function DoctorRequestForm({
         labPhones={result.lab?.phones ?? []}
         onReset={() => {
           setResult(null);
-          setForm({ ...INITIAL, lab_id: preselectedLabId ?? "" });
+          setForm({ ...INITIAL, lab_id: locations.length > 0 ? locations[defaultLocIdx].lab_id : (preselectedLabId ?? "") });
           setStep(startStep);
           setMaxStep(startStep);
-          setSelectedBranchId("");
+          setSelectedLocIdx(defaultLocIdx);
           setClinicalMode("type");
           setTestImageUrl(null);
           setImageUploadError(null);
@@ -1212,11 +1220,40 @@ export function DoctorRequestForm({
 
   const selectedLab = labs.find((l) => l.id === form.lab_id);
 
+  // When preselected with locations, the "effective lab" for display is the selected location.
+  // We synthesise a minimal Lab-shaped object so the header/call modal/details modal always
+  // show the correct contact info (branch's own phones, address, etc.)
+  const selectedLocation = labPreselected && locations.length > 0 ? locations[selectedLocIdx] : null;
+  const displayLab: Lab | null = selectedLab ?? (selectedLocation ? ({
+    id: selectedLocation.lab_id,
+    name: selectedLocation.name,
+    address: selectedLocation.address,
+    phones: selectedLocation.phones as unknown as string[],
+    whatsapp: selectedLocation.whatsapp ?? null,
+    logo_url: null,
+    description: "",
+    service_categories: [],
+    certifications: [],
+    email: "",
+    prefix: "",
+    slug: null,
+    hidden: false,
+    notification_email: null,
+    request_email: null,
+    created_at: "",
+  } as Lab) : null);
+
+  // Helper: select a location by index — updates both UI and the form's lab_id
+  function selectLocation(idx: number) {
+    setSelectedLocIdx(idx);
+    set("lab_id", locations[idx].lab_id);
+  }
+
   // Reactively compute whether the current step's required fields are satisfied.
   const stepValid = (() => {
     if (step === 1) {
       if (!labPreselected) return !!form.lab_id;
-      if (hasBranches) return !!selectedBranchId;
+      if (hasLocations) return selectedLocIdx >= 0;
       return true; // Lab URL, no branches: just confirmation
     }
     if (step === 2) {
@@ -1247,16 +1284,16 @@ export function DoctorRequestForm({
 
         {/* Lab info / branding */}
         <div className="mb-4">
-            {selectedLab ? (() => {
-              const phones = (selectedLab.phones as string[] | null) ?? [];
+            {displayLab ? (() => {
+              const phones = (displayLab.phones as string[] | null) ?? [];
               return (
                 <div className="relative overflow-hidden rounded-2xl border border-medical-100 bg-gradient-to-r from-medical-50 via-white to-sky-50 shadow-sm animate-fade-in-up">
                   <div className="absolute -top-6 -right-6 w-28 h-28 bg-medical-100/40 rounded-full blur-2xl pointer-events-none" />
                   <div className="relative px-4 py-3 flex items-center gap-3">
-                    {selectedLab.logo_url ? (
+                    {displayLab.logo_url ? (
                       <img
-                        src={selectedLab.logo_url}
-                        alt={selectedLab.name}
+                        src={displayLab.logo_url}
+                        alt={displayLab.name}
                         className="w-10 h-10 rounded-xl object-cover shrink-0 shadow-sm ring-2 ring-white"
                       />
                     ) : (
@@ -1265,11 +1302,11 @@ export function DoctorRequestForm({
                       </div>
                     )}
                     <div className="min-w-0 flex-1">
-                      <p className="text-sm font-bold text-slate-800 leading-tight truncate">{selectedLab.name}</p>
-                      {selectedLab.address && (
+                      <p className="text-sm font-bold text-slate-800 leading-tight truncate">{displayLab.name}</p>
+                      {displayLab.address && (
                         <p className="text-xs text-slate-400 flex items-start gap-1 mt-0.5 overflow-hidden">
                           <MapPin className="w-3 h-3 shrink-0 text-medical-300 mt-0.5" />
-                          <span className="truncate">{selectedLab.address}</span>
+                          <span className="truncate">{displayLab.address}</span>
                         </p>
                       )}
                       {step > 1 && (
@@ -1289,7 +1326,7 @@ export function DoctorRequestForm({
                           <a
                             href={`tel:${phones[0]}`}
                             className="w-9 h-9 rounded-xl bg-medical-600 hover:bg-medical-700 text-white flex items-center justify-center shadow-sm transition-colors"
-                            title={`Call ${selectedLab.name}`}
+                            title={`Call ${displayLab.name}`}
                           >
                             <PhoneCall className="w-4 h-4" />
                           </a>
@@ -1298,7 +1335,7 @@ export function DoctorRequestForm({
                             type="button"
                             onClick={() => setCallOpen(true)}
                             className="w-9 h-9 rounded-xl bg-medical-600 hover:bg-medical-700 text-white flex items-center justify-center shadow-sm transition-colors"
-                            title={`Call ${selectedLab.name}`}
+                            title={`Call ${displayLab.name}`}
                           >
                             <PhoneCall className="w-4 h-4" />
                           </button>
@@ -1455,23 +1492,22 @@ export function DoctorRequestForm({
               </>
             )}
 
-            {/* Lab-specific URL with branches: branch selection */}
-            {labPreselected && hasBranches && (
+            {/* Lab-specific URL with locations: location selection */}
+            {labPreselected && hasLocations && (
               <div className="space-y-4">
                 <h2 className="flex items-center gap-2 text-base font-semibold text-slate-700 pb-3 border-b border-slate-100">
                   <MapPin className="w-4 h-4 text-medical-600" />
-                  Select Branch / Location
+                  Select Location
                 </h2>
-                <p className="text-sm text-slate-500">Choose the {preselectedLabName} branch you are sending this request to.</p>
+                <p className="text-sm text-slate-500">Choose the {preselectedLabName} location you are sending this request to.</p>
                 <div className="space-y-3">
-                  {branches.map((branch) => {
-                    const phones = branch.phones as string[];
-                    const selected = selectedBranchId === branch.id;
+                  {locations.map((loc, idx) => {
+                    const selected = selectedLocIdx === idx;
                     return (
                       <button
-                        key={branch.id}
+                        key={loc.lab_id + idx}
                         type="button"
-                        onClick={() => setSelectedBranchId(branch.id)}
+                        onClick={() => selectLocation(idx)}
                         className={`w-full flex items-start gap-3 p-4 rounded-2xl border-2 text-left transition-all ${
                           selected
                             ? "border-medical-400 bg-medical-50 ring-2 ring-medical-200"
@@ -1483,19 +1519,26 @@ export function DoctorRequestForm({
                         </div>
                         <div className="min-w-0 flex-1">
                           <p className={`text-sm font-semibold leading-tight ${selected ? "text-medical-800" : "text-slate-700"}`}>
-                            {branch.name}
-                            {branch.is_main && <span className="ml-2 text-xs bg-medical-100 text-medical-700 px-2 py-0.5 rounded-full font-medium">Main</span>}
+                            {loc.name}
+                            {loc.is_parent && <span className="ml-2 text-xs bg-slate-100 text-slate-600 px-2 py-0.5 rounded-full font-medium">Main Lab</span>}
+                            {!loc.is_parent && loc.is_main && <span className="ml-2 text-xs bg-medical-100 text-medical-700 px-2 py-0.5 rounded-full font-medium">Main Branch</span>}
                           </p>
-                          {branch.address && (
+                          {loc.address && (
                             <p className="text-xs text-slate-400 flex items-start gap-1 mt-1">
                               <MapPin className="w-3 h-3 shrink-0 mt-0.5" />
-                              {branch.address}
+                              {loc.address}
                             </p>
                           )}
-                          {phones.length > 0 && (
+                          {loc.phones.length > 0 && (
                             <p className="text-xs text-slate-400 flex items-center gap-1 mt-0.5">
                               <Phone className="w-3 h-3 shrink-0" />
-                              {phones[0]}{phones.length > 1 ? ` +${phones.length - 1} more` : ""}
+                              {loc.phones[0]}{loc.phones.length > 1 ? ` +${loc.phones.length - 1} more` : ""}
+                            </p>
+                          )}
+                          {loc.whatsapp && (
+                            <p className="text-xs text-green-600 flex items-center gap-1 mt-0.5">
+                              <svg className="w-3 h-3 shrink-0" viewBox="0 0 24 24" fill="currentColor"><path d="M17.472 14.382c-.297-.149-1.758-.867-2.03-.967-.273-.099-.471-.148-.67.15-.197.297-.767.966-.94 1.164-.173.199-.347.223-.644.075-.297-.15-1.255-.463-2.39-1.475-.883-.788-1.48-1.761-1.653-2.059-.173-.297-.018-.458.13-.606.134-.133.298-.347.446-.52.149-.174.198-.298.298-.497.099-.198.05-.371-.025-.52-.075-.149-.669-1.612-.916-2.207-.242-.579-.487-.5-.669-.51-.173-.008-.371-.01-.57-.01-.198 0-.52.074-.792.372-.272.297-1.04 1.016-1.04 2.479 0 1.462 1.065 2.875 1.213 3.074.149.198 2.096 3.2 5.077 4.487.709.306 1.262.489 1.694.625.712.227 1.36.195 1.871.118.571-.085 1.758-.719 2.006-1.413.248-.694.248-1.289.173-1.413-.074-.124-.272-.198-.57-.347m-5.421 7.403h-.004a9.87 9.87 0 01-5.031-1.378l-.361-.214-3.741.982.998-3.648-.235-.374a9.86 9.86 0 01-1.51-5.26c.001-5.45 4.436-9.884 9.888-9.884 2.64 0 5.122 1.03 6.988 2.898a9.825 9.825 0 012.893 6.994c-.003 5.45-4.437 9.884-9.885 9.884m8.413-18.297A11.815 11.815 0 0012.05 0C5.495 0 .16 5.335.157 11.892c0 2.096.547 4.142 1.588 5.945L.057 24l6.305-1.654a11.882 11.882 0 005.683 1.448h.005c6.554 0 11.89-5.335 11.893-11.893a11.821 11.821 0 00-3.48-8.413z" /></svg>
+                              {loc.whatsapp}
                             </p>
                           )}
                         </div>
@@ -1507,8 +1550,8 @@ export function DoctorRequestForm({
               </div>
             )}
 
-            {/* Lab-specific URL, no branches: lab confirmation */}
-            {labPreselected && !hasBranches && (
+            {/* Lab-specific URL, no locations: lab confirmation */}
+            {labPreselected && !hasLocations && (
               <div className="space-y-4">
                 <h2 className="flex items-center gap-2 text-base font-semibold text-slate-700 pb-3 border-b border-slate-100">
                   <Building2 className="w-4 h-4 text-medical-600" />
@@ -2276,7 +2319,7 @@ export function DoctorRequestForm({
                 {/* Lab */}
                 <div className="px-4 py-3 flex items-start justify-between gap-3">
                   <p className="text-xs text-slate-400 shrink-0 w-24">Lab</p>
-                  <p className="text-xs font-semibold text-slate-700 text-right truncate">{selectedLab?.name ?? preselectedLabName ?? ""}{selectedBranchId ? ` · ${branches.find((b) => b.id === selectedBranchId)?.name ?? ""}` : ""}</p>
+                  <p className="text-xs font-semibold text-slate-700 text-right truncate">{hasLocations ? (locations[selectedLocIdx]?.name ?? preselectedLabName ?? "") : (selectedLab?.name ?? preselectedLabName ?? "")}</p>
                 </div>
                 {/* Patient */}
                 <div className="px-4 py-3 flex items-start justify-between gap-3">
@@ -2367,15 +2410,15 @@ export function DoctorRequestForm({
       </p>
 
       {/* Lab details modal */}
-      {labDetailsOpen && selectedLab && (
-        <LabDetailsModal lab={selectedLab} onClose={() => setLabDetailsOpen(false)} />
+      {labDetailsOpen && displayLab && (
+        <LabDetailsModal lab={displayLab} onClose={() => setLabDetailsOpen(false)} />
       )}
 
       {/* Learn more modal */}
       {learnMoreOpen && <LearnMoreModal onClose={() => setLearnMoreOpen(false)} />}
 
       {/* Call modal — shown when lab has multiple phone numbers */}
-      {callOpen && selectedLab && (
+      {callOpen && displayLab && (
         <div
           className="fixed inset-0 z-50 flex items-end sm:items-center justify-center p-4 animate-backdrop-in"
           style={{ backgroundColor: "rgba(15,23,42,0.45)", backdropFilter: "blur(4px)" }}
@@ -2391,7 +2434,7 @@ export function DoctorRequestForm({
                 <PhoneCall className="w-5 h-5 text-white" />
               </div>
               <div className="flex-1 min-w-0">
-                <h3 className="text-base font-bold text-slate-800 leading-tight truncate">{selectedLab.name}</h3>
+                <h3 className="text-base font-bold text-slate-800 leading-tight truncate">{displayLab.name}</h3>
                 <p className="text-xs text-slate-400 mt-0.5">Select a number to call</p>
               </div>
               <button
@@ -2403,7 +2446,7 @@ export function DoctorRequestForm({
             </div>
             {/* Phone number list */}
             <div className="px-4 py-3 space-y-2 pb-5">
-              {((selectedLab.phones as string[] | null) ?? []).map((ph, i) => (
+              {((displayLab.phones as string[] | null) ?? []).map((ph, i) => (
                 <a
                   key={i}
                   href={`tel:${ph}`}

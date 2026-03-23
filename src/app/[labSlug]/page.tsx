@@ -11,19 +11,56 @@ interface LabSlugPageProps {
 export default async function LabSlugPage({ params }: LabSlugPageProps) {
   const lab = await prisma.lab.findUnique({
     where: { slug: params.labSlug },
-    select: { id: true, name: true, hidden: true },
+    select: {
+      id: true, name: true, hidden: true,
+      address: true, phones: true, whatsapp: true,
+      email: true, request_email: true,
+    },
   });
 
   if (!lab || lab.hidden) {
     notFound();
   }
 
-  // Fetch branches for this lab so the form can show branch selection in step 1
-  const rawBranches = await prisma.labBranch.findMany({
-    where: { lab_id: lab.id },
-    select: { id: true, is_main: true, branch_lab: { select: { name: true, address: true, phones: true } } },
+  // Fetch branches: get each branch's full lab data for proper routing
+  const branchLinks = await prisma.labBranch.findMany({
+    where: { lab_id: lab.id, branch_lab_id: { not: null } },
+    include: {
+      branch_lab: {
+        select: { id: true, name: true, address: true, phones: true, whatsapp: true },
+      },
+    },
     orderBy: [{ is_main: "desc" }],
   });
+
+  // Parent lab is always the first location option
+  const parentLocation = {
+    lab_id: lab.id,
+    lab_branch_id: null as string | null,
+    name: lab.name,
+    address: lab.address ?? "",
+    phones: (lab.phones ?? []) as string[],
+    whatsapp: lab.whatsapp ?? null,
+    is_main: false,
+    is_parent: true,
+  };
+
+  // Each branch link points to an independent lab — use that lab's own contact info
+  const branchLocations = branchLinks
+    .filter((b) => b.branch_lab !== null)
+    .map((b) => ({
+      lab_id: b.branch_lab!.id,
+      lab_branch_id: b.id,
+      name: b.branch_lab!.name,
+      address: b.branch_lab!.address ?? "",
+      phones: (b.branch_lab!.phones ?? []) as string[],
+      whatsapp: b.branch_lab!.whatsapp ?? null,
+      is_main: b.is_main,
+      is_parent: false,
+    }));
+
+  // All selectable locations: parent first, then branches sorted by is_main desc
+  const locations = [parentLocation, ...branchLocations];
 
   return (
     <div className="h-dvh flex flex-col bg-gradient-to-br from-sky-50 via-blue-50 to-indigo-50 overflow-hidden">
@@ -33,13 +70,7 @@ export default async function LabSlugPage({ params }: LabSlugPageProps) {
           <DoctorRequestForm
             preselectedLabId={lab.id}
             preselectedLabName={lab.name}
-            branches={rawBranches.filter((b) => b.branch_lab !== null).map((b) => ({
-              id: b.id,
-              is_main: b.is_main,
-              name: b.branch_lab!.name,
-              address: b.branch_lab!.address ?? "",
-              phones: (b.branch_lab!.phones ?? []) as string[],
-            }))}
+            locations={locations}
           />
         </div>
 
