@@ -797,16 +797,31 @@ function CatalogTab() {
 
 // ── Tab: Lab Price Overrides ──────────────────────────────────────────────────
 
+type CategoryPriceRow = {
+  id: string;
+  name: string;
+  slug: string;
+  test_count: number;
+  base_price: number;
+  override_price: number | null;
+  effective_price: number;
+};
+
 function OverridesTab() {
   const [labs, setLabs] = useState<Lab[]>([]);
   const [labSearch, setLabSearch] = useState("");
   const [selectedLab, setSelectedLab] = useState<Lab | null>(null);
   const [rows, setRows] = useState<OverrideRow[]>([]);
+  const [catRows, setCatRows] = useState<CategoryPriceRow[]>([]);
   const [loading, setLoading] = useState(false);
   const [search, setSearch] = useState("");
   const [editingRow, setEditingRow] = useState<string | null>(null);
   const [priceInput, setPriceInput] = useState("");
   const [saving, setSaving] = useState(false);
+  // Category price editing
+  const [editingCatRow, setEditingCatRow] = useState<string | null>(null);
+  const [catPriceInput, setCatPriceInput] = useState("");
+  const [savingCat, setSavingCat] = useState(false);
 
   useEffect(() => {
     fetch("/api/admin/labs")
@@ -817,10 +832,68 @@ function OverridesTab() {
   async function loadOverrides(lab: Lab) {
     setSelectedLab(lab);
     setLoading(true);
-    const res = await fetch(`/api/admin/pricing/overrides?lab_id=${lab.id}`);
-    const data = await res.json();
-    setRows(data.rows ?? []);
+    const [overridesRes, catRes] = await Promise.all([
+      fetch(`/api/admin/pricing/overrides?lab_id=${lab.id}`),
+      fetch(`/api/admin/pricing/category-prices?lab_id=${lab.id}`),
+    ]);
+    const overridesData = await overridesRes.json();
+    const catData = await catRes.json();
+    setRows(overridesData.rows ?? []);
+    setCatRows(catData.rows ?? []);
     setLoading(false);
+  }
+
+  async function saveCatOverride(categoryId: string) {
+    if (!selectedLab) return;
+    const price = parseFloat(catPriceInput);
+    if (isNaN(price)) { toast.error("Invalid price"); return; }
+    setSavingCat(true);
+    const res = await fetch("/api/admin/pricing/category-prices", {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ lab_id: selectedLab.id, category_id: categoryId, price }),
+    });
+    if (res.ok) {
+      toast.success("Category price saved");
+      setEditingCatRow(null);
+      const catRes = await fetch(`/api/admin/pricing/category-prices?lab_id=${selectedLab.id}`);
+      setCatRows((await catRes.json()).rows ?? []);
+    } else toast.error("Failed to save");
+    setSavingCat(false);
+  }
+
+  async function clearCatOverride(categoryId: string) {
+    if (!selectedLab) return;
+    const res = await fetch("/api/admin/pricing/category-prices", {
+      method: "DELETE",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ lab_id: selectedLab.id, category_id: categoryId }),
+    });
+    if (res.ok) {
+      toast.success("Category override cleared");
+      const catRes = await fetch(`/api/admin/pricing/category-prices?lab_id=${selectedLab.id}`);
+      setCatRows((await catRes.json()).rows ?? []);
+    } else toast.error("Failed");
+  }
+
+  async function saveGlobalCatPrice(categoryId: string) {
+    const price = parseFloat(catPriceInput);
+    if (isNaN(price)) { toast.error("Invalid price"); return; }
+    setSavingCat(true);
+    const res = await fetch("/api/admin/pricing/category-prices", {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ category_id: categoryId, base_price: price }),
+    });
+    if (res.ok) {
+      toast.success("Global category price updated");
+      setEditingCatRow(null);
+      const catRes = selectedLab
+        ? await fetch(`/api/admin/pricing/category-prices?lab_id=${selectedLab.id}`)
+        : await fetch("/api/admin/pricing/category-prices");
+      setCatRows((await catRes.json()).rows ?? []);
+    } else toast.error("Failed to save");
+    setSavingCat(false);
   }
 
   async function saveOverride(catalogTestId: string) {
@@ -929,6 +1002,120 @@ function OverridesTab() {
             <span className="text-right w-24">Effective</span>
             <span className="w-16" />
           </div>
+
+          {/* Category-level pricing section */}
+          {catRows.length > 0 && (
+            <div className="pt-2">
+              <div className="flex items-center gap-2 px-1 pb-2">
+                <Tag className="w-3.5 h-3.5 text-medical-400" />
+                <p className="text-xs font-semibold text-medical-400 uppercase tracking-wider">Category Fallback Prices</p>
+                <span className="text-xs text-slate-500 ml-1">— applied to tests matched by category but not listed in the catalog</span>
+              </div>
+              <div className="hidden sm:grid sm:grid-cols-[1fr_auto_auto_auto_auto] gap-2 px-3 py-1.5 text-xs text-slate-400 font-medium">
+                <span>Category · Tests</span>
+                <span className="text-right w-24">Global</span>
+                <span className="text-right w-24">Override</span>
+                <span className="text-right w-24">Effective</span>
+                <span className="w-16" />
+              </div>
+              {catRows.map((cat) => (
+                <div key={cat.id} className="px-3 py-2.5 rounded-xl bg-slate-800/60 hover:bg-slate-800/80 space-y-1.5 sm:space-y-0 sm:grid sm:grid-cols-[1fr_auto_auto_auto_auto] sm:gap-2 sm:items-center mb-1">
+                  <div>
+                    <p className="text-sm text-slate-200 font-medium">{cat.name}</p>
+                    <p className="text-xs text-slate-500">{cat.test_count} listed test{cat.test_count !== 1 ? "s" : ""}</p>
+                  </div>
+                  {/* Mobile */}
+                  <div className="flex items-center gap-3 sm:contents">
+                    <div className="flex items-center gap-1 sm:hidden text-xs text-slate-500 font-medium">
+                      <span className="text-slate-400 font-mono">{fmt(cat.base_price)}</span>
+                      <span className="text-slate-600">→</span>
+                      <span className={`font-mono ${cat.override_price !== null ? "text-amber-300 font-semibold" : "text-slate-300"}`}>
+                        {fmt(cat.effective_price)}{cat.override_price !== null && <span className="text-amber-500 text-xs ml-0.5">custom</span>}
+                      </span>
+                    </div>
+                    {/* Desktop: global base price (editable) */}
+                    {editingCatRow === `global:${cat.id}` ? (
+                      <div className="hidden sm:flex items-center gap-1 w-24 justify-end">
+                        <span className="text-slate-400 text-sm">₦</span>
+                        <input
+                          value={catPriceInput} onChange={(e) => setCatPriceInput(e.target.value)}
+                          className="w-16 bg-slate-600 text-white text-sm px-2 py-0.5 rounded border border-slate-500 focus:outline-none focus:ring-1 focus:ring-medical-500"
+                          autoFocus
+                          onKeyDown={(e) => { if (e.key === "Enter") saveGlobalCatPrice(cat.id); if (e.key === "Escape") setEditingCatRow(null); }}
+                        />
+                      </div>
+                    ) : (
+                      <button
+                        onClick={() => { setEditingCatRow(`global:${cat.id}`); setCatPriceInput(String(cat.base_price)); }}
+                        className="hidden sm:flex text-sm font-mono text-right w-24 group items-center justify-end gap-1"
+                        title="Edit global category price"
+                      >
+                        <span className="text-slate-400">{fmt(cat.base_price)}</span>
+                        <Pencil className="w-3 h-3 text-slate-500 opacity-0 group-hover:opacity-100" />
+                      </button>
+                    )}
+                    {/* Desktop: lab override */}
+                    {editingCatRow === cat.id ? (
+                      <div className="hidden sm:flex items-center gap-1 w-24 justify-end">
+                        <span className="text-slate-400 text-sm">₦</span>
+                        <input
+                          value={catPriceInput} onChange={(e) => setCatPriceInput(e.target.value)}
+                          className="w-16 bg-slate-600 text-white text-sm px-2 py-0.5 rounded border border-slate-500 focus:outline-none focus:ring-1 focus:ring-medical-500"
+                          autoFocus
+                          onKeyDown={(e) => { if (e.key === "Enter") saveCatOverride(cat.id); if (e.key === "Escape") setEditingCatRow(null); }}
+                        />
+                      </div>
+                    ) : (
+                      <button
+                        onClick={() => { setEditingCatRow(cat.id); setCatPriceInput(String(cat.override_price ?? cat.base_price)); }}
+                        className="hidden sm:flex text-sm font-mono text-right w-24 group items-center justify-end gap-1"
+                      >
+                        {cat.override_price !== null
+                          ? <span className="text-amber-400">{fmt(cat.override_price)} <span className="text-xs text-amber-500">custom</span></span>
+                          : <span className="text-slate-500">—</span>}
+                        <Pencil className="w-3 h-3 text-slate-500 opacity-0 group-hover:opacity-100" />
+                      </button>
+                    )}
+                    {/* Desktop: effective */}
+                    <span className={`hidden sm:block text-sm font-mono text-right w-24 ${cat.override_price !== null ? "text-amber-300 font-semibold" : "text-slate-300"}`}>
+                      {fmt(cat.effective_price)}
+                    </span>
+                    <div className="flex items-center gap-1 sm:w-16 sm:justify-end ml-auto">
+                      {(editingCatRow === cat.id || editingCatRow === `global:${cat.id}`) ? (
+                        <>
+                          <button
+                            onClick={() => editingCatRow === `global:${cat.id}` ? saveGlobalCatPrice(cat.id) : saveCatOverride(cat.id)}
+                            disabled={savingCat}
+                            className="text-emerald-400 hover:text-emerald-300"
+                          >
+                            <Check className="w-4 h-4" />
+                          </button>
+                          <button onClick={() => setEditingCatRow(null)} className="text-slate-400 hover:text-slate-300">
+                            <X className="w-4 h-4" />
+                          </button>
+                        </>
+                      ) : (
+                        <>
+                          <button
+                            onClick={() => { setEditingCatRow(cat.id); setCatPriceInput(String(cat.override_price ?? cat.base_price)); }}
+                            className="sm:hidden text-slate-400 hover:text-white p-1"
+                            title="Edit lab override"
+                          >
+                            <Pencil className="w-3.5 h-3.5" />
+                          </button>
+                          {cat.override_price !== null && (
+                            <button onClick={() => clearCatOverride(cat.id)} className="text-slate-500 hover:text-red-400" title="Reset to global">
+                              <X className="w-3.5 h-3.5" />
+                            </button>
+                          )}
+                        </>
+                      )}
+                    </div>
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
 
           {filtered.map((row) => (
             <div key={row.id} className="px-3 py-2.5 rounded-xl bg-slate-700/50 hover:bg-slate-700/70 space-y-1.5 sm:space-y-0 sm:grid sm:grid-cols-[1fr_auto_auto_auto_auto] sm:gap-2 sm:items-center">

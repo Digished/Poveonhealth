@@ -37,7 +37,7 @@ function splitTests(raw: string): string[] {
     .filter((t) => t.length > 0 && t.toLowerCase() !== "see attached image");
 }
 
-/** Compute effective price for a test + lab */
+/** Compute effective price for a specific catalog test + lab */
 async function effectivePrice(catalogTestId: string, labId: string | null): Promise<number> {
   if (labId) {
     const override = await prisma.labTestPrice.findUnique({
@@ -51,6 +51,22 @@ async function effectivePrice(catalogTestId: string, labId: string | null): Prom
     select: { base_price: true },
   });
   return Number(test?.base_price ?? 0);
+}
+
+/** Compute effective price for a category (used for unlisted/fuzzy-matched tests) */
+async function effectiveCategoryPrice(categoryId: string, labId: string | null): Promise<number> {
+  if (labId) {
+    const override = await prisma.labCategoryPrice.findUnique({
+      where: { lab_id_category_id: { lab_id: labId, category_id: categoryId } },
+      select: { price: true },
+    });
+    if (override) return Number(override.price);
+  }
+  const category = await prisma.testCategory.findUnique({
+    where: { id: categoryId },
+    select: { base_price: true },
+  });
+  return Number(category?.base_price ?? 0);
 }
 
 /** Get the Others/Uncategorized category and return a default result */
@@ -180,13 +196,15 @@ async function regexCategoryMatch(
   });
   if (!category) return null;
 
-  // Return the category name as a placeholder — no specific test matched
+  // Price based on the category's general price (lab override or global base_price)
+  const unit_price = await effectiveCategoryPrice(category.id, labId);
+
   return {
     raw,
     canonical_id: null,
     canonical_name: raw,
     category: category.name,
-    unit_price: 0,
+    unit_price,
     confidence: 0.5,
     is_others: false,
   };
@@ -234,12 +252,21 @@ Return JSON: { "canonical_name": string, "category": string, "confidence": numbe
       return { ...dbMatch, raw, confidence: Math.min(dbMatch.confidence, parsed.confidence ?? 0.6) };
     }
 
+    // Look up the category to get its pricing
+    const categoryRecord = await prisma.testCategory.findFirst({
+      where: { name: { equals: parsed.category, mode: "insensitive" } },
+      select: { id: true },
+    });
+    const unit_price = categoryRecord
+      ? await effectiveCategoryPrice(categoryRecord.id, labId)
+      : 0;
+
     return {
       raw,
       canonical_id: null,
       canonical_name: parsed.canonical_name,
       category: parsed.category,
-      unit_price: 0,
+      unit_price,
       confidence: parsed.confidence ?? 0.5,
       is_others: parsed.category === "Others / Uncategorized",
     };

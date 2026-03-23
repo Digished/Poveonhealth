@@ -97,15 +97,18 @@ export function TestTagInput({ value, onChange, labId, error, label, disabled }:
   function handleKeyDown(e: React.KeyboardEvent<HTMLInputElement>) {
     if (e.key === "ArrowDown") {
       e.preventDefault();
+      e.stopPropagation();
       setActiveIdx((i) => Math.min(i + 1, results.length - 1));
       return;
     }
     if (e.key === "ArrowUp") {
       e.preventDefault();
+      e.stopPropagation();
       setActiveIdx((i) => Math.max(i - 1, -1));
       return;
     }
     if (e.key === "Escape") {
+      e.stopPropagation();
       setOpen(false); setActiveIdx(-1);
       return;
     }
@@ -113,8 +116,9 @@ export function TestTagInput({ value, onChange, labId, error, label, disabled }:
       removeTag(value.length - 1);
       return;
     }
-    if (e.key === "Enter" || e.key === ",") {
+    if (e.key === "Enter") {
       e.preventDefault();
+      e.stopPropagation(); // prevent parent form from advancing to next field
       if (activeIdx >= 0 && results[activeIdx]) {
         addCatalogTag(results[activeIdx]);
       } else if (inputText.trim()) {
@@ -193,9 +197,16 @@ export function TestTagInput({ value, onChange, labId, error, label, disabled }:
           />
         </div>
 
-        {/* Dropdown */}
+        {/* Dropdown — solid opaque background */}
         {open && results.length > 0 && (
-          <div className="absolute z-50 top-full mt-1 left-0 right-0 bg-white border border-slate-200 rounded-xl shadow-xl overflow-hidden">
+          <div
+            className="absolute z-50 top-full mt-1 left-0 right-0 rounded-xl overflow-hidden"
+            style={{
+              background: "#ffffff",
+              border: "1px solid #e2e8f0",
+              boxShadow: "0 8px 32px rgba(0,0,0,0.18), 0 2px 8px rgba(0,0,0,0.10)",
+            }}
+          >
             {results.map((r, i) => (
               <button
                 key={r.id}
@@ -205,6 +216,7 @@ export function TestTagInput({ value, onChange, labId, error, label, disabled }:
                   "w-full flex items-center justify-between px-4 py-2.5 text-left text-sm transition-colors",
                   activeIdx === i ? "bg-medical-50" : "hover:bg-slate-50",
                 ].join(" ")}
+                style={{ background: activeIdx === i ? undefined : undefined }}
               >
                 <div className="flex items-center gap-2 min-w-0">
                   {r.is_rapid_test && (
@@ -245,8 +257,6 @@ export function TestTagInput({ value, onChange, labId, error, label, disabled }:
         <p className="text-xs text-slate-400">
           Start typing to search the test catalog, or press{" "}
           <kbd className="px-1 py-0.5 bg-slate-100 rounded text-slate-600 font-mono text-[10px]">Enter</kbd>
-          {" "}or{" "}
-          <kbd className="px-1 py-0.5 bg-slate-100 rounded text-slate-600 font-mono text-[10px]">,</kbd>
           {" "}to add any test
         </p>
       )}

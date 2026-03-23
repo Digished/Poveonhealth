@@ -37,7 +37,8 @@ model Lab {
   feedbacks       LabFeedback[]
   wallet          LabWallet?
   transactions    WalletTransaction[]
-  lab_test_prices LabTestPrice[]
+  lab_test_prices     LabTestPrice[]
+  lab_category_prices LabCategoryPrice[]
 
   @@map("labs")
 }
@@ -435,11 +436,29 @@ model TestCategory {
   slug        String   @unique // e.g. "hematology"
   description String?
   sort_order  Int      @default(0)
+  base_price  Decimal  @default(0) @db.Decimal(12, 2) // fallback price for unlisted tests in this category
   created_at  DateTime @default(now())
 
-  tests CatalogTest[]
+  tests        CatalogTest[]
+  lab_prices   LabCategoryPrice[]
 
   @@map("test_categories")
+}
+
+// Per-lab price override for an entire category (used when a test is category-matched but not listed)
+model LabCategoryPrice {
+  id          String   @id @default(uuid())
+  lab_id      String
+  category_id String
+  price       Decimal  @db.Decimal(12, 2)
+  updated_by  String?
+  updated_at  DateTime @updatedAt
+
+  lab      Lab          @relation(fields: [lab_id], references: [id], onDelete: Cascade)
+  category TestCategory @relation(fields: [category_id], references: [id], onDelete: Cascade)
+
+  @@unique([lab_id, category_id])
+  @@map("lab_category_prices")
 }
 
 // A named test that belongs to exactly one category
