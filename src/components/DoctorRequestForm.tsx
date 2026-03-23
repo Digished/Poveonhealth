@@ -1840,7 +1840,6 @@ export function DoctorRequestForm({
                     )}
                   </div>
                 </div>
-              </div>
 
               {/* Substep 2: Patient Phone — reveals when clinical is filled */}
               {clinicalDone && (
