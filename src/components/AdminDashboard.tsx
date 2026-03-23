@@ -103,6 +103,7 @@ export function AdminDashboard() {
   const router = useRouter();
   const { isLight, toggle, themeClass } = useDashTheme("admin_dash_theme");
   const [activeTab, setActiveTab] = useState<AdminTab>("metrics");
+  const [mobileTabOpen, setMobileTabOpen] = useState(false);
   const [labs, setLabs] = useState<Lab[]>([]);
   const [requests, setRequests] = useState<LabRequest[]>([]);
   const [metrics, setMetrics] = useState<AdminMetrics | null>(null);
@@ -125,6 +126,16 @@ export function AdminDashboard() {
   const [walletModalLabId, setWalletModalLabId] = useState<string | null>(null);
   const [revealPrice, setRevealPrice] = useState<string>("");
   const [savingRevealPrice, setSavingRevealPrice] = useState(false);
+
+  type RevenueData = {
+    total_credited: number;
+    total_debited: number;
+    wallets: { lab_id: string; lab_name: string; balance: number }[];
+    recent_transactions: { id: string; lab_id: string; lab_name: string; type: string; direction: string; amount: number; balance_after: number; description: string | null; created_at: string }[];
+    by_lab: { lab_id: string; lab_name: string; total_credited: number; total_debited: number; balance: number | { toNumber?: () => number } }[];
+  };
+  const [revenueData, setRevenueData] = useState<RevenueData | null>(null);
+  const [revenueLoading, setRevenueLoading] = useState(false);
 
   // Per-lab analytics modal
   type LabAnalytics = {
@@ -202,6 +213,16 @@ export function AdminDashboard() {
     } catch { /* non-critical */ }
   }, []);
 
+  const fetchRevenue = useCallback(async () => {
+    setRevenueLoading(true);
+    try {
+      const res = await fetch("/api/admin/revenue");
+      const data = await res.json();
+      if (data.success) setRevenueData(data);
+    } catch { /* non-critical */ }
+    finally { setRevenueLoading(false); }
+  }, []);
+
   async function handleSaveRevealPrice() {
     if (!revealPrice || isNaN(parseFloat(revealPrice)) || parseFloat(revealPrice) < 0) {
       toast.error("Enter a valid price");
@@ -237,6 +258,7 @@ export function AdminDashboard() {
         fetchApiLogs(),
         fetchSettings(),
         fetchMarketers(),
+        fetchRevenue(),
       ]);
       const reqData = await reqRes.json();
       if (reqData.success) {
@@ -248,7 +270,7 @@ export function AdminDashboard() {
     } finally {
       setLoading(false);
     }
-  }, [fetchLabs, fetchMarketers]);
+  }, [fetchLabs, fetchMarketers, fetchRevenue]);
 
   useEffect(() => { fetchData(); }, [fetchData]);
 
@@ -421,29 +443,64 @@ export function AdminDashboard() {
       </header>
 
       <div className="max-w-7xl mx-auto px-4 py-5 md:py-8">
-        <div className="overflow-x-auto -mx-4 px-4 mb-6 md:mb-8">
-          <div className="flex gap-1 bg-white/5 rounded-xl p-1 w-max">
-            {[
-              { key: "metrics" as AdminTab, label: "Metrics", icon: <BarChart3 className="w-4 h-4" /> },
-              { key: "requests" as AdminTab, label: "All Requests", icon: <List className="w-4 h-4" /> },
-              { key: "referrals" as AdminTab, label: "Referrals", icon: <Users className="w-4 h-4" /> },
-              { key: "labs" as AdminTab, label: "Labs", icon: <Building2 className="w-4 h-4" /> },
-              { key: "analytics" as AdminTab, label: "API Analytics", icon: <BarChart3 className="w-4 h-4" /> },
-              { key: "marketers" as AdminTab, label: "Marketers", icon: <TrendingUp className="w-4 h-4" /> },
-              { key: "settings" as AdminTab, label: "Settings", icon: <Settings className="w-4 h-4" /> },
-            ].map((tab) => (
-              <button
-                key={tab.key}
-                onClick={() => setActiveTab(tab.key)}
-                className={`flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-medium transition-all shrink-0 ${
-                  activeTab === tab.key ? "bg-white/15 text-white" : "text-slate-400 hover:text-white"
-                }`}
-              >
-                {tab.icon}{tab.label}
-              </button>
-            ))}
-          </div>
-        </div>
+        {/* Tab nav — dropdown on mobile, scroll row on desktop */}
+        {(() => {
+          const tabs = [
+            { key: "metrics" as AdminTab, label: "Metrics", icon: <BarChart3 className="w-4 h-4" /> },
+            { key: "requests" as AdminTab, label: "All Requests", icon: <List className="w-4 h-4" /> },
+            { key: "referrals" as AdminTab, label: "Referrals", icon: <Users className="w-4 h-4" /> },
+            { key: "labs" as AdminTab, label: "Labs", icon: <Building2 className="w-4 h-4" /> },
+            { key: "analytics" as AdminTab, label: "API Analytics", icon: <BarChart3 className="w-4 h-4" /> },
+            { key: "marketers" as AdminTab, label: "Marketers", icon: <TrendingUp className="w-4 h-4" /> },
+            { key: "settings" as AdminTab, label: "Settings", icon: <Settings className="w-4 h-4" /> },
+          ];
+          const current = tabs.find((t) => t.key === activeTab) ?? tabs[0];
+          return (
+            <div className="mb-6 md:mb-8">
+              {/* Mobile dropdown */}
+              <div className="md:hidden relative">
+                <button
+                  onClick={() => setMobileTabOpen((v) => !v)}
+                  className="flex items-center gap-2.5 w-full px-4 py-3 rounded-xl bg-white/8 border border-white/12 text-sm font-semibold text-white"
+                >
+                  <span className="text-slate-300">{current.icon}</span>
+                  <span className="flex-1 text-left">{current.label}</span>
+                  <ChevronDown className={`w-4 h-4 text-slate-400 transition-transform duration-200 ${mobileTabOpen ? "rotate-180" : ""}`} />
+                </button>
+                {mobileTabOpen && (
+                  <div className="absolute top-full left-0 right-0 mt-1.5 rounded-xl border border-white/10 bg-slate-800 shadow-2xl overflow-hidden z-30">
+                    {tabs.map((tab) => (
+                      <button key={tab.key}
+                        onClick={() => { setActiveTab(tab.key); setMobileTabOpen(false); }}
+                        className={`flex items-center gap-3 w-full px-4 py-3.5 text-sm font-medium transition-colors border-b border-white/5 last:border-0 ${
+                          activeTab === tab.key ? "bg-white/12 text-white" : "text-slate-300 hover:bg-white/8"
+                        }`}
+                      >
+                        <span className={activeTab === tab.key ? "text-white" : "text-slate-500"}>{tab.icon}</span>
+                        {tab.label}
+                        {activeTab === tab.key && <ChevronRight className="w-3.5 h-3.5 ml-auto text-white/40" />}
+                      </button>
+                    ))}
+                  </div>
+                )}
+              </div>
+              {/* Desktop scroll row */}
+              <div className="hidden md:block overflow-x-auto -mx-4 px-4">
+                <div className="flex gap-1 bg-white/5 rounded-xl p-1 w-max">
+                  {tabs.map((tab) => (
+                    <button key={tab.key} onClick={() => setActiveTab(tab.key)}
+                      className={`flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-medium transition-all shrink-0 ${
+                        activeTab === tab.key ? "bg-white/15 text-white" : "text-slate-400 hover:text-white"
+                      }`}
+                    >
+                      {tab.icon}{tab.label}
+                    </button>
+                  ))}
+                </div>
+              </div>
+            </div>
+          );
+        })()}
 
         {/* ── METRICS ── */}
         {activeTab === "metrics" && (
@@ -484,6 +541,90 @@ export function AdminDashboard() {
                     {metrics.byLab.length === 0 && <p className="text-sm text-slate-500 text-center py-4">No data yet</p>}
                   </div>
                 </div>
+
+                {/* ── Revenue & Transactions ── */}
+                {revenueLoading ? (
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                    {[...Array(2)].map((_, i) => (
+                      <div key={i} className="bg-white/5 border border-white/10 rounded-2xl p-5 animate-pulse h-24" />
+                    ))}
+                  </div>
+                ) : revenueData && (
+                  <>
+                    {/* Revenue summary cards */}
+                    <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+                      <div className="bg-gradient-to-br from-emerald-500/20 to-emerald-600/10 border border-emerald-500/30 rounded-2xl p-5">
+                        <p className="text-xs text-slate-400 font-medium uppercase tracking-wider mb-1">Total Topups</p>
+                        <p className="text-3xl font-bold text-white">₦{revenueData.total_credited.toLocaleString()}</p>
+                      </div>
+                      <div className="bg-gradient-to-br from-rose-500/20 to-rose-600/10 border border-rose-500/30 rounded-2xl p-5">
+                        <p className="text-xs text-slate-400 font-medium uppercase tracking-wider mb-1">Total Revenue (Reveal Charges)</p>
+                        <p className="text-3xl font-bold text-white">₦{revenueData.total_debited.toLocaleString()}</p>
+                      </div>
+                      <div className="bg-gradient-to-br from-violet-500/20 to-violet-600/10 border border-violet-500/30 rounded-2xl p-5">
+                        <p className="text-xs text-slate-400 font-medium uppercase tracking-wider mb-1">Outstanding Balances</p>
+                        <p className="text-3xl font-bold text-white">
+                          ₦{revenueData.wallets.reduce((s, w) => s + (w.balance > 0 ? w.balance : 0), 0).toLocaleString()}
+                        </p>
+                      </div>
+                    </div>
+
+                    {/* Per-lab wallet breakdown */}
+                    {revenueData.by_lab.length > 0 && (
+                      <div className="bg-white/5 border border-white/10 rounded-2xl p-5">
+                        <div className="flex items-center justify-between mb-4">
+                          <h3 className="text-sm font-semibold text-slate-300">Lab Wallet Breakdown</h3>
+                          <button
+                            onClick={fetchRevenue}
+                            className="flex items-center gap-1.5 text-xs text-slate-400 hover:text-white transition px-2 py-1 rounded-lg hover:bg-white/10"
+                          >
+                            <RefreshCw className="w-3 h-3" />Refresh
+                          </button>
+                        </div>
+                        <div className="space-y-2 max-h-64 overflow-y-auto pr-1">
+                          {revenueData.by_lab.map((row) => {
+                            const bal = typeof row.balance === "object" && row.balance !== null && "toNumber" in row.balance
+                              ? (row.balance as { toNumber: () => number }).toNumber()
+                              : Number(row.balance);
+                            return (
+                              <div key={row.lab_id} className="flex items-center gap-3 py-2 border-b border-white/5 last:border-0">
+                                <p className="text-sm text-white flex-1 min-w-0 truncate">{row.lab_name}</p>
+                                <div className="flex items-center gap-3 text-xs shrink-0">
+                                  <span className="text-emerald-400 font-mono">+₦{row.total_credited.toLocaleString()}</span>
+                                  <span className="text-rose-400 font-mono">-₦{row.total_debited.toLocaleString()}</span>
+                                  <span className={`font-bold font-mono ${bal < 0 ? "text-red-400" : bal < 500 ? "text-amber-400" : "text-slate-300"}`}>
+                                    ₦{bal.toLocaleString()}
+                                  </span>
+                                </div>
+                              </div>
+                            );
+                          })}
+                        </div>
+                      </div>
+                    )}
+
+                    {/* Recent transactions */}
+                    {revenueData.recent_transactions.length > 0 && (
+                      <div className="bg-white/5 border border-white/10 rounded-2xl p-5">
+                        <h3 className="text-sm font-semibold text-slate-300 mb-4">Recent Transactions</h3>
+                        <div className="space-y-2 max-h-80 overflow-y-auto pr-1">
+                          {revenueData.recent_transactions.map((tx) => (
+                            <div key={tx.id} className="flex items-start gap-3 py-2 border-b border-white/5 last:border-0">
+                              <div className={`w-2 h-2 rounded-full mt-1.5 shrink-0 ${tx.direction === "credit" ? "bg-emerald-400" : "bg-rose-400"}`} />
+                              <div className="flex-1 min-w-0">
+                                <p className="text-xs text-white truncate">{tx.description ?? tx.type}</p>
+                                <p className="text-xs text-slate-500 mt-0.5">{tx.lab_name} · {new Date(tx.created_at).toLocaleString("en-GB", { day: "numeric", month: "short", year: "numeric", hour: "2-digit", minute: "2-digit" })}</p>
+                              </div>
+                              <p className={`text-xs font-bold font-mono shrink-0 ${tx.direction === "credit" ? "text-emerald-400" : "text-rose-400"}`}>
+                                {tx.direction === "credit" ? "+" : "-"}₦{tx.amount.toLocaleString()}
+                              </p>
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+                    )}
+                  </>
+                )}
               </>
             ) : (
               <p className="text-slate-500 text-center py-16">No data available</p>

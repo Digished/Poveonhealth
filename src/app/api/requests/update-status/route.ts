@@ -86,12 +86,18 @@ export async function POST(request: NextRequest) {
     if (status === "seen") updateData.seen_at = new Date();
     if (status === "done") updateData.completed_at = new Date();
 
-    // When marking "seen" — charge the reveal price from the lab's wallet
+    // When marking "seen" — charge revealPrice × number of tests from the lab's wallet
     let walletBalance: number | null = null;
     if (status === "seen") {
       try {
         const priceSetting = await prisma.systemSetting.findUnique({ where: { key: "reveal_price" } });
-        const revealPrice = new Decimal(priceSetting?.value ?? "500");
+        const pricePerTest = new Decimal(priceSetting?.value ?? "500");
+
+        // Count tests: split on comma/newline; "See attached image" counts as 1
+        const testCount = (req.tests && req.tests !== "See attached image")
+          ? Math.max(1, req.tests.split(/[,\n]/).map((t) => t.trim()).filter(Boolean).length)
+          : 1;
+        const totalCharge = pricePerTest.times(testCount);
 
         walletBalance = await prisma.$transaction(async (tx) => {
           const current = await tx.labWallet.upsert({
@@ -100,7 +106,7 @@ export async function POST(request: NextRequest) {
             update: {},
           });
 
-          const newBalance = new Decimal(current.balance).minus(revealPrice);
+          const newBalance = new Decimal(current.balance).minus(totalCharge);
 
           await tx.labWallet.update({
             where: { lab_id: req.lab_id },
@@ -112,9 +118,9 @@ export async function POST(request: NextRequest) {
               lab_id: req.lab_id,
               type: "deduction",
               direction: "debit",
-              amount: revealPrice,
+              amount: totalCharge,
               balance_after: newBalance,
-              description: `Reveal charge — ${req.code} (${req.patient_name ?? "patient"})`,
+              description: `Reveal charge — ${req.code} (${req.patient_name ?? "patient"}) · ${testCount} test${testCount !== 1 ? "s" : ""} × ₦${pricePerTest}`,
               request_id: requestId,
             },
           });

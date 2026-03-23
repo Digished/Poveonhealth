@@ -96,6 +96,7 @@ export function LabDashboard({ lab, isOwner = false, roleName = "Lab Owner", can
   const [walletData, setWalletData] = useState<{ balance: number; reveal_price: number; transactions: { id: string; type: string; direction: string; amount: number; balance_after: number; description: string | null; actor_email: string | null; created_at: string }[] } | null>(null);
   const [walletLoading, setWalletLoading] = useState(false);
   const [mobileNavOpen, setMobileNavOpen] = useState(false);
+  const [mobileHeaderOpen, setMobileHeaderOpen] = useState(false);
   const [activeTab, setActiveTab] = useState<RequestStatus>("seen");
   const [requests, setRequests] = useState<LabRequest[]>([]);
   const [loading, setLoading] = useState(true);
@@ -470,46 +471,105 @@ export function LabDashboard({ lab, isOwner = false, roleName = "Lab Owner", can
             </div>
           </div>
           <div className="flex items-center gap-2">
-            <button
-              onClick={toggle}
-              className="p-2 rounded-lg hover:bg-white/10 transition-colors text-slate-400 hover:text-white"
-              title={isLight ? "Switch to dark mode" : "Switch to light mode"}
-            >
-              {isLight ? <Moon className="w-4 h-4" /> : <Sun className="w-4 h-4" />}
-            </button>
-            <button
-              onClick={async () => {
-                setProfileOpen(true);
-                if (isOwner && teamMembers.length === 0) {
-                  setTeamLoading(true);
-                  try {
-                    const res = await fetch("/api/lab/team");
-                    const data = await res.json();
-                    if (data.success) setTeamMembers(data.members ?? []);
-                  } finally {
-                    setTeamLoading(false);
+            {/* Desktop: individual action buttons */}
+            <div className="hidden sm:flex items-center gap-2">
+              <button
+                onClick={toggle}
+                className="p-2 rounded-lg hover:bg-white/10 transition-colors text-slate-400 hover:text-white"
+                title={isLight ? "Switch to dark mode" : "Switch to light mode"}
+              >
+                {isLight ? <Moon className="w-4 h-4" /> : <Sun className="w-4 h-4" />}
+              </button>
+              <button
+                onClick={async () => {
+                  setProfileOpen(true);
+                  if (isOwner && teamMembers.length === 0) {
+                    setTeamLoading(true);
+                    try {
+                      const res = await fetch("/api/lab/team");
+                      const data = await res.json();
+                      if (data.success) setTeamMembers(data.members ?? []);
+                    } finally {
+                      setTeamLoading(false);
+                    }
                   }
-                }
-              }}
-              className="p-2 rounded-lg hover:bg-white/10 transition-colors text-slate-400 hover:text-white"
-              title="Lab Profile"
-            >
-              <UserCircle className="w-4 h-4" />
-            </button>
-            <button
-              onClick={() => setChangePasswordOpen(true)}
-              className="p-2 rounded-lg hover:bg-white/10 transition-colors text-slate-400 hover:text-white"
-              title="Change Password"
-            >
-              <Lock className="w-4 h-4" />
-            </button>
-            <button
-              onClick={handleSignOut}
-              className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg hover:bg-white/10 transition-colors text-slate-400 hover:text-white text-sm"
-            >
-              <LogOut className="w-4 h-4" />
-              <span className="hidden sm:inline">Sign Out</span>
-            </button>
+                }}
+                className="p-2 rounded-lg hover:bg-white/10 transition-colors text-slate-400 hover:text-white"
+                title="Lab Profile"
+              >
+                <UserCircle className="w-4 h-4" />
+              </button>
+              <button
+                onClick={() => setChangePasswordOpen(true)}
+                className="p-2 rounded-lg hover:bg-white/10 transition-colors text-slate-400 hover:text-white"
+                title="Change Password"
+              >
+                <Lock className="w-4 h-4" />
+              </button>
+              <button
+                onClick={handleSignOut}
+                className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg hover:bg-white/10 transition-colors text-slate-400 hover:text-white text-sm"
+              >
+                <LogOut className="w-4 h-4" />
+                <span>Sign Out</span>
+              </button>
+            </div>
+            {/* Mobile: hamburger menu */}
+            <div className="sm:hidden relative">
+              <button
+                onClick={() => setMobileHeaderOpen((v) => !v)}
+                className="p-2 rounded-lg hover:bg-white/10 transition-colors text-slate-400 hover:text-white"
+                title="Menu"
+              >
+                {mobileHeaderOpen ? <X className="w-5 h-5" /> : <Menu className="w-5 h-5" />}
+              </button>
+              {mobileHeaderOpen && (
+                <>
+                  <div className="fixed inset-0 z-20" onClick={() => setMobileHeaderOpen(false)} />
+                  <div className="absolute right-0 top-full mt-2 w-52 rounded-xl border border-white/10 bg-slate-800 shadow-2xl overflow-hidden z-30">
+                    <button
+                      onClick={() => { toggle(); setMobileHeaderOpen(false); }}
+                      className="flex items-center gap-3 w-full px-4 py-3 text-sm text-slate-300 hover:bg-white/8 transition-colors border-b border-white/5"
+                    >
+                      {isLight ? <Moon className="w-4 h-4 text-slate-500" /> : <Sun className="w-4 h-4 text-slate-500" />}
+                      {isLight ? "Dark Mode" : "Light Mode"}
+                    </button>
+                    <button
+                      onClick={async () => {
+                        setMobileHeaderOpen(false);
+                        setProfileOpen(true);
+                        if (isOwner && teamMembers.length === 0) {
+                          setTeamLoading(true);
+                          try {
+                            const res = await fetch("/api/lab/team");
+                            const data = await res.json();
+                            if (data.success) setTeamMembers(data.members ?? []);
+                          } finally { setTeamLoading(false); }
+                        }
+                      }}
+                      className="flex items-center gap-3 w-full px-4 py-3 text-sm text-slate-300 hover:bg-white/8 transition-colors border-b border-white/5"
+                    >
+                      <UserCircle className="w-4 h-4 text-slate-500" />
+                      Lab Profile
+                    </button>
+                    <button
+                      onClick={() => { setMobileHeaderOpen(false); setChangePasswordOpen(true); }}
+                      className="flex items-center gap-3 w-full px-4 py-3 text-sm text-slate-300 hover:bg-white/8 transition-colors border-b border-white/5"
+                    >
+                      <Lock className="w-4 h-4 text-slate-500" />
+                      Change Password
+                    </button>
+                    <button
+                      onClick={() => { setMobileHeaderOpen(false); handleSignOut(); }}
+                      className="flex items-center gap-3 w-full px-4 py-3 text-sm text-red-400 hover:bg-red-500/10 transition-colors"
+                    >
+                      <LogOut className="w-4 h-4" />
+                      Sign Out
+                    </button>
+                  </div>
+                </>
+              )}
+            </div>
           </div>
         </div>
       </header>
