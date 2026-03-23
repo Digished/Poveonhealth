@@ -121,15 +121,30 @@ export async function PATCH(request: NextRequest) {
   const admin = await verifyAdmin();
   if (!admin) return NextResponse.json({ error: "Forbidden" }, { status: 403 });
 
-  const { id, base_price, is_rapid_test, is_active, add_synonyms, remove_synonym_ids } =
-    await request.json() as {
-      id?: string;
-      base_price?: number;
-      is_rapid_test?: boolean;
-      is_active?: boolean;
-      add_synonyms?: string[];
-      remove_synonym_ids?: string[];
-    };
+  const body = await request.json() as {
+    id?: string;
+    base_price?: number;
+    is_rapid_test?: boolean;
+    is_active?: boolean;
+    add_synonyms?: string[];
+    remove_synonym_ids?: string[];
+    // bulk action
+    action?: "bulk_price";
+    category_id?: string;
+  };
+  const { id, base_price, is_rapid_test, is_active, add_synonyms, remove_synonym_ids } = body;
+
+  // Bulk price update: set base_price for every active test in a category
+  if (body.action === "bulk_price") {
+    if (!body.category_id || body.base_price === undefined) {
+      return NextResponse.json({ error: "category_id and base_price required" }, { status: 400 });
+    }
+    const { count } = await prisma.catalogTest.updateMany({
+      where: { category_id: body.category_id },
+      data: { base_price: body.base_price },
+    });
+    return NextResponse.json({ success: true, updated: count });
+  }
 
   if (!id) return NextResponse.json({ error: "id is required" }, { status: 400 });
 

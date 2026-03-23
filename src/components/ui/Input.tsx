@@ -7,29 +7,36 @@ interface InputProps extends InputHTMLAttributes<HTMLInputElement> {
   label?: string;
   error?: string;
   hint?: string;
+  variant?: "light" | "dark";
 }
 
 interface TextareaProps extends TextareaHTMLAttributes<HTMLTextAreaElement> {
   label?: string;
   error?: string;
   hint?: string;
+  variant?: "light" | "dark";
 }
 
 const inputBase =
-  "w-full rounded-xl border bg-white/60 backdrop-blur-sm px-4 py-2.5 text-slate-800 placeholder-slate-400 text-sm transition-all duration-200 focus:outline-none focus:ring-2 focus:ring-medical-500 focus:border-medical-400 disabled:opacity-60 disabled:cursor-not-allowed";
+  "w-full rounded-xl border backdrop-blur-sm px-4 py-2.5 text-sm transition-all duration-200 focus:outline-none focus:ring-2 disabled:opacity-60 disabled:cursor-not-allowed";
 
-const inputNormal = "border-slate-200 hover:border-slate-300";
+const inputLight = "bg-white/60 text-slate-800 placeholder-slate-400 focus:ring-medical-500 focus:border-medical-400";
+const inputDark  = "bg-slate-800 text-white placeholder-slate-400 focus:ring-medical-500";
+
+const inputNormalLight = "border-slate-200 hover:border-slate-300";
+const inputNormalDark  = "border-slate-700 hover:border-slate-600";
 const inputError = "border-red-400 focus:ring-red-400";
 
 export const Input = forwardRef<HTMLInputElement, InputProps>(
-  ({ label, error, hint, className, id, ...props }, ref) => {
+  ({ label, error, hint, className, id, variant = "light", ...props }, ref) => {
     const fieldId = id ?? label?.toLowerCase().replace(/\s+/g, "-");
+    const isDark = variant === "dark";
     return (
       <div className="flex flex-col gap-1">
         {label && (
           <label
             htmlFor={fieldId}
-            className="text-sm font-medium text-slate-700"
+            className={clsx("text-sm font-medium", isDark ? "text-slate-300" : "text-slate-700")}
           >
             {label}
             {props.required && (
@@ -42,7 +49,8 @@ export const Input = forwardRef<HTMLInputElement, InputProps>(
           id={fieldId}
           className={clsx(
             inputBase,
-            error ? inputError : inputNormal,
+            isDark ? inputDark : inputLight,
+            error ? inputError : (isDark ? inputNormalDark : inputNormalLight),
             className
           )}
           {...props}
@@ -59,14 +67,15 @@ export const Input = forwardRef<HTMLInputElement, InputProps>(
 Input.displayName = "Input";
 
 export const Textarea = forwardRef<HTMLTextAreaElement, TextareaProps>(
-  ({ label, error, hint, className, id, ...props }, ref) => {
+  ({ label, error, hint, className, id, variant = "light", ...props }, ref) => {
     const fieldId = id ?? label?.toLowerCase().replace(/\s+/g, "-");
+    const isDark = variant === "dark";
     return (
       <div className="flex flex-col gap-1">
         {label && (
           <label
             htmlFor={fieldId}
-            className="text-sm font-medium text-slate-700"
+            className={clsx("text-sm font-medium", isDark ? "text-slate-300" : "text-slate-700")}
           >
             {label}
             {props.required && (
@@ -80,8 +89,9 @@ export const Textarea = forwardRef<HTMLTextAreaElement, TextareaProps>(
           rows={4}
           className={clsx(
             inputBase,
+            isDark ? inputDark : inputLight,
             "resize-none",
-            error ? inputError : inputNormal,
+            error ? inputError : (isDark ? inputNormalDark : inputNormalLight),
             className
           )}
           {...props}
@@ -104,17 +114,19 @@ interface SelectProps
   hint?: string;
   options: { value: string; label: string }[];
   placeholder?: string;
+  variant?: "light" | "dark";
 }
 
 export const Select = forwardRef<HTMLSelectElement, SelectProps>(
-  ({ label, error, hint, options, placeholder, className, id, ...props }, ref) => {
+  ({ label, error, hint, options, placeholder, className, id, variant = "light", ...props }, ref) => {
     const fieldId = id ?? label?.toLowerCase().replace(/\s+/g, "-");
+    const isDark = variant === "dark";
     return (
       <div className="flex flex-col gap-1">
         {label && (
           <label
             htmlFor={fieldId}
-            className="text-sm font-medium text-slate-700"
+            className={clsx("text-sm font-medium", isDark ? "text-slate-300" : "text-slate-700")}
           >
             {label}
             {props.required && (
@@ -127,8 +139,9 @@ export const Select = forwardRef<HTMLSelectElement, SelectProps>(
           id={fieldId}
           className={clsx(
             inputBase,
-            "cursor-pointer appearance-none bg-white/60",
-            error ? inputError : inputNormal,
+            "cursor-pointer appearance-none",
+            isDark ? inputDark : inputLight,
+            error ? inputError : (isDark ? inputNormalDark : inputNormalLight),
             className
           )}
           {...props}

@@ -59,7 +59,6 @@ type PricingTab = "catalog" | "overrides" | "unmapped";
 // ── Shared helpers ────────────────────────────────────────────────────────────
 
 const fmt = (n: number) => `₦${n.toLocaleString()}`;
-const dark = "bg-slate-800 border-slate-700 text-white placeholder-slate-400 focus:ring-medical-500";
 
 // ── Tab: Test Catalog ─────────────────────────────────────────────────────────
 
@@ -70,6 +69,9 @@ function CatalogTab() {
   const [expandedTest, setExpandedTest] = useState<string | null>(null);
   const [loadingCats, setLoadingCats] = useState(true);
   const [loadingTests, setLoadingTests] = useState(false);
+
+  // Seed state
+  const [seeding, setSeeding] = useState(false);
 
   // New category form
   const [newCatName, setNewCatName] = useState("");
@@ -89,6 +91,10 @@ function CatalogTab() {
   const [editingPrice, setEditingPrice] = useState<string | null>(null);
   const [priceInput, setPriceInput] = useState("");
 
+  // Bulk price
+  const [bulkPrice, setBulkPrice] = useState("");
+  const [applyingBulk, setApplyingBulk] = useState(false);
+
   const fetchCategories = useCallback(async () => {
     setLoadingCats(true);
     const res = await fetch("/api/admin/pricing/categories");
@@ -96,6 +102,19 @@ function CatalogTab() {
     setCategories(data.categories ?? []);
     setLoadingCats(false);
   }, []);
+
+  async function seedCategories() {
+    setSeeding(true);
+    const res = await fetch("/api/admin/pricing/seed", { method: "POST" });
+    if (res.ok) {
+      const d = await res.json();
+      toast.success(`Seeded ${d.total} categories (${d.created} new, ${d.existing} already existed)`);
+      fetchCategories();
+    } else {
+      toast.error("Seed failed");
+    }
+    setSeeding(false);
+  }
 
   const fetchTests = useCallback(async (catId: string) => {
     setLoadingTests(true);
@@ -157,6 +176,26 @@ function CatalogTab() {
       toast.error(d.error ?? "Failed");
     }
     setSavingTest(false);
+  }
+
+  async function applyBulkPrice() {
+    if (!selectedCat) return;
+    const price = parseFloat(bulkPrice);
+    if (isNaN(price) || price < 0) { toast.error("Enter a valid price"); return; }
+    if (!confirm(`Set ALL tests in "${selectedCat.name}" to ₦${price.toLocaleString()}?`)) return;
+    setApplyingBulk(true);
+    const res = await fetch("/api/admin/pricing/tests", {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ action: "bulk_price", category_id: selectedCat.id, base_price: price }),
+    });
+    if (res.ok) {
+      const d = await res.json();
+      toast.success(`Updated ${d.updated} tests`);
+      setBulkPrice("");
+      fetchTests(selectedCat.id);
+    } else toast.error("Bulk update failed");
+    setApplyingBulk(false);
   }
 
   async function savePrice(testId: string) {
@@ -242,9 +281,14 @@ function CatalogTab() {
       <div className="space-y-4">
         <div className="flex items-center justify-between">
           <h3 className="text-white font-semibold">Test Categories</h3>
-          <Button size="sm" variant="secondary" onClick={fetchCategories} loading={loadingCats}>
-            <RefreshCw className="w-3.5 h-3.5" />
-          </Button>
+          <div className="flex gap-2">
+            <Button size="sm" variant="secondary" onClick={seedCategories} loading={seeding}>
+              <Sparkles className="w-3.5 h-3.5" /> Seed 24 Categories
+            </Button>
+            <Button size="sm" variant="secondary" onClick={fetchCategories} loading={loadingCats}>
+              <RefreshCw className="w-3.5 h-3.5" />
+            </Button>
+          </div>
         </div>
 
         {/* New category */}
@@ -254,13 +298,13 @@ function CatalogTab() {
             placeholder="Category name"
             value={newCatName}
             onChange={(e) => setNewCatName(e.target.value)}
-            className={dark}
+            variant="dark"
           />
           <Input
             placeholder="Description (optional)"
             value={newCatDesc}
             onChange={(e) => setNewCatDesc(e.target.value)}
-            className={dark}
+            variant="dark"
           />
           <Button size="sm" onClick={addCategory} loading={addingCat} disabled={!newCatName.trim()}>
             <Plus className="w-3.5 h-3.5" /> Add Category
@@ -312,15 +356,33 @@ function CatalogTab() {
         </Button>
       </div>
 
+      {/* Bulk price row */}
+      <div className="flex items-center gap-2 bg-slate-700/30 rounded-xl px-4 py-2.5">
+        <Tag className="w-3.5 h-3.5 text-slate-400 flex-shrink-0" />
+        <span className="text-xs text-slate-400 flex-shrink-0">Bulk price:</span>
+        <span className="text-slate-500 text-sm flex-shrink-0">₦</span>
+        <input
+          type="number"
+          min={0}
+          placeholder="e.g. 2500"
+          value={bulkPrice}
+          onChange={(e) => setBulkPrice(e.target.value)}
+          className="flex-1 min-w-0 bg-slate-700 border border-slate-600 text-white text-sm px-2 py-1 rounded-lg focus:outline-none focus:ring-1 focus:ring-medical-500 placeholder-slate-500"
+        />
+        <Button size="sm" onClick={applyBulkPrice} loading={applyingBulk} disabled={!bulkPrice}>
+          Apply to all
+        </Button>
+      </div>
+
       {showNewTest && (
         <div className="bg-slate-700/50 rounded-xl p-4 space-y-2">
           <p className="text-xs text-slate-400 font-medium">New Test</p>
           <Input placeholder="Canonical name e.g. Full Blood Count" value={newTestName}
-            onChange={(e) => setNewTestName(e.target.value)} className={dark} />
+            onChange={(e) => setNewTestName(e.target.value)} variant="dark" />
           <Input placeholder="Base price (₦)" value={newTestPrice} type="number"
-            onChange={(e) => setNewTestPrice(e.target.value)} className={dark} />
+            onChange={(e) => setNewTestPrice(e.target.value)} variant="dark" />
           <Input placeholder="Synonyms comma-separated e.g. FBC, CBC, Haemogram"
-            value={newTestSyns} onChange={(e) => setNewTestSyns(e.target.value)} className={dark} />
+            value={newTestSyns} onChange={(e) => setNewTestSyns(e.target.value)} variant="dark" />
           <label className="flex items-center gap-2 text-sm text-slate-300 cursor-pointer">
             <input type="checkbox" checked={newTestRapid} onChange={(e) => setNewTestRapid(e.target.checked)}
               className="rounded" />
