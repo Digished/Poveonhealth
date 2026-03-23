@@ -1842,10 +1842,12 @@ export function LabDashboard({ lab, isOwner = false, roleName = "Lab Owner", can
                                 {req.sex ?? "—"}{req.dob ? ` · ${calcAge(req.dob)} yrs` : ""}
                               </span>
                             </div>
-                            <p className="text-sm text-slate-300 line-clamp-2">
-                              <span className="text-slate-500 font-medium">Tests: </span>
-                              {displayTests(req.tests)}
-                            </p>
+                            <div className="mt-1.5">
+                              <p className="text-xs text-slate-500 font-semibold uppercase tracking-wider mb-1">Tests Requested</p>
+                              <p className="text-sm font-semibold text-white leading-snug line-clamp-2">
+                                {displayTests(req.tests)}
+                              </p>
+                            </div>
                             <div className="flex items-center gap-2 mt-1 flex-wrap">
                               <p className="text-xs text-slate-500 flex items-center gap-1">
                                 <Calendar className="w-3 h-3" />
@@ -1877,10 +1879,12 @@ export function LabDashboard({ lab, isOwner = false, roleName = "Lab Owner", can
                                 {format(new Date(req.created_at), "dd MMM yyyy")}
                               </span>
                             </div>
-                            <p className="mt-1.5 text-xs text-slate-400 line-clamp-1">
-                              <span className="text-slate-500 font-medium">Tests: </span>
-                              {displayTests(req.tests)}
-                            </p>
+                            <div className="mt-1.5">
+                              <p className="text-xs text-slate-500 font-semibold uppercase tracking-wider mb-0.5">Tests</p>
+                              <p className="text-sm font-semibold text-white line-clamp-1">
+                                {displayTests(req.tests)}
+                              </p>
+                            </div>
                             {scheduleLabel(req.schedule) && (
                               <span className="mt-1 inline-flex text-xs bg-emerald-900/40 text-emerald-400 border border-emerald-800/30 px-2 py-0.5 rounded-full">
                                 {scheduleLabel(req.schedule)}
@@ -2352,7 +2356,13 @@ export function LabDashboard({ lab, isOwner = false, roleName = "Lab Owner", can
           );
         })()}
 
-        {/* Lab Profile modal */}
+        </div>
+        )} {/* end mainView === "requests" */}
+
+        {/* Change Password modal */}
+        {changePasswordOpen && <ChangePasswordModal onClose={() => setChangePasswordOpen(false)} />}
+
+        {/* Lab Profile modal — global so it works from any tab */}
         {profileOpen && (
           <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center bg-black/60 backdrop-blur-sm px-0 sm:px-4">
             <div className="w-full sm:max-w-lg bg-slate-900 border border-white/15 rounded-t-2xl sm:rounded-2xl max-h-[92vh] overflow-y-auto animate-slide-up">
@@ -2493,12 +2503,6 @@ export function LabDashboard({ lab, isOwner = false, roleName = "Lab Owner", can
             </div>
           </div>
         )}
-
-        </div>
-        )} {/* end mainView === "requests" */}
-
-        {/* Change Password modal */}
-        {changePasswordOpen && <ChangePasswordModal onClose={() => setChangePasswordOpen(false)} />}
 
         {/* Mobile detail modal */}
         {mainView === "requests" && mobileDetailOpen && selectedRequest && (
