@@ -96,9 +96,96 @@ function TestRow({
   addingSynFor, newSynInput, setNewSynInput, onStartAddSyn, onAddSynonym, onCancelAddSyn,
   showCategory, selected, onToggleSelect, labOverridePrice,
 }: TestRowProps) {
+  const priceEditBlock = editingPrice === test.id ? (
+    <div className="flex items-center gap-1">
+      <span className="text-slate-400 text-sm">₦</span>
+      <input
+        value={priceInput}
+        onChange={(e) => setPriceInput(e.target.value)}
+        className="w-24 bg-slate-600 text-white text-sm px-2 py-1 rounded-lg border border-slate-500 focus:outline-none focus:ring-1 focus:ring-medical-500"
+        autoFocus
+        onKeyDown={(e) => { if (e.key === "Enter") onSavePrice(test.id); if (e.key === "Escape") onCancelPrice(); }}
+      />
+      <button onClick={() => onSavePrice(test.id)} className="text-emerald-400 hover:text-emerald-300"><Check className="w-4 h-4" /></button>
+      <button onClick={onCancelPrice} className="text-slate-400 hover:text-slate-300"><X className="w-4 h-4" /></button>
+    </div>
+  ) : (
+    <button
+      onClick={() => onStartEditPrice(test.id, test.base_price)}
+      className="text-sm text-slate-300 hover:text-white font-mono flex items-center gap-1 group"
+    >
+      <span>{fmt(test.base_price)}</span>
+      {labOverridePrice !== undefined && labOverridePrice !== null && (
+        <span className="text-xs text-amber-400 font-semibold ml-0.5" title="Lab override price">
+          → {fmt(labOverridePrice)}
+        </span>
+      )}
+      <Pencil className="w-3 h-3 opacity-0 group-hover:opacity-100 transition-opacity" />
+    </button>
+  );
+
+  const badgesBlock = (
+    <div className="flex items-center gap-1.5 flex-wrap">
+      {test.is_rapid_test && (
+        <span className="text-xs bg-amber-500/20 text-amber-400 px-1.5 py-0.5 rounded-full">rapid</span>
+      )}
+      {!test.is_active && (
+        <span className="text-xs bg-slate-600 text-slate-400 px-1.5 py-0.5 rounded-full">inactive</span>
+      )}
+      {showCategory && test.category && (
+        <span className="text-xs bg-slate-600/70 text-slate-400 px-1.5 py-0.5 rounded-full">{test.category.name}</span>
+      )}
+    </div>
+  );
+
+  const activeToggle = (
+    <button onClick={() => onToggleActive(test)}
+      className={`w-7 h-7 rounded-full flex items-center justify-center flex-shrink-0 ${test.is_active ? "bg-emerald-500/20 text-emerald-400 hover:bg-emerald-500/30" : "bg-slate-600 text-slate-400 hover:bg-slate-500"}`}>
+      <Check className="w-3.5 h-3.5" />
+    </button>
+  );
+
+  const deleteBtn = (
+    <button onClick={() => onDelete(test.id, test.canonical_name)} className="text-slate-500 hover:text-red-400 flex-shrink-0 p-1">
+      <Trash2 className="w-4 h-4" />
+    </button>
+  );
+
   return (
     <div className={`rounded-xl overflow-hidden ${selected ? "ring-1 ring-medical-500" : ""} ${test.is_active ? "bg-slate-700/50" : "bg-slate-800/30 opacity-60"}`}>
-      <div className="flex items-center gap-3 px-4 py-3">
+      {/* ── Mobile layout (< sm) ── */}
+      <div className="sm:hidden px-3 py-3 space-y-2">
+        {/* Row 1: checkbox + chevron + name + actions */}
+        <div className="flex items-center gap-2">
+          {onToggleSelect !== undefined && (
+            <input
+              type="checkbox"
+              checked={selected ?? false}
+              onChange={onToggleSelect}
+              onClick={(e) => e.stopPropagation()}
+              className="w-4 h-4 rounded accent-medical-500 flex-shrink-0 cursor-pointer"
+            />
+          )}
+          <button onClick={onToggleExpand} className="text-slate-400 hover:text-white flex-shrink-0">
+            {expanded ? <ChevronDown className="w-4 h-4" /> : <ChevronRight className="w-4 h-4" />}
+          </button>
+          <span className="flex-1 text-sm text-white font-medium leading-snug">{test.canonical_name}</span>
+          {activeToggle}
+          {deleteBtn}
+        </div>
+        {/* Row 2: badges + synonyms count */}
+        <div className="flex items-center gap-2 pl-10">
+          {badgesBlock}
+          <span className="text-xs text-slate-500">{test.synonyms.length} syn.</span>
+        </div>
+        {/* Row 3: price edit */}
+        <div className="pl-10">
+          {priceEditBlock}
+        </div>
+      </div>
+
+      {/* ── Desktop layout (≥ sm) ── */}
+      <div className="hidden sm:flex items-center gap-3 px-4 py-3">
         {onToggleSelect !== undefined && (
           <input
             type="checkbox"
@@ -115,55 +202,14 @@ function TestRow({
         <div className="flex-1 min-w-0">
           <div className="flex items-center gap-2 flex-wrap">
             <span className="text-sm text-white font-medium truncate">{test.canonical_name}</span>
-            {test.is_rapid_test && (
-              <span className="text-xs bg-amber-500/20 text-amber-400 px-1.5 py-0.5 rounded-full flex-shrink-0">rapid</span>
-            )}
-            {!test.is_active && (
-              <span className="text-xs bg-slate-600 text-slate-400 px-1.5 py-0.5 rounded-full flex-shrink-0">inactive</span>
-            )}
-            {showCategory && test.category && (
-              <span className="text-xs bg-slate-600/70 text-slate-400 px-1.5 py-0.5 rounded-full flex-shrink-0">{test.category.name}</span>
-            )}
+            {badgesBlock}
           </div>
           <p className="text-xs text-slate-500">{test.synonyms.length} synonym{test.synonyms.length !== 1 ? "s" : ""}</p>
         </div>
 
-        {/* Inline price edit */}
-        {editingPrice === test.id ? (
-          <div className="flex items-center gap-1">
-            <span className="text-slate-400 text-sm">₦</span>
-            <input
-              value={priceInput}
-              onChange={(e) => setPriceInput(e.target.value)}
-              className="w-24 bg-slate-600 text-white text-sm px-2 py-1 rounded-lg border border-slate-500 focus:outline-none focus:ring-1 focus:ring-medical-500"
-              autoFocus
-              onKeyDown={(e) => { if (e.key === "Enter") onSavePrice(test.id); if (e.key === "Escape") onCancelPrice(); }}
-            />
-            <button onClick={() => onSavePrice(test.id)} className="text-emerald-400 hover:text-emerald-300"><Check className="w-4 h-4" /></button>
-            <button onClick={onCancelPrice} className="text-slate-400 hover:text-slate-300"><X className="w-4 h-4" /></button>
-          </div>
-        ) : (
-          <button
-            onClick={() => onStartEditPrice(test.id, test.base_price)}
-            className="text-sm text-slate-300 hover:text-white font-mono flex items-center gap-1 group"
-          >
-            <span>{fmt(test.base_price)}</span>
-            {labOverridePrice !== undefined && labOverridePrice !== null && (
-              <span className="text-xs text-amber-400 font-semibold ml-0.5" title="Lab override price">
-                → {fmt(labOverridePrice)}
-              </span>
-            )}
-            <Pencil className="w-3 h-3 opacity-0 group-hover:opacity-100 transition-opacity" />
-          </button>
-        )}
-
-        <button onClick={() => onToggleActive(test)}
-          className={`w-6 h-6 rounded-full flex items-center justify-center flex-shrink-0 ${test.is_active ? "bg-emerald-500/20 text-emerald-400 hover:bg-emerald-500/30" : "bg-slate-600 text-slate-400 hover:bg-slate-500"}`}>
-          <Check className="w-3 h-3" />
-        </button>
-        <button onClick={() => onDelete(test.id, test.canonical_name)} className="text-slate-500 hover:text-red-400 flex-shrink-0">
-          <Trash2 className="w-3.5 h-3.5" />
-        </button>
+        {priceEditBlock}
+        {activeToggle}
+        {deleteBtn}
       </div>
 
       {expanded && (
