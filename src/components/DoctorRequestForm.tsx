@@ -59,6 +59,7 @@ interface FormData {
   doctor_account_name: string;
   schedule: string;
   diagnosis: string;
+  tests?: string; // used only for error state; rendered via TestTagInput
 }
 
 const INITIAL: FormData = {
