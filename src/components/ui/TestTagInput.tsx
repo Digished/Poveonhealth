@@ -1,0 +1,270 @@
+"use client";
+
+import { useState, useEffect, useRef } from "react";
+import { X } from "lucide-react";
+
+export type TestTag = {
+  name: string;
+  catalog_test_id: string | null;
+  price?: number;
+  category?: string;
+  is_rapid_test?: boolean;
+};
+
+type CatalogResult = {
+  id: string;
+  canonical_name: string;
+  category: string;
+  effective_price: number;
+  is_rapid_test: boolean;
+};
+
+interface TestTagInputProps {
+  value: TestTag[];
+  onChange: (tags: TestTag[]) => void;
+  labId?: string;
+  error?: string;
+  label?: string;
+  disabled?: boolean;
+}
+
+export function TestTagInput({ value, onChange, labId, error, label, disabled }: TestTagInputProps) {
+  const [inputText, setInputText] = useState("");
+  const [results, setResults] = useState<CatalogResult[]>([]);
+  const [activeIdx, setActiveIdx] = useState(-1);
+  const [open, setOpen] = useState(false);
+  const inputRef = useRef<HTMLInputElement>(null);
+  const containerRef = useRef<HTMLDivElement>(null);
+
+  // Debounced catalog search
+  useEffect(() => {
+    const q = inputText.trim();
+    if (q.length < 2) { setResults([]); setOpen(false); return; }
+    const t = setTimeout(async () => {
+      const labParam = labId ? `&lab_id=${encodeURIComponent(labId)}` : "";
+      const res = await fetch(`/api/catalog/search?q=${encodeURIComponent(q)}${labParam}&limit=8`);
+      if (res.ok) {
+        const data = await res.json();
+        setResults(data.results ?? []);
+        setOpen((data.results ?? []).length > 0);
+        setActiveIdx(-1);
+      }
+    }, 250);
+    return () => clearTimeout(t);
+  }, [inputText, labId]);
+
+  // Close dropdown on outside click
+  useEffect(() => {
+    function onMouseDown(e: MouseEvent) {
+      if (containerRef.current && !containerRef.current.contains(e.target as Node)) {
+        setOpen(false);
+      }
+    }
+    document.addEventListener("mousedown", onMouseDown);
+    return () => document.removeEventListener("mousedown", onMouseDown);
+  }, []);
+
+  function addCatalogTag(r: CatalogResult) {
+    if (value.some((t) => t.name.toLowerCase() === r.canonical_name.toLowerCase())) {
+      setInputText(""); setOpen(false); return;
+    }
+    onChange([...value, {
+      name: r.canonical_name,
+      catalog_test_id: r.id,
+      price: r.effective_price,
+      category: r.category,
+      is_rapid_test: r.is_rapid_test,
+    }]);
+    setInputText(""); setResults([]); setOpen(false); setActiveIdx(-1);
+    inputRef.current?.focus();
+  }
+
+  function addFreeTextTag(raw: string) {
+    const name = raw.trim();
+    if (!name) return;
+    if (value.some((t) => t.name.toLowerCase() === name.toLowerCase())) {
+      setInputText(""); return;
+    }
+    onChange([...value, { name, catalog_test_id: null }]);
+    setInputText(""); setResults([]); setOpen(false); setActiveIdx(-1);
+    inputRef.current?.focus();
+  }
+
+  function removeTag(idx: number) {
+    onChange(value.filter((_, i) => i !== idx));
+  }
+
+  function handleKeyDown(e: React.KeyboardEvent<HTMLInputElement>) {
+    if (e.key === "ArrowDown") {
+      e.preventDefault();
+      setActiveIdx((i) => Math.min(i + 1, results.length - 1));
+      return;
+    }
+    if (e.key === "ArrowUp") {
+      e.preventDefault();
+      setActiveIdx((i) => Math.max(i - 1, -1));
+      return;
+    }
+    if (e.key === "Escape") {
+      setOpen(false); setActiveIdx(-1);
+      return;
+    }
+    if (e.key === "Backspace" && !inputText && value.length > 0) {
+      removeTag(value.length - 1);
+      return;
+    }
+    if (e.key === "Enter" || e.key === ",") {
+      e.preventDefault();
+      if (activeIdx >= 0 && results[activeIdx]) {
+        addCatalogTag(results[activeIdx]);
+      } else if (inputText.trim()) {
+        addFreeTextTag(inputText);
+      }
+      return;
+    }
+    if (e.key === "Tab" && inputText.trim()) {
+      e.preventDefault();
+      if (activeIdx >= 0 && results[activeIdx]) {
+        addCatalogTag(results[activeIdx]);
+      } else {
+        addFreeTextTag(inputText);
+      }
+    }
+  }
+
+  const catalogCount = value.filter((t) => t.catalog_test_id).length;
+  const totalPrice = value.reduce((sum, t) => sum + (t.price ?? 0), 0);
+  const hasPrices = value.some((t) => t.price !== undefined && t.price > 0);
+
+  return (
+    <div className="flex flex-col gap-1.5">
+      {label && (
+        <label className="text-sm font-medium text-slate-700">
+          {label}
+          <span className="inline-block w-1.5 h-1.5 rounded-full bg-amber-400 ml-1.5 align-middle" aria-label="required" />
+        </label>
+      )}
+
+      <div ref={containerRef} className="relative">
+        {/* Tag container */}
+        <div
+          onClick={() => !disabled && inputRef.current?.focus()}
+          className={[
+            "min-h-[72px] w-full rounded-xl border bg-white/60 backdrop-blur-sm px-3 py-2.5",
+            "flex flex-wrap gap-1.5 items-start cursor-text transition-all duration-200",
+            error
+              ? "border-red-400 ring-2 ring-red-400"
+              : "border-slate-200 hover:border-slate-300 focus-within:ring-2 focus-within:ring-medical-500 focus-within:border-medical-400",
+          ].join(" ")}
+        >
+          {value.map((tag, i) => (
+            <span
+              key={i}
+              className={[
+                "inline-flex items-center gap-1 text-xs px-2.5 py-1 rounded-full font-medium flex-shrink-0 max-w-full",
+                tag.catalog_test_id
+                  ? "bg-medical-100 text-medical-800 border border-medical-200"
+                  : "bg-slate-100 text-slate-700 border border-slate-200",
+              ].join(" ")}
+            >
+              {tag.is_rapid_test && (
+                <span className="w-1.5 h-1.5 rounded-full bg-amber-400 flex-shrink-0" title="Rapid test" />
+              )}
+              <span className="truncate">{tag.name}</span>
+              {tag.price !== undefined && tag.price > 0 && (
+                <span className={`font-mono flex-shrink-0 ${tag.catalog_test_id ? "text-medical-600" : "text-slate-400"}`}>
+                  ₦{tag.price.toLocaleString()}
+                </span>
+              )}
+              {!disabled && (
+                <button
+                  type="button"
+                  onMouseDown={(e) => { e.preventDefault(); removeTag(i); }}
+                  className="opacity-50 hover:opacity-100 transition-opacity flex-shrink-0 ml-0.5"
+                >
+                  <X className="w-3 h-3" />
+                </button>
+              )}
+            </span>
+          ))}
+
+          <input
+            ref={inputRef}
+            value={inputText}
+            onChange={(e) => { setInputText(e.target.value); }}
+            onKeyDown={handleKeyDown}
+            onFocus={() => { if (results.length > 0) setOpen(true); }}
+            disabled={disabled}
+            placeholder={value.length === 0 ? "Type a test name — select from suggestions or press Enter to add" : ""}
+            className="flex-1 min-w-[160px] bg-transparent text-slate-800 text-sm placeholder-slate-400 outline-none py-0.5 my-0.5"
+          />
+        </div>
+
+        {/* Dropdown */}
+        {open && results.length > 0 && (
+          <div className="absolute z-50 top-full mt-1 left-0 right-0 bg-white border border-slate-200 rounded-xl shadow-xl overflow-hidden">
+            {results.map((r, i) => (
+              <button
+                key={r.id}
+                type="button"
+                onMouseDown={(e) => { e.preventDefault(); addCatalogTag(r); }}
+                className={[
+                  "w-full flex items-center justify-between px-4 py-2.5 text-left text-sm transition-colors",
+                  activeIdx === i ? "bg-medical-50" : "hover:bg-slate-50",
+                ].join(" ")}
+              >
+                <div className="flex items-center gap-2 min-w-0">
+                  {r.is_rapid_test && (
+                    <span className="w-1.5 h-1.5 rounded-full bg-amber-400 flex-shrink-0" title="Rapid test" />
+                  )}
+                  <span className="font-medium text-slate-800 truncate">{r.canonical_name}</span>
+                  <span className="text-xs text-slate-400 flex-shrink-0 hidden sm:inline">{r.category}</span>
+                </div>
+                <span className="text-sm font-mono font-semibold text-medical-700 flex-shrink-0 ml-3">
+                  ₦{r.effective_price.toLocaleString()}
+                </span>
+              </button>
+            ))}
+            {inputText.trim() && (
+              <button
+                type="button"
+                onMouseDown={(e) => { e.preventDefault(); addFreeTextTag(inputText); }}
+                className="w-full flex items-center gap-2 px-4 py-2.5 text-left text-sm text-slate-500 hover:bg-slate-50 border-t border-slate-100 transition-colors"
+              >
+                <span>Add &ldquo;<span className="font-medium text-slate-700">{inputText.trim()}</span>&rdquo; as custom test</span>
+              </button>
+            )}
+          </div>
+        )}
+      </div>
+
+      {/* Summary row */}
+      {value.length > 0 && (
+        <div className="flex items-center justify-between text-xs text-slate-500 px-0.5">
+          <span>
+            {value.length} test{value.length !== 1 ? "s" : ""}
+            {catalogCount > 0 && catalogCount < value.length && (
+              <span className="text-slate-400"> · {value.length - catalogCount} custom</span>
+            )}
+          </span>
+          {hasPrices && totalPrice > 0 && (
+            <span className="font-mono font-semibold text-medical-700">
+              Est. ₦{totalPrice.toLocaleString()}
+            </span>
+          )}
+        </div>
+      )}
+
+      {error && <p className="text-xs text-red-600 font-medium">{error}</p>}
+      {!error && value.length === 0 && (
+        <p className="text-xs text-slate-400">
+          Start typing to search the test catalog, or press{" "}
+          <kbd className="px-1 py-0.5 bg-slate-100 rounded text-slate-600 font-mono text-[10px]">Enter</kbd>
+          {" "}or{" "}
+          <kbd className="px-1 py-0.5 bg-slate-100 rounded text-slate-600 font-mono text-[10px]">,</kbd>
+          {" "}to add any test
+        </p>
+      )}
+    </div>
+  );
+}

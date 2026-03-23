@@ -34,6 +34,7 @@ function VenusIcon({ className }: { className?: string }) {
 }
 import { Button } from "@/components/ui/Button";
 import { Input, Textarea, Select } from "@/components/ui/Input";
+import { TestTagInput, TestTag } from "@/components/ui/TestTagInput";
 import { PhoneInput } from "@/components/PhoneInput";
 import { BankAccountInput } from "@/components/BankAccountInput";
 import { DobInput } from "@/components/DobInput";
@@ -58,7 +59,6 @@ interface FormData {
   doctor_account_name: string;
   schedule: string;
   diagnosis: string;
-  tests: string;
 }
 
 const INITIAL: FormData = {
@@ -79,7 +79,6 @@ const INITIAL: FormData = {
   doctor_account_name: "",
   schedule: "",
   diagnosis: "",
-  tests: "",
 };
 
 const PROFESSIONAL_PREFIXES = [
@@ -902,40 +901,8 @@ export function DoctorRequestForm({
     confidence: "high" | "medium" | "low"; low_confidence_items: string[];
   } | null>(null);
   const [extractionDismissed, setExtractionDismissed] = useState(false);
-  // AI test normalisation state
-  const [normalisingTests, setNormalisingTests] = useState(false);
-
-  async function normaliseTests(raw: string): Promise<void> {
-    // Always do local normalisation first (split/trim/capitalise)
-    const localNorm = raw
-      .split(/[,\n]+/)
-      .map((t) => t.trim())
-      .filter(Boolean)
-      .map((t) => t.charAt(0).toUpperCase() + t.slice(1))
-      .join(", ");
-    set("tests", localNorm);
-
-    // Then try AI correction
-    if (!localNorm.trim()) return;
-    setNormalisingTests(true);
-    try {
-      const res = await fetch("/api/requests/normalize-tests", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ tests: localNorm }),
-      });
-      if (res.ok) {
-        const data = await res.json();
-        if (data.success && Array.isArray(data.normalised) && data.normalised.length > 0) {
-          set("tests", data.normalised.join(", "));
-        }
-      }
-    } catch {
-      // silently fall back to local normalisation
-    } finally {
-      setNormalisingTests(false);
-    }
-  }
+  const [testTags, setTestTags] = useState<TestTag[]>([]);
+  const testsString = testTags.map((t) => t.name).join(", ");
 
   // Critical / ambulance state
   const [isCritical, setIsCritical] = useState(false);
@@ -1090,14 +1057,14 @@ export function DoctorRequestForm({
         errs.patient_email = "Invalid email";
       if (clinicalMode === "type") {
         if (!form.diagnosis.trim()) errs.diagnosis = "Required";
-        if (!form.tests.trim()) errs.tests = "Required";
+        if (testTags.length === 0) errs.tests = "Required";
       }
       if (clinicalMode === "picture") {
         if (!testImageUrl) {
           setImageUploadError("Please upload a test request image");
         } else {
           // Image uploaded — also require tests and diagnosis
-          if (!form.tests.trim()) errs.tests = "Required";
+          if (testTags.length === 0) errs.tests = "Required";
           if (!form.diagnosis.trim()) errs.diagnosis = "Required";
         }
       }
@@ -1169,7 +1136,7 @@ export function DoctorRequestForm({
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           ...form,
-          tests: clinicalMode === "picture" ? (form.tests || "See attached image") : form.tests,
+          tests: clinicalMode === "picture" ? (testsString || "See attached image") : testsString,
           schedule: form.schedule || undefined,
           test_image_url: testImageUrl ?? undefined,
           is_critical: isCritical,
@@ -1203,6 +1170,7 @@ export function DoctorRequestForm({
         onReset={() => {
           setResult(null);
           setForm({ ...INITIAL, lab_id: locations.length > 0 ? locations[defaultLocIdx].lab_id : (preselectedLabId ?? "") });
+          setTestTags([]);
           setStep(startStep);
           setMaxStep(startStep);
           setSelectedLocIdx(defaultLocIdx);
@@ -1260,7 +1228,7 @@ export function DoctorRequestForm({
       const phoneOk = !!form.patient_phone;
       const emailOk = !!form.patient_email && /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(form.patient_email);
       if (clinicalMode === "picture") return phoneOk && emailOk && !!testImageUrl;
-      return phoneOk && emailOk && form.diagnosis.trim().length > 0 && form.tests.trim().length > 0;
+      return phoneOk && emailOk && form.diagnosis.trim().length > 0 && testTags.length > 0;
     }
     if (step === 3) {
       return (
@@ -1640,11 +1608,11 @@ export function DoctorRequestForm({
                 <div className="relative flex gap-4 animate-fade-in-up">
                   <div className="flex flex-col items-center shrink-0 pt-1">
                     <div className={`w-8 h-8 rounded-full flex items-center justify-center text-xs font-bold border-2 transition-all shrink-0 ${
-                      (clinicalMode === "picture" && testImageUrl) || (clinicalMode === "type" && form.diagnosis.trim() && form.tests.trim())
+                      (clinicalMode === "picture" && testImageUrl) || (clinicalMode === "type" && form.diagnosis.trim() && testTags.length > 0)
                         ? "bg-emerald-500 border-emerald-500 text-white"
                         : "bg-white border-medical-400 text-medical-600"
                     }`}>
-                      {(clinicalMode === "picture" && testImageUrl) || (clinicalMode === "type" && form.diagnosis.trim() && form.tests.trim()) ? <Check className="w-4 h-4" /> : "3"}
+                      {(clinicalMode === "picture" && testImageUrl) || (clinicalMode === "type" && form.diagnosis.trim() && testTags.length > 0) ? <Check className="w-4 h-4" /> : "3"}
                     </div>
                   </div>
                   <div className="flex-1 pb-2 min-w-0 space-y-4">
@@ -1684,15 +1652,11 @@ export function DoctorRequestForm({
                           onChange={(e) => set("diagnosis", e.target.value)}
                           error={errors.diagnosis}
                         />
-                        <Textarea
+                        <TestTagInput
                           label="Laboratory Tests Requested"
-                          required
-                          placeholder="e.g. FBC, LFT, Serum electrolytes, Fasting glucose, Urinalysis…"
-                          rows={4}
-                          hint={normalisingTests ? "Checking test names…" : "Separate tests with commas — AI will correct spelling"}
-                          value={form.tests}
-                          onChange={(e) => set("tests", e.target.value)}
-                          onBlur={(e) => { if (e.target.value.trim()) normaliseTests(e.target.value); }}
+                          value={testTags}
+                          onChange={setTestTags}
+                          labId={form.lab_id}
                           error={errors.tests}
                         />
                       </div>
@@ -1853,9 +1817,11 @@ export function DoctorRequestForm({
                                           if (res.success && res.extracted) {
                                             setExtractionResult(res.extracted);
                                             // Auto-fill tests & diagnosis immediately
+                                            if (Array.isArray(res.extracted.tests) && res.extracted.tests.length > 0) {
+                                              setTestTags(res.extracted.tests.map((name: string) => ({ name, catalog_test_id: null })));
+                                            }
                                             setForm((prev) => ({
                                               ...prev,
-                                              tests: res.extracted.tests_text || prev.tests,
                                               diagnosis: res.extracted.diagnosis || prev.diagnosis,
                                               // Only fill patient/doctor fields if currently empty
                                               patient_name: prev.patient_name || res.extracted.patient_name,
@@ -1895,17 +1861,13 @@ export function DoctorRequestForm({
                         {/* Editable review area — shown after extraction so doctor can confirm/correct */}
                         {testImageUrl && !imageUploading && (
                           <div className="space-y-3 pt-1">
-                            <Textarea
+                            <TestTagInput
                               label={imageExtracting ? "Tests Requested (scanning…)" : "Tests Requested"}
-                              required
-                              placeholder={imageExtracting ? "AI is reading the slip…" : "AI will pre-fill this. You can also type or edit here."}
-                              rows={3}
-                              value={form.tests}
-                              onChange={(e) => set("tests", e.target.value)}
-                              onBlur={(e) => { if (e.target.value.trim()) normaliseTests(e.target.value); }}
-                              hint={normalisingTests ? "Checking test names…" : "Review and confirm — AI will also correct spelling"}
-
+                              value={testTags}
+                              onChange={setTestTags}
+                              labId={form.lab_id}
                               error={errors.tests}
+                              disabled={imageExtracting}
                             />
                             <Textarea
                               label="Diagnosis / Clinical Notes"
@@ -2342,7 +2304,7 @@ export function DoctorRequestForm({
                       ? <p className="text-xs font-semibold text-slate-700">{testImageUrl ? "📎 Image attached" : "⚠ No image"}</p>
                       : <>
                           {form.diagnosis && <p className="text-xs text-slate-500 truncate">{form.diagnosis}</p>}
-                          <p className="text-xs font-semibold text-slate-700 truncate">{form.tests}</p>
+                          <p className="text-xs font-semibold text-slate-700 truncate">{testsString}</p>
                         </>
                     }
                     {form.schedule && <p className="text-xs text-medical-600 font-medium mt-0.5">{scheduleLabel(form.schedule)}</p>}
