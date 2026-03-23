@@ -83,6 +83,8 @@ type TestRowProps = {
   onAddSynonym: (id: string) => void;
   onCancelAddSyn: () => void;
   showCategory?: boolean;
+  selected?: boolean;
+  onToggleSelect?: () => void;
 };
 
 function TestRow({
@@ -90,11 +92,20 @@ function TestRow({
   editingPrice, priceInput, setPriceInput, onStartEditPrice, onSavePrice, onCancelPrice,
   onToggleActive, onDelete, onRemoveSynonym,
   addingSynFor, newSynInput, setNewSynInput, onStartAddSyn, onAddSynonym, onCancelAddSyn,
-  showCategory,
+  showCategory, selected, onToggleSelect,
 }: TestRowProps) {
   return (
-    <div className={`rounded-xl overflow-hidden ${test.is_active ? "bg-slate-700/50" : "bg-slate-800/30 opacity-60"}`}>
+    <div className={`rounded-xl overflow-hidden ${selected ? "ring-1 ring-medical-500" : ""} ${test.is_active ? "bg-slate-700/50" : "bg-slate-800/30 opacity-60"}`}>
       <div className="flex items-center gap-3 px-4 py-3">
+        {onToggleSelect !== undefined && (
+          <input
+            type="checkbox"
+            checked={selected ?? false}
+            onChange={onToggleSelect}
+            onClick={(e) => e.stopPropagation()}
+            className="w-3.5 h-3.5 rounded accent-medical-500 flex-shrink-0 cursor-pointer"
+          />
+        )}
         <button onClick={onToggleExpand} className="text-slate-400 hover:text-white flex-shrink-0">
           {expanded ? <ChevronDown className="w-4 h-4" /> : <ChevronRight className="w-4 h-4" />}
         </button>
@@ -188,6 +199,32 @@ function TestRow({
   );
 }
 
+// ── Bulk action bar ───────────────────────────────────────────────────────────
+
+function BulkActionBar({ count, total, onSelectAll, onClear, onDelete, deleting }: {
+  count: number; total: number;
+  onSelectAll: () => void; onClear: () => void;
+  onDelete: () => void; deleting: boolean;
+}) {
+  return (
+    <div className="flex items-center gap-2 bg-medical-900/60 border border-medical-700/50 rounded-lg px-3 py-1.5">
+      <span className="text-xs text-medical-300 font-medium">{count} selected</span>
+      <button onClick={count === total ? onClear : onSelectAll}
+        className="text-xs text-slate-400 hover:text-white underline-offset-2 hover:underline">
+        {count === total ? "Deselect all" : "Select all"}
+      </button>
+      <button onClick={onDelete} disabled={deleting}
+        className="flex items-center gap-1 text-xs bg-red-500/20 text-red-400 hover:bg-red-500/30 px-2 py-0.5 rounded-md disabled:opacity-50">
+        <Trash2 className="w-3 h-3" />
+        {deleting ? "Deleting…" : `Delete ${count}`}
+      </button>
+      <button onClick={onClear} className="text-slate-500 hover:text-white">
+        <X className="w-3.5 h-3.5" />
+      </button>
+    </div>
+  );
+}
+
 // ── Tab: Test Catalog ─────────────────────────────────────────────────────────
 
 function CatalogTab() {
@@ -232,6 +269,10 @@ function CatalogTab() {
   const [addingSynFor, setAddingSynFor] = useState<string | null>(null);
   const [newSynInput, setNewSynInput] = useState("");
 
+  // Bulk selection
+  const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
+  const [bulkDeleting, setBulkDeleting] = useState(false);
+
   const fetchCategories = useCallback(async () => {
     setLoadingCats(true);
     const res = await fetch("/api/admin/pricing/categories");
@@ -266,7 +307,10 @@ function CatalogTab() {
   useEffect(() => {
     if (selectedCat) fetchTests(selectedCat.id);
     else setTests([]);
+    setSelectedIds(new Set());
   }, [selectedCat, fetchTests]);
+
+  useEffect(() => { setSelectedIds(new Set()); }, [globalSearch]);
 
   // Debounced global search
   useEffect(() => {
@@ -426,6 +470,42 @@ function CatalogTab() {
     } else toast.error("Failed to add synonym");
   }
 
+  function toggleSelect(id: string) {
+    setSelectedIds((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id); else next.add(id);
+      return next;
+    });
+  }
+
+  function toggleSelectAll(list: CatalogTest[]) {
+    if (selectedIds.size === list.length && list.length > 0) {
+      setSelectedIds(new Set());
+    } else {
+      setSelectedIds(new Set(list.map((t) => t.id)));
+    }
+  }
+
+  async function bulkDelete() {
+    if (selectedIds.size === 0) return;
+    if (!confirm(`Permanently delete ${selectedIds.size} test${selectedIds.size !== 1 ? "s" : ""}? This cannot be undone.`)) return;
+    setBulkDeleting(true);
+    let deleted = 0;
+    const ids = Array.from(selectedIds);
+    for (const id of ids) {
+      const res = await fetch(`/api/admin/pricing/tests?id=${id}`, { method: "DELETE" });
+      if (res.ok) deleted++;
+    }
+    toast.success(`Deleted ${deleted} test${deleted !== 1 ? "s" : ""}`);
+    setSelectedIds(new Set());
+    if (selectedCat) { fetchTests(selectedCat.id); fetchCategories(); }
+    else if (globalSearch.trim()) {
+      setSearchResults((prev) => prev.filter((t) => !ids.includes(t.id)));
+      fetchCategories();
+    }
+    setBulkDeleting(false);
+  }
+
   async function aiSuggest() {
     if (!selectedCat) return;
     setAiSuggesting(true);
@@ -507,7 +587,22 @@ function CatalogTab() {
               <p className="text-slate-400 text-sm px-1">No tests found for &ldquo;{globalSearch}&rdquo;</p>
             ) : (
               <>
-                <p className="text-xs text-slate-500 px-1">{searchResults.length} result{searchResults.length !== 1 ? "s" : ""}</p>
+                <div className="flex items-center gap-2 px-1 py-0.5">
+                  <input
+                    type="checkbox"
+                    checked={selectedIds.size === searchResults.length && searchResults.length > 0}
+                    onChange={() => toggleSelectAll(searchResults)}
+                    className="w-3.5 h-3.5 rounded accent-medical-500 cursor-pointer"
+                  />
+                  <p className="text-xs text-slate-500 flex-1">{searchResults.length} result{searchResults.length !== 1 ? "s" : ""}</p>
+                  {selectedIds.size > 0 && (
+                    <BulkActionBar count={selectedIds.size} total={searchResults.length}
+                      onSelectAll={() => toggleSelectAll(searchResults)}
+                      onClear={() => setSelectedIds(new Set())}
+                      onDelete={() => bulkDelete()}
+                      deleting={bulkDeleting} />
+                  )}
+                </div>
                 {searchResults.map((test) => (
                   <TestRow
                     key={test.id}
@@ -530,6 +625,8 @@ function CatalogTab() {
                     onAddSynonym={addSynonym}
                     onCancelAddSyn={() => setAddingSynFor(null)}
                     showCategory
+                    selected={selectedIds.has(test.id)}
+                    onToggleSelect={() => toggleSelect(test.id)}
                   />
                 ))}
               </>
@@ -651,6 +748,22 @@ function CatalogTab() {
         <p className="text-slate-400 text-sm">No tests yet. Use AI Suggest or add manually.</p>
       ) : (
         <div className="space-y-1">
+          <div className="flex items-center gap-2 px-1 py-0.5">
+            <input
+              type="checkbox"
+              checked={selectedIds.size === tests.length && tests.length > 0}
+              onChange={() => toggleSelectAll(tests)}
+              className="w-3.5 h-3.5 rounded accent-medical-500 cursor-pointer"
+            />
+            <p className="text-xs text-slate-500 flex-1">{tests.length} test{tests.length !== 1 ? "s" : ""}</p>
+            {selectedIds.size > 0 && (
+              <BulkActionBar count={selectedIds.size} total={tests.length}
+                onSelectAll={() => toggleSelectAll(tests)}
+                onClear={() => setSelectedIds(new Set())}
+                onDelete={() => bulkDelete()}
+                deleting={bulkDeleting} />
+            )}
+          </div>
           {tests.map((test) => (
             <TestRow
               key={test.id}
@@ -672,6 +785,8 @@ function CatalogTab() {
               onStartAddSyn={(id) => { setAddingSynFor(id); setNewSynInput(""); }}
               onAddSynonym={addSynonym}
               onCancelAddSyn={() => setAddingSynFor(null)}
+              selected={selectedIds.has(test.id)}
+              onToggleSelect={() => toggleSelect(test.id)}
             />
           ))}
         </div>
@@ -892,7 +1007,6 @@ function OverridesTab() {
                     </>
                   )}
                 </div>
-              </div>
               </div>
             </div>
           ))}
