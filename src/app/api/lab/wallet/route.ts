@@ -9,24 +9,33 @@ export async function GET(request: NextRequest) {
   if (!auth) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   if (!auth.permissions.can_view_wallet) return NextResponse.json({ error: "Forbidden" }, { status: 403 });
 
-  const [wallet, transactions, revealPriceSetting] = await Promise.all([
+  const [wallet, transactions] = await Promise.all([
     prisma.labWallet.findUnique({ where: { lab_id: auth.lab_id } }),
     prisma.walletTransaction.findMany({
       where: { lab_id: auth.lab_id },
       orderBy: { created_at: "desc" },
       take: 200,
+      include: {
+        request: { select: { test_breakdown: true, tests: true } },
+      },
     }),
-    prisma.systemSetting.findUnique({ where: { key: "reveal_price" } }),
   ]);
 
   return NextResponse.json({
     success: true,
     balance: wallet ? Number(wallet.balance) : 0,
-    reveal_price: revealPriceSetting ? parseFloat(revealPriceSetting.value) : 500,
     transactions: transactions.map((t) => ({
-      ...t,
+      id: t.id,
+      type: t.type,
+      direction: t.direction,
       amount: Number(t.amount),
       balance_after: Number(t.balance_after),
+      description: t.description,
+      actor_email: t.actor_email,
+      created_at: t.created_at,
+      request_id: t.request_id,
+      test_breakdown: t.request?.test_breakdown ?? null,
+      tests_raw: t.request?.tests ?? null,
     })),
   });
 }

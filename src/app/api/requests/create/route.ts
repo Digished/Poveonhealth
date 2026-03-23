@@ -5,6 +5,7 @@ import { generateUniqueCode } from "@/lib/code-generator";
 import { resend, labSender } from "@/lib/email/resend";
 import { doctorRequestConfirmation, patientRequestCode, labNewRequest } from "@/lib/email/templates";
 import { testsToCategories } from "@/lib/test-categories";
+import { resolveTests, totalFromBreakdown } from "@/lib/resolve-tests";
 import { logApiCall } from "@/lib/api-logger";
 
 const CreateRequestSchema = z.object({
@@ -96,6 +97,19 @@ export async function POST(request: NextRequest) {
     // Resolve marketer attribution from pov_ref cookie (first-touch, non-blocking)
     const povRef = request.cookies.get("pov_ref")?.value;
 
+    // Resolve tests → quoted_price + breakdown (non-blocking fallback to null)
+    let quotedPrice: number | null = null;
+    let testBreakdown: unknown = null;
+    if (data.tests && data.tests !== "See attached image") {
+      try {
+        const breakdown = await resolveTests(data.tests, data.lab_id);
+        quotedPrice = totalFromBreakdown(breakdown);
+        testBreakdown = breakdown;
+      } catch (e) {
+        console.error("[resolve-tests] failed at creation:", e);
+      }
+    }
+
     // Insert the request
     const newRequest = await prisma.request.create({
       data: {
@@ -119,6 +133,8 @@ export async function POST(request: NextRequest) {
         schedule: data.schedule || null,
         diagnosis: data.diagnosis || null,
         tests: data.tests || "See attached image",
+        quoted_price: quotedPrice,
+        test_breakdown: testBreakdown ?? undefined,
         is_critical: data.is_critical,
         needs_ambulance: data.needs_ambulance,
         ambulance_notes: data.ambulance_notes || null,

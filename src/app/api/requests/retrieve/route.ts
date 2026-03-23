@@ -6,7 +6,7 @@ import { resend, labSender } from "@/lib/email/resend";
 import { doctorPatientArrived } from "@/lib/email/templates";
 import { logApiCall } from "@/lib/api-logger";
 import { getLabAuth } from "@/lib/lab-auth";
-import { Decimal } from "@prisma/client/runtime/library";
+import { deductWallet } from "@/lib/wallet-deduction";
 
 const RetrieveSchema = z.object({
   code: z.string().min(1).max(50).transform((s) => s.trim().toUpperCase()),
@@ -73,37 +73,7 @@ export async function POST(request: NextRequest) {
       });
 
       // Wallet deduction — non-critical, does not block the reveal
-      try {
-        const priceSetting = await prisma.systemSetting.findUnique({ where: { key: "reveal_price" } });
-        const pricePerTest = new Decimal(priceSetting?.value ?? "500");
-        const testCount = (req.tests && req.tests !== "See attached image")
-          ? Math.max(1, req.tests.split(/[,\n]/).map((t) => t.trim()).filter(Boolean).length)
-          : 1;
-        const totalCharge = pricePerTest.times(testCount);
-
-        await prisma.$transaction(async (tx) => {
-          const current = await tx.labWallet.upsert({
-            where: { lab_id: req.lab_id },
-            create: { lab_id: req.lab_id, balance: new Decimal(0) },
-            update: {},
-          });
-          const newBalance = new Decimal(current.balance).minus(totalCharge);
-          await tx.labWallet.update({ where: { lab_id: req.lab_id }, data: { balance: newBalance } });
-          await tx.walletTransaction.create({
-            data: {
-              lab_id: req.lab_id,
-              type: "deduction",
-              direction: "debit",
-              amount: totalCharge,
-              balance_after: newBalance,
-              description: `Reveal charge — ${req.code} (${req.patient_name ?? "patient"}) · ${testCount} test${testCount !== 1 ? "s" : ""} × ₦${pricePerTest}`,
-              request_id: req.id,
-            },
-          });
-        });
-      } catch (e) {
-        console.error("[wallet] deduction failed on retrieve:", e);
-      }
+      await deductWallet(req);
 
       resend.emails.send({
         from: labSender(req.lab),

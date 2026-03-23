@@ -124,8 +124,9 @@ export function AdminDashboard() {
   const [expandedLabIntegration, setExpandedLabIntegration] = useState<string | null>(null);
   const [branchModalLabId, setBranchModalLabId] = useState<string | null>(null);
   const [walletModalLabId, setWalletModalLabId] = useState<string | null>(null);
-  const [revealPrice, setRevealPrice] = useState<string>("");
-  const [savingRevealPrice, setSavingRevealPrice] = useState(false);
+  const [defaultRequestPrice, setDefaultRequestPrice] = useState<string>("500");
+  const [defaultTestPrice, setDefaultTestPrice] = useState<string>("0");
+  const [savingSettings, setSavingSettings] = useState(false);
 
   type RevenueData = {
     total_credited: number;
@@ -209,7 +210,10 @@ export function AdminDashboard() {
     try {
       const res = await fetch("/api/admin/settings");
       const data = await res.json();
-      if (data.success) setRevealPrice(data.settings.reveal_price ?? "500");
+      if (data.success) {
+        setDefaultRequestPrice(data.settings.default_request_price ?? "500");
+        setDefaultTestPrice(data.settings.default_test_price ?? "0");
+      }
     } catch { /* non-critical */ }
   }, []);
 
@@ -223,29 +227,33 @@ export function AdminDashboard() {
     finally { setRevenueLoading(false); }
   }, []);
 
-  async function handleSaveRevealPrice() {
-    if (!revealPrice || isNaN(parseFloat(revealPrice)) || parseFloat(revealPrice) < 0) {
-      toast.error("Enter a valid price");
+  async function handleSaveSettings() {
+    if (isNaN(parseFloat(defaultRequestPrice)) || parseFloat(defaultRequestPrice) < 0) {
+      toast.error("Enter a valid default request price");
       return;
     }
-    setSavingRevealPrice(true);
+    setSavingSettings(true);
     try {
       const res = await fetch("/api/admin/settings", {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ reveal_price: revealPrice }),
+        body: JSON.stringify({
+          default_request_price: defaultRequestPrice,
+          default_test_price: defaultTestPrice,
+        }),
       });
       const data = await res.json();
       if (data.success) {
-        toast.success("Reveal price updated");
-        setRevealPrice(data.settings.reveal_price);
+        toast.success("Settings saved");
+        setDefaultRequestPrice(data.settings.default_request_price);
+        setDefaultTestPrice(data.settings.default_test_price);
       } else {
         toast.error(data.error ?? "Failed to update");
       }
     } catch {
       toast.error("Network error");
     } finally {
-      setSavingRevealPrice(false);
+      setSavingSettings(false);
     }
   }
 
@@ -1155,36 +1163,52 @@ export function AdminDashboard() {
               <p className="text-xs text-slate-500 mt-0.5">Configure system-wide pricing and behaviour</p>
             </div>
 
-            <div className="bg-white/5 border border-white/10 rounded-2xl p-5 space-y-4">
-              <div className="flex items-center gap-2 mb-1">
+            <div className="bg-white/5 border border-white/10 rounded-2xl p-5 space-y-5">
+              <div className="flex items-center gap-2">
                 <CreditCard className="w-4 h-4 text-violet-400" />
-                <p className="font-semibold text-white text-sm">Reveal Pricing</p>
+                <p className="font-semibold text-white text-sm">Pricing Defaults</p>
               </div>
               <p className="text-xs text-slate-400 leading-relaxed">
-                Each time a lab marks a patient request as <strong className="text-white">Seen</strong>, this amount is deducted from their wallet. The unit is in your local currency (e.g. Naira).
+                These fallback values are used when a request has no catalog-resolved price.
+                Set real per-test prices in the{" "}
+                <a href="/admin/pricing" className="text-violet-400 hover:underline">Pricing Catalog</a>.
               </p>
-              <div className="flex gap-2 items-center">
-                <div className="flex-1">
-                  <label className="text-xs text-slate-400 mb-1 block">Price per reveal</label>
+
+              <div className="space-y-3">
+                <div>
+                  <label className="text-xs text-slate-400 mb-1 block">
+                    Default request charge (₦) — used for image-only or pre-catalog requests
+                  </label>
                   <input
-                    type="number"
-                    min="0"
-                    step="1"
-                    value={revealPrice}
-                    onChange={(e) => setRevealPrice(e.target.value)}
+                    type="number" min="0" step="1"
+                    value={defaultRequestPrice}
+                    onChange={(e) => setDefaultRequestPrice(e.target.value)}
                     className="w-full bg-white/5 border border-white/10 rounded-xl px-3 py-2.5 text-white text-sm placeholder-slate-500 outline-none focus:ring-2 focus:ring-violet-500/50"
                     placeholder="e.g. 500"
                   />
                 </div>
-                <button
-                  onClick={handleSaveRevealPrice}
-                  disabled={savingRevealPrice}
-                  className="mt-5 flex items-center gap-1.5 px-4 py-2.5 rounded-xl bg-violet-600 hover:bg-violet-500 text-white text-sm font-medium transition-colors disabled:opacity-50"
-                >
-                  {savingRevealPrice ? <RefreshCw className="w-4 h-4 animate-spin" /> : <Check className="w-4 h-4" />}
-                  Save
-                </button>
+                <div>
+                  <label className="text-xs text-slate-400 mb-1 block">
+                    Default per-test price (₦) — used when a test has no catalog base price set
+                  </label>
+                  <input
+                    type="number" min="0" step="1"
+                    value={defaultTestPrice}
+                    onChange={(e) => setDefaultTestPrice(e.target.value)}
+                    className="w-full bg-white/5 border border-white/10 rounded-xl px-3 py-2.5 text-white text-sm placeholder-slate-500 outline-none focus:ring-2 focus:ring-violet-500/50"
+                    placeholder="e.g. 0"
+                  />
+                </div>
               </div>
+
+              <button
+                onClick={handleSaveSettings}
+                disabled={savingSettings}
+                className="flex items-center gap-1.5 px-4 py-2.5 rounded-xl bg-violet-600 hover:bg-violet-500 text-white text-sm font-medium transition-colors disabled:opacity-50"
+              >
+                {savingSettings ? <RefreshCw className="w-4 h-4 animate-spin" /> : <Check className="w-4 h-4" />}
+                Save Settings
+              </button>
             </div>
 
             {/* Low balance labs alert */}
