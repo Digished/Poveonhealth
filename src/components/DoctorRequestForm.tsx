@@ -7,7 +7,7 @@ import {
   FlaskConical, User, MapPin, Phone, Stethoscope,
   TestTube2, ChevronRight, ChevronLeft, Building2, Check,
   Search, X, PhoneCall, RefreshCw, ChevronDown, Mail,
-  Award, Info, Layers, CalendarDays, Clock, Pencil, Camera,
+  Award, Info, Layers, Pencil, Camera,
   AlertTriangle, Truck, MessageCircle,
 } from "lucide-react";
 
@@ -59,7 +59,6 @@ interface FormData {
   doctor_bank_name: string;
   doctor_account_number: string;
   doctor_account_name: string;
-  schedule: string;
   diagnosis: string;
   tests?: string; // used only for error state; rendered via TestTagInput
 }
@@ -80,7 +79,6 @@ const INITIAL: FormData = {
   doctor_bank_name: "",
   doctor_account_number: "",
   doctor_account_name: "",
-  schedule: "",
   diagnosis: "",
 };
 
@@ -94,16 +92,6 @@ const STEPS = [
   { title: "Details", icon: User },
 ];
 
-const SCHEDULE_OPTIONS = [
-  { value: "today", label: "Today", desc: "Run the test today", icon: Clock },
-  { value: "this_week", label: "Within a week", desc: "Next 7 days", icon: CalendarDays },
-  { value: "this_month", label: "Within a month", desc: "Next 30 days", icon: CalendarDays },
-  { value: "not_sure", label: "Not sure yet", desc: "Haven't decided", icon: CalendarDays },
-] as const;
-
-function scheduleLabel(value: string | null): string {
-  return SCHEDULE_OPTIONS.find((o) => o.value === value)?.label ?? "—";
-}
 
 const DOCTOR_STORAGE_KEY = "poveon_doctor_profile";
 
@@ -678,7 +666,6 @@ export function DoctorRequestForm({
   const [ambulanceNotes, setAmbulanceNotes] = useState("");
   // Step 4 accordion states
   const [patientInfoOpen, setPatientInfoOpen] = useState(false);
-  const [scheduleOpen, setScheduleOpen] = useState(false);
 
   // Step 3: doctor profile check
   const [docProfileStatus, setDocProfileStatus] = useState<"idle" | "checking" | "found_complete" | "found_partial" | "not_found">("idle");
@@ -895,7 +882,6 @@ export function DoctorRequestForm({
         body: JSON.stringify({
           ...form,
           tests: clinicalMode === "picture" ? (testsString || "See attached image") : testsString,
-          schedule: form.schedule || undefined,
           test_image_url: testImageUrl ?? undefined,
           is_critical: isCritical,
           needs_ambulance: needsAmbulance,
@@ -1595,7 +1581,6 @@ export function DoctorRequestForm({
                                               sex: prev.sex || res.extracted.sex,
                                               doctor_name: prev.doctor_name || res.extracted.doctor_name,
                                               doctor_prefix: prev.doctor_prefix || res.extracted.doctor_prefix,
-                                              schedule: prev.schedule || res.extracted.schedule_hint,
                                             }));
                                           }
                                         })
@@ -1863,47 +1848,6 @@ export function DoctorRequestForm({
               );
             })()}
 
-            {/* Schedule — collapsible */}
-            {(() => {
-              const sl: Record<string, string> = { today: "Today", this_week: "This Week", this_month: "This Month", not_sure: "Not Sure" };
-              return (
-                <div className={`rounded-xl border-2 overflow-hidden transition-colors ${form.schedule ? "border-emerald-200 bg-emerald-50/30" : "border-slate-200"}`}>
-                  <button type="button" onClick={() => setScheduleOpen((v) => !v)} className={`w-full flex items-center justify-between px-4 py-3.5 transition-colors ${form.schedule ? "hover:bg-emerald-50/50" : "hover:bg-slate-50 bg-slate-50/50"}`}>
-                    {form.schedule ? (
-                      <span className="flex items-center gap-2"><Check className="w-4 h-4 text-emerald-500 shrink-0" /><span className="text-sm font-semibold text-slate-700">Schedule: {sl[form.schedule]}</span></span>
-                    ) : (
-                      <div className="flex items-center gap-2">
-                        <CalendarDays className="w-4 h-4 text-slate-400 shrink-0" />
-                        <div className="text-left">
-                          <span className="text-sm font-semibold text-slate-700">Preferred Schedule</span>
-                          <span className="text-xs text-slate-400 ml-2">When will the patient come in?</span>
-                        </div>
-                      </div>
-                    )}
-                    <ChevronDown className={`w-4 h-4 transition-transform shrink-0 ${form.schedule ? "text-emerald-500" : "text-slate-400"} ${scheduleOpen ? "rotate-180" : ""}`} />
-                  </button>
-                  {scheduleOpen && (
-                    <div className={`px-4 pb-4 pt-3 border-t ${form.schedule ? "border-emerald-100 bg-emerald-50/20" : "border-slate-100"}`}>
-                      <div className="grid grid-cols-2 gap-3">
-                        {SCHEDULE_OPTIONS.map((opt) => {
-                          const selected = form.schedule === opt.value;
-                          return (
-                            <button key={opt.value} type="button" onClick={() => { set("schedule", selected ? "" : opt.value); if (!selected) setScheduleOpen(false); }} className={`flex flex-col items-start gap-1.5 p-4 rounded-2xl border-2 transition-all text-left ${selected ? "border-medical-400 bg-medical-50 ring-2 ring-medical-200" : "border-slate-200 bg-white/60 hover:border-slate-300 hover:bg-slate-50"}`}>
-                              <div className={`w-8 h-8 rounded-xl flex items-center justify-center ${selected ? "bg-medical-600" : "bg-slate-100"}`}>
-                                <opt.icon className={`w-4 h-4 ${selected ? "text-white" : "text-slate-400"}`} />
-                              </div>
-                              <span className={`text-sm font-semibold leading-tight ${selected ? "text-medical-800" : "text-slate-700"}`}>{opt.label}</span>
-                              <span className={`text-xs ${selected ? "text-medical-600" : "text-slate-400"}`}>{opt.desc}</span>
-                            </button>
-                          );
-                        })}
-                      </div>
-                    </div>
-                  )}
-                </div>
-              );
-            })()}
-
             {/* Critical condition / ambulance — beautiful cards */}
             <div className="space-y-3">
               <p className="text-xs font-semibold text-slate-400 uppercase tracking-wider">Patient Condition</p>
@@ -1988,7 +1932,6 @@ export function DoctorRequestForm({
                           <p className="text-xs font-semibold text-slate-700 truncate">{testsString}</p>
                         </>
                     }
-                    {form.schedule && <p className="text-xs text-medical-600 font-medium mt-0.5">{scheduleLabel(form.schedule)}</p>}
                   </div>
                 </div>
                 {/* Referrer */}

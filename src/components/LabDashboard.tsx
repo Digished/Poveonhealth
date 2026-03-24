@@ -79,15 +79,6 @@ function displayTests(raw: string | null | undefined): string {
     .join(", ");
 }
 
-function scheduleLabel(value: string | null): string | null {
-  const map: Record<string, string> = {
-    today: "Today",
-    this_week: "Within a week",
-    this_month: "Within a month",
-    not_sure: "Not sure yet",
-  };
-  return value ? (map[value] ?? value) : null;
-}
 
 export function LabDashboard({ lab, isOwner = false, roleName = "Lab Owner", canViewReferrals = false, canViewClients = false, canViewAnalytics = false, canViewActivity = false, canViewFeedback = false, canViewWallet = false }: LabDashboardProps) {
   const { name: labName, logo_url: labLogoUrl } = lab;
@@ -1167,18 +1158,6 @@ export function LabDashboard({ lab, isOwner = false, roleName = "Lab Owner", can
               .sort((a, b) => b[1] - a[1])
               .slice(0, 10);
 
-            // Schedule preferences
-            const schedCounts: Record<string, number> = {
-              today: 0,
-              this_week: 0,
-              this_month: 0,
-              not_sure: 0,
-            };
-            filteredRequests.forEach((r) => {
-              const s = (r as any).schedule ?? "not_sure";
-              if (s in schedCounts) schedCounts[s]++;
-            });
-
             // Tests completed (done) — all-time count per test name
             const doneTestCounts: Record<string, number> = {};
             const doneByMonth: Record<string, Record<string, number>> = {};
@@ -1224,7 +1203,6 @@ export function LabDashboard({ lab, isOwner = false, roleName = "Lab Owner", can
               statusCounts,
               sexCounts,
               top10Tests,
-              schedCounts,
               topDoneTests,
               doneByMonth,
               doneMonthKeys,
@@ -1243,7 +1221,6 @@ export function LabDashboard({ lab, isOwner = false, roleName = "Lab Owner", can
             statusCounts,
             sexCounts,
             top10Tests,
-            schedCounts,
             topDoneTests,
             doneByMonth,
             doneMonthKeys,
@@ -1255,13 +1232,6 @@ export function LabDashboard({ lab, isOwner = false, roleName = "Lab Owner", can
           const maxTest = top10Tests.length > 0 ? top10Tests[0][1] : 1;
           const totalSex = Object.values(sexCounts).reduce((a, b) => a + b, 0) || 1;
           const totalStatus = statusCounts.incoming + statusCounts.seen + statusCounts.done || 1;
-
-          const schedLabels: Record<string, string> = {
-            today: "Today",
-            this_week: "This Week",
-            this_month: "This Month",
-            not_sure: "Not Sure",
-          };
 
           const hasFilter = !!(analyticsMonthFilter || analyticsStatusFilter || analyticsTestFilter);
 
@@ -1508,25 +1478,6 @@ export function LabDashboard({ lab, isOwner = false, roleName = "Lab Owner", can
                   </div>
                 </div>
 
-                {/* Schedule Preferences */}
-                <div className="bg-white/5 border border-white/10 rounded-2xl p-5">
-                  <p className="text-xs font-semibold text-slate-400 uppercase tracking-wider mb-4">
-                    Schedule Preferences
-                  </p>
-                  <div className="flex flex-wrap gap-3">
-                    {Object.entries(schedCounts).map(([key, count]) => (
-                      <div
-                        key={key}
-                        className="flex flex-col items-center bg-white/5 border border-white/10 rounded-xl px-4 py-3 min-w-[80px]"
-                      >
-                        <span className="text-lg font-bold text-white">{count}</span>
-                        <span className="text-xs text-slate-400 mt-0.5 text-center">
-                          {schedLabels[key] ?? key}
-                        </span>
-                      </div>
-                    ))}
-                  </div>
-                </div>
               </div>
 
               {/* Top 10 Tests */}
@@ -1861,12 +1812,7 @@ export function LabDashboard({ lab, isOwner = false, roleName = "Lab Owner", can
                                 <Calendar className="w-3 h-3" />
                                 {format(new Date(req.created_at), "dd MMM yyyy")}
                               </p>
-                              {scheduleLabel(req.schedule) && (
-                                <span className="text-xs bg-emerald-900/40 text-emerald-400 border border-emerald-800/30 px-2 py-0.5 rounded-full">
-                                  {scheduleLabel(req.schedule)}
-                                </span>
-                              )}
-                            </div>
+                              </div>
                           </>
                         ) : (
                           /* Full info for seen/done */
@@ -1893,11 +1839,6 @@ export function LabDashboard({ lab, isOwner = false, roleName = "Lab Owner", can
                                 {displayTests(req.tests)}
                               </p>
                             </div>
-                            {scheduleLabel(req.schedule) && (
-                              <span className="mt-1 inline-flex text-xs bg-emerald-900/40 text-emerald-400 border border-emerald-800/30 px-2 py-0.5 rounded-full">
-                                {scheduleLabel(req.schedule)}
-                              </span>
-                            )}
                           </>
                         )}
                       </div>
@@ -1996,11 +1937,6 @@ export function LabDashboard({ lab, isOwner = false, roleName = "Lab Owner", can
                     )}
                     {selectedRequest.doctor_hospital && (
                       <DetailRow label="Hospital/Clinic">{selectedRequest.doctor_hospital}</DetailRow>
-                    )}
-                    {scheduleLabel(selectedRequest.schedule) && (
-                      <DetailRow label="Preferred Schedule">
-                        <span className="text-emerald-300 font-medium">{scheduleLabel(selectedRequest.schedule)}</span>
-                      </DetailRow>
                     )}
                     <DetailRow label="Submitted">
                       {format(new Date(selectedRequest.created_at), "dd MMM yyyy HH:mm")}
@@ -2604,12 +2540,6 @@ export function LabDashboard({ lab, isOwner = false, roleName = "Lab Owner", can
                       </div>
                     )}
                   </>
-                )}
-                {scheduleLabel(selectedRequest.schedule) && (
-                  <div>
-                    <p className="text-xs text-slate-500 font-medium mb-0.5">Preferred Schedule</p>
-                    <p className="text-emerald-300 font-medium text-sm">{scheduleLabel(selectedRequest.schedule)}</p>
-                  </div>
                 )}
                 <div>
                   <p className="text-xs text-slate-500 font-medium mb-0.5">Submitted</p>

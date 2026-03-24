@@ -342,7 +342,13 @@ export function TestTagInput({ value, onChange, labId, error, label, disabled }:
       )}
 
       {error && <p className="text-xs text-red-600 font-medium">{error}</p>}
-      {!error && value.length === 0 && (
+      {!error && inputText.trim() && (
+        <p className="text-xs text-amber-600 font-medium flex items-center gap-1">
+          <AlertTriangle className="w-3 h-3 shrink-0" />
+          Press <kbd className="px-1 py-0.5 bg-amber-100 rounded text-amber-700 font-mono text-[10px] mx-0.5">Enter</kbd> to add &ldquo;{inputText.trim()}&rdquo;
+        </p>
+      )}
+      {!error && !inputText.trim() && value.length === 0 && (
         <p className="text-xs text-slate-400">
           Start typing to search the test catalog, or press{" "}
           <kbd className="px-1 py-0.5 bg-slate-100 rounded text-slate-600 font-mono text-[10px]">Enter</kbd>

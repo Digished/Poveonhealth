@@ -145,7 +145,6 @@ export function AdminDashboard() {
     topTests: { name: string; total: number; done: number }[];
     topDoctors: { name: string; email: string; prefix: string | null; total: number; done: number }[];
     sexCounts: Record<string, number>;
-    schedCounts: Record<string, number>;
     availableMonths: string[];
     availableTests: string[];
   };
@@ -771,11 +770,6 @@ export function AdminDashboard() {
                       <div className="flex items-center justify-between mt-2">
                         <p className="text-xs text-slate-500 truncate flex-1">{(req.lab as { name: string } | null)?.name ?? "—"}</p>
                         <div className="flex items-center gap-2 shrink-0 ml-2">
-                          {req.schedule && (
-                            <span className="text-xs bg-emerald-900/40 text-emerald-400 border border-emerald-800/30 px-1.5 py-0.5 rounded-full">
-                              {({ today: "Today", this_week: "~1 week", this_month: "~1 month", not_sure: "TBD" } as Record<string, string>)[req.schedule] ?? req.schedule}
-                            </span>
-                          )}
                           <p className="text-xs text-slate-600">{format(new Date(req.created_at), "dd MMM yy")}</p>
                         </div>
                       </div>
@@ -792,7 +786,7 @@ export function AdminDashboard() {
                     <thead>
                       <tr className="border-b border-white/10 text-left">
                         {["Code", "Patient", "Referred by", "Tests", "Lab", "Status", "Date", ""].map((h) => (
-                          <th key={h} className="pb-3 px-3 text-xs text-slate-400 font-semibold uppercase tracking-wider">{h}</th>
+                          <th key={h} className={`pb-3 px-3 text-xs text-slate-400 font-semibold uppercase tracking-wider${h === "Date" || h === "" ? " w-px whitespace-nowrap" : ""}`}>{h}</th>
                         ))}
                       </tr>
                     </thead>
@@ -1185,7 +1179,7 @@ export function AdminDashboard() {
                     <thead>
                       <tr className="border-b border-white/8">
                         {["Time", "Method", "Endpoint", "Status", "Duration"].map((h) => (
-                          <th key={h} className="pb-2 pt-3 px-4 text-left text-xs text-slate-500 font-semibold uppercase tracking-wider">{h}</th>
+                          <th key={h} className={`pb-2 pt-3 px-4 text-left text-xs text-slate-500 font-semibold uppercase tracking-wider${["Time", "Method", "Status", "Duration"].includes(h) ? " w-px whitespace-nowrap" : ""}`}>{h}</th>
                         ))}
                       </tr>
                     </thead>
@@ -1668,21 +1662,6 @@ export function AdminDashboard() {
                           </div>
                         );
                       })}
-                    </div>
-                    {/* Schedule */}
-                    <div className="bg-white/5 border border-white/10 rounded-2xl p-4">
-                      <p className="text-xs font-semibold text-slate-400 uppercase tracking-wider mb-3">Schedule Preference</p>
-                      <div className="flex flex-wrap gap-2">
-                        {Object.entries(labAnalytics.schedCounts).map(([key, cnt]) => {
-                          const lblMap: Record<string, string> = { today: "Today", this_week: "This Week", this_month: "This Month", not_sure: "Not Sure" };
-                          return (
-                            <div key={key} className="flex flex-col items-center bg-white/5 border border-white/10 rounded-xl px-3 py-2 min-w-[70px]">
-                              <span className="text-lg font-bold text-white">{cnt}</span>
-                              <span className="text-xs text-slate-500 text-center mt-0.5">{lblMap[key] ?? key}</span>
-                            </div>
-                          );
-                        })}
-                      </div>
                     </div>
                   </div>
                 </>
