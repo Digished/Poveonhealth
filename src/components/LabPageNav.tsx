@@ -51,7 +51,7 @@ export function LabPageNav({ labName, logoUrl }: LabPageNavProps) {
   const loggedIn = session !== null && session !== "loading";
 
   return (
-    <div className="flex items-center justify-between px-4 py-2.5 border-b border-white/40 bg-white/60 backdrop-blur-md">
+    <div className="sticky top-0 z-50 flex items-center justify-between px-4 py-2.5 border-b border-white/40 bg-white/60 backdrop-blur-md">
       {/* Lab branding */}
       <div className="flex items-center gap-2 min-w-0">
         {logoUrl ? (
@@ -95,7 +95,7 @@ export function LabPageNav({ labName, logoUrl }: LabPageNavProps) {
             </button>
 
             {loginOpen && (
-              <div className="absolute right-0 top-full mt-2 w-56 bg-white border border-slate-200 rounded-2xl shadow-xl overflow-hidden z-50 animate-fade-in-up">
+              <div className="absolute right-0 top-full mt-2 w-56 bg-white border border-slate-200 rounded-2xl shadow-xl overflow-hidden z-[9999] animate-fade-in-up">
                 <p className="text-xs text-slate-400 font-semibold px-4 pt-3 pb-1.5 uppercase tracking-wider">Log in as</p>
 
                 <Link
