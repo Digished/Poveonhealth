@@ -886,7 +886,7 @@ export function DoctorRequestForm({
   const [bankCode, setBankCode] = useState("");
   const [bankVerified, setBankVerified] = useState(false);
   const [maxStep, setMaxStep] = useState(startStep);
-  const [clinicalMode, setClinicalMode] = useState<"type" | "picture">("picture");
+  const [clinicalMode, setClinicalMode] = useState<"type" | "picture">("type");
   // Index into the locations[] array; drives which lab_id is submitted
   const [selectedLocIdx, setSelectedLocIdx] = useState(defaultLocIdx);
   // Image upload state
@@ -1577,16 +1577,6 @@ export function DoctorRequestForm({
                   <div className="flex gap-2 p-1 bg-slate-100 rounded-2xl">
                     <button
                       type="button"
-                      onClick={() => setClinicalMode("picture")}
-                      className={`flex-1 flex items-center justify-center gap-2 py-2.5 px-3 rounded-xl text-sm font-semibold transition-all ${
-                        clinicalMode === "picture" ? "bg-white shadow text-slate-800" : "text-slate-500 hover:text-slate-700"
-                      }`}
-                    >
-                      <Camera className="w-4 h-4" />
-                      Upload
-                    </button>
-                    <button
-                      type="button"
                       onClick={() => setClinicalMode("type")}
                       className={`flex-1 flex items-center justify-center gap-2 py-2.5 px-3 rounded-xl text-sm font-semibold transition-all ${
                         clinicalMode === "type" ? "bg-white shadow text-slate-800" : "text-slate-500 hover:text-slate-700"
@@ -1594,6 +1584,16 @@ export function DoctorRequestForm({
                     >
                       <Stethoscope className="w-4 h-4" />
                       Type
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setClinicalMode("picture")}
+                      className={`flex-1 flex items-center justify-center gap-2 py-2.5 px-3 rounded-xl text-sm font-semibold transition-all ${
+                        clinicalMode === "picture" ? "bg-white shadow text-slate-800" : "text-slate-500 hover:text-slate-700"
+                      }`}
+                    >
+                      <Camera className="w-4 h-4" />
+                      Upload
                     </button>
                   </div>
 
