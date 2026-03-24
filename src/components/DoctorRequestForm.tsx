@@ -1776,11 +1776,20 @@ export function DoctorRequestForm({
                                             // Auto-fill tests & diagnosis immediately
                                             if (Array.isArray(res.extracted.tests) && res.extracted.tests.length > 0) {
                                               // Smart-split each AI-extracted name (handles "CT scan of leg, back and hand")
+                                              const lowConfSet = new Set<string>(
+                                                (res.extracted.low_confidence_items ?? []).map((s: string) => s.toLowerCase())
+                                              );
                                               const expanded = res.extracted.tests.flatMap((n: string) => {
+                                                const isLow = lowConfSet.has(n.toLowerCase());
                                                 const parts = smartSplitTestNames(n);
-                                                return parts.length > 0 ? parts : [n];
+                                                const names = parts.length > 0 ? parts : [n];
+                                                return names.map((name: string) => ({ name, low_confidence: isLow }));
                                               });
-                                              setTestTags(expanded.map((n: string) => ({ name: n, catalog_test_id: null })));
+                                              setTestTags(expanded.map(({ name, low_confidence }: { name: string; low_confidence: boolean }) => ({
+                                                name,
+                                                catalog_test_id: null,
+                                                low_confidence,
+                                              })));
                                             }
                                             setForm((prev) => ({
                                               ...prev,

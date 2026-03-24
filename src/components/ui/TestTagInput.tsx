@@ -2,7 +2,7 @@
 
 import { useState, useEffect, useRef, useCallback } from "react";
 import { createPortal } from "react-dom";
-import { X } from "lucide-react";
+import { X, AlertTriangle } from "lucide-react";
 import { smartSplitTestNames } from "@/lib/smart-split";
 
 export type TestTag = {
@@ -11,6 +11,7 @@ export type TestTag = {
   price?: number;
   category?: string;
   is_rapid_test?: boolean;
+  low_confidence?: boolean;
 };
 
 type CatalogResult = {
@@ -28,6 +29,21 @@ interface TestTagInputProps {
   error?: string;
   label?: string;
   disabled?: boolean;
+}
+
+/**
+ * Rough misspelling heuristic: flags strings with unusual consonant clusters
+ * or a very low vowel ratio — a proxy for "this doesn't look like a real word".
+ */
+function looksLikeMisspelling(s: string): boolean {
+  const word = s.toLowerCase().replace(/[\s\-\/()]/g, "");
+  if (word.length < 4) return false;
+  // 4+ consecutive consonants → suspicious
+  if (/[bcdfghjklmnpqrstvwxyz]{4,}/.test(word)) return true;
+  // Fewer than 15% vowels in a 5+ char word → suspicious
+  const vowels = (word.match(/[aeiou]/g) ?? []).length;
+  if (word.length >= 5 && vowels / word.length < 0.15) return true;
+  return false;
 }
 
 export function TestTagInput({ value, onChange, labId, error, label, disabled }: TestTagInputProps) {
@@ -56,7 +72,6 @@ export function TestTagInput({ value, onChange, labId, error, label, disabled }:
 
   useEffect(() => {
     if (!open) return;
-    // re-position on scroll anywhere (including inside overflow containers)
     window.addEventListener("scroll", updateDropdownPos, true);
     window.addEventListener("resize", updateDropdownPos);
     return () => {
@@ -104,6 +119,7 @@ export function TestTagInput({ value, onChange, labId, error, label, disabled }:
       price: r.effective_price,
       category: r.category,
       is_rapid_test: r.is_rapid_test,
+      low_confidence: false,
     }]);
     setInputText(""); setResults([]); setOpen(false); setActiveIdx(-1);
     inputRef.current?.focus();
@@ -115,14 +131,16 @@ export function TestTagInput({ value, onChange, labId, error, label, disabled }:
     if (value.some((t) => t.name.toLowerCase() === name.toLowerCase())) {
       setInputText(""); return;
     }
-    onChange([...value, { name, catalog_test_id: null }]);
+    // Low confidence when: catalog had suggestions (user ignored them) OR name looks like a typo
+    const low_confidence = results.length > 0 || looksLikeMisspelling(name);
+    onChange([...value, { name, catalog_test_id: null, low_confidence }]);
     setInputText(""); setResults([]); setOpen(false); setActiveIdx(-1);
     inputRef.current?.focus();
   }
 
   /**
-   * Split input text intelligently (handles imaging prefixes + comma/and lists)
-   * and add each resulting test as a separate tag.
+   * Split input text intelligently and add each test as a separate tag.
+   * Falls through to addFreeTextTag for single results (carries results context).
    */
   function addSplitTags(raw: string) {
     const names = smartSplitTestNames(raw);
@@ -131,7 +149,11 @@ export function TestTagInput({ value, onChange, labId, error, label, disabled }:
 
     const newTags = names
       .filter((n) => !value.some((t) => t.name.toLowerCase() === n.toLowerCase()))
-      .map((n) => ({ name: n, catalog_test_id: null as string | null }));
+      .map((n) => ({
+        name: n,
+        catalog_test_id: null as string | null,
+        low_confidence: looksLikeMisspelling(n),
+      }));
     if (newTags.length > 0) onChange([...value, ...newTags]);
     setInputText(""); setResults([]); setOpen(false); setActiveIdx(-1);
     inputRef.current?.focus();
@@ -164,7 +186,7 @@ export function TestTagInput({ value, onChange, labId, error, label, disabled }:
     }
     if (e.key === "Enter") {
       e.preventDefault();
-      e.stopPropagation(); // prevent parent glass-card from advancing to next field
+      e.stopPropagation();
       if (activeIdx >= 0 && results[activeIdx]) {
         addCatalogTag(results[activeIdx]);
       } else if (inputText.trim()) {
@@ -183,6 +205,7 @@ export function TestTagInput({ value, onChange, labId, error, label, disabled }:
   }
 
   const catalogCount = value.filter((t) => t.catalog_test_id).length;
+  const uncertainCount = value.filter((t) => t.low_confidence).length;
 
   // ── Dropdown portal ───────────────────────────────────────────────────────
   const dropdown = open && results.length > 0 && mounted ? createPortal(
@@ -240,7 +263,7 @@ export function TestTagInput({ value, onChange, labId, error, label, disabled }:
       )}
 
       <div ref={containerRef} className="relative">
-        {/* Tag container */}
+        {/* Tag + input container */}
         <div
           onClick={() => !disabled && inputRef.current?.focus()}
           className={[
@@ -254,17 +277,24 @@ export function TestTagInput({ value, onChange, labId, error, label, disabled }:
           {value.map((tag, i) => (
             <span
               key={i}
+              title={tag.low_confidence ? "AI is uncertain about this test name — please verify" : undefined}
               className={[
-                "inline-flex items-center gap-1 text-xs px-2.5 py-1 rounded-full font-medium flex-shrink-0 max-w-full",
-                tag.catalog_test_id
-                  ? "bg-medical-100 text-medical-800 border border-medical-200"
-                  : "bg-slate-100 text-slate-700 border border-slate-200",
+                "inline-flex items-center gap-1 text-xs px-2.5 py-1 rounded-full font-medium max-w-full",
+                tag.low_confidence
+                  ? "bg-amber-100 text-amber-800 border border-amber-300"
+                  : tag.catalog_test_id
+                    ? "bg-medical-100 text-medical-800 border border-medical-200"
+                    : "bg-slate-100 text-slate-700 border border-slate-200",
               ].join(" ")}
             >
-              {tag.is_rapid_test && (
+              {tag.low_confidence && (
+                <AlertTriangle className="w-3 h-3 flex-shrink-0 text-amber-500" />
+              )}
+              {!tag.low_confidence && tag.is_rapid_test && (
                 <span className="w-1.5 h-1.5 rounded-full bg-amber-400 flex-shrink-0" title="Rapid test" />
               )}
-              <span className="truncate">{tag.name}</span>
+              {/* break-words so very long names wrap inside the pill */}
+              <span className="break-words min-w-0">{tag.name}</span>
               {!disabled && (
                 <button
                   type="button"
@@ -289,19 +319,24 @@ export function TestTagInput({ value, onChange, labId, error, label, disabled }:
           />
         </div>
 
-        {/* Dropdown rendered via portal to escape overflow:hidden ancestors */}
         {dropdown}
       </div>
 
       {/* Summary row */}
       {value.length > 0 && (
-        <div className="flex items-center justify-between text-xs text-slate-500 px-0.5">
-          <span>
+        <div className="flex items-center justify-between text-xs px-0.5">
+          <span className="text-slate-500">
             {value.length} test{value.length !== 1 ? "s" : ""}
             {catalogCount > 0 && catalogCount < value.length && (
               <span className="text-slate-400"> · {value.length - catalogCount} custom</span>
             )}
           </span>
+          {uncertainCount > 0 && (
+            <span className="flex items-center gap-1 text-amber-600 font-medium">
+              <AlertTriangle className="w-3 h-3" />
+              {uncertainCount} uncertain — please verify
+            </span>
+          )}
         </div>
       )}
 
