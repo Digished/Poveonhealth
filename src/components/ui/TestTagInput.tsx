@@ -240,7 +240,8 @@ export function TestTagInput({ value, onChange, labId, error, label, disabled }:
           </div>
         </button>
       ))}
-      {inputText.trim() && (
+      {/* Only show "add as custom" when catalog has no matches */}
+      {inputText.trim() && results.length === 0 && (
         <button
           type="button"
           onMouseDown={(e) => { e.preventDefault(); addFreeTextTag(inputText); }}
