@@ -732,20 +732,7 @@ export function labNewRequest({
     ${patientPhone ? `${label("Patient Phone")}${value(patientPhone)}` : ""}
     ${divider}
 
-    <h3 style="margin:0 0 16px;color:#0259a0;font-size:16px;font-weight:600;">Requesting Doctor</h3>
-
-    ${label("Doctor")}
-    ${value(doctorName)}
-
-    ${doctorPhone ? `${label("Phone")}${value(doctorPhone)}` : ""}
-    ${doctorHospital ? `${label("Hospital / Clinic")}${value(doctorHospital)}` : ""}
-
-    ${divider}
-
     <h3 style="margin:0 0 16px;color:#0259a0;font-size:16px;font-weight:600;">Request Details</h3>
-
-    ${label("Tests Requested")}
-    ${value(tests)}
 
     ${diagnosis ? `${label("Diagnosis / Clinical Notes")}${value(diagnosis)}` : ""}
     ${schedule ? `${label("Preferred Schedule")}${value(scheduleLabel[schedule] ?? schedule)}` : ""}
