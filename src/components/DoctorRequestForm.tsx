@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useEffect, useRef, useCallback } from "react";
+import { createPortal } from "react-dom";
 import { toast } from "react-hot-toast";
 import {
   FlaskConical, User, MapPin, Phone, Stethoscope,
