@@ -802,20 +802,20 @@ export function LabDashboard({ lab, isOwner = false, roleName = "Lab Owner", can
                         </div>
 
                         {/* Quick stats */}
-                        <div className="px-5 py-3 flex gap-5 border-b border-white/5 bg-white/3 shrink-0">
-                          <div>
-                            <p className="text-xs text-slate-500">Total Referrals</p>
+                        <div className="px-5 py-3 flex flex-wrap gap-x-5 gap-y-2 border-b border-white/5 bg-white/3 shrink-0">
+                          <div className="shrink-0">
+                            <p className="text-xs text-slate-400">Total Referrals</p>
                             <p className="text-xl font-bold text-white">{doc.total_referrals}</p>
                           </div>
                           {doc.doctor_hospital && (
-                            <div className="min-w-0">
-                              <p className="text-xs text-slate-500">Hospital / Clinic</p>
-                              <p className="text-sm font-semibold text-slate-300 truncate">{doc.doctor_hospital}</p>
+                            <div className="min-w-0 flex-1 max-w-[200px]">
+                              <p className="text-xs text-slate-400">Hospital / Clinic</p>
+                              <p className="text-sm font-semibold text-slate-200 truncate">{doc.doctor_hospital}</p>
                             </div>
                           )}
                           {doc.doctor_phone && (
-                            <div>
-                              <p className="text-xs text-slate-500">Phone</p>
+                            <div className="shrink-0">
+                              <p className="text-xs text-slate-400">Phone</p>
                               <a href={`tel:${doc.doctor_phone}`} className="text-sm text-blue-400 hover:underline flex items-center gap-1">
                                 <Phone className="w-3 h-3" />{doc.doctor_phone}
                               </a>

@@ -1177,10 +1177,12 @@ export function DoctorRequestForm({
           if (e.key !== "Enter") return;
           const target = e.target as HTMLElement;
           if (target.tagName !== "INPUT") return;
+          // Never navigate away from test tag inputs — they handle Enter themselves
+          if ((target as HTMLInputElement).dataset.noEnterNav) return;
           e.preventDefault();
           const inputs = Array.from(
             e.currentTarget.querySelectorAll<HTMLElement>(
-              'input:not([type="hidden"]):not([disabled]), select:not([disabled])'
+              'input:not([type="hidden"]):not([disabled]):not([data-no-enter-nav]), select:not([disabled])'
             )
           );
           const idx = inputs.indexOf(target as HTMLInputElement);

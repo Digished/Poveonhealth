@@ -3837,15 +3837,15 @@ function AdminTransactionsTab({ labs }: { labs: Lab[] }) {
 
       {/* Summary stats */}
       {fetched && rows.length > 0 && (
-        <div className="grid grid-cols-3 gap-3">
+        <div className="grid grid-cols-3 gap-2 md:gap-3">
           {[
-            { label: "Transactions", value: rows.length.toString(), color: "text-white" },
-            { label: "Total Credits", value: `₦${totalCredit.toLocaleString()}`, color: "text-emerald-400" },
-            { label: "Total Debits", value: `₦${totalDebit.toLocaleString()}`, color: "text-rose-400" },
+            { label: "Transactions", value: rows.length.toString(), color: "text-white", bg: "bg-white/5 border-white/10" },
+            { label: "Total Credits", value: `₦${totalCredit.toLocaleString()}`, color: "text-emerald-300", bg: "bg-emerald-500/10 border-emerald-500/20" },
+            { label: "Total Debits", value: `₦${totalDebit.toLocaleString()}`, color: "text-rose-300", bg: "bg-rose-500/10 border-rose-500/20" },
           ].map((s) => (
-            <div key={s.label} className="bg-white/5 border border-white/10 rounded-xl p-3 md:p-4 text-center">
-              <p className={`text-xl md:text-2xl font-bold ${s.color}`}>{s.value}</p>
-              <p className="text-xs text-slate-500 mt-0.5">{s.label}</p>
+            <div key={s.label} className={`border rounded-xl p-3 md:p-4 text-center ${s.bg}`}>
+              <p className={`text-base md:text-xl font-bold ${s.color} break-all tabular-nums`}>{s.value}</p>
+              <p className="text-[11px] text-slate-400 mt-0.5 leading-tight">{s.label}</p>
             </div>
           ))}
         </div>
@@ -3861,8 +3861,8 @@ function AdminTransactionsTab({ labs }: { labs: Lab[] }) {
       ) : !fetched ? null : rows.length === 0 ? (
         <div className="bg-white/5 border border-white/10 rounded-2xl p-10 text-center">
           <CreditCard className="w-10 h-10 text-slate-600 mx-auto mb-3" />
-          <p className="text-slate-400 font-medium">No transactions found</p>
-          <p className="text-xs text-slate-600 mt-1">Try adjusting your filters</p>
+          <p className="text-slate-300 font-medium">No transactions found</p>
+          <p className="text-xs text-slate-500 mt-1">Try adjusting your filters</p>
         </div>
       ) : (
         <div className="space-y-2">
@@ -3870,69 +3870,81 @@ function AdminTransactionsTab({ labs }: { labs: Lab[] }) {
             const tests = getTestList(tx);
             const isExpanded = expandedId === tx.id;
             const isDebit = tx.direction === "debit";
+            const hasDetails = tests.length > 0 || tx.quoted_price != null || tx.actor_email || tx.request_id;
             return (
-              <div key={tx.id} className="bg-white/5 border border-white/10 rounded-xl overflow-hidden">
+              <div key={tx.id} className="bg-white/6 border border-white/12 rounded-xl overflow-hidden">
                 <button
                   type="button"
                   onClick={() => setExpandedId(isExpanded ? null : tx.id)}
-                  className="w-full flex items-center gap-3 px-4 py-3 hover:bg-white/5 transition-colors text-left"
+                  className="w-full flex items-start gap-3 px-4 py-3.5 hover:bg-white/6 transition-colors text-left"
                 >
-                  <div className={`w-8 h-8 rounded-lg flex items-center justify-center shrink-0 ${isDebit ? "bg-rose-500/15" : "bg-emerald-500/15"}`}>
+                  {/* Direction icon */}
+                  <div className={`w-9 h-9 rounded-xl flex items-center justify-center shrink-0 mt-0.5 ${isDebit ? "bg-rose-500/20 border border-rose-500/20" : "bg-emerald-500/20 border border-emerald-500/20"}`}>
                     {isDebit
-                      ? <ArrowDownRight className="w-4 h-4 text-rose-400" />
-                      : <ArrowUpRight className="w-4 h-4 text-emerald-400" />
+                      ? <ArrowDownRight className="w-4 h-4 text-rose-300" />
+                      : <ArrowUpRight className="w-4 h-4 text-emerald-300" />
                     }
                   </div>
+
+                  {/* Main info — stacks nicely on all widths */}
                   <div className="flex-1 min-w-0">
-                    <div className="flex items-center gap-2 flex-wrap">
-                      <span className="text-sm font-semibold text-white truncate">{tx.lab_name}</span>
-                      <span className="text-xs text-slate-500 uppercase tracking-wide font-medium">{tx.type}</span>
+                    <div className="flex items-baseline gap-2 flex-wrap">
+                      <span className="text-sm font-semibold text-white leading-tight">{tx.lab_name}</span>
+                      <span className="text-[11px] text-slate-400 uppercase tracking-wide font-semibold bg-white/8 px-1.5 py-0.5 rounded">{tx.type}</span>
                     </div>
-                    <p className="text-xs text-slate-500 truncate mt-0.5">{tx.description ?? "—"}</p>
+                    {tx.description && (
+                      <p className="text-xs text-slate-400 mt-0.5 leading-snug line-clamp-2">{tx.description}</p>
+                    )}
+                    <p className="text-[11px] text-slate-500 mt-1">{format(new Date(tx.created_at), "dd MMM yyyy · HH:mm")}</p>
                   </div>
-                  <div className="shrink-0 text-right ml-2">
-                    <p className={`text-sm font-bold ${isDebit ? "text-rose-400" : "text-emerald-400"}`}>
-                      {isDebit ? "-" : "+"}₦{tx.amount.toLocaleString()}
+
+                  {/* Amount + chevron */}
+                  <div className="shrink-0 flex flex-col items-end gap-1">
+                    <p className={`text-sm font-bold tabular-nums ${isDebit ? "text-rose-300" : "text-emerald-300"}`}>
+                      {isDebit ? "−" : "+"}₦{tx.amount.toLocaleString()}
                     </p>
-                    <p className="text-xs text-slate-600 mt-0.5">{format(new Date(tx.created_at), "dd MMM yy · HH:mm")}</p>
+                    {hasDetails && (
+                      isExpanded
+                        ? <ChevronUp className="w-3.5 h-3.5 text-slate-400" />
+                        : <ChevronDown className="w-3.5 h-3.5 text-slate-500" />
+                    )}
                   </div>
-                  {(tests.length > 0 || tx.quoted_price) && (
-                    isExpanded ? <ChevronUp className="w-3.5 h-3.5 text-slate-500 shrink-0" /> : <ChevronDown className="w-3.5 h-3.5 text-slate-500 shrink-0" />
-                  )}
                 </button>
 
                 {isExpanded && (
-                  <div className="border-t border-white/8 px-4 py-3 bg-slate-950/30 space-y-2">
-                    <div className="grid grid-cols-2 sm:grid-cols-3 gap-2 text-xs">
+                  <div className="border-t border-white/8 px-4 py-3 bg-slate-950/40 space-y-3">
+                    {/* Key metrics */}
+                    <div className="grid grid-cols-2 gap-x-4 gap-y-2 text-xs">
                       <div>
-                        <p className="text-slate-500">Balance After</p>
+                        <p className="text-slate-500 mb-0.5">Balance After</p>
                         <p className="text-white font-semibold">₦{tx.balance_after.toLocaleString()}</p>
                       </div>
                       {tx.quoted_price != null && (
                         <div>
-                          <p className="text-slate-500">Quoted Price</p>
+                          <p className="text-slate-500 mb-0.5">Quoted Price</p>
                           <p className="text-white font-semibold">₦{tx.quoted_price.toLocaleString()}</p>
                         </div>
                       )}
                       {tx.actor_email && (
-                        <div>
-                          <p className="text-slate-500">Actor</p>
-                          <p className="text-slate-300 font-medium truncate">{tx.actor_email}</p>
+                        <div className="col-span-2">
+                          <p className="text-slate-500 mb-0.5">Processed by</p>
+                          <p className="text-slate-300 font-medium break-all">{tx.actor_email}</p>
                         </div>
                       )}
                       {tx.request_id && (
-                        <div className="col-span-2 sm:col-span-3">
-                          <p className="text-slate-500">Request ID</p>
+                        <div className="col-span-2">
+                          <p className="text-slate-500 mb-0.5">Request ID</p>
                           <p className="text-slate-400 font-mono text-[10px] break-all">{tx.request_id}</p>
                         </div>
                       )}
                     </div>
+                    {/* Tests */}
                     {tests.length > 0 && (
                       <div>
-                        <p className="text-xs text-slate-500 font-medium mb-1.5">Tests</p>
+                        <p className="text-xs text-slate-400 font-semibold uppercase tracking-wider mb-1.5">Tests Performed</p>
                         <div className="flex flex-wrap gap-1.5">
                           {tests.map((t, i) => (
-                            <span key={i} className="text-xs px-2 py-0.5 bg-white/8 border border-white/10 rounded-full text-slate-300">{t}</span>
+                            <span key={i} className="text-xs px-2.5 py-1 bg-white/8 border border-white/12 rounded-full text-slate-200 leading-tight">{t}</span>
                           ))}
                         </div>
                       </div>
