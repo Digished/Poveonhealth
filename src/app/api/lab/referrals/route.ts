@@ -126,13 +126,33 @@ export async function GET(request: NextRequest) {
     });
   }
 
+  // Enrich with live DoctorProfile data for each unique doctor email
+  const uniqueEmails = Array.from(doctorMap.keys());
+  const profiles = await prisma.doctorProfile.findMany({
+    where: { email: { in: uniqueEmails } },
+    select: { email: true, prefix: true, full_name: true, phone: true, hospital: true, bank_name: true, account_number: true, account_name: true },
+  });
+  const profileMap = new Map(profiles.map((p) => [p.email, p]));
+
   const referrals = Array.from(doctorMap.values())
     .sort((a, b) => b.total_referrals - a.total_referrals)
-    .map((d) => ({
-      ...d,
-      tests: Array.from(d.tests).sort(),
-      recent_requests: d.recent_requests,
-    }));
+    .map((d) => {
+      const liveProfile = profileMap.get(d.doctor_email);
+      return {
+        ...d,
+        // Live profile overrides stored request data
+        doctor_name: liveProfile?.full_name || d.doctor_name,
+        doctor_prefix: liveProfile?.prefix || d.doctor_prefix,
+        doctor_phone: liveProfile?.phone || d.doctor_phone,
+        doctor_hospital: liveProfile?.hospital || d.doctor_hospital,
+        doctor_bank_name: liveProfile?.bank_name || d.doctor_bank_name,
+        doctor_account_number: liveProfile?.account_number || d.doctor_account_number,
+        doctor_account_name: liveProfile?.account_name || d.doctor_account_name,
+        profile_complete: !!(liveProfile?.full_name),
+        tests: Array.from(d.tests).sort(),
+        recent_requests: d.recent_requests,
+      };
+    });
 
   // Build available filter options from ALL requests (not just filtered)
   const allMonths = new Set<string>();

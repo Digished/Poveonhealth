@@ -124,9 +124,16 @@ export function doctorRequestConfirmation({
 
     ${divider}
 
-    <p style="margin:0;color:#6b7280;font-size:13px;line-height:1.6;">
+    <p style="margin:0 0 20px;color:#6b7280;font-size:13px;line-height:1.6;">
       The patient should present this code at the laboratory reception. You will receive email notifications when the patient arrives and when tests are completed.
     </p>
+
+    <div style="text-align:center;margin:0 0 8px;">
+      <a href="https://poveon.com/doc-login/dashboard" style="display:inline-block;background:#0259a0;color:#ffffff;text-decoration:none;padding:13px 28px;border-radius:10px;font-weight:700;font-size:14px;letter-spacing:0.2px;">
+        View My Dashboard
+      </a>
+    </div>
+    <p style="text-align:center;margin:0;color:#9ca3af;font-size:12px;">Track all your referrals and results in one place.</p>
   `, brand);
 }
 
@@ -732,20 +739,7 @@ export function labNewRequest({
     ${patientPhone ? `${label("Patient Phone")}${value(patientPhone)}` : ""}
     ${divider}
 
-    <h3 style="margin:0 0 16px;color:#0259a0;font-size:16px;font-weight:600;">Requesting Doctor</h3>
-
-    ${label("Doctor")}
-    ${value(doctorName)}
-
-    ${doctorPhone ? `${label("Phone")}${value(doctorPhone)}` : ""}
-    ${doctorHospital ? `${label("Hospital / Clinic")}${value(doctorHospital)}` : ""}
-
-    ${divider}
-
     <h3 style="margin:0 0 16px;color:#0259a0;font-size:16px;font-weight:600;">Request Details</h3>
-
-    ${label("Tests Requested")}
-    ${value(tests)}
 
     ${diagnosis ? `${label("Diagnosis / Clinical Notes")}${value(diagnosis)}` : ""}
     ${schedule ? `${label("Preferred Schedule")}${value(scheduleLabel[schedule] ?? schedule)}` : ""}

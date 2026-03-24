@@ -13,16 +13,28 @@ export async function GET(req: NextRequest) {
       return NextResponse.json({ error: "Session expired. Please log in again." }, { status: 401 });
     }
 
-    const requests = await prisma.request.findMany({
-      where: { doctor_email: session.doctor_email },
-      orderBy: { created_at: "desc" },
-      include: { lab: { select: { id: true, name: true, address: true, phones: true, logo_url: true, whatsapp: true } } },
-    });
+    const [requests, profile] = await Promise.all([
+      prisma.request.findMany({
+        where: { doctor_email: session.doctor_email },
+        orderBy: { created_at: "desc" },
+        include: { lab: { select: { id: true, name: true, address: true, phones: true, logo_url: true, whatsapp: true } } },
+      }),
+      prisma.doctorProfile.findUnique({ where: { email: session.doctor_email } }),
+    ]);
 
     return NextResponse.json({
       success: true,
       doctor_email: session.doctor_email,
       requests,
+      profile: profile ? {
+        prefix: profile.prefix ?? null,
+        full_name: profile.full_name ?? null,
+        phone: profile.phone ?? null,
+        hospital: profile.hospital ?? null,
+        bank_name: profile.bank_name ?? null,
+        account_number: profile.account_number ?? null,
+        account_name: profile.account_name ?? null,
+      } : null,
     });
   } catch (err) {
     console.error("[doc-login/me]", err);

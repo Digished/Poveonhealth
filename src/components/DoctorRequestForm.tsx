@@ -40,6 +40,7 @@ import { PhoneInput } from "@/components/PhoneInput";
 import { BankAccountInput } from "@/components/BankAccountInput";
 import { DobInput } from "@/components/DobInput";
 import { SuccessScreen } from "@/components/SuccessScreen";
+import { PROFESSIONAL_PREFIXES, PrefixSelectModal, PrefixSelect } from "@/components/PrefixSelect";
 import type { Lab, CreateRequestResponse } from "@/lib/types";
 
 interface FormData {
@@ -83,242 +84,7 @@ const INITIAL: FormData = {
   diagnosis: "",
 };
 
-const PROFESSIONAL_PREFIXES = [
-  { value: "Dr.", label: "Dr. — Medical Doctor / Dentist" },
-  { value: "Prof.", label: "Prof. — Professor / Specialist" },
-  { value: "Nurse", label: "Nurse — Registered Nurse" },
-  { value: "Pharm.", label: "Pharm. — Pharmacist" },
-  { value: "CHEW", label: "CHEW — Community Health Extension Worker" },
-  { value: "CHO", label: "CHO — Community Health Officer" },
-  { value: "PT", label: "PT — Physiotherapist" },
-  { value: "OT", label: "OT — Occupational Therapist" },
-  { value: "Optom.", label: "Optom. — Optometrist" },
-  { value: "MW", label: "MW — Midwife" },
-  { value: "HO", label: "HO — House Officer" },
-  { value: "MO", label: "MO — Medical Officer" },
-  { value: "RN", label: "RN — Registered Nurse" },
-  { value: "DVM", label: "DVM — Veterinarian" },
-];
 
-function PrefixSelectModal({
-  value,
-  onChange,
-  onClose,
-}: {
-  value: string;
-  onChange: (v: string) => void;
-  onClose: () => void;
-}) {
-  const [query, setQuery] = useState("");
-  const searchRef = useRef<HTMLInputElement>(null);
-  const containerRef = useRef<HTMLDivElement>(null);
-
-  useEffect(() => {
-    const prev = document.body.style.overflow;
-    document.body.style.overflow = "hidden";
-    return () => { document.body.style.overflow = prev; };
-  }, []);
-
-  useEffect(() => {
-    setTimeout(() => searchRef.current?.focus(), 80);
-  }, []);
-
-  // Keep sheet above the on-screen keyboard on iOS/Android
-  useEffect(() => {
-    const vv = window.visualViewport;
-    if (!vv) return;
-    function sync() {
-      if (!containerRef.current) return;
-      containerRef.current.style.height = `${vv!.height}px`;
-      containerRef.current.style.top = `${vv!.offsetTop}px`;
-    }
-    vv.addEventListener("resize", sync);
-    vv.addEventListener("scroll", sync);
-    sync();
-    return () => {
-      vv.removeEventListener("resize", sync);
-      vv.removeEventListener("scroll", sync);
-    };
-  }, []);
-
-  const q = query.trim().toLowerCase();
-  const filtered = q
-    ? PROFESSIONAL_PREFIXES.filter(
-        (p) =>
-          p.value.toLowerCase().includes(q) ||
-          p.label.toLowerCase().includes(q)
-      )
-    : PROFESSIONAL_PREFIXES;
-
-  function select(v: string) {
-    onChange(v);
-    onClose();
-  }
-
-  const modal = (
-    <div
-      ref={containerRef}
-      className="fixed inset-x-0 top-0 z-[9999] flex flex-col justify-end sm:justify-center sm:items-center"
-      style={{ height: "100dvh" }}
-      aria-modal="true"
-      role="dialog"
-      aria-label="Select title or prefix"
-    >
-      {/* Backdrop */}
-      <div
-        className="absolute inset-0 bg-black/40 backdrop-blur-[2px]"
-        onClick={onClose}
-        aria-hidden="true"
-      />
-
-      {/* Sheet */}
-      <div className="relative w-full sm:w-[440px] sm:mx-4 bg-white sm:rounded-2xl rounded-t-2xl shadow-2xl flex flex-col max-h-[90%] sm:max-h-[540px] animate-in slide-in-from-bottom-4 sm:zoom-in-95 duration-200">
-        {/* Handle (mobile only) */}
-        <div className="sm:hidden flex justify-center pt-3 pb-1">
-          <div className="w-10 h-1 rounded-full bg-slate-200" />
-        </div>
-
-        {/* Header */}
-        <div className="flex items-center justify-between px-5 py-4 border-b border-slate-100">
-          <div>
-            <h2 className="text-base font-semibold text-slate-800">Title / Prefix</h2>
-            <p className="text-xs text-slate-400 mt-0.5">Select your professional title</p>
-          </div>
-          <button
-            type="button"
-            onClick={onClose}
-            className="p-1.5 rounded-lg hover:bg-slate-100 transition-colors text-slate-500 hover:text-slate-700"
-            aria-label="Close"
-          >
-            <X className="w-5 h-5" />
-          </button>
-        </div>
-
-        {/* Search */}
-        <div className="px-4 py-3 border-b border-slate-100">
-          <div className="relative">
-            <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400 pointer-events-none" />
-            <input
-              ref={searchRef}
-              type="text"
-              placeholder="Search by title or role…"
-              value={query}
-              onChange={(e) => setQuery(e.target.value)}
-              onKeyDown={(e) => {
-                if (e.key === "Escape") onClose();
-                if (e.key === "Enter" && filtered.length === 1) select(filtered[0].value);
-              }}
-              className="w-full rounded-xl border border-slate-200 bg-slate-50 pl-9 pr-4 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-medical-500 focus:border-medical-400 placeholder-slate-400"
-            />
-          </div>
-        </div>
-
-        {/* Option grid */}
-        <div className="overflow-y-auto overscroll-contain p-4">
-          {filtered.length === 0 ? (
-            <p className="py-8 text-sm text-slate-400 text-center">No match found</p>
-          ) : (
-            <div className="grid grid-cols-2 gap-2">
-              {filtered.map((p) => {
-                const isSelected = p.value === value;
-                const desc = p.label.split(" — ")[1] ?? "";
-                return (
-                  <button
-                    key={p.value}
-                    type="button"
-                    onClick={() => select(p.value)}
-                    className={`flex flex-col items-start px-4 py-3.5 rounded-xl border-2 text-left transition-all active:scale-[0.97] ${
-                      isSelected
-                        ? "border-medical-400 bg-medical-50"
-                        : "border-slate-200 hover:border-medical-200 hover:bg-slate-50"
-                    }`}
-                  >
-                    <span className={`text-base font-bold leading-tight ${isSelected ? "text-medical-700" : "text-slate-800"}`}>
-                      {p.value}
-                    </span>
-                    <span className={`text-xs mt-1 leading-tight ${isSelected ? "text-medical-500" : "text-slate-400"}`}>
-                      {desc}
-                    </span>
-                    {isSelected && (
-                      <Check className="w-3.5 h-3.5 text-medical-500 mt-1.5 self-end" />
-                    )}
-                  </button>
-                );
-              })}
-            </div>
-          )}
-        </div>
-
-        {/* iOS safe area */}
-        <div className="sm:hidden" style={{ paddingBottom: "env(safe-area-inset-bottom, 0px)" }} />
-      </div>
-    </div>
-  );
-
-  return createPortal(modal, document.body);
-}
-
-function PrefixSelect({
-  value,
-  onChange,
-}: {
-  value: string;
-  onChange: (v: string) => void;
-}) {
-  const [open, setOpen] = useState(false);
-  const selected = PROFESSIONAL_PREFIXES.find((p) => p.value === value);
-
-  return (
-    <div className="flex flex-col gap-1">
-      <label className="text-sm font-medium text-slate-700">
-        Title / Prefix <span className="inline-block w-1.5 h-1.5 rounded-full bg-amber-400 ml-0.5 align-middle" aria-label="required" />
-      </label>
-
-      {selected ? (
-        <div className="w-full rounded-xl border border-medical-300 bg-medical-50 px-4 py-2.5 flex items-center justify-between gap-3">
-          <div className="min-w-0">
-            <span className="text-sm font-semibold text-medical-800">{selected.value}</span>
-          </div>
-          <div className="flex items-center gap-0.5 shrink-0">
-            <button
-              type="button"
-              onClick={() => setOpen(true)}
-              className="p-1.5 rounded-lg hover:bg-medical-100 text-medical-400 hover:text-medical-700 transition-colors"
-              aria-label="Change title"
-            >
-              <Pencil className="w-3.5 h-3.5" />
-            </button>
-            <button
-              type="button"
-              onClick={() => onChange("")}
-              className="p-1.5 rounded-lg hover:bg-medical-100 text-medical-400 hover:text-medical-700 transition-colors"
-              aria-label="Clear title"
-            >
-              <X className="w-3.5 h-3.5" />
-            </button>
-          </div>
-        </div>
-      ) : (
-        <button
-          type="button"
-          onClick={() => setOpen(true)}
-          className="w-full text-left rounded-xl border border-slate-200 bg-white px-4 py-2.5 flex items-center justify-between gap-2 hover:border-medical-300 hover:bg-medical-50/30 transition-colors"
-        >
-          <span className="text-sm text-slate-400">Select title or prefix (Dr., Nurse…)</span>
-          <ChevronDown className="w-4 h-4 text-slate-300 shrink-0" />
-        </button>
-      )}
-
-      {open && (
-        <PrefixSelectModal
-          value={value}
-          onChange={onChange}
-          onClose={() => setOpen(false)}
-        />
-      )}
-    </div>
-  );
-}
 
 
 const STEPS = [
@@ -886,7 +652,7 @@ export function DoctorRequestForm({
   const [bankCode, setBankCode] = useState("");
   const [bankVerified, setBankVerified] = useState(false);
   const [maxStep, setMaxStep] = useState(startStep);
-  const [clinicalMode, setClinicalMode] = useState<"type" | "picture">("picture");
+  const [clinicalMode, setClinicalMode] = useState<"type" | "picture">("type");
   // Index into the locations[] array; drives which lab_id is submitted
   const [selectedLocIdx, setSelectedLocIdx] = useState(defaultLocIdx);
   // Image upload state
@@ -913,6 +679,10 @@ export function DoctorRequestForm({
   // Step 4 accordion states
   const [patientInfoOpen, setPatientInfoOpen] = useState(false);
   const [scheduleOpen, setScheduleOpen] = useState(false);
+
+  // Step 3: doctor profile check
+  const [docProfileStatus, setDocProfileStatus] = useState<"idle" | "checking" | "found_complete" | "found_partial" | "not_found">("idle");
+  const [docProfileInfo, setDocProfileInfo] = useState<{ prefix: string | null; full_name: string | null; hospital: string | null } | null>(null);
 
   // Auto-fill from patient profile when phone is entered
   useEffect(() => {
@@ -955,6 +725,34 @@ export function DoctorRequestForm({
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [form.patient_email]);
 
+  // Step 3: debounced doctor email profile check
+  useEffect(() => {
+    const email = form.doctor_email.trim();
+    const valid = /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email);
+    if (!valid) {
+      setDocProfileStatus("idle");
+      setDocProfileInfo(null);
+      return;
+    }
+    setDocProfileStatus("checking");
+    const timer = setTimeout(() => {
+      fetch(`/api/doc-profile/check?email=${encodeURIComponent(email)}`)
+        .then((r) => r.ok ? r.json() : null)
+        .then((data) => {
+          if (!data) { setDocProfileStatus("not_found"); return; }
+          if (data.exists) {
+            setDocProfileInfo({ prefix: data.prefix, full_name: data.full_name, hospital: data.hospital });
+            setDocProfileStatus(data.profile_complete ? "found_complete" : "found_partial");
+          } else {
+            setDocProfileInfo(null);
+            setDocProfileStatus("not_found");
+          }
+        })
+        .catch(() => setDocProfileStatus("not_found"));
+    }, 600);
+    return () => clearTimeout(timer);
+  }, [form.doctor_email]); // eslint-disable-line react-hooks/exhaustive-deps
+
   const fetchLabs = useCallback(() => {
     setLabsLoading(true);
     fetch("/api/labs")
@@ -986,35 +784,19 @@ export function DoctorRequestForm({
     return () => main.removeEventListener("scroll", onScroll);
   }, []);
 
-  // Load saved referrer profile from localStorage
+  // Load saved referrer email from localStorage (pre-fills Step 3)
   function loadSavedProfile() {
     try {
       const raw = localStorage.getItem(DOCTOR_STORAGE_KEY);
       if (raw) {
-        const profile = JSON.parse(raw) as { prefix: string; name: string; email: string; phone: string; hospital: string; bankName: string; bankCode: string; accountNumber: string; accountName: string };
-        if (profile.name || profile.email) {
-          setSavedProfile(profile);
-          setBankOpen(false);
-          if (profile.bankCode) setBankCode(profile.bankCode);
-          if (profile.bankCode && profile.accountNumber && profile.accountName) {
-            setBankVerified(true);
-          }
-          setForm((prev) => ({
-            ...prev,
-            doctor_prefix: profile.prefix || "",
-            doctor_name: profile.name || "",
-            doctor_email: profile.email || "",
-            doctor_phone: profile.phone || "",
-            doctor_hospital: profile.hospital || "",
-            doctor_bank_name: profile.bankName || "",
-            doctor_account_number: profile.accountNumber || "",
-            doctor_account_name: profile.accountName || "",
-          }));
+        const profile = JSON.parse(raw) as { email?: string; prefix?: string; name?: string };
+        if (profile.email) {
+          setSavedProfile(profile as { prefix: string; name: string; email: string; phone: string; hospital: string; bankName: string; bankCode: string; accountNumber: string; accountName: string });
+          setForm((prev) => ({ ...prev, doctor_email: profile.email || "" }));
           return;
         }
       }
     } catch { /* ignore storage errors */ }
-    // No saved profile
     setSavedProfile(null);
   }
 
@@ -1028,22 +810,9 @@ export function DoctorRequestForm({
   function clearDoctorProfile() {
     try { localStorage.removeItem(DOCTOR_STORAGE_KEY); } catch { /* ignore */ }
     setSavedProfile(null);
-    setDoctorEditing(false);
-    setDoctorOptionalOpen(false);
-    setBankOpen(true); // Re-open bank section for fresh entry
-    setBankCode("");
-    setBankVerified(false);
-    setForm((prev) => ({
-      ...prev,
-      doctor_prefix: "",
-      doctor_name: "",
-      doctor_email: "",
-      doctor_phone: "",
-      doctor_hospital: "",
-      doctor_bank_name: "",
-      doctor_account_number: "",
-      doctor_account_name: "",
-    }));
+    setDocProfileStatus("idle");
+    setDocProfileInfo(null);
+    setForm((prev) => ({ ...prev, doctor_email: "" }));
   }
 
   function validateStep(s: number): boolean {
@@ -1072,13 +841,9 @@ export function DoctorRequestForm({
       }
     }
     if (s === 3) {
-      if (!form.doctor_prefix.trim()) errs.doctor_prefix = "Please select a title";
-      if (!form.doctor_name.trim()) errs.doctor_name = "Required";
-      if (!form.doctor_email.trim()) errs.doctor_email = "Required";
+      if (!form.doctor_email.trim()) errs.doctor_email = "Email is required";
       else if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(form.doctor_email))
-        errs.doctor_email = "Invalid email";
-      if (!form.doctor_phone.trim()) errs.doctor_phone = "Required";
-      if (!form.doctor_hospital.trim()) errs.doctor_hospital = "Required";
+        errs.doctor_email = "Invalid email address";
     }
     setErrors(errs);
     return Object.keys(errs).length === 0;
@@ -1086,17 +851,8 @@ export function DoctorRequestForm({
 
   function persistDoctorProfile() {
     try {
-      localStorage.setItem(DOCTOR_STORAGE_KEY, JSON.stringify({
-        prefix: form.doctor_prefix,
-        name: form.doctor_name,
-        email: form.doctor_email,
-        phone: form.doctor_phone,
-        hospital: form.doctor_hospital,
-        bankName: form.doctor_bank_name,
-        bankCode: bankCode,
-        accountNumber: form.doctor_account_number,
-        accountName: form.doctor_account_name,
-      }));
+      // Only save email — all other profile data lives in the dashboard
+      localStorage.setItem(DOCTOR_STORAGE_KEY, JSON.stringify({ email: form.doctor_email }));
     } catch { /* ignore storage errors */ }
   }
 
@@ -1234,12 +990,8 @@ export function DoctorRequestForm({
     }
     if (step === 3) {
       return (
-        form.doctor_prefix.trim().length > 0 &&
-        form.doctor_name.trim().length > 0 &&
         form.doctor_email.trim().length > 0 &&
-        /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(form.doctor_email) &&
-        form.doctor_phone.trim().length > 0 &&
-        form.doctor_hospital.trim().length > 0
+        /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(form.doctor_email)
       );
     }
     return true; // step 4 optional
@@ -1577,16 +1329,6 @@ export function DoctorRequestForm({
                   <div className="flex gap-2 p-1 bg-slate-100 rounded-2xl">
                     <button
                       type="button"
-                      onClick={() => setClinicalMode("picture")}
-                      className={`flex-1 flex items-center justify-center gap-2 py-2.5 px-3 rounded-xl text-sm font-semibold transition-all ${
-                        clinicalMode === "picture" ? "bg-white shadow text-slate-800" : "text-slate-500 hover:text-slate-700"
-                      }`}
-                    >
-                      <Camera className="w-4 h-4" />
-                      Upload
-                    </button>
-                    <button
-                      type="button"
                       onClick={() => setClinicalMode("type")}
                       className={`flex-1 flex items-center justify-center gap-2 py-2.5 px-3 rounded-xl text-sm font-semibold transition-all ${
                         clinicalMode === "type" ? "bg-white shadow text-slate-800" : "text-slate-500 hover:text-slate-700"
@@ -1594,6 +1336,16 @@ export function DoctorRequestForm({
                     >
                       <Stethoscope className="w-4 h-4" />
                       Type
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setClinicalMode("picture")}
+                      className={`flex-1 flex items-center justify-center gap-2 py-2.5 px-3 rounded-xl text-sm font-semibold transition-all ${
+                        clinicalMode === "picture" ? "bg-white shadow text-slate-800" : "text-slate-500 hover:text-slate-700"
+                      }`}
+                    >
+                      <Camera className="w-4 h-4" />
+                      Upload
                     </button>
                   </div>
 
@@ -1776,11 +1528,63 @@ export function DoctorRequestForm({
                                             // Auto-fill tests & diagnosis immediately
                                             if (Array.isArray(res.extracted.tests) && res.extracted.tests.length > 0) {
                                               // Smart-split each AI-extracted name (handles "CT scan of leg, back and hand")
+                                              const lowConfSet = new Set<string>(
+                                                (res.extracted.low_confidence_items ?? []).map((s: string) => s.toLowerCase())
+                                              );
                                               const expanded = res.extracted.tests.flatMap((n: string) => {
+                                                const isLow = lowConfSet.has(n.toLowerCase());
                                                 const parts = smartSplitTestNames(n);
-                                                return parts.length > 0 ? parts : [n];
+                                                const names = parts.length > 0 ? parts : [n];
+                                                return names.map((name: string) => ({ name, low_confidence: isLow }));
                                               });
-                                              setTestTags(expanded.map((n: string) => ({ name: n, catalog_test_id: null })));
+                                              const initialTags: { name: string; catalog_test_id: string | null; low_confidence: boolean }[] = expanded.map(({ name, low_confidence }: { name: string; low_confidence: boolean }) => ({
+                                                name,
+                                                catalog_test_id: null as string | null,
+                                                low_confidence,
+                                              }));
+                                              setTestTags(initialTags);
+                                              // Background catalog verification — upgrade exact matches to catalog pills
+                                              const labId = form.lab_id;
+                                              Promise.allSettled(
+                                                initialTags.map((tag: { name: string; catalog_test_id: string | null; low_confidence: boolean }) =>
+                                                  fetch(`/api/catalog/search?q=${encodeURIComponent(tag.name)}${labId ? `&lab_id=${encodeURIComponent(labId)}` : ""}&limit=1`)
+                                                    .then((r) => r.json())
+                                                    .then((d) => {
+                                                      const match = d.results?.[0];
+                                                      if (!match) return null;
+                                                      // Accept if canonical name matches (case-insensitive) OR the query name is included in the canonical
+                                                      const nameLC = tag.name.toLowerCase();
+                                                      const canonLC = match.canonical_name.toLowerCase();
+                                                      if (canonLC === nameLC || canonLC.includes(nameLC) || nameLC.includes(canonLC)) {
+                                                        return { originalName: tag.name, match };
+                                                      }
+                                                      return null;
+                                                    })
+                                                    .catch(() => null)
+                                                )
+                                              ).then((results) => {
+                                                const upgrades = new Map<string, { id: string; name: string; price?: number; category?: string; is_rapid_test?: boolean }>();
+                                                results.forEach((r) => {
+                                                  if (r.status === "fulfilled" && r.value) {
+                                                    upgrades.set(r.value.originalName.toLowerCase(), {
+                                                      id: r.value.match.id,
+                                                      name: r.value.match.canonical_name,
+                                                      price: r.value.match.effective_price,
+                                                      category: r.value.match.category,
+                                                      is_rapid_test: r.value.match.is_rapid_test,
+                                                    });
+                                                  }
+                                                });
+                                                if (upgrades.size > 0) {
+                                                  setTestTags((prev) =>
+                                                    prev.map((t) => {
+                                                      const up = upgrades.get(t.name.toLowerCase());
+                                                      if (!up) return t;
+                                                      return { name: up.name, catalog_test_id: up.id, low_confidence: false, price: up.price, category: up.category, is_rapid_test: up.is_rapid_test };
+                                                    })
+                                                  );
+                                                }
+                                              });
                                             }
                                             setForm((prev) => ({
                                               ...prev,
@@ -1901,225 +1705,92 @@ export function DoctorRequestForm({
 
         {/* Step 3: Referring Professional */}
         {step === 3 && (
-          <div className="space-y-4">
+          <div className="space-y-5">
             <h2 className="flex items-center gap-2 text-base font-semibold text-slate-700 pb-3 border-b border-slate-100">
               <Stethoscope className="w-4 h-4 text-medical-600" />
-              Your Profile
+              Your Email
             </h2>
 
-            {/* First-time banner — only shown when no saved profile exists */}
-            {!savedProfile && (
-              <div className="flex items-start gap-3 bg-sky-50 border border-sky-200 rounded-xl px-4 py-3">
-                <Info className="w-4 h-4 text-sky-500 shrink-0 mt-0.5" />
-                <p className="text-xs text-sky-800 leading-relaxed">
-                  <span className="font-semibold">Fill this in once.</span> Your details are saved to this device — next time, this step will be pre-filled automatically.
-                </p>
-              </div>
-            )}
+            <div className="space-y-3">
+              <p className="text-xs text-slate-500 leading-relaxed">
+                Enter your work email. Request updates and results will be sent here, and your profile details will be auto-filled from your account.
+              </p>
 
-            {/* Profile summary card — shown when cache exists and not editing */}
-            {savedProfile && !doctorEditing ? (
-              <div className="rounded-2xl border border-medical-200 bg-gradient-to-br from-medical-50 to-white overflow-hidden">
-                {/* Card header */}
-                <div className="px-4 pt-4 pb-3 flex items-start justify-between gap-3">
-                  <div className="flex items-center gap-3 min-w-0">
-                    <div className="w-9 h-9 rounded-full bg-medical-100 border border-medical-200 flex items-center justify-center shrink-0">
-                      <User className="w-4 h-4 text-medical-600" />
-                    </div>
-                    <div className="min-w-0">
-                      <p className="font-bold text-slate-800 text-sm leading-tight truncate">
-                        {[form.doctor_prefix, form.doctor_name].filter(Boolean).join(" ") || "—"}
-                      </p>
-                      <p className="text-xs text-medical-600 mt-0.5">Saved profile</p>
-                    </div>
-                  </div>
-                  <button
-                    type="button"
-                    onClick={() => setDoctorEditing(true)}
-                    className="flex items-center gap-1 text-xs text-medical-600 hover:text-medical-800 font-semibold transition-colors shrink-0 mt-0.5"
-                  >
-                    <Pencil className="w-3 h-3" /> Edit
-                  </button>
+              {/* Email input */}
+              <div className="space-y-1">
+                <Input
+                  label="Your Email Address"
+                  type="email"
+                  required
+                  placeholder="you@hospital.com"
+                  value={form.doctor_email}
+                  onChange={(e) => set("doctor_email", e.target.value)}
+                  error={errors.doctor_email}
+                />
+              </div>
+
+              {/* Profile status feedback */}
+              {docProfileStatus === "checking" && (
+                <div className="flex items-center gap-2 px-3 py-2.5 bg-slate-50 border border-slate-200 rounded-xl">
+                  <RefreshCw className="w-3.5 h-3.5 text-slate-400 animate-spin shrink-0" />
+                  <p className="text-xs text-slate-500">Checking account…</p>
                 </div>
-                {/* Card fields */}
-                <div className="px-4 pb-3 space-y-1.5 border-t border-medical-100 pt-3">
-                  <div className="flex items-center gap-2 text-xs">
-                    <Mail className="w-3 h-3 shrink-0 text-slate-400" />
-                    <span className="text-slate-600 truncate">{form.doctor_email || <span className="text-slate-300 italic">No email</span>}</span>
-                  </div>
-                  <div className={`flex items-center gap-2 text-xs ${form.doctor_phone ? "" : "opacity-50"}`}>
-                    <Phone className="w-3 h-3 shrink-0 text-slate-400" />
-                    <span className={form.doctor_phone ? "text-slate-600" : "text-slate-400 italic"}>{form.doctor_phone || "No phone saved"}</span>
-                  </div>
-                  <div className={`flex items-center gap-2 text-xs ${form.doctor_hospital ? "" : "opacity-50"}`}>
-                    <Building2 className="w-3 h-3 shrink-0 text-slate-400" />
-                    <span className={form.doctor_hospital ? "text-slate-600 truncate" : "text-slate-400 italic"}>{form.doctor_hospital || "No hospital/clinic saved"}</span>
+              )}
+
+              {docProfileStatus === "found_complete" && docProfileInfo && (
+                <div className="flex items-start gap-3 px-3 py-3 bg-emerald-50 border border-emerald-200 rounded-xl">
+                  <Check className="w-4 h-4 text-emerald-600 shrink-0 mt-0.5" />
+                  <div className="min-w-0">
+                    <p className="text-xs font-semibold text-emerald-800">
+                      Welcome back{docProfileInfo.prefix || docProfileInfo.full_name ? `, ${[docProfileInfo.prefix, docProfileInfo.full_name].filter(Boolean).join(" ")}` : ""}!
+                    </p>
+                    <p className="text-xs text-emerald-700 mt-0.5">
+                      Your profile will be used for this request.
+                    </p>
                   </div>
                 </div>
-                {/* Clear */}
-                <div className="px-4 pb-3 flex items-center justify-end border-t border-medical-100 pt-2.5">
+              )}
+
+              {docProfileStatus === "found_partial" && (
+                <div className="flex items-start gap-3 px-3 py-3 bg-sky-50 border border-sky-200 rounded-xl">
+                  <Info className="w-4 h-4 text-sky-500 shrink-0 mt-0.5" />
+                  <div>
+                    <p className="text-xs font-semibold text-sky-800">Email recognised</p>
+                    <p className="text-xs text-sky-700 mt-0.5">
+                      You can complete your profile anytime from your dashboard — your request history will be saved here.
+                    </p>
+                  </div>
+                </div>
+              )}
+
+              {docProfileStatus === "not_found" && (
+                <div className="flex items-start gap-3 px-3 py-3 bg-slate-50 border border-slate-200 rounded-xl">
+                  <Info className="w-4 h-4 text-slate-400 shrink-0 mt-0.5" />
+                  <div>
+                    <p className="text-xs font-medium text-slate-700">New here? No sign-up needed.</p>
+                    <p className="text-xs text-slate-500 mt-0.5">
+                      Your request will be saved to this email. Set up your profile anytime at{" "}
+                      <a href="/doc-login" className="text-medical-600 underline underline-offset-2 font-medium">your dashboard</a>{" "}
+                      — your name, hospital, and bank details will be linked automatically.
+                    </p>
+                  </div>
+                </div>
+              )}
+
+              {/* Saved email chip */}
+              {savedProfile && form.doctor_email && (
+                <div className="flex items-center justify-between">
+                  <p className="text-xs text-slate-400">Using saved email</p>
                   <button
                     type="button"
                     onClick={clearDoctorProfile}
-                    className="text-xs text-slate-400 hover:text-slate-600 underline underline-offset-2 transition-colors shrink-0"
+                    className="text-xs text-slate-400 hover:text-slate-600 underline underline-offset-2 transition-colors"
                   >
-                    Not you? Clear
+                    Clear
                   </button>
                 </div>
-              </div>
-            ) : (
-              /* Form fields — shown for new entries or when editing cached profile */
-              <>
-                {savedProfile && (
-                  <div className="flex justify-end">
-                    <button
-                      type="button"
-                      onClick={() => setDoctorEditing(false)}
-                      className="text-xs text-slate-400 hover:text-slate-600 underline underline-offset-2 transition-colors"
-                    >
-                      ← Back to saved profile
-                    </button>
-                  </div>
-                )}
-
-                {/* Bank details FIRST — optional, for referral payment */}
-                {(() => {
-                  const hasBankContent = bankVerified && !!(form.doctor_bank_name && form.doctor_account_number && form.doctor_account_name);
-                  return (
-                    <div className="space-y-2">
-                      <p className="text-xs font-semibold text-slate-400 uppercase tracking-wider">Bank Details <span className="font-normal normal-case">(optional)</span></p>
-                      {bankSkipped ? (
-                        <div className="flex items-center justify-between px-4 py-3 rounded-xl bg-slate-50 border border-slate-200">
-                          <p className="text-xs text-slate-500 font-medium">Bank details skipped</p>
-                          <button type="button" onClick={() => { setBankSkipped(false); setBankOpen(true); }} className="text-xs text-medical-600 hover:text-medical-800 font-semibold transition-colors">
-                            + Add details
-                          </button>
-                        </div>
-                      ) : (
-                        <div className={`rounded-xl border-2 overflow-hidden transition-colors ${hasBankContent ? "border-emerald-200 bg-emerald-50/30" : "border-slate-200"}`}>
-                          <button type="button" onClick={() => setBankOpen((v) => !v)} className={`w-full flex items-center justify-between px-4 py-3.5 transition-colors ${hasBankContent ? "hover:bg-emerald-50/50" : "hover:bg-slate-50 bg-slate-50/50"}`}>
-                            {hasBankContent ? (
-                              <span className="flex items-center gap-2"><Check className="w-4 h-4 text-emerald-500 shrink-0" /><span className="text-sm font-semibold text-slate-700">Bank details added</span></span>
-                            ) : (
-                              <span className="text-sm font-semibold text-slate-700">Add bank account</span>
-                            )}
-                            <ChevronDown className={`w-4 h-4 transition-transform shrink-0 ${hasBankContent ? "text-emerald-500" : "text-slate-400"} ${bankOpen ? "rotate-180" : ""}`} />
-                          </button>
-                          {bankOpen && (
-                            <div className={`px-4 pb-4 pt-1 space-y-3 border-t ${hasBankContent ? "border-emerald-100 bg-emerald-50/20" : "border-slate-100"}`}>
-                              <BankAccountInput
-                                bankName={form.doctor_bank_name}
-                                bankCode={bankCode}
-                                accountNumber={form.doctor_account_number}
-                                accountName={form.doctor_account_name}
-                                onBankChange={(name, code) => { set("doctor_bank_name", name); setBankCode(code); setBankVerified(false); }}
-                                onAccountNumberChange={(v) => { set("doctor_account_number", v); setBankVerified(false); }}
-                                onAccountNameChange={(v) => set("doctor_account_name", v)}
-                                onVerifiedChange={(verified) => {
-                                  setBankVerified(verified);
-                                  if (verified) {
-                                    setForm((prev) => {
-                                      if (prev.doctor_account_name) return { ...prev, doctor_name: prev.doctor_account_name };
-                                      return prev;
-                                    });
-                                  }
-                                }}
-                                bankError={errors.doctor_bank_name}
-                                accountNumberError={errors.doctor_account_number}
-                                accountNameError={errors.doctor_account_name}
-                              />
-                              {!hasBankContent && (
-                                <div className="pt-1 border-t border-slate-100">
-                                  <button type="button" onClick={() => { setBankSkipped(true); set("doctor_bank_name", ""); set("doctor_account_number", ""); set("doctor_account_name", ""); }} className="text-xs text-slate-400 hover:text-slate-600 transition-colors underline underline-offset-2">
-                                    Skip — I&apos;ll settle payment another way
-                                  </button>
-                                </div>
-                              )}
-                            </div>
-                          )}
-                        </div>
-                      )}
-                    </div>
-                  );
-                })()}
-
-                {/* Progressive substep fields */}
-                <div className="relative pt-1">
-                  {/* Substep 1: Title/Prefix */}
-                  <div className="relative flex gap-4">
-                    <div className="flex flex-col items-center shrink-0 pt-1">
-                      <div className={`w-8 h-8 rounded-full flex items-center justify-center text-xs font-bold border-2 transition-all shrink-0 ${form.doctor_prefix ? "bg-emerald-500 border-emerald-500 text-white" : "bg-white border-medical-400 text-medical-600"}`}>
-                        {form.doctor_prefix ? <Check className="w-4 h-4" /> : "1"}
-                      </div>
-                      <div className="w-0.5 flex-1 min-h-6 bg-slate-200 mt-1" />
-                    </div>
-                    <div className="flex-1 pb-5 min-w-0">
-                      <PrefixSelect value={form.doctor_prefix} onChange={(v) => set("doctor_prefix", v)} />
-                    </div>
-                  </div>
-
-                  {/* Substep 2: Full Name */}
-                  {form.doctor_prefix && (
-                    <div className="relative flex gap-4 animate-fade-in-up">
-                      <div className="flex flex-col items-center shrink-0 pt-1">
-                        <div className={`w-8 h-8 rounded-full flex items-center justify-center text-xs font-bold border-2 transition-all shrink-0 ${form.doctor_name.trim().length >= 2 ? "bg-emerald-500 border-emerald-500 text-white" : "bg-white border-medical-400 text-medical-600"}`}>
-                          {form.doctor_name.trim().length >= 2 ? <Check className="w-4 h-4" /> : "2"}
-                        </div>
-                        <div className="w-0.5 flex-1 min-h-6 bg-slate-200 mt-1" />
-                      </div>
-                      <div className="flex-1 pb-5 min-w-0">
-                        <Input label="Full Name" required placeholder="Firstname Lastname" hint={bankVerified && form.doctor_account_name ? "Pre-filled from bank — edit if needed" : undefined} value={form.doctor_name} onChange={(e) => set("doctor_name", e.target.value)} error={errors.doctor_name} />
-                      </div>
-                    </div>
-                  )}
-
-                  {/* Substep 3: Email */}
-                  {form.doctor_prefix && form.doctor_name.trim().length >= 2 && (
-                    <div className="relative flex gap-4 animate-fade-in-up">
-                      <div className="flex flex-col items-center shrink-0 pt-1">
-                        <div className={`w-8 h-8 rounded-full flex items-center justify-center text-xs font-bold border-2 transition-all shrink-0 ${/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(form.doctor_email) ? "bg-emerald-500 border-emerald-500 text-white" : "bg-white border-medical-400 text-medical-600"}`}>
-                          {/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(form.doctor_email) ? <Check className="w-4 h-4" /> : "3"}
-                        </div>
-                        <div className="w-0.5 flex-1 min-h-6 bg-slate-200 mt-1" />
-                      </div>
-                      <div className="flex-1 pb-5 min-w-0">
-                        <Input label="Email" type="email" required placeholder="you@hospital.com" hint="You will receive request updates here" value={form.doctor_email} onChange={(e) => set("doctor_email", e.target.value)} error={errors.doctor_email} />
-                      </div>
-                    </div>
-                  )}
-
-                  {/* Substep 4: Phone */}
-                  {form.doctor_prefix && form.doctor_name.trim().length >= 2 && /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(form.doctor_email) && (
-                    <div className="relative flex gap-4 animate-fade-in-up">
-                      <div className="flex flex-col items-center shrink-0 pt-1">
-                        <div className={`w-8 h-8 rounded-full flex items-center justify-center text-xs font-bold border-2 transition-all shrink-0 ${form.doctor_phone.trim() ? "bg-emerald-500 border-emerald-500 text-white" : "bg-white border-medical-400 text-medical-600"}`}>
-                          {form.doctor_phone.trim() ? <Check className="w-4 h-4" /> : "4"}
-                        </div>
-                        <div className="w-0.5 flex-1 min-h-6 bg-slate-200 mt-1" />
-                      </div>
-                      <div className="flex-1 pb-5 min-w-0">
-                        <PhoneInput label="Phone" required value={form.doctor_phone} onChange={(v) => set("doctor_phone", v)} error={errors.doctor_phone} />
-                      </div>
-                    </div>
-                  )}
-
-                  {/* Substep 5: Hospital */}
-                  {form.doctor_prefix && form.doctor_name.trim().length >= 2 && /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(form.doctor_email) && form.doctor_phone.trim() && (
-                    <div className="relative flex gap-4 animate-fade-in-up">
-                      <div className="flex flex-col items-center shrink-0 pt-1">
-                        <div className={`w-8 h-8 rounded-full flex items-center justify-center text-xs font-bold border-2 transition-all shrink-0 ${form.doctor_hospital.trim() ? "bg-emerald-500 border-emerald-500 text-white" : "bg-white border-medical-400 text-medical-600"}`}>
-                          {form.doctor_hospital.trim() ? <Check className="w-4 h-4" /> : "5"}
-                        </div>
-                      </div>
-                      <div className="flex-1 pb-2 min-w-0">
-                        <Input label="Hospital or Clinic" required placeholder="e.g. Lagos University Teaching Hospital" hint="Type 'private' if not affiliated with any hospital" value={form.doctor_hospital} onChange={(e) => set("doctor_hospital", e.target.value)} error={errors.doctor_hospital} />
-                      </div>
-                    </div>
-                  )}
-                </div>
-              </>
-            )}
-
+              )}
+            </div>
           </div>
         )}
 

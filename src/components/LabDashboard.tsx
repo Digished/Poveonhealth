@@ -33,6 +33,7 @@ interface ReferralDoctor {
   months: Record<string, number>;
   tests: string[];
   last_referral: string;
+  profile_complete: boolean;
   recent_requests?: { id: string; code: string; status: string; tests: string; test_image_url: string | null; created_at: string; patient_name: string | null; patient_phone: string | null }[];
 }
 
@@ -749,9 +750,16 @@ export function LabDashboard({ lab, isOwner = false, roleName = "Lab Owner", can
                               <Stethoscope className="w-6 h-6 text-medical-400" />
                             </div>
                             <div className="min-w-0">
-                              <p className="font-bold text-white text-base leading-tight truncate">
-                                {[doc.doctor_prefix, doc.doctor_name].filter(Boolean).join(" ")}
-                              </p>
+                              <div className="flex items-center gap-2 min-w-0">
+                                <p className="font-bold text-white text-base leading-tight truncate">
+                                  {[doc.doctor_prefix, doc.doctor_name].filter(Boolean).join(" ") || doc.doctor_email}
+                                </p>
+                                {!doc.profile_complete && (
+                                  <span className="shrink-0 text-[10px] font-semibold px-1.5 py-0.5 rounded-full bg-amber-500/20 text-amber-400 border border-amber-500/30">
+                                    Profile incomplete
+                                  </span>
+                                )}
+                              </div>
                               <p className="text-xs text-slate-400 truncate mt-0.5">{doc.doctor_email}</p>
                             </div>
                           </div>
@@ -1912,6 +1920,20 @@ export function LabDashboard({ lab, isOwner = false, roleName = "Lab Owner", can
 
                 {isRevealed ? (
                   <div className="space-y-4 text-sm">
+                    {/* Tests & Diagnosis — prominent at top */}
+                    <div className="bg-medical-900/30 border border-medical-700/30 rounded-xl p-3 space-y-2">
+                      <div>
+                        <p className="text-xs text-medical-400 font-semibold uppercase tracking-wider mb-1">Tests Requested</p>
+                        <p className="text-white font-semibold leading-snug">{selectedRequest.tests}</p>
+                      </div>
+                      {selectedRequest.diagnosis && (
+                        <div>
+                          <p className="text-xs text-slate-400 font-medium uppercase tracking-wider mb-1">Diagnosis</p>
+                          <p className="text-slate-200">{selectedRequest.diagnosis}</p>
+                        </div>
+                      )}
+                    </div>
+                    <div className="border-t border-white/10" />
                     <DetailRow label="Code">
                       <span className="font-mono font-bold text-medical-400">{selectedRequest.code}</span>
                     </DetailRow>
@@ -1975,13 +1997,6 @@ export function LabDashboard({ lab, isOwner = false, roleName = "Lab Owner", can
                     {selectedRequest.doctor_hospital && (
                       <DetailRow label="Hospital/Clinic">{selectedRequest.doctor_hospital}</DetailRow>
                     )}
-                    <div className="border-t border-white/10 pt-3" />
-                    {selectedRequest.diagnosis && (
-                      <DetailRow label="Diagnosis">{selectedRequest.diagnosis}</DetailRow>
-                    )}
-                    <DetailRow label="Tests">
-                      <span className="text-white font-medium">{selectedRequest.tests}</span>
-                    </DetailRow>
                     {scheduleLabel(selectedRequest.schedule) && (
                       <DetailRow label="Preferred Schedule">
                         <span className="text-emerald-300 font-medium">{scheduleLabel(selectedRequest.schedule)}</span>
@@ -2037,25 +2052,6 @@ export function LabDashboard({ lab, isOwner = false, roleName = "Lab Owner", can
                         </a>
                       </DetailRow>
                     )}
-                    {/* WhatsApp — supports multiple numbers stored as JSON array */}
-                    {(() => {
-                      const nums: string[] = lab.whatsapp
-                        ? (() => { try { const p = JSON.parse(lab.whatsapp); return Array.isArray(p) ? p : [lab.whatsapp]; } catch { return [lab.whatsapp]; } })()
-                        : [];
-                      return nums.length > 0 ? (
-                        <DetailRow label="Lab WhatsApp">
-                          <div className="flex flex-wrap gap-2">
-                            {nums.filter(Boolean).map((num, i) => (
-                              <a key={i} href={`https://wa.me/${num.replace(/\D/g, "")}`} target="_blank" rel="noopener noreferrer"
-                                className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-emerald-500/10 border border-emerald-500/20 text-emerald-400 hover:bg-emerald-500/20 hover:text-emerald-300 transition-all text-xs font-medium">
-                                <MessageCircle className="w-3.5 h-3.5" />
-                                {num}
-                              </a>
-                            ))}
-                          </div>
-                        </DetailRow>
-                      ) : null;
-                    })()}
                   </div>
                 ) : (
                   /* Incoming: restricted view */
@@ -2515,6 +2511,20 @@ export function LabDashboard({ lab, isOwner = false, roleName = "Lab Owner", can
                 </button>
               </div>
               <div className="p-5 space-y-4 text-sm">
+                {/* Tests & Diagnosis — prominent at top */}
+                <div className="bg-medical-900/30 border border-medical-700/30 rounded-xl p-3 space-y-2">
+                  <div>
+                    <p className="text-xs text-medical-400 font-semibold uppercase tracking-wider mb-1">Tests Requested</p>
+                    <p className="text-white font-semibold leading-snug">{selectedRequest.tests}</p>
+                  </div>
+                  {selectedRequest.diagnosis && (
+                    <div>
+                      <p className="text-xs text-slate-400 font-medium uppercase tracking-wider mb-1">Diagnosis</p>
+                      <p className="text-slate-200">{selectedRequest.diagnosis}</p>
+                    </div>
+                  )}
+                </div>
+                <div className="border-t border-white/10" />
                 {selectedRequest.status !== "incoming" ? (
                   <>
                     <div>
@@ -2579,6 +2589,14 @@ export function LabDashboard({ lab, isOwner = false, roleName = "Lab Owner", can
                       <p className="text-xs text-slate-500 font-medium mb-0.5">Email</p>
                       <p className="text-slate-200">{selectedRequest.doctor_email}</p>
                     </div>
+                    {selectedRequest.doctor_phone && (
+                      <div>
+                        <p className="text-xs text-slate-500 font-medium mb-0.5">Phone</p>
+                        <a href={`tel:${selectedRequest.doctor_phone}`} className="text-blue-400 hover:underline flex items-center gap-1 text-sm">
+                          <Phone className="w-3 h-3" />{selectedRequest.doctor_phone}
+                        </a>
+                      </div>
+                    )}
                     {selectedRequest.doctor_hospital && (
                       <div>
                         <p className="text-xs text-slate-500 font-medium mb-0.5">Hospital/Clinic</p>
@@ -2587,16 +2605,6 @@ export function LabDashboard({ lab, isOwner = false, roleName = "Lab Owner", can
                     )}
                   </>
                 )}
-                {selectedRequest.diagnosis && (
-                  <div>
-                    <p className="text-xs text-slate-500 font-medium mb-0.5">Diagnosis</p>
-                    <p className="text-slate-200">{selectedRequest.diagnosis}</p>
-                  </div>
-                )}
-                <div>
-                  <p className="text-xs text-slate-500 font-medium mb-0.5">Tests</p>
-                  <p className="text-slate-200 font-medium">{selectedRequest.tests}</p>
-                </div>
                 {scheduleLabel(selectedRequest.schedule) && (
                   <div>
                     <p className="text-xs text-slate-500 font-medium mb-0.5">Preferred Schedule</p>
@@ -2657,26 +2665,6 @@ export function LabDashboard({ lab, isOwner = false, roleName = "Lab Owner", can
                     </a>
                   </div>
                 )}
-                {/* WhatsApp — multiple numbers */}
-                {(() => {
-                  const nums: string[] = lab.whatsapp
-                    ? (() => { try { const p = JSON.parse(lab.whatsapp); return Array.isArray(p) ? p : [lab.whatsapp]; } catch { return [lab.whatsapp]; } })()
-                    : [];
-                  return nums.filter(Boolean).length > 0 ? (
-                    <div>
-                      <p className="text-xs text-slate-500 font-medium mb-1.5">Lab WhatsApp</p>
-                      <div className="flex flex-wrap gap-2">
-                        {nums.filter(Boolean).map((num, i) => (
-                          <a key={i} href={`https://wa.me/${num.replace(/\D/g, "")}`} target="_blank" rel="noopener noreferrer"
-                            className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-emerald-500/10 border border-emerald-500/20 text-emerald-400 hover:bg-emerald-500/20 transition-all text-xs font-medium">
-                            <MessageCircle className="w-3.5 h-3.5" />
-                            {num}
-                          </a>
-                        ))}
-                      </div>
-                    </div>
-                  ) : null;
-                })()}
                 {selectedRequest.status === "seen" && (
                   <div className="border-t border-white/10 pt-4">
                     <Button variant="success" fullWidth loading={updatingId === selectedRequest.id} onClick={() => { setMobileDetailOpen(false); openResultsModal(selectedRequest); }}>
