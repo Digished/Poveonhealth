@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useEffect, useRef } from "react";
-import { LogIn, ChevronDown, FlaskConical, Stethoscope, User, LayoutDashboard, LogOut } from "lucide-react";
+import { LogIn, ChevronDown, Stethoscope, User, LayoutDashboard, LogOut } from "lucide-react";
 import { PoveonLogo } from "@/components/PoveonLogo";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
@@ -97,17 +97,6 @@ export function LabPageNav({ labName, logoUrl }: LabPageNavProps) {
             {loginOpen && (
               <div className="absolute right-0 top-full mt-2 w-56 bg-white border border-slate-200 rounded-2xl shadow-xl overflow-hidden z-[9999] animate-fade-in-up">
                 <p className="text-xs text-slate-400 font-semibold px-4 pt-3 pb-1.5 uppercase tracking-wider">Log in as</p>
-
-                <Link
-                  href="/lab-login"
-                  onClick={() => setLoginOpen(false)}
-                  className="flex items-center gap-3 px-4 py-2.5 hover:bg-slate-50 transition group"
-                >
-                  <div className="w-7 h-7 rounded-lg bg-sky-50 border border-sky-100 flex items-center justify-center shrink-0">
-                    <FlaskConical className="w-3.5 h-3.5 text-sky-600" />
-                  </div>
-                  <p className="text-sm font-semibold text-slate-800 group-hover:text-sky-700 transition">Laboratory</p>
-                </Link>
 
                 <Link
                   href="/doc-login"
