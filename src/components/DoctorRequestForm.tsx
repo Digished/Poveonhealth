@@ -1537,7 +1537,7 @@ export function DoctorRequestForm({
                                                 const names = parts.length > 0 ? parts : [n];
                                                 return names.map((name: string) => ({ name, low_confidence: isLow }));
                                               });
-                                              const initialTags = expanded.map(({ name, low_confidence }: { name: string; low_confidence: boolean }) => ({
+                                              const initialTags: { name: string; catalog_test_id: string | null; low_confidence: boolean }[] = expanded.map(({ name, low_confidence }: { name: string; low_confidence: boolean }) => ({
                                                 name,
                                                 catalog_test_id: null as string | null,
                                                 low_confidence,
@@ -1546,7 +1546,7 @@ export function DoctorRequestForm({
                                               // Background catalog verification — upgrade exact matches to catalog pills
                                               const labId = form.lab_id;
                                               Promise.allSettled(
-                                                initialTags.map((tag) =>
+                                                initialTags.map((tag: { name: string; catalog_test_id: string | null; low_confidence: boolean }) =>
                                                   fetch(`/api/catalog/search?q=${encodeURIComponent(tag.name)}${labId ? `&lab_id=${encodeURIComponent(labId)}` : ""}&limit=1`)
                                                     .then((r) => r.json())
                                                     .then((d) => {
