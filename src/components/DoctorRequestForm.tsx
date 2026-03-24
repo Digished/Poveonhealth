@@ -1537,11 +1537,54 @@ export function DoctorRequestForm({
                                                 const names = parts.length > 0 ? parts : [n];
                                                 return names.map((name: string) => ({ name, low_confidence: isLow }));
                                               });
-                                              setTestTags(expanded.map(({ name, low_confidence }: { name: string; low_confidence: boolean }) => ({
+                                              const initialTags = expanded.map(({ name, low_confidence }: { name: string; low_confidence: boolean }) => ({
                                                 name,
-                                                catalog_test_id: null,
+                                                catalog_test_id: null as string | null,
                                                 low_confidence,
-                                              })));
+                                              }));
+                                              setTestTags(initialTags);
+                                              // Background catalog verification — upgrade exact matches to catalog pills
+                                              const labId = form.lab_id;
+                                              Promise.allSettled(
+                                                initialTags.map((tag) =>
+                                                  fetch(`/api/catalog/search?q=${encodeURIComponent(tag.name)}${labId ? `&lab_id=${encodeURIComponent(labId)}` : ""}&limit=1`)
+                                                    .then((r) => r.json())
+                                                    .then((d) => {
+                                                      const match = d.results?.[0];
+                                                      if (!match) return null;
+                                                      // Accept if canonical name matches (case-insensitive) OR the query name is included in the canonical
+                                                      const nameLC = tag.name.toLowerCase();
+                                                      const canonLC = match.canonical_name.toLowerCase();
+                                                      if (canonLC === nameLC || canonLC.includes(nameLC) || nameLC.includes(canonLC)) {
+                                                        return { originalName: tag.name, match };
+                                                      }
+                                                      return null;
+                                                    })
+                                                    .catch(() => null)
+                                                )
+                                              ).then((results) => {
+                                                const upgrades = new Map<string, { id: string; name: string; price?: number; category?: string; is_rapid_test?: boolean }>();
+                                                results.forEach((r) => {
+                                                  if (r.status === "fulfilled" && r.value) {
+                                                    upgrades.set(r.value.originalName.toLowerCase(), {
+                                                      id: r.value.match.id,
+                                                      name: r.value.match.canonical_name,
+                                                      price: r.value.match.effective_price,
+                                                      category: r.value.match.category,
+                                                      is_rapid_test: r.value.match.is_rapid_test,
+                                                    });
+                                                  }
+                                                });
+                                                if (upgrades.size > 0) {
+                                                  setTestTags((prev) =>
+                                                    prev.map((t) => {
+                                                      const up = upgrades.get(t.name.toLowerCase());
+                                                      if (!up) return t;
+                                                      return { name: up.name, catalog_test_id: up.id, low_confidence: false, price: up.price, category: up.category, is_rapid_test: up.is_rapid_test };
+                                                    })
+                                                  );
+                                                }
+                                              });
                                             }
                                             setForm((prev) => ({
                                               ...prev,

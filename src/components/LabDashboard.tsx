@@ -33,6 +33,7 @@ interface ReferralDoctor {
   months: Record<string, number>;
   tests: string[];
   last_referral: string;
+  profile_complete: boolean;
   recent_requests?: { id: string; code: string; status: string; tests: string; test_image_url: string | null; created_at: string; patient_name: string | null; patient_phone: string | null }[];
 }
 
