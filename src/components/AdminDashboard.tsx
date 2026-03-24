@@ -19,7 +19,7 @@ import { format } from "date-fns";
 import { createClient } from "@/lib/supabase/client"; // still used for auth sign-out
 import { useRouter } from "next/navigation";
 
-type AdminTab = "metrics" | "requests" | "referrals" | "labs" | "analytics" | "marketers" | "settings" | "pricing";
+type AdminTab = "metrics" | "requests" | "referrals" | "labs" | "analytics" | "marketers" | "settings" | "pricing" | "transactions";
 
 interface ReferralGroup {
   key: string;
@@ -458,6 +458,7 @@ export function AdminDashboard() {
             { key: "marketers" as AdminTab, label: "Marketers", icon: <TrendingUp className="w-4 h-4" /> },
             { key: "settings" as AdminTab, label: "Settings", icon: <Settings className="w-4 h-4" /> },
             { key: "pricing" as AdminTab, label: "Pricing", icon: <Tag className="w-4 h-4" />, href: "/admin/pricing" },
+            { key: "transactions" as AdminTab, label: "Transactions", icon: <CreditCard className="w-4 h-4" /> },
           ];
           const current = tabs.find((t) => t.key === activeTab) ?? tabs[0];
           return (
@@ -1399,6 +1400,9 @@ export function AdminDashboard() {
             )}
           </div>
         )}
+
+        {/* ── TRANSACTIONS ── */}
+        {activeTab === "transactions" && <AdminTransactionsTab labs={labs} />}
 
       </div>
 
@@ -3678,6 +3682,268 @@ function MarketerDetailModal({
           )}
         </div>
       </div>
+    </div>
+  );
+}
+
+/* ─────────────────────────────────────────────
+   Admin Transactions Tab
+───────────────────────────────────────────── */
+interface TxRow {
+  id: string;
+  lab_id: string;
+  lab_name: string;
+  type: string;
+  direction: string;
+  amount: number;
+  balance_after: number;
+  description: string | null;
+  actor_email: string | null;
+  created_at: string;
+  request_id: string | null;
+  test_breakdown: unknown;
+  tests_raw: unknown;
+  quoted_price: number | null;
+}
+
+function AdminTransactionsTab({ labs }: { labs: Lab[] }) {
+  const [labFilter, setLabFilter] = useState("");
+  const [dateFrom, setDateFrom] = useState("");
+  const [dateTo, setDateTo] = useState("");
+  const [rows, setRows] = useState<TxRow[]>([]);
+  const [loading, setLoading] = useState(false);
+  const [expandedId, setExpandedId] = useState<string | null>(null);
+  const [fetched, setFetched] = useState(false);
+
+  const fetchTx = useCallback(async () => {
+    setLoading(true);
+    const params = new URLSearchParams({ limit: "500" });
+    if (labFilter) params.set("lab_id", labFilter);
+    if (dateFrom) params.set("from", dateFrom);
+    if (dateTo) params.set("to", dateTo);
+    try {
+      const res = await fetch(`/api/admin/transactions?${params}`);
+      const json = await res.json();
+      if (json.success) setRows(json.transactions);
+    } catch { /* ignore */ }
+    setLoading(false);
+    setFetched(true);
+  }, [labFilter, dateFrom, dateTo]);
+
+  useEffect(() => { fetchTx(); }, [fetchTx]);
+
+  function exportCSV() {
+    const header = ["ID", "Lab", "Type", "Direction", "Amount", "Balance After", "Description", "Actor", "Date", "Request ID", "Quoted Price", "Tests"];
+    const body = rows.map((t) => {
+      const tests = Array.isArray(t.tests_raw) ? (t.tests_raw as { name: string }[]).map((x) => x.name).join("; ")
+        : typeof t.tests_raw === "string" ? t.tests_raw : "";
+      return [
+        t.id, t.lab_name, t.type, t.direction,
+        t.amount, t.balance_after,
+        `"${(t.description ?? "").replace(/"/g, '""')}"`,
+        t.actor_email ?? "",
+        format(new Date(t.created_at), "yyyy-MM-dd HH:mm"),
+        t.request_id ?? "",
+        t.quoted_price ?? "",
+        `"${tests.replace(/"/g, '""')}"`,
+      ].join(",");
+    });
+    const csv = [header.join(","), ...body].join("\n");
+    const url = URL.createObjectURL(new Blob([csv], { type: "text/csv" }));
+    const a = document.createElement("a"); a.href = url; a.download = "transactions.csv"; a.click();
+    URL.revokeObjectURL(url);
+  }
+
+  function getTestList(row: TxRow): string[] {
+    if (Array.isArray(row.test_breakdown)) {
+      return (row.test_breakdown as { name: string; price?: number }[]).map((t) =>
+        t.price != null ? `${t.name} — ₦${Number(t.price).toLocaleString()}` : t.name
+      );
+    }
+    if (Array.isArray(row.tests_raw)) {
+      return (row.tests_raw as { name: string }[]).map((t) => t.name);
+    }
+    if (typeof row.tests_raw === "string" && row.tests_raw) {
+      return row.tests_raw.split(",").map((s) => s.trim()).filter(Boolean);
+    }
+    return [];
+  }
+
+  const totalDebit = rows.filter((r) => r.direction === "debit").reduce((s, r) => s + r.amount, 0);
+  const totalCredit = rows.filter((r) => r.direction === "credit").reduce((s, r) => s + r.amount, 0);
+
+  return (
+    <div className="animate-fade-in space-y-5">
+      {/* Filters */}
+      <div className="bg-white/5 border border-white/10 rounded-2xl p-4 md:p-5 space-y-4">
+        <div className="flex items-center justify-between flex-wrap gap-3">
+          <h2 className="text-base font-bold text-white flex items-center gap-2">
+            <CreditCard className="w-4 h-4 text-slate-400" />
+            All Transactions
+          </h2>
+          <div className="flex gap-2 flex-wrap">
+            <button
+              onClick={fetchTx}
+              disabled={loading}
+              className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-white/8 border border-white/10 text-xs text-slate-300 hover:bg-white/12 transition-colors"
+            >
+              <RefreshCw className={`w-3.5 h-3.5 ${loading ? "animate-spin" : ""}`} />
+              Refresh
+            </button>
+            {rows.length > 0 && (
+              <button
+                onClick={exportCSV}
+                className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-emerald-500/20 border border-emerald-500/30 text-xs text-emerald-300 hover:bg-emerald-500/30 transition-colors"
+              >
+                <ArrowUpRight className="w-3.5 h-3.5" />
+                Export CSV
+              </button>
+            )}
+          </div>
+        </div>
+
+        <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-3">
+          <div>
+            <label className="text-xs text-slate-400 mb-1 block">Lab</label>
+            <select
+              value={labFilter}
+              onChange={(e) => setLabFilter(e.target.value)}
+              className="w-full px-3 py-2 rounded-xl bg-white/8 border border-white/10 text-sm text-white focus:outline-none focus:ring-2 focus:ring-medical-500"
+            >
+              <option value="">All Labs</option>
+              {labs.map((l) => <option key={l.id} value={l.id}>{l.name}</option>)}
+            </select>
+          </div>
+          <div>
+            <label className="text-xs text-slate-400 mb-1 block">From</label>
+            <input type="date" value={dateFrom} onChange={(e) => setDateFrom(e.target.value)}
+              className="w-full px-3 py-2 rounded-xl bg-white/8 border border-white/10 text-sm text-white focus:outline-none focus:ring-2 focus:ring-medical-500 [color-scheme:dark]" />
+          </div>
+          <div>
+            <label className="text-xs text-slate-400 mb-1 block">To</label>
+            <input type="date" value={dateTo} onChange={(e) => setDateTo(e.target.value)}
+              className="w-full px-3 py-2 rounded-xl bg-white/8 border border-white/10 text-sm text-white focus:outline-none focus:ring-2 focus:ring-medical-500 [color-scheme:dark]" />
+          </div>
+          <div className="flex items-end">
+            <button
+              onClick={() => { setLabFilter(""); setDateFrom(""); setDateTo(""); }}
+              className="w-full px-3 py-2 rounded-xl bg-white/8 border border-white/10 text-sm text-slate-400 hover:bg-white/12 transition-colors"
+            >
+              Clear filters
+            </button>
+          </div>
+        </div>
+      </div>
+
+      {/* Summary stats */}
+      {fetched && rows.length > 0 && (
+        <div className="grid grid-cols-3 gap-3">
+          {[
+            { label: "Transactions", value: rows.length.toString(), color: "text-white" },
+            { label: "Total Credits", value: `₦${totalCredit.toLocaleString()}`, color: "text-emerald-400" },
+            { label: "Total Debits", value: `₦${totalDebit.toLocaleString()}`, color: "text-rose-400" },
+          ].map((s) => (
+            <div key={s.label} className="bg-white/5 border border-white/10 rounded-xl p-3 md:p-4 text-center">
+              <p className={`text-xl md:text-2xl font-bold ${s.color}`}>{s.value}</p>
+              <p className="text-xs text-slate-500 mt-0.5">{s.label}</p>
+            </div>
+          ))}
+        </div>
+      )}
+
+      {/* Transaction list */}
+      {loading ? (
+        <div className="space-y-2">
+          {[...Array(6)].map((_, i) => (
+            <div key={i} className="bg-white/5 border border-white/10 rounded-xl p-4 animate-pulse h-16" />
+          ))}
+        </div>
+      ) : !fetched ? null : rows.length === 0 ? (
+        <div className="bg-white/5 border border-white/10 rounded-2xl p-10 text-center">
+          <CreditCard className="w-10 h-10 text-slate-600 mx-auto mb-3" />
+          <p className="text-slate-400 font-medium">No transactions found</p>
+          <p className="text-xs text-slate-600 mt-1">Try adjusting your filters</p>
+        </div>
+      ) : (
+        <div className="space-y-2">
+          {rows.map((tx) => {
+            const tests = getTestList(tx);
+            const isExpanded = expandedId === tx.id;
+            const isDebit = tx.direction === "debit";
+            return (
+              <div key={tx.id} className="bg-white/5 border border-white/10 rounded-xl overflow-hidden">
+                <button
+                  type="button"
+                  onClick={() => setExpandedId(isExpanded ? null : tx.id)}
+                  className="w-full flex items-center gap-3 px-4 py-3 hover:bg-white/5 transition-colors text-left"
+                >
+                  <div className={`w-8 h-8 rounded-lg flex items-center justify-center shrink-0 ${isDebit ? "bg-rose-500/15" : "bg-emerald-500/15"}`}>
+                    {isDebit
+                      ? <ArrowDownRight className="w-4 h-4 text-rose-400" />
+                      : <ArrowUpRight className="w-4 h-4 text-emerald-400" />
+                    }
+                  </div>
+                  <div className="flex-1 min-w-0">
+                    <div className="flex items-center gap-2 flex-wrap">
+                      <span className="text-sm font-semibold text-white truncate">{tx.lab_name}</span>
+                      <span className="text-xs text-slate-500 uppercase tracking-wide font-medium">{tx.type}</span>
+                    </div>
+                    <p className="text-xs text-slate-500 truncate mt-0.5">{tx.description ?? "—"}</p>
+                  </div>
+                  <div className="shrink-0 text-right ml-2">
+                    <p className={`text-sm font-bold ${isDebit ? "text-rose-400" : "text-emerald-400"}`}>
+                      {isDebit ? "-" : "+"}₦{tx.amount.toLocaleString()}
+                    </p>
+                    <p className="text-xs text-slate-600 mt-0.5">{format(new Date(tx.created_at), "dd MMM yy · HH:mm")}</p>
+                  </div>
+                  {(tests.length > 0 || tx.quoted_price) && (
+                    isExpanded ? <ChevronUp className="w-3.5 h-3.5 text-slate-500 shrink-0" /> : <ChevronDown className="w-3.5 h-3.5 text-slate-500 shrink-0" />
+                  )}
+                </button>
+
+                {isExpanded && (
+                  <div className="border-t border-white/8 px-4 py-3 bg-slate-950/30 space-y-2">
+                    <div className="grid grid-cols-2 sm:grid-cols-3 gap-2 text-xs">
+                      <div>
+                        <p className="text-slate-500">Balance After</p>
+                        <p className="text-white font-semibold">₦{tx.balance_after.toLocaleString()}</p>
+                      </div>
+                      {tx.quoted_price != null && (
+                        <div>
+                          <p className="text-slate-500">Quoted Price</p>
+                          <p className="text-white font-semibold">₦{tx.quoted_price.toLocaleString()}</p>
+                        </div>
+                      )}
+                      {tx.actor_email && (
+                        <div>
+                          <p className="text-slate-500">Actor</p>
+                          <p className="text-slate-300 font-medium truncate">{tx.actor_email}</p>
+                        </div>
+                      )}
+                      {tx.request_id && (
+                        <div className="col-span-2 sm:col-span-3">
+                          <p className="text-slate-500">Request ID</p>
+                          <p className="text-slate-400 font-mono text-[10px] break-all">{tx.request_id}</p>
+                        </div>
+                      )}
+                    </div>
+                    {tests.length > 0 && (
+                      <div>
+                        <p className="text-xs text-slate-500 font-medium mb-1.5">Tests</p>
+                        <div className="flex flex-wrap gap-1.5">
+                          {tests.map((t, i) => (
+                            <span key={i} className="text-xs px-2 py-0.5 bg-white/8 border border-white/10 rounded-full text-slate-300">{t}</span>
+                          ))}
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                )}
+              </div>
+            );
+          })}
+        </div>
+      )}
     </div>
   );
 }

@@ -6,10 +6,9 @@ import { prisma } from "@/lib/prisma";
  * GET /api/catalog/search?q=fbc&lab_id=xxx&limit=8
  *
  * Typeahead search for the doctor form tag input.
- * Returns up to `limit` (default 8) matching catalog tests.
- *
- * Response:
- *  { success: true, results: [{ id, canonical_name, category, effective_price, is_rapid_test }] }
+ * Searches both testSynonym entries AND canonical_name directly so tests are
+ * found even when a matching synonym hasn't been added to the database yet.
+ * Results are ranked: exact match → prefix match → substring match.
  */
 export async function GET(request: NextRequest) {
   const { searchParams } = new URL(request.url);
@@ -22,32 +21,73 @@ export async function GET(request: NextRequest) {
   }
 
   try {
-    // Search synonyms for the query string
-    const synonymMatches = await prisma.testSynonym.findMany({
-      where: {
-        synonym: { contains: q, mode: "insensitive" },
-        catalog_test: { is_active: true },
-      },
-      include: {
-        catalog_test: {
-          include: { category: { select: { name: true } } },
+    // Search synonyms AND canonical names in parallel
+    const [synonymMatches, canonicalMatches] = await Promise.all([
+      prisma.testSynonym.findMany({
+        where: {
+          synonym: { contains: q, mode: "insensitive" },
+          catalog_test: { is_active: true },
         },
-      },
-      take: limit * 3, // fetch extra to deduplicate
-    });
+        include: {
+          catalog_test: { include: { category: { select: { name: true } } } },
+        },
+        take: limit * 4,
+      }),
+      prisma.catalogTest.findMany({
+        where: {
+          is_active: true,
+          canonical_name: { contains: q, mode: "insensitive" },
+        },
+        include: { category: { select: { name: true } } },
+        take: limit * 2,
+      }),
+    ]);
 
-    // Deduplicate by catalog_test_id, keeping the best match
-    const seen = new Map<string, (typeof synonymMatches)[number]>();
+    // Merge: synonym matches first, then canonical-name-only matches
+    const seen = new Map<string, { id: string; canonical_name: string; category: { name: string }; base_price: number; is_rapid_test: boolean; _synonymMatch: string }>();
+
     for (const s of synonymMatches) {
-      if (!seen.has(s.catalog_test_id)) seen.set(s.catalog_test_id, s);
+      if (!seen.has(s.catalog_test_id)) {
+        seen.set(s.catalog_test_id, {
+          id: s.catalog_test.id,
+          canonical_name: s.catalog_test.canonical_name,
+          category: s.catalog_test.category,
+          base_price: Number(s.catalog_test.base_price),
+          is_rapid_test: s.catalog_test.is_rapid_test,
+          _synonymMatch: s.synonym,
+        });
+      }
+    }
+    for (const t of canonicalMatches) {
+      if (!seen.has(t.id)) {
+        seen.set(t.id, {
+          id: t.id,
+          canonical_name: t.canonical_name,
+          category: t.category,
+          base_price: Number(t.base_price),
+          is_rapid_test: t.is_rapid_test,
+          _synonymMatch: t.canonical_name,
+        });
+      }
     }
 
-    const unique = Array.from(seen.values()).slice(0, limit);
+    // Rank by match quality: exact → starts-with → substring
+    const ql = q.toLowerCase();
+    const ranked = Array.from(seen.values()).sort((a, b) => {
+      const scoreOf = (entry: typeof a) => {
+        const name = entry.canonical_name.toLowerCase();
+        const syn = entry._synonymMatch.toLowerCase();
+        if (name === ql || syn === ql) return 0;
+        if (name.startsWith(ql) || syn.startsWith(ql)) return 1;
+        return 2;
+      };
+      return scoreOf(a) - scoreOf(b);
+    }).slice(0, limit);
 
-    // Fetch lab-specific overrides in one query if labId is provided
+    // Fetch lab-specific price overrides
     let overrideMap = new Map<string, number>();
-    if (labId && unique.length > 0) {
-      const ids = unique.map((s) => s.catalog_test_id);
+    if (labId && ranked.length > 0) {
+      const ids = ranked.map((t) => t.id);
       const overrides = await prisma.labTestPrice.findMany({
         where: { lab_id: labId, catalog_test_id: { in: ids } },
         select: { catalog_test_id: true, price: true },
@@ -55,19 +95,13 @@ export async function GET(request: NextRequest) {
       overrideMap = new Map(overrides.map((o) => [o.catalog_test_id, Number(o.price)]));
     }
 
-    const results = unique.map((s) => {
-      const test = s.catalog_test;
-      const effective_price = overrideMap.has(test.id)
-        ? overrideMap.get(test.id)!
-        : Number(test.base_price);
-      return {
-        id: test.id,
-        canonical_name: test.canonical_name,
-        category: test.category.name,
-        effective_price,
-        is_rapid_test: test.is_rapid_test,
-      };
-    });
+    const results = ranked.map((t) => ({
+      id: t.id,
+      canonical_name: t.canonical_name,
+      category: t.category.name,
+      effective_price: overrideMap.has(t.id) ? overrideMap.get(t.id)! : t.base_price,
+      is_rapid_test: t.is_rapid_test,
+    }));
 
     return NextResponse.json({ success: true, results });
   } catch (e) {

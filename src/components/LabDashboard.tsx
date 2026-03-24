@@ -87,6 +87,8 @@ export function LabDashboard({ lab, isOwner = false, roleName = "Lab Owner", can
   const [mainView, setMainView] = useState<"requests" | "referrals" | "clients" | "analytics" | "activity" | "feedback" | "wallet">("requests");
   const [walletData, setWalletData] = useState<{ balance: number; transactions: { id: string; type: string; direction: string; amount: number; balance_after: number; description: string | null; actor_email: string | null; created_at: string; request_id: string | null; test_breakdown: unknown; tests_raw: string | null }[] } | null>(null);
   const [walletLoading, setWalletLoading] = useState(false);
+  // Live balance — fetched on mount and polled every 60 s so the low-balance banner is always current
+  const [liveBalance, setLiveBalance] = useState<number | null>(null);
   const [mobileNavOpen, setMobileNavOpen] = useState(false);
   const [mobileHeaderOpen, setMobileHeaderOpen] = useState(false);
   const [activeTab, setActiveTab] = useState<RequestStatus>("seen");
@@ -193,6 +195,21 @@ export function LabDashboard({ lab, isOwner = false, roleName = "Lab Owner", can
     const interval = setInterval(() => fetchRequests(true), 30_000);
     return () => clearInterval(interval);
   }, [fetchRequests]);
+
+  // Fetch wallet balance on mount + poll every 60 s for real-time low-balance notification
+  useEffect(() => {
+    if (!isOwner && !canViewWallet) return;
+    const fetchBalance = () => {
+      fetch("/api/lab/wallet")
+        .then((r) => r.json())
+        .then((d) => { if (d.success) { setLiveBalance(d.balance); if (walletData) setWalletData((prev) => prev ? { ...prev, balance: d.balance } : prev); } })
+        .catch(() => {});
+    };
+    fetchBalance();
+    const iv = setInterval(fetchBalance, 60_000);
+    return () => clearInterval(iv);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isOwner, canViewWallet]);
 
   const fetchClients = useCallback(async () => {
     setClientsLoading(true);
@@ -552,6 +569,31 @@ export function LabDashboard({ lab, isOwner = false, roleName = "Lab Owner", can
       </header>
 
       <div className="max-w-6xl mx-auto px-4 py-8">
+        {/* Low-balance banner — visible on all tabs */}
+        {liveBalance !== null && liveBalance < 10_000 && (isOwner || canViewWallet) && (
+          <div className={`mb-6 flex items-start gap-3 px-4 py-3.5 rounded-2xl border text-sm animate-fade-in ${liveBalance < 0 ? "bg-red-500/10 border-red-500/30" : liveBalance < 3000 ? "bg-red-500/8 border-red-500/25" : "bg-amber-500/8 border-amber-500/25"}`}>
+            <div className={`shrink-0 w-8 h-8 rounded-xl flex items-center justify-center ${liveBalance < 0 ? "bg-red-500/20" : liveBalance < 3000 ? "bg-red-500/15" : "bg-amber-500/15"}`}>
+              <Wallet className={`w-4 h-4 ${liveBalance < 0 ? "text-red-400" : liveBalance < 3000 ? "text-red-400" : "text-amber-400"}`} />
+            </div>
+            <div className="flex-1 min-w-0">
+              <p className={`font-semibold ${liveBalance < 0 ? "text-red-300" : liveBalance < 3000 ? "text-red-300" : "text-amber-300"}`}>
+                {liveBalance < 0 ? "Wallet overdrawn" : liveBalance < 3000 ? "Wallet critically low" : "Low wallet balance"}
+              </p>
+              <p className={`text-xs mt-0.5 ${liveBalance < 0 ? "text-red-400/80" : liveBalance < 3000 ? "text-red-400/80" : "text-amber-400/80"}`}>
+                {liveBalance < 0
+                  ? `Your balance is ₦${Math.abs(liveBalance).toLocaleString()} overdrawn. New requests may be blocked. Contact your account manager immediately.`
+                  : `Balance: ₦${liveBalance.toLocaleString()}. Top up soon to keep accepting requests.`}
+              </p>
+            </div>
+            <button
+              onClick={() => setMainView("wallet")}
+              className={`shrink-0 text-xs font-semibold px-3 py-1.5 rounded-xl transition-colors ${liveBalance < 0 ? "bg-red-500/20 text-red-300 hover:bg-red-500/30" : "bg-amber-500/15 text-amber-300 hover:bg-amber-500/25"}`}
+            >
+              View wallet →
+            </button>
+          </div>
+        )}
+
         {/* Top-level navigation */}
         {(() => {
           const navItems = [
@@ -3020,6 +3062,8 @@ function LabWalletView({ walletData, loading, onLoad }: { walletData: WalletView
   const [schedule, setSchedule] = useState<{ category: string; tests: { id: string; name: string; effective_price: number; is_custom: boolean; is_rapid_test: boolean }[] }[]>([]);
   const [scheduleLoading, setScheduleLoading] = useState(false);
   const [scheduleSearch, setScheduleSearch] = useState("");
+  const [dateFrom, setDateFrom] = useState("");
+  const [dateTo, setDateTo] = useState("");
 
   useEffect(() => { if (!walletData) onLoad(); }, [walletData, onLoad]);
 
@@ -3044,9 +3088,36 @@ function LabWalletView({ walletData, loading, onLoad }: { walletData: WalletView
   }
 
   const balance = walletData?.balance ?? 0;
-  const transactions = walletData?.transactions ?? [];
+  const allTransactions = walletData?.transactions ?? [];
   const isNegative = balance < 0;
   const isLow = !isNegative && balance < 5000;
+
+  // Apply date filters
+  const transactions = allTransactions.filter((t) => {
+    if (dateFrom && t.created_at < dateFrom) return false;
+    if (dateTo && t.created_at > dateTo + "T23:59:59") return false;
+    return true;
+  });
+
+  // CSV export
+  function exportCSV() {
+    const rows = [
+      ["Date", "Description", "Type", "Amount (₦)", "Balance After (₦)"],
+      ...transactions.map((t) => [
+        format(new Date(t.created_at), "dd MMM yyyy HH:mm"),
+        (t.description ?? "").replace(/,/g, " "),
+        t.direction === "credit" ? "Credit" : "Debit",
+        t.direction === "credit" ? `+${t.amount}` : `-${t.amount}`,
+        String(t.balance_after),
+      ]),
+    ];
+    const csv = rows.map((r) => r.map((c) => `"${c}"`).join(",")).join("\n");
+    const blob = new Blob([csv], { type: "text/csv" });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url; a.download = `transactions_${format(new Date(), "yyyy-MM-dd")}.csv`;
+    a.click(); URL.revokeObjectURL(url);
+  }
 
   const filteredSchedule = scheduleSearch.trim()
     ? schedule.map((g) => ({
@@ -3080,9 +3151,11 @@ function LabWalletView({ walletData, loading, onLoad }: { walletData: WalletView
           </p>
           <button
             onClick={loadSchedule}
-            className="mt-2 text-xs text-medical-400 hover:text-medical-300 underline underline-offset-2"
+            disabled={scheduleLoading}
+            className="mt-2 text-xs text-medical-400 hover:text-medical-300 underline underline-offset-2 flex items-center gap-1.5 disabled:opacity-60"
           >
-            {showSchedule ? "Hide price schedule" : "View your price schedule →"}
+            {scheduleLoading && <RefreshCw className="w-3 h-3 animate-spin" />}
+            {showSchedule ? "Hide price schedule" : scheduleLoading ? "Loading schedule…" : "View your price schedule →"}
           </button>
         </div>
       </div>
@@ -3133,11 +3206,35 @@ function LabWalletView({ walletData, loading, onLoad }: { walletData: WalletView
 
       {/* Transaction history */}
       <div>
-        <div className="flex items-center justify-between mb-4">
+        <div className="flex flex-wrap items-center justify-between gap-3 mb-4">
           <p className="text-sm font-semibold text-white">Transaction History</p>
-          <button onClick={onLoad} className="p-1.5 rounded-lg hover:bg-white/10 text-slate-400 hover:text-white transition-colors">
-            <RefreshCw className="w-3.5 h-3.5" />
-          </button>
+          <div className="flex items-center gap-2 flex-wrap">
+            <input
+              type="date"
+              value={dateFrom}
+              onChange={(e) => setDateFrom(e.target.value)}
+              className="bg-white/5 border border-white/10 rounded-xl px-2.5 py-1.5 text-xs text-slate-300 outline-none focus:ring-1 focus:ring-medical-500/50"
+              title="From date"
+            />
+            <span className="text-slate-500 text-xs">to</span>
+            <input
+              type="date"
+              value={dateTo}
+              onChange={(e) => setDateTo(e.target.value)}
+              className="bg-white/5 border border-white/10 rounded-xl px-2.5 py-1.5 text-xs text-slate-300 outline-none focus:ring-1 focus:ring-medical-500/50"
+              title="To date"
+            />
+            {(dateFrom || dateTo) && (
+              <button onClick={() => { setDateFrom(""); setDateTo(""); }} className="text-xs text-slate-400 hover:text-white px-2 py-1.5 rounded-xl hover:bg-white/10 transition-colors">Clear</button>
+            )}
+            <button onClick={exportCSV} className="flex items-center gap-1.5 text-xs font-semibold px-3 py-1.5 rounded-xl bg-emerald-500/15 text-emerald-300 hover:bg-emerald-500/25 transition-colors border border-emerald-500/20">
+              <ArrowDownRight className="w-3.5 h-3.5" />
+              Export CSV
+            </button>
+            <button onClick={onLoad} className="p-1.5 rounded-lg hover:bg-white/10 text-slate-400 hover:text-white transition-colors">
+              <RefreshCw className="w-3.5 h-3.5" />
+            </button>
+          </div>
         </div>
 
         {transactions.length === 0 ? (

@@ -903,6 +903,40 @@ export function DoctorRequestForm({
     }
   }
 
+  if (submitting) {
+    const steps = [
+      { icon: "🧬", label: "Verifying test details…" },
+      { icon: "🏥", label: "Connecting to the lab…" },
+      { icon: "📋", label: "Creating your request…" },
+      { icon: "✉️", label: "Sending confirmations…" },
+    ];
+    return (
+      <div className="flex flex-col items-center justify-center py-16 px-6 space-y-8 animate-fade-in min-h-[320px]">
+        {/* Animated pulsing orb */}
+        <div className="relative">
+          <div className="w-20 h-20 rounded-full bg-gradient-to-br from-medical-400 to-sky-500 opacity-20 absolute inset-0 animate-ping" />
+          <div className="w-20 h-20 rounded-full bg-gradient-to-br from-medical-400 to-sky-500 flex items-center justify-center relative z-10 shadow-lg shadow-medical-500/30">
+            <FlaskConical className="w-9 h-9 text-white" />
+          </div>
+        </div>
+        <div className="text-center space-y-1">
+          <p className="text-lg font-bold text-slate-800">Submitting your request</p>
+          <p className="text-sm text-slate-500">Just a moment while we take care of everything</p>
+        </div>
+        {/* Steps */}
+        <div className="w-full max-w-xs space-y-2.5">
+          {steps.map((s, i) => (
+            <div key={i} className="flex items-center gap-3 px-4 py-2.5 rounded-xl bg-slate-50 border border-slate-100">
+              <span className="text-lg">{s.icon}</span>
+              <span className="text-sm text-slate-600 flex-1">{s.label}</span>
+              <RefreshCw className="w-3.5 h-3.5 text-medical-400 animate-spin shrink-0" style={{ animationDelay: `${i * 0.2}s` }} />
+            </div>
+          ))}
+        </div>
+      </div>
+    );
+  }
+
   if (result?.success) {
     return (
       <SuccessScreen
