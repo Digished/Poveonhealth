@@ -155,7 +155,7 @@ model Request {
   patient_email         String?
   patient_phone         String?
   doctor_prefix         String?
-  doctor_name           String
+  doctor_name           String    @default("")
   doctor_email          String
   doctor_phone          String?
   doctor_hospital       String?
@@ -187,11 +187,18 @@ model Request {
   @@map("requests")
 }
 
-// Doctor profile — stores PIN hash and any profile data for the doctor portal
+// Doctor profile — stores PIN hash and profile data for the doctor portal
 model DoctorProfile {
-  email      String   @id
-  pin_hash   String? // SHA-256 of 4-digit PIN; null = no PIN set
-  updated_at DateTime @updatedAt
+  email          String   @id
+  pin_hash       String?  // SHA-256 of 4-digit PIN; null = no PIN set
+  prefix         String?  // e.g. "Dr.", "Prof.", "Nurse"
+  full_name      String?  // doctor's full name
+  phone          String?  // with country code e.g. "+2348001234567"
+  hospital       String?  // hospital or clinic
+  bank_name      String?  // bank name for referral payment
+  account_number String?  // bank account number
+  account_name   String?  // account holder name (verified)
+  updated_at     DateTime @updatedAt
 
   @@map("doctor_profiles")
 }

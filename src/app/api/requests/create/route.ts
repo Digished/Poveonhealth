@@ -15,11 +15,12 @@ const CreateRequestSchema = z.object({
   address: z.string().max(500).optional().or(z.literal("")),
   patient_email: z.string().email().optional().or(z.literal("")),
   patient_phone: z.string().max(50).optional().or(z.literal("")),
-  doctor_prefix: z.string().min(1).max(30),
-  doctor_name: z.string().min(2).max(200),
+  // Doctor fields — only email is required; others are pulled from DoctorProfile if omitted
+  doctor_prefix: z.string().max(30).optional().or(z.literal("")),
+  doctor_name: z.string().max(200).optional().or(z.literal("")),
   doctor_email: z.string().email(),
-  doctor_phone: z.string().min(1).max(50),
-  doctor_hospital: z.string().min(1).max(200),
+  doctor_phone: z.string().max(50).optional().or(z.literal("")),
+  doctor_hospital: z.string().max(200).optional().or(z.literal("")),
   doctor_bank_name: z.string().max(100).optional().or(z.literal("")),
   doctor_account_number: z.string().max(20).optional().or(z.literal("")),
   doctor_account_name: z.string().max(200).optional().or(z.literal("")),
@@ -67,6 +68,19 @@ export async function POST(request: NextRequest) {
         { status: 404 }
       );
     }
+
+    // Enrich doctor fields from DoctorProfile if not provided in the request body
+    const doctorProfile = await prisma.doctorProfile.findUnique({
+      where: { email: data.doctor_email },
+      select: { prefix: true, full_name: true, phone: true, hospital: true, bank_name: true, account_number: true, account_name: true },
+    });
+    const doctorPrefix = data.doctor_prefix || doctorProfile?.prefix || null;
+    const doctorName = data.doctor_name || doctorProfile?.full_name || "";
+    const doctorPhone = data.doctor_phone || doctorProfile?.phone || null;
+    const doctorHospital = data.doctor_hospital || doctorProfile?.hospital || null;
+    const doctorBankName = data.doctor_bank_name || doctorProfile?.bank_name || null;
+    const doctorAccountNumber = data.doctor_account_number || doctorProfile?.account_number || null;
+    const doctorAccountName = data.doctor_account_name || doctorProfile?.account_name || null;
 
     // Rate-limit: max 20 requests per doctor email per hour
     const recentCount = await prisma.request.count({
@@ -122,14 +136,14 @@ export async function POST(request: NextRequest) {
         address: data.address || null,
         patient_email: data.patient_email || null,
         patient_phone: data.patient_phone || null,
-        doctor_prefix: data.doctor_prefix || null,
-        doctor_name: data.doctor_name,
+        doctor_prefix: doctorPrefix,
+        doctor_name: doctorName,
         doctor_email: data.doctor_email,
-        doctor_phone: data.doctor_phone || null,
-        doctor_hospital: data.doctor_hospital || null,
-        doctor_bank_name: data.doctor_bank_name || null,
-        doctor_account_number: data.doctor_account_number || null,
-        doctor_account_name: data.doctor_account_name || null,
+        doctor_phone: doctorPhone,
+        doctor_hospital: doctorHospital,
+        doctor_bank_name: doctorBankName,
+        doctor_account_number: doctorAccountNumber,
+        doctor_account_name: doctorAccountName,
         schedule: data.schedule || null,
         diagnosis: data.diagnosis || null,
         tests: data.tests || "See attached image",
@@ -178,7 +192,7 @@ export async function POST(request: NextRequest) {
         to: data.doctor_email,
         subject: `Lab Request Confirmed — Code: ${code}`,
         html: doctorRequestConfirmation({
-          doctorName: data.doctor_name,
+          doctorName: doctorName || "Medical Professional",
           patientName: data.patient_name || "Patient",
           code,
           labName: lab.name,
@@ -227,9 +241,9 @@ export async function POST(request: NextRequest) {
           labName: lab.name,
           patientName: data.patient_name || "",
           patientPhone: data.patient_phone || undefined,
-          doctorName: data.doctor_name,
-          doctorPhone: data.doctor_phone || undefined,
-          doctorHospital: data.doctor_hospital || undefined,
+          doctorName: doctorName || "Medical Professional",
+          doctorPhone: doctorPhone || undefined,
+          doctorHospital: doctorHospital || undefined,
           tests: data.tests || "See attached image",
           diagnosis: data.diagnosis || undefined,
           schedule: data.schedule || undefined,

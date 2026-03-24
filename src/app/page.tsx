@@ -1,10 +1,12 @@
 import { DoctorRequestForm } from "@/components/DoctorRequestForm";
 import { TrustIndicators } from "@/components/TrustIndicators";
 import { PoveonLogo } from "@/components/PoveonLogo";
+import { Navbar } from "@/components/Navbar";
 
 export default function HomePage() {
   return (
     <div className="h-dvh flex flex-col bg-gradient-to-br from-sky-50 via-blue-50 to-indigo-50 overflow-hidden">
+      <Navbar />
       {/* Scrollable content area — page never scrolls, only this div does */}
       <main className="flex-1 overflow-y-auto overflow-x-hidden">
         <div className="max-w-2xl mx-auto px-4 pb-2">
