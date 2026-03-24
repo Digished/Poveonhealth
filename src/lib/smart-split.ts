@@ -53,6 +53,15 @@ export function smartSplitTestNames(raw: string): string[] {
       return [trimmed];
     }
 
+    // If any non-first part looks like a lab/test abbreviation (e.g. FBC, EUCR,
+    // Urinalysis) rather than an anatomical body part, this is a mixed list —
+    // don't apply the imaging prefix; fall through to plain split instead.
+    const LOOKS_LIKE_LAB_TEST_RE = /^[A-Z]{2,}/;
+    if (parts.length > 1 && parts.slice(1).some((p) => LOOKS_LIKE_LAB_TEST_RE.test(p))) {
+      const plainParts = trimmed.split(/[,;]|\band\b/i).map((s) => s.trim()).filter(Boolean);
+      return plainParts.length > 0 ? plainParts : [trimmed];
+    }
+
     if (parts.length > 1) {
       return parts.map((part) => `${prefix}${part}`);
     }
