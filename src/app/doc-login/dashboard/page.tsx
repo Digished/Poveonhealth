@@ -11,6 +11,7 @@ import {
 import { PoveonLogo } from "@/components/PoveonLogo";
 import { PhoneInput } from "@/components/PhoneInput";
 import { BankAccountInput } from "@/components/BankAccountInput";
+import { PrefixSelect } from "@/components/PrefixSelect";
 
 interface Lab {
   id: string;
@@ -76,10 +77,6 @@ const SCHEDULE_LABELS: Record<string, string> = {
   not_sure: "Not Sure",
 };
 
-const PROFESSIONAL_PREFIXES = [
-  "Dr.", "Prof.", "Nurse", "Pharm.", "CHEW", "CHO",
-  "PT", "OT", "Optom.", "MW", "HO", "MO", "RN", "DVM",
-];
 
 function formatDate(iso: string) {
   return new Date(iso).toLocaleDateString("en-GB", {
@@ -1010,11 +1007,6 @@ function DocSecuritySection({ email }: { email: string }) {
 
 // ─── Doctor Profile Section ───────────────────────────────────────────────────
 
-const PREFIXES = [
-  "Dr.", "Prof.", "Nurse", "Pharm.", "CHEW", "CHO",
-  "PT", "OT", "Optom.", "MW", "HO", "MO", "RN", "DVM",
-];
-
 type OnboardStep = 1 | 2 | 3;
 
 function DocProfileSection({
@@ -1153,17 +1145,7 @@ function DocProfileSection({
           {(onboardStep === 1 || editingPersonal) && (
             <div className="px-4 pb-4 pt-1 space-y-3 border-t border-slate-100">
               {/* Prefix */}
-              <div>
-                <p className="text-xs font-semibold text-slate-500 mb-2">Title / Prefix</p>
-                <div className="flex flex-wrap gap-2">
-                  {PREFIXES.map((p) => (
-                    <button key={p} type="button" onClick={() => setLocalPrefix(p)}
-                      className={`text-xs font-semibold px-3 py-1.5 rounded-full border transition-all ${localPrefix === p ? "bg-medical-500 text-white border-medical-500" : "bg-white text-slate-600 border-slate-200 hover:border-medical-300"}`}>
-                      {p}
-                    </button>
-                  ))}
-                </div>
-              </div>
+              <PrefixSelect value={localPrefix} onChange={setLocalPrefix} />
               {/* Full Name */}
               <div>
                 <label className="text-xs font-semibold text-slate-500 block mb-1">Full Name</label>
@@ -1354,17 +1336,7 @@ function DocProfileSection({
           </div>
         ) : (
           <div className="px-4 pb-4 pt-3 space-y-3">
-            <div>
-              <p className="text-xs font-semibold text-slate-500 mb-2">Title</p>
-              <div className="flex flex-wrap gap-2">
-                {PREFIXES.map((p) => (
-                  <button key={p} type="button" onClick={() => setLocalPrefix(p)}
-                    className={`text-xs font-semibold px-3 py-1.5 rounded-full border transition-all ${localPrefix === p ? "bg-medical-500 text-white border-medical-500" : "bg-white text-slate-600 border-slate-200 hover:border-medical-300"}`}>
-                    {p}
-                  </button>
-                ))}
-              </div>
-            </div>
+            <PrefixSelect value={localPrefix} onChange={setLocalPrefix} />
             <div>
               <label className="text-xs font-semibold text-slate-500 block mb-1">Full Name</label>
               <input type="text" value={localName} onChange={(e) => setLocalName(e.target.value)}

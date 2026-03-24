@@ -749,9 +749,16 @@ export function LabDashboard({ lab, isOwner = false, roleName = "Lab Owner", can
                               <Stethoscope className="w-6 h-6 text-medical-400" />
                             </div>
                             <div className="min-w-0">
-                              <p className="font-bold text-white text-base leading-tight truncate">
-                                {[doc.doctor_prefix, doc.doctor_name].filter(Boolean).join(" ")}
-                              </p>
+                              <div className="flex items-center gap-2 min-w-0">
+                                <p className="font-bold text-white text-base leading-tight truncate">
+                                  {[doc.doctor_prefix, doc.doctor_name].filter(Boolean).join(" ") || doc.doctor_email}
+                                </p>
+                                {!doc.profile_complete && (
+                                  <span className="shrink-0 text-[10px] font-semibold px-1.5 py-0.5 rounded-full bg-amber-500/20 text-amber-400 border border-amber-500/30">
+                                    Profile incomplete
+                                  </span>
+                                )}
+                              </div>
                               <p className="text-xs text-slate-400 truncate mt-0.5">{doc.doctor_email}</p>
                             </div>
                           </div>

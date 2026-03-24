@@ -4,6 +4,7 @@ import { DoctorRequestForm } from "@/components/DoctorRequestForm";
 import { TrustIndicators } from "@/components/TrustIndicators";
 import { PoveonLogo } from "@/components/PoveonLogo";
 import { LabSplash } from "@/components/LabSplash";
+import { LabPageNav } from "@/components/LabPageNav";
 
 interface LabSlugPageProps {
   params: { labSlug: string };
@@ -71,6 +72,9 @@ export default async function LabSlugPage({ params }: LabSlugPageProps) {
 
       {/* Scrollable content area — page never scrolls, only this div does */}
       <main className="flex-1 overflow-y-auto overflow-x-hidden">
+        {/* Lab-branded nav with login */}
+        <LabPageNav labName={lab.name} logoUrl={lab.logo_url} />
+
         <div className="max-w-2xl mx-auto px-4 pb-2">
           <DoctorRequestForm
             preselectedLabId={lab.id}
