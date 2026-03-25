@@ -1183,23 +1183,6 @@ export function DoctorRequestForm({
       {/* Step content */}
       <div
         className="glass-card p-6 mt-4 mb-2"
-        onKeyDown={(e) => {
-          if (e.key !== "Enter") return;
-          const target = e.target as HTMLElement;
-          if (target.tagName !== "INPUT") return;
-          // Never navigate away from test tag inputs — they handle Enter themselves
-          if ((target as HTMLInputElement).dataset.noEnterNav) return;
-          e.preventDefault();
-          const inputs = Array.from(
-            e.currentTarget.querySelectorAll<HTMLElement>(
-              'input:not([type="hidden"]):not([disabled]):not([data-no-enter-nav]), select:not([disabled])'
-            )
-          );
-          const idx = inputs.indexOf(target as HTMLInputElement);
-          if (idx >= 0 && idx < inputs.length - 1) {
-            inputs[idx + 1].focus();
-          }
-        }}
       >
 
         {/* Step 1: Choose Lab / Branch */}
@@ -1700,62 +1683,64 @@ export function DoctorRequestForm({
 
             </div>
 
-            {/* Patient Condition — optional dropdown */}
-            {(() => {
-              const conditionValue =
-                isCritical && needsAmbulance ? "both"
-                : isCritical ? "critical"
-                : needsAmbulance ? "ambulance"
-                : "none";
-              const isUrgent = conditionValue !== "none";
-              return (
-                <div className="space-y-2">
-                  <div className={`rounded-xl border-2 overflow-hidden transition-colors ${isUrgent ? (isCritical ? "border-red-300" : "border-orange-300") : "border-slate-200"}`}>
-                    <div className={`flex items-center gap-3 px-4 py-3 ${isUrgent ? (isCritical ? "bg-red-50/60" : "bg-orange-50/60") : "bg-slate-50/50"}`}>
-                      <div className={`w-7 h-7 rounded-lg flex items-center justify-center shrink-0 ${isCritical ? "bg-red-500" : needsAmbulance ? "bg-orange-500" : "bg-slate-200"}`}>
-                        {needsAmbulance
-                          ? <Truck className={`w-3.5 h-3.5 ${needsAmbulance ? "text-white" : "text-slate-400"}`} />
-                          : <AlertTriangle className={`w-3.5 h-3.5 ${isCritical ? "text-white" : "text-slate-400"}`} />
-                        }
-                      </div>
-                      <label className="text-sm font-medium text-slate-700 flex-1">
-                        Patient Condition
-                        <span className="text-xs text-slate-400 font-normal ml-1.5">optional</span>
-                      </label>
-                      <select
-                        value={conditionValue}
-                        onChange={(e) => {
-                          const v = e.target.value;
-                          setIsCritical(v === "critical" || v === "both");
-                          setNeedsAmbulance(v === "ambulance" || v === "both");
-                        }}
-                        className={`text-sm font-semibold rounded-lg px-3 py-1.5 border focus:outline-none focus:ring-2 focus:ring-medical-400 transition-colors ${
-                          isCritical ? "bg-red-100 border-red-300 text-red-800"
-                          : needsAmbulance ? "bg-orange-100 border-orange-300 text-orange-800"
-                          : "bg-white border-slate-200 text-slate-600"
-                        }`}
-                      >
-                        <option value="none">Normal</option>
-                        <option value="critical">⚠ Critical</option>
-                        <option value="ambulance">🚑 Needs ambulance</option>
-                        <option value="both">⚠ 🚑 Critical + Ambulance</option>
-                      </select>
-                    </div>
-                    {needsAmbulance && (
-                      <div className="px-4 pb-3 pt-2 border-t border-orange-200 bg-orange-50/30 animate-fade-in-up">
-                        <Textarea
-                          label=""
-                          placeholder="Pickup address or notes for the ambulance team…"
-                          rows={2}
-                          value={ambulanceNotes}
-                          onChange={(e) => setAmbulanceNotes(e.target.value)}
-                        />
-                      </div>
-                    )}
-                  </div>
+            {/* Patient Condition — optional */}
+            <div className="space-y-2">
+              <p className="text-sm font-medium text-slate-700">
+                Patient Condition
+                <span className="text-xs text-slate-400 font-normal ml-1.5">optional</span>
+              </p>
+              <div className="flex gap-2 p-1 bg-slate-100 rounded-2xl">
+                <button
+                  type="button"
+                  onClick={() => { setIsCritical(false); setNeedsAmbulance(false); }}
+                  className={`flex-1 flex items-center justify-center gap-1.5 py-2 px-2 rounded-xl text-sm font-semibold transition-all ${
+                    !isCritical && !needsAmbulance ? "bg-white shadow text-slate-700" : "text-slate-400 hover:text-slate-600"
+                  }`}
+                >
+                  Normal
+                </button>
+                <button
+                  type="button"
+                  onClick={() => { setIsCritical(true); setNeedsAmbulance(false); }}
+                  className={`flex-1 flex items-center justify-center gap-1.5 py-2 px-2 rounded-xl text-sm font-semibold transition-all ${
+                    isCritical && !needsAmbulance ? "bg-white shadow text-red-600" : "text-slate-400 hover:text-slate-600"
+                  }`}
+                >
+                  <AlertTriangle className="w-3.5 h-3.5" />
+                  Critical
+                </button>
+                <button
+                  type="button"
+                  onClick={() => { setIsCritical(false); setNeedsAmbulance(true); }}
+                  className={`flex-1 flex items-center justify-center gap-1.5 py-2 px-2 rounded-xl text-sm font-semibold transition-all ${
+                    needsAmbulance && !isCritical ? "bg-white shadow text-orange-600" : "text-slate-400 hover:text-slate-600"
+                  }`}
+                >
+                  <Truck className="w-3.5 h-3.5" />
+                  Ambulance
+                </button>
+                <button
+                  type="button"
+                  onClick={() => { setIsCritical(true); setNeedsAmbulance(true); }}
+                  className={`flex-1 flex items-center justify-center gap-1.5 py-2 px-2 rounded-xl text-sm font-semibold transition-all ${
+                    isCritical && needsAmbulance ? "bg-white shadow text-red-600" : "text-slate-400 hover:text-slate-600"
+                  }`}
+                >
+                  Both
+                </button>
+              </div>
+              {needsAmbulance && (
+                <div className="animate-fade-in-up">
+                  <Textarea
+                    label=""
+                    placeholder="Pickup address or notes for the ambulance team…"
+                    rows={2}
+                    value={ambulanceNotes}
+                    onChange={(e) => setAmbulanceNotes(e.target.value)}
+                  />
                 </div>
-              );
-            })()}
+              )}
+            </div>
           </div>
         )}
 
