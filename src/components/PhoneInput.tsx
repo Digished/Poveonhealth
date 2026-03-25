@@ -307,12 +307,11 @@ export function PhoneInput({ label, required, value, onChange, error, hint }: Ph
   // Ensure portal only renders client-side
   useEffect(() => { setMounted(true); }, []);
 
-  // Re-parse if parent resets value to empty
+  // Re-parse whenever parent changes the value (autofill, clear, reset, etc.)
   useEffect(() => {
-    if (!value) {
-      setDialCode(DEFAULT_DIAL);
-      setNumber("");
-    }
+    const { dialCode: d, number: n } = parsePhone(value);
+    setDialCode(d);
+    setNumber(n);
   }, [value]);
 
   function emit(dial: string, num: string) {
