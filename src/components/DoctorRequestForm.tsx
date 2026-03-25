@@ -1699,6 +1699,63 @@ export function DoctorRequestForm({
                 </div>
 
             </div>
+
+            {/* Patient Condition — optional dropdown */}
+            {(() => {
+              const conditionValue =
+                isCritical && needsAmbulance ? "both"
+                : isCritical ? "critical"
+                : needsAmbulance ? "ambulance"
+                : "none";
+              const isUrgent = conditionValue !== "none";
+              return (
+                <div className="space-y-2">
+                  <div className={`rounded-xl border-2 overflow-hidden transition-colors ${isUrgent ? (isCritical ? "border-red-300" : "border-orange-300") : "border-slate-200"}`}>
+                    <div className={`flex items-center gap-3 px-4 py-3 ${isUrgent ? (isCritical ? "bg-red-50/60" : "bg-orange-50/60") : "bg-slate-50/50"}`}>
+                      <div className={`w-7 h-7 rounded-lg flex items-center justify-center shrink-0 ${isCritical ? "bg-red-500" : needsAmbulance ? "bg-orange-500" : "bg-slate-200"}`}>
+                        {needsAmbulance
+                          ? <Truck className={`w-3.5 h-3.5 ${needsAmbulance ? "text-white" : "text-slate-400"}`} />
+                          : <AlertTriangle className={`w-3.5 h-3.5 ${isCritical ? "text-white" : "text-slate-400"}`} />
+                        }
+                      </div>
+                      <label className="text-sm font-medium text-slate-700 flex-1">
+                        Patient Condition
+                        <span className="text-xs text-slate-400 font-normal ml-1.5">optional</span>
+                      </label>
+                      <select
+                        value={conditionValue}
+                        onChange={(e) => {
+                          const v = e.target.value;
+                          setIsCritical(v === "critical" || v === "both");
+                          setNeedsAmbulance(v === "ambulance" || v === "both");
+                        }}
+                        className={`text-sm font-semibold rounded-lg px-3 py-1.5 border focus:outline-none focus:ring-2 focus:ring-medical-400 transition-colors ${
+                          isCritical ? "bg-red-100 border-red-300 text-red-800"
+                          : needsAmbulance ? "bg-orange-100 border-orange-300 text-orange-800"
+                          : "bg-white border-slate-200 text-slate-600"
+                        }`}
+                      >
+                        <option value="none">Normal</option>
+                        <option value="critical">⚠ Critical</option>
+                        <option value="ambulance">🚑 Needs ambulance</option>
+                        <option value="both">⚠ 🚑 Critical + Ambulance</option>
+                      </select>
+                    </div>
+                    {needsAmbulance && (
+                      <div className="px-4 pb-3 pt-2 border-t border-orange-200 bg-orange-50/30 animate-fade-in-up">
+                        <Textarea
+                          label=""
+                          placeholder="Pickup address or notes for the ambulance team…"
+                          rows={2}
+                          value={ambulanceNotes}
+                          onChange={(e) => setAmbulanceNotes(e.target.value)}
+                        />
+                      </div>
+                    )}
+                  </div>
+                </div>
+              );
+            })()}
           </div>
         )}
 
@@ -1923,59 +1980,6 @@ export function DoctorRequestForm({
                       </div>
                     </div>
                   </div>
-                </div>
-              )}
-            </div>
-
-            {/* Critical condition / ambulance — beautiful cards */}
-            <div className="space-y-3">
-              <p className="text-xs font-semibold text-slate-400 uppercase tracking-wider">Patient Condition</p>
-              <div className="grid grid-cols-1 gap-3">
-                {/* Critical card */}
-                <button
-                  type="button"
-                  onClick={() => setIsCritical((v) => !v)}
-                  className={`relative flex items-center gap-4 p-4 rounded-2xl border-2 text-left transition-all ${isCritical ? "border-red-400 bg-gradient-to-r from-red-50 to-red-50/30 shadow-sm shadow-red-100" : "border-slate-200 bg-white hover:border-red-200 hover:bg-red-50/20"}`}
-                >
-                  <div className={`w-11 h-11 rounded-2xl flex items-center justify-center shrink-0 transition-all ${isCritical ? "bg-red-500 shadow-md shadow-red-200" : "bg-slate-100"}`}>
-                    <AlertTriangle className={`w-5 h-5 ${isCritical ? "text-white" : "text-slate-400"}`} />
-                  </div>
-                  <div className="flex-1 min-w-0">
-                    <p className={`text-sm font-bold leading-tight ${isCritical ? "text-red-800" : "text-slate-700"}`}>Patient is in critical condition</p>
-                    <p className={`text-xs mt-1 leading-relaxed ${isCritical ? "text-red-500" : "text-slate-400"}`}>Flags request as urgent for immediate lab attention</p>
-                  </div>
-                  <div className={`w-5 h-5 rounded-full border-2 flex items-center justify-center shrink-0 transition-all ${isCritical ? "border-red-500 bg-red-500" : "border-slate-300"}`}>
-                    {isCritical && <Check className="w-3 h-3 text-white" />}
-                  </div>
-                </button>
-
-                {/* Ambulance card */}
-                <button
-                  type="button"
-                  onClick={() => setNeedsAmbulance((v) => !v)}
-                  className={`relative flex items-center gap-4 p-4 rounded-2xl border-2 text-left transition-all ${needsAmbulance ? "border-orange-400 bg-gradient-to-r from-orange-50 to-orange-50/30 shadow-sm shadow-orange-100" : "border-slate-200 bg-white hover:border-orange-200 hover:bg-orange-50/20"}`}
-                >
-                  <div className={`w-11 h-11 rounded-2xl flex items-center justify-center shrink-0 transition-all ${needsAmbulance ? "bg-orange-500 shadow-md shadow-orange-200" : "bg-slate-100"}`}>
-                    <Truck className={`w-5 h-5 ${needsAmbulance ? "text-white" : "text-slate-400"}`} />
-                  </div>
-                  <div className="flex-1 min-w-0">
-                    <p className={`text-sm font-bold leading-tight ${needsAmbulance ? "text-orange-800" : "text-slate-700"}`}>Request ambulance service</p>
-                    <p className={`text-xs mt-1 leading-relaxed ${needsAmbulance ? "text-orange-500" : "text-slate-400"}`}>Notify the lab that transport is needed</p>
-                  </div>
-                  <div className={`w-5 h-5 rounded-full border-2 flex items-center justify-center shrink-0 transition-all ${needsAmbulance ? "border-orange-500 bg-orange-500" : "border-slate-300"}`}>
-                    {needsAmbulance && <Check className="w-3 h-3 text-white" />}
-                  </div>
-                </button>
-              </div>
-              {needsAmbulance && (
-                <div className="animate-fade-in-up">
-                  <Textarea
-                    label="Pickup address / ambulance notes"
-                    placeholder="Patient's pickup address or any relevant notes for the ambulance team…"
-                    rows={2}
-                    value={ambulanceNotes}
-                    onChange={(e) => setAmbulanceNotes(e.target.value)}
-                  />
                 </div>
               )}
             </div>
