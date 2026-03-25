@@ -7,7 +7,7 @@ import {
   FlaskConical, User, MapPin, Phone, Stethoscope,
   TestTube2, ChevronRight, ChevronLeft, Building2, Check,
   Search, X, PhoneCall, RefreshCw, ChevronDown, Mail,
-  Award, Info, Layers, CalendarDays, Clock, Pencil, Camera,
+  Award, Info, Layers, Pencil, Camera, FileText,
   AlertTriangle, Truck, MessageCircle,
 } from "lucide-react";
 
@@ -59,7 +59,6 @@ interface FormData {
   doctor_bank_name: string;
   doctor_account_number: string;
   doctor_account_name: string;
-  schedule: string;
   diagnosis: string;
   tests?: string; // used only for error state; rendered via TestTagInput
 }
@@ -80,7 +79,6 @@ const INITIAL: FormData = {
   doctor_bank_name: "",
   doctor_account_number: "",
   doctor_account_name: "",
-  schedule: "",
   diagnosis: "",
 };
 
@@ -91,19 +89,9 @@ const STEPS = [
   { title: "Location", icon: Building2 },
   { title: "Clinical", icon: TestTube2 },
   { title: "Referral", icon: Stethoscope },
-  { title: "Details", icon: User },
+  { title: "Patient", icon: User },
 ];
 
-const SCHEDULE_OPTIONS = [
-  { value: "today", label: "Today", desc: "Run the test today", icon: Clock },
-  { value: "this_week", label: "Within a week", desc: "Next 7 days", icon: CalendarDays },
-  { value: "this_month", label: "Within a month", desc: "Next 30 days", icon: CalendarDays },
-  { value: "not_sure", label: "Not sure yet", desc: "Haven't decided", icon: CalendarDays },
-] as const;
-
-function scheduleLabel(value: string | null): string {
-  return SCHEDULE_OPTIONS.find((o) => o.value === value)?.label ?? "—";
-}
 
 const DOCTOR_STORAGE_KEY = "poveon_doctor_profile";
 
@@ -639,9 +627,6 @@ export function DoctorRequestForm({
   const [labsLoading, setLabsLoading] = useState(true);
   const [submitting, setSubmitting] = useState(false);
   const [result, setResult] = useState<CreateRequestResponse | null>(null);
-  const [contactOpen, setContactOpen] = useState(false);
-  const [bankOpen, setBankOpen] = useState(true);
-  const [bankSkipped, setBankSkipped] = useState(false);
   const [labDetailsOpen, setLabDetailsOpen] = useState(false);
   const [learnMoreOpen, setLearnMoreOpen] = useState(false);
   const [callOpen, setCallOpen] = useState(false);
@@ -676,9 +661,11 @@ export function DoctorRequestForm({
   const [isCritical, setIsCritical] = useState(false);
   const [needsAmbulance, setNeedsAmbulance] = useState(false);
   const [ambulanceNotes, setAmbulanceNotes] = useState("");
-  // Step 4 accordion states
+  // Step 2 diagnosis collapsible
+  const [diagnosisOpen, setDiagnosisOpen] = useState(false);
+  // Step 4 accordion / lookup states
   const [patientInfoOpen, setPatientInfoOpen] = useState(false);
-  const [scheduleOpen, setScheduleOpen] = useState(false);
+  const [patientLookupStatus, setPatientLookupStatus] = useState<"idle" | "checking" | "found" | "not_found">("idle");
 
   // Step 3: doctor profile check
   const [docProfileStatus, setDocProfileStatus] = useState<"idle" | "checking" | "found_complete" | "found_partial" | "not_found">("idle");
@@ -705,21 +692,29 @@ export function DoctorRequestForm({
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [form.patient_phone]);
 
-  // Auto-fill patient name from profile when patient email is entered
+  // Auto-fill patient details from profile when email is entered (Step 4)
   useEffect(() => {
     const email = form.patient_email;
-    if (!email || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) return;
+    if (!email || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
+      setPatientLookupStatus("idle");
+      return;
+    }
+    setPatientLookupStatus("checking");
     const timer = setTimeout(() => {
       fetch(`/api/patient/profile?email=${encodeURIComponent(email)}`)
         .then((r) => r.ok ? r.json() : null)
         .then((data) => {
           if (data?.success) {
+            setPatientLookupStatus("found");
+            if (data.phone && !form.patient_phone) set("patient_phone", data.phone);
             if (data.name && !form.patient_name) { set("patient_name", data.name); setPatientInfoOpen(true); }
             if (data.dob && !form.dob) set("dob", data.dob);
             if (data.sex && !form.sex) set("sex", data.sex);
+          } else {
+            setPatientLookupStatus("not_found");
           }
         })
-        .catch(() => null);
+        .catch(() => setPatientLookupStatus("not_found"));
     }, 600);
     return () => clearTimeout(timer);
   // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -822,28 +817,27 @@ export function DoctorRequestForm({
       if (labPreselected && hasLocations && selectedLocIdx < 0) errs.lab_id = "Please select a location";
     }
     if (s === 2) {
-      if (!form.patient_phone) errs.patient_phone = "Required";
-      if (!form.patient_email.trim()) errs.patient_email = "Patient email is required";
-      else if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(form.patient_email))
-        errs.patient_email = "Invalid email";
       if (clinicalMode === "type") {
-        if (!form.diagnosis.trim()) errs.diagnosis = "Required";
         if (testTags.length === 0) errs.tests = "Required";
+        // diagnosis is optional
       }
       if (clinicalMode === "picture") {
         if (!testImageUrl) {
           setImageUploadError("Please upload a test request image");
-        } else {
-          // Image uploaded — also require tests and diagnosis
-          if (testTags.length === 0) errs.tests = "Required";
-          if (!form.diagnosis.trim()) errs.diagnosis = "Required";
         }
+        // tests and diagnosis are optional for picture mode
       }
     }
     if (s === 3) {
       if (!form.doctor_email.trim()) errs.doctor_email = "Email is required";
       else if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(form.doctor_email))
         errs.doctor_email = "Invalid email address";
+    }
+    if (s === 4) {
+      if (!form.patient_email.trim()) errs.patient_email = "Patient email is required";
+      else if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(form.patient_email))
+        errs.patient_email = "Invalid email";
+      if (!form.patient_phone) errs.patient_phone = "Phone number is required";
     }
     setErrors(errs);
     return Object.keys(errs).length === 0;
@@ -887,6 +881,7 @@ export function DoctorRequestForm({
   }
 
   async function handleSubmit() {
+    if (!validateStep(4)) return;
     setSubmitting(true);
     try {
       const res = await fetch("/api/requests/create", {
@@ -895,7 +890,6 @@ export function DoctorRequestForm({
         body: JSON.stringify({
           ...form,
           tests: clinicalMode === "picture" ? (testsString || "See attached image") : testsString,
-          schedule: form.schedule || undefined,
           test_image_url: testImageUrl ?? undefined,
           is_critical: isCritical,
           needs_ambulance: needsAmbulance,
@@ -915,6 +909,40 @@ export function DoctorRequestForm({
     } finally {
       setSubmitting(false);
     }
+  }
+
+  if (submitting) {
+    const steps = [
+      { icon: "🧬", label: "Verifying test details…" },
+      { icon: "🏥", label: "Connecting to the lab…" },
+      { icon: "📋", label: "Creating your request…" },
+      { icon: "✉️", label: "Sending confirmations…" },
+    ];
+    return (
+      <div className="flex flex-col items-center justify-center py-16 px-6 space-y-8 animate-fade-in min-h-[320px]">
+        {/* Animated pulsing orb */}
+        <div className="relative">
+          <div className="w-20 h-20 rounded-full bg-gradient-to-br from-medical-400 to-sky-500 opacity-20 absolute inset-0 animate-ping" />
+          <div className="w-20 h-20 rounded-full bg-gradient-to-br from-medical-400 to-sky-500 flex items-center justify-center relative z-10 shadow-lg shadow-medical-500/30">
+            <FlaskConical className="w-9 h-9 text-white" />
+          </div>
+        </div>
+        <div className="text-center space-y-1">
+          <p className="text-lg font-bold text-slate-800">Submitting your request</p>
+          <p className="text-sm text-slate-500">Just a moment while we take care of everything</p>
+        </div>
+        {/* Steps */}
+        <div className="w-full max-w-xs space-y-2.5">
+          {steps.map((s, i) => (
+            <div key={i} className="flex items-center gap-3 px-4 py-2.5 rounded-xl bg-slate-50 border border-slate-100">
+              <span className="text-lg">{s.icon}</span>
+              <span className="text-sm text-slate-600 flex-1">{s.label}</span>
+              <RefreshCw className="w-3.5 h-3.5 text-medical-400 animate-spin shrink-0" style={{ animationDelay: `${i * 0.2}s` }} />
+            </div>
+          ))}
+        </div>
+      </div>
+    );
   }
 
   if (result?.success) {
@@ -980,13 +1008,11 @@ export function DoctorRequestForm({
     if (step === 1) {
       if (!labPreselected) return !!form.lab_id;
       if (hasLocations) return selectedLocIdx >= 0;
-      return true; // Lab URL, no branches: just confirmation
+      return true;
     }
     if (step === 2) {
-      const phoneOk = !!form.patient_phone;
-      const emailOk = !!form.patient_email && /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(form.patient_email);
-      if (clinicalMode === "picture") return phoneOk && emailOk && !!testImageUrl;
-      return phoneOk && emailOk && form.diagnosis.trim().length > 0 && testTags.length > 0;
+      if (clinicalMode === "picture") return !!testImageUrl;
+      return testTags.length > 0;
     }
     if (step === 3) {
       return (
@@ -994,13 +1020,17 @@ export function DoctorRequestForm({
         /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(form.doctor_email)
       );
     }
-    return true; // step 4 optional
+    if (step === 4) {
+      const emailOk = !!form.patient_email && /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(form.patient_email);
+      return emailOk && !!form.patient_phone;
+    }
+    return true;
   })();
 
-  // Whether the clinical section of step 2 is complete (upload mode: image present; type mode: diagnosis + tests)
+  // Whether the clinical section of step 2 is done (drives the connector line)
   const clinicalDone =
     (clinicalMode === "picture" && !!testImageUrl) ||
-    (clinicalMode === "type" && !!form.diagnosis.trim() && testTags.length > 0);
+    (clinicalMode === "type" && testTags.length > 0);
 
   return (
     <div className="animate-fade-in">
@@ -1153,21 +1183,6 @@ export function DoctorRequestForm({
       {/* Step content */}
       <div
         className="glass-card p-6 mt-4 mb-2"
-        onKeyDown={(e) => {
-          if (e.key !== "Enter") return;
-          const target = e.target as HTMLElement;
-          if (target.tagName !== "INPUT") return;
-          e.preventDefault();
-          const inputs = Array.from(
-            e.currentTarget.querySelectorAll<HTMLElement>(
-              'input:not([type="hidden"]):not([disabled]), select:not([disabled])'
-            )
-          );
-          const idx = inputs.indexOf(target as HTMLInputElement);
-          if (idx >= 0 && idx < inputs.length - 1) {
-            inputs[idx + 1].focus();
-          }
-        }}
       >
 
         {/* Step 1: Choose Lab / Branch */}
@@ -1297,7 +1312,7 @@ export function DoctorRequestForm({
                 <div className="flex items-start gap-3 bg-sky-50 border border-sky-200 rounded-xl px-4 py-3">
                   <Info className="w-4 h-4 text-sky-500 shrink-0 mt-0.5" />
                   <p className="text-xs text-sky-800 leading-relaxed">
-                    Only the patient contact and clinical details are required — everything else is optional and can be filled in the last step.
+                    Fill in the clinical tests, your email, and the patient's contact details — the request will be delivered to the lab instantly.
                   </p>
                 </div>
               </div>
@@ -1313,18 +1328,7 @@ export function DoctorRequestForm({
               Clinical Details
             </h2>
 
-            <div className="relative pt-1">
-              {/* Substep 1: Clinical — upload or type, always visible first */}
-              <div className="relative flex gap-3">
-                <div className="flex flex-col items-center shrink-0 pt-1">
-                  <div className={`w-6 h-6 rounded-full flex items-center justify-center text-[10px] font-bold border-2 transition-all shrink-0 ${
-                    clinicalDone ? "bg-emerald-500 border-emerald-500 text-white" : "bg-white border-medical-400 text-medical-600"
-                  }`}>
-                    {clinicalDone ? <Check className="w-3 h-3" /> : "1"}
-                  </div>
-                  {clinicalDone && <div className="w-0.5 flex-1 min-h-4 bg-slate-200 mt-1" />}
-                </div>
-                <div className="flex-1 pb-3 min-w-0 space-y-3">
+            <div className="space-y-3">
                   {/* Mode toggle */}
                   <div className="flex gap-2 p-1 bg-slate-100 rounded-2xl">
                     <button
@@ -1349,18 +1353,9 @@ export function DoctorRequestForm({
                     </button>
                   </div>
 
-                  {/* Type mode: diagnosis + tests */}
+                  {/* Type mode: tests (required) + diagnosis (optional, collapsible) */}
                   {clinicalMode === "type" && (
                     <div className="space-y-4 animate-fade-in-up">
-                      <Textarea
-                        label="Diagnosis / Clinical Notes"
-                        required
-                        placeholder="Brief clinical summary or working diagnosis…"
-                        rows={3}
-                        value={form.diagnosis}
-                        onChange={(e) => set("diagnosis", e.target.value)}
-                        error={errors.diagnosis}
-                      />
                       <TestTagInput
                         label="Laboratory Tests Requested"
                         value={testTags}
@@ -1368,6 +1363,33 @@ export function DoctorRequestForm({
                         labId={form.lab_id}
                         error={errors.tests}
                       />
+                      {/* Optional collapsible diagnosis */}
+                      <div className={`rounded-xl border-2 overflow-hidden transition-colors ${form.diagnosis.trim() ? "border-emerald-200 bg-emerald-50/30" : "border-slate-200"}`}>
+                        <button
+                          type="button"
+                          onClick={() => setDiagnosisOpen((v) => !v)}
+                          className={`w-full flex items-center justify-between px-4 py-3 transition-colors ${form.diagnosis.trim() ? "hover:bg-emerald-50/50" : "hover:bg-slate-50 bg-slate-50/50"}`}
+                        >
+                          <div className="flex items-center gap-2 text-left">
+                            {form.diagnosis.trim()
+                              ? <><Check className="w-4 h-4 text-emerald-500 shrink-0" /><span className="text-sm font-semibold text-slate-700">Diagnosis / Clinical Notes added</span></>
+                              : <><FileText className="w-4 h-4 text-slate-400 shrink-0" /><span className="text-sm font-semibold text-slate-700">Diagnosis / Clinical Notes <span className="text-xs text-slate-400 font-normal ml-1">optional</span></span></>
+                            }
+                          </div>
+                          <ChevronDown className={`w-4 h-4 shrink-0 transition-transform ${form.diagnosis.trim() ? "text-emerald-500" : "text-slate-400"} ${diagnosisOpen ? "rotate-180" : ""}`} />
+                        </button>
+                        {diagnosisOpen && (
+                          <div className={`px-4 pb-4 pt-2 border-t ${form.diagnosis.trim() ? "border-emerald-100 bg-emerald-50/20" : "border-slate-100"}`}>
+                            <Textarea
+                              label=""
+                              placeholder="Brief clinical summary or working diagnosis…"
+                              rows={3}
+                              value={form.diagnosis}
+                              onChange={(e) => set("diagnosis", e.target.value)}
+                            />
+                          </div>
+                        )}
+                      </div>
                     </div>
                   )}
 
@@ -1595,7 +1617,6 @@ export function DoctorRequestForm({
                                               sex: prev.sex || res.extracted.sex,
                                               doctor_name: prev.doctor_name || res.extracted.doctor_name,
                                               doctor_prefix: prev.doctor_prefix || res.extracted.doctor_prefix,
-                                              schedule: prev.schedule || res.extracted.schedule_hint,
                                             }));
                                           }
                                         })
@@ -1636,67 +1657,55 @@ export function DoctorRequestForm({
                               disabled={imageExtracting}
                             />
                             <Textarea
-                              label="Diagnosis / Clinical Notes"
-                              required
+                              label="Diagnosis / Clinical Notes (optional)"
                               placeholder={imageExtracting ? "Extracting…" : "Extracted from slip, or add manually"}
                               rows={2}
                               value={form.diagnosis}
                               onChange={(e) => set("diagnosis", e.target.value)}
-                              error={errors.diagnosis}
                             />
                           </div>
                         )}
                       </div>
                     )}
-                  </div>
-                </div>
+              </div>
 
-              {/* Substep 2: Patient Phone — reveals when clinical is filled */}
-              {clinicalDone && (
-                <div className="relative flex gap-3 animate-fade-in-up">
-                  <div className="flex flex-col items-center shrink-0 pt-1">
-                    <div className={`w-6 h-6 rounded-full flex items-center justify-center text-[10px] font-bold border-2 transition-all shrink-0 ${form.patient_phone.trim() ? "bg-emerald-500 border-emerald-500 text-white" : "bg-white border-medical-400 text-medical-600"}`}>
-                      {form.patient_phone.trim() ? <Check className="w-3 h-3" /> : "2"}
-                    </div>
-                    {form.patient_phone.trim() && <div className="w-0.5 flex-1 min-h-4 bg-slate-200 mt-1" />}
-                  </div>
-                  <div className="flex-1 pb-3 min-w-0">
-                    <PhoneInput
-                      label="Patient Phone"
-                      required
-                      value={form.patient_phone}
-                      onChange={(v) => set("patient_phone", v)}
-                      error={errors.patient_phone}
-                    />
-                  </div>
-                </div>
-              )}
-
-              {/* Substep 3: Patient Email — reveals after phone */}
-              {clinicalDone && form.patient_phone.trim() && (
-                <div className="relative flex gap-3 animate-fade-in-up">
-                  <div className="flex flex-col items-center shrink-0 pt-1">
-                    <div className={`w-6 h-6 rounded-full flex items-center justify-center text-[10px] font-bold border-2 transition-all shrink-0 ${form.patient_email && /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(form.patient_email) ? "bg-emerald-500 border-emerald-500 text-white" : "bg-white border-medical-400 text-medical-600"}`}>
-                      {form.patient_email && /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(form.patient_email) ? <Check className="w-3 h-3" /> : "3"}
-                    </div>
-                  </div>
-                  <div className="flex-1 pb-2 min-w-0">
-                    <div className="flex flex-col gap-1">
-                      <label htmlFor="patient_email" className="text-sm font-medium text-slate-700 flex items-center gap-2">
-                        Patient Email <span className="inline-block w-1.5 h-1.5 rounded-full bg-amber-400 ml-0.5 align-middle" aria-label="required" />
-                        <span className="text-xs bg-sky-100 text-sky-700 px-2 py-0.5 rounded-full font-medium">Tracks patient details</span>
-                      </label>
-                      <Input
-                        id="patient_email"
-                        type="email"
-                        placeholder="patient@example.com"
-                        hint="Used to send request code, track results, and auto-fill patient details from their portal"
-                        value={form.patient_email}
-                        onChange={(e) => set("patient_email", e.target.value)}
-                        error={errors.patient_email}
-                      />
-                    </div>
-                  </div>
+            {/* Patient Condition — optional */}
+            <div className="space-y-2">
+              <p className="text-sm font-medium text-slate-700">
+                Patient Condition
+                <span className="text-xs text-slate-400 font-normal ml-1.5">optional</span>
+              </p>
+              <div className="flex gap-2 p-1 bg-slate-100 rounded-2xl">
+                <button
+                  type="button"
+                  onClick={() => setIsCritical((v) => !v)}
+                  className={`flex-1 flex items-center justify-center gap-1.5 py-2.5 px-3 rounded-xl text-sm font-semibold transition-all ${
+                    isCritical ? "bg-white shadow text-red-600" : "text-slate-400 hover:text-slate-600"
+                  }`}
+                >
+                  <AlertTriangle className="w-3.5 h-3.5" />
+                  Critical
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setNeedsAmbulance((v) => !v)}
+                  className={`flex-1 flex items-center justify-center gap-1.5 py-2.5 px-3 rounded-xl text-sm font-semibold transition-all ${
+                    needsAmbulance ? "bg-white shadow text-orange-600" : "text-slate-400 hover:text-slate-600"
+                  }`}
+                >
+                  <Truck className="w-3.5 h-3.5" />
+                  Ambulance
+                </button>
+              </div>
+              {needsAmbulance && (
+                <div className="animate-fade-in-up">
+                  <Textarea
+                    label=""
+                    placeholder="Pickup address or notes for the ambulance team…"
+                    rows={2}
+                    value={ambulanceNotes}
+                    onChange={(e) => setAmbulanceNotes(e.target.value)}
+                  />
                 </div>
               )}
             </div>
@@ -1794,44 +1803,127 @@ export function DoctorRequestForm({
           </div>
         )}
 
-        {/* Step 4: Optional Details + Review */}
+        {/* Step 4: Patient Contact + Details + Review */}
         {step === 4 && (
-          <div className="space-y-6">
+          <div className="space-y-5">
             <h2 className="flex items-center gap-2 text-base font-semibold text-slate-700 pb-3 border-b border-slate-100">
               <User className="w-4 h-4 text-medical-600" />
-              Additional Details
-              <span className="text-xs text-slate-400 font-normal ml-1">(all optional)</span>
+              Patient Contact
             </h2>
 
-            {/* Patient information — collapsible */}
-            {(() => {
-              const hasPatientData = !!(form.patient_name || form.dob || form.sex || form.address);
-              return (
-                <div className={`rounded-xl border-2 overflow-hidden transition-colors ${hasPatientData ? "border-emerald-200 bg-emerald-50/30" : "border-slate-200"}`}>
-                  <button type="button" onClick={() => setPatientInfoOpen((v) => !v)} className={`w-full flex items-center justify-between px-4 py-3.5 transition-colors ${hasPatientData ? "hover:bg-emerald-50/50" : "hover:bg-slate-50 bg-slate-50/50"}`}>
-                    {hasPatientData ? (
-                      <span className="flex items-center gap-2"><Check className="w-4 h-4 text-emerald-500 shrink-0" /><span className="text-sm font-semibold text-slate-700">Patient details added</span></span>
-                    ) : (
-                      <div className="flex items-center gap-2">
-                        <User className="w-4 h-4 text-slate-400 shrink-0" />
-                        <div className="text-left">
-                          <span className="text-sm font-semibold text-slate-700">Patient Details</span>
-                          <span className="text-xs text-slate-400 ml-2">Name, age, sex, address</span>
-                        </div>
-                      </div>
-                    )}
-                    <ChevronDown className={`w-4 h-4 transition-transform shrink-0 ${hasPatientData ? "text-emerald-500" : "text-slate-400"} ${patientInfoOpen ? "rotate-180" : ""}`} />
-                  </button>
-                  {patientInfoOpen && (
-                    <div className={`px-4 pb-4 pt-2 space-y-4 border-t ${hasPatientData ? "border-emerald-100 bg-emerald-50/20" : "border-slate-100"}`}>
-                      <Input label="Patient Full Name" placeholder="e.g. Amara Okonkwo" value={form.patient_name} onChange={(e) => set("patient_name", e.target.value)} />
-                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+            <div className="relative pt-1">
+              {/* Substep 1: Email */}
+              <div className="relative flex gap-3">
+                <div className="flex flex-col items-center shrink-0 pt-1">
+                  <div className={`w-6 h-6 rounded-full flex items-center justify-center text-[10px] font-bold border-2 transition-all shrink-0 ${
+                    form.patient_email && /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(form.patient_email)
+                      ? "bg-emerald-500 border-emerald-500 text-white"
+                      : "bg-white border-medical-400 text-medical-600"
+                  }`}>
+                    {form.patient_email && /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(form.patient_email)
+                      ? <Check className="w-3 h-3" />
+                      : "1"}
+                  </div>
+                  {form.patient_email && /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(form.patient_email) && (
+                    <div className="w-0.5 flex-1 min-h-4 bg-slate-200 mt-1" />
+                  )}
+                </div>
+                <div className="flex-1 pb-3 min-w-0 space-y-2">
+                  <div className="flex flex-col gap-1">
+                    <label htmlFor="patient_email" className="text-sm font-medium text-slate-700 flex items-center gap-2">
+                      Patient Email
+                      <span className="inline-block w-1.5 h-1.5 rounded-full bg-amber-400 ml-0.5 align-middle" aria-label="required" />
+                      <span className="text-xs bg-sky-100 text-sky-700 px-2 py-0.5 rounded-full font-medium">Looks up patient profile</span>
+                    </label>
+                    <Input
+                      id="patient_email"
+                      type="email"
+                      placeholder="patient@example.com"
+                      hint="Used to send the request code, track results, and auto-fill patient details"
+                      value={form.patient_email}
+                      onChange={(e) => set("patient_email", e.target.value)}
+                      error={errors.patient_email}
+                    />
+                  </div>
+                  {/* Profile lookup feedback */}
+                  {patientLookupStatus === "checking" && (
+                    <div className="flex items-center gap-2 text-xs text-slate-400">
+                      <RefreshCw className="w-3 h-3 animate-spin" />
+                      Looking up patient profile…
+                    </div>
+                  )}
+                  {patientLookupStatus === "found" && (
+                    <div className="flex items-start gap-2 px-3 py-2 bg-emerald-50 border border-emerald-200 rounded-xl text-xs">
+                      <Check className="w-3.5 h-3.5 text-emerald-600 shrink-0 mt-0.5" />
+                      <span className="text-emerald-800 font-medium">Patient profile found — details pre-filled below</span>
+                    </div>
+                  )}
+                  {patientLookupStatus === "not_found" && (
+                    <div className="flex items-start gap-2 px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs">
+                      <Info className="w-3.5 h-3.5 text-slate-400 shrink-0 mt-0.5" />
+                      <span className="text-slate-600">No existing profile — please fill in details below</span>
+                    </div>
+                  )}
+                </div>
+              </div>
+
+              {/* Substep 2: Phone — reveals after email is valid */}
+              {form.patient_email && /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(form.patient_email) && (
+                <div className="relative flex gap-3 animate-fade-in-up">
+                  <div className="flex flex-col items-center shrink-0 pt-1">
+                    <div className={`w-6 h-6 rounded-full flex items-center justify-center text-[10px] font-bold border-2 transition-all shrink-0 ${
+                      form.patient_phone.trim()
+                        ? "bg-emerald-500 border-emerald-500 text-white"
+                        : "bg-white border-medical-400 text-medical-600"
+                    }`}>
+                      {form.patient_phone.trim() ? <Check className="w-3 h-3" /> : "2"}
+                    </div>
+                    {form.patient_phone.trim() && <div className="w-0.5 flex-1 min-h-4 bg-slate-200 mt-1" />}
+                  </div>
+                  <div className="flex-1 pb-3 min-w-0">
+                    <PhoneInput
+                      label="Patient Phone"
+                      required
+                      value={form.patient_phone}
+                      onChange={(v) => set("patient_phone", v)}
+                      error={errors.patient_phone}
+                    />
+                  </div>
+                </div>
+              )}
+
+              {/* Substep 3: Optional patient details — reveals after phone */}
+              {form.patient_email && /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(form.patient_email) && form.patient_phone.trim() && (
+                <div className="relative flex gap-3 animate-fade-in-up">
+                  <div className="flex flex-col items-center shrink-0 pt-1">
+                    <div className={`w-6 h-6 rounded-full flex items-center justify-center text-[10px] font-bold border-2 transition-all shrink-0 ${
+                      (form.patient_name || form.dob || form.sex)
+                        ? "bg-emerald-500 border-emerald-500 text-white"
+                        : "bg-white border-slate-300 text-slate-400"
+                    }`}>
+                      {(form.patient_name || form.dob || form.sex) ? <Check className="w-3 h-3" /> : "3"}
+                    </div>
+                  </div>
+                  <div className="flex-1 pb-2 min-w-0">
+                    <p className="text-sm font-medium text-slate-700 mb-3">
+                      Patient Details
+                      <span className="text-xs text-slate-400 font-normal ml-2">optional — auto-filled if profile found</span>
+                    </p>
+                    <div className="space-y-3">
+                      <Input
+                        label="Full Name"
+                        placeholder="e.g. Amara Okonkwo"
+                        value={form.patient_name}
+                        onChange={(e) => set("patient_name", e.target.value)}
+                      />
+                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                         <DobInput value={form.dob} onChange={(iso) => set("dob", iso)} />
                         <div className="flex flex-col gap-1">
                           <label className="text-sm font-medium text-slate-700">Sex <span className="text-xs text-slate-400 font-normal">(optional)</span></label>
                           <div className="flex gap-2">
                             {(["male", "female"] as const).map((s) => (
-                              <button key={s} type="button" onClick={() => set("sex", form.sex === s ? "" : s)} className={`flex items-center gap-2 px-4 py-2.5 rounded-xl border-2 transition-all text-sm font-semibold ${form.sex === s ? "border-medical-400 bg-medical-50 text-medical-700" : "border-slate-200 bg-white/60 text-slate-500 hover:border-slate-300 hover:bg-slate-50"}`}>
+                              <button key={s} type="button" onClick={() => set("sex", form.sex === s ? "" : s)}
+                                className={`flex items-center gap-2 px-4 py-2.5 rounded-xl border-2 transition-all text-sm font-semibold ${form.sex === s ? "border-medical-400 bg-medical-50 text-medical-700" : "border-slate-200 bg-white/60 text-slate-500 hover:border-slate-300 hover:bg-slate-50"}`}>
                                 {s === "male" ? <MarsIcon className={`w-4 h-4 ${form.sex === s ? "text-medical-500" : "text-slate-400"}`} /> : <VenusIcon className={`w-4 h-4 ${form.sex === s ? "text-medical-500" : "text-slate-400"}`} />}
                                 {s.charAt(0).toUpperCase() + s.slice(1)}
                               </button>
@@ -1839,120 +1931,8 @@ export function DoctorRequestForm({
                           </div>
                         </div>
                       </div>
-                      {/* Address */}
-                      {form.address ? (
-                        <div className="border-2 border-emerald-200 bg-emerald-50/30 rounded-xl overflow-hidden">
-                          <button type="button" onClick={() => setContactOpen((v) => !v)} className="w-full flex items-center justify-between px-4 py-3 hover:bg-emerald-50/50 transition-colors">
-                            <span className="flex items-center gap-2"><Check className="w-4 h-4 text-emerald-500 shrink-0" /><span className="text-sm font-semibold text-slate-700">Address added</span></span>
-                            <ChevronDown className={`w-4 h-4 text-emerald-500 transition-transform shrink-0 ${contactOpen ? "rotate-180" : ""}`} />
-                          </button>
-                          {contactOpen && <div className="px-4 pb-4 pt-1 border-t border-emerald-100"><Input label="Patient Address" placeholder="Home address" value={form.address} onChange={(e) => set("address", e.target.value)} /></div>}
-                        </div>
-                      ) : (
-                        <div className="border-2 border-slate-200 bg-slate-50/40 rounded-xl overflow-hidden">
-                          <button type="button" onClick={() => setContactOpen((v) => !v)} className="w-full flex items-center justify-between px-4 py-3 hover:bg-slate-50 transition-colors">
-                            <div className="flex items-center gap-2"><MapPin className="w-4 h-4 text-slate-400 shrink-0" /><span className="text-sm font-semibold text-slate-700">Patient Address <span className="text-xs text-slate-400 font-normal ml-1">optional</span></span></div>
-                            <ChevronDown className={`w-4 h-4 text-slate-400 transition-transform shrink-0 ${contactOpen ? "rotate-180" : ""}`} />
-                          </button>
-                          {contactOpen && <div className="px-4 pb-4 pt-1 border-t border-slate-100"><Input label="Patient Address" placeholder="Home address" value={form.address} onChange={(e) => set("address", e.target.value)} /></div>}
-                        </div>
-                      )}
                     </div>
-                  )}
-                </div>
-              );
-            })()}
-
-            {/* Schedule — collapsible */}
-            {(() => {
-              const sl: Record<string, string> = { today: "Today", this_week: "This Week", this_month: "This Month", not_sure: "Not Sure" };
-              return (
-                <div className={`rounded-xl border-2 overflow-hidden transition-colors ${form.schedule ? "border-emerald-200 bg-emerald-50/30" : "border-slate-200"}`}>
-                  <button type="button" onClick={() => setScheduleOpen((v) => !v)} className={`w-full flex items-center justify-between px-4 py-3.5 transition-colors ${form.schedule ? "hover:bg-emerald-50/50" : "hover:bg-slate-50 bg-slate-50/50"}`}>
-                    {form.schedule ? (
-                      <span className="flex items-center gap-2"><Check className="w-4 h-4 text-emerald-500 shrink-0" /><span className="text-sm font-semibold text-slate-700">Schedule: {sl[form.schedule]}</span></span>
-                    ) : (
-                      <div className="flex items-center gap-2">
-                        <CalendarDays className="w-4 h-4 text-slate-400 shrink-0" />
-                        <div className="text-left">
-                          <span className="text-sm font-semibold text-slate-700">Preferred Schedule</span>
-                          <span className="text-xs text-slate-400 ml-2">When will the patient come in?</span>
-                        </div>
-                      </div>
-                    )}
-                    <ChevronDown className={`w-4 h-4 transition-transform shrink-0 ${form.schedule ? "text-emerald-500" : "text-slate-400"} ${scheduleOpen ? "rotate-180" : ""}`} />
-                  </button>
-                  {scheduleOpen && (
-                    <div className={`px-4 pb-4 pt-3 border-t ${form.schedule ? "border-emerald-100 bg-emerald-50/20" : "border-slate-100"}`}>
-                      <div className="grid grid-cols-2 gap-3">
-                        {SCHEDULE_OPTIONS.map((opt) => {
-                          const selected = form.schedule === opt.value;
-                          return (
-                            <button key={opt.value} type="button" onClick={() => { set("schedule", selected ? "" : opt.value); if (!selected) setScheduleOpen(false); }} className={`flex flex-col items-start gap-1.5 p-4 rounded-2xl border-2 transition-all text-left ${selected ? "border-medical-400 bg-medical-50 ring-2 ring-medical-200" : "border-slate-200 bg-white/60 hover:border-slate-300 hover:bg-slate-50"}`}>
-                              <div className={`w-8 h-8 rounded-xl flex items-center justify-center ${selected ? "bg-medical-600" : "bg-slate-100"}`}>
-                                <opt.icon className={`w-4 h-4 ${selected ? "text-white" : "text-slate-400"}`} />
-                              </div>
-                              <span className={`text-sm font-semibold leading-tight ${selected ? "text-medical-800" : "text-slate-700"}`}>{opt.label}</span>
-                              <span className={`text-xs ${selected ? "text-medical-600" : "text-slate-400"}`}>{opt.desc}</span>
-                            </button>
-                          );
-                        })}
-                      </div>
-                    </div>
-                  )}
-                </div>
-              );
-            })()}
-
-            {/* Critical condition / ambulance — beautiful cards */}
-            <div className="space-y-3">
-              <p className="text-xs font-semibold text-slate-400 uppercase tracking-wider">Patient Condition</p>
-              <div className="grid grid-cols-1 gap-3">
-                {/* Critical card */}
-                <button
-                  type="button"
-                  onClick={() => setIsCritical((v) => !v)}
-                  className={`relative flex items-center gap-4 p-4 rounded-2xl border-2 text-left transition-all ${isCritical ? "border-red-400 bg-gradient-to-r from-red-50 to-red-50/30 shadow-sm shadow-red-100" : "border-slate-200 bg-white hover:border-red-200 hover:bg-red-50/20"}`}
-                >
-                  <div className={`w-11 h-11 rounded-2xl flex items-center justify-center shrink-0 transition-all ${isCritical ? "bg-red-500 shadow-md shadow-red-200" : "bg-slate-100"}`}>
-                    <AlertTriangle className={`w-5 h-5 ${isCritical ? "text-white" : "text-slate-400"}`} />
                   </div>
-                  <div className="flex-1 min-w-0">
-                    <p className={`text-sm font-bold leading-tight ${isCritical ? "text-red-800" : "text-slate-700"}`}>Patient is in critical condition</p>
-                    <p className={`text-xs mt-1 leading-relaxed ${isCritical ? "text-red-500" : "text-slate-400"}`}>Flags request as urgent for immediate lab attention</p>
-                  </div>
-                  <div className={`w-5 h-5 rounded-full border-2 flex items-center justify-center shrink-0 transition-all ${isCritical ? "border-red-500 bg-red-500" : "border-slate-300"}`}>
-                    {isCritical && <Check className="w-3 h-3 text-white" />}
-                  </div>
-                </button>
-
-                {/* Ambulance card */}
-                <button
-                  type="button"
-                  onClick={() => setNeedsAmbulance((v) => !v)}
-                  className={`relative flex items-center gap-4 p-4 rounded-2xl border-2 text-left transition-all ${needsAmbulance ? "border-orange-400 bg-gradient-to-r from-orange-50 to-orange-50/30 shadow-sm shadow-orange-100" : "border-slate-200 bg-white hover:border-orange-200 hover:bg-orange-50/20"}`}
-                >
-                  <div className={`w-11 h-11 rounded-2xl flex items-center justify-center shrink-0 transition-all ${needsAmbulance ? "bg-orange-500 shadow-md shadow-orange-200" : "bg-slate-100"}`}>
-                    <Truck className={`w-5 h-5 ${needsAmbulance ? "text-white" : "text-slate-400"}`} />
-                  </div>
-                  <div className="flex-1 min-w-0">
-                    <p className={`text-sm font-bold leading-tight ${needsAmbulance ? "text-orange-800" : "text-slate-700"}`}>Request ambulance service</p>
-                    <p className={`text-xs mt-1 leading-relaxed ${needsAmbulance ? "text-orange-500" : "text-slate-400"}`}>Notify the lab that transport is needed</p>
-                  </div>
-                  <div className={`w-5 h-5 rounded-full border-2 flex items-center justify-center shrink-0 transition-all ${needsAmbulance ? "border-orange-500 bg-orange-500" : "border-slate-300"}`}>
-                    {needsAmbulance && <Check className="w-3 h-3 text-white" />}
-                  </div>
-                </button>
-              </div>
-              {needsAmbulance && (
-                <div className="animate-fade-in-up">
-                  <Textarea
-                    label="Pickup address / ambulance notes"
-                    placeholder="Patient's pickup address or any relevant notes for the ambulance team…"
-                    rows={2}
-                    value={ambulanceNotes}
-                    onChange={(e) => setAmbulanceNotes(e.target.value)}
-                  />
                 </div>
               )}
             </div>
@@ -1988,7 +1968,6 @@ export function DoctorRequestForm({
                           <p className="text-xs font-semibold text-slate-700 truncate">{testsString}</p>
                         </>
                     }
-                    {form.schedule && <p className="text-xs text-medical-600 font-medium mt-0.5">{scheduleLabel(form.schedule)}</p>}
                   </div>
                 </div>
                 {/* Referrer */}

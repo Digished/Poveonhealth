@@ -29,7 +29,6 @@ export async function GET(
       diagnosis: true,
       sex: true,
       dob: true,
-      schedule: true,
       created_at: true,
       patient_name: true,
       doctor_name: true,
@@ -94,13 +93,6 @@ export async function GET(
     sexCounts[key] = (sexCounts[key] ?? 0) + 1;
   });
 
-  // Schedule preferences
-  const schedCounts: Record<string, number> = { today: 0, this_week: 0, this_month: 0, not_sure: 0 };
-  filtered.forEach((r) => {
-    const s = r.schedule ?? "not_sure";
-    if (s in schedCounts) schedCounts[s]++;
-  });
-
   const total = filtered.length;
   const done = filtered.filter((r) => r.status === "done").length;
   const seen = filtered.filter((r) => r.status === "seen").length;
@@ -125,7 +117,6 @@ export async function GET(
     topTests,
     topDoctors,
     sexCounts,
-    schedCounts,
     availableMonths,
     availableTests,
   });

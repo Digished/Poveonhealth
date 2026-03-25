@@ -32,12 +32,15 @@ interface TestTagInputProps {
 }
 
 /**
- * Rough misspelling heuristic: flags strings with unusual consonant clusters
- * or a very low vowel ratio — a proxy for "this doesn't look like a real word".
+ * Misspelling heuristic — a proxy for "this doesn't look like a real word".
+ * Short tokens ≤6 chars with no vowels are treated as medical abbreviations
+ * (FBC, LFT, fbc, eucr, pcv) and are never flagged, regardless of case.
  */
 function looksLikeMisspelling(s: string): boolean {
-  const word = s.toLowerCase().replace(/[\s\-\/()]/g, "");
+  const word = s.trim().replace(/[\s\-\/()]/g, "").toLowerCase();
   if (word.length < 4) return false;
+  // Short all-consonant tokens → abbreviations (fbc, lft, eucr, pcv…)
+  if (word.length <= 6 && !/[aeiou]/.test(word)) return false;
   // 4+ consecutive consonants → suspicious
   if (/[bcdfghjklmnpqrstvwxyz]{4,}/.test(word)) return true;
   // Fewer than 15% vowels in a 5+ char word → suspicious
@@ -51,6 +54,7 @@ export function TestTagInput({ value, onChange, labId, error, label, disabled }:
   const [results, setResults] = useState<CatalogResult[]>([]);
   const [activeIdx, setActiveIdx] = useState(-1);
   const [open, setOpen] = useState(false);
+  const [searching, setSearching] = useState(false);
   const [mounted, setMounted] = useState(false);
   const [dropdownPos, setDropdownPos] = useState({ top: 0, left: 0, width: 0 });
 
@@ -83,18 +87,32 @@ export function TestTagInput({ value, onChange, labId, error, label, disabled }:
   // ── Debounced catalog search ───────────────────────────────────────────────
   useEffect(() => {
     const q = inputText.trim();
-    if (q.length < 2) { setResults([]); setOpen(false); return; }
+    if (q.length < 2) {
+      setResults([]); setOpen(false); setSearching(false);
+      return;
+    }
+    setSearching(true);
+    const controller = new AbortController();
     const t = setTimeout(async () => {
-      const labParam = labId ? `&lab_id=${encodeURIComponent(labId)}` : "";
-      const res = await fetch(`/api/catalog/search?q=${encodeURIComponent(q)}${labParam}&limit=8`);
-      if (res.ok) {
-        const data = await res.json();
-        setResults(data.results ?? []);
-        setOpen((data.results ?? []).length > 0);
-        setActiveIdx(-1);
+      try {
+        const labParam = labId ? `&lab_id=${encodeURIComponent(labId)}` : "";
+        const res = await fetch(
+          `/api/catalog/search?q=${encodeURIComponent(q)}${labParam}&limit=8`,
+          { signal: controller.signal }
+        );
+        if (res.ok) {
+          const data = await res.json();
+          const r: CatalogResult[] = data.results ?? [];
+          setResults(r);
+          setSearching(false);
+          setOpen(r.length > 0);
+          setActiveIdx(-1);
+        }
+      } catch (e) {
+        if ((e as Error).name !== "AbortError") setSearching(false);
       }
     }, 250);
-    return () => clearTimeout(t);
+    return () => { clearTimeout(t); controller.abort(); };
   }, [inputText, labId]);
 
   // ── Close on outside click ────────────────────────────────────────────────
@@ -121,7 +139,7 @@ export function TestTagInput({ value, onChange, labId, error, label, disabled }:
       is_rapid_test: r.is_rapid_test,
       low_confidence: false,
     }]);
-    setInputText(""); setResults([]); setOpen(false); setActiveIdx(-1);
+    setInputText(""); setResults([]); setOpen(false); setSearching(false); setActiveIdx(-1);
     inputRef.current?.focus();
   }
 
@@ -134,7 +152,7 @@ export function TestTagInput({ value, onChange, labId, error, label, disabled }:
     // Low confidence when: catalog had suggestions (user ignored them) OR name looks like a typo
     const low_confidence = results.length > 0 || looksLikeMisspelling(name);
     onChange([...value, { name, catalog_test_id: null, low_confidence }]);
-    setInputText(""); setResults([]); setOpen(false); setActiveIdx(-1);
+    setInputText(""); setResults([]); setOpen(false); setSearching(false); setActiveIdx(-1);
     inputRef.current?.focus();
   }
 
@@ -208,7 +226,8 @@ export function TestTagInput({ value, onChange, labId, error, label, disabled }:
   const uncertainCount = value.filter((t) => t.low_confidence).length;
 
   // ── Dropdown portal ───────────────────────────────────────────────────────
-  const dropdown = open && results.length > 0 && mounted ? createPortal(
+  const showDropdown = mounted && (open || searching) && inputText.trim().length >= 2;
+  const dropdown = showDropdown ? createPortal(
     <div
       style={{
         position: "fixed",
@@ -223,7 +242,16 @@ export function TestTagInput({ value, onChange, labId, error, label, disabled }:
         overflow: "hidden",
       }}
     >
-      {results.map((r, i) => (
+      {searching && (
+        <div className="flex items-center gap-2 px-4 py-3 text-sm text-slate-400">
+          <svg className="w-3.5 h-3.5 animate-spin shrink-0" viewBox="0 0 24 24" fill="none">
+            <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"/>
+            <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v4l3-3-3-3V0a12 12 0 100 24v-4l-3 3 3 3v4A12 12 0 014 12z"/>
+          </svg>
+          Searching catalog…
+        </div>
+      )}
+      {!searching && results.map((r, i) => (
         <button
           key={r.id}
           type="button"
@@ -240,22 +268,15 @@ export function TestTagInput({ value, onChange, labId, error, label, disabled }:
           </div>
         </button>
       ))}
-      {/* Only show "add as custom" when catalog has no matches */}
-      {inputText.trim() && results.length === 0 && (
-        <button
-          type="button"
-          onMouseDown={(e) => { e.preventDefault(); addFreeTextTag(inputText); }}
-          className="w-full flex items-center gap-2 px-4 py-2.5 text-left text-sm text-slate-500 hover:bg-slate-50 border-t border-slate-100 transition-colors"
-        >
-          <span>Add &ldquo;<span className="font-medium text-slate-700">{inputText.trim()}</span>&rdquo; as custom test</span>
-        </button>
-      )}
     </div>,
     document.body
   ) : null;
 
   return (
-    <div className="flex flex-col gap-1.5">
+    <div
+      className="flex flex-col gap-1.5"
+      onKeyDown={(e) => { if (e.key === "Enter") { e.preventDefault(); e.stopPropagation(); } }}
+    >
       {label && (
         <label className="text-sm font-medium text-slate-700">
           {label}
@@ -315,6 +336,8 @@ export function TestTagInput({ value, onChange, labId, error, label, disabled }:
             onKeyDown={handleKeyDown}
             onFocus={() => { if (results.length > 0) setOpen(true); }}
             disabled={disabled}
+            data-no-enter-nav="true"
+            enterKeyHint="done"
             placeholder={value.length === 0 ? "Type a test name — select from suggestions or press Enter to add" : ""}
             className="flex-1 min-w-[160px] bg-transparent text-slate-800 text-sm placeholder-slate-400 outline-none py-0.5 my-0.5"
           />
@@ -342,7 +365,13 @@ export function TestTagInput({ value, onChange, labId, error, label, disabled }:
       )}
 
       {error && <p className="text-xs text-red-600 font-medium">{error}</p>}
-      {!error && value.length === 0 && (
+      {!error && inputText.trim() && (
+        <p className="text-xs text-amber-600 font-medium flex items-center gap-1">
+          <AlertTriangle className="w-3 h-3 shrink-0" />
+          Press <kbd className="px-1 py-0.5 bg-amber-100 rounded text-amber-700 font-mono text-[10px] mx-0.5">Enter</kbd> to add &ldquo;{inputText.trim()}&rdquo;
+        </p>
+      )}
+      {!error && !inputText.trim() && value.length === 0 && (
         <p className="text-xs text-slate-400">
           Start typing to search the test catalog, or press{" "}
           <kbd className="px-1 py-0.5 bg-slate-100 rounded text-slate-600 font-mono text-[10px]">Enter</kbd>
