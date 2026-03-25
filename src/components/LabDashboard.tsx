@@ -801,26 +801,33 @@ export function LabDashboard({ lab, isOwner = false, roleName = "Lab Owner", can
                           </button>
                         </div>
 
-                        {/* Quick stats */}
-                        <div className="px-5 py-3 flex flex-wrap gap-x-5 gap-y-2 border-b border-white/5 bg-white/3 shrink-0">
-                          <div className="shrink-0">
-                            <p className="text-xs text-slate-400">Total Referrals</p>
-                            <p className="text-xl font-bold text-white">{doc.total_referrals}</p>
+                        {/* Quick stats — grid layout so nothing gets squeezed on mobile */}
+                        <div className="px-5 py-4 border-b border-white/5 bg-white/3 shrink-0">
+                          <div className="grid grid-cols-2 gap-3">
+                            <div className="bg-white/5 rounded-2xl px-4 py-3">
+                              <p className="text-xs text-slate-400 mb-0.5">Total Referrals</p>
+                              <p className="text-2xl font-bold text-white leading-none">{doc.total_referrals}</p>
+                            </div>
+                            {doc.doctor_phone ? (
+                              <div className="bg-white/5 rounded-2xl px-4 py-3">
+                                <p className="text-xs text-slate-400 mb-0.5">Phone</p>
+                                <a href={`tel:${doc.doctor_phone}`} className="text-sm font-semibold text-blue-400 hover:text-blue-300 flex items-center gap-1 mt-0.5 leading-snug">
+                                  <Phone className="w-3.5 h-3.5 shrink-0" />
+                                  <span className="truncate">{doc.doctor_phone}</span>
+                                </a>
+                              </div>
+                            ) : (
+                              <div className="bg-white/5 rounded-2xl px-4 py-3 flex items-center justify-center">
+                                <p className="text-xs text-slate-600">No phone</p>
+                              </div>
+                            )}
+                            {doc.doctor_hospital && (
+                              <div className="col-span-2 bg-white/5 rounded-2xl px-4 py-3">
+                                <p className="text-xs text-slate-400 mb-0.5">Hospital / Clinic</p>
+                                <p className="text-sm font-semibold text-slate-200 leading-snug break-words">{doc.doctor_hospital}</p>
+                              </div>
+                            )}
                           </div>
-                          {doc.doctor_hospital && (
-                            <div className="min-w-0 flex-1 max-w-[200px]">
-                              <p className="text-xs text-slate-400">Hospital / Clinic</p>
-                              <p className="text-sm font-semibold text-slate-200 truncate">{doc.doctor_hospital}</p>
-                            </div>
-                          )}
-                          {doc.doctor_phone && (
-                            <div className="shrink-0">
-                              <p className="text-xs text-slate-400">Phone</p>
-                              <a href={`tel:${doc.doctor_phone}`} className="text-sm text-blue-400 hover:underline flex items-center gap-1">
-                                <Phone className="w-3 h-3" />{doc.doctor_phone}
-                              </a>
-                            </div>
-                          )}
                         </div>
 
                         {/* Scrollable body */}
@@ -1046,19 +1053,31 @@ export function LabDashboard({ lab, isOwner = false, roleName = "Lab Owner", can
                       </button>
                     </div>
                   </div>
-                  {/* Stats */}
-                  <div className="px-5 py-3 flex gap-4 border-b border-white/5 shrink-0">
-                    <div>
-                      <p className="text-xs text-slate-500">Visits</p>
-                      <p className="text-lg font-bold text-white">{selectedClient.visit_count}</p>
-                    </div>
-                    <div>
-                      <p className="text-xs text-slate-500">First visit</p>
-                      <p className="text-sm font-semibold text-white">{new Date(selectedClient.first_visit).toLocaleDateString("en-GB", { day: "numeric", month: "short", year: "numeric" })}</p>
-                    </div>
-                    <div>
-                      <p className="text-xs text-slate-500">Last visit</p>
-                      <p className="text-sm font-semibold text-white">{new Date(selectedClient.last_visit).toLocaleDateString("en-GB", { day: "numeric", month: "short", year: "numeric" })}</p>
+                  {/* Stats — grid so items never squeeze on narrow phones */}
+                  <div className="px-5 py-4 border-b border-white/5 shrink-0">
+                    <div className="grid grid-cols-3 gap-2">
+                      <div className="bg-white/5 rounded-2xl px-3 py-3 text-center">
+                        <p className="text-xs text-slate-400 mb-1">Visits</p>
+                        <p className="text-2xl font-bold text-white leading-none">{selectedClient.visit_count}</p>
+                      </div>
+                      <div className="bg-white/5 rounded-2xl px-3 py-3 text-center">
+                        <p className="text-xs text-slate-400 mb-1">First visit</p>
+                        <p className="text-sm font-semibold text-slate-200 leading-snug">
+                          {new Date(selectedClient.first_visit).toLocaleDateString("en-GB", { day: "numeric", month: "short" })}
+                        </p>
+                        <p className="text-[11px] text-slate-500 leading-tight">
+                          {new Date(selectedClient.first_visit).getFullYear()}
+                        </p>
+                      </div>
+                      <div className="bg-white/5 rounded-2xl px-3 py-3 text-center">
+                        <p className="text-xs text-slate-400 mb-1">Last visit</p>
+                        <p className="text-sm font-semibold text-slate-200 leading-snug">
+                          {new Date(selectedClient.last_visit).toLocaleDateString("en-GB", { day: "numeric", month: "short" })}
+                        </p>
+                        <p className="text-[11px] text-slate-500 leading-tight">
+                          {new Date(selectedClient.last_visit).getFullYear()}
+                        </p>
+                      </div>
                     </div>
                   </div>
                   {/* Visit history */}
