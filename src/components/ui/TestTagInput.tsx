@@ -34,9 +34,13 @@ interface TestTagInputProps {
 /**
  * Rough misspelling heuristic: flags strings with unusual consonant clusters
  * or a very low vowel ratio — a proxy for "this doesn't look like a real word".
+ * Medical abbreviations (ALL-CAPS, ≤6 chars) are never flagged.
  */
 function looksLikeMisspelling(s: string): boolean {
-  const word = s.toLowerCase().replace(/[\s\-\/()]/g, "");
+  const original = s.trim().replace(/[\s\-\/()]/g, "");
+  // All-caps short tokens are medical abbreviations — never flag
+  if (original.length <= 6 && original === original.toUpperCase() && /^[A-Z]/.test(original)) return false;
+  const word = original.toLowerCase();
   if (word.length < 4) return false;
   // 4+ consecutive consonants → suspicious
   if (/[bcdfghjklmnpqrstvwxyz]{4,}/.test(word)) return true;
@@ -51,6 +55,8 @@ export function TestTagInput({ value, onChange, labId, error, label, disabled }:
   const [results, setResults] = useState<CatalogResult[]>([]);
   const [activeIdx, setActiveIdx] = useState(-1);
   const [open, setOpen] = useState(false);
+  const [searching, setSearching] = useState(false);
+  const [noResults, setNoResults] = useState(false);
   const [mounted, setMounted] = useState(false);
   const [dropdownPos, setDropdownPos] = useState({ top: 0, left: 0, width: 0 });
 
@@ -83,25 +89,41 @@ export function TestTagInput({ value, onChange, labId, error, label, disabled }:
   // ── Debounced catalog search ───────────────────────────────────────────────
   useEffect(() => {
     const q = inputText.trim();
-    if (q.length < 2) { setResults([]); setOpen(false); return; }
+    if (q.length < 2) {
+      setResults([]); setOpen(false); setSearching(false); setNoResults(false);
+      return;
+    }
+    setSearching(true);
+    setNoResults(false);
+    const controller = new AbortController();
     const t = setTimeout(async () => {
-      const labParam = labId ? `&lab_id=${encodeURIComponent(labId)}` : "";
-      const res = await fetch(`/api/catalog/search?q=${encodeURIComponent(q)}${labParam}&limit=8`);
-      if (res.ok) {
-        const data = await res.json();
-        setResults(data.results ?? []);
-        setOpen((data.results ?? []).length > 0);
-        setActiveIdx(-1);
+      try {
+        const labParam = labId ? `&lab_id=${encodeURIComponent(labId)}` : "";
+        const res = await fetch(
+          `/api/catalog/search?q=${encodeURIComponent(q)}${labParam}&limit=8`,
+          { signal: controller.signal }
+        );
+        if (res.ok) {
+          const data = await res.json();
+          const r: CatalogResult[] = data.results ?? [];
+          setResults(r);
+          setSearching(false);
+          setNoResults(r.length === 0);
+          setOpen(true); // always open to show results or "not found" row
+          setActiveIdx(-1);
+        }
+      } catch (e) {
+        if ((e as Error).name !== "AbortError") setSearching(false);
       }
     }, 250);
-    return () => clearTimeout(t);
+    return () => { clearTimeout(t); controller.abort(); };
   }, [inputText, labId]);
 
   // ── Close on outside click ────────────────────────────────────────────────
   useEffect(() => {
     function onMouseDown(e: MouseEvent) {
       if (containerRef.current && !containerRef.current.contains(e.target as Node)) {
-        setOpen(false);
+        setOpen(false); setNoResults(false);
       }
     }
     document.addEventListener("mousedown", onMouseDown);
@@ -121,7 +143,7 @@ export function TestTagInput({ value, onChange, labId, error, label, disabled }:
       is_rapid_test: r.is_rapid_test,
       low_confidence: false,
     }]);
-    setInputText(""); setResults([]); setOpen(false); setActiveIdx(-1);
+    setInputText(""); setResults([]); setOpen(false); setSearching(false); setNoResults(false); setActiveIdx(-1);
     inputRef.current?.focus();
   }
 
@@ -134,7 +156,7 @@ export function TestTagInput({ value, onChange, labId, error, label, disabled }:
     // Low confidence when: catalog had suggestions (user ignored them) OR name looks like a typo
     const low_confidence = results.length > 0 || looksLikeMisspelling(name);
     onChange([...value, { name, catalog_test_id: null, low_confidence }]);
-    setInputText(""); setResults([]); setOpen(false); setActiveIdx(-1);
+    setInputText(""); setResults([]); setOpen(false); setSearching(false); setNoResults(false); setActiveIdx(-1);
     inputRef.current?.focus();
   }
 
@@ -208,7 +230,8 @@ export function TestTagInput({ value, onChange, labId, error, label, disabled }:
   const uncertainCount = value.filter((t) => t.low_confidence).length;
 
   // ── Dropdown portal ───────────────────────────────────────────────────────
-  const dropdown = open && results.length > 0 && mounted ? createPortal(
+  const showDropdown = mounted && open && inputText.trim().length >= 2;
+  const dropdown = showDropdown ? createPortal(
     <div
       style={{
         position: "fixed",
@@ -223,7 +246,16 @@ export function TestTagInput({ value, onChange, labId, error, label, disabled }:
         overflow: "hidden",
       }}
     >
-      {results.map((r, i) => (
+      {searching && (
+        <div className="flex items-center gap-2 px-4 py-3 text-sm text-slate-400">
+          <svg className="w-3.5 h-3.5 animate-spin shrink-0" viewBox="0 0 24 24" fill="none">
+            <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"/>
+            <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v4l3-3-3-3V0a12 12 0 100 24v-4l-3 3 3 3v4A12 12 0 014 12z"/>
+          </svg>
+          Searching catalog…
+        </div>
+      )}
+      {!searching && results.map((r, i) => (
         <button
           key={r.id}
           type="button"
@@ -240,14 +272,27 @@ export function TestTagInput({ value, onChange, labId, error, label, disabled }:
           </div>
         </button>
       ))}
-      {/* Only show "add as custom" when catalog has no matches */}
-      {inputText.trim() && results.length === 0 && (
+      {!searching && noResults && (
+        <div className="px-4 py-3 space-y-2">
+          <p className="text-xs text-slate-400">
+            &ldquo;<span className="font-medium text-slate-600">{inputText.trim()}</span>&rdquo; not found in catalog
+          </p>
+          <button
+            type="button"
+            onMouseDown={(e) => { e.preventDefault(); addFreeTextTag(inputText); }}
+            className="w-full flex items-center justify-center gap-1.5 px-3 py-2 rounded-lg bg-slate-50 border border-slate-200 text-sm text-slate-600 hover:bg-slate-100 transition-colors font-medium"
+          >
+            Add as custom (unpriced)
+          </button>
+        </div>
+      )}
+      {!searching && results.length > 0 && inputText.trim() && (
         <button
           type="button"
           onMouseDown={(e) => { e.preventDefault(); addFreeTextTag(inputText); }}
-          className="w-full flex items-center gap-2 px-4 py-2.5 text-left text-sm text-slate-500 hover:bg-slate-50 border-t border-slate-100 transition-colors"
+          className="w-full flex items-center gap-2 px-4 py-2 text-left text-xs text-slate-400 hover:bg-slate-50 border-t border-slate-100 transition-colors"
         >
-          <span>Add &ldquo;<span className="font-medium text-slate-700">{inputText.trim()}</span>&rdquo; as custom test</span>
+          Add &ldquo;<span className="font-medium text-slate-600">{inputText.trim()}</span>&rdquo; as typed instead
         </button>
       )}
     </div>,
