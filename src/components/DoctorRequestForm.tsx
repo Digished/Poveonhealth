@@ -1689,11 +1689,11 @@ export function DoctorRequestForm({
                 Patient Condition
                 <span className="text-xs text-slate-400 font-normal ml-1.5">optional</span>
               </p>
-              <div className="flex gap-2 p-1 bg-slate-100 rounded-2xl">
+              <div className="grid grid-cols-2 gap-1.5 p-1 bg-slate-100 rounded-2xl">
                 <button
                   type="button"
                   onClick={() => { setIsCritical(false); setNeedsAmbulance(false); }}
-                  className={`flex-1 flex items-center justify-center gap-1.5 py-2 px-2 rounded-xl text-sm font-semibold transition-all ${
+                  className={`flex items-center justify-center gap-1.5 py-2.5 px-3 rounded-xl text-sm font-semibold transition-all ${
                     !isCritical && !needsAmbulance ? "bg-white shadow text-slate-700" : "text-slate-400 hover:text-slate-600"
                   }`}
                 >
@@ -1702,7 +1702,7 @@ export function DoctorRequestForm({
                 <button
                   type="button"
                   onClick={() => { setIsCritical(true); setNeedsAmbulance(false); }}
-                  className={`flex-1 flex items-center justify-center gap-1.5 py-2 px-2 rounded-xl text-sm font-semibold transition-all ${
+                  className={`flex items-center justify-center gap-1.5 py-2.5 px-3 rounded-xl text-sm font-semibold transition-all ${
                     isCritical && !needsAmbulance ? "bg-white shadow text-red-600" : "text-slate-400 hover:text-slate-600"
                   }`}
                 >
@@ -1712,7 +1712,7 @@ export function DoctorRequestForm({
                 <button
                   type="button"
                   onClick={() => { setIsCritical(false); setNeedsAmbulance(true); }}
-                  className={`flex-1 flex items-center justify-center gap-1.5 py-2 px-2 rounded-xl text-sm font-semibold transition-all ${
+                  className={`flex items-center justify-center gap-1.5 py-2.5 px-3 rounded-xl text-sm font-semibold transition-all ${
                     needsAmbulance && !isCritical ? "bg-white shadow text-orange-600" : "text-slate-400 hover:text-slate-600"
                   }`}
                 >
@@ -1722,7 +1722,7 @@ export function DoctorRequestForm({
                 <button
                   type="button"
                   onClick={() => { setIsCritical(true); setNeedsAmbulance(true); }}
-                  className={`flex-1 flex items-center justify-center gap-1.5 py-2 px-2 rounded-xl text-sm font-semibold transition-all ${
+                  className={`flex items-center justify-center gap-1.5 py-2.5 px-3 rounded-xl text-sm font-semibold transition-all ${
                     isCritical && needsAmbulance ? "bg-white shadow text-red-600" : "text-slate-400 hover:text-slate-600"
                   }`}
                 >
