@@ -1806,8 +1806,10 @@ export function DoctorRequestForm({
         {/* Step 4: Patient Contact + Details + Review */}
         {step === 4 && (
           <div className="space-y-5">
-            <h2 className="flex items-center gap-2 text-base font-semibold text-slate-700 pb-3 border-b border-slate-100">
-              <User className="w-4 h-4 text-medical-600" />
+            <h2 className="flex items-center gap-3 text-base font-bold text-slate-800 pb-4 border-b border-slate-100">
+              <div className="w-8 h-8 rounded-xl bg-medical-50 flex items-center justify-center shrink-0">
+                <User className="w-4 h-4 text-medical-600" />
+              </div>
               Patient Contact
             </h2>
 
@@ -1815,13 +1817,13 @@ export function DoctorRequestForm({
               {/* Substep 1: Email */}
               <div className="relative flex gap-3">
                 <div className="flex flex-col items-center shrink-0 pt-1">
-                  <div className={`w-6 h-6 rounded-full flex items-center justify-center text-[10px] font-bold border-2 transition-all shrink-0 ${
+                  <div className={`w-7 h-7 rounded-full flex items-center justify-center text-xs font-bold border-2 transition-all shrink-0 ${
                     form.patient_email && /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(form.patient_email)
                       ? "bg-emerald-500 border-emerald-500 text-white"
                       : "bg-white border-medical-400 text-medical-600"
                   }`}>
                     {form.patient_email && /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(form.patient_email)
-                      ? <Check className="w-3 h-3" />
+                      ? <Check className="w-3.5 h-3.5" />
                       : "1"}
                   </div>
                   {form.patient_email && /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(form.patient_email) && (
@@ -1830,11 +1832,14 @@ export function DoctorRequestForm({
                 </div>
                 <div className="flex-1 pb-3 min-w-0 space-y-2">
                   <div className="flex flex-col gap-1">
-                    <label htmlFor="patient_email" className="text-sm font-medium text-slate-700 flex items-center gap-2">
+                    <label htmlFor="patient_email" className="text-sm font-medium text-slate-700 flex items-center gap-1.5">
                       Patient Email
-                      <span className="inline-block w-1.5 h-1.5 rounded-full bg-amber-400 ml-0.5 align-middle" aria-label="required" />
-                      <span className="text-xs bg-sky-100 text-sky-700 px-2 py-0.5 rounded-full font-medium">Looks up patient profile</span>
+                      <span className="inline-block w-1.5 h-1.5 rounded-full bg-amber-400 align-middle" aria-label="required" />
                     </label>
+                    <span className="flex items-center gap-1 text-xs text-sky-600 font-medium">
+                      <Search className="w-3 h-3 shrink-0" />
+                      Auto-fills patient details if a profile exists
+                    </span>
                     <Input
                       id="patient_email"
                       type="email"
@@ -1871,12 +1876,12 @@ export function DoctorRequestForm({
               {form.patient_email && /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(form.patient_email) && (
                 <div className="relative flex gap-3 animate-fade-in-up">
                   <div className="flex flex-col items-center shrink-0 pt-1">
-                    <div className={`w-6 h-6 rounded-full flex items-center justify-center text-[10px] font-bold border-2 transition-all shrink-0 ${
+                    <div className={`w-7 h-7 rounded-full flex items-center justify-center text-xs font-bold border-2 transition-all shrink-0 ${
                       form.patient_phone.trim()
                         ? "bg-emerald-500 border-emerald-500 text-white"
                         : "bg-white border-medical-400 text-medical-600"
                     }`}>
-                      {form.patient_phone.trim() ? <Check className="w-3 h-3" /> : "2"}
+                      {form.patient_phone.trim() ? <Check className="w-3.5 h-3.5" /> : "2"}
                     </div>
                     {form.patient_phone.trim() && <div className="w-0.5 flex-1 min-h-4 bg-slate-200 mt-1" />}
                   </div>
@@ -1896,12 +1901,12 @@ export function DoctorRequestForm({
               {form.patient_email && /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(form.patient_email) && form.patient_phone.trim() && (
                 <div className="relative flex gap-3 animate-fade-in-up">
                   <div className="flex flex-col items-center shrink-0 pt-1">
-                    <div className={`w-6 h-6 rounded-full flex items-center justify-center text-[10px] font-bold border-2 transition-all shrink-0 ${
+                    <div className={`w-7 h-7 rounded-full flex items-center justify-center text-xs font-bold border-2 transition-all shrink-0 ${
                       (form.patient_name || form.dob || form.sex)
                         ? "bg-emerald-500 border-emerald-500 text-white"
                         : "bg-white border-slate-300 text-slate-400"
                     }`}>
-                      {(form.patient_name || form.dob || form.sex) ? <Check className="w-3 h-3" /> : "3"}
+                      {(form.patient_name || form.dob || form.sex) ? <Check className="w-3.5 h-3.5" /> : "3"}
                     </div>
                   </div>
                   <div className="flex-1 pb-2 min-w-0">
@@ -1938,52 +1943,53 @@ export function DoctorRequestForm({
             </div>
 
             {/* Review summary */}
-            <div className="rounded-2xl border border-slate-200 overflow-hidden">
-              <div className="px-4 py-3 bg-slate-50 border-b border-slate-100">
-                <p className="text-xs font-bold text-slate-500 uppercase tracking-wider">Review before sending</p>
+            <div className="rounded-2xl border border-slate-200/80 overflow-hidden shadow-sm">
+              <div className="px-4 py-3 bg-gradient-to-r from-slate-50 to-slate-50/60 border-b border-slate-100 flex items-center gap-2">
+                <div className="w-1.5 h-1.5 rounded-full bg-medical-400" />
+                <p className="text-xs font-bold text-slate-600 tracking-wide">Review before sending</p>
               </div>
-              <div className="divide-y divide-slate-100">
+              <div className="divide-y divide-slate-100/80">
                 {/* Lab */}
-                <div className="px-4 py-3 flex items-start justify-between gap-3">
-                  <p className="text-xs text-slate-400 shrink-0 w-24">Lab</p>
-                  <p className="text-xs font-semibold text-slate-700 text-right truncate">{hasLocations ? (locations[selectedLocIdx]?.name ?? preselectedLabName ?? "") : (selectedLab?.name ?? preselectedLabName ?? "")}</p>
+                <div className="px-4 py-3.5 flex items-start justify-between gap-4">
+                  <p className="text-[11px] font-semibold text-slate-400 uppercase tracking-wide shrink-0 w-20 pt-px">Lab</p>
+                  <p className="text-sm font-semibold text-slate-800 text-right truncate">{hasLocations ? (locations[selectedLocIdx]?.name ?? preselectedLabName ?? "") : (selectedLab?.name ?? preselectedLabName ?? "")}</p>
                 </div>
                 {/* Patient */}
-                <div className="px-4 py-3 flex items-start justify-between gap-3">
-                  <p className="text-xs text-slate-400 shrink-0 w-24">Patient</p>
+                <div className="px-4 py-3.5 flex items-start justify-between gap-4">
+                  <p className="text-[11px] font-semibold text-slate-400 uppercase tracking-wide shrink-0 w-20 pt-px">Patient</p>
                   <div className="text-right min-w-0">
-                    {form.patient_name && <p className="text-xs font-semibold text-slate-700 truncate">{form.patient_name}</p>}
-                    <p className="text-xs text-slate-600 font-mono">{form.patient_phone}</p>
-                    {form.dob && <p className="text-xs text-slate-500">DOB: {form.dob.split("-").reverse().join(" / ")}{form.sex ? ` · ${form.sex}` : ""}</p>}
+                    {form.patient_name && <p className="text-sm font-semibold text-slate-800 truncate">{form.patient_name}</p>}
+                    <p className="text-xs text-slate-500 font-mono mt-0.5">{form.patient_phone}</p>
+                    {form.dob && <p className="text-xs text-slate-400 mt-0.5">DOB {form.dob.split("-").reverse().join(" / ")}{form.sex ? ` · ${form.sex}` : ""}</p>}
                   </div>
                 </div>
                 {/* Clinical */}
-                <div className="px-4 py-3 flex items-start justify-between gap-3">
-                  <p className="text-xs text-slate-400 shrink-0 w-24">Clinical</p>
+                <div className="px-4 py-3.5 flex items-start justify-between gap-4">
+                  <p className="text-[11px] font-semibold text-slate-400 uppercase tracking-wide shrink-0 w-20 pt-px">Clinical</p>
                   <div className="text-right min-w-0">
                     {clinicalMode === "picture"
-                      ? <p className="text-xs font-semibold text-slate-700">{testImageUrl ? "📎 Image attached" : "⚠ No image"}</p>
+                      ? <p className="text-sm font-semibold text-slate-800">{testImageUrl ? "Image attached" : "No image"}</p>
                       : <>
-                          {form.diagnosis && <p className="text-xs text-slate-500 truncate">{form.diagnosis}</p>}
-                          <p className="text-xs font-semibold text-slate-700 truncate">{testsString}</p>
+                          {form.diagnosis && <p className="text-xs text-slate-500 truncate mb-0.5">{form.diagnosis}</p>}
+                          <p className="text-sm font-semibold text-slate-800 truncate">{testsString}</p>
                         </>
                     }
                   </div>
                 </div>
                 {/* Referrer */}
-                <div className="px-4 py-3 flex items-start justify-between gap-3">
-                  <p className="text-xs text-slate-400 shrink-0 w-24">Referrer</p>
+                <div className="px-4 py-3.5 flex items-start justify-between gap-4">
+                  <p className="text-[11px] font-semibold text-slate-400 uppercase tracking-wide shrink-0 w-20 pt-px">Referrer</p>
                   <div className="text-right min-w-0">
-                    <p className="text-xs font-semibold text-slate-700 truncate">{[form.doctor_prefix, form.doctor_name].filter(Boolean).join(" ")}</p>
-                    {form.doctor_hospital && <p className="text-xs text-slate-500 truncate">{form.doctor_hospital}</p>}
-                    <p className="text-xs text-slate-500 truncate">{form.doctor_email}</p>
+                    <p className="text-sm font-semibold text-slate-800 truncate">{[form.doctor_prefix, form.doctor_name].filter(Boolean).join(" ")}</p>
+                    {form.doctor_hospital && <p className="text-xs text-slate-500 truncate mt-0.5">{form.doctor_hospital}</p>}
+                    <p className="text-xs text-slate-400 truncate mt-0.5">{form.doctor_email}</p>
                   </div>
                 </div>
                 {/* Flags */}
                 {(isCritical || needsAmbulance) && (
-                  <div className="px-4 py-3 flex items-center gap-2 flex-wrap">
-                    {isCritical && <span className="inline-flex items-center gap-1 text-xs font-semibold bg-red-50 text-red-600 border border-red-200 px-2 py-0.5 rounded-full"><AlertTriangle className="w-3 h-3" />Critical</span>}
-                    {needsAmbulance && <span className="inline-flex items-center gap-1 text-xs font-semibold bg-orange-50 text-orange-600 border border-orange-200 px-2 py-0.5 rounded-full"><Truck className="w-3 h-3" />Ambulance</span>}
+                  <div className="px-4 py-3 flex items-center gap-2 flex-wrap bg-slate-50/60">
+                    {isCritical && <span className="inline-flex items-center gap-1 text-xs font-semibold bg-red-50 text-red-600 border border-red-200 px-2.5 py-1 rounded-full"><AlertTriangle className="w-3 h-3" />Critical</span>}
+                    {needsAmbulance && <span className="inline-flex items-center gap-1 text-xs font-semibold bg-orange-50 text-orange-600 border border-orange-200 px-2.5 py-1 rounded-full"><Truck className="w-3 h-3" />Ambulance</span>}
                   </div>
                 )}
               </div>
