@@ -337,6 +337,7 @@ export function TestTagInput({ value, onChange, labId, error, label, disabled }:
             onFocus={() => { if (results.length > 0) setOpen(true); }}
             disabled={disabled}
             data-no-enter-nav="true"
+            enterKeyHint="done"
             placeholder={value.length === 0 ? "Type a test name — select from suggestions or press Enter to add" : ""}
             className="flex-1 min-w-[160px] bg-transparent text-slate-800 text-sm placeholder-slate-400 outline-none py-0.5 my-0.5"
           />
