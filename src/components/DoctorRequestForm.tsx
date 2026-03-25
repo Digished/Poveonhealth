@@ -40,6 +40,7 @@ import { PhoneInput } from "@/components/PhoneInput";
 import { BankAccountInput } from "@/components/BankAccountInput";
 import { DobInput } from "@/components/DobInput";
 import { SuccessScreen } from "@/components/SuccessScreen";
+import { PoveonLogo } from "@/components/PoveonLogo";
 import { PROFESSIONAL_PREFIXES, PrefixSelectModal, PrefixSelect } from "@/components/PrefixSelect";
 import type { Lab, CreateRequestResponse } from "@/lib/types";
 
@@ -548,47 +549,6 @@ function LabInfoBar({ lab, onViewMore }: { lab: Lab; onViewMore: () => void }) {
   );
 }
 
-function LearnMoreModal({ onClose }: { onClose: () => void }) {
-  return (
-    <div
-      className="fixed inset-0 z-50 flex items-end sm:items-center justify-center p-4 animate-backdrop-in"
-      style={{ backgroundColor: "rgba(15,23,42,0.45)", backdropFilter: "blur(4px)" }}
-      onClick={onClose}
-    >
-      <div
-        className="w-full max-w-sm bg-white rounded-3xl shadow-2xl overflow-hidden animate-scale-in"
-        onClick={(e) => e.stopPropagation()}
-      >
-        <div className="bg-gradient-to-br from-medical-50 via-white to-sky-50 px-6 pt-6 pb-5 flex items-start gap-4">
-          <div className="w-12 h-12 rounded-2xl bg-medical-600 flex items-center justify-center shrink-0 shadow-md">
-            <FlaskConical className="w-6 h-6 text-white" />
-          </div>
-          <div className="flex-1">
-            <h3 className="text-lg font-bold text-slate-800">About Poveon</h3>
-            <p className="text-xs text-slate-400 mt-0.5">Secure lab request platform</p>
-          </div>
-          <button
-            onClick={onClose}
-            className="p-1.5 rounded-xl hover:bg-white/60 text-slate-400 hover:text-slate-600 transition-colors"
-          >
-            <X className="w-4 h-4" />
-          </button>
-        </div>
-        <div className="px-6 py-5 space-y-3">
-          <p className="text-sm text-slate-600 leading-relaxed">
-            Poveon lets licensed healthcare professionals send laboratory test requests directly to accredited labs — no account or login required.
-          </p>
-          <p className="text-sm text-slate-600 leading-relaxed">
-            Select your destination lab, enter your patient's details and your professional information, and submit. The lab is notified instantly and you receive email confirmation at every stage.
-          </p>
-          <p className="text-sm text-slate-400 leading-relaxed">
-            No faxes, no delays — fast, encrypted communication between clinicians and labs.
-          </p>
-        </div>
-      </div>
-    </div>
-  );
-}
 
 interface Location {
   lab_id: string;        // actual lab id — what gets submitted as the request's lab_id
@@ -626,9 +586,9 @@ export function DoctorRequestForm({
   const [labs, setLabs] = useState<Lab[]>([]);
   const [labsLoading, setLabsLoading] = useState(true);
   const [submitting, setSubmitting] = useState(false);
+  const [progress, setProgress] = useState(0);
   const [result, setResult] = useState<CreateRequestResponse | null>(null);
   const [labDetailsOpen, setLabDetailsOpen] = useState(false);
-  const [learnMoreOpen, setLearnMoreOpen] = useState(false);
   const [callOpen, setCallOpen] = useState(false);
   const [scrolled, setScrolled] = useState(false);
   const [doctorEditing, setDoctorEditing] = useState(false);
@@ -899,6 +859,17 @@ export function DoctorRequestForm({
     window.scrollTo({ top: 0, behavior: "smooth" });
   }
 
+  // Advance progress bar through realistic stages while submitting
+  useEffect(() => {
+    if (!submitting) { setProgress(0); return; }
+    setProgress(0);
+    const t1 = setTimeout(() => setProgress(22), 350);
+    const t2 = setTimeout(() => setProgress(45), 950);
+    const t3 = setTimeout(() => setProgress(72), 2100);
+    const t4 = setTimeout(() => setProgress(88), 3600);
+    return () => { clearTimeout(t1); clearTimeout(t2); clearTimeout(t3); clearTimeout(t4); };
+  }, [submitting]);
+
   async function handleSubmit() {
     if (!validateStep(4)) return;
     setSubmitting(true);
@@ -913,11 +884,11 @@ export function DoctorRequestForm({
           is_critical: isCritical,
           needs_ambulance: needsAmbulance,
           ambulance_notes: ambulanceNotes || undefined,
-          // branch_id omitted — lab_id already points to the selected location's lab
         }),
       });
       const data: CreateRequestResponse = await res.json();
       if (data.success) {
+        setProgress(100);
         persistDoctorProfile();
         setResult(data);
       } else {
@@ -931,34 +902,65 @@ export function DoctorRequestForm({
   }
 
   if (submitting) {
-    const steps = [
-      { icon: "🧬", label: "Verifying test details…" },
-      { icon: "🏥", label: "Connecting to the lab…" },
-      { icon: "📋", label: "Creating your request…" },
-      { icon: "✉️", label: "Sending confirmations…" },
+    const STAGES = [
+      { icon: "🧬", label: "Verifying test details…",  start: 0,  end: 22  },
+      { icon: "🏥", label: "Connecting to the lab…",   start: 22, end: 45  },
+      { icon: "📋", label: "Creating your request…",   start: 45, end: 72  },
+      { icon: "✉️", label: "Sending confirmations…",   start: 72, end: 100 },
     ];
     return (
-      <div className="flex flex-col items-center justify-center py-16 px-6 space-y-8 animate-fade-in min-h-[320px]">
-        {/* Animated pulsing orb */}
+      <div className="flex flex-col items-center justify-center py-12 px-6 space-y-6 animate-fade-in min-h-[300px]">
+        {/* Pulsing logo orb */}
         <div className="relative">
-          <div className="w-20 h-20 rounded-full bg-gradient-to-br from-medical-400 to-sky-500 opacity-20 absolute inset-0 animate-ping" />
-          <div className="w-20 h-20 rounded-full bg-gradient-to-br from-medical-400 to-sky-500 flex items-center justify-center relative z-10 shadow-lg shadow-medical-500/30">
-            <FlaskConical className="w-9 h-9 text-white" />
+          <div className="w-16 h-16 rounded-full bg-gradient-to-br from-medical-400 to-sky-500 opacity-20 absolute inset-0 animate-ping" />
+          <div className="w-16 h-16 rounded-full bg-gradient-to-br from-medical-500 to-sky-400 flex items-center justify-center relative z-10 shadow-lg shadow-medical-500/30">
+            <PoveonLogo className="w-8 h-8 text-white" />
           </div>
         </div>
+
         <div className="text-center space-y-1">
-          <p className="text-lg font-bold text-slate-800">Submitting your request</p>
-          <p className="text-sm text-slate-500">Just a moment while we take care of everything</p>
+          <p className="text-base font-bold text-slate-800">Submitting your request</p>
+          <p className="text-xs text-slate-400">Just a moment while we take care of everything</p>
         </div>
-        {/* Steps */}
-        <div className="w-full max-w-xs space-y-2.5">
-          {steps.map((s, i) => (
-            <div key={i} className="flex items-center gap-3 px-4 py-2.5 rounded-xl bg-slate-50 border border-slate-100">
-              <span className="text-lg">{s.icon}</span>
-              <span className="text-sm text-slate-600 flex-1">{s.label}</span>
-              <RefreshCw className="w-3.5 h-3.5 text-medical-400 animate-spin shrink-0" style={{ animationDelay: `${i * 0.2}s` }} />
-            </div>
-          ))}
+
+        {/* Progress bar */}
+        <div className="w-full max-w-xs">
+          <div className="flex justify-between text-xs text-slate-400 mb-1.5">
+            <span>Progress</span>
+            <span>{progress}%</span>
+          </div>
+          <div className="h-1.5 bg-slate-100 rounded-full overflow-hidden">
+            <div
+              className="h-full bg-gradient-to-r from-medical-500 to-sky-400 rounded-full transition-all duration-700 ease-out"
+              style={{ width: `${progress}%` }}
+            />
+          </div>
+        </div>
+
+        {/* Sequential steps */}
+        <div className="w-full max-w-xs space-y-2">
+          {STAGES.map((s, i) => {
+            const done   = progress >= s.end;
+            const active = progress >= s.start && progress < s.end;
+            return (
+              <div
+                key={i}
+                className={`flex items-center gap-3 px-4 py-2.5 rounded-xl border transition-all duration-500 ${
+                  done   ? "bg-emerald-50 border-emerald-100" :
+                  active ? "bg-medical-50 border-medical-100" :
+                           "bg-slate-50 border-slate-100 opacity-40"
+                }`}
+              >
+                <span className="text-base">{s.icon}</span>
+                <span className={`text-sm flex-1 ${done ? "text-emerald-700" : active ? "text-medical-700" : "text-slate-400"}`}>
+                  {s.label}
+                </span>
+                {done   ? <Check className="w-3.5 h-3.5 text-emerald-500 shrink-0" /> :
+                 active ? <RefreshCw className="w-3.5 h-3.5 text-medical-400 animate-spin shrink-0" /> :
+                          null}
+              </div>
+            );
+          })}
         </div>
       </div>
     );
@@ -1121,35 +1123,7 @@ export function DoctorRequestForm({
                   </div>
                 </div>
               );
-            })() : (
-              <div className="relative py-2 animate-fade-in">
-                <div className="absolute inset-0 overflow-hidden pointer-events-none -z-10">
-                  <div className="absolute top-2 left-0 w-40 h-40 bg-medical-100/50 rounded-full blur-3xl animate-float" style={{ animationDelay: "0s" }} />
-                  <div className="absolute top-0 right-4 w-32 h-32 bg-sky-100/60 rounded-full blur-3xl animate-float" style={{ animationDelay: "1.8s" }} />
-                  <div className="absolute -top-2 left-1/2 w-24 h-24 bg-indigo-100/40 rounded-full blur-2xl animate-float" style={{ animationDelay: "3.2s" }} />
-                </div>
-                <div className="flex items-center gap-3">
-                  <div className="w-9 h-9 rounded-xl flex items-center justify-center shadow-md shrink-0 bg-gradient-to-br from-slate-900 via-slate-800 to-indigo-900 ring-1 ring-white/10">
-                    <FlaskConical className="w-[18px] h-[18px] text-sky-300" />
-                  </div>
-                  <div>
-                    <p className="text-sm font-semibold text-slate-700 leading-snug">
-                      Submit a lab request for your patient.
-                    </p>
-                    <p className="text-xs text-slate-400 mt-0.5">
-                      No account needed.{" "}
-                      <button
-                        type="button"
-                        onClick={() => setLearnMoreOpen(true)}
-                        className="text-medical-600 hover:text-medical-800 font-semibold underline underline-offset-2 transition-colors"
-                      >
-                        Learn more
-                      </button>
-                    </p>
-                  </div>
-                </div>
-              </div>
-            )}
+            })() : null}
         </div>
 
         {/* Step indicator */}
@@ -2046,7 +2020,7 @@ export function DoctorRequestForm({
               disabled={submitting}
               className="flex items-center gap-2.5 px-6 py-3.5 rounded-2xl bg-medical-600 hover:bg-medical-700 active:scale-95 disabled:opacity-70 text-white font-bold text-sm shadow-2xl shadow-medical-600/40 transition-all"
             >
-              {submitting ? <RefreshCw className="w-5 h-5 animate-spin" /> : <FlaskConical className="w-5 h-5" />}
+              {submitting ? <RefreshCw className="w-5 h-5 animate-spin" /> : <PoveonLogo className="w-5 h-5 text-white" />}
               {submitting ? "Sending…" : "Generate Lab Request"}
             </button>
           )}
@@ -2065,8 +2039,7 @@ export function DoctorRequestForm({
         <LabDetailsModal lab={displayLab} onClose={() => setLabDetailsOpen(false)} />
       )}
 
-      {/* Learn more modal */}
-      {learnMoreOpen && <LearnMoreModal onClose={() => setLearnMoreOpen(false)} />}
+
 
       {/* Call modal — shown when lab has multiple phone numbers */}
       {callOpen && displayLab && (

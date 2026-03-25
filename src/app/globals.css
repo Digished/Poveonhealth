@@ -1,4 +1,4 @@
-@import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800;900&display=swap');
+/* Inter is loaded via next/font in layout — no @import needed here */
 
 @tailwind base;
 @tailwind components;
@@ -44,6 +44,26 @@
   .animate-slide-up {
     animation: slideUp 0.4s ease-out;
   }
+}
+
+/* ── Hero section keyframes ──────────────────────────────────────────────── */
+
+/* Clouds drift from left to right and loop seamlessly */
+@keyframes cloud-drift {
+  0%   { transform: translateX(-260px); }
+  100% { transform: translateX(calc(100vw + 260px)); }
+}
+
+/* Stars fade in/out (used with alternate) */
+@keyframes twinkle {
+  0%   { opacity: 0.15; }
+  100% { opacity: 0.95; }
+}
+
+/* Sun rays pulse outward (used with alternate) */
+@keyframes ray-pulse {
+  0%   { opacity: 0.55; transform: scaleY(0.7); }
+  100% { opacity: 1;    transform: scaleY(1.2); }
 }
 
 /* ── Splash screen keyframes ─────────────────────────────────────────────── */

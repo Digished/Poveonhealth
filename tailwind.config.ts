@@ -37,6 +37,8 @@ const config: Config = {
         "backdrop-in": "backdropIn 0.2s ease-out both",
         "float": "floatBob 4s ease-in-out infinite",
         pulse: "pulse 2s cubic-bezier(0.4, 0, 0.6, 1) infinite",
+        "cloud-drift": "cloudDrift 60s linear infinite",
+        "twinkle": "twinkle 2.5s ease-in-out infinite alternate",
       },
       keyframes: {
         fadeIn: {
@@ -62,6 +64,14 @@ const config: Config = {
         floatBob: {
           "0%, 100%": { transform: "translateY(0px)" },
           "50%": { transform: "translateY(-6px)" },
+        },
+        cloudDrift: {
+          "0%":   { transform: "translateX(-260px)" },
+          "100%": { transform: "translateX(calc(100vw + 260px))" },
+        },
+        twinkle: {
+          "0%":   { opacity: "0.15" },
+          "100%": { opacity: "0.95" },
         },
       },
     },
