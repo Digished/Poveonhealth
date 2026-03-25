@@ -1328,18 +1328,7 @@ export function DoctorRequestForm({
               Clinical Details
             </h2>
 
-            <div className="relative pt-1">
-              {/* Substep 1: Clinical — upload or type, always visible first */}
-              <div className="relative flex gap-3">
-                <div className="flex flex-col items-center shrink-0 pt-1">
-                  <div className={`w-6 h-6 rounded-full flex items-center justify-center text-[10px] font-bold border-2 transition-all shrink-0 ${
-                    clinicalDone ? "bg-emerald-500 border-emerald-500 text-white" : "bg-white border-medical-400 text-medical-600"
-                  }`}>
-                    {clinicalDone ? <Check className="w-3 h-3" /> : "1"}
-                  </div>
-                  {clinicalDone && <div className="w-0.5 flex-1 min-h-4 bg-slate-200 mt-1" />}
-                </div>
-                <div className="flex-1 pb-3 min-w-0 space-y-3">
+            <div className="space-y-3">
                   {/* Mode toggle */}
                   <div className="flex gap-2 p-1 bg-slate-100 rounded-2xl">
                     <button
@@ -1678,10 +1667,7 @@ export function DoctorRequestForm({
                         )}
                       </div>
                     )}
-                  </div>
-                </div>
-
-            </div>
+              </div>
 
             {/* Patient Condition — optional */}
             <div className="space-y-2">
@@ -1689,21 +1675,12 @@ export function DoctorRequestForm({
                 Patient Condition
                 <span className="text-xs text-slate-400 font-normal ml-1.5">optional</span>
               </p>
-              <div className="grid grid-cols-2 gap-1.5 p-1 bg-slate-100 rounded-2xl">
+              <div className="flex gap-2 p-1 bg-slate-100 rounded-2xl">
                 <button
                   type="button"
-                  onClick={() => { setIsCritical(false); setNeedsAmbulance(false); }}
-                  className={`flex items-center justify-center gap-1.5 py-2.5 px-3 rounded-xl text-sm font-semibold transition-all ${
-                    !isCritical && !needsAmbulance ? "bg-white shadow text-slate-700" : "text-slate-400 hover:text-slate-600"
-                  }`}
-                >
-                  Normal
-                </button>
-                <button
-                  type="button"
-                  onClick={() => { setIsCritical(true); setNeedsAmbulance(false); }}
-                  className={`flex items-center justify-center gap-1.5 py-2.5 px-3 rounded-xl text-sm font-semibold transition-all ${
-                    isCritical && !needsAmbulance ? "bg-white shadow text-red-600" : "text-slate-400 hover:text-slate-600"
+                  onClick={() => setIsCritical((v) => !v)}
+                  className={`flex-1 flex items-center justify-center gap-1.5 py-2.5 px-3 rounded-xl text-sm font-semibold transition-all ${
+                    isCritical ? "bg-white shadow text-red-600" : "text-slate-400 hover:text-slate-600"
                   }`}
                 >
                   <AlertTriangle className="w-3.5 h-3.5" />
@@ -1711,22 +1688,13 @@ export function DoctorRequestForm({
                 </button>
                 <button
                   type="button"
-                  onClick={() => { setIsCritical(false); setNeedsAmbulance(true); }}
-                  className={`flex items-center justify-center gap-1.5 py-2.5 px-3 rounded-xl text-sm font-semibold transition-all ${
-                    needsAmbulance && !isCritical ? "bg-white shadow text-orange-600" : "text-slate-400 hover:text-slate-600"
+                  onClick={() => setNeedsAmbulance((v) => !v)}
+                  className={`flex-1 flex items-center justify-center gap-1.5 py-2.5 px-3 rounded-xl text-sm font-semibold transition-all ${
+                    needsAmbulance ? "bg-white shadow text-orange-600" : "text-slate-400 hover:text-slate-600"
                   }`}
                 >
                   <Truck className="w-3.5 h-3.5" />
                   Ambulance
-                </button>
-                <button
-                  type="button"
-                  onClick={() => { setIsCritical(true); setNeedsAmbulance(true); }}
-                  className={`flex items-center justify-center gap-1.5 py-2.5 px-3 rounded-xl text-sm font-semibold transition-all ${
-                    isCritical && needsAmbulance ? "bg-white shadow text-red-600" : "text-slate-400 hover:text-slate-600"
-                  }`}
-                >
-                  Both
                 </button>
               </div>
               {needsAmbulance && (
