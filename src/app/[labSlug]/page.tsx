@@ -5,6 +5,7 @@ import { TrustIndicators } from "@/components/TrustIndicators";
 import { PoveonLogo } from "@/components/PoveonLogo";
 import { LabSplash } from "@/components/LabSplash";
 import { LabPageNav } from "@/components/LabPageNav";
+import { LabHeroSection } from "@/components/LabHeroSection";
 
 interface LabSlugPageProps {
   params: { labSlug: string };
@@ -36,7 +37,6 @@ export default async function LabSlugPage({ params }: LabSlugPageProps) {
     orderBy: [{ is_main: "desc" }],
   });
 
-  // Parent lab is always the first location option
   const parentLocation = {
     lab_id: lab.id,
     lab_branch_id: null as string | null,
@@ -48,7 +48,6 @@ export default async function LabSlugPage({ params }: LabSlugPageProps) {
     is_parent: true,
   };
 
-  // Each branch link points to an independent lab — use that lab's own contact info
   const branchLocations = branchLinks
     .filter((b) => b.branch_lab !== null)
     .map((b) => ({
@@ -62,18 +61,47 @@ export default async function LabSlugPage({ params }: LabSlugPageProps) {
       is_parent: false,
     }));
 
-  // All selectable locations: parent first, then branches sorted by is_main desc
   const locations = [parentLocation, ...branchLocations];
+  const logoUrl = lab.logo_url ?? null;
 
   return (
-    <div className="h-dvh flex flex-col bg-gradient-to-br from-sky-50 via-blue-50 to-indigo-50 overflow-hidden">
-      {/* Branded splash — fades out after ~1.6 s */}
-      <LabSplash logoUrl={lab.logo_url ?? null} labName={lab.name} />
+    <div className="relative h-dvh flex flex-col bg-white overflow-hidden">
+      {/* Mesh background — logo blurred large behind everything for colour matching */}
+      {logoUrl ? (
+        <div
+          className="absolute inset-0 -z-10 pointer-events-none"
+          aria-hidden="true"
+          style={{
+            backgroundImage: `url(${logoUrl})`,
+            backgroundSize: "cover",
+            backgroundPosition: "center",
+            filter: "blur(100px) saturate(1.8) brightness(1.15)",
+            opacity: 0.12,
+            transform: "scale(1.3)",
+          }}
+        />
+      ) : (
+        <div className="absolute inset-0 -z-10 pointer-events-none" aria-hidden="true">
+          <div className="absolute -top-20 left-1/4 w-[480px] h-[480px] bg-sky-100/70 rounded-full blur-3xl" />
+          <div className="absolute top-1/3 -right-24 w-[380px] h-[380px] bg-indigo-100/50 rounded-full blur-3xl" />
+          <div className="absolute bottom-0 -left-16 w-[340px] h-[340px] bg-medical-50/60 rounded-full blur-3xl" />
+        </div>
+      )}
+      {/* White base coat so blurred logo doesn't overpower */}
+      <div className="absolute inset-0 -z-10 bg-white/80 pointer-events-none" aria-hidden="true" />
 
-      {/* Scrollable content area — page never scrolls, only this div does */}
+      {/* Branded splash — fades out after ~1.6 s */}
+      <LabSplash logoUrl={logoUrl} labName={lab.name} />
+
+      {/* Scrollable content area */}
       <main className="flex-1 overflow-y-auto overflow-x-hidden">
-        {/* Lab-branded nav with login */}
-        <LabPageNav labName={lab.name} logoUrl={lab.logo_url} />
+        {/* Lab-branded nav with scroll-shrink behaviour */}
+        <LabPageNav labName={lab.name} logoUrl={logoUrl} />
+
+        {/* Hero section — logo themed welcome */}
+        <div className="max-w-2xl mx-auto">
+          <LabHeroSection labName={lab.name} logoUrl={logoUrl} />
+        </div>
 
         <div className="max-w-2xl mx-auto px-4 pb-2">
           <DoctorRequestForm
@@ -83,14 +111,14 @@ export default async function LabSlugPage({ params }: LabSlugPageProps) {
           />
         </div>
 
-        {/* Full-width trust indicators strip */}
-        <div className="w-full border-t border-white/60 bg-white/30 backdrop-blur-sm">
+        {/* Trust indicators strip */}
+        <div className="w-full border-t border-white/60 bg-white/30 backdrop-blur-sm mt-4">
           <div className="max-w-2xl mx-auto px-4 py-4">
             <TrustIndicators />
           </div>
         </div>
 
-        {/* Compact inline footer */}
+        {/* Compact footer */}
         <div className="max-w-6xl mx-auto px-4 py-3 flex items-center justify-center gap-4 text-xs text-slate-400">
           <PoveonLogo className="w-5 h-5 opacity-40" />
           <span>© {new Date().getFullYear()} Poveon.</span>

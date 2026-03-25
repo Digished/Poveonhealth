@@ -36,11 +36,32 @@ export function LabSplash({ logoUrl, labName }: LabSplashProps) {
   return (
     <div
       aria-hidden="true"
-      className={`fixed inset-0 z-[9999] flex flex-col items-center justify-center
-        bg-gradient-to-br from-sky-50 via-blue-50 to-indigo-50
+      className={`fixed inset-0 z-[9999] flex flex-col items-center justify-center overflow-hidden
+        bg-white
         transition-opacity duration-500 ease-in-out
         ${exiting ? "opacity-0 pointer-events-none" : "opacity-100"}`}
     >
+      {/* Blurred logo tints the splash background to match the lab's colours */}
+      {logoUrl && (
+        <div
+          className="absolute inset-0 pointer-events-none"
+          style={{
+            backgroundImage: `url(${logoUrl})`,
+            backgroundSize: "200% 200%",
+            backgroundPosition: "center",
+            filter: "blur(80px) saturate(2) brightness(1.1)",
+            opacity: 0.18,
+            transform: "scale(1.3)",
+          }}
+        />
+      )}
+      {!logoUrl && (
+        <div className="absolute inset-0 pointer-events-none">
+          <div className="absolute top-0 left-1/4 w-96 h-96 bg-sky-100/80 rounded-full blur-3xl" />
+          <div className="absolute bottom-0 right-1/4 w-80 h-80 bg-indigo-100/60 rounded-full blur-3xl" />
+        </div>
+      )}
+      <div className="absolute inset-0 bg-white/75 pointer-events-none" />
       <div
         className={`flex flex-col items-center gap-4 transition-transform duration-500 ease-out
           ${exiting ? "scale-95" : "scale-100"}`}

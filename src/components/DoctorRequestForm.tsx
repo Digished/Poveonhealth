@@ -835,7 +835,6 @@ export function DoctorRequestForm({
       const next = Math.min(4, step + 1);
       setStep(next);
       setMaxStep((m) => Math.max(m, next));
-      document.querySelector("main")?.scrollTo({ top: 0, behavior: "smooth" });
     }
   }
 
@@ -849,14 +848,12 @@ export function DoctorRequestForm({
       setErrors({});
     }
     setStep(target);
-    window.scrollTo({ top: 0, behavior: "smooth" });
   }
 
   function handleBack() {
     setErrors({});
     const minStep = (!labPreselected || hasLocations) ? 1 : 2;
     setStep((s) => Math.max(minStep, s - 1));
-    window.scrollTo({ top: 0, behavior: "smooth" });
   }
 
   // Advance progress bar through realistic stages while submitting
