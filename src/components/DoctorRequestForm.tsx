@@ -666,6 +666,11 @@ export function DoctorRequestForm({
   // Step 4 accordion / lookup states
   const [patientInfoOpen, setPatientInfoOpen] = useState(false);
   const [patientLookupStatus, setPatientLookupStatus] = useState<"idle" | "checking" | "found" | "not_found">("idle");
+  // Track what was auto-filled by the last email lookup so we can clear it when email changes
+  const emailAutofillRef = useRef<{ email: string; phone: string; name: string; dob: string; sex: string }>({ email: "", phone: "", name: "", dob: "", sex: "" });
+  // Always-fresh read of form state for use inside async callbacks
+  const formRef = useRef(form);
+  formRef.current = form;
 
   // Step 3: doctor profile check
   const [docProfileStatus, setDocProfileStatus] = useState<"idle" | "checking" | "found_complete" | "found_partial" | "not_found">("idle");
@@ -695,6 +700,17 @@ export function DoctorRequestForm({
   // Auto-fill patient details from profile when email is entered (Step 4)
   useEffect(() => {
     const email = form.patient_email;
+
+    // When email changes, clear any fields that were filled by the previous lookup
+    const prev = emailAutofillRef.current;
+    if (prev.email !== email) {
+      if (prev.phone) set("patient_phone", "");
+      if (prev.name) set("patient_name", "");
+      if (prev.dob) set("dob", "");
+      if (prev.sex) set("sex", "");
+      emailAutofillRef.current = { email, phone: "", name: "", dob: "", sex: "" };
+    }
+
     if (!email || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
       setPatientLookupStatus("idle");
       return;
@@ -706,10 +722,13 @@ export function DoctorRequestForm({
         .then((data) => {
           if (data?.success) {
             setPatientLookupStatus("found");
-            if (data.phone && !form.patient_phone) set("patient_phone", data.phone);
-            if (data.name && !form.patient_name) { set("patient_name", data.name); setPatientInfoOpen(true); }
-            if (data.dob && !form.dob) set("dob", data.dob);
-            if (data.sex && !form.sex) set("sex", data.sex);
+            const f = formRef.current;
+            const written = { email, phone: "", name: "", dob: "", sex: "" };
+            if (data.phone && !f.patient_phone) { set("patient_phone", data.phone); written.phone = data.phone; }
+            if (data.name && !f.patient_name) { set("patient_name", data.name); written.name = data.name; setPatientInfoOpen(true); }
+            if (data.dob && !f.dob) { set("dob", data.dob); written.dob = data.dob; }
+            if (data.sex && !f.sex) { set("sex", data.sex); written.sex = data.sex; }
+            emailAutofillRef.current = written;
           } else {
             setPatientLookupStatus("not_found");
           }

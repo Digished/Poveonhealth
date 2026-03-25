@@ -3,6 +3,8 @@
 import { useEffect, useState, useCallback, useRef } from "react";
 import { useRouter } from "next/navigation";
 import { PoveonLogo } from "@/components/PoveonLogo";
+import { DobInput } from "@/components/DobInput";
+import { PhoneInput } from "@/components/PhoneInput";
 import {
   LogOut, Phone, MapPin, Calendar, Stethoscope, FlaskConical,
   ClipboardList, User, ChevronDown, ChevronUp, FileImage, ExternalLink,
@@ -194,24 +196,12 @@ function ProfilePanel({
         </div>
         <div>
           <label className="text-xs font-semibold text-slate-500 uppercase tracking-wide block mb-1.5">Phone Number</label>
-          <input
-            value={phone}
-            onChange={(e) => setPhone(e.target.value)}
-            placeholder="+234 800 000 0000"
-            type="tel"
-            className="w-full text-sm px-3 py-2.5 border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-sky-400 bg-white"
-          />
-          <p className="text-xs text-slate-400 mt-1">Include country code. Doctors can auto-fill your info when entering this number.</p>
+          <PhoneInput value={phone} onChange={setPhone} hint="Doctors can auto-fill your details when they enter this number." />
         </div>
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
           <div>
             <label className="text-xs font-semibold text-slate-500 uppercase tracking-wide block mb-1.5">Date of Birth</label>
-            <input
-              value={dob}
-              onChange={(e) => setDob(e.target.value)}
-              type="date"
-              className="w-full text-sm px-3 py-2.5 border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-sky-400 bg-white"
-            />
+            <DobInput value={dob} onChange={setDob} noLabel />
           </div>
           <div>
             <label className="text-xs font-semibold text-slate-500 uppercase tracking-wide block mb-1.5">Sex</label>

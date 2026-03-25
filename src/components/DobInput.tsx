@@ -9,6 +9,7 @@ interface DobInputProps {
   onChange: (isoDate: string) => void;
   error?: string;
   required?: boolean;
+  noLabel?: boolean;
 }
 
 const inputBase =
@@ -53,16 +54,14 @@ function toIso(digits: string): string | null {
   return iso;
 }
 
-export function DobInput({ value, onChange, error, required }: DobInputProps) {
+export function DobInput({ value, onChange, error, required, noLabel }: DobInputProps) {
   const [digits, setDigits] = useState(() => digitsFromIso(value));
   const [invalidDate, setInvalidDate] = useState(false);
 
-  // Sync when parent resets the field (e.g. form clear)
+  // Sync whenever parent changes the value (autofill, clear, etc.)
   useEffect(() => {
-    if (!value) {
-      setDigits("");
-      setInvalidDate(false);
-    }
+    setDigits(digitsFromIso(value));
+    setInvalidDate(false);
   }, [value]);
 
   function handleChange(e: React.ChangeEvent<HTMLInputElement>) {
@@ -95,9 +94,11 @@ export function DobInput({ value, onChange, error, required }: DobInputProps) {
 
   return (
     <div className="flex flex-col gap-1">
-      <label className="text-sm font-medium text-slate-700">
-        Date of Birth{required && <span className="inline-block w-1.5 h-1.5 rounded-full bg-amber-400 ml-1.5 align-middle" aria-label="required" />}
-      </label>
+      {!noLabel && (
+        <label className="text-sm font-medium text-slate-700">
+          Date of Birth{required && <span className="inline-block w-1.5 h-1.5 rounded-full bg-amber-400 ml-1.5 align-middle" aria-label="required" />}
+        </label>
+      )}
       <input
         type="text"
         inputMode="numeric"
