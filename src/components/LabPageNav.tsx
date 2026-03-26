@@ -15,10 +15,8 @@ export function LabPageNav({ labName, logoUrl }: LabPageNavProps) {
   const router = useRouter();
   const [session, setSession] = useState<DocSession | null | "loading">("loading");
   const [loginOpen, setLoginOpen] = useState(false);
-  // true = hero is still visible in the scroll area (controls nav bar)
+  // true = hero is still visible in the scroll area
   const [heroVisible, setHeroVisible] = useState(true);
-  // false = main has been scrolled at all (hides float button immediately on scroll)
-  const [atTop, setAtTop] = useState(true);
   const dropdownRef = useRef<HTMLDivElement>(null);
   const floatDropdownRef = useRef<HTMLDivElement>(null);
 
@@ -45,14 +43,6 @@ export function LabPageNav({ labName, logoUrl }: LabPageNavProps) {
     return () => obs.disconnect();
   }, []);
 
-  // Scroll listener: hide float button the instant main starts scrolling
-  useEffect(() => {
-    const main = document.querySelector("main");
-    if (!main) return;
-    function onScroll() { setAtTop(main!.scrollTop < 8); }
-    main.addEventListener("scroll", onScroll, { passive: true });
-    return () => main.removeEventListener("scroll", onScroll);
-  }, []);
 
   // Close dropdown on outside click (handles both floating + nav dropdown)
   useEffect(() => {
@@ -111,8 +101,8 @@ export function LabPageNav({ labName, logoUrl }: LabPageNavProps) {
         This makes overlap structurally impossible regardless of timing.
       */}
 
-      {/* ── Floating login button: hides the instant main scrolls at all ── */}
-      {atTop && !isLoading && (
+      {/* ── Floating login button: same trigger as nav bar — exact swap ── */}
+      {heroVisible && !isLoading && (
         <div
           className="fixed top-4 z-50 animate-float-btn-in"
           style={{ right: "max(1rem, calc((100vw - 42rem) / 2 + 1rem))" }}
