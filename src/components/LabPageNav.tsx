@@ -19,7 +19,8 @@ export function LabPageNav({ labName, logoUrl }: LabPageNavProps) {
   const router = useRouter();
   const [session, setSession] = useState<DocSession | null | "loading">("loading");
   const [loginOpen, setLoginOpen] = useState(false);
-  const [scrolled, setScrolled] = useState(false);
+  // true = hero is still in view → hide nav branding, transparent bg
+  const [heroVisible, setHeroVisible] = useState(true);
   const dropdownRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
@@ -32,22 +33,29 @@ export function LabPageNav({ labName, logoUrl }: LabPageNavProps) {
       .catch(() => setSession(null));
   }, []);
 
-  // Shrink header on scroll — listen on the scrollable <main> element
+  // Watch the hero element — when it leaves the scrollable viewport the nav
+  // reveals itself with branding sliding in from the left.
   useEffect(() => {
     const main = document.querySelector("main");
-    if (!main) return;
-    function onScroll() {
-      const top = main?.scrollTop ?? 0;
-      setScrolled((prev) => {
-        if (prev && top < 50) return false;
-        if (!prev && top > 90) return true;
-        return prev;
-      });
-    }
-    main.addEventListener("scroll", onScroll, { passive: true });
-    return () => main.removeEventListener("scroll", onScroll);
+    const hero = document.getElementById("lab-hero");
+    if (!main || !hero) return;
+
+    const observer = new IntersectionObserver(
+      ([entry]) => setHeroVisible(entry.isIntersecting),
+      {
+        root: main,
+        threshold: 0,
+        // shrink observable area by nav height so the transition fires just as
+        // the hero bottom slips behind the sticky nav bar (~56 px)
+        rootMargin: "-56px 0px 0px 0px",
+      }
+    );
+
+    observer.observe(hero);
+    return () => observer.disconnect();
   }, []);
 
+  // Close login dropdown on outside click
   useEffect(() => {
     function handler(e: MouseEvent) {
       if (dropdownRef.current && !dropdownRef.current.contains(e.target as Node)) {
@@ -69,48 +77,48 @@ export function LabPageNav({ labName, logoUrl }: LabPageNavProps) {
 
   return (
     <div
-      className={`sticky top-0 z-50 flex items-center justify-between border-b border-white/40 bg-white/80 backdrop-blur-md transition-all duration-300 ease-in-out ${
-        scrolled ? "px-4 py-2" : "px-5 py-3.5"
+      className={`sticky top-0 z-50 flex items-center justify-between px-4 py-3 transition-all duration-300 ease-in-out ${
+        heroVisible
+          ? "bg-transparent border-b border-transparent"
+          : "bg-white/90 backdrop-blur-md border-b border-white/50 shadow-sm"
       }`}
     >
-      {/* Lab branding */}
-      <div className="flex items-center gap-2.5 min-w-0">
+      {/* Lab branding — invisible while hero is showing, slides in when scrolled */}
+      <div
+        className={`flex items-center gap-2.5 min-w-0 transition-all duration-300 ease-in-out ${
+          heroVisible
+            ? "opacity-0 -translate-x-3 pointer-events-none"
+            : "opacity-100 translate-x-0"
+        }`}
+      >
         {logoUrl ? (
           <img
             src={logoUrl}
             alt={labName}
-            className={`rounded-xl object-cover ring-2 ring-white/70 shadow-sm shrink-0 transition-all duration-300 ${
-              scrolled ? "w-7 h-7" : "w-10 h-10"
-            }`}
+            className="w-8 h-8 rounded-xl object-cover ring-2 ring-white/70 shadow-sm shrink-0"
           />
         ) : (
-          <PoveonLogo
-            className={`shrink-0 transition-all duration-300 ${scrolled ? "w-7 h-7" : "w-9 h-9"}`}
-          />
+          <PoveonLogo className="w-7 h-7 shrink-0" />
         )}
-        <div className="min-w-0 overflow-hidden">
-          <p
-            className={`font-bold text-slate-800 truncate leading-tight transition-all duration-300 ${
-              scrolled ? "text-sm max-w-[160px] sm:max-w-xs" : "text-base max-w-[180px] sm:max-w-none"
-            }`}
-          >
-            {labName}
-          </p>
-          {!scrolled && (
-            <p className="text-xs text-slate-400 leading-none mt-0.5 transition-all duration-300">
-              Lab Request Portal
-            </p>
-          )}
-        </div>
+        <p className="text-sm font-bold text-slate-800 truncate max-w-[160px] sm:max-w-xs leading-tight">
+          {labName}
+        </p>
       </div>
 
-      {/* Right: session-aware login */}
+      {/* When hero is visible keep the left side empty so login stays far right */}
+      {heroVisible && <div />}
+
+      {/* Right: session-aware login — always visible */}
       <div className="flex items-center gap-2 shrink-0">
         {!isLoading && loggedIn && typeof session === "object" && session !== null && (
           <>
             <Link
               href="/doc-login/dashboard"
-              className="flex items-center gap-1.5 text-xs font-semibold text-slate-600 hover:text-medical-700 px-3 py-1.5 rounded-lg hover:bg-white/60 transition"
+              className={`flex items-center gap-1.5 text-xs font-semibold px-3 py-1.5 rounded-lg transition ${
+                heroVisible
+                  ? "text-slate-700 hover:bg-white/60 hover:text-medical-700"
+                  : "text-slate-600 hover:bg-slate-50 hover:text-medical-700"
+              }`}
             >
               <LayoutDashboard className="w-3.5 h-3.5" />
               <span className="hidden sm:inline">My Dashboard</span>
@@ -129,7 +137,11 @@ export function LabPageNav({ labName, logoUrl }: LabPageNavProps) {
           <div className="relative" ref={dropdownRef}>
             <button
               onClick={() => setLoginOpen((v) => !v)}
-              className="flex items-center gap-1.5 bg-slate-900 hover:bg-slate-800 text-white text-xs font-semibold px-3 py-1.5 rounded-xl transition shadow-sm"
+              className={`flex items-center gap-1.5 text-xs font-semibold px-3 py-1.5 rounded-xl transition shadow-sm ${
+                heroVisible
+                  ? "bg-white/80 hover:bg-white text-slate-800 backdrop-blur-sm border border-white/60"
+                  : "bg-slate-900 hover:bg-slate-800 text-white"
+              }`}
             >
               <LogIn className="w-3.5 h-3.5" />
               Login

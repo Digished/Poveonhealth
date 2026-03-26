@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import { PoveonLogo } from "@/components/PoveonLogo";
 
 type TimeOfDay = "morning" | "afternoon" | "evening" | "night";
 
@@ -31,83 +32,89 @@ export function LabHeroSection({ labName, logoUrl }: LabHeroSectionProps) {
   }, []);
 
   return (
-    <div className="relative overflow-hidden pt-10 pb-8 px-4">
-      {/* Blurred logo as background — auto-extracts lab colour palette */}
+    <div id="lab-hero" className="relative overflow-hidden pt-14 pb-16 px-4">
+      {/* Blurred logo — auto-extracts palette as background wash */}
       {logoUrl && (
         <div
           className="absolute inset-0 pointer-events-none"
           aria-hidden="true"
           style={{
             backgroundImage: `url(${logoUrl})`,
-            backgroundSize: "200% 200%",
+            backgroundSize: "250% 250%",
             backgroundPosition: "center",
-            filter: "blur(72px) saturate(2.2) brightness(1.1)",
-            opacity: 0.18,
-            transform: "scale(1.25)",
+            filter: "blur(80px) saturate(2.5) brightness(1.05)",
+            opacity: 0.22,
+            transform: "scale(1.3)",
           }}
         />
       )}
-
-      {/* Fallback colour orbs when no logo */}
       {!logoUrl && (
         <div className="absolute inset-0 pointer-events-none overflow-hidden" aria-hidden="true">
-          <div className="absolute top-0 left-1/4 w-64 h-64 bg-sky-100/70 rounded-full blur-3xl" />
-          <div className="absolute top-0 right-0 w-48 h-48 bg-indigo-100/50 rounded-full blur-3xl" />
+          <div className="absolute top-0 left-1/4 w-72 h-72 bg-sky-100/80 rounded-full blur-3xl" />
+          <div className="absolute -top-8 right-0 w-56 h-56 bg-indigo-100/60 rounded-full blur-3xl" />
         </div>
       )}
 
-      {/* Gradient overlay so text stays readable over the blurred logo */}
+      {/* White gradient — readability + smooth bleed into form below */}
       <div
         className="absolute inset-0 pointer-events-none"
         aria-hidden="true"
         style={{
           background:
-            "linear-gradient(to bottom, rgba(255,255,255,0.55) 0%, rgba(255,255,255,0.75) 60%, rgba(255,255,255,0.95) 100%)",
+            "linear-gradient(to bottom, rgba(255,255,255,0.40) 0%, rgba(255,255,255,0.65) 55%, rgba(255,255,255,0.97) 100%)",
         }}
       />
 
       {/* Content */}
-      <div className="relative z-10 flex flex-col items-center text-center gap-3 max-w-md mx-auto">
-        {/* Lab logo mark */}
+      <div className="relative z-10 flex flex-col items-center text-center gap-5 max-w-sm mx-auto">
+
+        {/* Logo with decorative concentric rings + glow */}
         {logoUrl ? (
-          <div className="relative">
-            {/* Soft glow ring behind the logo */}
+          <div className="relative flex items-center justify-center">
+            {/* Outermost ring */}
+            <div className="absolute w-36 h-36 rounded-[36px] border border-white/30 pointer-events-none" aria-hidden="true" />
+            {/* Middle ring */}
+            <div className="absolute w-28 h-28 rounded-[30px] border border-white/50 pointer-events-none" aria-hidden="true" />
+            {/* Colour glow behind logo */}
             <div
-              className="absolute -inset-2 rounded-3xl opacity-30 blur-lg"
-              style={{
-                backgroundImage: `url(${logoUrl})`,
-                backgroundSize: "cover",
-                filter: "blur(12px) saturate(3)",
-              }}
+              className="absolute w-24 h-24 rounded-3xl opacity-35 blur-2xl pointer-events-none"
+              style={{ backgroundImage: `url(${logoUrl})`, backgroundSize: "cover" }}
               aria-hidden="true"
             />
             <img
               src={logoUrl}
               alt={labName}
-              width={72}
-              height={72}
-              className="relative w-16 h-16 rounded-2xl object-contain shadow-xl ring-4 ring-white/70"
+              width={80}
+              height={80}
+              className="relative w-20 h-20 rounded-[22px] object-contain shadow-2xl ring-4 ring-white/80"
             />
           </div>
         ) : (
-          <div className="w-16 h-16 rounded-2xl bg-gradient-to-br from-medical-500 to-sky-400 shadow-xl flex items-center justify-center ring-4 ring-white/60">
-            <svg viewBox="0 0 32 32" fill="none" className="w-9 h-9 text-white">
-              <path d="M10 6v7L4 21q-1.5 4 1.5 5H26.5q3-1 1.5-5L22 13V6" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
-              <line x1="8" y1="6" x2="24" y2="6" stroke="currentColor" strokeWidth="2" strokeLinecap="round"/>
-            </svg>
+          <div className="relative">
+            <div className="absolute -inset-4 rounded-[30px] border border-white/30 pointer-events-none" aria-hidden="true" />
+            <div className="w-20 h-20 rounded-[22px] bg-gradient-to-br from-medical-500 to-sky-400 shadow-2xl flex items-center justify-center ring-4 ring-white/70">
+              <PoveonLogo className="w-10 h-10 text-white" />
+            </div>
           </div>
         )}
 
-        <div className="space-y-0.5">
-          <p className="text-xs font-semibold text-slate-400 uppercase tracking-widest">
+        {/* Text block */}
+        <div className="space-y-1.5">
+          <p className="text-[11px] font-semibold text-slate-400 uppercase tracking-[0.18em]">
             {GREETING[tod]}
           </p>
-          <h1 className="text-xl font-bold text-slate-800 tracking-tight leading-snug">
-            Welcome to<br />{labName}
+          <h1 className="text-2xl sm:text-3xl font-bold text-slate-800 tracking-tight leading-tight">
+            {labName}
           </h1>
-          <p className="text-sm text-slate-500 mt-1">
+          <p className="text-sm text-slate-500 max-w-[240px] mx-auto leading-relaxed">
             What test does your patient need today?
           </p>
+        </div>
+
+        {/* Powered-by badge */}
+        <div className="flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-white/60 border border-white/80 shadow-sm backdrop-blur-sm">
+          <PoveonLogo className="w-3.5 h-3.5 text-slate-400" />
+          <span className="text-xs text-slate-400 font-medium">Powered by Poveon</span>
         </div>
       </div>
     </div>
