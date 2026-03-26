@@ -4,7 +4,7 @@ import { useState, useEffect, useCallback, useRef } from "react";
 import { toast } from "react-hot-toast";
 import {
   X, Upload, Download, Plus, RefreshCw, Trash2, Search,
-  Check, AlertCircle, ChevronDown, Percent, Sparkles,
+  Check, AlertCircle, ChevronDown, Percent, Sparkles, Minimize2, Maximize2,
 } from "lucide-react";
 import type { Lab } from "@/lib/types";
 
@@ -21,6 +21,15 @@ type CatalogTest = {
 };
 
 type Summary = { total: number; mapped: number; unresolved: number };
+
+export type CatalogJob = {
+  labId: string;
+  labName: string;
+  phase: "uploading" | "processing" | "generating";
+  pct?: number;      // uploading phase
+  current?: number;  // generating phase
+  total?: number;    // generating phase
+};
 
 function rowColor(t: CatalogTest): string {
   if (!t.is_active) return "opacity-40";
@@ -120,12 +129,20 @@ function SynonymTags({ synonyms, rawName }: { synonyms: string[]; rawName: strin
 }
 
 // ─── Main component ───────────────────────────────────────────────────────────
-export default function LabCatalogSheet({ lab, onClose }: { lab: Lab; onClose: () => void }) {
+export default function LabCatalogSheet({
+  lab, onClose, onJobChange,
+}: {
+  lab: Lab;
+  onClose: () => void;
+  onJobChange?: (job: CatalogJob | null) => void;
+}) {
   const [tests, setTests] = useState<CatalogTest[]>([]);
   const [summary, setSummary] = useState<Summary>({ total: 0, mapped: 0, unresolved: 0 });
   const [loading, setLoading] = useState(true);
-  const [uploading, setUploading] = useState(false);
-  const [uploadProgress, setUploadProgress] = useState<number | null>(null); // 0-100 or null
+  const [minimized, setMinimized] = useState(false);
+  // Upload phases: idle → uploading (real XHR byte %) → processing (server parsing) → idle
+  const [uploadPhase, setUploadPhase] = useState<"idle" | "uploading" | "processing">("idle");
+  const [uploadPct, setUploadPct] = useState(0);
   const [resolvingId, setResolvingId] = useState<string | null>(null);
   const [deletingId, setDeletingId] = useState<string | null>(null);
 
@@ -155,6 +172,12 @@ export default function LabCatalogSheet({ lab, onClose }: { lab: Lab; onClose: (
   const [adding, setAdding] = useState(false);
 
   const fileRef = useRef<HTMLInputElement>(null);
+
+  // Notify parent of active background work; clear on unmount
+  const notifyJob = useCallback((job: CatalogJob | null) => {
+    onJobChange?.(job);
+  }, [onJobChange]);
+  useEffect(() => () => { notifyJob(null); }, [notifyJob]);
 
   const load = useCallback(async (): Promise<CatalogTest[]> => {
     setLoading(true);
@@ -215,17 +238,20 @@ export default function LabCatalogSheet({ lab, onClose }: { lab: Lab; onClose: (
     }
   }
 
-  /** XHR upload with real byte-level progress tracking */
+  /** XHR upload — real byte progress + separate "processing" phase while server responds */
   function uploadWithProgress(
     file: File,
     url: string,
     onProgress: (pct: number) => void,
+    onProcessing: () => void,
   ): Promise<Record<string, unknown>> {
     return new Promise((resolve, reject) => {
       const xhr = new XMLHttpRequest();
       xhr.upload.addEventListener("progress", (e) => {
         if (e.lengthComputable) onProgress(Math.round((e.loaded / e.total) * 100));
       });
+      // All bytes sent → switch to indeterminate "processing" state
+      xhr.upload.addEventListener("load", onProcessing);
       xhr.addEventListener("load", () => {
         try { resolve(JSON.parse(xhr.responseText)); }
         catch { reject(new Error("Invalid server response")); }
@@ -241,41 +267,52 @@ export default function LabCatalogSheet({ lab, onClose }: { lab: Lab; onClose: (
   async function handleUpload(e: React.ChangeEvent<HTMLInputElement>) {
     const file = e.target.files?.[0];
     if (!file) return;
-    setUploading(true);
-    setUploadProgress(0);
+    setUploadPhase("uploading");
+    setUploadPct(0);
+    notifyJob({ labId: lab.id, labName: lab.name, phase: "uploading", pct: 0 });
     try {
       const data = await uploadWithProgress(
         file,
         `/api/admin/labs/${lab.id}/catalog/upload`,
-        setUploadProgress,
+        (pct) => {
+          setUploadPct(pct);
+          notifyJob({ labId: lab.id, labName: lab.name, phase: "uploading", pct });
+        },
+        () => {
+          setUploadPhase("processing");
+          notifyJob({ labId: lab.id, labName: lab.name, phase: "processing" });
+        },
       );
       if (data.success) {
         const r = data.results as { created: number; updated: number; errors: number; noSynonyms: number };
         toast.success(`${r.created} added · ${r.updated} updated${r.errors ? ` · ${r.errors} errors` : ""}`);
-        setUploadProgress(null);
+        setUploadPhase("idle");
         const freshTests = await load();
-        // Auto-generate synonyms for all new/missing rows right after upload
         const needsSynonyms = freshTests.filter((t) => t.synonyms.length <= 1);
         if (needsSynonyms.length > 0) {
           await runSynonymGeneration(needsSynonyms);
+        } else {
+          notifyJob(null);
         }
       } else {
         toast.error((data.error as string) ?? "Upload failed");
-        setUploadProgress(null);
+        setUploadPhase("idle");
+        notifyJob(null);
       }
     } catch (err) {
       toast.error(err instanceof Error ? err.message : "Upload failed");
-      setUploadProgress(null);
+      setUploadPhase("idle");
+      notifyJob(null);
     } finally {
-      setUploading(false);
       if (fileRef.current) fileRef.current.value = "";
     }
   }
 
-  /** Core loop — generate synonyms sequentially for a given list of tests */
+  /** Core loop — generate synonyms sequentially for a given list, with live progress */
   async function runSynonymGeneration(targets: CatalogTest[]) {
     if (targets.length === 0) return;
     setSynGenProgress({ current: 0, total: targets.length });
+    notifyJob({ labId: lab.id, labName: lab.name, phase: "generating", current: 0, total: targets.length });
     let done = 0;
     for (const t of targets) {
       try {
@@ -291,8 +328,10 @@ export default function LabCatalogSheet({ lab, onClose }: { lab: Lab; onClose: (
       } catch { /* continue on individual failure */ }
       done++;
       setSynGenProgress({ current: done, total: targets.length });
+      notifyJob({ labId: lab.id, labName: lab.name, phase: "generating", current: done, total: targets.length });
     }
     setSynGenProgress(null);
+    notifyJob(null);
     toast.success(`Synonyms generated for ${targets.length} tests`);
   }
 
@@ -434,10 +473,36 @@ export default function LabCatalogSheet({ lab, onClose }: { lab: Lab; onClose: (
 
   const selectedCount = selectedIds.size;
   const noSynonymCount = tests.filter((t) => t.is_active && t.synonyms.length <= 1).length;
+  const isBusy = uploadPhase !== "idle" || !!synGenProgress;
+
+  // Pill label shown when minimized
+  const pillLabel = uploadPhase === "uploading"
+    ? `Uploading ${uploadPct}%`
+    : uploadPhase === "processing"
+      ? "Processing file…"
+      : synGenProgress
+        ? `Synonyms ${synGenProgress.current}/${synGenProgress.total}`
+        : `${tests.length} tests`;
 
   return (
-    <div className="fixed inset-0 z-50 flex items-start justify-center"
-      style={{ backgroundColor: "rgba(2,6,23,0.92)", backdropFilter: "blur(6px)" }}
+    <>
+      {/* ── Minimized floating pill ─────────────────────────────────────────── */}
+      {minimized && (
+        <button
+          onClick={() => setMinimized(false)}
+          className="fixed bottom-5 right-5 z-50 flex items-center gap-2.5 px-4 py-2.5 rounded-full bg-slate-800 border border-white/15 shadow-2xl hover:bg-slate-700 transition-colors group"
+        >
+          {isBusy && <span className="w-2 h-2 rounded-full bg-amber-400 animate-pulse shrink-0" />}
+          {!isBusy && <span className="w-2 h-2 rounded-full bg-emerald-500 shrink-0" />}
+          <span className="text-xs font-medium text-white max-w-[140px] truncate">{lab.name}</span>
+          <span className="text-xs text-slate-400">{pillLabel}</span>
+          <Maximize2 className="w-3 h-3 text-slate-500 group-hover:text-white transition-colors shrink-0" />
+        </button>
+      )}
+
+    <div
+      className="fixed inset-0 z-50 flex items-start justify-center"
+      style={minimized ? { display: "none" } : { backgroundColor: "rgba(2,6,23,0.92)", backdropFilter: "blur(6px)" }}
     >
       <div className="w-full max-w-7xl bg-slate-900 border border-white/10 rounded-b-3xl shadow-2xl flex flex-col h-screen max-h-screen">
 
@@ -471,9 +536,10 @@ export default function LabCatalogSheet({ lab, onClose }: { lab: Lab; onClose: (
               </button>
             )}
             <input ref={fileRef} type="file" accept=".csv,.xlsx,.xls" className="hidden" onChange={handleUpload} />
-            <button onClick={() => fileRef.current?.click()} disabled={uploading}
+            <button onClick={() => fileRef.current?.click()} disabled={uploadPhase !== "idle"}
               className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-blue-600/20 hover:bg-blue-600/30 text-blue-400 text-xs transition-colors disabled:opacity-50">
-              <Upload className="w-3.5 h-3.5" />{uploading ? "Uploading..." : "Upload"}
+              <Upload className="w-3.5 h-3.5" />
+              {uploadPhase === "uploading" ? `${uploadPct}%` : uploadPhase === "processing" ? "Processing…" : "Upload"}
             </button>
             <button onClick={() => window.open(`/api/admin/labs/${lab.id}/catalog/export`, "_blank")}
               className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-white/5 hover:bg-white/10 text-slate-400 text-xs transition-colors">
@@ -483,6 +549,10 @@ export default function LabCatalogSheet({ lab, onClose }: { lab: Lab; onClose: (
               className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-emerald-600/20 hover:bg-emerald-600/30 text-emerald-400 text-xs transition-colors">
               <Plus className="w-3.5 h-3.5" />Add Row
             </button>
+            <button onClick={() => setMinimized(true)} title="Minimize — work continues in background"
+              className="p-1.5 rounded-lg hover:bg-white/10 text-slate-400 hover:text-white transition-colors">
+              <Minimize2 className="w-4 h-4" />
+            </button>
             <button onClick={onClose} className="p-1.5 rounded-lg hover:bg-white/10 text-slate-400 hover:text-white transition-colors">
               <X className="w-4 h-4" />
             </button>
@@ -490,25 +560,33 @@ export default function LabCatalogSheet({ lab, onClose }: { lab: Lab; onClose: (
         </div>
 
         {/* ── Upload progress bar ─────────────────────────────────────────────── */}
-        {uploadProgress !== null && (
-          <div className="px-0 shrink-0">
+        {uploadPhase === "uploading" && (
+          <div className="shrink-0">
             <div className="h-1 bg-white/5">
-              <div
-                className="h-1 bg-blue-500 transition-all duration-200"
-                style={{ width: `${uploadProgress}%` }}
-              />
+              <div className="h-1 bg-blue-500 transition-all duration-150" style={{ width: `${uploadPct}%` }} />
             </div>
             <div className="flex items-center justify-between px-5 py-1.5 bg-blue-500/8">
-              <span className="text-xs text-blue-400">
-                {uploadProgress < 100 ? `Uploading… ${uploadProgress}%` : "Processing file…"}
-              </span>
-              <span className="text-xs text-slate-500 font-mono">{uploadProgress}%</span>
+              <span className="text-xs text-blue-400">Uploading file… {uploadPct}%</span>
+              <span className="text-xs text-slate-500 font-mono">{uploadPct}%</span>
+            </div>
+          </div>
+        )}
+        {uploadPhase === "processing" && (
+          <div className="shrink-0">
+            <div className="h-1 bg-white/5 overflow-hidden">
+              {/* Indeterminate shimmer — file is on server, DB writes in progress */}
+              <div className="h-1 bg-blue-500 w-1/3 animate-[shimmer_1.2s_ease-in-out_infinite]"
+                style={{ animation: "slide 1.2s ease-in-out infinite" }} />
+            </div>
+            <div className="flex items-center gap-2 px-5 py-1.5 bg-blue-500/8">
+              <RefreshCw className="w-3 h-3 text-blue-400 animate-spin shrink-0" />
+              <span className="text-xs text-blue-400">Processing file — saving to database…</span>
             </div>
           </div>
         )}
 
         {/* ── Upload hint ─────────────────────────────────────────────────────── */}
-        {uploadProgress === null && (
+        {uploadPhase === "idle" && (
           <div className="px-5 py-2 bg-blue-500/5 border-b border-white/5 shrink-0">
             <p className="text-xs text-slate-500">
               Accepts <span className="font-mono text-slate-400">.csv</span>, <span className="font-mono text-slate-400">.xlsx</span>, <span className="font-mono text-slate-400">.xls</span> (all sheets merged) ·
@@ -755,5 +833,6 @@ export default function LabCatalogSheet({ lab, onClose }: { lab: Lab; onClose: (
         })()}
       </div>
     </div>
+    </>
   );
 }

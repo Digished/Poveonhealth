@@ -10,7 +10,7 @@ import {
   Wallet, ArrowUpRight, ArrowDownRight, Settings, CreditCard, MessageCircle, Tag,
 } from "lucide-react";
 import { useDashTheme } from "@/hooks/useDashTheme";
-import LabCatalogSheet from "@/components/LabCatalogSheet";
+import LabCatalogSheet, { type CatalogJob } from "@/components/LabCatalogSheet";
 import { Button } from "@/components/ui/Button";
 import { Input, Textarea } from "@/components/ui/Input";
 import { StatusBadge, Badge } from "@/components/ui/Badge";
@@ -126,6 +126,7 @@ export function AdminDashboard() {
   const [branchModalLabId, setBranchModalLabId] = useState<string | null>(null);
   const [walletModalLabId, setWalletModalLabId] = useState<string | null>(null);
   const [catalogModalLabId, setCatalogModalLabId] = useState<string | null>(null);
+  const [catalogJob, setCatalogJob] = useState<CatalogJob | null>(null);
   const [defaultRequestPrice, setDefaultRequestPrice] = useState<string>("500");
   const [savingSettings, setSavingSettings] = useState(false);
 
@@ -1065,9 +1066,12 @@ export function AdminDashboard() {
                         </button>
                         <button
                           onClick={() => setCatalogModalLabId(lab.id)}
-                          className="flex items-center justify-center gap-1 px-2.5 py-1.5 rounded-lg bg-amber-500/10 hover:bg-amber-500/20 text-amber-400 hover:text-amber-300 text-xs transition-colors"
+                          className="relative flex items-center justify-center gap-1 px-2.5 py-1.5 rounded-lg bg-amber-500/10 hover:bg-amber-500/20 text-amber-400 hover:text-amber-300 text-xs transition-colors"
                         >
                           <Tag className="w-3 h-3" />Catalog
+                          {catalogJob?.labId === lab.id && (
+                            <span className="absolute -top-1 -right-1 w-2 h-2 rounded-full bg-amber-400 animate-pulse" />
+                          )}
                         </button>
                         <button
                           onClick={() => setExpandedLabIntegration(lab.id)}
@@ -1455,7 +1459,11 @@ export function AdminDashboard() {
       {catalogModalLabId && (() => {
         const lab = labs.find((l) => l.id === catalogModalLabId);
         return lab ? (
-          <LabCatalogSheet lab={lab} onClose={() => setCatalogModalLabId(null)} />
+          <LabCatalogSheet
+            lab={lab}
+            onClose={() => { setCatalogModalLabId(null); setCatalogJob(null); }}
+            onJobChange={setCatalogJob}
+          />
         ) : null;
       })()}
 
