@@ -573,11 +573,15 @@ export function DoctorRequestForm({
   preselectedLabId,
   preselectedLabName,
   locations = [],
+  initialLabs,
 }: {
   preselectedLabId?: string;
   preselectedLabName?: string;
   locations?: Location[];
+  initialLabs?: Lab[];
 } = {}) {
+  // Seed module-level cache from SSR-provided data so first open is instant
+  if (initialLabs && !_labsCache) { _labsCache = initialLabs; }
   const labPreselected = !!preselectedLabId;
   // hasLocations = true when there are multiple locations to choose from (parent + at least 1 branch)
   const hasLocations = locations.length > 1;
@@ -591,8 +595,8 @@ export function DoctorRequestForm({
     lab_id: (labPreselected && locations.length > 0) ? locations[defaultLocIdx].lab_id : (preselectedLabId ?? ""),
   }));
   const [errors, setErrors] = useState<Partial<FormData>>({});
-  const [labs, setLabs] = useState<Lab[]>([]);
-  const [labsLoading, setLabsLoading] = useState(true);
+  const [labs, setLabs] = useState<Lab[]>(() => _labsCache ?? []);
+  const [labsLoading, setLabsLoading] = useState(false);
   const [submitting, setSubmitting] = useState(false);
   const [progress, setProgress] = useState(0);
   const [result, setResult] = useState<CreateRequestResponse | null>(null);
@@ -754,6 +758,20 @@ export function DoctorRequestForm({
       .finally(() => setLabsLoading(false));
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [labPreselected]);
+
+  // Idle prefetch — if labs aren't already cached (no SSR data), warm the cache
+  // while the browser is idle so the modal feels instant even without server preload.
+  useEffect(() => {
+    if (labPreselected || _labsCache) return;
+    const id = typeof requestIdleCallback !== "undefined"
+      ? requestIdleCallback(() => fetchLabs(), { timeout: 3000 })
+      : setTimeout(fetchLabs, 800) as unknown as number;
+    return () => {
+      if (typeof cancelIdleCallback !== "undefined") cancelIdleCallback(id as number);
+      else clearTimeout(id as unknown as ReturnType<typeof setTimeout>);
+    };
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   // Time-of-day greeting
   const [tod, setTod] = useState<"morning" | "afternoon" | "evening">("morning");

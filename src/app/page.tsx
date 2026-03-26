@@ -3,8 +3,15 @@ import { TrustIndicators } from "@/components/TrustIndicators";
 import { PoveonLogo } from "@/components/PoveonLogo";
 import { Navbar } from "@/components/Navbar";
 import { HeroSection } from "@/components/HeroSection";
+import { prisma } from "@/lib/prisma";
 
-export default function HomePage() {
+export default async function HomePage() {
+  // Fetch labs at SSR time — data arrives with the HTML, search modal is instant
+  const labsData = await prisma.lab.findMany({
+    where: { hidden: false },
+    select: { id: true, name: true, slug: true, prefix: true, address: true, logo_url: true, phones: true, whatsapp: true },
+    orderBy: { name: "asc" },
+  });
   return (
     <div className="relative h-dvh flex flex-col bg-white overflow-hidden">
       {/* Mesh background — CSS gradients only, no filter blur */}
@@ -28,7 +35,8 @@ export default function HomePage() {
         </div>
 
         <div className="max-w-2xl mx-auto px-4 pb-2 snap-start snap-always">
-          <DoctorRequestForm />
+          {/* eslint-disable-next-line @typescript-eslint/no-explicit-any */}
+          <DoctorRequestForm initialLabs={labsData as any} />
         </div>
 
         {/* Trust indicators strip */}
