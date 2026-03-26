@@ -12,10 +12,16 @@
   html {
     -webkit-font-smoothing: antialiased;
     -moz-osx-font-smoothing: grayscale;
+    scroll-behavior: smooth;
   }
 
   body {
     font-family: 'Inter', system-ui, sans-serif;
+  }
+
+  /* Smooth scrolling for all scrollable containers */
+  main, [data-scroll], .overflow-y-auto, .overflow-y-scroll {
+    scroll-behavior: smooth;
   }
 }
 

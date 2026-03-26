@@ -1093,24 +1093,29 @@ export function DoctorRequestForm({
                 <div className="relative overflow-hidden rounded-2xl border border-medical-100 bg-gradient-to-r from-medical-50 via-white to-sky-50 shadow-sm animate-fade-in-up">
                   <div className="absolute -top-6 -right-6 w-28 h-28 bg-medical-100/40 rounded-full blur-2xl pointer-events-none" />
                   <div className="relative px-4 py-3 flex items-center gap-3">
-                    {/* Logo + name — hidden while the hero section is in view */}
-                    <div className={`flex items-center gap-3 transition-all duration-300 overflow-hidden ${heroVisible ? "max-w-0 opacity-0" : "max-w-[200px] opacity-100"}`}>
+
+                    {/* Logo — fades out while hero is visible */}
+                    <div className={`transition-all duration-300 shrink-0 ${heroVisible ? "w-0 opacity-0 overflow-hidden" : "w-10 opacity-100"}`}>
                       {displayLab.logo_url ? (
                         <img
                           src={displayLab.logo_url}
                           alt={displayLab.name}
-                          className="w-10 h-10 rounded-xl object-cover shrink-0 shadow-sm ring-2 ring-white"
+                          className="w-10 h-10 rounded-xl object-cover shadow-sm ring-2 ring-white"
                         />
                       ) : (
-                        <div className="w-10 h-10 rounded-xl bg-medical-100 flex items-center justify-center shrink-0 border border-medical-200">
+                        <div className="w-10 h-10 rounded-xl bg-medical-100 flex items-center justify-center border border-medical-200">
                           <Building2 className="w-5 h-5 text-medical-600" />
                         </div>
                       )}
-                      <p className="text-sm font-bold text-slate-800 leading-tight truncate whitespace-nowrap">{displayLab.name}</p>
                     </div>
+
+                    {/* Text column — name fades out while hero is visible, address always shows */}
                     <div className="min-w-0 flex-1">
+                      <div className={`overflow-hidden transition-all duration-300 ${heroVisible ? "max-h-0 opacity-0" : "max-h-8 opacity-100"}`}>
+                        <p className="text-sm font-bold text-slate-800 leading-tight truncate">{displayLab.name}</p>
+                      </div>
                       {displayLab.address && (
-                        <p className="text-xs text-slate-400 flex items-start gap-1 overflow-hidden">
+                        <p className="text-xs text-slate-400 flex items-start gap-1 mt-0.5">
                           <MapPin className="w-3 h-3 shrink-0 text-medical-300 mt-0.5" />
                           <span className="truncate">{displayLab.address}</span>
                         </p>
@@ -1125,7 +1130,8 @@ export function DoctorRequestForm({
                         </button>
                       )}
                     </div>
-                    {/* Call button */}
+
+                    {/* Call button — always visible */}
                     {phones.length > 0 && (
                       <div className="shrink-0">
                         {phones.length === 1 ? (
