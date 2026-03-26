@@ -96,12 +96,12 @@ export function LabPageNav({ labName, logoUrl }: LabPageNavProps) {
   return (
     <>
       {/* ── Floating login button — fixed over the hero, fades when nav appears ── */}
-      {/* Hides instantly (150ms), re-appears only after nav has collapsed (delay-200) */}
+      {/* z-40 so the nav bar (z-50) paints above it during any crossfade overlap */}
       <div
-        className={`fixed top-4 z-50 ${
+        className={`fixed top-4 z-40 transition-[opacity,transform] duration-200 ${
           heroVisible
-            ? "opacity-100 translate-y-0 pointer-events-auto transition-[opacity,transform] duration-150 delay-200"
-            : "opacity-0 -translate-y-2 pointer-events-none transition-[opacity,transform] duration-150"
+            ? "opacity-100 translate-y-0 pointer-events-auto"
+            : "opacity-0 -translate-y-2 pointer-events-none"
         }`}
         style={{ right: "max(1rem, calc((100vw - 42rem) / 2 + 1rem))" }}
       >
@@ -134,12 +134,10 @@ export function LabPageNav({ labName, logoUrl }: LabPageNavProps) {
 
       {/* ── Compact nav bar — grows into view when hero scrolls away ─────────── */}
       {/*   max-h-0 → no space taken; max-h-[60px] → full bar shown             */}
-      {/* Appears only after float button has faded (delay-150), collapses instantly */}
+      {/* relative z-50 ensures nav paints above the fixed z-40 floating button  */}
       <div
-        className={`overflow-hidden shrink-0 ${
-          heroVisible
-            ? "max-h-0 opacity-0 transition-[max-height,opacity] duration-150"
-            : "max-h-[60px] opacity-100 transition-[max-height,opacity] duration-200 delay-150"
+        className={`relative z-50 overflow-hidden shrink-0 transition-[max-height,opacity] duration-200 ${
+          heroVisible ? "max-h-0 opacity-0" : "max-h-[60px] opacity-100"
         }`}
       >
         <div className="bg-white/90 backdrop-blur-md border-b border-slate-200/60 shadow-sm h-[52px]">
