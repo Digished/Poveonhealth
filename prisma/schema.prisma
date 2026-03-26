@@ -39,6 +39,7 @@ model Lab {
   transactions    WalletTransaction[]
   lab_test_prices     LabTestPrice[]
   lab_category_prices LabCategoryPrice[]
+  lab_offered_tests   LabOfferedTest[]
 
   @@map("labs")
 }
@@ -478,9 +479,10 @@ model CatalogTest {
   is_active      Boolean  @default(true)
   created_at     DateTime @default(now())
 
-  category   TestCategory   @relation(fields: [category_id], references: [id], onDelete: Cascade)
-  synonyms   TestSynonym[]
-  lab_prices LabTestPrice[]
+  category          TestCategory     @relation(fields: [category_id], references: [id], onDelete: Cascade)
+  synonyms          TestSynonym[]
+  lab_prices        LabTestPrice[]
+  lab_offered_tests LabOfferedTest[]
 
   @@unique([category_id, canonical_name])
   @@map("catalog_tests")
@@ -525,4 +527,32 @@ model UnmappedTest {
   status           String   @default("pending") // "pending" | "resolved" | "ignored"
 
   @@map("unmapped_tests")
+}
+
+// ── Lab Offered Tests ─────────────────────────────────────────────────────────
+
+// The specific tests a lab offers, at their price, with Poveon commission
+model LabOfferedTest {
+  id                      String    @id @default(uuid())
+  lab_id                  String
+  catalog_test_id         String?   // null until resolved by AI or admin
+  raw_name                String    // as uploaded (e.g. "FBC", "full blood count")
+  lab_price               Decimal   @db.Decimal(12, 2) // what the lab charges patients
+  poveon_fee              Decimal?  @db.Decimal(12, 2) // Poveon's cut (derived)
+  commission_pct          Decimal?  @db.Decimal(5, 2)  // e.g. 15.00 for 15%
+  is_active               Boolean   @default(true)
+  resolution_confidence   Decimal?  @db.Decimal(4, 3)  // 0.000 – 1.000
+  resolution_source       String?   // "synonym" | "prefix" | "regex" | "ai" | "manual"
+  mapped_by               String?   // admin email if manually mapped
+  mapped_at               DateTime?
+  created_at              DateTime  @default(now())
+  updated_at              DateTime  @updatedAt
+
+  lab          Lab          @relation(fields: [lab_id], references: [id], onDelete: Cascade)
+  catalog_test CatalogTest? @relation(fields: [catalog_test_id], references: [id], onDelete: SetNull)
+
+  @@unique([lab_id, raw_name])
+  @@index([lab_id])
+  @@index([catalog_test_id])
+  @@map("lab_offered_tests")
 }
