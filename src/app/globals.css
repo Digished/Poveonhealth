@@ -84,6 +84,11 @@
   100% { transform: translateX(100%); }
 }
 
+@keyframes lab-hero-float {
+  0%, 100% { transform: translateY(0px); }
+  50%       { transform: translateY(-8px); }
+}
+
 /* ── Dashboard light/dark theme ──────────────────────────────────────────── */
 
 /* The dashboards default to dark. Adding .dash-light on the root switches to light mode. */

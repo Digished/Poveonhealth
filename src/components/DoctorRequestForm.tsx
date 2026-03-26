@@ -741,6 +741,22 @@ export function DoctorRequestForm({
     fetchLabs();
   }, [fetchLabs]);
 
+  // Hero visibility — when a #lab-hero element exists, track whether it's still in view.
+  // Used to hide the logo/name in the sticky header while the hero is prominent.
+  const [heroVisible, setHeroVisible] = useState(false);
+  useEffect(() => {
+    const hero = document.getElementById("lab-hero");
+    if (!hero) return;
+    setHeroVisible(true);
+    const main = document.querySelector("main");
+    const observer = new IntersectionObserver(
+      ([entry]) => setHeroVisible(entry.isIntersecting),
+      { root: main, threshold: 0 }
+    );
+    observer.observe(hero);
+    return () => observer.disconnect();
+  }, []);
+
   // Scroll listener — compact header when user scrolls past ~80px inside the main scrollable area
   useEffect(() => {
     const main = document.querySelector("main");
@@ -1077,21 +1093,24 @@ export function DoctorRequestForm({
                 <div className="relative overflow-hidden rounded-2xl border border-medical-100 bg-gradient-to-r from-medical-50 via-white to-sky-50 shadow-sm animate-fade-in-up">
                   <div className="absolute -top-6 -right-6 w-28 h-28 bg-medical-100/40 rounded-full blur-2xl pointer-events-none" />
                   <div className="relative px-4 py-3 flex items-center gap-3">
-                    {displayLab.logo_url ? (
-                      <img
-                        src={displayLab.logo_url}
-                        alt={displayLab.name}
-                        className="w-10 h-10 rounded-xl object-cover shrink-0 shadow-sm ring-2 ring-white"
-                      />
-                    ) : (
-                      <div className="w-10 h-10 rounded-xl bg-medical-100 flex items-center justify-center shrink-0 border border-medical-200">
-                        <Building2 className="w-5 h-5 text-medical-600" />
-                      </div>
-                    )}
+                    {/* Logo + name — hidden while the hero section is in view */}
+                    <div className={`flex items-center gap-3 transition-all duration-300 overflow-hidden ${heroVisible ? "max-w-0 opacity-0" : "max-w-[200px] opacity-100"}`}>
+                      {displayLab.logo_url ? (
+                        <img
+                          src={displayLab.logo_url}
+                          alt={displayLab.name}
+                          className="w-10 h-10 rounded-xl object-cover shrink-0 shadow-sm ring-2 ring-white"
+                        />
+                      ) : (
+                        <div className="w-10 h-10 rounded-xl bg-medical-100 flex items-center justify-center shrink-0 border border-medical-200">
+                          <Building2 className="w-5 h-5 text-medical-600" />
+                        </div>
+                      )}
+                      <p className="text-sm font-bold text-slate-800 leading-tight truncate whitespace-nowrap">{displayLab.name}</p>
+                    </div>
                     <div className="min-w-0 flex-1">
-                      <p className="text-sm font-bold text-slate-800 leading-tight truncate">{displayLab.name}</p>
                       {displayLab.address && (
-                        <p className="text-xs text-slate-400 flex items-start gap-1 mt-0.5 overflow-hidden">
+                        <p className="text-xs text-slate-400 flex items-start gap-1 overflow-hidden">
                           <MapPin className="w-3 h-3 shrink-0 text-medical-300 mt-0.5" />
                           <span className="truncate">{displayLab.address}</span>
                         </p>
@@ -1102,7 +1121,7 @@ export function DoctorRequestForm({
                           onClick={() => setLabDetailsOpen(true)}
                           className="mt-1 text-xs text-medical-600 hover:text-medical-800 font-semibold underline underline-offset-2 transition-colors"
                         >
-                          View details
+                          More details
                         </button>
                       )}
                     </div>
@@ -1421,53 +1440,16 @@ export function DoctorRequestForm({
                               </button>
                             </div>
 
-                            {/* AI extraction result card */}
-                            {extractionResult && !extractionDismissed && !imageExtracting && (
-                              <div className={`rounded-xl border px-4 py-3 space-y-2 ${extractionResult.confidence === "low" ? "bg-amber-50 border-amber-200" : "bg-sky-50 border-sky-200"}`}>
-                                <div className="flex items-center justify-between gap-2">
-                                  <p className={`text-xs font-semibold flex items-center gap-1.5 ${extractionResult.confidence === "low" ? "text-amber-700" : "text-sky-700"}`}>
-                                    <span className="inline-block w-1.5 h-1.5 rounded-full bg-current" />
-                                    AI extracted from image
-                                    {extractionResult.confidence === "high" && <span className="font-normal text-sky-600"> — high confidence</span>}
-                                    {extractionResult.confidence === "medium" && <span className="font-normal text-sky-600"> — please review</span>}
-                                    {extractionResult.confidence === "low" && <span className="font-normal text-amber-600"> — low confidence, verify carefully</span>}
-                                  </p>
-                                  <button type="button" onClick={() => setExtractionDismissed(true)} className="text-slate-400 hover:text-slate-600 transition-colors shrink-0" aria-label="Dismiss">
-                                    <X className="w-3.5 h-3.5" />
-                                  </button>
-                                </div>
-
-                                {extractionResult.tests.length > 0 && (
-                                  <div>
-                                    <p className="text-xs text-slate-500 mb-1">Tests found:</p>
-                                    <div className="flex flex-wrap gap-1">
-                                      {extractionResult.tests.map((t, i) => (
-                                        <span key={i} className={`text-xs px-2 py-0.5 rounded-full border font-medium ${extractionResult.low_confidence_items.includes(t) ? "bg-amber-100 border-amber-200 text-amber-700" : "bg-white border-slate-200 text-slate-700"}`}>
-                                          {extractionResult.low_confidence_items.includes(t) && "⚠ "}{t}
-                                        </span>
-                                      ))}
-                                    </div>
-                                  </div>
-                                )}
-
-                                {extractionResult.diagnosis && (
-                                  <p className="text-xs text-slate-600"><span className="font-medium">Diagnosis:</span> {extractionResult.diagnosis}</p>
-                                )}
-
-                                {(extractionResult.patient_name || extractionResult.dob || extractionResult.sex) && (
-                                  <p className="text-xs text-slate-500">
-                                    Patient details also pre-filled below where fields were empty.
-                                  </p>
-                                )}
-
-                                {extractionResult.low_confidence_items.length > 0 && (
-                                  <p className="text-xs text-amber-700 flex items-start gap-1">
-                                    <span className="shrink-0">⚠</span>
-                                    <span>Please verify: {extractionResult.low_confidence_items.join(", ")}</span>
-                                  </p>
-                                )}
-
-                                <p className="text-xs text-slate-400 italic">All fields are editable — review before submitting.</p>
+                            {/* Show only if AI flagged uncertain items — otherwise the filled fields speak for themselves */}
+                            {extractionResult && !extractionDismissed && !imageExtracting && extractionResult.low_confidence_items.length > 0 && (
+                              <div className="flex items-start gap-2 px-3 py-2 rounded-xl bg-amber-50 border border-amber-200">
+                                <span className="text-amber-500 text-sm shrink-0 mt-0.5">⚠</span>
+                                <p className="text-xs text-amber-700 flex-1">
+                                  Please verify: <span className="font-medium">{extractionResult.low_confidence_items.join(", ")}</span>
+                                </p>
+                                <button type="button" onClick={() => setExtractionDismissed(true)} className="text-amber-400 hover:text-amber-600 transition-colors shrink-0" aria-label="Dismiss">
+                                  <X className="w-3.5 h-3.5" />
+                                </button>
                               </div>
                             )}
                           </div>
@@ -1674,7 +1656,11 @@ export function DoctorRequestForm({
                                           }
                                         })
                                         .catch(() => { /* silent — user continues manually */ })
-                                        .finally(() => setImageExtracting(false));
+                                        .finally(() => {
+                                          // Complete progress to 100%, then pause so the user sees all steps done before the card closes
+                                          setExtractionProgress(100);
+                                          setTimeout(() => setImageExtracting(false), 700);
+                                        });
                                     } else {
                                       setImageUploadError(data.error ?? "Upload failed. Please try again.");
                                     }

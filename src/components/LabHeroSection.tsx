@@ -26,91 +26,121 @@ interface LabHeroSectionProps {
 
 export function LabHeroSection({ labName, logoUrl }: LabHeroSectionProps) {
   const [tod, setTod] = useState<TimeOfDay>("morning");
+  const [mounted, setMounted] = useState(false);
 
   useEffect(() => {
     setTod(getTimeOfDay(new Date().getHours()));
+    setMounted(true);
   }, []);
 
   return (
-    <div id="lab-hero" className="relative overflow-hidden pt-14 pb-16 px-4">
-      {/* Blurred logo — auto-extracts palette as background wash */}
-      {logoUrl && (
+    <div id="lab-hero" className="relative overflow-hidden pt-12 pb-24 px-4">
+
+      {/* ── Background layer: blurred logo palette wash ── */}
+      {logoUrl ? (
         <div
           className="absolute inset-0 pointer-events-none"
           aria-hidden="true"
           style={{
             backgroundImage: `url(${logoUrl})`,
-            backgroundSize: "250% 250%",
+            backgroundSize: "300% 300%",
             backgroundPosition: "center",
-            filter: "blur(80px) saturate(2.5) brightness(1.05)",
-            opacity: 0.22,
-            transform: "scale(1.3)",
+            filter: "blur(60px) saturate(3.5) brightness(1.15)",
+            opacity: 0.32,
+            transform: "scale(1.5)",
           }}
         />
-      )}
-      {!logoUrl && (
+      ) : (
         <div className="absolute inset-0 pointer-events-none overflow-hidden" aria-hidden="true">
-          <div className="absolute top-0 left-1/4 w-72 h-72 bg-sky-100/80 rounded-full blur-3xl" />
-          <div className="absolute -top-8 right-0 w-56 h-56 bg-indigo-100/60 rounded-full blur-3xl" />
+          <div className="absolute -top-8 left-1/3 w-80 h-80 bg-sky-300/40 rounded-full blur-3xl" />
+          <div className="absolute top-4 -right-12 w-64 h-64 bg-indigo-300/35 rounded-full blur-3xl" />
+          <div className="absolute -bottom-16 -left-8 w-72 h-72 bg-blue-200/30 rounded-full blur-3xl" />
         </div>
       )}
 
-      {/* White gradient — readability + smooth bleed into form below */}
+      {/* ── White veil: radial from centre → transparent edges ── */}
       <div
         className="absolute inset-0 pointer-events-none"
         aria-hidden="true"
         style={{
           background:
-            "linear-gradient(to bottom, rgba(255,255,255,0.40) 0%, rgba(255,255,255,0.65) 55%, rgba(255,255,255,0.97) 100%)",
+            "radial-gradient(ellipse 90% 80% at 50% 35%, rgba(255,255,255,0.15) 0%, rgba(255,255,255,0.50) 50%, rgba(255,255,255,0.96) 88%, #ffffff 100%)",
         }}
       />
 
-      {/* Content */}
-      <div className="relative z-10 flex flex-col items-center text-center gap-5 max-w-sm mx-auto">
+      {/* ── Subtle dot-grid texture (1% opacity) ── */}
+      <div
+        className="absolute inset-0 pointer-events-none"
+        aria-hidden="true"
+        style={{
+          backgroundImage: "radial-gradient(circle, rgba(0,0,0,0.12) 1px, transparent 1px)",
+          backgroundSize: "22px 22px",
+          opacity: 0.04,
+        }}
+      />
 
-        {/* Logo with decorative concentric rings + glow */}
-        {logoUrl ? (
-          <div className="relative flex items-center justify-center">
-            {/* Outermost ring */}
-            <div className="absolute w-36 h-36 rounded-[36px] border border-white/30 pointer-events-none" aria-hidden="true" />
-            {/* Middle ring */}
-            <div className="absolute w-28 h-28 rounded-[30px] border border-white/50 pointer-events-none" aria-hidden="true" />
-            {/* Colour glow behind logo */}
+      {/* ── Content ── */}
+      <div
+        className={`relative z-10 flex flex-col items-center text-center gap-6 max-w-xs mx-auto transition-all duration-700 ${
+          mounted ? "opacity-100 translate-y-0" : "opacity-0 translate-y-3"
+        }`}
+      >
+        {/* Logo — with ambient glow + float animation */}
+        <div className="relative flex items-center justify-center" style={{ animation: "lab-hero-float 5s ease-in-out infinite" }}>
+          {/* Blurred glow behind logo */}
+          {logoUrl ? (
             <div
-              className="absolute w-24 h-24 rounded-3xl opacity-35 blur-2xl pointer-events-none"
+              className="absolute w-32 h-32 rounded-[32px] blur-2xl opacity-60 pointer-events-none"
               style={{ backgroundImage: `url(${logoUrl})`, backgroundSize: "cover" }}
               aria-hidden="true"
             />
+          ) : (
+            <div className="absolute w-32 h-32 rounded-[32px] bg-gradient-to-br from-medical-400 to-sky-400 blur-2xl opacity-40 pointer-events-none" aria-hidden="true" />
+          )}
+
+          {/* Frosted halo */}
+          <div className="absolute w-[108px] h-[108px] rounded-[30px] bg-white/50 backdrop-blur-sm pointer-events-none" aria-hidden="true" />
+
+          {/* Logo image or fallback */}
+          {logoUrl ? (
             <img
               src={logoUrl}
               alt={labName}
-              width={80}
-              height={80}
-              className="relative w-20 h-20 rounded-[22px] object-contain shadow-2xl ring-4 ring-white/80"
+              width={92}
+              height={92}
+              className="relative rounded-[24px] object-contain shadow-2xl ring-[3px] ring-white/90"
+              style={{ width: 92, height: 92 }}
             />
-          </div>
-        ) : (
-          <div className="relative">
-            <div className="absolute -inset-4 rounded-[30px] border border-white/30 pointer-events-none" aria-hidden="true" />
-            <div className="w-20 h-20 rounded-[22px] bg-gradient-to-br from-medical-500 to-sky-400 shadow-2xl flex items-center justify-center ring-4 ring-white/70">
-              <PoveonLogo className="w-10 h-10 text-white" />
+          ) : (
+            <div className="relative w-[92px] h-[92px] rounded-[24px] bg-gradient-to-br from-medical-500 to-sky-400 shadow-2xl flex items-center justify-center ring-[3px] ring-white/80">
+              <PoveonLogo className="w-12 h-12 text-white" />
             </div>
-          </div>
-        )}
+          )}
+        </div>
 
         {/* Text block */}
         <div className="space-y-1.5">
-          <p className="text-[11px] font-semibold text-slate-400 uppercase tracking-[0.18em]">
+          {/* Time-of-day greeting */}
+          <p className="text-[10px] font-bold text-slate-400 uppercase tracking-[0.24em]">
             {GREETING[tod]}
           </p>
-          <h1 className="text-2xl sm:text-3xl font-bold text-slate-800 tracking-tight leading-tight">
+
+          {/* Lab name — large, bold, tight */}
+          <h1 className="text-[30px] sm:text-4xl font-black text-slate-900 tracking-tight leading-[1.1]">
             {labName}
           </h1>
-          <p className="text-sm text-slate-500 max-w-[240px] mx-auto leading-relaxed">
+
+          {/* Divider accent */}
+          <div className="flex items-center justify-center gap-2 pt-1">
+            <div className="h-px w-10 bg-gradient-to-r from-transparent to-slate-300" />
+            <span className="text-[11px] text-slate-400 font-medium">diagnostic services</span>
+            <div className="h-px w-10 bg-gradient-to-l from-transparent to-slate-300" />
+          </div>
+
+          <p className="text-[13px] text-slate-500 leading-relaxed pt-0.5">
             What test does your patient need today?
           </p>
         </div>
-
       </div>
     </div>
   );
