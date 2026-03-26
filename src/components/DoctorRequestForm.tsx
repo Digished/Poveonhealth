@@ -1424,42 +1424,7 @@ export function DoctorRequestForm({
                   {clinicalMode === "picture" && (
                     <div className="space-y-3 animate-fade-in-up">
                       <p className="text-sm text-slate-500">Upload a photo of a filled physical test request and watch the magic happen.</p>
-                        {testImageUrl ? (
-                          <div className="space-y-2">
-                            {/* Image thumbnail row */}
-                            <div className="flex items-center gap-3 rounded-xl border border-emerald-200 bg-emerald-50/40 px-4 py-3">
-                              <img src={testImageUrl} alt="Uploaded test request slip" className="w-14 h-14 rounded-lg object-cover border border-emerald-200 shrink-0" />
-                              <div className="flex-1 min-w-0">
-                                <p className="text-sm font-semibold text-emerald-700 flex items-center gap-1.5">
-                                  <Check className="w-4 h-4" /> Image uploaded
-                                </p>
-                                {extractionResult && !extractionDismissed ? (
-                                  <p className="text-xs text-emerald-600 mt-0.5 flex items-center gap-1">
-                                    <Check className="w-3 h-3" /> Fields pre-filled
-                                  </p>
-                                ) : (
-                                  <p className="text-xs text-slate-400 mt-0.5 truncate">{testImageUrl?.split("/").pop()}</p>
-                                )}
-                              </div>
-                              <button type="button" onClick={() => { setTestImageUrl(null); setImageUploadError(null); setExtractionResult(null); setExtractionDismissed(false); }} className="p-1.5 rounded-lg hover:bg-emerald-100 text-emerald-400 hover:text-emerald-700 transition-colors shrink-0" aria-label="Remove uploaded image">
-                                <X className="w-4 h-4" />
-                              </button>
-                            </div>
-
-                            {/* Show only if AI flagged uncertain items — otherwise the filled fields speak for themselves */}
-                            {extractionResult && !extractionDismissed && !imageExtracting && extractionResult.low_confidence_items.length > 0 && (
-                              <div className="flex items-start gap-2 px-3 py-2 rounded-xl bg-amber-50 border border-amber-200">
-                                <span className="text-amber-500 text-sm shrink-0 mt-0.5">⚠</span>
-                                <p className="text-xs text-amber-700 flex-1">
-                                  Please verify: <span className="font-medium">{extractionResult.low_confidence_items.join(", ")}</span>
-                                </p>
-                                <button type="button" onClick={() => setExtractionDismissed(true)} className="text-amber-400 hover:text-amber-600 transition-colors shrink-0" aria-label="Dismiss">
-                                  <X className="w-3.5 h-3.5" />
-                                </button>
-                              </div>
-                            )}
-                          </div>
-                        ) : imageUploading ? (
+                        {imageUploading ? (
                           (() => {
                             const uploadPct = imageUploadProgress;
                             const UPLOAD_STAGES = [
@@ -1531,6 +1496,41 @@ export function DoctorRequestForm({
                               </div>
                             );
                           })()
+                        ) : testImageUrl ? (
+                          <div className="space-y-2">
+                            {/* Image thumbnail row */}
+                            <div className="flex items-center gap-3 rounded-xl border border-emerald-200 bg-emerald-50/40 px-4 py-3">
+                              <img src={testImageUrl} alt="Uploaded test request slip" className="w-14 h-14 rounded-lg object-cover border border-emerald-200 shrink-0" />
+                              <div className="flex-1 min-w-0">
+                                <p className="text-sm font-semibold text-emerald-700 flex items-center gap-1.5">
+                                  <Check className="w-4 h-4" /> Image uploaded
+                                </p>
+                                {extractionResult && !extractionDismissed ? (
+                                  <p className="text-xs text-emerald-600 mt-0.5 flex items-center gap-1">
+                                    <Check className="w-3 h-3" /> Fields pre-filled
+                                  </p>
+                                ) : (
+                                  <p className="text-xs text-slate-400 mt-0.5 truncate">{testImageUrl?.split("/").pop()}</p>
+                                )}
+                              </div>
+                              <button type="button" onClick={() => { setTestImageUrl(null); setImageUploadError(null); setExtractionResult(null); setExtractionDismissed(false); }} className="p-1.5 rounded-lg hover:bg-emerald-100 text-emerald-400 hover:text-emerald-700 transition-colors shrink-0" aria-label="Remove uploaded image">
+                                <X className="w-4 h-4" />
+                              </button>
+                            </div>
+
+                            {/* Show only if AI flagged uncertain items — otherwise the filled fields speak for themselves */}
+                            {extractionResult && !extractionDismissed && extractionResult.low_confidence_items.length > 0 && (
+                              <div className="flex items-start gap-2 px-3 py-2 rounded-xl bg-amber-50 border border-amber-200">
+                                <span className="text-amber-500 text-sm shrink-0 mt-0.5">⚠</span>
+                                <p className="text-xs text-amber-700 flex-1">
+                                  Please verify: <span className="font-medium">{extractionResult.low_confidence_items.join(", ")}</span>
+                                </p>
+                                <button type="button" onClick={() => setExtractionDismissed(true)} className="text-amber-400 hover:text-amber-600 transition-colors shrink-0" aria-label="Dismiss">
+                                  <X className="w-3.5 h-3.5" />
+                                </button>
+                              </div>
+                            )}
+                          </div>
                         ) : (
                           <label className="cursor-pointer">
                             <div className={`flex flex-col items-center gap-2 rounded-2xl border-2 border-dashed px-6 py-8 transition-colors text-center ${imageUploadError ? "border-red-300 bg-red-50/30" : "border-slate-200 bg-slate-50/50 hover:border-medical-300 hover:bg-medical-50/30"}`}>
