@@ -2,16 +2,12 @@ import { NextRequest, NextResponse } from "next/server";
 import OpenAI from "openai";
 import { prisma } from "@/lib/prisma";
 
-// Extend Vercel function timeout to maximum allowed
-export const maxDuration = 300;
-
 /**
- * ONE-TIME seed endpoint — runs the test catalog seed on staging.
+ * ONE-TIME seed endpoint — seeds one category at a time to avoid timeouts.
  * DELETE THIS FILE after seeding is confirmed.
  *
- * Usage:
- *   POST /api/run-seed
- *   Body: { "secret": "poveon-seed" }
+ * Single category: GET /api/run-seed?secret=poveon-seed&slug=hematology
+ * List status:     GET /api/run-seed?secret=poveon-seed
  */
 
 const CATEGORIES = [
@@ -116,7 +112,7 @@ export async function GET(req: NextRequest) {
 
   const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
 
-  // Single category mode
+  // Single category mode — called per category from the progress page
   if (cat) {
     try {
       const { tests, synonyms } = await seedCategory(openai, cat);
@@ -126,32 +122,10 @@ export async function GET(req: NextRequest) {
     }
   }
 
-  // No slug — return list of categories and current counts
+  // No slug — return current seeded state
   const seededCategories = await prisma.testCategory.findMany({
     select: { slug: true, name: true, _count: { select: { tests: true } } },
     orderBy: { sort_order: "asc" },
   });
   return NextResponse.json({ categories: CATEGORIES.map((c) => c.slug), seeded: seededCategories });
-}
-    try {
-      const { tests, synonyms } = await seedCategory(openai, cat);
-      results.push({ category: cat.name, tests, synonyms });
-      await new Promise((r) => setTimeout(r, 300));
-    } catch (err) {
-      results.push({ category: cat.name, tests: -1, synonyms: -1 });
-      console.error(`Seed failed for ${cat.name}:`, err);
-    }
-  }
-
-  const totals = await prisma.$transaction([
-    prisma.testCategory.count(),
-    prisma.catalogTest.count(),
-    prisma.testSynonym.count(),
-  ]);
-
-  return NextResponse.json({
-    success: true,
-    results,
-    totals: { categories: totals[0], tests: totals[1], synonyms: totals[2] },
-  });
 }
