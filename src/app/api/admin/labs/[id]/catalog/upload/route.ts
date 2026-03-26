@@ -2,7 +2,6 @@ export const dynamic = "force-dynamic";
 import { NextRequest, NextResponse } from "next/server";
 import { createServerClient } from "@/lib/supabase/server";
 import { prisma } from "@/lib/prisma";
-import OpenAI from "openai";
 import * as xlsx from "xlsx";
 
 async function verifyAdmin() {
@@ -53,13 +52,11 @@ function rowsFromSheetData(rawRows: string[][]): ParsedRow[] {
   return rows;
 }
 
-/** Parse CSV text into rows */
 function parseCsv(text: string): ParsedRow[] {
   const lines = text.split(/\r?\n/).map((l) => l.trim()).filter(Boolean);
   return rowsFromSheetData(lines.map((l) => l.split(",").map((c) => c.trim())));
 }
 
-/** Parse Excel buffer — reads all sheets and merges rows */
 function parseExcel(buffer: ArrayBuffer): ParsedRow[] {
   const workbook = xlsx.read(buffer, { type: "array" });
   const allRows: ParsedRow[] = [];
@@ -72,42 +69,10 @@ function parseExcel(buffer: ArrayBuffer): ParsedRow[] {
 }
 
 /**
- * Generate synonyms for a batch of test names in one AI call.
- * Returns a map: { [testName]: string[] }
- */
-async function generateSynonymsBatch(
-  openai: OpenAI,
-  tests: { name: string; category?: string }[]
-): Promise<Record<string, string[]>> {
-  if (tests.length === 0) return {};
-  const list = tests.map((t, i) => `${i + 1}. "${t.name}"${t.category ? ` (${t.category})` : ""}`).join("\n");
-  try {
-    const response = await openai.chat.completions.create({
-      model: "gpt-4o-mini",
-      temperature: 0.2,
-      response_format: { type: "json_object" },
-      messages: [
-        {
-          role: "system",
-          content: `You are a Nigerian medical lab expert. For each test name, generate common synonyms, abbreviations, and alternate names used in Nigerian and international practice. Return JSON: { "synonyms": { "<original name>": ["synonym1", ...] } }. Include the original name. Return 4–8 synonyms per test.`,
-        },
-        { role: "user", content: `Generate synonyms for these lab tests:\n${list}` },
-      ],
-    });
-    const raw = response.choices[0].message.content?.trim() ?? "{}";
-    const parsed = JSON.parse(raw) as { synonyms?: Record<string, string[]> };
-    return parsed.synonyms ?? {};
-  } catch {
-    return {};
-  }
-}
-
-/**
  * POST /api/admin/labs/[id]/catalog/upload
- * Accepts multipart/form-data with a "file" field.
- * Supports .csv, .xlsx, .xls (all sheets are merged).
- * Columns: test_name (required), price (required),
- *          category (optional), commission_pct (optional), is_active (optional)
+ * Parses the file and upserts rows. No AI calls — synonyms are generated
+ * separately so uploads are fast. Returns noSynonyms count so the client
+ * can auto-trigger synonym generation after reload.
  */
 export async function POST(
   req: NextRequest,
@@ -141,25 +106,12 @@ export async function POST(
   }
 
   const defaultCommission = await getDefaultCommission();
-  const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
-
-  // Generate synonyms in batches of 20 to stay within token limits
-  const BATCH = 20;
-  const synonymMap: Record<string, string[]> = {};
-  for (let i = 0; i < rows.length; i += BATCH) {
-    const batch = rows.slice(i, i + BATCH).map((r) => ({ name: r.test_name, category: r.category }));
-    const result = await generateSynonymsBatch(openai, batch);
-    Object.assign(synonymMap, result);
-  }
-
-  const results = { total: rows.length, created: 0, updated: 0, errors: 0 };
+  const results = { total: rows.length, created: 0, updated: 0, errors: 0, noSynonyms: 0 };
 
   for (const row of rows) {
     try {
       const commission_pct = (!row.commission_pct || isNaN(row.commission_pct)) ? defaultCommission : row.commission_pct;
       const poveon_fee = parseFloat(((row.price * commission_pct) / 100).toFixed(2));
-      const aiSynonyms: string[] = synonymMap[row.test_name] ?? [row.test_name];
-      const synonyms = Array.from(new Set([row.test_name, ...aiSynonyms]));
 
       const existing = await prisma.labOfferedTest.findUnique({
         where: { lab_id_raw_name: { lab_id: id, raw_name: row.test_name } },
@@ -171,7 +123,7 @@ export async function POST(
           lab_id: id,
           raw_name: row.test_name,
           category_label: row.category ?? null,
-          synonyms,
+          synonyms: [row.test_name],   // just raw name; AI generation runs separately
           lab_price: row.price,
           poveon_fee,
           commission_pct,
@@ -183,11 +135,19 @@ export async function POST(
           commission_pct,
           is_active: row.is_active ?? true,
           ...(row.category ? { category_label: row.category } : {}),
-          synonyms,
+          // Don't overwrite existing synonyms on update
         },
       });
 
-      if (existing) results.updated++; else results.created++;
+      if (existing) {
+        results.updated++;
+        // Count tests that still need synonyms
+        const synonyms = existing.synonyms as string[];
+        if (!Array.isArray(synonyms) || synonyms.length <= 1) results.noSynonyms++;
+      } else {
+        results.created++;
+        results.noSynonyms++; // new rows always need synonym generation
+      }
     } catch {
       results.errors++;
     }

@@ -125,6 +125,7 @@ export default function LabCatalogSheet({ lab, onClose }: { lab: Lab; onClose: (
   const [summary, setSummary] = useState<Summary>({ total: 0, mapped: 0, unresolved: 0 });
   const [loading, setLoading] = useState(true);
   const [uploading, setUploading] = useState(false);
+  const [uploadProgress, setUploadProgress] = useState<number | null>(null); // 0-100 or null
   const [resolvingId, setResolvingId] = useState<string | null>(null);
   const [deletingId, setDeletingId] = useState<string | null>(null);
 
@@ -155,13 +156,14 @@ export default function LabCatalogSheet({ lab, onClose }: { lab: Lab; onClose: (
 
   const fileRef = useRef<HTMLInputElement>(null);
 
-  const load = useCallback(async () => {
+  const load = useCallback(async (): Promise<CatalogTest[]> => {
     setLoading(true);
     try {
       const res = await fetch(`/api/admin/labs/${lab.id}/catalog`);
       const data = await res.json();
-      if (data.success) { setTests(data.tests); setSummary(data.summary); }
-    } catch { toast.error("Failed to load catalog"); }
+      if (data.success) { setTests(data.tests); setSummary(data.summary); return data.tests as CatalogTest[]; }
+      return [];
+    } catch { toast.error("Failed to load catalog"); return []; }
     finally { setLoading(false); }
   }, [lab.id]);
 
@@ -213,24 +215,85 @@ export default function LabCatalogSheet({ lab, onClose }: { lab: Lab; onClose: (
     }
   }
 
+  /** XHR upload with real byte-level progress tracking */
+  function uploadWithProgress(
+    file: File,
+    url: string,
+    onProgress: (pct: number) => void,
+  ): Promise<Record<string, unknown>> {
+    return new Promise((resolve, reject) => {
+      const xhr = new XMLHttpRequest();
+      xhr.upload.addEventListener("progress", (e) => {
+        if (e.lengthComputable) onProgress(Math.round((e.loaded / e.total) * 100));
+      });
+      xhr.addEventListener("load", () => {
+        try { resolve(JSON.parse(xhr.responseText)); }
+        catch { reject(new Error("Invalid server response")); }
+      });
+      xhr.addEventListener("error", () => reject(new Error("Network error")));
+      xhr.open("POST", url);
+      const form = new FormData();
+      form.append("file", file);
+      xhr.send(form);
+    });
+  }
+
   async function handleUpload(e: React.ChangeEvent<HTMLInputElement>) {
     const file = e.target.files?.[0];
     if (!file) return;
     setUploading(true);
+    setUploadProgress(0);
     try {
-      const form = new FormData();
-      form.append("file", file);
-      const res = await fetch(`/api/admin/labs/${lab.id}/catalog/upload`, { method: "POST", body: form });
-      const data = await res.json();
+      const data = await uploadWithProgress(
+        file,
+        `/api/admin/labs/${lab.id}/catalog/upload`,
+        setUploadProgress,
+      );
       if (data.success) {
-        const { created, updated, errors } = data.results;
-        toast.success(`${created} added · ${updated} updated${errors ? ` · ${errors} errors` : ""}`);
-        await load();
+        const r = data.results as { created: number; updated: number; errors: number; noSynonyms: number };
+        toast.success(`${r.created} added · ${r.updated} updated${r.errors ? ` · ${r.errors} errors` : ""}`);
+        setUploadProgress(null);
+        const freshTests = await load();
+        // Auto-generate synonyms for all new/missing rows right after upload
+        const needsSynonyms = freshTests.filter((t) => t.synonyms.length <= 1);
+        if (needsSynonyms.length > 0) {
+          await runSynonymGeneration(needsSynonyms);
+        }
       } else {
-        toast.error(data.error ?? "Upload failed");
+        toast.error((data.error as string) ?? "Upload failed");
+        setUploadProgress(null);
       }
-    } catch { toast.error("Upload failed"); }
-    finally { setUploading(false); if (fileRef.current) fileRef.current.value = ""; }
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : "Upload failed");
+      setUploadProgress(null);
+    } finally {
+      setUploading(false);
+      if (fileRef.current) fileRef.current.value = "";
+    }
+  }
+
+  /** Core loop — generate synonyms sequentially for a given list of tests */
+  async function runSynonymGeneration(targets: CatalogTest[]) {
+    if (targets.length === 0) return;
+    setSynGenProgress({ current: 0, total: targets.length });
+    let done = 0;
+    for (const t of targets) {
+      try {
+        const res = await fetch(`/api/admin/labs/${lab.id}/catalog/resolve`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ testId: t.id }),
+        });
+        const data = await res.json();
+        if (data.success) {
+          setTests((prev) => prev.map((p) => p.id === t.id ? { ...p, ...data.test, synonyms: data.test.synonyms ?? p.synonyms } : p));
+        }
+      } catch { /* continue on individual failure */ }
+      done++;
+      setSynGenProgress({ current: done, total: targets.length });
+    }
+    setSynGenProgress(null);
+    toast.success(`Synonyms generated for ${targets.length} tests`);
   }
 
   async function handleRegenerateSynonyms(testId: string) {
@@ -250,29 +313,11 @@ export default function LabCatalogSheet({ lab, onClose }: { lab: Lab; onClose: (
     finally { setResolvingId(null); }
   }
 
-  /** Sequentially generate synonyms for all tests with none, showing progress */
+  /** Manual trigger: generate for all tests currently missing synonyms */
   async function handleBulkGenerateSynonyms() {
     const needsSynonyms = tests.filter((t) => t.synonyms.length <= 1);
     if (needsSynonyms.length === 0) { toast("All tests already have synonyms"); return; }
-    setSynGenProgress({ current: 0, total: needsSynonyms.length });
-    let done = 0;
-    for (const t of needsSynonyms) {
-      try {
-        const res = await fetch(`/api/admin/labs/${lab.id}/catalog/resolve`, {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ testId: t.id }),
-        });
-        const data = await res.json();
-        if (data.success) {
-          setTests((prev) => prev.map((p) => p.id === t.id ? { ...p, ...data.test, synonyms: data.test.synonyms ?? p.synonyms } : p));
-        }
-      } catch { /* continue on individual failure */ }
-      done++;
-      setSynGenProgress({ current: done, total: needsSynonyms.length });
-    }
-    setSynGenProgress(null);
-    toast.success(`Synonyms generated for ${needsSynonyms.length} tests`);
+    await runSynonymGeneration(needsSynonyms);
   }
 
   async function handleDelete(testId: string) {
@@ -444,14 +489,34 @@ export default function LabCatalogSheet({ lab, onClose }: { lab: Lab; onClose: (
           </div>
         </div>
 
+        {/* ── Upload progress bar ─────────────────────────────────────────────── */}
+        {uploadProgress !== null && (
+          <div className="px-0 shrink-0">
+            <div className="h-1 bg-white/5">
+              <div
+                className="h-1 bg-blue-500 transition-all duration-200"
+                style={{ width: `${uploadProgress}%` }}
+              />
+            </div>
+            <div className="flex items-center justify-between px-5 py-1.5 bg-blue-500/8">
+              <span className="text-xs text-blue-400">
+                {uploadProgress < 100 ? `Uploading… ${uploadProgress}%` : "Processing file…"}
+              </span>
+              <span className="text-xs text-slate-500 font-mono">{uploadProgress}%</span>
+            </div>
+          </div>
+        )}
+
         {/* ── Upload hint ─────────────────────────────────────────────────────── */}
-        <div className="px-5 py-2 bg-blue-500/5 border-b border-white/5 shrink-0">
-          <p className="text-xs text-slate-500">
-            Accepts <span className="font-mono text-slate-400">.csv</span>, <span className="font-mono text-slate-400">.xlsx</span>, <span className="font-mono text-slate-400">.xls</span> (all sheets merged) ·
-            Columns: <span className="font-mono text-slate-400">test_name, price, category (opt), commission_pct (opt)</span>
-            <span className="ml-2 text-slate-600">— AI generates synonyms automatically</span>
-          </p>
-        </div>
+        {uploadProgress === null && (
+          <div className="px-5 py-2 bg-blue-500/5 border-b border-white/5 shrink-0">
+            <p className="text-xs text-slate-500">
+              Accepts <span className="font-mono text-slate-400">.csv</span>, <span className="font-mono text-slate-400">.xlsx</span>, <span className="font-mono text-slate-400">.xls</span> (all sheets merged) ·
+              Columns: <span className="font-mono text-slate-400">test_name, price, category (opt), commission_pct (opt)</span>
+              <span className="ml-2 text-slate-600">— synonyms generated after upload</span>
+            </p>
+          </div>
+        )}
 
         {/* ── Add row form ────────────────────────────────────────────────────── */}
         {showAddForm && (
