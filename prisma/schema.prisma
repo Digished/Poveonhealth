@@ -535,14 +535,14 @@ model UnmappedTest {
 model LabOfferedTest {
   id                      String    @id @default(uuid())
   lab_id                  String
-  catalog_test_id         String?   // null until resolved by AI or admin
+  catalog_test_id         String?   // optional cross-reference to master catalog
   raw_name                String    // as uploaded (e.g. "FBC", "full blood count")
+  category_label          String?   // lab's own category name (e.g. "Blood Tests", "Imaging")
+  synonyms                Json      @default("[]") // AI-generated alternate names ["FBC", "CBC", ...]
   lab_price               Decimal   @db.Decimal(12, 2) // what the lab charges patients
   poveon_fee              Decimal?  @db.Decimal(12, 2) // Poveon's cut (derived)
   commission_pct          Decimal?  @db.Decimal(5, 2)  // e.g. 15.00 for 15%
   is_active               Boolean   @default(true)
-  resolution_confidence   Decimal?  @db.Decimal(4, 3)  // 0.000 – 1.000
-  resolution_source       String?   // "synonym" | "prefix" | "regex" | "ai" | "manual"
   mapped_by               String?   // admin email if manually mapped
   mapped_at               DateTime?
   created_at              DateTime  @default(now())

@@ -16,7 +16,9 @@ const PatchSchema = z.object({
   lab_price: z.number().positive().optional(),
   commission_pct: z.number().min(0).max(100).optional(),
   is_active: z.boolean().optional(),
-  catalog_test_id: z.string().nullable().optional(), // manual mapping override
+  category_label: z.string().max(200).nullable().optional(),
+  synonyms: z.array(z.string()).optional(),
+  catalog_test_id: z.string().nullable().optional(),
 });
 
 /** PATCH /api/admin/labs/[id]/catalog/[testId] — update price, commission, mapping, or active state */
@@ -50,6 +52,8 @@ export async function PATCH(
   }
 
   if (parsed.data.is_active !== undefined) updates.is_active = parsed.data.is_active;
+  if (parsed.data.category_label !== undefined) updates.category_label = parsed.data.category_label;
+  if (parsed.data.synonyms !== undefined) updates.synonyms = parsed.data.synonyms;
 
   if (parsed.data.catalog_test_id !== undefined) {
     updates.catalog_test_id = parsed.data.catalog_test_id;

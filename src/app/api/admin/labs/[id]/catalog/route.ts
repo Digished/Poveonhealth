@@ -3,7 +3,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { z } from "zod";
 import { createServerClient } from "@/lib/supabase/server";
 import { prisma } from "@/lib/prisma";
-import { resolveTests } from "@/lib/resolve-tests";
+import OpenAI from "openai";
 
 async function verifyAdmin() {
   const authClient = await createServerClient();
@@ -18,12 +18,27 @@ async function getDefaultCommission(): Promise<number> {
   return setting ? parseFloat(setting.value) : 15;
 }
 
-function resolutionSource(confidence: number): string {
-  if (confidence >= 1.0) return "synonym";
-  if (confidence >= 0.75) return "prefix";
-  if (confidence >= 0.5) return "regex";
-  if (confidence > 0) return "ai";
-  return "unresolved";
+async function generateSynonyms(testName: string, categoryLabel?: string): Promise<string[]> {
+  if (!process.env.OPENAI_API_KEY) return [testName];
+  try {
+    const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
+    const response = await openai.chat.completions.create({
+      model: "gpt-4o-mini",
+      temperature: 0.2,
+      response_format: { type: "json_object" },
+      messages: [
+        { role: "system", content: 'Return JSON: { "synonyms": string[] }' },
+        {
+          role: "user",
+          content: `Generate 4–8 common synonyms, abbreviations, and alternate names for this medical lab test: "${testName}"${categoryLabel ? ` (category: ${categoryLabel})` : ""}. Nigerian medical context. Include the original name.`,
+        },
+      ],
+    });
+    const parsed = JSON.parse(response.choices[0].message.content ?? "{}") as { synonyms?: string[] };
+    return Array.from(new Set([testName, ...(parsed.synonyms ?? [])]));
+  } catch {
+    return [testName];
+  }
 }
 
 /** GET /api/admin/labs/[id]/catalog — list all offered tests for a lab */
@@ -38,17 +53,12 @@ export async function GET(
 
   const tests = await prisma.labOfferedTest.findMany({
     where: { lab_id: id },
-    include: {
-      catalog_test: {
-        select: { canonical_name: true, category: { select: { name: true } } },
-      },
-    },
     orderBy: { created_at: "asc" },
   });
 
-  const total = tests.length;
-  const mapped = tests.filter((t) => t.catalog_test_id && Number(t.resolution_confidence ?? 0) >= 0.5).length;
-  const unresolved = tests.filter((t) => !t.catalog_test_id || Number(t.resolution_confidence ?? 0) < 0.5).length;
+  const active = tests.filter((t) => t.is_active);
+  const mapped = active.filter((t) => t.catalog_test_id).length;
+  const unresolved = active.length - mapped;
 
   return NextResponse.json({
     success: true,
@@ -57,20 +67,18 @@ export async function GET(
       lab_price: Number(t.lab_price),
       poveon_fee: t.poveon_fee ? Number(t.poveon_fee) : null,
       commission_pct: t.commission_pct ? Number(t.commission_pct) : null,
-      resolution_confidence: t.resolution_confidence ? Number(t.resolution_confidence) : null,
-      canonical_name: t.catalog_test?.canonical_name ?? null,
-      category: t.catalog_test?.category?.name ?? null,
+      synonyms: Array.isArray(t.synonyms) ? t.synonyms : [],
     })),
-    summary: { total, mapped, unresolved },
+    summary: { total: tests.length, mapped, unresolved },
   });
 }
 
 const CreateSchema = z.object({
   raw_name: z.string().min(1).max(300),
+  category_label: z.string().max(200).optional(),
   lab_price: z.number().positive(),
   commission_pct: z.number().min(0).max(100).optional(),
   is_active: z.boolean().optional(),
-  auto_resolve: z.boolean().default(true),
 });
 
 /** POST /api/admin/labs/[id]/catalog — add a single offered test */
@@ -86,46 +94,19 @@ export async function POST(
   const parsed = CreateSchema.safeParse(body);
   if (!parsed.success) return NextResponse.json({ error: "Invalid input", issues: parsed.error.issues }, { status: 400 });
 
-  const { raw_name, lab_price, is_active = true, auto_resolve = true } = parsed.data;
+  const { raw_name, category_label, lab_price, is_active = true } = parsed.data;
   const commission_pct = parsed.data.commission_pct ?? (await getDefaultCommission());
   const poveon_fee = parseFloat(((lab_price * commission_pct) / 100).toFixed(2));
-
-  let catalog_test_id: string | null = null;
-  let resolution_confidence: number | null = null;
-  let resolution_source: string | null = null;
-
-  if (auto_resolve) {
-    const [resolved] = await resolveTests(raw_name, id);
-    if (resolved && resolved.canonical_id) {
-      catalog_test_id = resolved.canonical_id;
-      resolution_confidence = resolved.confidence;
-      resolution_source = resolutionSource(resolved.confidence);
-    }
-  }
+  const synonyms = await generateSynonyms(raw_name, category_label);
 
   const test = await prisma.labOfferedTest.upsert({
     where: { lab_id_raw_name: { lab_id: id, raw_name } },
-    create: {
-      lab_id: id,
-      raw_name,
-      lab_price,
-      poveon_fee,
-      commission_pct,
-      is_active,
-      catalog_test_id,
-      resolution_confidence,
-      resolution_source,
-    },
-    update: {
-      lab_price,
-      poveon_fee,
-      commission_pct,
-      is_active,
-      catalog_test_id,
-      resolution_confidence,
-      resolution_source,
-    },
+    create: { lab_id: id, raw_name, category_label: category_label ?? null, synonyms, lab_price, poveon_fee, commission_pct, is_active },
+    update: { category_label: category_label ?? null, synonyms, lab_price, poveon_fee, commission_pct, is_active },
   });
 
-  return NextResponse.json({ success: true, test: { ...test, lab_price: Number(test.lab_price), poveon_fee: Number(test.poveon_fee), commission_pct: Number(test.commission_pct) } });
+  return NextResponse.json({
+    success: true,
+    test: { ...test, lab_price: Number(test.lab_price), poveon_fee: Number(test.poveon_fee), commission_pct: Number(test.commission_pct), synonyms: Array.isArray(test.synonyms) ? test.synonyms : [] },
+  });
 }
