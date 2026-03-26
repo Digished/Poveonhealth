@@ -97,9 +97,10 @@ export function LabPageNav({ labName, logoUrl }: LabPageNavProps) {
     <>
       {/* ── Floating login button — fixed over the hero, fades when nav appears ── */}
       <div
-        className={`fixed top-4 right-4 z-50 transition-[opacity,transform] duration-300 ease-in-out ${
+        className={`fixed top-4 z-50 transition-[opacity,transform] duration-300 ease-in-out ${
           heroVisible ? "opacity-100 translate-y-0 pointer-events-auto" : "opacity-0 -translate-y-2 pointer-events-none"
         }`}
+        style={{ right: "max(1rem, calc((100vw - 42rem) / 2 + 1rem))" }}
       >
         {loggedIn && typeof session === "object" && (
           <div className="flex items-center gap-2">

@@ -67,8 +67,8 @@ export default async function LabSlugPage({ params }: LabSlugPageProps) {
   const logoUrl = lab.logo_url ?? null;
 
   return (
-    <div className="relative h-dvh flex flex-col bg-white overflow-hidden">
-      {/* Mesh background */}
+    <div className="relative h-dvh flex flex-col bg-slate-50 overflow-hidden">
+      {/* Branded background — logo colors or fallback gradient */}
       {logoUrl ? (
         <div
           className="absolute inset-0 -z-10 pointer-events-none"
@@ -77,9 +77,9 @@ export default async function LabSlugPage({ params }: LabSlugPageProps) {
             backgroundImage: `url(${logoUrl})`,
             backgroundSize: "cover",
             backgroundPosition: "center",
-            filter: "blur(100px) saturate(1.8) brightness(1.15)",
-            opacity: 0.12,
-            transform: "scale(1.3)",
+            filter: "blur(80px) saturate(2.5) brightness(1.1)",
+            opacity: 0.22,
+            transform: "scale(1.4)",
           }}
         />
       ) : (
@@ -94,7 +94,8 @@ export default async function LabSlugPage({ params }: LabSlugPageProps) {
           }}
         />
       )}
-      <div className="absolute inset-0 -z-10 bg-white/50 pointer-events-none" aria-hidden="true" />
+      {/* Lighter veil so brand colours actually show through */}
+      <div className="absolute inset-0 -z-10 bg-white/30 pointer-events-none" aria-hidden="true" />
 
       {/* Branded splash */}
       <LabSplash logoUrl={logoUrl} labName={lab.name} />
