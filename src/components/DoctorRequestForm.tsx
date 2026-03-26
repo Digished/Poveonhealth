@@ -44,6 +44,10 @@ import { PoveonLogo } from "@/components/PoveonLogo";
 import { PROFESSIONAL_PREFIXES, PrefixSelectModal, PrefixSelect } from "@/components/PrefixSelect";
 import type { Lab, CreateRequestResponse } from "@/lib/types";
 
+// Module-level session cache — labs rarely change; reuse across form mounts
+// without re-fetching for the lifetime of the browser tab.
+let _labsCache: Lab[] | null = null;
+
 interface FormData {
   lab_id: string;
   patient_name: string;
@@ -315,6 +319,7 @@ function LabSearch({
   onChange,
   error,
   onRefresh,
+  onOpen,
 }: {
   labs: Lab[];
   loading: boolean;
@@ -322,8 +327,11 @@ function LabSearch({
   onChange: (labId: string) => void;
   error?: string;
   onRefresh?: () => void;
+  onOpen?: () => void;
 }) {
   const [open, setOpen] = useState(false);
+
+  function openSearch() { onOpen?.(); setOpen(true); }
   const [mounted, setMounted] = useState(false);
 
   useEffect(() => { setMounted(true); }, []);
@@ -347,7 +355,7 @@ function LabSearch({
         <div className="w-full rounded-xl border border-medical-300 bg-medical-50 px-4 py-2.5 flex items-center justify-between">
           <button
             type="button"
-            onClick={() => setOpen(true)}
+            onClick={openSearch}
             className="flex items-center gap-2 min-w-0 flex-1 text-left"
           >
             {selectedLab.logo_url ? (
@@ -374,7 +382,7 @@ function LabSearch({
         >
           <Search className="w-4 h-4 text-slate-400 shrink-0" />
           <span className="text-sm text-slate-400 flex-1">
-            {loading ? "Loading laboratories…" : "Search by name, location or service…"}
+            {loading ? "Loading laboratories…" : "Search by name or location…"}
           </span>
           {loading && <RefreshCw className="w-3.5 h-3.5 text-slate-300 animate-spin shrink-0" />}
         </button>
@@ -731,17 +739,21 @@ export function DoctorRequestForm({
   }, [form.doctor_email]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const fetchLabs = useCallback(() => {
+    // Lab-specific pages never show the search — skip entirely
+    if (labPreselected) return;
+    // Return cached data instantly if already fetched this session
+    if (_labsCache) { setLabs(_labsCache); setLabsLoading(false); return; }
     setLabsLoading(true);
     fetch("/api/labs")
       .then((r) => r.json())
-      .then((data) => setLabs(data.labs ?? []))
+      .then((data) => {
+        _labsCache = data.labs ?? [];
+        setLabs(_labsCache!);
+      })
       .catch(() => toast.error("Failed to load laboratories"))
       .finally(() => setLabsLoading(false));
-  }, []);
-
-  useEffect(() => {
-    fetchLabs();
-  }, [fetchLabs]);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [labPreselected]);
 
   // Time-of-day greeting
   const [tod, setTod] = useState<"morning" | "afternoon" | "evening">("morning");
@@ -1252,6 +1264,7 @@ export function DoctorRequestForm({
                   value={form.lab_id}
                   onChange={(id) => set("lab_id", id)}
                   error={errors.lab_id}
+                  onOpen={fetchLabs}
                   onRefresh={fetchLabs}
                 />
                 {selectedLab && (
