@@ -66,10 +66,10 @@
   100% { opacity: 0.95; }
 }
 
-/* Sun rays pulse outward (used with alternate) */
+/* Sun rays pulse (opacity only — GPU-composited, no layout thrash) */
 @keyframes ray-pulse {
-  0%   { opacity: 0.55; transform: scaleY(0.7); }
-  100% { opacity: 1;    transform: scaleY(1.2); }
+  0%, 100% { opacity: 0.35; }
+  50%       { opacity: 1; }
 }
 
 /* ── Splash screen keyframes ─────────────────────────────────────────────── */

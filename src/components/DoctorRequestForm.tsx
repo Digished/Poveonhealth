@@ -741,6 +741,15 @@ export function DoctorRequestForm({
     fetchLabs();
   }, [fetchLabs]);
 
+  // Time-of-day greeting
+  const [tod, setTod] = useState<"morning" | "afternoon" | "evening">("morning");
+  useEffect(() => {
+    const h = new Date().getHours();
+    if (h >= 5 && h < 12) setTod("morning");
+    else if (h >= 12 && h < 17) setTod("afternoon");
+    else setTod("evening");
+  }, []);
+
   // Hero visibility — when a #lab-hero element exists, track whether it's still in view.
   // Used to hide the logo/name in the sticky header while the hero is prominent.
   const [heroVisible, setHeroVisible] = useState(false);
@@ -1086,13 +1095,17 @@ export function DoctorRequestForm({
         <div className="absolute inset-0 left-1/2 -translate-x-1/2 w-screen bg-white/80 backdrop-blur-md border-b border-white/60 -z-10" />
 
         {/* Lab info / branding */}
-        <div className="mb-4">
+        <div className="mb-3">
             {displayLab ? (() => {
               const phones = (displayLab.phones as string[] | null) ?? [];
+              const waNumbers: string[] = displayLab.whatsapp
+                ? (() => { try { const p = JSON.parse(displayLab.whatsapp!); return Array.isArray(p) ? p : [displayLab.whatsapp!]; } catch { return [displayLab.whatsapp!]; } })()
+                : [];
+              const hasWa = waNumbers.filter(Boolean).length > 0;
               return (
                 <div className="relative overflow-hidden rounded-2xl border border-medical-100 bg-gradient-to-r from-medical-50 via-white to-sky-50 shadow-sm animate-fade-in-up">
                   <div className="absolute -top-6 -right-6 w-28 h-28 bg-medical-100/40 rounded-full blur-2xl pointer-events-none" />
-                  <div className="relative px-4 py-3 flex items-center gap-3">
+                  <div className="relative px-3 py-2.5 flex items-center gap-3">
 
                     {/* Logo — fades out while hero is visible */}
                     <div className={`transition-all duration-300 shrink-0 ${heroVisible ? "w-0 opacity-0 overflow-hidden" : "w-10 opacity-100"}`}>
@@ -1124,17 +1137,26 @@ export function DoctorRequestForm({
                         <button
                           type="button"
                           onClick={() => setLabDetailsOpen(true)}
-                          className="mt-1 text-xs text-medical-600 hover:text-medical-800 font-semibold underline underline-offset-2 transition-colors"
+                          className="mt-0.5 text-xs text-medical-600 hover:text-medical-800 font-semibold underline underline-offset-2 transition-colors"
                         >
                           More details
                         </button>
                       )}
                     </div>
 
-                    {/* Call button — always visible */}
-                    {phones.length > 0 && (
+                    {/* Contact button — WhatsApp preferred over phone */}
+                    {(hasWa || phones.length > 0) && (
                       <div className="shrink-0">
-                        {phones.length === 1 ? (
+                        {hasWa ? (
+                          <button
+                            type="button"
+                            onClick={() => setCallOpen(true)}
+                            className="w-9 h-9 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white flex items-center justify-center shadow-sm transition-colors"
+                            title={`WhatsApp ${displayLab.name}`}
+                          >
+                            <MessageCircle className="w-4 h-4" />
+                          </button>
+                        ) : phones.length === 1 ? (
                           <a
                             href={`tel:${phones[0]}`}
                             className="w-9 h-9 rounded-xl bg-medical-600 hover:bg-medical-700 text-white flex items-center justify-center shadow-sm transition-colors"
@@ -1207,9 +1229,16 @@ export function DoctorRequestForm({
         </div>
       </div>
 
+      {/* Greeting — lab-specific pages only */}
+      {labPreselected && (
+        <p className="text-xs text-slate-400 text-center mt-2 mb-0 font-medium tracking-wide">
+          {tod === "morning" ? "Good morning" : tod === "afternoon" ? "Good afternoon" : "Good evening"} — let&apos;s get your request in.
+        </p>
+      )}
+
       {/* Step content */}
       <div
-        className="glass-card p-6 mt-4 mb-2"
+        className="glass-card p-4 mt-3 mb-2"
       >
 
         {/* Step 1: Choose Lab / Branch */}
@@ -2099,57 +2128,70 @@ export function DoctorRequestForm({
             onClick={(e) => e.stopPropagation()}
           >
             {/* Header */}
-            <div className="bg-gradient-to-br from-medical-50 via-white to-sky-50 px-5 pt-5 pb-4 flex items-center gap-3">
-              <div className="w-10 h-10 rounded-2xl bg-medical-600 flex items-center justify-center shrink-0 shadow-sm">
-                <PhoneCall className="w-5 h-5 text-white" />
-              </div>
-              <div className="flex-1 min-w-0">
-                <h3 className="text-base font-bold text-slate-800 leading-tight truncate">{displayLab.name}</h3>
-                <p className="text-xs text-slate-400 mt-0.5">Select a number to call</p>
-              </div>
-              <button
-                onClick={() => setCallOpen(false)}
-                className="p-1.5 rounded-xl hover:bg-white/60 text-slate-400 hover:text-slate-700 transition-colors shrink-0"
-              >
-                <X className="w-4 h-4" />
-              </button>
-            </div>
-            {/* Phone number list */}
-            <div className="px-4 py-3 space-y-2 pb-5">
-              {((displayLab.phones as string[] | null) ?? []).map((ph, i) => (
-                <a
-                  key={i}
-                  href={`tel:${ph}`}
-                  onClick={() => setCallOpen(false)}
-                  className="flex items-center gap-3 w-full px-4 py-3.5 rounded-2xl bg-medical-50 hover:bg-medical-100 border border-medical-100 hover:border-medical-200 text-medical-800 font-semibold text-sm transition-all group"
-                >
-                  <div className="w-8 h-8 rounded-xl bg-medical-600 group-hover:bg-medical-700 flex items-center justify-center shrink-0 transition-colors">
-                    <Phone className="w-4 h-4 text-white" />
+            {(() => {
+              const _waCheck: string[] = displayLab.whatsapp
+                ? (() => { try { const p = JSON.parse(displayLab.whatsapp); return Array.isArray(p) ? p : [displayLab.whatsapp]; } catch { return [displayLab.whatsapp]; } })()
+                : [];
+              const _hasWa = _waCheck.filter(Boolean).length > 0;
+              return (
+                <div className={`bg-gradient-to-br px-5 pt-5 pb-4 flex items-center gap-3 ${_hasWa ? "from-emerald-50 via-white to-sky-50" : "from-medical-50 via-white to-sky-50"}`}>
+                  <div className={`w-10 h-10 rounded-2xl flex items-center justify-center shrink-0 shadow-sm ${_hasWa ? "bg-emerald-600" : "bg-medical-600"}`}>
+                    {_hasWa ? <MessageCircle className="w-5 h-5 text-white" /> : <PhoneCall className="w-5 h-5 text-white" />}
                   </div>
-                  <span className="flex-1">{ph}</span>
-                  <PhoneCall className="w-4 h-4 text-medical-400 group-hover:text-medical-600 transition-colors" />
-                </a>
-              ))}
+                  <div className="flex-1 min-w-0">
+                    <h3 className="text-base font-bold text-slate-800 leading-tight truncate">{displayLab.name}</h3>
+                    <p className="text-xs text-slate-400 mt-0.5">Get in touch</p>
+                  </div>
+                  <button
+                    onClick={() => setCallOpen(false)}
+                    className="p-1.5 rounded-xl hover:bg-white/60 text-slate-400 hover:text-slate-700 transition-colors shrink-0"
+                  >
+                    <X className="w-4 h-4" />
+                  </button>
+                </div>
+              );
+            })()}
+            {/* Contact list — WhatsApp first, then phones */}
+            <div className="px-4 py-3 space-y-2 pb-5">
               {(() => {
                 const waNumbers: string[] = displayLab.whatsapp
                   ? (() => { try { const p = JSON.parse(displayLab.whatsapp); return Array.isArray(p) ? p : [displayLab.whatsapp]; } catch { return [displayLab.whatsapp]; } })()
                   : [];
-                return waNumbers.filter(Boolean).map((num, i) => (
-                  <a
-                    key={`wa-${i}`}
-                    href={`https://wa.me/${num.replace(/\D/g, "")}`}
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    onClick={() => setCallOpen(false)}
-                    className="flex items-center gap-3 w-full px-4 py-3.5 rounded-2xl bg-emerald-50 hover:bg-emerald-100 border border-emerald-100 hover:border-emerald-200 text-emerald-800 font-semibold text-sm transition-all group"
-                  >
-                    <div className="w-8 h-8 rounded-xl bg-emerald-600 group-hover:bg-emerald-700 flex items-center justify-center shrink-0 transition-colors">
-                      <MessageCircle className="w-4 h-4 text-white" />
-                    </div>
-                    <span className="flex-1">{num}</span>
-                    <span className="text-xs bg-emerald-100 text-emerald-700 px-2 py-0.5 rounded-full border border-emerald-200">WhatsApp</span>
-                  </a>
-                ));
+                const phones = (displayLab.phones as string[] | null) ?? [];
+                return (
+                  <>
+                    {waNumbers.filter(Boolean).map((num, i) => (
+                      <a
+                        key={`wa-${i}`}
+                        href={`https://wa.me/${num.replace(/\D/g, "")}`}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        onClick={() => setCallOpen(false)}
+                        className="flex items-center gap-3 w-full px-4 py-3.5 rounded-2xl bg-emerald-50 hover:bg-emerald-100 border border-emerald-100 hover:border-emerald-200 text-emerald-800 font-semibold text-sm transition-all group"
+                      >
+                        <div className="w-8 h-8 rounded-xl bg-emerald-600 group-hover:bg-emerald-700 flex items-center justify-center shrink-0 transition-colors">
+                          <MessageCircle className="w-4 h-4 text-white" />
+                        </div>
+                        <span className="flex-1">{num}</span>
+                        <span className="text-xs bg-emerald-100 text-emerald-700 px-2 py-0.5 rounded-full border border-emerald-200">WhatsApp</span>
+                      </a>
+                    ))}
+                    {phones.map((ph, i) => (
+                      <a
+                        key={i}
+                        href={`tel:${ph}`}
+                        onClick={() => setCallOpen(false)}
+                        className="flex items-center gap-3 w-full px-4 py-3.5 rounded-2xl bg-medical-50 hover:bg-medical-100 border border-medical-100 hover:border-medical-200 text-medical-800 font-semibold text-sm transition-all group"
+                      >
+                        <div className="w-8 h-8 rounded-xl bg-medical-600 group-hover:bg-medical-700 flex items-center justify-center shrink-0 transition-colors">
+                          <Phone className="w-4 h-4 text-white" />
+                        </div>
+                        <span className="flex-1">{ph}</span>
+                        <PhoneCall className="w-4 h-4 text-medical-400 group-hover:text-medical-600 transition-colors" />
+                      </a>
+                    ))}
+                  </>
+                );
               })()}
             </div>
           </div>

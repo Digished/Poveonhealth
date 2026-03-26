@@ -32,7 +32,7 @@ function SunIcon() {
           strokeWidth="2.5"
           strokeLinecap="round"
           transform={`rotate(${angle} 26 26)`}
-          style={{ animation: `ray-pulse 2.5s ease-in-out ${i * 0.3}s infinite alternate` }}
+          style={{ animation: `ray-pulse 2s ease-in-out ${i * 0.25}s infinite`, willChange: "opacity" }}
         />
       ))}
       <circle cx="26" cy="26" r="11" fill="#FBBF24" />

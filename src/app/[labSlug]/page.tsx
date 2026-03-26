@@ -102,12 +102,12 @@ export default async function LabSlugPage({ params }: LabSlugPageProps) {
       <LabPageNav labName={lab.name} logoUrl={logoUrl} />
 
       {/* Scrollable content area */}
-      <main className="flex-1 overflow-y-auto overflow-x-hidden">
-        <div className="max-w-2xl mx-auto">
+      <main className="flex-1 overflow-y-auto overflow-x-hidden snap-y snap-proximity">
+        <div className="max-w-2xl mx-auto snap-start">
           <LabHeroSection labName={lab.name} logoUrl={logoUrl} />
         </div>
 
-        <div className="max-w-2xl mx-auto px-4 pb-2">
+        <div className="max-w-2xl mx-auto px-4 pb-2 snap-start">
           <DoctorRequestForm
             preselectedLabId={lab.id}
             preselectedLabName={lab.name}
