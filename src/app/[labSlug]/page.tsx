@@ -66,7 +66,7 @@ export default async function LabSlugPage({ params }: LabSlugPageProps) {
 
   return (
     <div className="relative h-dvh flex flex-col bg-white overflow-hidden">
-      {/* Mesh background — logo blurred large behind everything for colour matching */}
+      {/* Mesh background */}
       {logoUrl ? (
         <div
           className="absolute inset-0 -z-10 pointer-events-none"
@@ -87,18 +87,22 @@ export default async function LabSlugPage({ params }: LabSlugPageProps) {
           <div className="absolute bottom-0 -left-16 w-[340px] h-[340px] bg-medical-50/60 rounded-full blur-3xl" />
         </div>
       )}
-      {/* White base coat so blurred logo doesn't overpower */}
       <div className="absolute inset-0 -z-10 bg-white/80 pointer-events-none" aria-hidden="true" />
 
-      {/* Branded splash — fades out after ~1.6 s */}
+      {/* Branded splash */}
       <LabSplash logoUrl={logoUrl} labName={lab.name} />
+
+      {/*
+        LabPageNav sits OUTSIDE <main> as a flex-column sibling.
+        When the hero is visible its max-h is 0 (no space taken).
+        When the hero scrolls away it grows to ~52 px, shrinking main
+        automatically — so the form's sticky top-0 header lands right
+        below the nav with zero overlap and no extra props needed.
+      */}
+      <LabPageNav labName={lab.name} logoUrl={logoUrl} />
 
       {/* Scrollable content area */}
       <main className="flex-1 overflow-y-auto overflow-x-hidden">
-        {/* Lab-branded nav with scroll-shrink behaviour */}
-        <LabPageNav labName={lab.name} logoUrl={logoUrl} />
-
-        {/* Hero section — logo themed welcome */}
         <div className="max-w-2xl mx-auto">
           <LabHeroSection labName={lab.name} logoUrl={logoUrl} />
         </div>
@@ -111,14 +115,12 @@ export default async function LabSlugPage({ params }: LabSlugPageProps) {
           />
         </div>
 
-        {/* Trust indicators strip */}
         <div className="w-full border-t border-white/60 bg-white/30 backdrop-blur-sm mt-4">
           <div className="max-w-2xl mx-auto px-4 py-4">
             <TrustIndicators />
           </div>
         </div>
 
-        {/* Compact footer */}
         <div className="max-w-6xl mx-auto px-4 py-3 flex items-center justify-center gap-4 text-xs text-slate-400">
           <PoveonLogo className="w-5 h-5 opacity-40" />
           <span>© {new Date().getFullYear()} Poveon.</span>
