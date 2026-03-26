@@ -1,14 +1,7 @@
 "use client";
 
-/**
- * ONE-TIME catalog seed page.
- * DELETE this file and src/app/api/run-seed after seeding is confirmed.
- * Access at /seed-catalog?secret=poveon-seed
- */
-
-import { useEffect, useState, useCallback } from "react";
+import { useState, Suspense } from "react";
 import { useSearchParams } from "next/navigation";
-import { Suspense } from "react";
 
 const SLUGS = [
   "hematology","coagulation-haemostasis","clinical-chemistry-biochemistry",
@@ -21,97 +14,82 @@ const SLUGS = [
   "nuclear-medicine-pet","special-imaging",
 ];
 
-type Status = "pending" | "running" | "done" | "error";
-type Result = { tests: number; synonyms: number } | null;
+type RowState = { status: "pending" | "running" | "done" | "error"; tests?: number; synonyms?: number };
 
 function SeedPage() {
   const params = useSearchParams();
   const secret = params.get("secret") ?? "";
+  const [rows, setRows] = useState<Record<string, RowState>>(
+    Object.fromEntries(SLUGS.map((s) => [s, { status: "pending" }]))
+  );
+  const [started, setStarted] = useState(false);
+  const [finished, setFinished] = useState(false);
 
-  const [statuses, setStatuses] = useState<Record<string, Status>>({});
-  const [results, setResults] = useState<Record<string, Result>>({});
-  const [running, setRunning] = useState(false);
-  const [done, setDone] = useState(false);
-
-  const runSeed = useCallback(async () => {
-    if (!secret) return;
-    setRunning(true);
-    setDone(false);
-
+  async function start() {
+    setStarted(true);
     for (const slug of SLUGS) {
-      setStatuses((s) => ({ ...s, [slug]: "running" }));
+      setRows((r) => ({ ...r, [slug]: { status: "running" } }));
       try {
         const res = await fetch(`/api/run-seed?secret=${secret}&slug=${slug}`);
         const data = await res.json();
-        if (data.success === false) throw new Error(data.error);
-        setStatuses((s) => ({ ...s, [slug]: "done" }));
-        setResults((r) => ({ ...r, [slug]: { tests: data.tests, synonyms: data.synonyms } }));
+        if (!res.ok || data.success === false) throw new Error(data.error ?? "failed");
+        setRows((r) => ({ ...r, [slug]: { status: "done", tests: data.tests, synonyms: data.synonyms } }));
       } catch {
-        setStatuses((s) => ({ ...s, [slug]: "error" }));
-        setResults((r) => ({ ...r, [slug]: null }));
+        setRows((r) => ({ ...r, [slug]: { status: "error" } }));
       }
     }
-
-    setRunning(false);
-    setDone(true);
-  }, [secret]);
-
-  const icon = (slug: string) => {
-    const s = statuses[slug];
-    if (s === "running") return "⏳";
-    if (s === "done") return "✅";
-    if (s === "error") return "❌";
-    return "○";
-  };
-
-  const totalTests = Object.values(results).reduce((a, r) => a + (r?.tests ?? 0), 0);
-  const totalSynonyms = Object.values(results).reduce((a, r) => a + (r?.synonyms ?? 0), 0);
-
-  if (!secret || secret !== "poveon-seed") {
-    return (
-      <div style={{ fontFamily: "monospace", padding: 40, color: "#f00" }}>
-        Missing or invalid secret. Add <code>?secret=poveon-seed</code> to the URL.
-      </div>
-    );
+    setFinished(true);
   }
 
+  const total = Object.values(rows).reduce((a, r) => a + (r.tests ?? 0), 0);
+
   return (
-    <div style={{ fontFamily: "monospace", padding: 40, maxWidth: 600, margin: "0 auto" }}>
-      <h2 style={{ marginBottom: 8 }}>Catalog Seed</h2>
-      <p style={{ color: "#666", marginBottom: 24 }}>
-        Seeds all 24 test categories one at a time. Do not close this tab.
+    <div style={{ fontFamily: "monospace", padding: 40, maxWidth: 640, margin: "0 auto" }}>
+      <h1 style={{ fontSize: 22, marginBottom: 4 }}>Test Catalog Seed</h1>
+      <p style={{ color: "#666", marginBottom: 24, fontSize: 14 }}>
+        Seeds all 24 categories one at a time. Do not close this tab while running.
       </p>
 
-      {!running && !done && (
-        <button
-          onClick={runSeed}
-          style={{ padding: "10px 24px", fontSize: 16, cursor: "pointer", marginBottom: 32 }}
-        >
-          Start Seeding
-        </button>
-      )}
+      <button
+        onClick={start}
+        disabled={started}
+        style={{
+          padding: "12px 28px",
+          fontSize: 15,
+          cursor: started ? "not-allowed" : "pointer",
+          background: started ? "#ccc" : "#2563eb",
+          color: "#fff",
+          border: "none",
+          borderRadius: 8,
+          marginBottom: 32,
+          opacity: started ? 0.6 : 1,
+        }}
+      >
+        {started && !finished ? "Seeding... please wait" : finished ? "Done!" : "Start Seeding"}
+      </button>
 
-      <div style={{ lineHeight: 2 }}>
-        {SLUGS.map((slug) => (
-          <div key={slug} style={{ display: "flex", justifyContent: "space-between" }}>
-            <span>{icon(slug)} {slug}</span>
-            {results[slug] && (
-              <span style={{ color: "#888" }}>
-                {results[slug]!.tests} tests · {results[slug]!.synonyms} synonyms
-              </span>
-            )}
-            {statuses[slug] === "error" && <span style={{ color: "#f00" }}>failed</span>}
-          </div>
-        ))}
+      <div style={{ lineHeight: 2.2, fontSize: 14 }}>
+        {SLUGS.map((slug) => {
+          const row = rows[slug];
+          const icon = row.status === "running" ? "⏳" : row.status === "done" ? "✅" : row.status === "error" ? "❌" : "○";
+          return (
+            <div key={slug} style={{ display: "flex", justifyContent: "space-between", borderBottom: "1px solid #f0f0f0" }}>
+              <span>{icon} {slug}</span>
+              {row.status === "done" && (
+                <span style={{ color: "#888" }}>{row.tests} tests · {row.synonyms} synonyms</span>
+              )}
+              {row.status === "error" && <span style={{ color: "red" }}>failed — will retry on re-run</span>}
+            </div>
+          );
+        })}
       </div>
 
-      {done && (
-        <div style={{ marginTop: 32, padding: 16, background: "#f0fff0", borderRadius: 8 }}>
-          <strong>Done!</strong>
-          <div>Total tests: {totalTests}</div>
-          <div>Total synonyms: {totalSynonyms}</div>
-          <div style={{ marginTop: 8, color: "#666", fontSize: 13 }}>
-            You can now delete /seed-catalog and /api/run-seed
+      {finished && (
+        <div style={{ marginTop: 32, padding: 20, background: "#f0fff4", border: "1px solid #86efac", borderRadius: 8 }}>
+          <strong>Seeding complete!</strong>
+          <div style={{ marginTop: 8 }}>Total tests seeded: <strong>{total}</strong></div>
+          <div style={{ marginTop: 4, color: "#666", fontSize: 13 }}>
+            You can now close this tab and tell Claude it is done.
           </div>
         </div>
       )}
@@ -121,7 +99,7 @@ function SeedPage() {
 
 export default function Page() {
   return (
-    <Suspense>
+    <Suspense fallback={<div style={{ padding: 40, fontFamily: "monospace" }}>Loading...</div>}>
       <SeedPage />
     </Suspense>
   );
