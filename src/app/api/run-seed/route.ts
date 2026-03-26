@@ -111,10 +111,28 @@ export async function GET(req: NextRequest) {
     return NextResponse.json({ error: "Forbidden" }, { status: 403 });
   }
 
-  const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
-  const results: { category: string; tests: number; synonyms: number }[] = [];
+  const slug = req.nextUrl.searchParams.get("slug");
+  const cat = slug ? CATEGORIES.find((c) => c.slug === slug) : null;
 
-  for (const cat of CATEGORIES) {
+  const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
+
+  // Single category mode
+  if (cat) {
+    try {
+      const { tests, synonyms } = await seedCategory(openai, cat);
+      return NextResponse.json({ success: true, category: cat.name, tests, synonyms });
+    } catch (err) {
+      return NextResponse.json({ success: false, category: cat.name, error: String(err) }, { status: 500 });
+    }
+  }
+
+  // No slug — return list of categories and current counts
+  const seededCategories = await prisma.testCategory.findMany({
+    select: { slug: true, name: true, _count: { select: { tests: true } } },
+    orderBy: { sort_order: "asc" },
+  });
+  return NextResponse.json({ categories: CATEGORIES.map((c) => c.slug), seeded: seededCategories });
+}
     try {
       const { tests, synonyms } = await seedCategory(openai, cat);
       results.push({ category: cat.name, tests, synonyms });
