@@ -5,6 +5,7 @@ import { TrustIndicators } from "@/components/TrustIndicators";
 import { PoveonLogo } from "@/components/PoveonLogo";
 import { LabSplash } from "@/components/LabSplash";
 import { LabPageNav } from "@/components/LabPageNav";
+import { LabHeroSection } from "@/components/LabHeroSection";
 
 interface LabSlugPageProps {
   params: { labSlug: string };
@@ -30,13 +31,12 @@ export default async function LabSlugPage({ params }: LabSlugPageProps) {
     where: { lab_id: lab.id, branch_lab_id: { not: null } },
     include: {
       branch_lab: {
-        select: { id: true, name: true, address: true, phones: true, whatsapp: true },
+        select: { id: true, name: true, address: true, phones: true, whatsapp: true, logo_url: true },
       },
     },
     orderBy: [{ is_main: "desc" }],
   });
 
-  // Parent lab is always the first location option
   const parentLocation = {
     lab_id: lab.id,
     lab_branch_id: null as string | null,
@@ -44,11 +44,11 @@ export default async function LabSlugPage({ params }: LabSlugPageProps) {
     address: lab.address ?? "",
     phones: (lab.phones ?? []) as string[],
     whatsapp: lab.whatsapp ?? null,
+    logo_url: lab.logo_url ?? null,
     is_main: false,
     is_parent: true,
   };
 
-  // Each branch link points to an independent lab — use that lab's own contact info
   const branchLocations = branchLinks
     .filter((b) => b.branch_lab !== null)
     .map((b) => ({
@@ -58,24 +58,64 @@ export default async function LabSlugPage({ params }: LabSlugPageProps) {
       address: b.branch_lab!.address ?? "",
       phones: (b.branch_lab!.phones ?? []) as string[],
       whatsapp: b.branch_lab!.whatsapp ?? null,
+      logo_url: b.branch_lab!.logo_url ?? null,
       is_main: b.is_main,
       is_parent: false,
     }));
 
-  // All selectable locations: parent first, then branches sorted by is_main desc
   const locations = [parentLocation, ...branchLocations];
+  const logoUrl = lab.logo_url ?? null;
 
   return (
-    <div className="h-dvh flex flex-col bg-gradient-to-br from-sky-50 via-blue-50 to-indigo-50 overflow-hidden">
-      {/* Branded splash — fades out after ~1.6 s */}
-      <LabSplash logoUrl={lab.logo_url ?? null} labName={lab.name} />
+    <div className="relative h-dvh flex flex-col bg-slate-50 overflow-hidden">
+      {/* Branded background — logo colors or fallback gradient */}
+      {logoUrl ? (
+        <div
+          className="absolute inset-0 -z-10 pointer-events-none"
+          aria-hidden="true"
+          style={{
+            backgroundImage: `url(${logoUrl})`,
+            backgroundSize: "cover",
+            backgroundPosition: "center",
+            filter: "blur(80px) saturate(2.5) brightness(1.1)",
+            opacity: 0.22,
+            transform: "scale(1.4)",
+          }}
+        />
+      ) : (
+        <div
+          className="absolute inset-0 -z-10 pointer-events-none"
+          aria-hidden="true"
+          style={{
+            backgroundImage:
+              "radial-gradient(ellipse 70% 50% at 25% 0%, rgba(224,242,254,0.7) 0%, transparent 70%), " +
+              "radial-gradient(ellipse 60% 45% at 90% 30%, rgba(224,231,255,0.5) 0%, transparent 65%), " +
+              "radial-gradient(ellipse 55% 50% at 5% 90%, rgba(240,253,244,0.6) 0%, transparent 65%)",
+          }}
+        />
+      )}
+      {/* Lighter veil so brand colours actually show through */}
+      <div className="absolute inset-0 -z-10 bg-white/30 pointer-events-none" aria-hidden="true" />
 
-      {/* Scrollable content area — page never scrolls, only this div does */}
-      <main className="flex-1 overflow-y-auto overflow-x-hidden">
-        {/* Lab-branded nav with login */}
-        <LabPageNav labName={lab.name} logoUrl={lab.logo_url} />
+      {/* Branded splash */}
+      <LabSplash logoUrl={logoUrl} labName={lab.name} />
 
-        <div className="max-w-2xl mx-auto px-4 pb-2">
+      {/*
+        LabPageNav sits OUTSIDE <main> as a flex-column sibling.
+        When the hero is visible its max-h is 0 (no space taken).
+        When the hero scrolls away it grows to ~52 px, shrinking main
+        automatically — so the form's sticky top-0 header lands right
+        below the nav with zero overlap and no extra props needed.
+      */}
+      <LabPageNav labName={lab.name} logoUrl={logoUrl} />
+
+      {/* Scrollable content area */}
+      <main className="flex-1 overflow-y-auto overflow-x-hidden snap-y snap-mandatory">
+        <div className="w-full snap-start snap-always">
+          <LabHeroSection labName={lab.name} logoUrl={logoUrl} />
+        </div>
+
+        <div className="max-w-2xl mx-auto px-4 pb-2 snap-start snap-always">
           <DoctorRequestForm
             preselectedLabId={lab.id}
             preselectedLabName={lab.name}
@@ -83,14 +123,12 @@ export default async function LabSlugPage({ params }: LabSlugPageProps) {
           />
         </div>
 
-        {/* Full-width trust indicators strip */}
-        <div className="w-full border-t border-white/60 bg-white/30 backdrop-blur-sm">
+        <div className="w-full border-t border-white/60 bg-white/30 backdrop-blur-sm mt-4">
           <div className="max-w-2xl mx-auto px-4 py-4">
             <TrustIndicators />
           </div>
         </div>
 
-        {/* Compact inline footer */}
         <div className="max-w-6xl mx-auto px-4 py-3 flex items-center justify-center gap-4 text-xs text-slate-400">
           <PoveonLogo className="w-5 h-5 opacity-40" />
           <span>© {new Date().getFullYear()} Poveon.</span>

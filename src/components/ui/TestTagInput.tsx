@@ -2,7 +2,7 @@
 
 import { useState, useEffect, useRef, useCallback } from "react";
 import { createPortal } from "react-dom";
-import { X, AlertTriangle } from "lucide-react";
+import { X } from "lucide-react";
 import { smartSplitTestNames } from "@/lib/smart-split";
 
 export type TestTag = {
@@ -223,7 +223,6 @@ export function TestTagInput({ value, onChange, labId, error, label, disabled }:
   }
 
   const catalogCount = value.filter((t) => t.catalog_test_id).length;
-  const uncertainCount = value.filter((t) => t.low_confidence).length;
 
   // ── Dropdown portal ───────────────────────────────────────────────────────
   const showDropdown = mounted && (open || searching) && inputText.trim().length >= 2;
@@ -299,20 +298,14 @@ export function TestTagInput({ value, onChange, labId, error, label, disabled }:
           {value.map((tag, i) => (
             <span
               key={i}
-              title={tag.low_confidence ? "AI is uncertain about this test name — please verify" : undefined}
               className={[
                 "inline-flex items-center gap-1 text-xs px-2.5 py-1 rounded-full font-medium max-w-full",
-                tag.low_confidence
-                  ? "bg-amber-100 text-amber-800 border border-amber-300"
-                  : tag.catalog_test_id
-                    ? "bg-medical-100 text-medical-800 border border-medical-200"
-                    : "bg-slate-100 text-slate-700 border border-slate-200",
+                tag.catalog_test_id
+                  ? "bg-medical-100 text-medical-800 border border-medical-200"
+                  : "bg-slate-100 text-slate-700 border border-slate-200",
               ].join(" ")}
             >
-              {tag.low_confidence && (
-                <AlertTriangle className="w-3 h-3 flex-shrink-0 text-amber-500" />
-              )}
-              {!tag.low_confidence && tag.is_rapid_test && (
+              {tag.is_rapid_test && (
                 <span className="w-1.5 h-1.5 rounded-full bg-amber-400 flex-shrink-0" title="Rapid test" />
               )}
               {/* break-words so very long names wrap inside the pill */}
@@ -338,7 +331,7 @@ export function TestTagInput({ value, onChange, labId, error, label, disabled }:
             disabled={disabled}
             data-no-enter-nav="true"
             enterKeyHint="done"
-            placeholder={value.length === 0 ? "Type a test name — select from suggestions or press Enter to add" : ""}
+            placeholder={value.length === 0 ? "Type test name e.g. FBC, CRP, Chest Xray" : ""}
             className="flex-1 min-w-[160px] bg-transparent text-slate-800 text-sm placeholder-slate-400 outline-none py-0.5 my-0.5"
           />
         </div>
@@ -355,25 +348,13 @@ export function TestTagInput({ value, onChange, labId, error, label, disabled }:
               <span className="text-slate-400"> · {value.length - catalogCount} custom</span>
             )}
           </span>
-          {uncertainCount > 0 && (
-            <span className="flex items-center gap-1 text-amber-600 font-medium">
-              <AlertTriangle className="w-3 h-3" />
-              {uncertainCount} uncertain — please verify
-            </span>
-          )}
         </div>
       )}
 
       {error && <p className="text-xs text-red-600 font-medium">{error}</p>}
-      {!error && inputText.trim() && (
-        <p className="text-xs text-amber-600 font-medium flex items-center gap-1">
-          <AlertTriangle className="w-3 h-3 shrink-0" />
-          Press <kbd className="px-1 py-0.5 bg-amber-100 rounded text-amber-700 font-mono text-[10px] mx-0.5">Enter</kbd> to add &ldquo;{inputText.trim()}&rdquo;
-        </p>
-      )}
       {!error && !inputText.trim() && value.length === 0 && (
         <p className="text-xs text-slate-400">
-          Start typing to search the test catalog, or press{" "}
+          Press{" "}
           <kbd className="px-1 py-0.5 bg-slate-100 rounded text-slate-600 font-mono text-[10px]">Enter</kbd>
           {" "}to add any test
         </p>

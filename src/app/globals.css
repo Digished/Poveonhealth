@@ -1,4 +1,4 @@
-@import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800;900&display=swap');
+/* Inter is loaded via next/font in layout — no @import needed here */
 
 @tailwind base;
 @tailwind components;
@@ -12,17 +12,21 @@
   html {
     -webkit-font-smoothing: antialiased;
     -moz-osx-font-smoothing: grayscale;
+    scroll-behavior: smooth;
   }
 
   body {
     font-family: 'Inter', system-ui, sans-serif;
   }
+
+  /* Smooth scrolling on root only — container-level smooth scroll
+     fights the mandatory snap engine and causes jank */
 }
 
 @layer components {
   /* Glassmorphic card for light backgrounds */
   .glass-card {
-    @apply bg-white/80 backdrop-blur-md border border-white/50 rounded-2xl shadow-sm;
+    @apply bg-white/95 border border-white/60 rounded-2xl shadow-sm;
   }
 
   /* Glassmorphic card for dark backgrounds */
@@ -44,6 +48,46 @@
   .animate-slide-up {
     animation: slideUp 0.4s ease-out;
   }
+
+  .animate-nav-slide-down {
+    animation: nav-slide-down 0.18s ease-out both;
+  }
+
+  .animate-float-btn-in {
+    animation: float-btn-in 0.18s ease-out both;
+  }
+}
+
+/* ── Hero section keyframes ──────────────────────────────────────────────── */
+
+/* Clouds drift from left to right and loop seamlessly */
+@keyframes cloud-drift {
+  0%   { transform: translate3d(-260px, 0, 0); }
+  100% { transform: translate3d(110vw, 0, 0); }
+}
+
+/* Stars fade in/out (used with alternate) */
+@keyframes twinkle {
+  0%   { opacity: 0.15; }
+  100% { opacity: 0.95; }
+}
+
+/* Sun rays pulse (opacity only — GPU-composited, no layout thrash) */
+@keyframes ray-pulse {
+  0%, 100% { opacity: 0.35; }
+  50%       { opacity: 1; }
+}
+
+/* Nav bar slides in from top when hero scrolls away */
+@keyframes nav-slide-down {
+  from { opacity: 0; transform: translateY(-100%); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+
+/* Float button fades in */
+@keyframes float-btn-in {
+  from { opacity: 0; transform: translateY(-6px); }
+  to   { opacity: 1; transform: translateY(0); }
 }
 
 /* ── Splash screen keyframes ─────────────────────────────────────────────── */
@@ -64,6 +108,11 @@
   100% { transform: translateX(100%); }
 }
 
+@keyframes lab-hero-float {
+  0%, 100% { transform: translateY(0px); }
+  50%       { transform: translateY(-8px); }
+}
+
 /* ── Dashboard light/dark theme ──────────────────────────────────────────── */
 
 /* The dashboards default to dark. Adding .dash-light on the root switches to light mode. */
@@ -74,12 +123,13 @@
 }
 
 /* Primary text */
-.dash-light .text-white   { color: #0f172a !important; }
+.dash-light .text-white     { color: #0f172a !important; }
 .dash-light .text-slate-200 { color: #334155 !important; }
 .dash-light .text-slate-300 { color: #475569 !important; }
 .dash-light .text-slate-400 { color: #64748b !important; }
-.dash-light .text-slate-500 { color: #94a3b8 !important; }
-.dash-light .text-slate-600 { color: #94a3b8 !important; }
+/* slate-500/600 were mapping to #94a3b8 (insufficient contrast on white) — use slate-500 proper */
+.dash-light .text-slate-500 { color: #64748b !important; }
+.dash-light .text-slate-600 { color: #475569 !important; }
 
 /* Accent colours — keep them vivid in light mode too */
 .dash-light .text-blue-300  { color: #1d4ed8 !important; }
@@ -88,11 +138,15 @@
 .dash-light .text-medical-400 { color: #0259a0 !important; }
 .dash-light .text-medical-300 { color: #0270c3 !important; }
 
-/* Semi-transparent white backgrounds → solid white cards */
-.dash-light .bg-white\/5  { background-color: #ffffff !important; box-shadow: 0 1px 3px 0 rgba(0,0,0,0.06) !important; }
-.dash-light .bg-white\/8  { background-color: #ffffff !important; }
-.dash-light .bg-white\/10 { background-color: rgba(255,255,255,0.95) !important; }
-.dash-light .bg-white\/15 { background-color: #ffffff !important; box-shadow: 0 1px 3px 0 rgba(0,0,0,0.06) !important; }
+/* Semi-transparent white backgrounds → solid white cards with visible elevation */
+.dash-light .bg-white\/5  { background-color: #ffffff !important; box-shadow: 0 1px 3px 0 rgba(0,0,0,0.08), 0 0 0 1px rgba(0,0,0,0.04) !important; }
+.dash-light .bg-white\/8  { background-color: #ffffff !important; box-shadow: 0 1px 3px 0 rgba(0,0,0,0.08), 0 0 0 1px rgba(0,0,0,0.04) !important; }
+.dash-light .bg-white\/10 { background-color: #ffffff !important; box-shadow: 0 1px 3px 0 rgba(0,0,0,0.08), 0 0 0 1px rgba(0,0,0,0.04) !important; }
+.dash-light .bg-white\/15 { background-color: #ffffff !important; box-shadow: 0 1px 4px 0 rgba(0,0,0,0.10), 0 0 0 1px rgba(0,0,0,0.05) !important; }
+/* Medium-opacity whites are often used for hover/active states — map to a light slate */
+.dash-light .bg-white\/20 { background-color: #f1f5f9 !important; }
+.dash-light .bg-white\/25 { background-color: #e8edf5 !important; }
+.dash-light .bg-white\/30 { background-color: #e2e8f0 !important; }
 
 /* Borders */
 .dash-light .border-white\/5  { border-color: #f1f5f9 !important; }
@@ -106,21 +160,28 @@
   border-bottom-color: #e2e8f0 !important;
 }
 
-/* Tab bar pill container */
-.dash-light .bg-white\/5.rounded-xl { background-color: #f1f5f9 !important; box-shadow: none !important; }
-.dash-light .bg-white\/5.rounded-2xl { background-color: #ffffff !important; }
+/* Tab bar pill container — override global bg-white/5 back to a tray color */
+.dash-light .bg-white\/5.rounded-xl  { background-color: #e8edf5 !important; box-shadow: none !important; }
+.dash-light .bg-white\/5.rounded-2xl { background-color: #f1f5f9 !important; box-shadow: none !important; }
 
 /* Active tab in the pill bar */
-.dash-light .bg-white\/15 { background-color: #ffffff !important; box-shadow: 0 1px 4px rgba(0,0,0,0.10) !important; }
+.dash-light .bg-white\/15 { background-color: #ffffff !important; box-shadow: 0 1px 4px rgba(0,0,0,0.12) !important; }
 
-/* Gradient stat cards in admin metrics */
+/* Hover states for list rows and icon buttons */
+.dash-light .hover\:bg-white\/10:hover { background-color: #f1f5f9 !important; box-shadow: none !important; }
+.dash-light .hover\:bg-white\/5:hover  { background-color: #f8fafc !important; box-shadow: none !important; }
+
+/* Gradient stat cards in admin/lab metrics */
 .dash-light .bg-gradient-to-br { transition: background 0.3s; }
 
-/* Input overrides — keep readable in light mode */
+/* Input overrides — white background for better contrast with placeholder/value text */
 .dash-light input, .dash-light textarea, .dash-light select {
-  background-color: #f8fafc !important;
+  background-color: #ffffff !important;
   color: #0f172a !important;
-  border-color: #e2e8f0 !important;
+  border-color: #cbd5e1 !important;
+}
+.dash-light input::placeholder, .dash-light textarea::placeholder {
+  color: #94a3b8 !important;
 }
 
 /* Medical / brand colour tints */
@@ -222,6 +283,8 @@
 .dash-light .bg-slate-950\/60 .text-emerald-400 { color: #059669 !important; }
 .dash-light .bg-slate-950\/60 .text-blue-400   { color: #2563eb !important; }
 .dash-light .placeholder-slate-600::placeholder  { color: #94a3b8 !important; }
+/* SVG axis/label text that use hardcoded #94a3b8 fill need darkening in light mode */
+.dash-light svg text { fill: #64748b; }
 
 /* WhatsApp & phone/email badges in lab cards */
 .dash-light .bg-green-900\/30  { background-color: #dcfce7 !important; }

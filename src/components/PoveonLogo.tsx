@@ -1,34 +1,16 @@
 export function PoveonLogo({ className }: { className?: string }) {
   return (
     <svg
-      xmlns="http://www.w3.org/2000/svg"
-      viewBox="0 0 32 32"
+      width="181"
+      height="179"
+      viewBox="0 0 181 179"
       fill="none"
+      xmlns="http://www.w3.org/2000/svg"
       className={className}
     >
-      {/* Dark background */}
-      <rect width="32" height="32" rx="8" fill="#0f172a" />
-
-      {/* Flask body — outline only, no fill */}
-      <path
-        d="M13 7 L13 13 L7.5 23 Q6.5 27 9 28 L23 28 Q25.5 27 24.5 23 L19 13 L19 7"
-        stroke="white"
-        strokeWidth="1.8"
-        strokeLinejoin="round"
-        strokeLinecap="round"
-      />
-
-      {/* Neck cap */}
-      <line
-        x1="11" y1="7" x2="21" y2="7"
-        stroke="white" strokeWidth="1.8" strokeLinecap="round"
-      />
-
-      {/* Liquid level — sky-blue accent line inside the body */}
-      <line
-        x1="9" y1="21" x2="23" y2="21"
-        stroke="#0ea5e9" strokeWidth="1.5" strokeLinecap="round"
-      />
+      <path d="M67 113C67 115.761 64.7614 118 62 118H48.9421C47.6928 118 46.4888 117.532 45.5671 116.689L9.49732 83.689C6.13115 80.6093 8.30997 75 12.8724 75H62C64.7614 75 67 77.2386 67 80V113Z" fill="currentColor"/>
+      <path d="M116 67C118.761 67 121 64.7614 121 62V48.9421C121 47.6929 120.532 46.4888 119.689 45.5671L86.689 9.49732C83.6093 6.13115 78 8.30997 78 12.8724L78 62C78 64.7614 80.2386 67 83 67H116Z" fill="currentColor"/>
+      <path d="M169.603 107.573C173.643 111.269 171.028 118 165.553 118H127C123.686 118 121 120.686 121 124V177.73C121 178.431 120.431 179 119.73 179C119.374 179 119.034 178.85 118.793 178.587L79.5732 135.72C78.5612 134.613 78 133.169 78 131.669V81C78 77.6863 80.6863 75 84 75H131.669C133.169 75 134.613 75.5612 135.72 76.5732L169.603 107.573Z" fill="currentColor"/>
     </svg>
   );
 }

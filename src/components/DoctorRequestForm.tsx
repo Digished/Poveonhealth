@@ -40,8 +40,13 @@ import { PhoneInput } from "@/components/PhoneInput";
 import { BankAccountInput } from "@/components/BankAccountInput";
 import { DobInput } from "@/components/DobInput";
 import { SuccessScreen } from "@/components/SuccessScreen";
+import { PoveonLogo } from "@/components/PoveonLogo";
 import { PROFESSIONAL_PREFIXES, PrefixSelectModal, PrefixSelect } from "@/components/PrefixSelect";
 import type { Lab, CreateRequestResponse } from "@/lib/types";
+
+// Module-level session cache — labs rarely change; reuse across form mounts
+// without re-fetching for the lifetime of the browser tab.
+let _labsCache: Lab[] | null = null;
 
 interface FormData {
   lab_id: string;
@@ -314,6 +319,7 @@ function LabSearch({
   onChange,
   error,
   onRefresh,
+  onOpen,
 }: {
   labs: Lab[];
   loading: boolean;
@@ -321,8 +327,11 @@ function LabSearch({
   onChange: (labId: string) => void;
   error?: string;
   onRefresh?: () => void;
+  onOpen?: () => void;
 }) {
   const [open, setOpen] = useState(false);
+
+  function openSearch() { onOpen?.(); setOpen(true); }
   const [mounted, setMounted] = useState(false);
 
   useEffect(() => { setMounted(true); }, []);
@@ -346,7 +355,7 @@ function LabSearch({
         <div className="w-full rounded-xl border border-medical-300 bg-medical-50 px-4 py-2.5 flex items-center justify-between">
           <button
             type="button"
-            onClick={() => setOpen(true)}
+            onClick={openSearch}
             className="flex items-center gap-2 min-w-0 flex-1 text-left"
           >
             {selectedLab.logo_url ? (
@@ -373,7 +382,7 @@ function LabSearch({
         >
           <Search className="w-4 h-4 text-slate-400 shrink-0" />
           <span className="text-sm text-slate-400 flex-1">
-            {loading ? "Loading laboratories…" : "Search by name, location or service…"}
+            {loading ? "Loading laboratories…" : "Search by name or location…"}
           </span>
           {loading && <RefreshCw className="w-3.5 h-3.5 text-slate-300 animate-spin shrink-0" />}
         </button>
@@ -548,47 +557,6 @@ function LabInfoBar({ lab, onViewMore }: { lab: Lab; onViewMore: () => void }) {
   );
 }
 
-function LearnMoreModal({ onClose }: { onClose: () => void }) {
-  return (
-    <div
-      className="fixed inset-0 z-50 flex items-end sm:items-center justify-center p-4 animate-backdrop-in"
-      style={{ backgroundColor: "rgba(15,23,42,0.45)", backdropFilter: "blur(4px)" }}
-      onClick={onClose}
-    >
-      <div
-        className="w-full max-w-sm bg-white rounded-3xl shadow-2xl overflow-hidden animate-scale-in"
-        onClick={(e) => e.stopPropagation()}
-      >
-        <div className="bg-gradient-to-br from-medical-50 via-white to-sky-50 px-6 pt-6 pb-5 flex items-start gap-4">
-          <div className="w-12 h-12 rounded-2xl bg-medical-600 flex items-center justify-center shrink-0 shadow-md">
-            <FlaskConical className="w-6 h-6 text-white" />
-          </div>
-          <div className="flex-1">
-            <h3 className="text-lg font-bold text-slate-800">About Poveon</h3>
-            <p className="text-xs text-slate-400 mt-0.5">Secure lab request platform</p>
-          </div>
-          <button
-            onClick={onClose}
-            className="p-1.5 rounded-xl hover:bg-white/60 text-slate-400 hover:text-slate-600 transition-colors"
-          >
-            <X className="w-4 h-4" />
-          </button>
-        </div>
-        <div className="px-6 py-5 space-y-3">
-          <p className="text-sm text-slate-600 leading-relaxed">
-            Poveon lets licensed healthcare professionals send laboratory test requests directly to accredited labs — no account or login required.
-          </p>
-          <p className="text-sm text-slate-600 leading-relaxed">
-            Select your destination lab, enter your patient's details and your professional information, and submit. The lab is notified instantly and you receive email confirmation at every stage.
-          </p>
-          <p className="text-sm text-slate-400 leading-relaxed">
-            No faxes, no delays — fast, encrypted communication between clinicians and labs.
-          </p>
-        </div>
-      </div>
-    </div>
-  );
-}
 
 interface Location {
   lab_id: string;        // actual lab id — what gets submitted as the request's lab_id
@@ -597,6 +565,7 @@ interface Location {
   address: string;
   phones: string[];
   whatsapp?: string | null;
+  logo_url?: string | null;
   is_main: boolean;    // true = this branch is the highlighted/default one
   is_parent: boolean;  // true = this entry is the root/parent lab
 }
@@ -605,11 +574,15 @@ export function DoctorRequestForm({
   preselectedLabId,
   preselectedLabName,
   locations = [],
+  initialLabs,
 }: {
   preselectedLabId?: string;
   preselectedLabName?: string;
   locations?: Location[];
+  initialLabs?: Lab[];
 } = {}) {
+  // Seed module-level cache from SSR-provided data so first open is instant
+  if (initialLabs && !_labsCache) { _labsCache = initialLabs; }
   const labPreselected = !!preselectedLabId;
   // hasLocations = true when there are multiple locations to choose from (parent + at least 1 branch)
   const hasLocations = locations.length > 1;
@@ -623,12 +596,12 @@ export function DoctorRequestForm({
     lab_id: (labPreselected && locations.length > 0) ? locations[defaultLocIdx].lab_id : (preselectedLabId ?? ""),
   }));
   const [errors, setErrors] = useState<Partial<FormData>>({});
-  const [labs, setLabs] = useState<Lab[]>([]);
-  const [labsLoading, setLabsLoading] = useState(true);
+  const [labs, setLabs] = useState<Lab[]>(() => _labsCache ?? []);
+  const [labsLoading, setLabsLoading] = useState(false);
   const [submitting, setSubmitting] = useState(false);
+  const [progress, setProgress] = useState(0);
   const [result, setResult] = useState<CreateRequestResponse | null>(null);
   const [labDetailsOpen, setLabDetailsOpen] = useState(false);
-  const [learnMoreOpen, setLearnMoreOpen] = useState(false);
   const [callOpen, setCallOpen] = useState(false);
   const [scrolled, setScrolled] = useState(false);
   const [doctorEditing, setDoctorEditing] = useState(false);
@@ -654,6 +627,7 @@ export function DoctorRequestForm({
     confidence: "high" | "medium" | "low"; low_confidence_items: string[];
   } | null>(null);
   const [extractionDismissed, setExtractionDismissed] = useState(false);
+  const [extractionProgress, setExtractionProgress] = useState(0);
   const [testTags, setTestTags] = useState<TestTag[]>([]);
   const testsString = testTags.map((t) => t.name).join(", ");
 
@@ -681,8 +655,9 @@ export function DoctorRequestForm({
     const phone = form.patient_phone;
     const digits = phone.replace(/\D/g, "");
     if (digits.length < 7) return;
+    const controller = new AbortController();
     const timer = setTimeout(() => {
-      fetch(`/api/patient/profile?phone=${encodeURIComponent(phone)}`)
+      fetch(`/api/patient/profile?phone=${encodeURIComponent(phone)}`, { signal: controller.signal })
         .then((r) => r.ok ? r.json() : null)
         .then((data) => {
           if (data?.success) {
@@ -693,7 +668,7 @@ export function DoctorRequestForm({
         })
         .catch(() => null);
     }, 700);
-    return () => clearTimeout(timer);
+    return () => { clearTimeout(timer); controller.abort(); };
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [form.patient_phone]);
 
@@ -749,8 +724,9 @@ export function DoctorRequestForm({
       return;
     }
     setDocProfileStatus("checking");
+    const controller = new AbortController();
     const timer = setTimeout(() => {
-      fetch(`/api/doc-profile/check?email=${encodeURIComponent(email)}`)
+      fetch(`/api/doc-profile/check?email=${encodeURIComponent(email)}`, { signal: controller.signal })
         .then((r) => r.ok ? r.json() : null)
         .then((data) => {
           if (!data) { setDocProfileStatus("not_found"); return; }
@@ -764,21 +740,64 @@ export function DoctorRequestForm({
         })
         .catch(() => setDocProfileStatus("not_found"));
     }, 600);
-    return () => clearTimeout(timer);
+    return () => { clearTimeout(timer); controller.abort(); };
   }, [form.doctor_email]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const fetchLabs = useCallback(() => {
+    // Lab-specific pages never show the search — skip entirely
+    if (labPreselected) return;
+    // Return cached data instantly if already fetched this session
+    if (_labsCache) { setLabs(_labsCache); setLabsLoading(false); return; }
     setLabsLoading(true);
     fetch("/api/labs")
       .then((r) => r.json())
-      .then((data) => setLabs(data.labs ?? []))
+      .then((data) => {
+        _labsCache = data.labs ?? [];
+        setLabs(_labsCache!);
+      })
       .catch(() => toast.error("Failed to load laboratories"))
       .finally(() => setLabsLoading(false));
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [labPreselected]);
+
+  // Idle prefetch — if labs aren't already cached (no SSR data), warm the cache
+  // while the browser is idle so the modal feels instant even without server preload.
+  useEffect(() => {
+    if (labPreselected || _labsCache) return;
+    const id = typeof requestIdleCallback !== "undefined"
+      ? requestIdleCallback(() => fetchLabs(), { timeout: 3000 })
+      : setTimeout(fetchLabs, 800) as unknown as number;
+    return () => {
+      if (typeof cancelIdleCallback !== "undefined") cancelIdleCallback(id as number);
+      else clearTimeout(id as unknown as ReturnType<typeof setTimeout>);
+    };
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
+  // Time-of-day greeting
+  const [tod, setTod] = useState<"morning" | "afternoon" | "evening">("morning");
   useEffect(() => {
-    fetchLabs();
-  }, [fetchLabs]);
+    const h = new Date().getHours();
+    if (h >= 5 && h < 12) setTod("morning");
+    else if (h >= 12 && h < 17) setTod("afternoon");
+    else setTod("evening");
+  }, []);
+
+  // Hero visibility — when a #lab-hero element exists, track whether it's still in view.
+  // Used to hide the logo/name in the sticky header while the hero is prominent.
+  const [heroVisible, setHeroVisible] = useState(false);
+  useEffect(() => {
+    const hero = document.getElementById("lab-hero");
+    if (!hero) return;
+    setHeroVisible(true);
+    const main = document.querySelector("main");
+    const observer = new IntersectionObserver(
+      ([entry]) => setHeroVisible(entry.isIntersecting),
+      { root: main, threshold: 0 }
+    );
+    observer.observe(hero);
+    return () => observer.disconnect();
+  }, []);
 
   // Scroll listener — compact header when user scrolls past ~80px inside the main scrollable area
   useEffect(() => {
@@ -875,7 +894,6 @@ export function DoctorRequestForm({
       const next = Math.min(4, step + 1);
       setStep(next);
       setMaxStep((m) => Math.max(m, next));
-      document.querySelector("main")?.scrollTo({ top: 0, behavior: "smooth" });
     }
   }
 
@@ -889,15 +907,35 @@ export function DoctorRequestForm({
       setErrors({});
     }
     setStep(target);
-    window.scrollTo({ top: 0, behavior: "smooth" });
   }
 
   function handleBack() {
     setErrors({});
     const minStep = (!labPreselected || hasLocations) ? 1 : 2;
     setStep((s) => Math.max(minStep, s - 1));
-    window.scrollTo({ top: 0, behavior: "smooth" });
   }
+
+  // Advance progress bar through realistic stages while submitting
+  useEffect(() => {
+    if (!submitting) { setProgress(0); return; }
+    setProgress(0);
+    const t1 = setTimeout(() => setProgress(22), 350);
+    const t2 = setTimeout(() => setProgress(45), 950);
+    const t3 = setTimeout(() => setProgress(72), 2100);
+    const t4 = setTimeout(() => setProgress(88), 3600);
+    return () => { clearTimeout(t1); clearTimeout(t2); clearTimeout(t3); clearTimeout(t4); };
+  }, [submitting]);
+
+  // Simulate AI extraction progress stages
+  useEffect(() => {
+    if (!imageExtracting) { setExtractionProgress(0); return; }
+    setExtractionProgress(0);
+    const t1 = setTimeout(() => setExtractionProgress(25), 500);
+    const t2 = setTimeout(() => setExtractionProgress(50), 1500);
+    const t3 = setTimeout(() => setExtractionProgress(75), 3000);
+    const t4 = setTimeout(() => setExtractionProgress(90), 5000);
+    return () => { clearTimeout(t1); clearTimeout(t2); clearTimeout(t3); clearTimeout(t4); };
+  }, [imageExtracting]);
 
   async function handleSubmit() {
     if (!validateStep(4)) return;
@@ -913,11 +951,11 @@ export function DoctorRequestForm({
           is_critical: isCritical,
           needs_ambulance: needsAmbulance,
           ambulance_notes: ambulanceNotes || undefined,
-          // branch_id omitted — lab_id already points to the selected location's lab
         }),
       });
       const data: CreateRequestResponse = await res.json();
       if (data.success) {
+        setProgress(100);
         persistDoctorProfile();
         setResult(data);
       } else {
@@ -931,34 +969,65 @@ export function DoctorRequestForm({
   }
 
   if (submitting) {
-    const steps = [
-      { icon: "🧬", label: "Verifying test details…" },
-      { icon: "🏥", label: "Connecting to the lab…" },
-      { icon: "📋", label: "Creating your request…" },
-      { icon: "✉️", label: "Sending confirmations…" },
+    const STAGES = [
+      { icon: "🧬", label: "Verifying test details…",  start: 0,  end: 22  },
+      { icon: "🏥", label: "Connecting to the lab…",   start: 22, end: 45  },
+      { icon: "📋", label: "Creating your request…",   start: 45, end: 72  },
+      { icon: "✉️", label: "Sending confirmations…",   start: 72, end: 100 },
     ];
     return (
-      <div className="flex flex-col items-center justify-center py-16 px-6 space-y-8 animate-fade-in min-h-[320px]">
-        {/* Animated pulsing orb */}
+      <div className="flex flex-col items-center justify-center py-12 px-6 space-y-6 animate-fade-in min-h-[300px]">
+        {/* Pulsing logo orb */}
         <div className="relative">
-          <div className="w-20 h-20 rounded-full bg-gradient-to-br from-medical-400 to-sky-500 opacity-20 absolute inset-0 animate-ping" />
-          <div className="w-20 h-20 rounded-full bg-gradient-to-br from-medical-400 to-sky-500 flex items-center justify-center relative z-10 shadow-lg shadow-medical-500/30">
-            <FlaskConical className="w-9 h-9 text-white" />
+          <div className="w-16 h-16 rounded-full bg-gradient-to-br from-medical-400 to-sky-500 opacity-20 absolute inset-0 animate-ping" />
+          <div className="w-16 h-16 rounded-full bg-gradient-to-br from-medical-500 to-sky-400 flex items-center justify-center relative z-10 shadow-lg shadow-medical-500/30">
+            <PoveonLogo className="w-8 h-8 text-white" />
           </div>
         </div>
+
         <div className="text-center space-y-1">
-          <p className="text-lg font-bold text-slate-800">Submitting your request</p>
-          <p className="text-sm text-slate-500">Just a moment while we take care of everything</p>
+          <p className="text-base font-bold text-slate-800">Submitting your request</p>
+          <p className="text-xs text-slate-400">Just a moment while we take care of everything</p>
         </div>
-        {/* Steps */}
-        <div className="w-full max-w-xs space-y-2.5">
-          {steps.map((s, i) => (
-            <div key={i} className="flex items-center gap-3 px-4 py-2.5 rounded-xl bg-slate-50 border border-slate-100">
-              <span className="text-lg">{s.icon}</span>
-              <span className="text-sm text-slate-600 flex-1">{s.label}</span>
-              <RefreshCw className="w-3.5 h-3.5 text-medical-400 animate-spin shrink-0" style={{ animationDelay: `${i * 0.2}s` }} />
-            </div>
-          ))}
+
+        {/* Progress bar */}
+        <div className="w-full max-w-xs">
+          <div className="flex justify-between text-xs text-slate-400 mb-1.5">
+            <span>Progress</span>
+            <span>{progress}%</span>
+          </div>
+          <div className="h-1.5 bg-slate-100 rounded-full overflow-hidden">
+            <div
+              className="h-full bg-gradient-to-r from-medical-500 to-sky-400 rounded-full transition-all duration-700 ease-out"
+              style={{ width: `${progress}%` }}
+            />
+          </div>
+        </div>
+
+        {/* Sequential steps */}
+        <div className="w-full max-w-xs space-y-2">
+          {STAGES.map((s, i) => {
+            const done   = progress >= s.end;
+            const active = progress >= s.start && progress < s.end;
+            return (
+              <div
+                key={i}
+                className={`flex items-center gap-3 px-4 py-2.5 rounded-xl border transition-all duration-500 ${
+                  done   ? "bg-emerald-50 border-emerald-100" :
+                  active ? "bg-medical-50 border-medical-100" :
+                           "bg-slate-50 border-slate-100 opacity-40"
+                }`}
+              >
+                <span className="text-base">{s.icon}</span>
+                <span className={`text-sm flex-1 ${done ? "text-emerald-700" : active ? "text-medical-700" : "text-slate-400"}`}>
+                  {s.label}
+                </span>
+                {done   ? <Check className="w-3.5 h-3.5 text-emerald-500 shrink-0" /> :
+                 active ? <RefreshCw className="w-3.5 h-3.5 text-medical-400 animate-spin shrink-0" /> :
+                          null}
+              </div>
+            );
+          })}
         </div>
       </div>
     );
@@ -1003,7 +1072,7 @@ export function DoctorRequestForm({
     address: selectedLocation.address,
     phones: selectedLocation.phones as unknown as string[],
     whatsapp: selectedLocation.whatsapp ?? null,
-    logo_url: null,
+    logo_url: selectedLocation.logo_url ?? null,
     description: "",
     service_categories: [],
     certifications: [],
@@ -1059,28 +1128,40 @@ export function DoctorRequestForm({
         <div className="absolute inset-0 left-1/2 -translate-x-1/2 w-screen bg-white/80 backdrop-blur-md border-b border-white/60 -z-10" />
 
         {/* Lab info / branding */}
-        <div className="mb-4">
+        <div className="mb-3">
             {displayLab ? (() => {
               const phones = (displayLab.phones as string[] | null) ?? [];
+              const waNumbers: string[] = displayLab.whatsapp
+                ? (() => { try { const p = JSON.parse(displayLab.whatsapp!); return Array.isArray(p) ? p : [displayLab.whatsapp!]; } catch { return [displayLab.whatsapp!]; } })()
+                : [];
+              const hasWa = waNumbers.filter(Boolean).length > 0;
               return (
                 <div className="relative overflow-hidden rounded-2xl border border-medical-100 bg-gradient-to-r from-medical-50 via-white to-sky-50 shadow-sm animate-fade-in-up">
                   <div className="absolute -top-6 -right-6 w-28 h-28 bg-medical-100/40 rounded-full blur-2xl pointer-events-none" />
-                  <div className="relative px-4 py-3 flex items-center gap-3">
-                    {displayLab.logo_url ? (
-                      <img
-                        src={displayLab.logo_url}
-                        alt={displayLab.name}
-                        className="w-10 h-10 rounded-xl object-cover shrink-0 shadow-sm ring-2 ring-white"
-                      />
-                    ) : (
-                      <div className="w-10 h-10 rounded-xl bg-medical-100 flex items-center justify-center shrink-0 border border-medical-200">
-                        <Building2 className="w-5 h-5 text-medical-600" />
-                      </div>
-                    )}
+                  <div className="relative px-3 py-2.5 flex items-center gap-3">
+
+                    {/* Logo — fades out while hero is visible */}
+                    <div className={`transition-[width,opacity] duration-300 shrink-0 ${heroVisible ? "w-0 opacity-0 overflow-hidden" : "w-10 opacity-100"}`}>
+                      {displayLab.logo_url ? (
+                        <img
+                          src={displayLab.logo_url}
+                          alt={displayLab.name}
+                          className="w-10 h-10 rounded-xl object-cover shadow-sm ring-2 ring-white"
+                        />
+                      ) : (
+                        <div className="w-10 h-10 rounded-xl bg-medical-100 flex items-center justify-center border border-medical-200">
+                          <Building2 className="w-5 h-5 text-medical-600" />
+                        </div>
+                      )}
+                    </div>
+
+                    {/* Text column — name fades out while hero is visible, address always shows */}
                     <div className="min-w-0 flex-1">
-                      <p className="text-sm font-bold text-slate-800 leading-tight truncate">{displayLab.name}</p>
+                      <div className={`overflow-hidden transition-[max-height,opacity] duration-300 ${heroVisible ? "max-h-0 opacity-0" : "max-h-8 opacity-100"}`}>
+                        <p className="text-sm font-bold text-slate-800 leading-tight truncate">{displayLab.name}</p>
+                      </div>
                       {displayLab.address && (
-                        <p className="text-xs text-slate-400 flex items-start gap-1 mt-0.5 overflow-hidden">
+                        <p className="text-xs text-slate-400 flex items-start gap-1 mt-0.5">
                           <MapPin className="w-3 h-3 shrink-0 text-medical-300 mt-0.5" />
                           <span className="truncate">{displayLab.address}</span>
                         </p>
@@ -1089,16 +1170,26 @@ export function DoctorRequestForm({
                         <button
                           type="button"
                           onClick={() => setLabDetailsOpen(true)}
-                          className="mt-1 text-xs text-medical-600 hover:text-medical-800 font-semibold underline underline-offset-2 transition-colors"
+                          className="mt-0.5 text-xs text-medical-600 hover:text-medical-800 font-semibold underline underline-offset-2 transition-colors"
                         >
-                          View details
+                          More details
                         </button>
                       )}
                     </div>
-                    {/* Call button */}
-                    {phones.length > 0 && (
+
+                    {/* Contact button — WhatsApp preferred over phone */}
+                    {(hasWa || phones.length > 0) && (
                       <div className="shrink-0">
-                        {phones.length === 1 ? (
+                        {hasWa ? (
+                          <button
+                            type="button"
+                            onClick={() => setCallOpen(true)}
+                            className="w-9 h-9 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white flex items-center justify-center shadow-sm transition-colors"
+                            title={`WhatsApp ${displayLab.name}`}
+                          >
+                            <MessageCircle className="w-4 h-4" />
+                          </button>
+                        ) : phones.length === 1 ? (
                           <a
                             href={`tel:${phones[0]}`}
                             className="w-9 h-9 rounded-xl bg-medical-600 hover:bg-medical-700 text-white flex items-center justify-center shadow-sm transition-colors"
@@ -1121,35 +1212,7 @@ export function DoctorRequestForm({
                   </div>
                 </div>
               );
-            })() : (
-              <div className="relative py-2 animate-fade-in">
-                <div className="absolute inset-0 overflow-hidden pointer-events-none -z-10">
-                  <div className="absolute top-2 left-0 w-40 h-40 bg-medical-100/50 rounded-full blur-3xl animate-float" style={{ animationDelay: "0s" }} />
-                  <div className="absolute top-0 right-4 w-32 h-32 bg-sky-100/60 rounded-full blur-3xl animate-float" style={{ animationDelay: "1.8s" }} />
-                  <div className="absolute -top-2 left-1/2 w-24 h-24 bg-indigo-100/40 rounded-full blur-2xl animate-float" style={{ animationDelay: "3.2s" }} />
-                </div>
-                <div className="flex items-center gap-3">
-                  <div className="w-9 h-9 rounded-xl flex items-center justify-center shadow-md shrink-0 bg-gradient-to-br from-slate-900 via-slate-800 to-indigo-900 ring-1 ring-white/10">
-                    <FlaskConical className="w-[18px] h-[18px] text-sky-300" />
-                  </div>
-                  <div>
-                    <p className="text-sm font-semibold text-slate-700 leading-snug">
-                      Submit a lab request for your patient.
-                    </p>
-                    <p className="text-xs text-slate-400 mt-0.5">
-                      No account needed.{" "}
-                      <button
-                        type="button"
-                        onClick={() => setLearnMoreOpen(true)}
-                        className="text-medical-600 hover:text-medical-800 font-semibold underline underline-offset-2 transition-colors"
-                      >
-                        Learn more
-                      </button>
-                    </p>
-                  </div>
-                </div>
-              </div>
-            )}
+            })() : null}
         </div>
 
         {/* Step indicator */}
@@ -1201,7 +1264,7 @@ export function DoctorRequestForm({
 
       {/* Step content */}
       <div
-        className="glass-card p-6 mt-4 mb-2"
+        className="glass-card p-4 mt-3 mb-2"
       >
 
         {/* Step 1: Choose Lab / Branch */}
@@ -1220,6 +1283,7 @@ export function DoctorRequestForm({
                   value={form.lab_id}
                   onChange={(id) => set("lab_id", id)}
                   error={errors.lab_id}
+                  onOpen={fetchLabs}
                   onRefresh={fetchLabs}
                 />
                 {selectedLab && (
@@ -1392,7 +1456,7 @@ export function DoctorRequestForm({
                           <div className="flex items-center gap-2 text-left">
                             {form.diagnosis.trim()
                               ? <><Check className="w-4 h-4 text-emerald-500 shrink-0" /><span className="text-sm font-semibold text-slate-700">Diagnosis / Clinical Notes added</span></>
-                              : <><FileText className="w-4 h-4 text-slate-400 shrink-0" /><span className="text-sm font-semibold text-slate-700">Diagnosis / Clinical Notes <span className="text-xs text-slate-400 font-normal ml-1">optional</span></span></>
+                              : <><FileText className="w-4 h-4 text-slate-400 shrink-0" /><span className="text-sm font-semibold text-slate-700">Diagnosis / Clinical Notes</span></>
                             }
                           </div>
                           <ChevronDown className={`w-4 h-4 shrink-0 transition-transform ${form.diagnosis.trim() ? "text-emerald-500" : "text-slate-400"} ${diagnosisOpen ? "rotate-180" : ""}`} />
@@ -1415,8 +1479,80 @@ export function DoctorRequestForm({
                   {/* Picture mode: image upload */}
                   {clinicalMode === "picture" && (
                     <div className="space-y-3 animate-fade-in-up">
-                      <p className="text-sm text-slate-500">Upload a photo of the physical test request slip — we&apos;ll read it with AI and pre-fill the form for you.</p>
-                        {testImageUrl ? (
+                      <p className="text-sm text-slate-500">Upload a photo of a filled physical test request and watch the magic happen.</p>
+                        {imageUploading ? (
+                          (() => {
+                            const uploadPct = imageUploadProgress;
+                            const UPLOAD_STAGES = [
+                              { icon: "📷", label: "Reading your image…", start: 0, end: 40 },
+                              { icon: "🧠", label: "Understanding the image…", start: 40, end: 100 },
+                            ];
+                            return (
+                              <div className="rounded-2xl border border-slate-200 bg-white px-6 py-8 space-y-5">
+                                <div className="text-center">
+                                  <p className="text-sm font-semibold text-slate-700">Uploading image…</p>
+                                  <p className="text-xs text-slate-400 mt-0.5">{uploadPct < 100 ? `${uploadPct}%` : "Almost done…"}</p>
+                                </div>
+                                <div className="w-full bg-slate-100 rounded-full h-1.5 overflow-hidden">
+                                  <div className="h-full bg-medical-500 rounded-full transition-all duration-300" style={{ width: `${uploadPct}%` }} />
+                                </div>
+                                <div className="space-y-2.5">
+                                  {UPLOAD_STAGES.map((stage) => {
+                                    const done = uploadPct >= stage.end;
+                                    const active = uploadPct >= stage.start && uploadPct < stage.end;
+                                    return (
+                                      <div key={stage.label} className={`flex items-center gap-3 transition-opacity duration-300 ${uploadPct < stage.start ? "opacity-30" : "opacity-100"}`}>
+                                        <div className={`w-7 h-7 rounded-full flex items-center justify-center shrink-0 text-base transition-all ${done ? "bg-emerald-100" : active ? "bg-medical-100" : "bg-slate-100"}`}>
+                                          {done ? "✓" : stage.icon}
+                                        </div>
+                                        <span className={`text-sm font-medium ${done ? "text-emerald-600" : active ? "text-slate-800" : "text-slate-400"}`}>{stage.label}</span>
+                                        {active && <RefreshCw className="w-3.5 h-3.5 text-medical-400 animate-spin ml-auto shrink-0" />}
+                                        {done && <span className="text-xs text-emerald-500 ml-auto shrink-0 font-medium">Done</span>}
+                                      </div>
+                                    );
+                                  })}
+                                </div>
+                              </div>
+                            );
+                          })()
+                        ) : imageExtracting ? (
+                          (() => {
+                            const p = extractionProgress;
+                            const SCAN_STAGES = [
+                              { icon: "🔍", label: "Reading the document…",        start: 0,  end: 25 },
+                              { icon: "🧬", label: "Identifying tests & fields…",  start: 25, end: 50 },
+                              { icon: "🏷️", label: "Matching to test catalog…",    start: 50, end: 75 },
+                              { icon: "✨", label: "Pre-filling your form…",       start: 75, end: 100 },
+                            ];
+                            return (
+                              <div className="rounded-2xl border border-slate-200 bg-white px-6 py-8 space-y-5">
+                                <div className="text-center">
+                                  <p className="text-sm font-semibold text-slate-700">Scanning with AI…</p>
+                                  <p className="text-xs text-slate-400 mt-0.5">Hang tight, this only takes a few seconds</p>
+                                </div>
+                                <div className="w-full bg-slate-100 rounded-full h-1.5 overflow-hidden">
+                                  <div className="h-full bg-medical-500 rounded-full transition-all duration-700" style={{ width: `${p}%` }} />
+                                </div>
+                                <div className="space-y-2.5">
+                                  {SCAN_STAGES.map((stage) => {
+                                    const done = p >= stage.end;
+                                    const active = p >= stage.start && p < stage.end;
+                                    return (
+                                      <div key={stage.label} className={`flex items-center gap-3 transition-opacity duration-300 ${p < stage.start ? "opacity-30" : "opacity-100"}`}>
+                                        <div className={`w-7 h-7 rounded-full flex items-center justify-center shrink-0 text-base transition-all ${done ? "bg-emerald-100" : active ? "bg-medical-100" : "bg-slate-100"}`}>
+                                          {done ? "✓" : stage.icon}
+                                        </div>
+                                        <span className={`text-sm font-medium ${done ? "text-emerald-600" : active ? "text-slate-800" : "text-slate-400"}`}>{stage.label}</span>
+                                        {active && <RefreshCw className="w-3.5 h-3.5 text-medical-400 animate-spin ml-auto shrink-0" />}
+                                        {done && <span className="text-xs text-emerald-500 ml-auto shrink-0 font-medium">Done</span>}
+                                      </div>
+                                    );
+                                  })}
+                                </div>
+                              </div>
+                            );
+                          })()
+                        ) : testImageUrl ? (
                           <div className="space-y-2">
                             {/* Image thumbnail row */}
                             <div className="flex items-center gap-3 rounded-xl border border-emerald-200 bg-emerald-50/40 px-4 py-3">
@@ -1425,17 +1561,12 @@ export function DoctorRequestForm({
                                 <p className="text-sm font-semibold text-emerald-700 flex items-center gap-1.5">
                                   <Check className="w-4 h-4" /> Image uploaded
                                 </p>
-                                {imageExtracting ? (
-                                  <p className="text-xs text-medical-600 mt-0.5 flex items-center gap-1">
-                                    <RefreshCw className="w-3 h-3 animate-spin" /> Scanning with AI…
-                                  </p>
-                                ) : extractionResult && !extractionDismissed ? (
+                                {extractionResult && !extractionDismissed ? (
                                   <p className="text-xs text-emerald-600 mt-0.5 flex items-center gap-1">
                                     <Check className="w-3 h-3" /> Fields pre-filled
-                                    {extractionResult.confidence === "low" && <span className="text-amber-600"> — low confidence, please review</span>}
                                   </p>
                                 ) : (
-                                  <p className="text-xs text-slate-400 mt-0.5 truncate">{testImageUrl.split("/").pop()}</p>
+                                  <p className="text-xs text-slate-400 mt-0.5 truncate">{testImageUrl?.split("/").pop()}</p>
                                 )}
                               </div>
                               <button type="button" onClick={() => { setTestImageUrl(null); setImageUploadError(null); setExtractionResult(null); setExtractionDismissed(false); }} className="p-1.5 rounded-lg hover:bg-emerald-100 text-emerald-400 hover:text-emerald-700 transition-colors shrink-0" aria-label="Remove uploaded image">
@@ -1443,71 +1574,18 @@ export function DoctorRequestForm({
                               </button>
                             </div>
 
-                            {/* AI extraction result card */}
-                            {extractionResult && !extractionDismissed && !imageExtracting && (
-                              <div className={`rounded-xl border px-4 py-3 space-y-2 ${extractionResult.confidence === "low" ? "bg-amber-50 border-amber-200" : "bg-sky-50 border-sky-200"}`}>
-                                <div className="flex items-center justify-between gap-2">
-                                  <p className={`text-xs font-semibold flex items-center gap-1.5 ${extractionResult.confidence === "low" ? "text-amber-700" : "text-sky-700"}`}>
-                                    <span className="inline-block w-1.5 h-1.5 rounded-full bg-current" />
-                                    AI extracted from image
-                                    {extractionResult.confidence === "high" && <span className="font-normal text-sky-600"> — high confidence</span>}
-                                    {extractionResult.confidence === "medium" && <span className="font-normal text-sky-600"> — please review</span>}
-                                    {extractionResult.confidence === "low" && <span className="font-normal text-amber-600"> — low confidence, verify carefully</span>}
-                                  </p>
-                                  <button type="button" onClick={() => setExtractionDismissed(true)} className="text-slate-400 hover:text-slate-600 transition-colors shrink-0" aria-label="Dismiss">
-                                    <X className="w-3.5 h-3.5" />
-                                  </button>
-                                </div>
-
-                                {extractionResult.tests.length > 0 && (
-                                  <div>
-                                    <p className="text-xs text-slate-500 mb-1">Tests found:</p>
-                                    <div className="flex flex-wrap gap-1">
-                                      {extractionResult.tests.map((t, i) => (
-                                        <span key={i} className={`text-xs px-2 py-0.5 rounded-full border font-medium ${extractionResult.low_confidence_items.includes(t) ? "bg-amber-100 border-amber-200 text-amber-700" : "bg-white border-slate-200 text-slate-700"}`}>
-                                          {extractionResult.low_confidence_items.includes(t) && "⚠ "}{t}
-                                        </span>
-                                      ))}
-                                    </div>
-                                  </div>
-                                )}
-
-                                {extractionResult.diagnosis && (
-                                  <p className="text-xs text-slate-600"><span className="font-medium">Diagnosis:</span> {extractionResult.diagnosis}</p>
-                                )}
-
-                                {(extractionResult.patient_name || extractionResult.dob || extractionResult.sex) && (
-                                  <p className="text-xs text-slate-500">
-                                    Patient details also pre-filled below where fields were empty.
-                                  </p>
-                                )}
-
-                                {extractionResult.low_confidence_items.length > 0 && (
-                                  <p className="text-xs text-amber-700 flex items-start gap-1">
-                                    <span className="shrink-0">⚠</span>
-                                    <span>Please verify: {extractionResult.low_confidence_items.join(", ")}</span>
-                                  </p>
-                                )}
-
-                                <p className="text-xs text-slate-400 italic">All fields are editable — review before submitting.</p>
+                            {/* Show only if AI flagged uncertain items — otherwise the filled fields speak for themselves */}
+                            {extractionResult && !extractionDismissed && extractionResult.low_confidence_items.length > 0 && (
+                              <div className="flex items-start gap-2 px-3 py-2 rounded-xl bg-amber-50 border border-amber-200">
+                                <span className="text-amber-500 text-sm shrink-0 mt-0.5">⚠</span>
+                                <p className="text-xs text-amber-700 flex-1">
+                                  Please verify: <span className="font-medium">{extractionResult.low_confidence_items.join(", ")}</span>
+                                </p>
+                                <button type="button" onClick={() => setExtractionDismissed(true)} className="text-amber-400 hover:text-amber-600 transition-colors shrink-0" aria-label="Dismiss">
+                                  <X className="w-3.5 h-3.5" />
+                                </button>
                               </div>
                             )}
-                          </div>
-                        ) : imageUploading ? (
-                          <div className="flex flex-col items-center gap-4 rounded-2xl border-2 border-dashed border-medical-300 bg-medical-50/30 px-6 py-10 text-center">
-                            <div className="w-14 h-14 rounded-2xl bg-medical-100 flex items-center justify-center">
-                              <RefreshCw className="w-7 h-7 text-medical-600 animate-spin" />
-                            </div>
-                            <div>
-                              <p className="text-sm font-semibold text-medical-700">Uploading your image…</p>
-                              <p className="text-xs text-slate-400 mt-1">{imageUploadProgress < 100 ? `${imageUploadProgress}%` : "Processing…"}</p>
-                            </div>
-                            <div className="w-full max-w-[200px] bg-medical-100 rounded-full h-2 overflow-hidden">
-                              <div
-                                className="h-full bg-medical-500 rounded-full transition-all duration-300"
-                                style={{ width: `${imageUploadProgress}%` }}
-                              />
-                            </div>
                           </div>
                         ) : (
                           <label className="cursor-pointer">
@@ -1640,7 +1718,11 @@ export function DoctorRequestForm({
                                           }
                                         })
                                         .catch(() => { /* silent — user continues manually */ })
-                                        .finally(() => setImageExtracting(false));
+                                        .finally(() => {
+                                          // Complete progress to 100%, then pause so the user sees all steps done before the card closes
+                                          setExtractionProgress(100);
+                                          setTimeout(() => setImageExtracting(false), 700);
+                                        });
                                     } else {
                                       setImageUploadError(data.error ?? "Upload failed. Please try again.");
                                     }
@@ -1676,7 +1758,7 @@ export function DoctorRequestForm({
                               disabled={imageExtracting}
                             />
                             <Textarea
-                              label="Diagnosis / Clinical Notes (optional)"
+                              label="Diagnosis / Clinical Notes"
                               placeholder={imageExtracting ? "Extracting…" : "Extracted from slip, or add manually"}
                               rows={2}
                               value={form.diagnosis}
@@ -1692,7 +1774,6 @@ export function DoctorRequestForm({
             <div className="space-y-2">
               <p className="text-sm font-medium text-slate-700">
                 Patient Condition
-                <span className="text-xs text-slate-400 font-normal ml-1.5">optional</span>
               </p>
               <div className="flex gap-2 p-1 bg-slate-100 rounded-2xl">
                 <button
@@ -1855,10 +1936,6 @@ export function DoctorRequestForm({
                       Patient Email
                       <span className="inline-block w-1.5 h-1.5 rounded-full bg-amber-400 align-middle" aria-label="required" />
                     </label>
-                    <span className="flex items-center gap-1 text-xs text-sky-600 font-medium">
-                      <Search className="w-3 h-3 shrink-0" />
-                      Auto-fills patient details if a profile exists
-                    </span>
                     <Input
                       id="patient_email"
                       type="email"
@@ -1931,7 +2008,6 @@ export function DoctorRequestForm({
                   <div className="flex-1 pb-2 min-w-0">
                     <p className="text-sm font-medium text-slate-700 mb-3">
                       Patient Details
-                      <span className="text-xs text-slate-400 font-normal ml-2">optional — auto-filled if profile found</span>
                     </p>
                     <div className="space-y-3">
                       <Input
@@ -1943,7 +2019,7 @@ export function DoctorRequestForm({
                       <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                         <DobInput value={form.dob} onChange={(iso) => set("dob", iso)} />
                         <div className="flex flex-col gap-1">
-                          <label className="text-sm font-medium text-slate-700">Sex <span className="text-xs text-slate-400 font-normal">(optional)</span></label>
+                          <label className="text-sm font-medium text-slate-700">Sex</label>
                           <div className="flex gap-2">
                             {(["male", "female"] as const).map((s) => (
                               <button key={s} type="button" onClick={() => set("sex", form.sex === s ? "" : s)}
@@ -2046,7 +2122,7 @@ export function DoctorRequestForm({
               disabled={submitting}
               className="flex items-center gap-2.5 px-6 py-3.5 rounded-2xl bg-medical-600 hover:bg-medical-700 active:scale-95 disabled:opacity-70 text-white font-bold text-sm shadow-2xl shadow-medical-600/40 transition-all"
             >
-              {submitting ? <RefreshCw className="w-5 h-5 animate-spin" /> : <FlaskConical className="w-5 h-5" />}
+              {submitting ? <RefreshCw className="w-5 h-5 animate-spin" /> : <PoveonLogo className="w-5 h-5 text-white" />}
               {submitting ? "Sending…" : "Generate Lab Request"}
             </button>
           )}
@@ -2065,8 +2141,7 @@ export function DoctorRequestForm({
         <LabDetailsModal lab={displayLab} onClose={() => setLabDetailsOpen(false)} />
       )}
 
-      {/* Learn more modal */}
-      {learnMoreOpen && <LearnMoreModal onClose={() => setLearnMoreOpen(false)} />}
+
 
       {/* Call modal — shown when lab has multiple phone numbers */}
       {callOpen && displayLab && (
@@ -2080,57 +2155,70 @@ export function DoctorRequestForm({
             onClick={(e) => e.stopPropagation()}
           >
             {/* Header */}
-            <div className="bg-gradient-to-br from-medical-50 via-white to-sky-50 px-5 pt-5 pb-4 flex items-center gap-3">
-              <div className="w-10 h-10 rounded-2xl bg-medical-600 flex items-center justify-center shrink-0 shadow-sm">
-                <PhoneCall className="w-5 h-5 text-white" />
-              </div>
-              <div className="flex-1 min-w-0">
-                <h3 className="text-base font-bold text-slate-800 leading-tight truncate">{displayLab.name}</h3>
-                <p className="text-xs text-slate-400 mt-0.5">Select a number to call</p>
-              </div>
-              <button
-                onClick={() => setCallOpen(false)}
-                className="p-1.5 rounded-xl hover:bg-white/60 text-slate-400 hover:text-slate-700 transition-colors shrink-0"
-              >
-                <X className="w-4 h-4" />
-              </button>
-            </div>
-            {/* Phone number list */}
-            <div className="px-4 py-3 space-y-2 pb-5">
-              {((displayLab.phones as string[] | null) ?? []).map((ph, i) => (
-                <a
-                  key={i}
-                  href={`tel:${ph}`}
-                  onClick={() => setCallOpen(false)}
-                  className="flex items-center gap-3 w-full px-4 py-3.5 rounded-2xl bg-medical-50 hover:bg-medical-100 border border-medical-100 hover:border-medical-200 text-medical-800 font-semibold text-sm transition-all group"
-                >
-                  <div className="w-8 h-8 rounded-xl bg-medical-600 group-hover:bg-medical-700 flex items-center justify-center shrink-0 transition-colors">
-                    <Phone className="w-4 h-4 text-white" />
+            {(() => {
+              const _waCheck: string[] = displayLab.whatsapp
+                ? (() => { try { const p = JSON.parse(displayLab.whatsapp); return Array.isArray(p) ? p : [displayLab.whatsapp]; } catch { return [displayLab.whatsapp]; } })()
+                : [];
+              const _hasWa = _waCheck.filter(Boolean).length > 0;
+              return (
+                <div className={`bg-gradient-to-br px-5 pt-5 pb-4 flex items-center gap-3 ${_hasWa ? "from-emerald-50 via-white to-sky-50" : "from-medical-50 via-white to-sky-50"}`}>
+                  <div className={`w-10 h-10 rounded-2xl flex items-center justify-center shrink-0 shadow-sm ${_hasWa ? "bg-emerald-600" : "bg-medical-600"}`}>
+                    {_hasWa ? <MessageCircle className="w-5 h-5 text-white" /> : <PhoneCall className="w-5 h-5 text-white" />}
                   </div>
-                  <span className="flex-1">{ph}</span>
-                  <PhoneCall className="w-4 h-4 text-medical-400 group-hover:text-medical-600 transition-colors" />
-                </a>
-              ))}
+                  <div className="flex-1 min-w-0">
+                    <h3 className="text-base font-bold text-slate-800 leading-tight truncate">{displayLab.name}</h3>
+                    <p className="text-xs text-slate-400 mt-0.5">Get in touch</p>
+                  </div>
+                  <button
+                    onClick={() => setCallOpen(false)}
+                    className="p-1.5 rounded-xl hover:bg-white/60 text-slate-400 hover:text-slate-700 transition-colors shrink-0"
+                  >
+                    <X className="w-4 h-4" />
+                  </button>
+                </div>
+              );
+            })()}
+            {/* Contact list — WhatsApp first, then phones */}
+            <div className="px-4 py-3 space-y-2 pb-5">
               {(() => {
                 const waNumbers: string[] = displayLab.whatsapp
                   ? (() => { try { const p = JSON.parse(displayLab.whatsapp); return Array.isArray(p) ? p : [displayLab.whatsapp]; } catch { return [displayLab.whatsapp]; } })()
                   : [];
-                return waNumbers.filter(Boolean).map((num, i) => (
-                  <a
-                    key={`wa-${i}`}
-                    href={`https://wa.me/${num.replace(/\D/g, "")}`}
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    onClick={() => setCallOpen(false)}
-                    className="flex items-center gap-3 w-full px-4 py-3.5 rounded-2xl bg-emerald-50 hover:bg-emerald-100 border border-emerald-100 hover:border-emerald-200 text-emerald-800 font-semibold text-sm transition-all group"
-                  >
-                    <div className="w-8 h-8 rounded-xl bg-emerald-600 group-hover:bg-emerald-700 flex items-center justify-center shrink-0 transition-colors">
-                      <MessageCircle className="w-4 h-4 text-white" />
-                    </div>
-                    <span className="flex-1">{num}</span>
-                    <span className="text-xs bg-emerald-100 text-emerald-700 px-2 py-0.5 rounded-full border border-emerald-200">WhatsApp</span>
-                  </a>
-                ));
+                const phones = (displayLab.phones as string[] | null) ?? [];
+                return (
+                  <>
+                    {waNumbers.filter(Boolean).map((num, i) => (
+                      <a
+                        key={`wa-${i}`}
+                        href={`https://wa.me/${num.replace(/\D/g, "")}`}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        onClick={() => setCallOpen(false)}
+                        className="flex items-center gap-3 w-full px-4 py-3.5 rounded-2xl bg-emerald-50 hover:bg-emerald-100 border border-emerald-100 hover:border-emerald-200 text-emerald-800 font-semibold text-sm transition-all group"
+                      >
+                        <div className="w-8 h-8 rounded-xl bg-emerald-600 group-hover:bg-emerald-700 flex items-center justify-center shrink-0 transition-colors">
+                          <MessageCircle className="w-4 h-4 text-white" />
+                        </div>
+                        <span className="flex-1">{num}</span>
+                        <span className="text-xs bg-emerald-100 text-emerald-700 px-2 py-0.5 rounded-full border border-emerald-200">WhatsApp</span>
+                      </a>
+                    ))}
+                    {phones.map((ph, i) => (
+                      <a
+                        key={i}
+                        href={`tel:${ph}`}
+                        onClick={() => setCallOpen(false)}
+                        className="flex items-center gap-3 w-full px-4 py-3.5 rounded-2xl bg-medical-50 hover:bg-medical-100 border border-medical-100 hover:border-medical-200 text-medical-800 font-semibold text-sm transition-all group"
+                      >
+                        <div className="w-8 h-8 rounded-xl bg-medical-600 group-hover:bg-medical-700 flex items-center justify-center shrink-0 transition-colors">
+                          <Phone className="w-4 h-4 text-white" />
+                        </div>
+                        <span className="flex-1">{ph}</span>
+                        <PhoneCall className="w-4 h-4 text-medical-400 group-hover:text-medical-600 transition-colors" />
+                      </a>
+                    ))}
+                  </>
+                );
               })()}
             </div>
           </div>
