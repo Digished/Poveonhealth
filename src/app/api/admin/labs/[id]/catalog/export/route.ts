@@ -28,22 +28,18 @@ export async function GET(
     prisma.lab.findUnique({ where: { id }, select: { name: true } }),
     prisma.labOfferedTest.findMany({
       where: { lab_id: id },
-      include: {
-        catalog_test: { select: { canonical_name: true, category: { select: { name: true } } } },
-      },
       orderBy: { created_at: "asc" },
     }),
   ]);
 
-  const headers = ["test_name", "canonical_name", "category", "lab_price", "commission_pct", "poveon_fee", "resolution_source", "is_active"];
+  const headers = ["test_name", "category", "synonyms", "lab_price", "commission_pct", "poveon_fee", "is_active"];
   const rows = tests.map((t) => [
     `"${t.raw_name.replace(/"/g, '""')}"`,
-    `"${(t.catalog_test?.canonical_name ?? "").replace(/"/g, '""')}"`,
-    `"${(t.catalog_test?.category?.name ?? "").replace(/"/g, '""')}"`,
+    `"${(t.category_label ?? "").replace(/"/g, '""')}"`,
+    `"${(Array.isArray(t.synonyms) ? (t.synonyms as string[]).join("; ") : "").replace(/"/g, '""')}"`,
     Number(t.lab_price).toFixed(2),
     t.commission_pct ? Number(t.commission_pct).toFixed(2) : "",
     t.poveon_fee ? Number(t.poveon_fee).toFixed(2) : "",
-    t.resolution_source ?? "",
     t.is_active ? "true" : "false",
   ]);
 
