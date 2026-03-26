@@ -81,7 +81,7 @@ export function LabHeroSection({ labName, logoUrl }: LabHeroSectionProps) {
 
       {/* ── Content ── */}
       <div
-        className={`relative z-10 flex flex-col items-center text-center gap-6 max-w-xs mx-auto transition-[opacity,transform] duration-700 ${
+        className={`relative z-10 flex flex-col items-center text-center gap-6 max-w-xs sm:max-w-sm mx-auto transition-[opacity,transform] duration-700 ${
           mounted ? "opacity-100 translate-y-0" : "opacity-0 translate-y-3"
         }`}
       >

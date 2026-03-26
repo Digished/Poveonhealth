@@ -111,7 +111,7 @@ export default async function LabSlugPage({ params }: LabSlugPageProps) {
 
       {/* Scrollable content area */}
       <main className="flex-1 overflow-y-auto overflow-x-hidden snap-y snap-mandatory">
-        <div className="max-w-2xl mx-auto snap-start snap-always">
+        <div className="w-full snap-start snap-always">
           <LabHeroSection labName={lab.name} logoUrl={logoUrl} />
         </div>
 
