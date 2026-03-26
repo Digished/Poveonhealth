@@ -1476,7 +1476,7 @@ export function DoctorRequestForm({
                             const uploadPct = imageUploadProgress;
                             const UPLOAD_STAGES = [
                               { icon: "📷", label: "Reading your image…", start: 0, end: 40 },
-                              { icon: "☁️", label: "Uploading to server…", start: 40, end: 100 },
+                              { icon: "🧠", label: "Understanding the image…", start: 40, end: 100 },
                             ];
                             return (
                               <div className="rounded-2xl border border-slate-200 bg-white px-6 py-8 space-y-5">
