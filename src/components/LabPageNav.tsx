@@ -95,94 +95,94 @@ export function LabPageNav({ labName, logoUrl }: LabPageNavProps) {
 
   return (
     <>
-      {/* ── Floating login button — fixed over the hero, fades when nav appears ── */}
-      {/* z-40 so the nav bar (z-50) paints above it during any crossfade overlap */}
-      <div
-        className={`fixed top-4 z-40 transition-[opacity,transform] duration-200 ${
-          heroVisible
-            ? "opacity-100 translate-y-0 pointer-events-auto"
-            : "opacity-0 -translate-y-2 pointer-events-none"
-        }`}
-        style={{ right: "max(1rem, calc((100vw - 42rem) / 2 + 1rem))" }}
-      >
-        {loggedIn && typeof session === "object" && (
-          <div className="flex items-center gap-2">
-            <Link href="/doc-login/dashboard"
-              className="flex items-center gap-1.5 text-xs font-semibold bg-white/80 backdrop-blur-sm border border-white/60 text-slate-700 hover:bg-white px-3 py-1.5 rounded-xl shadow-sm transition">
-              <LayoutDashboard className="w-3.5 h-3.5" />
-              <span className="hidden sm:inline">My Dashboard</span>
-            </Link>
-            <button onClick={handleLogout}
-              className="text-xs font-semibold text-slate-400 hover:text-red-600 bg-white/70 backdrop-blur-sm border border-white/50 px-2.5 py-1.5 rounded-xl shadow-sm transition"
-              title="Sign out">
-              <LogOut className="w-3.5 h-3.5" />
-            </button>
-          </div>
-        )}
-        {!isLoading && !loggedIn && (
-          <div className="relative" ref={floatDropdownRef}>
-            <button onClick={() => setLoginOpen((v) => !v)}
-              className="flex items-center gap-1.5 bg-white/80 hover:bg-white backdrop-blur-sm border border-white/60 text-slate-800 text-xs font-semibold px-3.5 py-2 rounded-xl shadow-sm transition">
-              <LogIn className="w-3.5 h-3.5" />
-              Login
-              <ChevronDown className={`w-3 h-3 transition-transform ${loginOpen ? "rotate-180" : ""}`} />
-            </button>
-            {loginOpen && <LoginDropdown anchor="float" />}
-          </div>
-        )}
-      </div>
+      {/*
+        Conditional rendering — only ONE of these two is ever in the DOM.
+        This makes overlap structurally impossible regardless of timing.
+      */}
 
-      {/* ── Compact nav bar — grows into view when hero scrolls away ─────────── */}
-      {/*   max-h-0 → no space taken; max-h-[60px] → full bar shown             */}
-      {/* relative z-50 ensures nav paints above the fixed z-40 floating button  */}
-      <div
-        className={`relative z-50 overflow-hidden shrink-0 transition-[max-height,opacity] duration-200 ${
-          heroVisible ? "max-h-0 opacity-0" : "max-h-[60px] opacity-100"
-        }`}
-      >
-        <div className="bg-white/90 backdrop-blur-md border-b border-slate-200/60 shadow-sm h-[52px]">
-        <div className="max-w-2xl mx-auto px-4 h-full flex items-center justify-between">
-          {/* Logo only — no lab name */}
-          <div className="flex items-center">
-            {logoUrl ? (
-              <img src={logoUrl} alt={labName}
-                className="w-8 h-8 rounded-xl object-cover ring-2 ring-white/70 shadow-sm" />
-            ) : (
-              <PoveonLogo className="w-7 h-7 text-slate-800" />
-            )}
-          </div>
+      {/* ── Floating login button: only rendered while hero is visible ── */}
+      {heroVisible && !isLoading && (
+        <div
+          className="fixed top-4 z-50 animate-float-btn-in"
+          style={{ right: "max(1rem, calc((100vw - 42rem) / 2 + 1rem))" }}
+        >
+          {loggedIn && typeof session === "object" && (
+            <div className="flex items-center gap-2">
+              <Link href="/doc-login/dashboard"
+                className="flex items-center gap-1.5 text-xs font-semibold bg-white/80 backdrop-blur-sm border border-white/60 text-slate-700 hover:bg-white px-3 py-1.5 rounded-xl shadow-sm transition">
+                <LayoutDashboard className="w-3.5 h-3.5" />
+                <span className="hidden sm:inline">My Dashboard</span>
+              </Link>
+              <button onClick={handleLogout}
+                className="text-xs font-semibold text-slate-400 hover:text-red-600 bg-white/70 backdrop-blur-sm border border-white/50 px-2.5 py-1.5 rounded-xl shadow-sm transition"
+                title="Sign out">
+                <LogOut className="w-3.5 h-3.5" />
+              </button>
+            </div>
+          )}
+          {!loggedIn && (
+            <div className="relative" ref={floatDropdownRef}>
+              <button onClick={() => setLoginOpen((v) => !v)}
+                className="flex items-center gap-1.5 bg-white/80 hover:bg-white backdrop-blur-sm border border-white/60 text-slate-800 text-xs font-semibold px-3.5 py-2 rounded-xl shadow-sm transition">
+                <LogIn className="w-3.5 h-3.5" />
+                Login
+                <ChevronDown className={`w-3 h-3 transition-transform ${loginOpen ? "rotate-180" : ""}`} />
+              </button>
+              {loginOpen && <LoginDropdown anchor="float" />}
+            </div>
+          )}
+        </div>
+      )}
 
-          {/* Right: session-aware actions */}
-          <div className="flex items-center gap-2">
-            {!isLoading && loggedIn && typeof session === "object" && (
-              <>
-                <Link href="/doc-login/dashboard"
-                  className="flex items-center gap-1.5 text-xs font-semibold text-slate-600 hover:text-medical-700 px-3 py-1.5 rounded-lg hover:bg-slate-50 transition">
-                  <LayoutDashboard className="w-3.5 h-3.5" />
-                  <span className="hidden sm:inline">My Dashboard</span>
-                </Link>
-                <button onClick={handleLogout}
-                  className="text-xs font-semibold text-slate-400 hover:text-red-600 px-2.5 py-1.5 rounded-lg hover:bg-red-50 transition"
-                  title="Sign out">
-                  <LogOut className="w-3.5 h-3.5" />
-                </button>
-              </>
-            )}
-            {!isLoading && !loggedIn && (
-              <div className="relative" ref={dropdownRef}>
-                <button onClick={() => setLoginOpen((v) => !v)}
-                  className="flex items-center gap-1.5 bg-slate-900 hover:bg-slate-800 text-white text-xs font-semibold px-3.5 py-2 rounded-xl transition shadow-sm">
-                  <LogIn className="w-3.5 h-3.5" />
-                  Login
-                  <ChevronDown className={`w-3 h-3 transition-transform ${loginOpen ? "rotate-180" : ""}`} />
-                </button>
-                {loginOpen && <LoginDropdown anchor="nav" />}
+      {/* ── Compact nav bar: only rendered when hero has scrolled away ── */}
+      {!heroVisible && (
+        <div className="shrink-0 z-50 animate-nav-slide-down">
+          <div className="bg-white/90 backdrop-blur-md border-b border-slate-200/60 shadow-sm h-[52px]">
+            <div className="max-w-2xl mx-auto px-4 h-full flex items-center justify-between">
+              {/* Lab logo */}
+              <div className="flex items-center">
+                {logoUrl ? (
+                  <img src={logoUrl} alt={labName}
+                    className="w-8 h-8 rounded-xl object-cover ring-2 ring-white/70 shadow-sm" />
+                ) : (
+                  <PoveonLogo className="w-7 h-7 text-slate-800" />
+                )}
               </div>
-            )}
+
+              {/* Right: session-aware actions */}
+              {!isLoading && (
+                <div className="flex items-center gap-2">
+                  {loggedIn && typeof session === "object" && (
+                    <>
+                      <Link href="/doc-login/dashboard"
+                        className="flex items-center gap-1.5 text-xs font-semibold text-slate-600 hover:text-medical-700 px-3 py-1.5 rounded-lg hover:bg-slate-50 transition">
+                        <LayoutDashboard className="w-3.5 h-3.5" />
+                        <span className="hidden sm:inline">My Dashboard</span>
+                      </Link>
+                      <button onClick={handleLogout}
+                        className="text-xs font-semibold text-slate-400 hover:text-red-600 px-2.5 py-1.5 rounded-lg hover:bg-red-50 transition"
+                        title="Sign out">
+                        <LogOut className="w-3.5 h-3.5" />
+                      </button>
+                    </>
+                  )}
+                  {!loggedIn && (
+                    <div className="relative" ref={dropdownRef}>
+                      <button onClick={() => setLoginOpen((v) => !v)}
+                        className="flex items-center gap-1.5 bg-slate-900 hover:bg-slate-800 text-white text-xs font-semibold px-3.5 py-2 rounded-xl transition shadow-sm">
+                        <LogIn className="w-3.5 h-3.5" />
+                        Login
+                        <ChevronDown className={`w-3 h-3 transition-transform ${loginOpen ? "rotate-180" : ""}`} />
+                      </button>
+                      {loginOpen && <LoginDropdown anchor="nav" />}
+                    </div>
+                  )}
+                </div>
+              )}
+            </div>
           </div>
         </div>
-        </div>
-      </div>
+      )}
     </>
   );
 }
