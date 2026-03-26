@@ -10,6 +10,7 @@ import {
   Wallet, ArrowUpRight, ArrowDownRight, Settings, CreditCard, MessageCircle, Tag,
 } from "lucide-react";
 import { useDashTheme } from "@/hooks/useDashTheme";
+import LabCatalogSheet from "@/components/LabCatalogSheet";
 import { Button } from "@/components/ui/Button";
 import { Input, Textarea } from "@/components/ui/Input";
 import { StatusBadge, Badge } from "@/components/ui/Badge";
@@ -124,6 +125,7 @@ export function AdminDashboard() {
   const [expandedLabIntegration, setExpandedLabIntegration] = useState<string | null>(null);
   const [branchModalLabId, setBranchModalLabId] = useState<string | null>(null);
   const [walletModalLabId, setWalletModalLabId] = useState<string | null>(null);
+  const [catalogModalLabId, setCatalogModalLabId] = useState<string | null>(null);
   const [defaultRequestPrice, setDefaultRequestPrice] = useState<string>("500");
   const [savingSettings, setSavingSettings] = useState(false);
 
@@ -1062,6 +1064,12 @@ export function AdminDashboard() {
                           <Wallet className="w-3 h-3" />Wallet
                         </button>
                         <button
+                          onClick={() => setCatalogModalLabId(lab.id)}
+                          className="flex items-center justify-center gap-1 px-2.5 py-1.5 rounded-lg bg-amber-500/10 hover:bg-amber-500/20 text-amber-400 hover:text-amber-300 text-xs transition-colors"
+                        >
+                          <Tag className="w-3 h-3" />Catalog
+                        </button>
+                        <button
                           onClick={() => setExpandedLabIntegration(lab.id)}
                           className="flex items-center justify-center gap-1 px-2.5 py-1.5 rounded-lg bg-blue-500/10 hover:bg-blue-500/20 text-blue-400 hover:text-blue-300 text-xs transition-colors"
                         >
@@ -1442,6 +1450,12 @@ export function AdminDashboard() {
         const lab = labs.find((l) => l.id === walletModalLabId);
         return lab ? (
           <LabWalletModal lab={lab} onClose={() => { setWalletModalLabId(null); fetchLabs(); }} />
+        ) : null;
+      })()}
+      {catalogModalLabId && (() => {
+        const lab = labs.find((l) => l.id === catalogModalLabId);
+        return lab ? (
+          <LabCatalogSheet lab={lab} onClose={() => setCatalogModalLabId(null)} />
         ) : null;
       })()}
 
