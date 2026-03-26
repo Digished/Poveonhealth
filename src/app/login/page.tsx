@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useRef, useEffect, Suspense } from "react";
-import { Heart, Mail, KeyRound, ArrowRight, RefreshCw, ChevronLeft, Lock, ShieldCheck } from "lucide-react";
+import { Mail, KeyRound, ArrowRight, RefreshCw, ChevronLeft, Lock, ShieldCheck } from "lucide-react";
 import { PoveonLogo } from "@/components/PoveonLogo";
 import { useRouter } from "next/navigation";
 
@@ -235,8 +235,8 @@ function PatientLoginInner() {
     <div className="min-h-dvh bg-gradient-to-br from-sky-50 via-blue-50 to-indigo-50 flex flex-col items-center justify-center px-4 py-12">
       <div className="w-full max-w-sm">
         <div className="flex flex-col items-center mb-8">
-          <div className="w-12 h-12 rounded-2xl bg-gradient-to-br from-slate-900 via-slate-800 to-indigo-900 flex items-center justify-center shadow-lg mb-3">
-            <Heart className="w-6 h-6 text-sky-300" />
+          <div className="w-12 h-12 rounded-2xl bg-slate-900 flex items-center justify-center shadow-lg mb-3 p-2.5">
+            <PoveonLogo className="w-full h-full text-white" />
           </div>
           <h1 className="text-xl font-bold text-slate-800">Patient Portal</h1>
           <p className="text-sm text-slate-500 mt-1">View your lab test requests and results</p>

@@ -2,8 +2,9 @@
 
 import { useState, useRef } from "react";
 import { useRouter } from "next/navigation";
-import { FlaskConical, Mail, Lock, Eye, EyeOff, ArrowLeft, KeyRound, ArrowRight, ChevronLeft } from "lucide-react";
+import { Mail, Lock, Eye, EyeOff, ArrowLeft, KeyRound, ArrowRight, ChevronLeft } from "lucide-react";
 import { Button } from "@/components/ui/Button";
+import { PoveonLogo } from "@/components/PoveonLogo";
 import { createClient } from "@/lib/supabase/client";
 import { toast } from "react-hot-toast";
 import Link from "next/link";
@@ -49,7 +50,7 @@ function OtpInputs({
           onChange={(e) => handleChange(i, e.target.value)}
           onKeyDown={(e) => handleKeyDown(i, e)}
           style={{ height: "52px" }}
-          className="w-11 text-center text-xl font-bold text-white border border-white/20 rounded-xl bg-white/10 focus:outline-none focus:ring-2 focus:ring-medical-500 focus:border-transparent transition-all"
+          className="w-11 text-center text-xl font-bold text-slate-800 border-2 border-slate-200 rounded-xl bg-white focus:outline-none focus:ring-2 focus:ring-medical-400 focus:border-medical-400 transition-all"
         />
       ))}
     </div>
@@ -154,61 +155,56 @@ export default function LabLoginPage() {
   }
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-slate-900 via-medical-950 to-slate-900 flex items-center justify-center p-4">
-      <div className="absolute inset-0 overflow-hidden pointer-events-none">
-        <div className="absolute top-1/4 -left-32 w-96 h-96 bg-medical-600/10 rounded-full blur-3xl" />
-        <div className="absolute bottom-1/4 -right-32 w-96 h-96 bg-blue-600/10 rounded-full blur-3xl" />
-      </div>
-
-      <div className="w-full max-w-sm relative animate-slide-up">
-        <Link href="/" className="inline-flex items-center gap-1.5 text-slate-400 hover:text-white text-sm mb-6 transition-colors">
+    <div className="min-h-screen bg-gradient-to-br from-sky-50 via-blue-50 to-indigo-50 flex items-center justify-center p-4">
+      <div className="w-full max-w-sm">
+        <Link href="/" className="inline-flex items-center gap-1.5 text-slate-400 hover:text-slate-700 text-sm mb-6 transition-colors">
           <ArrowLeft className="w-4 h-4" />Back to Home
         </Link>
 
-        <div className="bg-white/5 backdrop-blur-xl border border-white/10 rounded-3xl p-8 shadow-2xl">
+        <div className="bg-white/80 backdrop-blur-sm border border-white/60 rounded-3xl p-8 shadow-xl">
 
           {/* ── Login ── */}
           {stage === "login" && (
             <>
-              <div className="text-center mb-8">
-                <div className="w-14 h-14 bg-medical-600 rounded-2xl flex items-center justify-center mx-auto mb-4 shadow-lg">
-                  <FlaskConical className="w-7 h-7 text-white" />
+              <div className="flex flex-col items-center text-center mb-8">
+                <div className="w-12 h-12 rounded-2xl bg-slate-900 flex items-center justify-center shadow-lg mb-3 p-2.5">
+                  <PoveonLogo className="w-full h-full text-white" />
                 </div>
-                <h1 className="text-2xl font-bold text-white mb-1">Lab Login</h1>
-                <p className="text-slate-400 text-sm">Sign in to your laboratory dashboard</p>
+                <h1 className="text-xl font-bold text-slate-800 mb-1">Lab Login</h1>
+                <p className="text-slate-500 text-sm">Sign in to your laboratory dashboard</p>
               </div>
               <form onSubmit={handleLogin} className="space-y-4">
-                {error && <div className="bg-red-500/10 border border-red-500/30 rounded-xl px-4 py-3 text-sm text-red-400">{error}</div>}
+                {error && <p className="text-xs text-red-600 bg-red-50 border border-red-100 rounded-xl px-3 py-2">{error}</p>}
                 <div>
-                  <label className="text-sm font-medium text-slate-300 mb-1.5 flex items-center gap-1.5">
-                    <Mail className="w-3.5 h-3.5" />Email Address
+                  <label className="text-sm font-medium text-slate-700 mb-1.5 flex items-center gap-1.5">
+                    <Mail className="w-3.5 h-3.5 text-slate-400" />Email Address
                   </label>
                   <input type="email" value={email} onChange={(e) => { setEmail(e.target.value); setError(""); }}
                     placeholder="lab@hospital.com" autoComplete="email" required
-                    className="w-full bg-white/10 border border-white/20 rounded-xl px-4 py-2.5 text-white placeholder-slate-500 text-sm focus:outline-none focus:ring-2 focus:ring-medical-500 focus:border-transparent transition-all" />
+                    className="w-full bg-white border border-slate-200 rounded-xl px-4 py-2.5 text-slate-800 placeholder-slate-400 text-sm focus:outline-none focus:ring-2 focus:ring-medical-400 focus:border-transparent transition-all" />
                 </div>
                 <div>
-                  <label className="text-sm font-medium text-slate-300 mb-1.5 flex items-center gap-1.5">
-                    <Lock className="w-3.5 h-3.5" />Password
+                  <label className="text-sm font-medium text-slate-700 mb-1.5 flex items-center gap-1.5">
+                    <Lock className="w-3.5 h-3.5 text-slate-400" />Password
                   </label>
                   <div className="relative">
                     <input type={showPassword ? "text" : "password"} value={password}
                       onChange={(e) => { setPassword(e.target.value); setError(""); }}
                       placeholder="••••••••" autoComplete="current-password" required
-                      className="w-full bg-white/10 border border-white/20 rounded-xl px-4 py-2.5 pr-10 text-white placeholder-slate-500 text-sm focus:outline-none focus:ring-2 focus:ring-medical-500 focus:border-transparent transition-all" />
+                      className="w-full bg-white border border-slate-200 rounded-xl px-4 py-2.5 pr-10 text-slate-800 placeholder-slate-400 text-sm focus:outline-none focus:ring-2 focus:ring-medical-400 focus:border-transparent transition-all" />
                     <button type="button" onClick={() => setShowPassword((v) => !v)}
-                      className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-200 transition-colors">
+                      className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600 transition-colors">
                       {showPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
                     </button>
                   </div>
                 </div>
                 <Button type="submit" size="lg" loading={loading} className="mt-2">Sign In to Dashboard</Button>
               </form>
-              <p className="text-center text-xs text-slate-500 mt-6">
+              <p className="text-center text-xs text-slate-400 mt-6">
                 Forgot your password?{" "}
                 <button type="button"
                   onClick={() => { setForgotEmail(email); setError(""); setStage("forgot-email"); }}
-                  className="text-medical-400 hover:text-medical-300 transition-colors underline underline-offset-2">
+                  className="text-medical-500 hover:text-medical-700 transition-colors underline underline-offset-2">
                   Reset it
                 </button>
               </p>
@@ -219,21 +215,21 @@ export default function LabLoginPage() {
           {stage === "forgot-email" && (
             <>
               <button type="button" onClick={() => { setStage("login"); setError(""); }}
-                className="flex items-center gap-1 text-xs text-slate-400 hover:text-white transition mb-5">
+                className="flex items-center gap-1 text-xs text-slate-400 hover:text-slate-600 transition mb-5">
                 <ChevronLeft className="w-3.5 h-3.5" />Back to login
               </button>
               <div className="text-center mb-6">
-                <div className="w-12 h-12 bg-amber-500/20 rounded-2xl flex items-center justify-center mx-auto mb-3">
-                  <KeyRound className="w-6 h-6 text-amber-400" />
+                <div className="w-12 h-12 bg-amber-50 border border-amber-100 rounded-2xl flex items-center justify-center mx-auto mb-3">
+                  <KeyRound className="w-6 h-6 text-amber-500" />
                 </div>
-                <h2 className="text-xl font-bold text-white mb-1">Reset Password</h2>
-                <p className="text-slate-400 text-sm">Enter your lab account email to receive a verification code</p>
+                <h2 className="text-xl font-bold text-slate-800 mb-1">Reset Password</h2>
+                <p className="text-slate-500 text-sm">Enter your lab account email to receive a verification code</p>
               </div>
               <form onSubmit={handleForgotSubmit} className="space-y-4">
-                {error && <div className="bg-red-500/10 border border-red-500/30 rounded-xl px-4 py-3 text-sm text-red-400">{error}</div>}
+                {error && <p className="text-xs text-red-600 bg-red-50 border border-red-100 rounded-xl px-3 py-2">{error}</p>}
                 <input type="email" value={forgotEmail} onChange={(e) => { setForgotEmail(e.target.value); setError(""); }}
                   placeholder="lab@hospital.com" autoComplete="email" required
-                  className="w-full bg-white/10 border border-white/20 rounded-xl px-4 py-2.5 text-white placeholder-slate-500 text-sm focus:outline-none focus:ring-2 focus:ring-medical-500 focus:border-transparent transition-all" />
+                  className="w-full bg-white border border-slate-200 rounded-xl px-4 py-2.5 text-slate-800 placeholder-slate-400 text-sm focus:outline-none focus:ring-2 focus:ring-medical-400 focus:border-transparent transition-all" />
                 <button type="submit" disabled={loading}
                   className="w-full flex items-center justify-center gap-2 bg-medical-600 hover:bg-medical-700 disabled:opacity-60 text-white font-semibold text-sm px-4 py-3 rounded-xl transition">
                   {loading ? <Spinner /> : <>Send Verification Code <ArrowRight className="w-4 h-4" /></>}
@@ -246,30 +242,32 @@ export default function LabLoginPage() {
           {stage === "forgot-otp" && (
             <>
               <button type="button" onClick={() => { setStage("forgot-email"); setError(""); }}
-                className="flex items-center gap-1 text-xs text-slate-400 hover:text-white transition mb-5">
+                className="flex items-center gap-1 text-xs text-slate-400 hover:text-slate-600 transition mb-5">
                 <ChevronLeft className="w-3.5 h-3.5" />Back
               </button>
               <div className="text-center mb-6">
-                <KeyRound className="w-8 h-8 text-amber-400 mx-auto mb-2" />
-                <h2 className="text-lg font-bold text-white mb-1">Enter Verification Code</h2>
+                <div className="w-10 h-10 bg-amber-50 border border-amber-100 rounded-xl flex items-center justify-center mx-auto mb-2">
+                  <KeyRound className="w-5 h-5 text-amber-500" />
+                </div>
+                <h2 className="text-lg font-bold text-slate-800 mb-1">Enter Verification Code</h2>
                 <p className="text-xs text-slate-400">
-                  Sent to <span className="font-semibold text-slate-200">{forgotEmail}</span>. Expires in 10 minutes.
+                  Sent to <span className="font-semibold text-slate-600">{forgotEmail}</span>. Expires in 10 minutes.
                 </p>
               </div>
               <form onSubmit={handleOtpSubmit} className="space-y-4">
-                {error && <div className="bg-red-500/10 border border-red-500/30 rounded-xl px-4 py-3 text-sm text-red-400">{error}</div>}
+                {error && <p className="text-xs text-red-600 bg-red-50 border border-red-100 rounded-xl px-3 py-2">{error}</p>}
                 <OtpInputs values={otp} setValues={setOtp} refs={otpRefs} />
                 <button type="submit" disabled={loading || otp.join("").length !== 6}
                   className="w-full flex items-center justify-center gap-2 bg-medical-600 hover:bg-medical-700 disabled:opacity-60 text-white font-semibold text-sm px-4 py-3 rounded-xl transition">
                   {loading ? <Spinner /> : <>Verify Code <ArrowRight className="w-4 h-4" /></>}
                 </button>
-                <p className="text-center text-xs text-slate-500">
+                <p className="text-center text-xs text-slate-400">
                   {countdown > 0
                     ? `Resend in ${countdown}s`
                     : <button type="button" onClick={async () => {
                         setLoading(true);
                         try { await sendOtp(forgotEmail); } catch { /* */ } finally { setLoading(false); }
-                      }} disabled={loading} className="text-medical-400 hover:text-medical-300 transition underline underline-offset-2">
+                      }} disabled={loading} className="text-medical-500 hover:text-medical-700 transition underline underline-offset-2">
                         Resend code
                       </button>
                   }
@@ -282,34 +280,34 @@ export default function LabLoginPage() {
           {stage === "forgot-password" && (
             <>
               <div className="text-center mb-6">
-                <div className="w-12 h-12 bg-emerald-500/20 rounded-2xl flex items-center justify-center mx-auto mb-3">
-                  <Lock className="w-6 h-6 text-emerald-400" />
+                <div className="w-12 h-12 bg-emerald-50 border border-emerald-100 rounded-2xl flex items-center justify-center mx-auto mb-3">
+                  <Lock className="w-6 h-6 text-emerald-600" />
                 </div>
-                <h2 className="text-xl font-bold text-white mb-1">Set New Password</h2>
-                <p className="text-slate-400 text-sm">Identity verified. Choose a strong new password.</p>
+                <h2 className="text-xl font-bold text-slate-800 mb-1">Set New Password</h2>
+                <p className="text-slate-500 text-sm">Identity verified. Choose a strong new password.</p>
               </div>
               <form onSubmit={handleNewPassword} className="space-y-4">
-                {error && <div className="bg-red-500/10 border border-red-500/30 rounded-xl px-4 py-3 text-sm text-red-400">{error}</div>}
+                {error && <p className="text-xs text-red-600 bg-red-50 border border-red-100 rounded-xl px-3 py-2">{error}</p>}
                 <div>
-                  <label className="text-xs font-medium text-slate-400 mb-1.5 block">New Password</label>
+                  <label className="text-xs font-medium text-slate-500 mb-1.5 block">New Password</label>
                   <div className="relative">
                     <input type={showNew ? "text" : "password"} value={newPassword}
                       onChange={(e) => setNewPassword(e.target.value)} placeholder="At least 8 characters"
-                      className="w-full bg-white/10 border border-white/20 rounded-xl px-4 py-2.5 pr-10 text-white placeholder-slate-500 text-sm focus:outline-none focus:ring-2 focus:ring-medical-500 focus:border-transparent" />
+                      className="w-full bg-white border border-slate-200 rounded-xl px-4 py-2.5 pr-10 text-slate-800 placeholder-slate-400 text-sm focus:outline-none focus:ring-2 focus:ring-medical-400 focus:border-transparent" />
                     <button type="button" onClick={() => setShowNew((v) => !v)}
-                      className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-200">
+                      className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600">
                       {showNew ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
                     </button>
                   </div>
                 </div>
                 <div>
-                  <label className="text-xs font-medium text-slate-400 mb-1.5 block">Confirm New Password</label>
+                  <label className="text-xs font-medium text-slate-500 mb-1.5 block">Confirm New Password</label>
                   <div className="relative">
                     <input type={showConfirm ? "text" : "password"} value={confirmPassword}
                       onChange={(e) => setConfirmPassword(e.target.value)} placeholder="Repeat new password"
-                      className="w-full bg-white/10 border border-white/20 rounded-xl px-4 py-2.5 pr-10 text-white placeholder-slate-500 text-sm focus:outline-none focus:ring-2 focus:ring-medical-500 focus:border-transparent" />
+                      className="w-full bg-white border border-slate-200 rounded-xl px-4 py-2.5 pr-10 text-slate-800 placeholder-slate-400 text-sm focus:outline-none focus:ring-2 focus:ring-medical-400 focus:border-transparent" />
                     <button type="button" onClick={() => setShowConfirm((v) => !v)}
-                      className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-200">
+                      className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600">
                       {showConfirm ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
                     </button>
                   </div>
@@ -323,7 +321,10 @@ export default function LabLoginPage() {
           )}
 
         </div>
-        <p className="text-center text-xs text-slate-600 mt-4">This portal is for registered laboratories only.</p>
+        <p className="text-center text-xs text-slate-400 mt-6 flex items-center justify-center gap-1.5">
+          <PoveonLogo className="w-4 h-4 opacity-40" />
+          Powered by Poveon
+        </p>
       </div>
     </div>
   );
