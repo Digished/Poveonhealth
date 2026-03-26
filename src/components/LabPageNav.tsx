@@ -15,8 +15,10 @@ export function LabPageNav({ labName, logoUrl }: LabPageNavProps) {
   const router = useRouter();
   const [session, setSession] = useState<DocSession | null | "loading">("loading");
   const [loginOpen, setLoginOpen] = useState(false);
-  // true = hero is still visible in the scroll area
+  // true = hero is still visible in the scroll area (controls nav bar)
   const [heroVisible, setHeroVisible] = useState(true);
+  // false = main has been scrolled at all (hides float button immediately on scroll)
+  const [atTop, setAtTop] = useState(true);
   const dropdownRef = useRef<HTMLDivElement>(null);
   const floatDropdownRef = useRef<HTMLDivElement>(null);
 
@@ -27,7 +29,7 @@ export function LabPageNav({ labName, logoUrl }: LabPageNavProps) {
       .catch(() => setSession(null));
   }, []);
 
-  // IntersectionObserver: watch #lab-hero inside <main>
+  // IntersectionObserver: watch #lab-hero inside <main> — controls nav bar
   useEffect(() => {
     const main = document.querySelector("main");
     const hero = document.getElementById("lab-hero");
@@ -35,12 +37,21 @@ export function LabPageNav({ labName, logoUrl }: LabPageNavProps) {
     const obs = new IntersectionObserver(
       ([entry]) => {
         setHeroVisible(entry.isIntersecting);
-        if (!entry.isIntersecting) setLoginOpen(false); // close any open dropdown
+        if (!entry.isIntersecting) setLoginOpen(false);
       },
       { root: main, threshold: 0 },
     );
     obs.observe(hero);
     return () => obs.disconnect();
+  }, []);
+
+  // Scroll listener: hide float button the instant main starts scrolling
+  useEffect(() => {
+    const main = document.querySelector("main");
+    if (!main) return;
+    function onScroll() { setAtTop(main!.scrollTop < 8); }
+    main.addEventListener("scroll", onScroll, { passive: true });
+    return () => main.removeEventListener("scroll", onScroll);
   }, []);
 
   // Close dropdown on outside click (handles both floating + nav dropdown)
@@ -100,8 +111,8 @@ export function LabPageNav({ labName, logoUrl }: LabPageNavProps) {
         This makes overlap structurally impossible regardless of timing.
       */}
 
-      {/* ── Floating login button: only rendered while hero is visible ── */}
-      {heroVisible && !isLoading && (
+      {/* ── Floating login button: hides the instant main scrolls at all ── */}
+      {atTop && !isLoading && (
         <div
           className="fixed top-4 z-50 animate-float-btn-in"
           style={{ right: "max(1rem, calc((100vw - 42rem) / 2 + 1rem))" }}
