@@ -614,6 +614,7 @@ export function DoctorRequestForm({
     confidence: "high" | "medium" | "low"; low_confidence_items: string[];
   } | null>(null);
   const [extractionDismissed, setExtractionDismissed] = useState(false);
+  const [extractionProgress, setExtractionProgress] = useState(0);
   const [testTags, setTestTags] = useState<TestTag[]>([]);
   const testsString = testTags.map((t) => t.name).join(", ");
 
@@ -866,6 +867,17 @@ export function DoctorRequestForm({
     const t4 = setTimeout(() => setProgress(88), 3600);
     return () => { clearTimeout(t1); clearTimeout(t2); clearTimeout(t3); clearTimeout(t4); };
   }, [submitting]);
+
+  // Simulate AI extraction progress stages
+  useEffect(() => {
+    if (!imageExtracting) { setExtractionProgress(0); return; }
+    setExtractionProgress(0);
+    const t1 = setTimeout(() => setExtractionProgress(25), 500);
+    const t2 = setTimeout(() => setExtractionProgress(50), 1500);
+    const t3 = setTimeout(() => setExtractionProgress(75), 3000);
+    const t4 = setTimeout(() => setExtractionProgress(90), 5000);
+    return () => { clearTimeout(t1); clearTimeout(t2); clearTimeout(t3); clearTimeout(t4); };
+  }, [imageExtracting]);
 
   async function handleSubmit() {
     if (!validateStep(4)) return;
@@ -1386,7 +1398,7 @@ export function DoctorRequestForm({
                   {/* Picture mode: image upload */}
                   {clinicalMode === "picture" && (
                     <div className="space-y-3 animate-fade-in-up">
-                      <p className="text-sm text-slate-500">Upload a photo of the physical test request slip — we&apos;ll read it with AI and pre-fill the form for you.</p>
+                      <p className="text-sm text-slate-500">Upload a photo of a filled physical test request and watch the magic happen.</p>
                         {testImageUrl ? (
                           <div className="space-y-2">
                             {/* Image thumbnail row */}
@@ -1396,17 +1408,12 @@ export function DoctorRequestForm({
                                 <p className="text-sm font-semibold text-emerald-700 flex items-center gap-1.5">
                                   <Check className="w-4 h-4" /> Image uploaded
                                 </p>
-                                {imageExtracting ? (
-                                  <p className="text-xs text-medical-600 mt-0.5 flex items-center gap-1">
-                                    <RefreshCw className="w-3 h-3 animate-spin" /> Scanning with AI…
-                                  </p>
-                                ) : extractionResult && !extractionDismissed ? (
+                                {extractionResult && !extractionDismissed ? (
                                   <p className="text-xs text-emerald-600 mt-0.5 flex items-center gap-1">
                                     <Check className="w-3 h-3" /> Fields pre-filled
-                                    {extractionResult.confidence === "low" && <span className="text-amber-600"> — low confidence, please review</span>}
                                   </p>
                                 ) : (
-                                  <p className="text-xs text-slate-400 mt-0.5 truncate">{testImageUrl.split("/").pop()}</p>
+                                  <p className="text-xs text-slate-400 mt-0.5 truncate">{testImageUrl?.split("/").pop()}</p>
                                 )}
                               </div>
                               <button type="button" onClick={() => { setTestImageUrl(null); setImageUploadError(null); setExtractionResult(null); setExtractionDismissed(false); }} className="p-1.5 rounded-lg hover:bg-emerald-100 text-emerald-400 hover:text-emerald-700 transition-colors shrink-0" aria-label="Remove uploaded image">
@@ -1465,21 +1472,77 @@ export function DoctorRequestForm({
                             )}
                           </div>
                         ) : imageUploading ? (
-                          <div className="flex flex-col items-center gap-4 rounded-2xl border-2 border-dashed border-medical-300 bg-medical-50/30 px-6 py-10 text-center">
-                            <div className="w-14 h-14 rounded-2xl bg-medical-100 flex items-center justify-center">
-                              <RefreshCw className="w-7 h-7 text-medical-600 animate-spin" />
-                            </div>
-                            <div>
-                              <p className="text-sm font-semibold text-medical-700">Uploading your image…</p>
-                              <p className="text-xs text-slate-400 mt-1">{imageUploadProgress < 100 ? `${imageUploadProgress}%` : "Processing…"}</p>
-                            </div>
-                            <div className="w-full max-w-[200px] bg-medical-100 rounded-full h-2 overflow-hidden">
-                              <div
-                                className="h-full bg-medical-500 rounded-full transition-all duration-300"
-                                style={{ width: `${imageUploadProgress}%` }}
-                              />
-                            </div>
-                          </div>
+                          (() => {
+                            const uploadPct = imageUploadProgress;
+                            const UPLOAD_STAGES = [
+                              { icon: "📷", label: "Reading your image…", start: 0, end: 40 },
+                              { icon: "☁️", label: "Uploading to server…", start: 40, end: 100 },
+                            ];
+                            return (
+                              <div className="rounded-2xl border border-slate-200 bg-white px-6 py-8 space-y-5">
+                                <div className="text-center">
+                                  <p className="text-sm font-semibold text-slate-700">Uploading image…</p>
+                                  <p className="text-xs text-slate-400 mt-0.5">{uploadPct < 100 ? `${uploadPct}%` : "Almost done…"}</p>
+                                </div>
+                                <div className="w-full bg-slate-100 rounded-full h-1.5 overflow-hidden">
+                                  <div className="h-full bg-medical-500 rounded-full transition-all duration-300" style={{ width: `${uploadPct}%` }} />
+                                </div>
+                                <div className="space-y-2.5">
+                                  {UPLOAD_STAGES.map((stage) => {
+                                    const done = uploadPct >= stage.end;
+                                    const active = uploadPct >= stage.start && uploadPct < stage.end;
+                                    return (
+                                      <div key={stage.label} className={`flex items-center gap-3 transition-opacity duration-300 ${uploadPct < stage.start ? "opacity-30" : "opacity-100"}`}>
+                                        <div className={`w-7 h-7 rounded-full flex items-center justify-center shrink-0 text-base transition-all ${done ? "bg-emerald-100" : active ? "bg-medical-100" : "bg-slate-100"}`}>
+                                          {done ? "✓" : stage.icon}
+                                        </div>
+                                        <span className={`text-sm font-medium ${done ? "text-emerald-600" : active ? "text-slate-800" : "text-slate-400"}`}>{stage.label}</span>
+                                        {active && <RefreshCw className="w-3.5 h-3.5 text-medical-400 animate-spin ml-auto shrink-0" />}
+                                        {done && <span className="text-xs text-emerald-500 ml-auto shrink-0 font-medium">Done</span>}
+                                      </div>
+                                    );
+                                  })}
+                                </div>
+                              </div>
+                            );
+                          })()
+                        ) : imageExtracting ? (
+                          (() => {
+                            const p = extractionProgress;
+                            const SCAN_STAGES = [
+                              { icon: "🔍", label: "Reading the document…",        start: 0,  end: 25 },
+                              { icon: "🧬", label: "Identifying tests & fields…",  start: 25, end: 50 },
+                              { icon: "🏷️", label: "Matching to test catalog…",    start: 50, end: 75 },
+                              { icon: "✨", label: "Pre-filling your form…",       start: 75, end: 100 },
+                            ];
+                            return (
+                              <div className="rounded-2xl border border-slate-200 bg-white px-6 py-8 space-y-5">
+                                <div className="text-center">
+                                  <p className="text-sm font-semibold text-slate-700">Scanning with AI…</p>
+                                  <p className="text-xs text-slate-400 mt-0.5">Hang tight, this only takes a few seconds</p>
+                                </div>
+                                <div className="w-full bg-slate-100 rounded-full h-1.5 overflow-hidden">
+                                  <div className="h-full bg-medical-500 rounded-full transition-all duration-700" style={{ width: `${p}%` }} />
+                                </div>
+                                <div className="space-y-2.5">
+                                  {SCAN_STAGES.map((stage) => {
+                                    const done = p >= stage.end;
+                                    const active = p >= stage.start && p < stage.end;
+                                    return (
+                                      <div key={stage.label} className={`flex items-center gap-3 transition-opacity duration-300 ${p < stage.start ? "opacity-30" : "opacity-100"}`}>
+                                        <div className={`w-7 h-7 rounded-full flex items-center justify-center shrink-0 text-base transition-all ${done ? "bg-emerald-100" : active ? "bg-medical-100" : "bg-slate-100"}`}>
+                                          {done ? "✓" : stage.icon}
+                                        </div>
+                                        <span className={`text-sm font-medium ${done ? "text-emerald-600" : active ? "text-slate-800" : "text-slate-400"}`}>{stage.label}</span>
+                                        {active && <RefreshCw className="w-3.5 h-3.5 text-medical-400 animate-spin ml-auto shrink-0" />}
+                                        {done && <span className="text-xs text-emerald-500 ml-auto shrink-0 font-medium">Done</span>}
+                                      </div>
+                                    );
+                                  })}
+                                </div>
+                              </div>
+                            );
+                          })()
                         ) : (
                           <label className="cursor-pointer">
                             <div className={`flex flex-col items-center gap-2 rounded-2xl border-2 border-dashed px-6 py-8 transition-colors text-center ${imageUploadError ? "border-red-300 bg-red-50/30" : "border-slate-200 bg-slate-50/50 hover:border-medical-300 hover:bg-medical-50/30"}`}>
