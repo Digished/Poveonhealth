@@ -13,16 +13,16 @@ export default async function HomePage() {
     orderBy: { name: "asc" },
   });
   return (
-    <div className="relative h-dvh flex flex-col bg-white overflow-hidden">
-      {/* Mesh background — CSS gradients only, no filter blur */}
+    <div className="relative h-dvh flex flex-col bg-sky-50 overflow-hidden">
+      {/* Full-page gradient wash — deep sky at top, pale blue through the form */}
       <div
         className="absolute inset-0 -z-10 pointer-events-none"
         aria-hidden="true"
         style={{
           backgroundImage:
-            "radial-gradient(ellipse 70% 50% at 25% 0%, rgba(224,242,254,0.7) 0%, transparent 70%), " +
-            "radial-gradient(ellipse 60% 45% at 90% 30%, rgba(224,231,255,0.5) 0%, transparent 65%), " +
-            "radial-gradient(ellipse 55% 50% at 5% 90%, rgba(240,253,244,0.6) 0%, transparent 65%)",
+            "radial-gradient(ellipse 100% 55% at 50% 0%, rgba(186,230,255,0.85) 0%, rgba(224,242,254,0.5) 50%, transparent 80%), " +
+            "radial-gradient(ellipse 70% 50% at 90% 25%, rgba(199,210,254,0.45) 0%, transparent 65%), " +
+            "radial-gradient(ellipse 60% 40% at 5% 70%, rgba(207,250,254,0.4) 0%, transparent 65%)",
         }}
       />
 
@@ -30,7 +30,7 @@ export default async function HomePage() {
 
       {/* Scrollable content area */}
       <main className="flex-1 overflow-y-auto overflow-x-hidden snap-y snap-mandatory">
-        <div className="max-w-2xl mx-auto snap-start snap-always">
+        <div className="w-full snap-start snap-always">
           <HeroSection />
         </div>
 
@@ -40,7 +40,7 @@ export default async function HomePage() {
         </div>
 
         {/* Trust indicators strip */}
-        <div className="w-full border-t border-white/60 bg-white/30 backdrop-blur-sm mt-4">
+        <div className="w-full border-t border-sky-100/60 bg-sky-50/40 mt-4">
           <div className="max-w-2xl mx-auto px-4 py-4">
             <TrustIndicators />
           </div>

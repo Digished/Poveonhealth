@@ -121,13 +121,6 @@ export function LabHeroSection({ labName, logoUrl }: LabHeroSectionProps) {
             {labName}
           </h1>
 
-          {/* Divider accent */}
-          <div className="flex items-center justify-center gap-2 pt-1">
-            <div className="h-px w-10 bg-gradient-to-r from-transparent to-slate-300" />
-            <span className="text-[11px] text-slate-400 font-medium">diagnostic services</span>
-            <div className="h-px w-10 bg-gradient-to-l from-transparent to-slate-300" />
-          </div>
-
           <p className="text-[13px] text-slate-500 leading-relaxed pt-0.5">
             What test does your patient need today?
           </p>

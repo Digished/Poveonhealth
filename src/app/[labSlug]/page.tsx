@@ -94,7 +94,7 @@ export default async function LabSlugPage({ params }: LabSlugPageProps) {
           }}
         />
       )}
-      <div className="absolute inset-0 -z-10 bg-white/80 pointer-events-none" aria-hidden="true" />
+      <div className="absolute inset-0 -z-10 bg-white/50 pointer-events-none" aria-hidden="true" />
 
       {/* Branded splash */}
       <LabSplash logoUrl={logoUrl} labName={lab.name} />

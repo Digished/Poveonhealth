@@ -172,20 +172,20 @@ export function HeroSection() {
   return (
     <>
       <div
-        className={`relative overflow-hidden py-8 px-4 transition-colors duration-700 ${
+        className={`relative overflow-hidden py-10 px-4 pb-12 transition-colors duration-700 ${
           isDay
-            ? "bg-gradient-to-b from-sky-100/90 via-blue-50/50 to-transparent"
-            : "bg-gradient-to-b from-indigo-100/70 via-slate-100/40 to-transparent"
+            ? "bg-gradient-to-b from-sky-200/70 via-sky-100/50 to-transparent"
+            : "bg-gradient-to-b from-indigo-200/60 via-slate-100/40 to-transparent"
         }`}
       >
         {isDay ? <CloudLayer /> : <StarField />}
 
-        <div className="relative z-10 flex flex-col items-center text-center gap-2 max-w-md mx-auto">
-          <div className="mb-0.5">{isDay ? <SunIcon /> : <MoonIcon />}</div>
-          <h1 className="text-2xl font-bold text-slate-800 tracking-tight">
+        <div className="relative z-10 flex flex-col items-center text-center gap-2.5 max-w-md mx-auto">
+          <div className="mb-1">{isDay ? <SunIcon /> : <MoonIcon />}</div>
+          <h1 className="text-3xl font-bold text-slate-800 tracking-tight">
             {GREETING[tod]}
           </h1>
-          <p className="text-sm text-slate-500 leading-relaxed">
+          <p className="text-sm text-slate-500 leading-relaxed max-w-xs">
             What test does your patient need today?{" "}
             <button
               type="button"

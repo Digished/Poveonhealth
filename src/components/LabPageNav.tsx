@@ -135,7 +135,8 @@ export function LabPageNav({ labName, logoUrl }: LabPageNavProps) {
           heroVisible ? "max-h-0 opacity-0" : "max-h-[60px] opacity-100"
         }`}
       >
-        <div className="bg-white/90 backdrop-blur-md border-b border-slate-200/60 shadow-sm px-4 flex items-center justify-between h-[52px]">
+        <div className="bg-white/90 backdrop-blur-md border-b border-slate-200/60 shadow-sm h-[52px]">
+        <div className="max-w-2xl mx-auto px-4 h-full flex items-center justify-between">
           {/* Logo only — no lab name */}
           <div className="flex items-center">
             {logoUrl ? (
@@ -174,6 +175,7 @@ export function LabPageNav({ labName, logoUrl }: LabPageNavProps) {
               </div>
             )}
           </div>
+        </div>
         </div>
       </div>
     </>
