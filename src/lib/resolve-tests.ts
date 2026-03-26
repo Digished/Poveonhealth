@@ -4,16 +4,18 @@
  * Resolves a raw comma-/newline-separated test string into structured catalog matches.
  *
  * Resolution order (first match wins):
- *  1. Exact synonym match     — DB lookup, case-insensitive          confidence: 1.0
- *  2. Prefix/contains match   — ILIKE on synonym table               confidence: 0.85
- *  3. Regex category match    — existing test-categories.ts rules    confidence: 0.5
- *  4. AI classification       — gpt-4o-mini                          confidence: variable
- *  5. Others / Uncategorized  — guaranteed catch-all                 confidence: 0.0
+ *  0. Lab catalog match    — lab_offered_tests.synonyms for this lab  confidence: 1.0
+ *  1. Exact synonym match  — DB lookup, case-insensitive              confidence: 1.0
+ *  2. Prefix/contains match — ILIKE on synonym table                  confidence: 0.85
+ *  3. Regex category match — existing test-categories.ts rules        confidence: 0.5
+ *  4. AI classification    — gpt-4o-mini                              confidence: variable
+ *  5. Others / Uncategorized — guaranteed catch-all                   confidence: 0.0
  */
 
 import OpenAI from "openai";
 import { prisma } from "@/lib/prisma";
 import { testsToCategories } from "@/lib/test-categories";
+import type { Decimal } from "@prisma/client/runtime/library";
 
 const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
 
@@ -25,6 +27,21 @@ export type ResolvedTest = {
   unit_price: number;
   confidence: number;
   is_others: boolean;
+  /** Set when matched from this lab's own catalog (lab_offered_tests) */
+  lab_offered_test_id?: string | null;
+  /** Poveon commission amount — only present for lab catalog matches */
+  poveon_fee?: number | null;
+  /** Where the price/match came from */
+  source?: "lab_catalog" | "exact_synonym" | "fuzzy_synonym" | "regex_category" | "ai" | "others";
+};
+
+type LabCatalogEntry = {
+  id: string;
+  raw_name: string;
+  category_label: string | null;
+  synonyms: unknown;
+  lab_price: Decimal;
+  poveon_fee: Decimal | null;
 };
 
 // ── Helpers ──────────────────────────────────────────────────────────────────
@@ -86,7 +103,41 @@ async function othersResult(raw: string, labId: string | null): Promise<Resolved
     unit_price: price,
     confidence: 0,
     is_others: true,
+    source: "others",
   };
+}
+
+// ── Step 0: Lab catalog match ─────────────────────────────────────────────────
+// Highest priority. Checks the lab's own uploaded test catalog (lab_offered_tests).
+// Matches the normalized test name against each row's synonyms JSON array.
+// Uses lab_price directly — no catalog resolution needed.
+
+function labCatalogMatch(
+  normalized: string,
+  catalog: LabCatalogEntry[]
+): ResolvedTest | null {
+  const q = normalized.toLowerCase();
+  for (const entry of catalog) {
+    const synonyms = Array.isArray(entry.synonyms) ? (entry.synonyms as unknown[]) : [];
+    const matched = synonyms.some(
+      (s) => typeof s === "string" && s.toLowerCase() === q
+    );
+    if (matched) {
+      return {
+        raw: normalized,
+        canonical_id: null,
+        canonical_name: entry.raw_name,
+        category: entry.category_label ?? "Lab Test",
+        unit_price: Number(entry.lab_price),
+        confidence: 1.0,
+        is_others: false,
+        lab_offered_test_id: entry.id,
+        poveon_fee: entry.poveon_fee ? Number(entry.poveon_fee) : null,
+        source: "lab_catalog",
+      };
+    }
+  }
+  return null;
 }
 
 // ── Step 1: Exact synonym match ───────────────────────────────────────────────
@@ -110,6 +161,7 @@ async function exactMatch(
     unit_price: price,
     confidence: 1.0,
     is_others: false,
+    source: "exact_synonym",
   };
 }
 
@@ -141,7 +193,6 @@ async function fuzzyMatch(
       Math.abs(b.synonym.length - normalized.length)
   )[0];
 
-  // Confidence degrades the more the synonym diverges from the input
   const ratio = normalized.length / best.synonym.length;
   const confidence = Math.max(0.6, Math.min(0.9, ratio));
 
@@ -155,12 +206,11 @@ async function fuzzyMatch(
     unit_price: price,
     confidence,
     is_others: false,
+    source: "fuzzy_synonym",
   };
 }
 
 // ── Step 3: Regex category match ──────────────────────────────────────────────
-// Maps to a category slug, then returns the first active test in that category
-// (or falls through to Others if the category has no tests yet)
 
 const CATEGORY_SLUG_MAP: Record<string, string> = {
   "X-Ray":               "x-ray",
@@ -175,7 +225,7 @@ const CATEGORY_SLUG_MAP: Record<string, string> = {
   "Microbiology":        "microbiology-culture",
   "Stool Test":          "stool-faecal-tests",
   "Urine Test":          "urinalysis",
-  "Blood Test":          "hematology", // broadest fallback for unclassified blood tests
+  "Blood Test":          "hematology",
 };
 
 async function regexCategoryMatch(
@@ -194,7 +244,6 @@ async function regexCategoryMatch(
   });
   if (!category) return null;
 
-  // Price based on the category's general price (lab override or global base_price)
   const unit_price = await effectiveCategoryPrice(category.id, labId);
 
   return {
@@ -205,6 +254,7 @@ async function regexCategoryMatch(
     unit_price,
     confidence: 0.5,
     is_others: false,
+    source: "regex_category",
   };
 }
 
@@ -247,10 +297,9 @@ Return JSON: { "canonical_name": string, "category": string, "confidence": numbe
     // Try to find the canonical_name in the DB as an exact match
     const dbMatch = await exactMatch(parsed.canonical_name, labId);
     if (dbMatch) {
-      return { ...dbMatch, raw, confidence: Math.min(dbMatch.confidence, parsed.confidence ?? 0.6) };
+      return { ...dbMatch, raw, confidence: Math.min(dbMatch.confidence, parsed.confidence ?? 0.6), source: "ai" };
     }
 
-    // Look up the category to get its pricing
     const categoryRecord = await prisma.testCategory.findFirst({
       where: { name: { equals: parsed.category, mode: "insensitive" } },
       select: { id: true },
@@ -267,6 +316,7 @@ Return JSON: { "canonical_name": string, "category": string, "confidence": numbe
       unit_price,
       confidence: parsed.confidence ?? 0.5,
       is_others: parsed.category === "Others / Uncategorized",
+      source: "ai",
     };
   } catch {
     return null;
@@ -290,11 +340,21 @@ async function logUnmapped(raw: string) {
 
 // ── Main resolution function ──────────────────────────────────────────────────
 
-async function resolveOne(raw: string, labId: string | null): Promise<ResolvedTest> {
+async function resolveOne(
+  raw: string,
+  labId: string | null,
+  labCatalog: LabCatalogEntry[],
+): Promise<ResolvedTest> {
   const normalized = raw.trim();
   if (!normalized) return othersResult(raw, labId);
 
-  // 1. Exact
+  // 0. Lab catalog — highest priority, uses lab's real price + commission
+  if (labCatalog.length > 0) {
+    const catalogMatch = labCatalogMatch(normalized, labCatalog);
+    if (catalogMatch) return catalogMatch;
+  }
+
+  // 1. Exact synonym
   const exact = await exactMatch(normalized, labId);
   if (exact) return exact;
 
@@ -313,7 +373,6 @@ async function resolveOne(raw: string, labId: string | null): Promise<ResolvedTe
   // 5. Log and fall through to Others
   await logUnmapped(normalized);
 
-  // Also log low-confidence fuzzy/AI hits
   if (fuzzy) { await logUnmapped(normalized); return fuzzy; }
   if (ai)    { await logUnmapped(normalized); return ai; }
 
@@ -323,8 +382,13 @@ async function resolveOne(raw: string, labId: string | null): Promise<ResolvedTe
 /**
  * Resolve a raw tests string into an array of structured results.
  *
+ * Step 0 (new): checks this lab's own `lab_offered_tests` catalog first.
+ * If the test name (or any of its AI-generated synonyms) matches an entry,
+ * the lab's real price and Poveon fee are used directly — no master catalog
+ * resolution needed.
+ *
  * @param rawTests  Comma/newline-separated test string, e.g. "FBC, LFT, Urinalysis"
- * @param labId     Optional lab ID to use lab-specific price overrides
+ * @param labId     Lab ID — used for catalog match and price overrides
  */
 export async function resolveTests(
   rawTests: string,
@@ -335,8 +399,16 @@ export async function resolveTests(
   const items = splitTests(rawTests);
   if (items.length === 0) return [];
 
-  // Resolve in parallel (each test is independent)
-  return Promise.all(items.map((item) => resolveOne(item, labId)));
+  // Pre-load this lab's offered tests once — shared across all items in the request
+  let labCatalog: LabCatalogEntry[] = [];
+  if (labId) {
+    labCatalog = await prisma.labOfferedTest.findMany({
+      where: { lab_id: labId, is_active: true },
+      select: { id: true, raw_name: true, category_label: true, synonyms: true, lab_price: true, poveon_fee: true },
+    });
+  }
+
+  return Promise.all(items.map((item) => resolveOne(item, labId, labCatalog)));
 }
 
 /**
