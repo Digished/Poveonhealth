@@ -93,13 +93,23 @@ export function LabPageNav({ labName, logoUrl }: LabPageNavProps) {
       One element, one state, overlap is structurally impossible.
     */
     <div
-      className={`relative z-50 shrink-0 h-[52px] transition-[background-color,border-color,box-shadow] duration-200 ${
+      className={`relative z-50 shrink-0 transition-[height,background-color,border-color,box-shadow] duration-200 ${
         heroVisible
-          ? "bg-transparent border-b border-transparent shadow-none"
-          : "bg-white/90 backdrop-blur-md border-b border-slate-200/60 shadow-sm"
+          ? "h-0 overflow-visible"
+          : "h-[52px] overflow-hidden bg-white/90 backdrop-blur-md border-b border-slate-200/60 shadow-sm"
       }`}
     >
-      <div className="max-w-2xl mx-auto px-4 h-full flex items-center justify-between">
+      {/*
+        Always absolutely positioned so it works in both states:
+        - heroVisible: floats at top-4 over the hero (h-0 container, no space taken)
+        - !heroVisible: fills the 52px nav bar exactly
+      */}
+      <div
+        className={`absolute inset-x-0 flex items-center ${
+          heroVisible ? "top-4" : "top-0 h-[52px]"
+        }`}
+      >
+      <div className="max-w-2xl mx-auto w-full px-4 flex items-center justify-between">
 
         {/* Lab logo — fades in when hero is gone */}
         <div
@@ -159,6 +169,7 @@ export function LabPageNav({ labName, logoUrl }: LabPageNavProps) {
             )}
           </div>
         )}
+      </div>
       </div>
     </div>
   );
