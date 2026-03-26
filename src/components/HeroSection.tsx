@@ -23,7 +23,7 @@ const GREETING: Record<TimeOfDay, string> = {
 function SunIcon() {
   const rays = [0, 45, 90, 135, 180, 225, 270, 315];
   return (
-    <svg width="52" height="52" viewBox="0 0 52 52" fill="none" aria-hidden="true">
+    <svg width="52" height="52" viewBox="0 0 52 52" fill="none" aria-hidden="true" style={{ willChange: "contents" }}>
       {rays.map((angle, i) => (
         <line
           key={angle}
@@ -32,7 +32,7 @@ function SunIcon() {
           strokeWidth="2.5"
           strokeLinecap="round"
           transform={`rotate(${angle} 26 26)`}
-          style={{ animation: `ray-pulse 2s ease-in-out ${i * 0.25}s infinite`, willChange: "opacity" }}
+          style={{ animation: `ray-pulse 2s ease-in-out ${i * 0.25}s infinite` }}
         />
       ))}
       <circle cx="26" cy="26" r="11" fill="#FBBF24" />

@@ -18,7 +18,7 @@ interface TextareaProps extends TextareaHTMLAttributes<HTMLTextAreaElement> {
 }
 
 const inputBase =
-  "w-full rounded-xl border backdrop-blur-sm px-4 py-2.5 text-sm transition-all duration-200 focus:outline-none focus:ring-2 disabled:opacity-60 disabled:cursor-not-allowed";
+  "w-full rounded-xl border px-4 py-2.5 text-sm transition-colors duration-200 focus:outline-none focus:ring-2 disabled:opacity-60 disabled:cursor-not-allowed";
 
 const inputLight = "bg-white/60 text-slate-800 placeholder-slate-400 focus:ring-medical-500 focus:border-medical-400";
 const inputDark  = "bg-slate-800 text-white placeholder-slate-400 focus:ring-medical-500";

@@ -642,8 +642,9 @@ export function DoctorRequestForm({
     const phone = form.patient_phone;
     const digits = phone.replace(/\D/g, "");
     if (digits.length < 7) return;
+    const controller = new AbortController();
     const timer = setTimeout(() => {
-      fetch(`/api/patient/profile?phone=${encodeURIComponent(phone)}`)
+      fetch(`/api/patient/profile?phone=${encodeURIComponent(phone)}`, { signal: controller.signal })
         .then((r) => r.ok ? r.json() : null)
         .then((data) => {
           if (data?.success) {
@@ -654,7 +655,7 @@ export function DoctorRequestForm({
         })
         .catch(() => null);
     }, 700);
-    return () => clearTimeout(timer);
+    return () => { clearTimeout(timer); controller.abort(); };
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [form.patient_phone]);
 
@@ -710,8 +711,9 @@ export function DoctorRequestForm({
       return;
     }
     setDocProfileStatus("checking");
+    const controller = new AbortController();
     const timer = setTimeout(() => {
-      fetch(`/api/doc-profile/check?email=${encodeURIComponent(email)}`)
+      fetch(`/api/doc-profile/check?email=${encodeURIComponent(email)}`, { signal: controller.signal })
         .then((r) => r.ok ? r.json() : null)
         .then((data) => {
           if (!data) { setDocProfileStatus("not_found"); return; }
@@ -725,7 +727,7 @@ export function DoctorRequestForm({
         })
         .catch(() => setDocProfileStatus("not_found"));
     }, 600);
-    return () => clearTimeout(timer);
+    return () => { clearTimeout(timer); controller.abort(); };
   }, [form.doctor_email]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const fetchLabs = useCallback(() => {
@@ -1108,7 +1110,7 @@ export function DoctorRequestForm({
                   <div className="relative px-3 py-2.5 flex items-center gap-3">
 
                     {/* Logo — fades out while hero is visible */}
-                    <div className={`transition-all duration-300 shrink-0 ${heroVisible ? "w-0 opacity-0 overflow-hidden" : "w-10 opacity-100"}`}>
+                    <div className={`transition-[width,opacity] duration-300 shrink-0 ${heroVisible ? "w-0 opacity-0 overflow-hidden" : "w-10 opacity-100"}`}>
                       {displayLab.logo_url ? (
                         <img
                           src={displayLab.logo_url}
@@ -1124,7 +1126,7 @@ export function DoctorRequestForm({
 
                     {/* Text column — name fades out while hero is visible, address always shows */}
                     <div className="min-w-0 flex-1">
-                      <div className={`overflow-hidden transition-all duration-300 ${heroVisible ? "max-h-0 opacity-0" : "max-h-8 opacity-100"}`}>
+                      <div className={`overflow-hidden transition-[max-height,opacity] duration-300 ${heroVisible ? "max-h-0 opacity-0" : "max-h-8 opacity-100"}`}>
                         <p className="text-sm font-bold text-slate-800 leading-tight truncate">{displayLab.name}</p>
                       </div>
                       {displayLab.address && (

@@ -25,13 +25,13 @@ export const Button = forwardRef<HTMLButtonElement, ButtonProps>(
     ref
   ) => {
     const base =
-      "inline-flex items-center justify-center font-semibold rounded-xl transition-all duration-200 focus:outline-none focus:ring-2 focus:ring-offset-2 disabled:opacity-60 disabled:cursor-not-allowed select-none";
+      "inline-flex items-center justify-center font-semibold rounded-xl transition-colors duration-200 focus:outline-none focus:ring-2 focus:ring-offset-2 disabled:opacity-60 disabled:cursor-not-allowed select-none";
 
     const variants = {
       primary:
         "bg-medical-600 hover:bg-medical-700 active:bg-medical-800 text-white focus:ring-medical-500 shadow-md hover:shadow-lg",
       secondary:
-        "bg-white/10 hover:bg-white/20 active:bg-white/30 text-white border border-white/20 focus:ring-white/30 backdrop-blur-sm",
+        "bg-white/10 hover:bg-white/20 active:bg-white/30 text-white border border-white/20 focus:ring-white/30",
       ghost:
         "bg-transparent hover:bg-medical-50 active:bg-medical-100 text-medical-600 focus:ring-medical-400",
       danger:

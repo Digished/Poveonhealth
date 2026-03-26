@@ -19,16 +19,14 @@
     font-family: 'Inter', system-ui, sans-serif;
   }
 
-  /* Smooth scrolling for all scrollable containers */
-  main, [data-scroll], .overflow-y-auto, .overflow-y-scroll {
-    scroll-behavior: smooth;
-  }
+  /* Smooth scrolling on root only — container-level smooth scroll
+     fights the mandatory snap engine and causes jank */
 }
 
 @layer components {
   /* Glassmorphic card for light backgrounds */
   .glass-card {
-    @apply bg-white/80 backdrop-blur-md border border-white/50 rounded-2xl shadow-sm;
+    @apply bg-white/95 border border-white/60 rounded-2xl shadow-sm;
   }
 
   /* Glassmorphic card for dark backgrounds */
@@ -56,8 +54,8 @@
 
 /* Clouds drift from left to right and loop seamlessly */
 @keyframes cloud-drift {
-  0%   { transform: translateX(-260px); }
-  100% { transform: translateX(calc(100vw + 260px)); }
+  0%   { transform: translate3d(-260px, 0, 0); }
+  100% { transform: translate3d(110vw, 0, 0); }
 }
 
 /* Stars fade in/out (used with alternate) */

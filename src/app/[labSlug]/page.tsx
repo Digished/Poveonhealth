@@ -81,11 +81,16 @@ export default async function LabSlugPage({ params }: LabSlugPageProps) {
           }}
         />
       ) : (
-        <div className="absolute inset-0 -z-10 pointer-events-none" aria-hidden="true">
-          <div className="absolute -top-20 left-1/4 w-[480px] h-[480px] bg-sky-100/70 rounded-full blur-3xl" />
-          <div className="absolute top-1/3 -right-24 w-[380px] h-[380px] bg-indigo-100/50 rounded-full blur-3xl" />
-          <div className="absolute bottom-0 -left-16 w-[340px] h-[340px] bg-medical-50/60 rounded-full blur-3xl" />
-        </div>
+        <div
+          className="absolute inset-0 -z-10 pointer-events-none"
+          aria-hidden="true"
+          style={{
+            backgroundImage:
+              "radial-gradient(ellipse 70% 50% at 25% 0%, rgba(224,242,254,0.7) 0%, transparent 70%), " +
+              "radial-gradient(ellipse 60% 45% at 90% 30%, rgba(224,231,255,0.5) 0%, transparent 65%), " +
+              "radial-gradient(ellipse 55% 50% at 5% 90%, rgba(240,253,244,0.6) 0%, transparent 65%)",
+          }}
+        />
       )}
       <div className="absolute inset-0 -z-10 bg-white/80 pointer-events-none" aria-hidden="true" />
 

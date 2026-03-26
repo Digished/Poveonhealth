@@ -81,22 +81,13 @@ export function LabHeroSection({ labName, logoUrl }: LabHeroSectionProps) {
 
       {/* ── Content ── */}
       <div
-        className={`relative z-10 flex flex-col items-center text-center gap-6 max-w-xs mx-auto transition-all duration-700 ${
+        className={`relative z-10 flex flex-col items-center text-center gap-6 max-w-xs mx-auto transition-[opacity,transform] duration-700 ${
           mounted ? "opacity-100 translate-y-0" : "opacity-0 translate-y-3"
         }`}
       >
         {/* Logo — with ambient glow + float animation */}
         <div className="relative flex items-center justify-center" style={{ animation: "lab-hero-float 5s ease-in-out infinite" }}>
-          {/* Blurred glow behind logo */}
-          {logoUrl ? (
-            <div
-              className="absolute w-32 h-32 rounded-[32px] blur-2xl opacity-60 pointer-events-none"
-              style={{ backgroundImage: `url(${logoUrl})`, backgroundSize: "cover" }}
-              aria-hidden="true"
-            />
-          ) : (
-            <div className="absolute w-32 h-32 rounded-[32px] bg-gradient-to-br from-medical-400 to-sky-400 blur-2xl opacity-40 pointer-events-none" aria-hidden="true" />
-          )}
+          <div className="absolute w-28 h-28 rounded-[30px] bg-sky-100/80 pointer-events-none" aria-hidden="true" />
 
           {/* Frosted halo */}
           <div className="absolute w-[108px] h-[108px] rounded-[30px] bg-white/50 backdrop-blur-sm pointer-events-none" aria-hidden="true" />
