@@ -13,31 +13,17 @@ interface LabPageNavProps { labName: string; logoUrl?: string | null }
 
 export function LabPageNav({ labName, logoUrl }: LabPageNavProps) {
   const router = useRouter();
-  const [session, setSession] = useState<DocSession | null | "loading">("loading");
+  // Default null (not logged in) so the login button renders immediately.
+  // Swaps to session object after the /me check resolves, if authenticated.
+  const [session, setSession] = useState<DocSession | null>(null);
   const [loginOpen, setLoginOpen] = useState(false);
-  const [heroVisible, setHeroVisible] = useState(true);
   const dropdownRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
     fetch("/api/doc-login/me")
       .then((r) => r.json())
-      .then((d) => { if (d.success) setSession({ email: d.doctor_email }); else setSession(null); })
-      .catch(() => setSession(null));
-  }, []);
-
-  useEffect(() => {
-    const main = document.querySelector("main");
-    const hero = document.getElementById("lab-hero");
-    if (!main || !hero) return;
-    const obs = new IntersectionObserver(
-      ([entry]) => {
-        setHeroVisible(entry.isIntersecting);
-        if (!entry.isIntersecting) setLoginOpen(false);
-      },
-      { root: main, threshold: 0 },
-    );
-    obs.observe(hero);
-    return () => obs.disconnect();
+      .then((d) => { if (d.success) setSession({ email: d.doctor_email }); })
+      .catch(() => {});
   }, []);
 
   useEffect(() => {
@@ -54,8 +40,7 @@ export function LabPageNav({ labName, logoUrl }: LabPageNavProps) {
     router.refresh();
   }
 
-  const isLoading = session === "loading";
-  const loggedIn  = session !== null && session !== "loading";
+  const loggedIn = session !== null;
 
   function LoginDropdown() {
     return (
@@ -86,37 +71,14 @@ export function LabPageNav({ labName, logoUrl }: LabPageNavProps) {
   }
 
   return (
-    /*
-      Single persistent header — always 52 px tall, always in the flex column.
-      Transparent + no logo  →  over the hero (heroVisible = true)
-      White bg + lab logo    →  when hero has scrolled away (heroVisible = false)
-      One element, one state, overlap is structurally impossible.
-    */
-    <div
-      className={`relative z-50 shrink-0 transition-[height,background-color,border-color,box-shadow] duration-200 ${
-        heroVisible
-          ? "h-0 overflow-visible"
-          : "h-[52px] overflow-hidden bg-white/90 backdrop-blur-md border-b border-slate-200/60 shadow-sm"
-      }`}
-    >
-      {/*
-        Always absolutely positioned so it works in both states:
-        - heroVisible: floats at top-4 over the hero (h-0 container, no space taken)
-        - !heroVisible: fills the 52px nav bar exactly
-      */}
-      <div
-        className={`absolute inset-x-0 flex items-center ${
-          heroVisible ? "top-4" : "top-0 h-[52px]"
-        }`}
-      >
-      <div className="max-w-2xl mx-auto w-full px-4 flex items-center justify-between">
+    /* Always-present 52px nav bar — lab logo left, session actions right.
+       Sits above <main> in the flex column so it can never overlap the
+       form's sticky top-0 header inside main. */
+    <div className="relative z-50 shrink-0 h-[52px] bg-white/90 backdrop-blur-md border-b border-slate-200/60 shadow-sm">
+      <div className="max-w-2xl mx-auto w-full px-4 h-full flex items-center justify-between">
 
-        {/* Lab logo — fades in when hero is gone */}
-        <div
-          className={`transition-[opacity,width] duration-200 overflow-hidden shrink-0 ${
-            heroVisible ? "opacity-0 w-0" : "opacity-100 w-8"
-          }`}
-        >
+        {/* Lab logo */}
+        <div className="flex items-center shrink-0">
           {logoUrl ? (
             <img src={logoUrl} alt={labName}
               className="w-8 h-8 rounded-xl object-cover ring-2 ring-white/70 shadow-sm" />
@@ -125,51 +87,36 @@ export function LabPageNav({ labName, logoUrl }: LabPageNavProps) {
           )}
         </div>
 
-        {/* Login / session actions — always visible, style adapts */}
-        {!isLoading && (
-          <div className="flex items-center gap-2 ml-auto">
-            {loggedIn && typeof session === "object" && (
-              <>
-                <Link href="/doc-login/dashboard"
-                  className={`flex items-center gap-1.5 text-xs font-semibold px-3 py-1.5 rounded-xl transition ${
-                    heroVisible
-                      ? "bg-white/80 backdrop-blur-sm border border-white/60 text-slate-700 hover:bg-white shadow-sm"
-                      : "text-slate-600 hover:text-medical-700 hover:bg-slate-50"
-                  }`}>
-                  <LayoutDashboard className="w-3.5 h-3.5" />
-                  <span className="hidden sm:inline">My Dashboard</span>
-                </Link>
-                <button onClick={handleLogout}
-                  className={`text-xs font-semibold px-2.5 py-1.5 rounded-xl transition ${
-                    heroVisible
-                      ? "text-slate-400 hover:text-red-600 bg-white/70 backdrop-blur-sm border border-white/50 shadow-sm"
-                      : "text-slate-400 hover:text-red-600 hover:bg-red-50"
-                  }`}
-                  title="Sign out">
-                  <LogOut className="w-3.5 h-3.5" />
-                </button>
-              </>
-            )}
-            {!loggedIn && (
-              <div className="relative" ref={dropdownRef}>
-                <button
-                  onClick={() => setLoginOpen((v) => !v)}
-                  className={`flex items-center gap-1.5 text-xs font-semibold px-3.5 py-2 rounded-xl shadow-sm transition ${
-                    heroVisible
-                      ? "bg-white/80 hover:bg-white backdrop-blur-sm border border-white/60 text-slate-800"
-                      : "bg-slate-900 hover:bg-slate-800 text-white"
-                  }`}
-                >
-                  <LogIn className="w-3.5 h-3.5" />
-                  Login
-                  <ChevronDown className={`w-3 h-3 transition-transform ${loginOpen ? "rotate-180" : ""}`} />
-                </button>
-                {loginOpen && <LoginDropdown />}
-              </div>
-            )}
-          </div>
-        )}
-      </div>
+        {/* Session actions */}
+        <div className="flex items-center gap-2">
+          {loggedIn && (
+            <>
+              <Link href="/doc-login/dashboard"
+                className="flex items-center gap-1.5 text-xs font-semibold text-slate-600 hover:text-medical-700 px-3 py-1.5 rounded-xl hover:bg-slate-50 transition">
+                <LayoutDashboard className="w-3.5 h-3.5" />
+                <span className="hidden sm:inline">My Dashboard</span>
+              </Link>
+              <button onClick={handleLogout}
+                className="text-xs font-semibold text-slate-400 hover:text-red-600 px-2.5 py-1.5 rounded-xl hover:bg-red-50 transition"
+                title="Sign out">
+                <LogOut className="w-3.5 h-3.5" />
+              </button>
+            </>
+          )}
+          {!loggedIn && (
+            <div className="relative" ref={dropdownRef}>
+              <button
+                onClick={() => setLoginOpen((v) => !v)}
+                className="flex items-center gap-1.5 bg-slate-900 hover:bg-slate-800 text-white text-xs font-semibold px-3.5 py-2 rounded-xl shadow-sm transition"
+              >
+                <LogIn className="w-3.5 h-3.5" />
+                Login
+                <ChevronDown className={`w-3 h-3 transition-transform ${loginOpen ? "rotate-180" : ""}`} />
+              </button>
+              {loginOpen && <LoginDropdown />}
+            </div>
+          )}
+        </div>
       </div>
     </div>
   );
