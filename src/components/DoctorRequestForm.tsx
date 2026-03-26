@@ -1363,7 +1363,7 @@ export function DoctorRequestForm({
                           <div className="flex items-center gap-2 text-left">
                             {form.diagnosis.trim()
                               ? <><Check className="w-4 h-4 text-emerald-500 shrink-0" /><span className="text-sm font-semibold text-slate-700">Diagnosis / Clinical Notes added</span></>
-                              : <><FileText className="w-4 h-4 text-slate-400 shrink-0" /><span className="text-sm font-semibold text-slate-700">Diagnosis / Clinical Notes <span className="text-xs text-slate-400 font-normal ml-1">optional</span></span></>
+                              : <><FileText className="w-4 h-4 text-slate-400 shrink-0" /><span className="text-sm font-semibold text-slate-700">Diagnosis / Clinical Notes</span></>
                             }
                           </div>
                           <ChevronDown className={`w-4 h-4 shrink-0 transition-transform ${form.diagnosis.trim() ? "text-emerald-500" : "text-slate-400"} ${diagnosisOpen ? "rotate-180" : ""}`} />
@@ -1647,7 +1647,7 @@ export function DoctorRequestForm({
                               disabled={imageExtracting}
                             />
                             <Textarea
-                              label="Diagnosis / Clinical Notes (optional)"
+                              label="Diagnosis / Clinical Notes"
                               placeholder={imageExtracting ? "Extracting…" : "Extracted from slip, or add manually"}
                               rows={2}
                               value={form.diagnosis}
@@ -1663,7 +1663,6 @@ export function DoctorRequestForm({
             <div className="space-y-2">
               <p className="text-sm font-medium text-slate-700">
                 Patient Condition
-                <span className="text-xs text-slate-400 font-normal ml-1.5">optional</span>
               </p>
               <div className="flex gap-2 p-1 bg-slate-100 rounded-2xl">
                 <button
@@ -1826,10 +1825,6 @@ export function DoctorRequestForm({
                       Patient Email
                       <span className="inline-block w-1.5 h-1.5 rounded-full bg-amber-400 align-middle" aria-label="required" />
                     </label>
-                    <span className="flex items-center gap-1 text-xs text-sky-600 font-medium">
-                      <Search className="w-3 h-3 shrink-0" />
-                      Auto-fills patient details if a profile exists
-                    </span>
                     <Input
                       id="patient_email"
                       type="email"
@@ -1902,7 +1897,6 @@ export function DoctorRequestForm({
                   <div className="flex-1 pb-2 min-w-0">
                     <p className="text-sm font-medium text-slate-700 mb-3">
                       Patient Details
-                      <span className="text-xs text-slate-400 font-normal ml-2">optional — auto-filled if profile found</span>
                     </p>
                     <div className="space-y-3">
                       <Input
@@ -1914,7 +1908,7 @@ export function DoctorRequestForm({
                       <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                         <DobInput value={form.dob} onChange={(iso) => set("dob", iso)} />
                         <div className="flex flex-col gap-1">
-                          <label className="text-sm font-medium text-slate-700">Sex <span className="text-xs text-slate-400 font-normal">(optional)</span></label>
+                          <label className="text-sm font-medium text-slate-700">Sex</label>
                           <div className="flex gap-2">
                             {(["male", "female"] as const).map((s) => (
                               <button key={s} type="button" onClick={() => set("sex", form.sex === s ? "" : s)}

@@ -111,11 +111,6 @@ export function LabHeroSection({ labName, logoUrl }: LabHeroSectionProps) {
           </p>
         </div>
 
-        {/* Powered-by badge */}
-        <div className="flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-white/60 border border-white/80 shadow-sm backdrop-blur-sm">
-          <PoveonLogo className="w-3.5 h-3.5 text-slate-400" />
-          <span className="text-xs text-slate-400 font-medium">Powered by Poveon</span>
-        </div>
       </div>
     </div>
   );
