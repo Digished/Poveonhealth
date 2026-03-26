@@ -74,7 +74,6 @@ export async function PATCH(
       lab_price: Number(test.lab_price),
       poveon_fee: test.poveon_fee ? Number(test.poveon_fee) : null,
       commission_pct: test.commission_pct ? Number(test.commission_pct) : null,
-      resolution_confidence: test.resolution_confidence ? Number(test.resolution_confidence) : null,
     },
   });
 }
