@@ -13,6 +13,7 @@ async function verifyAdmin() {
 }
 
 const PatchSchema = z.object({
+  raw_name: z.string().min(1).max(300).optional(),
   lab_price: z.number().positive().optional(),
   commission_pct: z.number().min(0).max(100).optional(),
   is_active: z.boolean().optional(),
@@ -21,7 +22,7 @@ const PatchSchema = z.object({
   catalog_test_id: z.string().nullable().optional(),
 });
 
-/** PATCH /api/admin/labs/[id]/catalog/[testId] — update price, commission, mapping, or active state */
+/** PATCH /api/admin/labs/[id]/catalog/[testId] — update price, commission, name, or active state */
 export async function PATCH(
   req: NextRequest,
   { params }: { params: Promise<{ id: string; testId: string }> }
@@ -38,6 +39,15 @@ export async function PATCH(
   if (!existing) return NextResponse.json({ error: "Not found" }, { status: 404 });
 
   const updates: Record<string, unknown> = {};
+
+  if (parsed.data.raw_name !== undefined && parsed.data.raw_name !== existing.raw_name) {
+    // Check for name collision
+    const conflict = await prisma.labOfferedTest.findUnique({
+      where: { lab_id_raw_name: { lab_id: id, raw_name: parsed.data.raw_name } },
+    });
+    if (conflict) return NextResponse.json({ error: "A test with that name already exists" }, { status: 409 });
+    updates.raw_name = parsed.data.raw_name;
+  }
 
   if (parsed.data.lab_price !== undefined) {
     updates.lab_price = parsed.data.lab_price;
@@ -58,8 +68,6 @@ export async function PATCH(
   if (parsed.data.catalog_test_id !== undefined) {
     updates.catalog_test_id = parsed.data.catalog_test_id;
     if (parsed.data.catalog_test_id) {
-      updates.resolution_source = "manual";
-      updates.resolution_confidence = 1.0;
       updates.mapped_by = admin.email ?? "admin";
       updates.mapped_at = new Date();
     }
@@ -74,6 +82,7 @@ export async function PATCH(
       lab_price: Number(test.lab_price),
       poveon_fee: test.poveon_fee ? Number(test.poveon_fee) : null,
       commission_pct: test.commission_pct ? Number(test.commission_pct) : null,
+      synonyms: Array.isArray(test.synonyms) ? test.synonyms : [],
     },
   });
 }
