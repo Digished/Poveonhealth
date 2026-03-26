@@ -102,8 +102,8 @@ async function seedCategory(
   return { tests: tests.length, synonyms: synonymCount };
 }
 
-export async function POST(req: NextRequest) {
-  const { secret } = await req.json();
+export async function GET(req: NextRequest) {
+  const secret = req.nextUrl.searchParams.get("secret");
   if (secret !== "poveon-seed") {
     return NextResponse.json({ error: "Forbidden" }, { status: 403 });
   }
