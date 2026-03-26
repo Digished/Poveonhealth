@@ -526,19 +526,54 @@ export default function LabCatalogSheet({ lab, onClose }: { lab: Lab; onClose: (
           )}
         </div>
 
-        {/* Footer summary */}
-        {!loading && tests.length > 0 && (
-          <div className="flex items-center gap-6 px-5 py-3 border-t border-white/10 bg-white/3 shrink-0">
-            <span className="text-xs text-slate-500">{summary.total} total</span>
-            <span className="text-xs text-emerald-400">{summary.mapped} mapped</span>
-            {summary.unresolved > 0 && <span className="text-xs text-red-400">{summary.unresolved} need mapping</span>}
-            <span className="text-xs text-slate-600 ml-auto">
-              Est. Poveon revenue (if all run once): <span className="text-white font-mono">
-                ₦{tests.reduce((a, t) => a + (t.poveon_fee ?? 0), 0).toLocaleString()}
-              </span>
-            </span>
-          </div>
-        )}
+        {/* Commission Summary Panel */}
+        {!loading && tests.length > 0 && (() => {
+          const active = tests.filter((t) => t.is_active);
+          const mapped = active.filter((t) => t.catalog_test_id && (t.resolution_confidence ?? 0) >= 0.5);
+          const unresolved = active.filter((t) => !t.catalog_test_id || (t.resolution_confidence ?? 0) < 0.5);
+          const mappedPct = active.length > 0 ? ((mapped.length / active.length) * 100).toFixed(1) : "0";
+          const avgPrice = active.length > 0 ? active.reduce((a, t) => a + t.lab_price, 0) / active.length : 0;
+          const avgComm = active.filter((t) => t.commission_pct != null).reduce((a, t, _, arr) => a + (t.commission_pct ?? 0) / arr.length, 0);
+          const totalRevenue = active.reduce((a, t) => a + (t.poveon_fee ?? 0), 0);
+          const totalLabValue = active.reduce((a, t) => a + t.lab_price, 0);
+
+          return (
+            <div className="border-t border-white/10 bg-slate-950/60 shrink-0">
+              <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 divide-x divide-white/5">
+                <div className="px-4 py-3">
+                  <p className="text-xs text-slate-500 mb-0.5">Total Tests</p>
+                  <p className="text-lg font-bold text-white font-mono">{active.length}</p>
+                  <p className="text-xs text-slate-600">{tests.length - active.length} inactive</p>
+                </div>
+                <div className="px-4 py-3">
+                  <p className="text-xs text-slate-500 mb-0.5">Mapped</p>
+                  <p className="text-lg font-bold text-emerald-400 font-mono">{mapped.length}</p>
+                  <p className="text-xs text-slate-600">{mappedPct}% of active</p>
+                </div>
+                <div className="px-4 py-3">
+                  <p className="text-xs text-slate-500 mb-0.5">Unresolved</p>
+                  <p className={`text-lg font-bold font-mono ${unresolved.length > 0 ? "text-red-400" : "text-slate-500"}`}>{unresolved.length}</p>
+                  <p className="text-xs text-slate-600">{unresolved.length > 0 ? "need mapping" : "all clear"}</p>
+                </div>
+                <div className="px-4 py-3">
+                  <p className="text-xs text-slate-500 mb-0.5">Avg Lab Price</p>
+                  <p className="text-lg font-bold text-white font-mono">₦{Math.round(avgPrice).toLocaleString()}</p>
+                  <p className="text-xs text-slate-600">per test</p>
+                </div>
+                <div className="px-4 py-3">
+                  <p className="text-xs text-slate-500 mb-0.5">Avg Commission</p>
+                  <p className="text-lg font-bold text-amber-400 font-mono">{avgComm.toFixed(1)}%</p>
+                  <p className="text-xs text-slate-600">across all tests</p>
+                </div>
+                <div className="px-4 py-3 bg-emerald-500/5">
+                  <p className="text-xs text-emerald-600 mb-0.5">Est. Poveon Revenue</p>
+                  <p className="text-lg font-bold text-emerald-400 font-mono">₦{Math.round(totalRevenue).toLocaleString()}</p>
+                  <p className="text-xs text-slate-600">if all tests run once · ₦{Math.round(totalLabValue).toLocaleString()} total lab value</p>
+                </div>
+              </div>
+            </div>
+          );
+        })()}
       </div>
     </div>
   );
