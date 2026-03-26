@@ -565,6 +565,7 @@ interface Location {
   address: string;
   phones: string[];
   whatsapp?: string | null;
+  logo_url?: string | null;
   is_main: boolean;    // true = this branch is the highlighted/default one
   is_parent: boolean;  // true = this entry is the root/parent lab
 }
@@ -1071,7 +1072,7 @@ export function DoctorRequestForm({
     address: selectedLocation.address,
     phones: selectedLocation.phones as unknown as string[],
     whatsapp: selectedLocation.whatsapp ?? null,
-    logo_url: null,
+    logo_url: selectedLocation.logo_url ?? null,
     description: "",
     service_categories: [],
     certifications: [],

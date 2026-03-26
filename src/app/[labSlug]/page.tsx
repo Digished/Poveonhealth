@@ -31,7 +31,7 @@ export default async function LabSlugPage({ params }: LabSlugPageProps) {
     where: { lab_id: lab.id, branch_lab_id: { not: null } },
     include: {
       branch_lab: {
-        select: { id: true, name: true, address: true, phones: true, whatsapp: true },
+        select: { id: true, name: true, address: true, phones: true, whatsapp: true, logo_url: true },
       },
     },
     orderBy: [{ is_main: "desc" }],
@@ -44,6 +44,7 @@ export default async function LabSlugPage({ params }: LabSlugPageProps) {
     address: lab.address ?? "",
     phones: (lab.phones ?? []) as string[],
     whatsapp: lab.whatsapp ?? null,
+    logo_url: lab.logo_url ?? null,
     is_main: false,
     is_parent: true,
   };
@@ -57,6 +58,7 @@ export default async function LabSlugPage({ params }: LabSlugPageProps) {
       address: b.branch_lab!.address ?? "",
       phones: (b.branch_lab!.phones ?? []) as string[],
       whatsapp: b.branch_lab!.whatsapp ?? null,
+      logo_url: b.branch_lab!.logo_url ?? null,
       is_main: b.is_main,
       is_parent: false,
     }));
