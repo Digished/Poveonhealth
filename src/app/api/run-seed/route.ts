@@ -2,6 +2,9 @@ import { NextRequest, NextResponse } from "next/server";
 import OpenAI from "openai";
 import { prisma } from "@/lib/prisma";
 
+// Extend Vercel function timeout to maximum allowed
+export const maxDuration = 300;
+
 /**
  * ONE-TIME seed endpoint — runs the test catalog seed on staging.
  * DELETE THIS FILE after seeding is confirmed.
