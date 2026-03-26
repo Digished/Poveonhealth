@@ -1229,13 +1229,6 @@ export function DoctorRequestForm({
         </div>
       </div>
 
-      {/* Greeting — lab-specific pages only */}
-      {labPreselected && (
-        <p className="text-xs text-slate-400 text-center mt-2 mb-0 font-medium tracking-wide">
-          {tod === "morning" ? "Good morning" : tod === "afternoon" ? "Good afternoon" : "Good evening"} — let&apos;s get your request in.
-        </p>
-      )}
-
       {/* Step content */}
       <div
         className="glass-card p-4 mt-3 mb-2"
