@@ -39,7 +39,7 @@ export async function POST(
 
   const lab = await prisma.lab.findUnique({
     where: { id: params.labId },
-    select: { id: true, name: true, email: true, request_email: true },
+    select: { id: true, name: true, email: true, request_email: true, phones: true },
   });
   if (!lab) return NextResponse.json({ error: "Lab not found" }, { status: 404 });
 
@@ -67,10 +67,16 @@ export async function POST(
 
   if (!customerCode) {
     const nameParts = lab.name.split(" ");
+    const phones = Array.isArray(lab.phones) ? lab.phones as string[] : [];
+    // Paystack requires phone; normalise to digits-only with leading zero
+    const rawPhone = phones[0] ?? "";
+    const phone = rawPhone.replace(/\D/g, "").replace(/^234/, "0");
+
     const custRes = await paystackPost("/customer", {
       email: labEmail,
       first_name: nameParts[0],
       last_name: nameParts.slice(1).join(" ") || "Lab",
+      phone: phone || "08000000000", // fallback placeholder if no phone on record
       metadata: { lab_id: lab.id },
     });
 
