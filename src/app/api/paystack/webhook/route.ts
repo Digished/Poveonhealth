@@ -1,3 +1,5 @@
+export const dynamic = "force-dynamic";
+
 import { NextRequest, NextResponse } from "next/server";
 import { createHmac } from "crypto";
 import { prisma } from "@/lib/prisma";
@@ -12,36 +14,55 @@ const SECRET = process.env.PAYSTACK_SECRET_KEY!;
  */
 export async function POST(req: NextRequest) {
   const rawBody = await req.text();
+  console.log("[webhook] Received — body length:", rawBody.length);
 
   // 1. Verify signature
   const sig = req.headers.get("x-paystack-signature") ?? "";
   const expected = createHmac("sha512", SECRET).update(rawBody).digest("hex");
+
   if (sig !== expected) {
-    return NextResponse.json({ error: "Invalid signature" }, { status: 401 });
+    console.error("[webhook] Signature mismatch. Got:", sig.slice(0, 16), "Expected:", expected.slice(0, 16));
+    // Return 200 anyway so Paystack doesn't keep retrying — log and bail
+    return NextResponse.json({ received: true, error: "bad_sig" });
   }
 
   let event: { event: string; data: Record<string, unknown> };
   try {
     event = JSON.parse(rawBody);
   } catch {
-    return NextResponse.json({ error: "Invalid JSON" }, { status: 400 });
+    console.error("[webhook] Failed to parse JSON");
+    return NextResponse.json({ received: true, error: "bad_json" });
   }
 
-  // 2. Only handle DVA top-ups
+  console.log("[webhook] Event:", event.event, "| Channel:", (event.data as Record<string, unknown>)?.channel);
+
+  // 2. Only process charge.success
   if (event.event !== "charge.success") {
+    console.log("[webhook] Ignored event:", event.event);
     return NextResponse.json({ received: true });
   }
 
   const data = event.data;
-  const channel = data.channel as string;
-  if (channel !== "dedicated_nuban") {
-    return NextResponse.json({ received: true });
+  const channel = (data.channel as string) ?? "";
+
+  // Accept dedicated_nuban — log the actual channel so we can debug
+  if (!channel.includes("nuban") && channel !== "dedicated_nuban") {
+    console.log("[webhook] Skipped non-DVA channel:", channel);
+    return NextResponse.json({ received: true, skipped_channel: channel });
   }
 
   const reference = data.reference as string;
-  const amountKobo = data.amount as number; // Paystack sends kobo
+  const amountKobo = data.amount as number;
   const amountNaira = new Decimal(amountKobo).div(100);
-  const customerCode = (data.customer as Record<string, string>).customer_code;
+  const customer = data.customer as Record<string, string>;
+  const customerCode = customer?.customer_code;
+
+  console.log("[webhook] DVA payment — ref:", reference, "amount: ₦", amountNaira.toString(), "customer:", customerCode);
+
+  if (!customerCode) {
+    console.error("[webhook] No customer_code in payload");
+    return NextResponse.json({ received: true });
+  }
 
   // 3. Find lab wallet by customer code
   const wallet = await prisma.labWallet.findUnique({
@@ -49,25 +70,26 @@ export async function POST(req: NextRequest) {
   });
 
   if (!wallet) {
-    console.warn("[webhook] No wallet for customer:", customerCode);
+    console.error("[webhook] No wallet found for customer_code:", customerCode);
     return NextResponse.json({ received: true });
   }
 
   // 4. Idempotency — skip if reference already recorded
-  const existing = await prisma.walletTransaction.findUnique({
-    where: { reference },
-  });
+  const existing = await prisma.walletTransaction.findUnique({ where: { reference } });
   if (existing) {
+    console.log("[webhook] Duplicate reference, skipping:", reference);
     return NextResponse.json({ received: true, skipped: "duplicate" });
   }
 
-  // 5. Credit wallet in a transaction
-  const senderName = (data.metadata as Record<string, string> | null)?.sender_name ?? "Transfer";
-  const channel_meta = data.authorization as Record<string, string> | null;
-  const senderBank = channel_meta?.bank ?? null;
-  const description = senderBank
-    ? `Top-up via ${senderBank} — ${senderName}`
-    : `Top-up — ${senderName}`;
+  // 5. Credit wallet atomically
+  const paidBy = (data.metadata as Record<string, string> | null)?.sender_name ?? "";
+  const authorization = data.authorization as Record<string, string> | null;
+  const senderBank = authorization?.bank ?? authorization?.sender_bank ?? "";
+  const description = [
+    "Top-up",
+    senderBank && `via ${senderBank}`,
+    paidBy && `— ${paidBy}`,
+  ].filter(Boolean).join(" ");
 
   await prisma.$transaction(async (tx) => {
     const newBalance = new Decimal(wallet.balance).add(amountNaira);
@@ -90,6 +112,11 @@ export async function POST(req: NextRequest) {
     });
   });
 
-  console.log(`[webhook] Credited ₦${amountNaira} to lab ${wallet.lab_id} (ref: ${reference})`);
+  console.log(`[webhook] ✓ Credited ₦${amountNaira} to lab ${wallet.lab_id}`);
   return NextResponse.json({ received: true });
+}
+
+/** GET — liveness check so you can verify the URL is reachable */
+export async function GET() {
+  return NextResponse.json({ ok: true, endpoint: "Paystack webhook receiver is live" });
 }
