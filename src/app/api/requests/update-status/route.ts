@@ -9,6 +9,7 @@ import { logApiCall } from "@/lib/api-logger";
 import { logLabActivity } from "@/lib/lab-activity";
 import { createServerClient } from "@/lib/supabase/server";
 import { resolveTests } from "@/lib/resolve-tests";
+import { Decimal } from "@prisma/client/runtime/library";
 
 const UpdateStatusSchema = z.object({
   requestId: z.string().uuid(),
@@ -110,19 +111,76 @@ export async function POST(request: NextRequest) {
 
       console.log(`[commission] ${req.code}: ${breakdown.length} items, poveon=₦${poveonTotal}, revenue=₦${labRevenueTotal}`);
 
-      // Single atomic SQL: write status + breakdown + explicit numeric totals
-      const breakdownJson = breakdown.length > 0 ? JSON.stringify(breakdown) : null;
-      if (breakdownJson) {
-        await prisma.$executeRawUnsafe(
-          `UPDATE requests SET status='seen', seen_at=NOW(), test_breakdown=$1::jsonb, poveon_amount=$2, lab_revenue_amount=$3 WHERE id=$4`,
-          breakdownJson, poveonTotal, labRevenueTotal, requestId
-        );
-      } else {
-        await prisma.$executeRawUnsafe(
-          `UPDATE requests SET status='seen', seen_at=NOW(), poveon_amount=$1, lab_revenue_amount=$2 WHERE id=$3`,
-          poveonTotal, labRevenueTotal, requestId
-        );
-      }
+      // Atomically: update request + deduct from wallet if balance is sufficient
+      await prisma.$transaction(async (tx) => {
+        const breakdownJson = breakdown.length > 0 ? JSON.stringify(breakdown) : null;
+
+        // 1. Mark request as seen with calculated amounts
+        if (breakdownJson) {
+          await tx.$executeRawUnsafe(
+            `UPDATE requests SET status='seen', seen_at=NOW(), test_breakdown=$1::jsonb, poveon_amount=$2, lab_revenue_amount=$3 WHERE id=$4`,
+            breakdownJson, poveonTotal, labRevenueTotal, requestId
+          );
+        } else {
+          await tx.$executeRawUnsafe(
+            `UPDATE requests SET status='seen', seen_at=NOW(), poveon_amount=$1, lab_revenue_amount=$2 WHERE id=$3`,
+            poveonTotal, labRevenueTotal, requestId
+          );
+        }
+
+        // 2. Auto-deduct Poveon commission from wallet (if commission > 0)
+        if (poveonTotal > 0) {
+          const wallet = await tx.labWallet.findUnique({ where: { lab_id: req.lab_id } });
+          const currentBalance = new Decimal(wallet?.balance ?? 0);
+          const fee = new Decimal(poveonTotal);
+
+          if (currentBalance.gte(fee)) {
+            // Sufficient balance — deduct and mark paid
+            const newBalance = currentBalance.sub(fee);
+            await tx.labWallet.update({
+              where: { lab_id: req.lab_id },
+              data: { balance: newBalance },
+            });
+            await tx.walletTransaction.create({
+              data: {
+                lab_id: req.lab_id,
+                type: "deduction",
+                direction: "debit",
+                amount: fee,
+                balance_after: newBalance,
+                description: `Commission for request ${req.code}`,
+                request_id: requestId,
+              },
+            });
+            await tx.$executeRawUnsafe(
+              `UPDATE requests SET is_paid_to_poveon=true WHERE id=$1`,
+              requestId
+            );
+            console.log(`[commission] ✓ Deducted ₦${poveonTotal} from lab ${req.lab_id} wallet. New balance: ₦${newBalance}`);
+          } else {
+            // Insufficient balance — record outstanding debit anyway (balance goes negative so it's visible)
+            const newBalance = currentBalance.sub(fee);
+            if (wallet) {
+              await tx.labWallet.update({
+                where: { lab_id: req.lab_id },
+                data: { balance: newBalance },
+              });
+              await tx.walletTransaction.create({
+                data: {
+                  lab_id: req.lab_id,
+                  type: "deduction",
+                  direction: "debit",
+                  amount: fee,
+                  balance_after: newBalance,
+                  description: `Commission for request ${req.code} (balance insufficient)`,
+                  request_id: requestId,
+                },
+              });
+            }
+            console.log(`[commission] ⚠ Insufficient wallet balance for lab ${req.lab_id}. Fee: ₦${poveonTotal}, Balance: ₦${currentBalance}`);
+          }
+        }
+      });
     } else {
       // status === "done"
       await prisma.request.update({
