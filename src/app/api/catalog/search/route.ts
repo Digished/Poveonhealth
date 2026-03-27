@@ -5,10 +5,8 @@ import { prisma } from "@/lib/prisma";
 /**
  * GET /api/catalog/search?q=fbc&lab_id=xxx&limit=8
  *
- * Typeahead search for the doctor form tag input.
- * Searches both testSynonym entries AND canonical_name directly so tests are
- * found even when a matching synonym hasn't been added to the database yet.
- * Results are ranked: exact match → prefix match → substring match.
+ * Typeahead search against a lab's own offered tests (lab_offered_tests).
+ * Searches raw_name and synonyms JSON array.
  */
 export async function GET(request: NextRequest) {
   const { searchParams } = new URL(request.url);
@@ -16,91 +14,61 @@ export async function GET(request: NextRequest) {
   const labId = searchParams.get("lab_id") ?? null;
   const limit = Math.min(20, parseInt(searchParams.get("limit") ?? "8", 10));
 
-  if (q.length < 1) {
-    return NextResponse.json({ success: true, results: [] });
-  }
+  if (q.length < 1) return NextResponse.json({ success: true, results: [] });
 
   try {
-    // Search synonyms AND canonical names in parallel
-    const [synonymMatches, canonicalMatches] = await Promise.all([
-      prisma.testSynonym.findMany({
-        where: {
-          synonym: { contains: q, mode: "insensitive" },
-          catalog_test: { is_active: true },
-        },
-        include: {
-          catalog_test: { include: { category: { select: { name: true } } } },
-        },
-        take: limit * 4,
-      }),
-      prisma.catalogTest.findMany({
-        where: {
-          is_active: true,
-          canonical_name: { contains: q, mode: "insensitive" },
-        },
-        include: { category: { select: { name: true } } },
-        take: limit * 2,
-      }),
-    ]);
+    const where = {
+      is_active: true,
+      ...(labId ? { lab_id: labId } : {}),
+      raw_name: { contains: q, mode: "insensitive" as const },
+    };
 
-    // Merge: synonym matches first, then canonical-name-only matches
-    const seen = new Map<string, { id: string; canonical_name: string; category: { name: string }; base_price: number; is_rapid_test: boolean; _synonymMatch: string }>();
+    const tests = await prisma.labOfferedTest.findMany({
+      where,
+      take: limit * 3,
+      select: {
+        id: true,
+        raw_name: true,
+        category_label: true,
+        lab_price: true,
+        synonyms: true,
+      },
+    });
 
-    for (const s of synonymMatches) {
-      if (!seen.has(s.catalog_test_id)) {
-        seen.set(s.catalog_test_id, {
-          id: s.catalog_test.id,
-          canonical_name: s.catalog_test.canonical_name,
-          category: s.catalog_test.category,
-          base_price: Number(s.catalog_test.base_price),
-          is_rapid_test: s.catalog_test.is_rapid_test,
-          _synonymMatch: s.synonym,
-        });
-      }
-    }
-    for (const t of canonicalMatches) {
-      if (!seen.has(t.id)) {
-        seen.set(t.id, {
-          id: t.id,
-          canonical_name: t.canonical_name,
-          category: t.category,
-          base_price: Number(t.base_price),
-          is_rapid_test: t.is_rapid_test,
-          _synonymMatch: t.canonical_name,
-        });
-      }
-    }
+    // Also search synonyms for tests not matched by raw_name
+    const allTests = labId
+      ? await prisma.labOfferedTest.findMany({
+          where: { is_active: true, lab_id: labId },
+          select: { id: true, raw_name: true, category_label: true, lab_price: true, synonyms: true },
+        })
+      : [];
 
-    // Rank by match quality: exact → starts-with → substring
+    const synonymMatches = allTests.filter((t) => {
+      if (tests.find((r) => r.id === t.id)) return false; // already in results
+      const syns = Array.isArray(t.synonyms) ? (t.synonyms as string[]) : [];
+      return syns.some((s) => s.toLowerCase().includes(q.toLowerCase()));
+    });
+
+    const merged = [...tests, ...synonymMatches];
+
+    // Rank: exact → starts-with → substring
     const ql = q.toLowerCase();
-    const ranked = Array.from(seen.values()).sort((a, b) => {
-      const scoreOf = (entry: typeof a) => {
-        const name = entry.canonical_name.toLowerCase();
-        const syn = entry._synonymMatch.toLowerCase();
-        if (name === ql || syn === ql) return 0;
-        if (name.startsWith(ql) || syn.startsWith(ql)) return 1;
+    const ranked = merged.sort((a, b) => {
+      const score = (t: typeof a) => {
+        const n = t.raw_name.toLowerCase();
+        if (n === ql) return 0;
+        if (n.startsWith(ql)) return 1;
         return 2;
       };
-      return scoreOf(a) - scoreOf(b);
+      return score(a) - score(b);
     }).slice(0, limit);
-
-    // Fetch lab-specific price overrides
-    let overrideMap = new Map<string, number>();
-    if (labId && ranked.length > 0) {
-      const ids = ranked.map((t) => t.id);
-      const overrides = await prisma.labTestPrice.findMany({
-        where: { lab_id: labId, catalog_test_id: { in: ids } },
-        select: { catalog_test_id: true, price: true },
-      });
-      overrideMap = new Map(overrides.map((o) => [o.catalog_test_id, Number(o.price)]));
-    }
 
     const results = ranked.map((t) => ({
       id: t.id,
-      canonical_name: t.canonical_name,
-      category: t.category.name,
-      effective_price: overrideMap.has(t.id) ? overrideMap.get(t.id)! : t.base_price,
-      is_rapid_test: t.is_rapid_test,
+      canonical_name: t.raw_name,
+      category: t.category_label ?? "Lab Test",
+      effective_price: Number(t.lab_price),
+      is_rapid_test: false,
     }));
 
     return NextResponse.json({ success: true, results });

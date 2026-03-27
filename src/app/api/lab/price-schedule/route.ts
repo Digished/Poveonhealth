@@ -5,48 +5,35 @@ import { prisma } from "@/lib/prisma";
 
 /**
  * GET /api/lab/price-schedule
- * Returns all active catalog tests with their effective price for this lab.
- * Groups by category for the price schedule UI.
+ * Returns all active offered tests for this lab, grouped by category.
  */
 export async function GET(request: NextRequest) {
   const auth = await getLabAuth(request);
   if (!auth) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-  if (!auth.permissions.can_view_wallet) return NextResponse.json({ error: "Forbidden" }, { status: 403 });
 
-  const [tests, overrides] = await Promise.all([
-    prisma.catalogTest.findMany({
-      where: { is_active: true },
-      orderBy: [{ category: { sort_order: "asc" } }, { canonical_name: "asc" }],
-      select: {
-        id: true,
-        canonical_name: true,
-        base_price: true,
-        is_rapid_test: true,
-        category: { select: { name: true, slug: true } },
-      },
-    }),
-    prisma.labTestPrice.findMany({
-      where: { lab_id: auth.lab_id },
-      select: { catalog_test_id: true, price: true },
-    }),
-  ]);
+  const tests = await prisma.labOfferedTest.findMany({
+    where: { lab_id: auth.lab_id, is_active: true },
+    orderBy: [{ category_label: "asc" }, { raw_name: "asc" }],
+    select: {
+      id: true,
+      raw_name: true,
+      category_label: true,
+      lab_price: true,
+      poveon_fee: true,
+      commission_pct: true,
+    },
+  });
 
-  const overrideMap = new Map(overrides.map((o) => [o.catalog_test_id, Number(o.price)]));
-
-  // Group by category
   const grouped: Record<string, { category: string; tests: object[] }> = {};
-
   for (const t of tests) {
-    const cat = t.category.name;
+    const cat = t.category_label ?? "Uncategorized";
     if (!grouped[cat]) grouped[cat] = { category: cat, tests: [] };
-    const effectivePrice = overrideMap.has(t.id) ? overrideMap.get(t.id)! : Number(t.base_price);
     grouped[cat].tests.push({
       id: t.id,
-      name: t.canonical_name,
-      is_rapid_test: t.is_rapid_test,
-      base_price: Number(t.base_price),
-      effective_price: effectivePrice,
-      is_custom: overrideMap.has(t.id),
+      name: t.raw_name,
+      lab_price: Number(t.lab_price),
+      poveon_fee: t.poveon_fee ? Number(t.poveon_fee) : null,
+      commission_pct: t.commission_pct ? Number(t.commission_pct) : null,
     });
   }
 

@@ -19,7 +19,6 @@ const PatchSchema = z.object({
   is_active: z.boolean().optional(),
   category_label: z.string().max(200).nullable().optional(),
   synonyms: z.array(z.string()).optional(),
-  catalog_test_id: z.string().nullable().optional(),
 });
 
 /** PATCH /api/admin/labs/[id]/catalog/[testId] — update price, commission, name, or active state */
@@ -65,13 +64,6 @@ export async function PATCH(
   if (parsed.data.category_label !== undefined) updates.category_label = parsed.data.category_label;
   if (parsed.data.synonyms !== undefined) updates.synonyms = parsed.data.synonyms;
 
-  if (parsed.data.catalog_test_id !== undefined) {
-    updates.catalog_test_id = parsed.data.catalog_test_id;
-    if (parsed.data.catalog_test_id) {
-      updates.mapped_by = admin.email ?? "admin";
-      updates.mapped_at = new Date();
-    }
-  }
 
   const test = await prisma.labOfferedTest.update({ where: { id: testId }, data: updates });
 

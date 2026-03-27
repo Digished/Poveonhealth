@@ -57,8 +57,8 @@ export async function GET(
   });
 
   const active = tests.filter((t) => t.is_active);
-  const mapped = active.filter((t) => t.catalog_test_id).length;
-  const unresolved = active.length - mapped;
+  const mapped = active.length;
+  const unresolved = 0;
 
   return NextResponse.json({
     success: true,
