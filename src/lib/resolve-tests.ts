@@ -49,7 +49,7 @@ type LabCatalogEntry = {
 /** Split raw test string into individual items */
 function splitTests(raw: string): string[] {
   return raw
-    .split(/[,\n;\/]|\band\b/i)
+    .split(/[,\n;\/]/)
     .map((t) => t.trim())
     .filter((t) => t.length > 0 && t.toLowerCase() !== "see attached image");
 }

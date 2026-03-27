@@ -31,7 +31,6 @@ export async function GET(request: NextRequest) {
       where: {
         lab_id: auth.lab_id,
         status: { in: ["seen", "done"] },
-        poveon_amount: { gt: 0 },
       },
       orderBy: { seen_at: "desc" },
       take: 100,

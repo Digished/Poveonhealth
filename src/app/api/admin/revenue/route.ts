@@ -34,11 +34,11 @@ export async function GET(_req: NextRequest) {
         by: ["lab_id"],
         _sum: { poveon_amount: true, lab_revenue_amount: true },
         _count: { id: true },
-        where: { status: { in: ["seen", "done"] }, poveon_amount: { gt: 0 } },
+        where: { status: { in: ["seen", "done"] } },
       }),
       // 50 most recently seen requests
       prisma.request.findMany({
-        where: { status: { in: ["seen", "done"] }, poveon_amount: { gt: 0 } },
+        where: { status: { in: ["seen", "done"] } },
         orderBy: { seen_at: "desc" },
         take: 50,
         select: {
