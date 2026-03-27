@@ -1,34 +1,38 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createServerClient } from "@/lib/supabase/server";
 import { prisma } from "@/lib/prisma";
-import { Decimal } from "@prisma/client/runtime/library";
 
 const SECRET = process.env.PAYSTACK_SECRET_KEY!;
 
 async function verifyAdmin() {
-  const authClient = await createServerClient();
-  const { data: { user } } = await authClient.auth.getUser();
+  const client = await createServerClient();
+  const { data: { user } } = await client.auth.getUser();
   if (!user) return null;
-  const adminRecord = await prisma.adminUser.findUnique({ where: { user_id: user.id } });
-  return adminRecord ? user : null;
+  const record = await prisma.adminUser.findUnique({ where: { user_id: user.id } });
+  return record ? user : null;
 }
 
 /**
  * POST /api/admin/wallet/manual-credit
- * Verify a Paystack reference and credit the matching lab wallet.
- * Fetches live transaction data from Paystack — no manual amount entry needed.
+ *
+ * Verifies a Paystack transaction reference and credits the matching lab wallet.
+ * Used when a DVA payment was received but the webhook didn't fire (or failed).
+ *
  * Body: { reference: string }
+ *
+ * - Fetches live transaction data from Paystack API (no manual amount needed)
+ * - Finds wallet by customer_code or dva_account_number from the Paystack response
+ * - Idempotent: rejects already-credited references
  */
 export async function POST(req: NextRequest) {
   const admin = await verifyAdmin();
   if (!admin) return NextResponse.json({ error: "Forbidden" }, { status: 403 });
 
-  const { reference } = await req.json().catch(() => ({}));
-  if (!reference?.trim()) {
-    return NextResponse.json({ error: "Paystack reference is required." }, { status: 400 });
-  }
+  const body = await req.json().catch(() => ({}));
+  const reference: string = (body.reference ?? "").trim();
+  if (!reference) return NextResponse.json({ error: "Paystack reference is required." }, { status: 400 });
 
-  // 1. Verify transaction with Paystack
+  // Verify with Paystack
   const pRes = await fetch(`https://api.paystack.co/transaction/verify/${encodeURIComponent(reference)}`, {
     headers: { Authorization: `Bearer ${SECRET}` },
   });
@@ -39,59 +43,60 @@ export async function POST(req: NextRequest) {
   }
 
   const tx = pData.data;
-  const amountNaira = new Decimal(tx.amount).div(100);
+  const amountNaira: number = tx.amount / 100;
   const customerCode: string = tx.customer?.customer_code ?? "";
-  const dvaAccountNumber: string = tx.authorization?.receiver_bank_account_number ?? tx.dedicated_account?.account_number ?? "";
+  const dvaAccountNumber: string =
+    tx.dedicated_account?.account_number ??
+    tx.authorization?.receiver_bank_account_number ?? "";
 
-  // 2. Find lab wallet
+  // Find wallet
   let wallet = customerCode
     ? await prisma.labWallet.findUnique({ where: { paystack_customer_id: customerCode } })
     : null;
-
   if (!wallet && dvaAccountNumber) {
     wallet = await prisma.labWallet.findFirst({ where: { dva_account_number: dvaAccountNumber } });
   }
-
   if (!wallet) {
-    return NextResponse.json({ error: `No lab wallet found for this transaction. Customer: ${customerCode}, DVA: ${dvaAccountNumber}` }, { status: 404 });
+    return NextResponse.json({
+      error: `No lab wallet found for this transaction. customer_code="${customerCode}" dva_account="${dvaAccountNumber}"`,
+    }, { status: 404 });
   }
 
-  // 3. Idempotency check
+  // Idempotency
   const existing = await prisma.walletTransaction.findUnique({ where: { reference } });
   if (existing) {
     return NextResponse.json({ error: "This reference has already been credited.", already_credited: true }, { status: 409 });
   }
 
-  // 4. Credit wallet
-  const senderBank: string = tx.authorization?.bank ?? tx.authorization?.sender_bank ?? "";
-  const senderName: string = tx.metadata?.sender_name ?? "";
-  const description = ["Top-up", senderBank && `via ${senderBank}`, senderName && `— ${senderName}`].filter(Boolean).join(" ");
+  const auth = tx.authorization as Record<string, string> | null;
+  const meta = tx.metadata as Record<string, string> | null;
+  const description = [
+    "[Manual]",
+    auth?.bank ? `from ${auth.bank}` : "Bank transfer",
+    meta?.sender_name ? `by ${meta.sender_name}` : "",
+  ].filter(Boolean).join(" ");
 
-  await prisma.$transaction(async (t) => {
-    const newBalance = new Decimal(wallet!.balance).add(amountNaira);
-    await t.labWallet.update({
-      where: { lab_id: wallet!.lab_id },
-      data: { balance: newBalance },
-    });
-    await t.walletTransaction.create({
-      data: {
-        lab_id: wallet!.lab_id,
-        type: "topup",
-        direction: "credit",
-        amount: amountNaira,
-        balance_after: newBalance,
-        description: `[Manual] ${description}`,
-        reference,
-        actor_email: admin.email ?? "admin",
-      },
-    });
-    if (customerCode && !wallet!.paystack_customer_id) {
-      await t.labWallet.update({
-        where: { lab_id: wallet!.lab_id },
-        data: { paystack_customer_id: customerCode },
-      });
-    }
-  });
+  // Atomic credit (same pattern as webhook — PgBouncer-safe raw SQL)
+  await prisma.$executeRawUnsafe(
+    `INSERT INTO wallet_transactions (id, lab_id, type, direction, amount, balance_after, description, reference, actor_email, created_at)
+     VALUES (gen_random_uuid(), $1, 'topup', 'credit', $2,
+             (SELECT balance FROM lab_wallets WHERE lab_id = $1) + $2,
+             $3, $4, $5, NOW())`,
+    wallet.lab_id, amountNaira, description, reference, admin.email ?? "admin",
+  );
+  await prisma.$executeRawUnsafe(
+    `UPDATE lab_wallets SET balance = balance + $1, updated_at = NOW() WHERE lab_id = $2`,
+    amountNaira, wallet.lab_id,
+  );
 
-  return NextResponse.json({ success: true, amount: Number(amountNaira), lab_id: wallet.lab_id });
+  // Backfill customer_code if missing
+  if (customerCode && !wallet.paystack_customer_id) {
+    await prisma.$executeRawUnsafe(
+      `UPDATE lab_wallets SET paystack_customer_id = $1 WHERE lab_id = $2`,
+      customerCode, wallet.lab_id,
+    );
+  }
+
+  const updated = await prisma.labWallet.findUnique({ where: { lab_id: wallet.lab_id } });
+  return NextResponse.json({ success: true, amount: amountNaira, new_balance: Number(updated?.balance ?? 0), lab_id: wallet.lab_id });
 }
