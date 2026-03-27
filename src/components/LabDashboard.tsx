@@ -8,7 +8,7 @@ import {
   Link2, Paperclip, Send, SkipForward, UserCircle, MapPin, Shield, Layers,
   Users, CreditCard, Filter, ChevronDown, AlertTriangle, Truck, ExternalLink,
   MessageCircle, ChevronLeft, FileImage, Sun, Moon, Pencil, Save, BarChart3, Lock,
-  Menu, Activity, KeyRound, ArrowRight, Star, MessageSquare,
+  Menu, Activity, KeyRound, ArrowRight, Star, MessageSquare, Wallet2, Copy, ArrowUpRight,
 } from "lucide-react";
 import { useDashTheme } from "@/hooks/useDashTheme";
 import { Button } from "@/components/ui/Button";
@@ -3174,6 +3174,108 @@ type PoveonReq = {
 };
 type PoveonViewData = { total_owed: number; total_lab_revenue: number; total_paid: number; outstanding: number; requests: PoveonReq[] } | null;
 
+type WalletData = { balance: number; dva: { bank_name: string | null; account_number: string; account_name: string | null } | null; transactions: { id: string; type: string; direction: string; amount: number; balance_after: number; description: string | null; reference: string | null; created_at: string }[] } | null;
+
+function LabWalletPanel() {
+  const [wallet, setWallet] = useState<WalletData>(null);
+  const [loading, setLoading] = useState(true);
+  const [copied, setCopied] = useState(false);
+
+  useEffect(() => {
+    fetch("/api/lab/wallet")
+      .then((r) => r.json())
+      .then((d) => { if (d.success) setWallet(d); })
+      .catch(() => {})
+      .finally(() => setLoading(false));
+  }, []);
+
+  function copyAccNumber() {
+    if (!wallet?.dva?.account_number) return;
+    navigator.clipboard.writeText(wallet.dva.account_number).then(() => {
+      setCopied(true);
+      setTimeout(() => setCopied(false), 2000);
+    });
+  }
+
+  if (loading) return <div className="h-28 bg-white/5 rounded-2xl animate-pulse" />;
+
+  const balance = wallet?.balance ?? 0;
+  const dva = wallet?.dva ?? null;
+  const topups = wallet?.transactions.filter((t) => t.direction === "credit") ?? [];
+
+  return (
+    <div className="space-y-3">
+      {/* Balance + DVA row */}
+      <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+        {/* Balance */}
+        <div className="bg-gradient-to-br from-emerald-500/15 to-emerald-600/5 border border-emerald-500/25 rounded-2xl p-4 flex items-center gap-4">
+          <div className="w-10 h-10 rounded-xl bg-emerald-500/20 flex items-center justify-center shrink-0">
+            <Wallet2 className="w-5 h-5 text-emerald-400" />
+          </div>
+          <div>
+            <p className="text-xs text-slate-400 uppercase tracking-wider mb-0.5">Wallet Balance</p>
+            <p className="text-2xl font-bold font-mono text-white">₦{balance.toLocaleString()}</p>
+          </div>
+        </div>
+
+        {/* DVA account */}
+        {dva ? (
+          <div className="bg-white/5 border border-white/10 rounded-2xl p-4">
+            <p className="text-xs text-slate-400 uppercase tracking-wider mb-2">Your Dedicated Account</p>
+            <div className="flex items-center justify-between gap-2">
+              <div>
+                <p className="text-lg font-bold font-mono text-white tracking-widest">{dva.account_number}</p>
+                <p className="text-xs text-slate-400 mt-0.5">{dva.bank_name} · {dva.account_name}</p>
+              </div>
+              <button
+                onClick={copyAccNumber}
+                className="shrink-0 p-2 rounded-xl bg-white/8 hover:bg-white/15 text-slate-300 hover:text-white transition"
+                title="Copy account number"
+              >
+                {copied ? <Check className="w-4 h-4 text-emerald-400" /> : <Copy className="w-4 h-4" />}
+              </button>
+            </div>
+            <p className="text-[10px] text-slate-500 mt-2 leading-relaxed">
+              Transfer from any bank to fund your wallet. Balance updates automatically within seconds.
+            </p>
+          </div>
+        ) : (
+          <div className="bg-white/5 border border-white/10 border-dashed rounded-2xl p-4 flex items-center gap-3">
+            <Wallet2 className="w-5 h-5 text-slate-500 shrink-0" />
+            <div>
+              <p className="text-sm text-slate-400 font-medium">No virtual account yet</p>
+              <p className="text-xs text-slate-500 mt-0.5">Contact your admin to provision a dedicated payment account.</p>
+            </div>
+          </div>
+        )}
+      </div>
+
+      {/* Recent top-ups */}
+      {topups.length > 0 && (
+        <div className="bg-white/5 border border-white/10 rounded-2xl overflow-hidden">
+          <p className="text-xs font-semibold text-slate-400 uppercase tracking-wider px-4 py-3 border-b border-white/8">Recent Top-ups</p>
+          <div className="divide-y divide-white/5">
+            {topups.slice(0, 5).map((t) => (
+              <div key={t.id} className="flex items-center justify-between px-4 py-2.5 gap-3">
+                <div className="flex items-center gap-2.5 min-w-0">
+                  <div className="w-6 h-6 rounded-full bg-emerald-500/15 flex items-center justify-center shrink-0">
+                    <ArrowUpRight className="w-3.5 h-3.5 text-emerald-400" />
+                  </div>
+                  <p className="text-xs text-slate-300 truncate">{t.description ?? "Top-up"}</p>
+                </div>
+                <div className="text-right shrink-0">
+                  <p className="text-sm font-semibold font-mono text-emerald-300">+₦{Number(t.amount).toLocaleString()}</p>
+                  <p className="text-[10px] text-slate-500">{new Date(t.created_at).toLocaleDateString()}</p>
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
 function LabPoveonView({ data, loading, onLoad }: { data: PoveonViewData; loading: boolean; onLoad: () => void }) {
   const [expanded, setExpanded] = useState<Set<string>>(new Set());
   useEffect(() => { if (!data) onLoad(); }, [data, onLoad]);
@@ -3204,6 +3306,9 @@ function LabPoveonView({ data, loading, onLoad }: { data: PoveonViewData; loadin
 
   return (
     <div className="space-y-6">
+      {/* Wallet panel — balance + DVA account */}
+      <LabWalletPanel />
+
       {/* Summary cards */}
       <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
         <div className="bg-gradient-to-br from-emerald-500/20 to-emerald-600/10 border border-emerald-500/30 rounded-2xl p-5 text-center">

@@ -407,10 +407,14 @@ model SystemSetting {
 
 // Current wallet balance for each lab
 model LabWallet {
-  id         String   @id @default(uuid())
-  lab_id     String   @unique
-  balance    Decimal  @default(0) @db.Decimal(12, 2)
-  updated_at DateTime @updatedAt
+  id                   String   @id @default(uuid())
+  lab_id               String   @unique
+  balance              Decimal  @default(0) @db.Decimal(12, 2)
+  paystack_customer_id String?  @unique   // CUS_xxxxxxxx
+  dva_bank_name        String?            // "Wema Bank"
+  dva_account_number   String?            // "0123456789"
+  dva_account_name     String?            // "Poveon/Lab Name"
+  updated_at           DateTime @updatedAt
 
   lab Lab @relation(fields: [lab_id], references: [id], onDelete: Cascade)
 
@@ -426,6 +430,7 @@ model WalletTransaction {
   amount        Decimal  @db.Decimal(12, 2)
   balance_after Decimal  @db.Decimal(12, 2)
   description   String?
+  reference     String?  @unique // Paystack reference for topup — ensures idempotency
   request_id    String? // populated for "deduction" type
   actor_email   String? // admin email for topup/adjustment
   created_at    DateTime @default(now())

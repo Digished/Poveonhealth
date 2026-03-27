@@ -8,7 +8,7 @@ import {
   Phone, Upload, Check, MapPin, Users, ChevronRight, ChevronDown, ChevronUp,
   Code2, Key, Copy, TrendingUp, Link, Sun, Moon, Star, GitBranch,
   ArrowUpRight, ArrowDownRight, Settings, CreditCard, MessageCircle, Tag,
-  BookOpen, Database, Sparkles, Search, Layers, UserCircle,
+  BookOpen, Database, Sparkles, Search, Layers, UserCircle, Wallet,
 } from "lucide-react";
 import { useDashTheme } from "@/hooks/useDashTheme";
 import LabCatalogSheet, { type CatalogJob } from "@/components/LabCatalogSheet";
@@ -1008,6 +1008,7 @@ const [catalogModalLabId, setCatalogModalLabId] = useState<string | null>(null);
                         >
                           <Code2 className="w-3 h-3" />Dev
                         </button>
+                        <LabWalletButton labId={lab.id} />
                         <button
                           onClick={() => handleDeleteLab(lab)}
                           disabled={deletingId === lab.id}
@@ -4214,5 +4215,81 @@ function AdminUsersTab() {
         </div>
       )}
     </div>
+  );
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// LabWalletButton — provision DVA or show existing account details, per lab card
+// ─────────────────────────────────────────────────────────────────────────────
+function LabWalletButton({ labId }: { labId: string }) {
+  const [state, setState] = useState<"idle" | "loading" | "done" | "error">("idle");
+  const [dva, setDva] = useState<{ bank_name: string | null; account_number: string; account_name: string | null } | null>(null);
+  const [showDetails, setShowDetails] = useState(false);
+  const [copied, setCopied] = useState(false);
+
+  async function provision() {
+    setState("loading");
+    try {
+      const res = await fetch(`/api/admin/wallet/provision/${labId}`, { method: "POST" });
+      const d = await res.json();
+      if (!res.ok) {
+        toast.error(d.error ?? "Provisioning failed");
+        setState("error");
+        return;
+      }
+      setDva({ bank_name: d.dva_bank_name, account_number: d.dva_account_number, account_name: d.dva_account_name });
+      setState("done");
+      if (d.already_provisioned) toast.success("DVA already provisioned — details loaded");
+      else toast.success("Virtual account created!");
+    } catch {
+      toast.error("Network error");
+      setState("error");
+    }
+  }
+
+  function copyAcc() {
+    if (!dva?.account_number) return;
+    navigator.clipboard.writeText(dva.account_number).then(() => {
+      setCopied(true);
+      setTimeout(() => setCopied(false), 2000);
+    });
+  }
+
+  if (state === "done" && dva) {
+    return (
+      <div className="col-span-2 sm:col-span-auto">
+        <button
+          onClick={() => setShowDetails((s) => !s)}
+          className="w-full flex items-center justify-center gap-1 px-2.5 py-1.5 rounded-lg bg-emerald-500/10 hover:bg-emerald-500/20 text-emerald-400 text-xs transition-colors"
+        >
+          <Wallet className="w-3 h-3" />DVA {showDetails ? "▲" : "▼"}
+        </button>
+        {showDetails && (
+          <div className="mt-2 p-3 bg-white/5 border border-white/10 rounded-xl col-span-2">
+            <p className="text-[10px] text-slate-500 uppercase tracking-wider mb-1">{dva.bank_name}</p>
+            <div className="flex items-center gap-2">
+              <p className="font-mono text-sm text-white font-bold tracking-widest">{dva.account_number}</p>
+              <button onClick={copyAcc} className="p-1 rounded text-slate-400 hover:text-white transition">
+                {copied ? <Check className="w-3 h-3 text-emerald-400" /> : <Copy className="w-3 h-3" />}
+              </button>
+            </div>
+            <p className="text-[10px] text-slate-500 mt-0.5">{dva.account_name}</p>
+          </div>
+        )}
+      </div>
+    );
+  }
+
+  return (
+    <button
+      onClick={provision}
+      disabled={state === "loading"}
+      className="flex items-center justify-center gap-1 px-2.5 py-1.5 rounded-lg bg-violet-500/10 hover:bg-violet-500/20 text-violet-400 hover:text-violet-300 text-xs transition-colors disabled:opacity-50"
+    >
+      {state === "loading"
+        ? <RefreshCw className="w-3 h-3 animate-spin" />
+        : <Wallet className="w-3 h-3" />}
+      {state === "loading" ? "Provisioning…" : "Wallet DVA"}
+    </button>
   );
 }
