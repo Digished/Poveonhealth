@@ -96,12 +96,9 @@ export async function POST(request: NextRequest) {
         let breakdown: Array<{ source?: string; poveon_fee?: number | null; unit_price?: number }> = [];
 
         if (testsString) {
-          // Re-resolve fresh against current catalog
           breakdown = await resolveTests(testsString, req.lab_id);
-          // Also update stored breakdown so the lab dashboard reflects correct source info
           updateData.test_breakdown = breakdown;
         } else if (req.test_breakdown && Array.isArray(req.test_breakdown)) {
-          // Image-based request — use stored breakdown (already resolved via AI extraction)
           breakdown = req.test_breakdown as Array<{ source?: string; poveon_fee?: number | null; unit_price?: number }>;
         }
 
@@ -113,8 +110,14 @@ export async function POST(request: NextRequest) {
             labRevenueTotal += item.unit_price ?? 0;
           }
         }
-        updateData.poveon_amount = poveonTotal;
-        updateData.lab_revenue_amount = labRevenueTotal;
+
+        // Use raw SQL to write commission fields — bypasses stale Prisma client
+        // that may not know about these columns if prisma generate hasn't been re-run.
+        await prisma.$executeRaw`
+          UPDATE requests
+          SET poveon_amount = ${poveonTotal},
+              lab_revenue_amount = ${labRevenueTotal}
+          WHERE id = ${requestId}`;
       } catch (e) {
         console.error("[commission] recalculation failed:", e);
       }
