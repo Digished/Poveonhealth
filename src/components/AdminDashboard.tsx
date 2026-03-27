@@ -20,7 +20,7 @@ import { format } from "date-fns";
 import { createClient } from "@/lib/supabase/client"; // still used for auth sign-out
 import { useRouter } from "next/navigation";
 
-type AdminTab = "metrics" | "requests" | "referrals" | "labs" | "analytics" | "marketers" | "settings" | "pricing" | "transactions";
+type AdminTab = "metrics" | "requests" | "referrals" | "labs" | "analytics" | "marketers" | "settings" | "transactions";
 
 interface ReferralGroup {
   key: string; // doctor_email
@@ -456,7 +456,6 @@ const [catalogModalLabId, setCatalogModalLabId] = useState<string | null>(null);
             { key: "analytics" as AdminTab, label: "API Analytics", icon: <BarChart3 className="w-4 h-4" /> },
             { key: "marketers" as AdminTab, label: "Marketers", icon: <TrendingUp className="w-4 h-4" /> },
             { key: "settings" as AdminTab, label: "Settings", icon: <Settings className="w-4 h-4" /> },
-            { key: "pricing" as AdminTab, label: "Pricing", icon: <Tag className="w-4 h-4" />, href: "/admin/pricing" },
             { key: "transactions" as AdminTab, label: "Transactions", icon: <CreditCard className="w-4 h-4" /> },
           ];
           const current = tabs.find((t) => t.key === activeTab) ?? tabs[0];
@@ -1167,19 +1166,14 @@ const [catalogModalLabId, setCatalogModalLabId] = useState<string | null>(null);
           <div className="animate-fade-in space-y-6 max-w-lg">
             <div>
               <h2 className="font-semibold text-white">Platform Settings</h2>
-              <p className="text-xs text-slate-500 mt-0.5">Configure system-wide pricing and behaviour</p>
+              <p className="text-xs text-slate-500 mt-0.5">Configure system-wide behaviour</p>
             </div>
 
             <div className="bg-white/5 border border-white/10 rounded-2xl p-5 space-y-5">
               <div className="flex items-center gap-2">
                 <CreditCard className="w-4 h-4 text-violet-400" />
-                <p className="font-semibold text-white text-sm">Pricing Defaults</p>
+                <p className="font-semibold text-white text-sm">Request Defaults</p>
               </div>
-              <p className="text-xs text-slate-400 leading-relaxed">
-                These fallback values are used when a request has no catalog-resolved price.
-                Set real per-test prices in the{" "}
-                <a href="/admin/pricing" className="text-violet-400 hover:underline">Pricing Catalog</a>.
-              </p>
 
               <div className="space-y-3">
                 <div>

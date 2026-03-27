@@ -11,7 +11,6 @@ async function verifyAdmin() {
   return adminRecord ? user : null;
 }
 
-// GET /api/admin/labs — returns ALL labs (including hidden) for admin dashboard
 export async function GET() {
   try {
     const admin = await verifyAdmin();
@@ -19,38 +18,35 @@ export async function GET() {
       return NextResponse.json({ success: false, error: "Admin access required" }, { status: 403 });
     }
 
-    const [labs, ratings, poveonByLab, paidByLab] = await Promise.all([
+    const [labs, ratings, poveonByLabRaw, paidByLabRaw] = await Promise.all([
       prisma.lab.findMany({ orderBy: { name: "asc" } }),
       prisma.labFeedback.groupBy({
         by: ["lab_id"],
         _avg: { rating_overall: true },
         _count: { id: true },
       }),
-      // Total Poveon commission owed per lab (seen/done requests)
-      prisma.request.groupBy({
-        by: ["lab_id"],
-        _sum: { poveon_amount: true },
-        where: { status: { in: ["seen", "done"] } },
-      }),
-      // Total already paid per lab
-      prisma.request.groupBy({
-        by: ["lab_id"],
-        _sum: { poveon_amount: true },
-        where: { is_paid_to_poveon: true },
-      }),
+      // Raw SQL — bypasses stale Prisma client for commission columns
+      prisma.$queryRaw<Array<{ lab_id: string; total: string }>>`
+        SELECT lab_id, COALESCE(SUM(poveon_amount),0)::text AS total
+        FROM requests WHERE status IN ('seen','done')
+        GROUP BY lab_id`,
+      prisma.$queryRaw<Array<{ lab_id: string; total: string }>>`
+        SELECT lab_id, COALESCE(SUM(poveon_amount),0)::text AS total
+        FROM requests WHERE is_paid_to_poveon = true
+        GROUP BY lab_id`,
     ]);
 
     const ratingsMap = Object.fromEntries(
       ratings.map((r) => [r.lab_id, { avg: r._avg.rating_overall, count: r._count.id }])
     );
-    const poveonMap = Object.fromEntries(poveonByLab.map((r) => [r.lab_id, Number(r._sum.poveon_amount ?? 0)]));
-    const paidMap = Object.fromEntries(paidByLab.map((r) => [r.lab_id, Number(r._sum.poveon_amount ?? 0)]));
+    const poveonMap = Object.fromEntries(poveonByLabRaw.map((r) => [r.lab_id, Number(r.total)]));
+    const paidMap = Object.fromEntries(paidByLabRaw.map((r) => [r.lab_id, Number(r.total)]));
 
     const labsWithData = labs.map((lab) => ({
       ...lab,
-      rating_avg:          ratingsMap[lab.id]?.avg   ?? null,
-      rating_count:        ratingsMap[lab.id]?.count ?? 0,
-      poveon_outstanding:  (poveonMap[lab.id] ?? 0) - (paidMap[lab.id] ?? 0),
+      rating_avg:         ratingsMap[lab.id]?.avg   ?? null,
+      rating_count:       ratingsMap[lab.id]?.count ?? 0,
+      poveon_outstanding: (poveonMap[lab.id] ?? 0) - (paidMap[lab.id] ?? 0),
     }));
 
     return NextResponse.json({ success: true, labs: labsWithData });

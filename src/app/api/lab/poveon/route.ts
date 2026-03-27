@@ -3,67 +3,54 @@ import { NextRequest, NextResponse } from "next/server";
 import { getLabAuth } from "@/lib/lab-auth";
 import { prisma } from "@/lib/prisma";
 
-/**
- * GET /api/lab/poveon
- *
- * Returns the lab's Poveon commission summary:
- * - total_owed: cumulative Poveon commission across all seen/done requests
- * - total_paid: amount already paid to Poveon
- * - outstanding: total_owed - total_paid
- * - requests: recent requests with a non-zero poveon_amount, newest first
- *
- * TODO: Paystack payment integration — labs will pay outstanding balance here.
- */
 export async function GET(request: NextRequest) {
   const auth = await getLabAuth(request);
   if (!auth) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
 
-  const [totals, paidTotals, requests] = await Promise.all([
-    prisma.request.aggregate({
-      _sum: { poveon_amount: true, lab_revenue_amount: true },
-      where: { lab_id: auth.lab_id, status: { in: ["seen", "done"] } },
-    }),
-    prisma.request.aggregate({
-      _sum: { poveon_amount: true },
-      where: { lab_id: auth.lab_id, is_paid_to_poveon: true },
-    }),
-    prisma.request.findMany({
-      where: {
-        lab_id: auth.lab_id,
-        status: { in: ["seen", "done"] },
-      },
-      orderBy: { seen_at: "desc" },
-      take: 100,
-      select: {
-        id: true,
-        code: true,
-        patient_name: true,
-        tests: true,
-        poveon_amount: true,
-        lab_revenue_amount: true,
-        is_paid_to_poveon: true,
-        seen_at: true,
-        completed_at: true,
-      },
-    }),
+  // Raw SQL for all commission fields — bypasses stale Prisma client
+  const [totalsRaw, paidRaw, requestsRaw] = await Promise.all([
+    prisma.$queryRaw<[{ poveon_sum: string; revenue_sum: string }]>`
+      SELECT COALESCE(SUM(poveon_amount),0)::text AS poveon_sum,
+             COALESCE(SUM(lab_revenue_amount),0)::text AS revenue_sum
+      FROM requests
+      WHERE lab_id = ${auth.lab_id} AND status IN ('seen','done')`,
+
+    prisma.$queryRaw<[{ paid_sum: string }]>`
+      SELECT COALESCE(SUM(poveon_amount),0)::text AS paid_sum
+      FROM requests
+      WHERE lab_id = ${auth.lab_id} AND is_paid_to_poveon = true`,
+
+    prisma.$queryRaw<Array<{
+      id: string; code: string; patient_name: string | null; tests: string;
+      poveon_amount: string; lab_revenue_amount: string;
+      is_paid_to_poveon: boolean; seen_at: Date | null; completed_at: Date | null;
+    }>>`
+      SELECT id, code, patient_name, tests,
+             COALESCE(poveon_amount,0)::text AS poveon_amount,
+             COALESCE(lab_revenue_amount,0)::text AS lab_revenue_amount,
+             is_paid_to_poveon, seen_at, completed_at
+      FROM requests
+      WHERE lab_id = ${auth.lab_id} AND status IN ('seen','done')
+      ORDER BY seen_at DESC NULLS LAST
+      LIMIT 100`,
   ]);
 
-  const totalOwed = Number(totals._sum.poveon_amount ?? 0);
-  const totalPaid = Number(paidTotals._sum.poveon_amount ?? 0);
+  const totalOwed = Number(totalsRaw[0]?.poveon_sum ?? 0);
+  const totalPaid = Number(paidRaw[0]?.paid_sum ?? 0);
 
   return NextResponse.json({
     success: true,
     total_owed: totalOwed,
-    total_lab_revenue: Number(totals._sum.lab_revenue_amount ?? 0),
+    total_lab_revenue: Number(totalsRaw[0]?.revenue_sum ?? 0),
     total_paid: totalPaid,
     outstanding: totalOwed - totalPaid,
-    requests: requests.map((r) => ({
+    requests: requestsRaw.map((r) => ({
       id: r.id,
       code: r.code,
       patient_name: r.patient_name,
       tests: r.tests,
-      poveon_amount: Number(r.poveon_amount ?? 0),
-      lab_revenue_amount: Number(r.lab_revenue_amount ?? 0),
+      poveon_amount: Number(r.poveon_amount),
+      lab_revenue_amount: Number(r.lab_revenue_amount),
       is_paid_to_poveon: r.is_paid_to_poveon,
       seen_at: r.seen_at,
       completed_at: r.completed_at,
