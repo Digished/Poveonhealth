@@ -25,8 +25,8 @@ export interface Lab {
   // Computed by admin API — average rating and number of reviews
   rating_avg?: number | null;
   rating_count?: number;
-  // Wallet balance — included in admin labs list
-  wallet_balance?: number | null;
+  // Poveon outstanding commission — included in admin labs list
+  poveon_outstanding?: number | null;
 }
 
 export interface ApiLog {
@@ -82,22 +82,24 @@ export interface LabRole {
   _count?: { members: number };
 }
 
-export interface WalletTransaction {
+export interface PoveonRequest {
   id: string;
-  lab_id: string;
-  type: "topup" | "deduction" | "adjustment";
-  direction: "credit" | "debit";
-  amount: number;
-  balance_after: number;
-  description: string | null;
-  request_id: string | null;
-  actor_email: string | null;
-  created_at: string;
+  code: string;
+  patient_name: string | null;
+  tests: string;
+  poveon_amount: number;
+  lab_revenue_amount: number;
+  is_paid_to_poveon: boolean;
+  seen_at: string | null;
+  completed_at: string | null;
 }
 
-export interface LabWallet {
-  balance: number;
-  transactions: WalletTransaction[];
+export interface PoveonData {
+  total_owed: number;
+  total_lab_revenue: number;
+  total_paid: number;
+  outstanding: number;
+  requests: PoveonRequest[];
 }
 
 export interface LabFeedback {

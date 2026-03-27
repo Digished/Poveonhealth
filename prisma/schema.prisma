@@ -176,6 +176,10 @@ model Request {
   result_link           String? // URL to online results (stored when lab sends results)
   result_note           String? // Lab note sent with results
   result_file_urls      String[]  @default([]) // URLs of uploaded result files in Supabase Storage
+  // Poveon commission tracking — set when request is first seen (code revealed)
+  poveon_amount         Decimal?  @db.Decimal(12, 2) // sum of poveon_fee for all lab_catalog matched tests
+  lab_revenue_amount    Decimal?  @db.Decimal(12, 2) // sum of unit_price for all lab_catalog matched tests
+  is_paid_to_poveon     Boolean   @default(false)    // true when lab has paid Poveon their commission
   created_at            DateTime  @default(now())
   updated_at            DateTime  @default(now()) @updatedAt
   seen_at               DateTime?

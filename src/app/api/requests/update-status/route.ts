@@ -8,7 +8,6 @@ import { doctorTestsCompleted } from "@/lib/email/templates";
 import { logApiCall } from "@/lib/api-logger";
 import { logLabActivity } from "@/lib/lab-activity";
 import { createServerClient } from "@/lib/supabase/server";
-import { deductWallet } from "@/lib/wallet-deduction";
 
 const UpdateStatusSchema = z.object({
   requestId: z.string().uuid(),
@@ -86,10 +85,24 @@ export async function POST(request: NextRequest) {
     if (status === "seen") updateData.seen_at = new Date();
     if (status === "done") updateData.completed_at = new Date();
 
-    // When marking "seen" — deduct quoted_price from wallet (non-critical)
-    let walletBalance: number | null = null;
-    if (status === "seen") {
-      walletBalance = await deductWallet(req);
+    // When marking "seen" — calculate Poveon commission from test_breakdown
+    if (status === "seen" && req.test_breakdown) {
+      try {
+        type BreakdownItem = { source?: string; poveon_fee?: number | null; unit_price?: number };
+        const breakdown = req.test_breakdown as BreakdownItem[];
+        if (Array.isArray(breakdown)) {
+          let poveonTotal = 0;
+          let labRevenueTotal = 0;
+          for (const item of breakdown) {
+            if (item.source === "lab_catalog") {
+              poveonTotal += item.poveon_fee ?? 0;
+              labRevenueTotal += item.unit_price ?? 0;
+            }
+          }
+          updateData.poveon_amount = poveonTotal;
+          updateData.lab_revenue_amount = labRevenueTotal;
+        }
+      } catch { /* non-critical */ }
     }
 
     await prisma.request.update({ where: { id: requestId }, data: updateData });
@@ -130,7 +143,7 @@ export async function POST(request: NextRequest) {
     }
 
     logApiCall({ method: "POST", path: "/api/requests/update-status", status: 200, lab_id: req.lab_id, duration_ms: Date.now() - start });
-    return NextResponse.json({ success: true, status, ...(walletBalance !== null ? { wallet_balance: walletBalance } : {}) });
+    return NextResponse.json({ success: true, status });
   } catch (error) {
     console.error("Update status error:", error);
     logApiCall({ method: "POST", path: "/api/requests/update-status", status: 500, duration_ms: Date.now() - start });

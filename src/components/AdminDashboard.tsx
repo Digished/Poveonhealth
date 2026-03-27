@@ -7,7 +7,7 @@ import {
   Building2, Trash2, Eye, EyeOff, RefreshCw, X, Pencil,
   Phone, Upload, Check, MapPin, Users, ChevronRight, ChevronDown, ChevronUp,
   Code2, Key, Copy, TrendingUp, Link, Sun, Moon, Star, GitBranch,
-  Wallet, ArrowUpRight, ArrowDownRight, Settings, CreditCard, MessageCircle, Tag,
+  ArrowUpRight, ArrowDownRight, Settings, CreditCard, MessageCircle, Tag,
 } from "lucide-react";
 import { useDashTheme } from "@/hooks/useDashTheme";
 import LabCatalogSheet, { type CatalogJob } from "@/components/LabCatalogSheet";
@@ -124,22 +124,21 @@ export function AdminDashboard() {
   const [apiLogSummary, setApiLogSummary] = useState<ApiLogSummary | null>(null);
   const [expandedLabIntegration, setExpandedLabIntegration] = useState<string | null>(null);
   const [branchModalLabId, setBranchModalLabId] = useState<string | null>(null);
-  const [walletModalLabId, setWalletModalLabId] = useState<string | null>(null);
-  const [catalogModalLabId, setCatalogModalLabId] = useState<string | null>(null);
+const [catalogModalLabId, setCatalogModalLabId] = useState<string | null>(null);
   const [catalogJob, setCatalogJob] = useState<CatalogJob | null>(null);
   const [defaultRequestPrice, setDefaultRequestPrice] = useState<string>("500");
   const [savingSettings, setSavingSettings] = useState(false);
 
   type RevenueData = {
-    total_credited: number;
-    total_debited: number;
-    wallets: { lab_id: string; lab_name: string; balance: number }[];
-    recent_transactions: { id: string; lab_id: string; lab_name: string; type: string; direction: string; amount: number; balance_after: number; description: string | null; created_at: string }[];
-    by_lab: { lab_id: string; lab_name: string; total_credited: number; total_debited: number; balance: number | { toNumber?: () => number } }[];
+    total_poveon_earned: number;
+    total_lab_revenue: number;
+    total_paid: number;
+    total_outstanding: number;
+    by_lab: { lab_id: string; lab_name: string; request_count: number; total_poveon_amount: number; total_lab_revenue: number; total_paid: number; outstanding: number }[];
+    recent_requests: { id: string; code: string; lab_id: string; lab_name: string; patient_name: string | null; tests: string; poveon_amount: number; lab_revenue_amount: number; is_paid_to_poveon: boolean; seen_at: string | null }[];
   };
   const [revenueData, setRevenueData] = useState<RevenueData | null>(null);
   const [revenueLoading, setRevenueLoading] = useState(false);
-  const [expandedTxId, setExpandedTxId] = useState<string | null>(null);
 
   // Per-lab analytics modal
   type LabAnalytics = {
@@ -565,7 +564,7 @@ export function AdminDashboard() {
                   </div>
                 </div>
 
-                {/* ── Revenue & Transactions ── */}
+                {/* ── Poveon Revenue ── */}
                 {revenueLoading ? (
                   <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                     {[...Array(2)].map((_, i) => (
@@ -575,28 +574,30 @@ export function AdminDashboard() {
                 ) : revenueData && (
                   <>
                     {/* Revenue summary cards */}
-                    <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+                    <div className="grid grid-cols-1 sm:grid-cols-4 gap-4">
                       <div className="bg-gradient-to-br from-emerald-500/20 to-emerald-600/10 border border-emerald-500/30 rounded-2xl p-5">
-                        <p className="text-xs text-slate-400 font-medium uppercase tracking-wider mb-1">Total Topups</p>
-                        <p className="text-3xl font-bold text-white">₦{revenueData.total_credited.toLocaleString()}</p>
+                        <p className="text-xs text-slate-400 font-medium uppercase tracking-wider mb-1">Total Poveon Commission</p>
+                        <p className="text-3xl font-bold text-white">₦{revenueData.total_poveon_earned.toLocaleString()}</p>
                       </div>
-                      <div className="bg-gradient-to-br from-rose-500/20 to-rose-600/10 border border-rose-500/30 rounded-2xl p-5">
-                        <p className="text-xs text-slate-400 font-medium uppercase tracking-wider mb-1">Total Revenue (Reveal Charges)</p>
-                        <p className="text-3xl font-bold text-white">₦{revenueData.total_debited.toLocaleString()}</p>
+                      <div className="bg-gradient-to-br from-sky-500/20 to-sky-600/10 border border-sky-500/30 rounded-2xl p-5">
+                        <p className="text-xs text-slate-400 font-medium uppercase tracking-wider mb-1">Total Lab Revenue</p>
+                        <p className="text-3xl font-bold text-white">₦{revenueData.total_lab_revenue.toLocaleString()}</p>
                       </div>
                       <div className="bg-gradient-to-br from-violet-500/20 to-violet-600/10 border border-violet-500/30 rounded-2xl p-5">
-                        <p className="text-xs text-slate-400 font-medium uppercase tracking-wider mb-1">Outstanding Balances</p>
-                        <p className="text-3xl font-bold text-white">
-                          ₦{revenueData.wallets.reduce((s, w) => s + (w.balance > 0 ? w.balance : 0), 0).toLocaleString()}
-                        </p>
+                        <p className="text-xs text-slate-400 font-medium uppercase tracking-wider mb-1">Total Paid to Poveon</p>
+                        <p className="text-3xl font-bold text-white">₦{revenueData.total_paid.toLocaleString()}</p>
+                      </div>
+                      <div className="bg-gradient-to-br from-amber-500/20 to-amber-600/10 border border-amber-500/30 rounded-2xl p-5">
+                        <p className="text-xs text-slate-400 font-medium uppercase tracking-wider mb-1">Outstanding</p>
+                        <p className="text-3xl font-bold text-amber-300">₦{revenueData.total_outstanding.toLocaleString()}</p>
                       </div>
                     </div>
 
-                    {/* Per-lab wallet breakdown */}
+                    {/* Per-lab breakdown */}
                     {revenueData.by_lab.length > 0 && (
                       <div className="bg-white/5 border border-white/10 rounded-2xl p-5">
                         <div className="flex items-center justify-between mb-4">
-                          <h3 className="text-sm font-semibold text-slate-300">Lab Wallet Breakdown</h3>
+                          <h3 className="text-sm font-semibold text-slate-300">Lab Commission Breakdown</h3>
                           <button
                             onClick={fetchRevenue}
                             className="flex items-center gap-1.5 text-xs text-slate-400 hover:text-white transition px-2 py-1 rounded-lg hover:bg-white/10"
@@ -605,120 +606,59 @@ export function AdminDashboard() {
                           </button>
                         </div>
                         <div className="space-y-2 max-h-64 overflow-y-auto pr-1">
-                          {revenueData.by_lab.map((row) => {
-                            const bal = typeof row.balance === "object" && row.balance !== null && "toNumber" in row.balance
-                              ? (row.balance as { toNumber: () => number }).toNumber()
-                              : Number(row.balance);
-                            return (
-                              <div key={row.lab_id} className="flex items-center gap-3 py-2 border-b border-white/5 last:border-0">
-                                <p className="text-sm text-white flex-1 min-w-0 truncate">{row.lab_name}</p>
-                                <div className="flex items-center gap-3 text-xs shrink-0">
-                                  <span className="text-emerald-400 font-mono">+₦{row.total_credited.toLocaleString()}</span>
-                                  <span className="text-rose-400 font-mono">-₦{row.total_debited.toLocaleString()}</span>
-                                  <span className={`font-bold font-mono ${bal < 0 ? "text-red-400" : bal < 500 ? "text-amber-400" : "text-slate-300"}`}>
-                                    ₦{bal.toLocaleString()}
-                                  </span>
+                          {revenueData.by_lab.map((row) => (
+                            <div key={row.lab_id} className="flex items-center gap-3 py-2 border-b border-white/5 last:border-0">
+                              <div className="flex-1 min-w-0">
+                                <p className="text-sm text-white truncate">{row.lab_name}</p>
+                                <p className="text-xs text-slate-500">{row.request_count} request{row.request_count !== 1 ? "s" : ""}</p>
+                              </div>
+                              <div className="flex items-center gap-4 text-xs shrink-0">
+                                <div className="text-right">
+                                  <p className="text-slate-400">Owed</p>
+                                  <p className="text-emerald-400 font-mono font-bold">₦{row.total_poveon_amount.toLocaleString()}</p>
+                                </div>
+                                <div className="text-right">
+                                  <p className="text-slate-400">Paid</p>
+                                  <p className="text-violet-400 font-mono font-bold">₦{row.total_paid.toLocaleString()}</p>
+                                </div>
+                                <div className="text-right">
+                                  <p className="text-slate-400">Outstanding</p>
+                                  <p className={`font-mono font-bold ${row.outstanding > 0 ? "text-amber-400" : "text-slate-500"}`}>
+                                    ₦{row.outstanding.toLocaleString()}
+                                  </p>
                                 </div>
                               </div>
-                            );
-                          })}
+                            </div>
+                          ))}
                         </div>
                       </div>
                     )}
 
-                    {/* Recent transactions */}
-                    {revenueData.recent_transactions.length > 0 && (
+                    {/* Recent seen requests with commission */}
+                    {revenueData.recent_requests.length > 0 && (
                       <div className="bg-white/5 border border-white/10 rounded-2xl p-5">
-                        <h3 className="text-sm font-semibold text-slate-300 mb-4">Recent Transactions</h3>
+                        <h3 className="text-sm font-semibold text-slate-300 mb-4">Recent Commission Activity</h3>
                         <div className="space-y-1 max-h-[32rem] overflow-y-auto pr-1">
-                          {revenueData.recent_transactions.map((tx) => {
-                            const isExpanded = expandedTxId === tx.id;
-                            const balanceBefore = tx.direction === "credit"
-                              ? tx.balance_after - tx.amount
-                              : tx.balance_after + tx.amount;
-                            return (
-                              <div key={tx.id} className={`rounded-xl border transition-colors ${isExpanded ? "border-white/10 bg-white/5" : "border-transparent hover:bg-white/3"}`}>
-                                {/* Summary row — click to toggle */}
-                                <button
-                                  onClick={() => setExpandedTxId(isExpanded ? null : tx.id)}
-                                  className="w-full flex items-center gap-3 py-2.5 px-3 text-left"
-                                >
-                                  <div className={`w-7 h-7 rounded-full flex items-center justify-center shrink-0 ${tx.direction === "credit" ? "bg-emerald-500/15" : "bg-rose-500/15"}`}>
-                                    {tx.direction === "credit"
-                                      ? <ArrowUpRight className="w-3.5 h-3.5 text-emerald-400" />
-                                      : <ArrowDownRight className="w-3.5 h-3.5 text-rose-400" />}
-                                  </div>
-                                  <div className="flex-1 min-w-0">
-                                    <div className="flex items-center gap-2 flex-wrap">
-                                      <p className="text-xs text-white font-medium truncate">{tx.description ?? tx.type}</p>
-                                      <span className={`text-[10px] px-1.5 py-0.5 rounded-full font-medium shrink-0 ${
-                                        tx.type === "top_up" ? "bg-emerald-500/15 text-emerald-400" :
-                                        tx.type === "charge" ? "bg-rose-500/15 text-rose-400" :
-                                        tx.type === "refund" ? "bg-amber-500/15 text-amber-400" :
-                                        "bg-slate-500/30 text-slate-400"
-                                      }`}>{tx.type.replace(/_/g, " ")}</span>
-                                    </div>
-                                    <div className="flex items-center gap-2 mt-0.5">
-                                      <p className="text-xs text-slate-500">{tx.lab_name}</p>
-                                      <span className="text-slate-700">·</span>
-                                      <p className="text-xs text-slate-600">{new Date(tx.created_at).toLocaleString("en-GB", { day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" })}</p>
-                                    </div>
-                                  </div>
-                                  <div className="text-right shrink-0">
-                                    <p className={`text-sm font-bold font-mono ${tx.direction === "credit" ? "text-emerald-400" : "text-rose-400"}`}>
-                                      {tx.direction === "credit" ? "+" : "-"}₦{tx.amount.toLocaleString()}
-                                    </p>
-                                    <p className="text-[10px] text-slate-500 font-mono mt-0.5">bal ₦{tx.balance_after.toLocaleString()}</p>
-                                  </div>
-                                  <ChevronDown className={`w-3.5 h-3.5 text-slate-500 shrink-0 transition-transform ${isExpanded ? "rotate-180" : ""}`} />
-                                </button>
-
-                                {/* Expanded detail panel */}
-                                {isExpanded && (
-                                  <div className="px-4 pb-4 pt-1 border-t border-white/8 grid grid-cols-2 sm:grid-cols-3 gap-x-4 gap-y-3">
-                                    <div>
-                                      <p className="text-[10px] text-slate-500 uppercase tracking-wider font-medium">Lab</p>
-                                      <p className="text-xs text-slate-200 mt-0.5">{tx.lab_name}</p>
-                                    </div>
-                                    <div>
-                                      <p className="text-[10px] text-slate-500 uppercase tracking-wider font-medium">Type</p>
-                                      <p className="text-xs text-slate-200 mt-0.5 capitalize">{tx.type.replace(/_/g, " ")}</p>
-                                    </div>
-                                    <div>
-                                      <p className="text-[10px] text-slate-500 uppercase tracking-wider font-medium">Direction</p>
-                                      <p className={`text-xs mt-0.5 font-medium capitalize ${tx.direction === "credit" ? "text-emerald-400" : "text-rose-400"}`}>{tx.direction}</p>
-                                    </div>
-                                    <div>
-                                      <p className="text-[10px] text-slate-500 uppercase tracking-wider font-medium">Amount</p>
-                                      <p className={`text-xs font-bold font-mono mt-0.5 ${tx.direction === "credit" ? "text-emerald-400" : "text-rose-400"}`}>
-                                        {tx.direction === "credit" ? "+" : "-"}₦{tx.amount.toLocaleString()}
-                                      </p>
-                                    </div>
-                                    <div>
-                                      <p className="text-[10px] text-slate-500 uppercase tracking-wider font-medium">Balance before</p>
-                                      <p className="text-xs text-slate-300 font-mono mt-0.5">₦{balanceBefore.toLocaleString()}</p>
-                                    </div>
-                                    <div>
-                                      <p className="text-[10px] text-slate-500 uppercase tracking-wider font-medium">Balance after</p>
-                                      <p className="text-xs text-slate-300 font-mono mt-0.5">₦{tx.balance_after.toLocaleString()}</p>
-                                    </div>
-                                    <div className="col-span-2 sm:col-span-3">
-                                      <p className="text-[10px] text-slate-500 uppercase tracking-wider font-medium">Description</p>
-                                      <p className="text-xs text-slate-300 mt-0.5 break-words">{tx.description ?? "—"}</p>
-                                    </div>
-                                    <div className="col-span-2 sm:col-span-2">
-                                      <p className="text-[10px] text-slate-500 uppercase tracking-wider font-medium">Date & time</p>
-                                      <p className="text-xs text-slate-400 mt-0.5">{new Date(tx.created_at).toLocaleString("en-GB", { weekday: "short", day: "numeric", month: "long", year: "numeric", hour: "2-digit", minute: "2-digit", second: "2-digit" })}</p>
-                                    </div>
-                                    <div>
-                                      <p className="text-[10px] text-slate-500 uppercase tracking-wider font-medium">Transaction ID</p>
-                                      <p className="text-[10px] text-slate-600 font-mono mt-0.5 break-all">{tx.id}</p>
-                                    </div>
-                                  </div>
-                                )}
+                          {revenueData.recent_requests.map((req) => (
+                            <div key={req.id} className="flex items-center gap-3 py-2.5 px-3 rounded-xl hover:bg-white/3 transition-colors">
+                              <div className={`w-7 h-7 rounded-full flex items-center justify-center shrink-0 ${req.is_paid_to_poveon ? "bg-emerald-500/15" : "bg-amber-500/15"}`}>
+                                {req.is_paid_to_poveon
+                                  ? <Check className="w-3.5 h-3.5 text-emerald-400" />
+                                  : <CreditCard className="w-3.5 h-3.5 text-amber-400" />}
                               </div>
-                            );
-                          })}
+                              <div className="flex-1 min-w-0">
+                                <div className="flex items-center gap-2">
+                                  <p className="text-xs text-white font-medium font-mono">{req.code}</p>
+                                  <p className="text-xs text-slate-500 truncate">{req.lab_name}</p>
+                                </div>
+                                <p className="text-xs text-slate-600 truncate">{req.patient_name ?? "Patient"} · {req.tests.slice(0, 60)}</p>
+                              </div>
+                              <div className="text-right shrink-0">
+                                <p className="text-sm font-bold font-mono text-emerald-400">₦{req.poveon_amount.toLocaleString()}</p>
+                                <p className="text-[10px] text-slate-500">{req.seen_at ? new Date(req.seen_at).toLocaleDateString("en-GB", { day: "numeric", month: "short" }) : ""}</p>
+                              </div>
+                            </div>
+                          ))}
                         </div>
                       </div>
                     )}
@@ -998,14 +938,16 @@ export function AdminDashboard() {
                         </div>
                       </div>
                     )}
-                    {/* Wallet balance */}
-                    <div className={`mt-3 flex items-center gap-2 px-3 py-2 rounded-xl ${(lab.wallet_balance ?? 0) < 0 ? "bg-red-500/10 border border-red-500/20" : (lab.wallet_balance ?? 0) < 1000 ? "bg-amber-500/10 border border-amber-500/20" : "bg-emerald-500/10 border border-emerald-500/20"}`}>
-                      <Wallet className={`w-3.5 h-3.5 shrink-0 ${(lab.wallet_balance ?? 0) < 0 ? "text-red-400" : (lab.wallet_balance ?? 0) < 1000 ? "text-amber-400" : "text-emerald-400"}`} />
-                      <span className="text-xs text-slate-400 flex-1">Wallet balance</span>
-                      <span className={`text-sm font-bold font-mono ${(lab.wallet_balance ?? 0) < 0 ? "text-red-400" : (lab.wallet_balance ?? 0) < 1000 ? "text-amber-400" : "text-emerald-300"}`}>
-                        ₦{(lab.wallet_balance ?? 0).toLocaleString()}
-                      </span>
-                    </div>
+                    {/* Poveon outstanding */}
+                    {(lab.poveon_outstanding ?? 0) > 0 && (
+                      <div className="mt-3 flex items-center gap-2 px-3 py-2 rounded-xl bg-amber-500/10 border border-amber-500/20">
+                        <CreditCard className="w-3.5 h-3.5 shrink-0 text-amber-400" />
+                        <span className="text-xs text-slate-400 flex-1">Poveon outstanding</span>
+                        <span className="text-sm font-bold font-mono text-amber-300">
+                          ₦{(lab.poveon_outstanding ?? 0).toLocaleString()}
+                        </span>
+                      </div>
+                    )}
 
                     <div className="flex items-center justify-between mt-3">
                       <p className="text-xs text-slate-600">Added {format(new Date(lab.created_at), "dd MMM yyyy")}</p>
@@ -1057,12 +999,6 @@ export function AdminDashboard() {
                           className="flex items-center justify-center gap-1 px-2.5 py-1.5 rounded-lg bg-emerald-500/10 hover:bg-emerald-500/20 text-emerald-400 hover:text-emerald-300 text-xs transition-colors"
                         >
                           <BarChart3 className="w-3 h-3" />Stats
-                        </button>
-                        <button
-                          onClick={() => setWalletModalLabId(lab.id)}
-                          className="flex items-center justify-center gap-1 px-2.5 py-1.5 rounded-lg bg-violet-500/10 hover:bg-violet-500/20 text-violet-400 hover:text-violet-300 text-xs transition-colors"
-                        >
-                          <Wallet className="w-3 h-3" />Wallet
                         </button>
                         <button
                           onClick={() => setCatalogModalLabId(lab.id)}
@@ -1279,14 +1215,14 @@ export function AdminDashboard() {
               </button>
             </div>
 
-            {/* Low balance labs alert */}
-            {labs.filter((l) => (l.wallet_balance ?? 0) < 1000).length > 0 && (
+            {/* Labs with outstanding Poveon commission */}
+            {labs.filter((l) => (l.poveon_outstanding ?? 0) > 0).length > 0 && (
               <div className="bg-amber-500/8 border border-amber-500/20 rounded-2xl p-5 space-y-3">
                 <p className="text-sm font-semibold text-amber-400 flex items-center gap-2">
-                  <Wallet className="w-4 h-4" />
-                  Labs with low balance (below ₦1,000)
+                  <CreditCard className="w-4 h-4" />
+                  Labs with outstanding Poveon commission
                 </p>
-                {labs.filter((l) => (l.wallet_balance ?? 0) < 1000).map((lab) => (
+                {labs.filter((l) => (l.poveon_outstanding ?? 0) > 0).map((lab) => (
                   <div key={lab.id} className="flex items-center justify-between gap-3 bg-white/5 rounded-xl px-4 py-3">
                     <div className="min-w-0">
                       <p className="text-sm font-medium text-white truncate">{lab.name}</p>
@@ -1298,15 +1234,9 @@ export function AdminDashboard() {
                       )}
                     </div>
                     <div className="flex flex-col items-end gap-1.5 shrink-0">
-                      <span className={`text-sm font-bold font-mono ${(lab.wallet_balance ?? 0) < 0 ? "text-red-400" : "text-amber-400"}`}>
-                        ₦{(lab.wallet_balance ?? 0).toLocaleString()}
+                      <span className="text-sm font-bold font-mono text-amber-400">
+                        ₦{(lab.poveon_outstanding ?? 0).toLocaleString()}
                       </span>
-                      <button
-                        onClick={() => setWalletModalLabId(lab.id)}
-                        className="text-xs px-2.5 py-1 rounded-lg bg-violet-500/20 hover:bg-violet-500/30 text-violet-300 transition-colors"
-                      >
-                        Top up
-                      </button>
                     </div>
                   </div>
                 ))}
@@ -1448,12 +1378,6 @@ export function AdminDashboard() {
         const lab = labs.find((l) => l.id === branchModalLabId);
         return lab ? (
           <LabBranchModal lab={lab} onClose={() => setBranchModalLabId(null)} allLabs={labs} />
-        ) : null;
-      })()}
-      {walletModalLabId && (() => {
-        const lab = labs.find((l) => l.id === walletModalLabId);
-        return lab ? (
-          <LabWalletModal lab={lab} onClose={() => { setWalletModalLabId(null); fetchLabs(); }} />
         ) : null;
       })()}
       {catalogModalLabId && (() => {
@@ -1700,183 +1624,6 @@ export function AdminDashboard() {
   );
 }
 
-// =============================================================================
-// Lab Wallet Modal
-// =============================================================================
-function LabWalletModal({ lab, onClose }: { lab: Lab; onClose: () => void }) {
-  type Txn = { id: string; type: string; direction: string; amount: number; balance_after: number; description: string | null; actor_email: string | null; created_at: string };
-  const [balance, setBalance] = useState<number | null>(null);
-  const [transactions, setTransactions] = useState<Txn[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [amount, setAmount] = useState("");
-  const [direction, setDirection] = useState<"credit" | "debit">("credit");
-  const [description, setDescription] = useState("");
-  const [submitting, setSubmitting] = useState(false);
-
-  const load = useCallback(async () => {
-    setLoading(true);
-    try {
-      const res = await fetch(`/api/admin/labs/${lab.id}/wallet`);
-      const data = await res.json();
-      if (data.success) { setBalance(data.balance); setTransactions(data.transactions); }
-    } catch { /* non-critical */ } finally { setLoading(false); }
-  }, [lab.id]);
-
-  useEffect(() => { load(); }, [load]);
-
-  async function handleSubmit(e: React.FormEvent) {
-    e.preventDefault();
-    const val = parseFloat(amount);
-    if (!val || val <= 0 || isNaN(val)) { toast.error("Enter a valid amount"); return; }
-    setSubmitting(true);
-    try {
-      const res = await fetch(`/api/admin/labs/${lab.id}/wallet`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ direction, amount: val, description: description.trim() || undefined }),
-      });
-      const data = await res.json();
-      if (data.success) {
-        toast.success(direction === "credit" ? "Funds added" : "Funds removed");
-        setAmount(""); setDescription("");
-        setBalance(data.balance);
-        setTransactions((prev) => [data.transaction, ...prev]);
-      } else {
-        toast.error(data.error ?? "Failed");
-      }
-    } catch { toast.error("Network error"); } finally { setSubmitting(false); }
-  }
-
-  return (
-    <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center p-3 sm:p-4"
-      style={{ backgroundColor: "rgba(2,6,23,0.88)", backdropFilter: "blur(6px)" }}
-      onClick={onClose}
-    >
-      <div className="w-full max-w-lg bg-slate-900 border border-white/10 rounded-3xl shadow-2xl overflow-hidden max-h-[94vh] flex flex-col"
-        onClick={(e) => e.stopPropagation()}
-      >
-        {/* Header */}
-        <div className="px-5 pt-5 pb-4 border-b border-white/10 flex items-center justify-between gap-3 shrink-0">
-          <div className="flex items-center gap-2 min-w-0">
-            <Wallet className="w-5 h-5 text-violet-400 shrink-0" />
-            <div className="min-w-0">
-              <p className="font-bold text-white truncate">{lab.name}</p>
-              <p className="text-xs text-slate-500">Wallet Management</p>
-            </div>
-          </div>
-          <button onClick={onClose} className="p-1.5 rounded-xl hover:bg-white/10 text-slate-400 hover:text-white transition-colors shrink-0">
-            <X className="w-5 h-5" />
-          </button>
-        </div>
-
-        <div className="flex-1 overflow-y-auto p-5 space-y-5">
-          {/* Balance */}
-          {loading ? (
-            <div className="h-20 bg-white/5 rounded-2xl animate-pulse" />
-          ) : (
-            <div className={`rounded-2xl p-5 text-center border ${balance !== null && balance < 0 ? "bg-red-500/10 border-red-500/20" : balance !== null && balance < 1000 ? "bg-amber-500/10 border-amber-500/20" : "bg-violet-500/10 border-violet-500/20"}`}>
-              <p className="text-xs text-slate-400 mb-1 uppercase tracking-wider">Current Balance</p>
-              <p className={`text-4xl font-bold font-mono ${balance !== null && balance < 0 ? "text-red-400" : balance !== null && balance < 1000 ? "text-amber-400" : "text-violet-300"}`}>
-                ₦{(balance ?? 0).toLocaleString()}
-              </p>
-              {balance !== null && balance < 1000 && (
-                <p className="text-xs text-amber-400/80 mt-2">⚠ Low balance — contact lab to top up</p>
-              )}
-            </div>
-          )}
-
-          {/* Contact info for reminder */}
-          <div className="bg-white/5 border border-white/10 rounded-xl px-4 py-3 space-y-1">
-            <p className="text-xs font-semibold text-slate-400 mb-2">Lab Contact</p>
-            <p className="text-xs text-slate-300">{lab.email}</p>
-            {(lab.phones as string[]).map((ph, i) => (
-              <p key={i} className="text-xs text-slate-400 flex items-center gap-1"><Phone className="w-3 h-3 text-slate-600" />{ph}</p>
-            ))}
-          </div>
-
-          {/* Adjust form */}
-          <form onSubmit={handleSubmit} className="space-y-3">
-            <p className="text-xs font-semibold text-slate-400 uppercase tracking-wider">Adjust Balance</p>
-            <div className="grid grid-cols-2 gap-2">
-              <button
-                type="button"
-                onClick={() => setDirection("credit")}
-                className={`flex items-center justify-center gap-2 py-2.5 rounded-xl border text-sm font-medium transition-all ${direction === "credit" ? "bg-emerald-500/20 border-emerald-500/40 text-emerald-300" : "bg-white/5 border-white/10 text-slate-400 hover:text-white"}`}
-              >
-                <ArrowUpRight className="w-4 h-4" />Top Up
-              </button>
-              <button
-                type="button"
-                onClick={() => setDirection("debit")}
-                className={`flex items-center justify-center gap-2 py-2.5 rounded-xl border text-sm font-medium transition-all ${direction === "debit" ? "bg-red-500/20 border-red-500/40 text-red-300" : "bg-white/5 border-white/10 text-slate-400 hover:text-white"}`}
-              >
-                <ArrowDownRight className="w-4 h-4" />Deduct
-              </button>
-            </div>
-            <input
-              type="number"
-              min="1"
-              step="1"
-              value={amount}
-              onChange={(e) => setAmount(e.target.value)}
-              required
-              placeholder="Amount (₦)"
-              className="w-full bg-white/5 border border-white/10 rounded-xl px-3 py-2.5 text-white text-sm placeholder-slate-500 outline-none focus:ring-2 focus:ring-violet-500/50"
-            />
-            <input
-              type="text"
-              value={description}
-              onChange={(e) => setDescription(e.target.value)}
-              placeholder={direction === "credit" ? "Reason (e.g. Bank transfer received)" : "Reason for deduction"}
-              className="w-full bg-white/5 border border-white/10 rounded-xl px-3 py-2.5 text-white text-sm placeholder-slate-500 outline-none focus:ring-2 focus:ring-violet-500/50"
-            />
-            <button
-              type="submit"
-              disabled={submitting}
-              className={`w-full py-2.5 rounded-xl font-semibold text-sm transition-colors disabled:opacity-50 flex items-center justify-center gap-2 ${direction === "credit" ? "bg-emerald-600 hover:bg-emerald-500 text-white" : "bg-red-600 hover:bg-red-500 text-white"}`}
-            >
-              {submitting ? <RefreshCw className="w-4 h-4 animate-spin" /> : direction === "credit" ? <ArrowUpRight className="w-4 h-4" /> : <ArrowDownRight className="w-4 h-4" />}
-              {direction === "credit" ? "Add Funds" : "Remove Funds"}
-            </button>
-          </form>
-
-          {/* Transaction history */}
-          <div>
-            <p className="text-xs font-semibold text-slate-400 uppercase tracking-wider mb-3">Transaction History</p>
-            {loading ? (
-              <div className="space-y-2">{[...Array(3)].map((_, i) => <div key={i} className="h-14 bg-white/5 rounded-xl animate-pulse" />)}</div>
-            ) : transactions.length === 0 ? (
-              <p className="text-sm text-slate-500 text-center py-6">No transactions yet</p>
-            ) : (
-              <div className="space-y-2">
-                {transactions.map((txn) => (
-                  <div key={txn.id} className="flex items-center gap-3 bg-white/5 border border-white/8 rounded-xl px-4 py-3">
-                    <div className={`w-7 h-7 rounded-lg flex items-center justify-center shrink-0 ${txn.direction === "credit" ? "bg-emerald-500/15" : "bg-red-500/15"}`}>
-                      {txn.direction === "credit"
-                        ? <ArrowUpRight className="w-3.5 h-3.5 text-emerald-400" />
-                        : <ArrowDownRight className="w-3.5 h-3.5 text-red-400" />}
-                    </div>
-                    <div className="flex-1 min-w-0">
-                      <p className="text-xs text-white truncate">{txn.description ?? txn.type}</p>
-                      <p className="text-xs text-slate-500">{format(new Date(txn.created_at), "dd MMM yyyy · HH:mm")}</p>
-                      {txn.actor_email && <p className="text-xs text-slate-600 truncate">by {txn.actor_email}</p>}
-                    </div>
-                    <div className="text-right shrink-0">
-                      <p className={`text-sm font-bold font-mono ${txn.direction === "credit" ? "text-emerald-400" : "text-red-400"}`}>
-                        {txn.direction === "credit" ? "+" : "-"}₦{txn.amount.toLocaleString()}
-                      </p>
-                      <p className="text-xs text-slate-500 font-mono">₦{txn.balance_after.toLocaleString()}</p>
-                    </div>
-                  </div>
-                ))}
-              </div>
-            )}
-          </div>
-        </div>
-      </div>
-    </div>
-  );
-}
 
 // =============================================================================
 // Create Lab Modal
