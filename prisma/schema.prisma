@@ -197,7 +197,7 @@ model DoctorProfile {
   prefix         String?  // e.g. "Dr.", "Prof.", "Nurse"
   full_name      String?  // doctor's full name
   phone          String?  // with country code e.g. "+2348001234567"
-  hospital       String?  // hospital or clinic
+  hospitals      String[] @default([]) // hospitals or clinics
   bank_name      String?  // bank name for referral payment
   account_number String?  // bank account number
   account_name   String?  // account holder name (verified)

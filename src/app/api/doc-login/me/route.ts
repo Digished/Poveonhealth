@@ -30,7 +30,7 @@ export async function GET(req: NextRequest) {
         prefix: profile.prefix ?? null,
         full_name: profile.full_name ?? null,
         phone: profile.phone ?? null,
-        hospital: profile.hospital ?? null,
+        hospitals: profile.hospitals ?? [],
         bank_name: profile.bank_name ?? null,
         account_number: profile.account_number ?? null,
         account_name: profile.account_name ?? null,

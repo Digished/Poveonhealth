@@ -20,7 +20,7 @@ export async function GET(request: NextRequest) {
       email: true,
       prefix: true,
       full_name: true,
-      hospital: true,
+      hospitals: true,
       bank_name: true,
       account_number: true,
       // pin_hash intentionally excluded
@@ -32,7 +32,7 @@ export async function GET(request: NextRequest) {
   }
 
   const hasName = !!(profile.full_name?.trim());
-  const hasHospital = !!(profile.hospital?.trim());
+  const hasHospital = profile.hospitals.length > 0;
   const hasBank = !!(profile.bank_name?.trim() && profile.account_number?.trim());
 
   return NextResponse.json({
@@ -40,7 +40,8 @@ export async function GET(request: NextRequest) {
     profile_complete: hasName,
     prefix: profile.prefix ?? null,
     full_name: hasName ? profile.full_name : null,
-    hospital: hasHospital ? profile.hospital : null,
+    hospital: hasHospital ? profile.hospitals[0] : null,
+    hospitals: profile.hospitals,
     has_bank: hasBank,
   });
 }

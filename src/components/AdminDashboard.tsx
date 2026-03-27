@@ -8,7 +8,7 @@ import {
   Phone, Upload, Check, MapPin, Users, ChevronRight, ChevronDown, ChevronUp,
   Code2, Key, Copy, TrendingUp, Link, Sun, Moon, Star, GitBranch,
   ArrowUpRight, ArrowDownRight, Settings, CreditCard, MessageCircle, Tag,
-  BookOpen, Database, Sparkles, Search, Layers,
+  BookOpen, Database, Sparkles, Search, Layers, UserCircle,
 } from "lucide-react";
 import { useDashTheme } from "@/hooks/useDashTheme";
 import LabCatalogSheet, { type CatalogJob } from "@/components/LabCatalogSheet";
@@ -21,7 +21,7 @@ import { format } from "date-fns";
 import { createClient } from "@/lib/supabase/client"; // still used for auth sign-out
 import { useRouter } from "next/navigation";
 
-type AdminTab = "metrics" | "requests" | "referrals" | "labs" | "analytics" | "marketers" | "settings" | "transactions" | "knowledge-base";
+type AdminTab = "metrics" | "requests" | "referrals" | "labs" | "analytics" | "marketers" | "settings" | "transactions" | "knowledge-base" | "users";
 
 interface ReferralGroup {
   key: string; // doctor_email
@@ -459,6 +459,7 @@ const [catalogModalLabId, setCatalogModalLabId] = useState<string | null>(null);
             { key: "settings" as AdminTab, label: "Settings", icon: <Settings className="w-4 h-4" /> },
             { key: "transactions" as AdminTab, label: "Transactions", icon: <CreditCard className="w-4 h-4" /> },
             { key: "knowledge-base" as AdminTab, label: "Knowledge Base", icon: <BookOpen className="w-4 h-4" /> },
+            { key: "users" as AdminTab, label: "Users", icon: <UserCircle className="w-4 h-4" /> },
           ];
           const current = tabs.find((t) => t.key === activeTab) ?? tabs[0];
           return (
@@ -1335,6 +1336,9 @@ const [catalogModalLabId, setCatalogModalLabId] = useState<string | null>(null);
 
         {/* ── KNOWLEDGE BASE ── */}
         {activeTab === "knowledge-base" && <AdminKnowledgeBaseTab />}
+
+        {/* ── USERS ── */}
+        {activeTab === "users" && <AdminUsersTab />}
 
       </div>
 
@@ -4071,6 +4075,142 @@ function AdminKnowledgeBaseTab() {
               ))}
             </div>
           )}
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ─────────────────────────────────────────────────────────
+// Admin Users Tab — view & delete doctor portal users
+// ─────────────────────────────────────────────────────────
+interface DocUser {
+  email: string;
+  prefix: string | null;
+  full_name: string | null;
+  phone: string | null;
+  hospitals: string[];
+  has_pin: boolean;
+  updated_at: string;
+}
+
+function AdminUsersTab() {
+  const [users, setUsers] = useState<DocUser[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [search, setSearch] = useState("");
+  const [deletingEmail, setDeletingEmail] = useState<string | null>(null);
+
+  const fetchUsers = useCallback(async (q = "") => {
+    setLoading(true);
+    try {
+      const res = await fetch(`/api/admin/users${q ? `?q=${encodeURIComponent(q)}` : ""}`);
+      if (res.ok) {
+        const data = await res.json();
+        setUsers(data.users ?? []);
+      }
+    } finally {
+      setLoading(false);
+    }
+  }, []);
+
+  useEffect(() => { fetchUsers(); }, [fetchUsers]);
+
+  async function handleDelete(email: string) {
+    if (!confirm(`Delete user ${email}? This removes their profile, sessions, and OTPs.`)) return;
+    setDeletingEmail(email);
+    try {
+      const res = await fetch(`/api/admin/users/${encodeURIComponent(email)}`, { method: "DELETE" });
+      if (res.ok) {
+        toast.success("User deleted");
+        setUsers((prev) => prev.filter((u) => u.email !== email));
+      } else {
+        const d = await res.json();
+        toast.error(d.error ?? "Failed to delete");
+      }
+    } finally {
+      setDeletingEmail(null);
+    }
+  }
+
+  const filtered = search.trim()
+    ? users.filter((u) =>
+        u.email.toLowerCase().includes(search.toLowerCase()) ||
+        (u.full_name ?? "").toLowerCase().includes(search.toLowerCase())
+      )
+    : users;
+
+  return (
+    <div className="space-y-4">
+      {/* Header */}
+      <div className="flex items-center justify-between gap-3 flex-wrap">
+        <div>
+          <h2 className="text-lg font-bold text-white">Doctor Portal Users</h2>
+          <p className="text-xs text-slate-400 mt-0.5">{users.length} registered users</p>
+        </div>
+        <button onClick={() => fetchUsers(search)} className="p-2 rounded-xl text-slate-400 hover:text-white hover:bg-white/8 transition">
+          <RefreshCw className="w-4 h-4" />
+        </button>
+      </div>
+
+      {/* Search */}
+      <div className="relative">
+        <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-slate-500" />
+        <input
+          value={search}
+          onChange={(e) => setSearch(e.target.value)}
+          placeholder="Search by email or name…"
+          className="w-full pl-9 pr-4 py-2.5 rounded-xl bg-white/5 border border-white/10 text-sm text-white placeholder-slate-500 focus:outline-none focus:ring-2 focus:ring-medical-500 transition"
+        />
+      </div>
+
+      {loading ? (
+        <div className="flex items-center justify-center py-12">
+          <RefreshCw className="w-5 h-5 animate-spin text-slate-500" />
+        </div>
+      ) : filtered.length === 0 ? (
+        <div className="text-center py-12 text-slate-500">
+          <UserCircle className="w-8 h-8 mx-auto mb-2 opacity-40" />
+          <p className="text-sm">No users found</p>
+        </div>
+      ) : (
+        <div className="space-y-2">
+          {filtered.map((u) => (
+            <div key={u.email} className="bg-white/5 border border-white/8 rounded-2xl px-4 py-3 flex items-start gap-3">
+              <div className="w-9 h-9 rounded-full bg-medical-500/20 flex items-center justify-center shrink-0 mt-0.5">
+                <UserCircle className="w-5 h-5 text-medical-400" />
+              </div>
+              <div className="flex-1 min-w-0">
+                <div className="flex items-center gap-2 flex-wrap">
+                  <span className="text-sm font-semibold text-white">
+                    {u.prefix ? `${u.prefix} ` : ""}{u.full_name ?? <span className="text-slate-500 font-normal italic">No name</span>}
+                  </span>
+                  {u.has_pin && (
+                    <span className="text-[10px] bg-emerald-500/15 text-emerald-400 border border-emerald-500/20 rounded-full px-2 py-0.5">PIN set</span>
+                  )}
+                </div>
+                <p className="text-xs text-slate-400 mt-0.5">{u.email}</p>
+                {u.phone && <p className="text-xs text-slate-500 mt-0.5">{u.phone}</p>}
+                {u.hospitals.length > 0 && (
+                  <div className="flex flex-wrap gap-1 mt-1.5">
+                    {u.hospitals.map((h) => (
+                      <span key={h} className="text-[10px] bg-sky-500/10 text-sky-400 border border-sky-500/20 rounded-full px-2 py-0.5">{h}</span>
+                    ))}
+                  </div>
+                )}
+                <p className="text-[10px] text-slate-600 mt-1.5">Updated {format(new Date(u.updated_at), "dd MMM yyyy · HH:mm")}</p>
+              </div>
+              <button
+                onClick={() => handleDelete(u.email)}
+                disabled={deletingEmail === u.email}
+                className="p-1.5 rounded-lg text-slate-600 hover:text-rose-400 hover:bg-rose-500/10 transition shrink-0"
+                title="Delete user"
+              >
+                {deletingEmail === u.email
+                  ? <RefreshCw className="w-4 h-4 animate-spin" />
+                  : <Trash2 className="w-4 h-4" />}
+              </button>
+            </div>
+          ))}
         </div>
       )}
     </div>

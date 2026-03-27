@@ -6,7 +6,7 @@ const SESSION_DURATION_MS = 7 * 24 * 60 * 60 * 1000; // 7 days
 
 export async function POST(req: NextRequest) {
   try {
-    const { email, prefix, full_name, hospital, pin } = await req.json();
+    const { email, prefix, full_name, hospitals, pin } = await req.json();
 
     if (!email || !full_name || !pin) {
       return NextResponse.json({ error: "Email, full name, and PIN are required." }, { status: 400 });
@@ -40,13 +40,13 @@ export async function POST(req: NextRequest) {
         email: normalised,
         prefix: prefix?.trim() || null,
         full_name: String(full_name).trim(),
-        hospital: hospital?.trim() || null,
+        hospitals: Array.isArray(hospitals) ? hospitals.filter(Boolean) : [],
         pin_hash: pinHash,
       },
       update: {
         prefix: prefix?.trim() || null,
         full_name: String(full_name).trim(),
-        hospital: hospital?.trim() || null,
+        hospitals: Array.isArray(hospitals) ? hospitals.filter(Boolean) : [],
         pin_hash: pinHash,
       },
     });

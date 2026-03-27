@@ -12,7 +12,7 @@ export async function PATCH(req: NextRequest) {
     }
 
     const body = await req.json();
-    const { prefix, full_name, phone, hospital } = body;
+    const { prefix, full_name, phone, hospitals } = body;
 
     if (!full_name?.trim()) {
       return NextResponse.json({ error: "Full name is required." }, { status: 400 });
@@ -25,13 +25,13 @@ export async function PATCH(req: NextRequest) {
         prefix: prefix ?? null,
         full_name: full_name.trim(),
         phone: phone?.trim() || null,
-        hospital: hospital?.trim() || null,
+        hospitals: Array.isArray(hospitals) ? hospitals.filter(Boolean) : [],
       },
       update: {
         prefix: prefix ?? null,
         full_name: full_name.trim(),
         phone: phone?.trim() || null,
-        hospital: hospital?.trim() || null,
+        hospitals: Array.isArray(hospitals) ? hospitals.filter(Boolean) : [],
       },
     });
 

@@ -102,7 +102,7 @@ export function HospitalTagInput({
     if (e.key === "Enter") {
       e.preventDefault(); e.stopPropagation();
       if (activeIdx >= 0 && results[activeIdx]) addHospital(results[activeIdx].name);
-      else if (inputText.trim()) addHospital(inputText);
+      else if (results.length === 1) addHospital(results[0].name);
       return;
     }
   }
@@ -126,14 +126,10 @@ export function HospitalTagInput({
         </div>
       )}
       {!searching && results.length === 0 && inputText.trim().length >= 2 && (
-        <button
-          type="button"
-          onMouseDown={(e) => { e.preventDefault(); addHospital(inputText); }}
-          className="w-full flex items-center gap-3 px-4 py-3 text-left text-sm hover:bg-slate-50 transition"
-        >
-          <Building2 className="w-4 h-4 text-slate-400 shrink-0" />
-          <span className="text-slate-600">Add &ldquo;<span className="font-semibold text-slate-800">{inputText}</span>&rdquo;</span>
-        </button>
+        <div className="flex items-center gap-2 px-4 py-3 text-sm text-slate-400">
+          <Building2 className="w-4 h-4 shrink-0" />
+          No hospitals found. Ask your admin to add it.
+        </div>
       )}
       {!searching && results.map((r, i) => (
         <button
@@ -189,7 +185,7 @@ export function HospitalTagInput({
         {dropdown}
       </div>
       {value.length === 0 && (
-        <p className="text-xs text-slate-400">Search by name or type to add a new hospital</p>
+        <p className="text-xs text-slate-400">Search for a hospital or clinic from your admin&apos;s list</p>
       )}
     </div>
   );

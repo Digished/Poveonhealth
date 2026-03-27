@@ -7,6 +7,7 @@ import {
 } from "lucide-react";
 import { PoveonLogo } from "@/components/PoveonLogo";
 import { HospitalTagInput } from "@/components/ui/HospitalTagInput";
+import { PrefixSelectInput } from "@/components/ui/PrefixSelectInput";
 import { useRouter, useSearchParams } from "next/navigation";
 
 type Stage = "email" | "pin" | "otp" | "onboarding" | "create-pin";
@@ -99,7 +100,6 @@ function OnboardingSteps({ stage }: { stage: Stage }) {
   );
 }
 
-const PREFIX_OPTIONS = ["Dr.", "Prof.", "Nurse", "Pharm.", "Physio.", "Mr.", "Mrs.", "Ms."];
 
 function DocLoginInner() {
   const router = useRouter();
@@ -287,7 +287,7 @@ function DocLoginInner() {
           prefix: obPrefix || null,
           full_name: obName.trim(),
           phone: obPhone.trim() || null,
-          hospital: obHospitals[0] ?? null,
+          hospitals: obHospitals,
         }),
       });
       const data = await res.json();
@@ -460,15 +460,7 @@ function DocLoginInner() {
               <div>
                 <label className="block text-xs font-medium text-slate-600 mb-1">Title &amp; Full Name <span className="text-red-400">*</span></label>
                 <div className="flex gap-2">
-                  <select
-                    value={obPrefix}
-                    onChange={(e) => setObPrefix(e.target.value)}
-                    className="px-3 py-2.5 rounded-xl border border-slate-200 bg-white text-slate-700 text-sm focus:outline-none focus:ring-2 focus:ring-medical-400 focus:border-transparent transition shrink-0"
-                  >
-                    {PREFIX_OPTIONS.map((p) => (
-                      <option key={p} value={p}>{p}</option>
-                    ))}
-                  </select>
+                  <PrefixSelectInput value={obPrefix} onChange={setObPrefix} />
                   <input
                     type="text"
                     placeholder="Full name"
@@ -494,7 +486,7 @@ function DocLoginInner() {
               {/* Hospital */}
               <div>
                 <label className="block text-xs font-medium text-slate-600 mb-1">Hospital / Clinic</label>
-                <HospitalTagInput value={obHospitals} onChange={setObHospitals} max={1} />
+                <HospitalTagInput value={obHospitals} onChange={setObHospitals} />
               </div>
 
               {error && <p className="text-xs text-red-600 bg-red-50 border border-red-100 rounded-xl px-3 py-2">{error}</p>}

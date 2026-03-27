@@ -7,9 +7,8 @@ import {
 } from "lucide-react";
 import { PoveonLogo } from "@/components/PoveonLogo";
 import { HospitalTagInput } from "@/components/ui/HospitalTagInput";
+import { PrefixSelectInput } from "@/components/ui/PrefixSelectInput";
 import { useRouter } from "next/navigation";
-
-const PREFIXES = ["Dr.", "Prof.", "Mr.", "Mrs.", "Ms.", "Pharm.", "Nurse"];
 
 function PinBoxes({
   values, setValues, refs, show,
@@ -107,7 +106,7 @@ export default function DocRegisterPage() {
           email: email.trim().toLowerCase(),
           prefix: prefix || null,
           full_name: fullName.trim(),
-          hospital: hospitals[0] ?? null,
+          hospitals: hospitals,
           pin: p1,
         }),
       });
@@ -182,14 +181,7 @@ export default function DocRegisterPage() {
 
                 {/* Prefix + Name */}
                 <div className="flex gap-2">
-                  <select
-                    value={prefix}
-                    onChange={(e) => setPrefix(e.target.value)}
-                    className="w-24 px-2 py-3 rounded-xl border border-slate-200 bg-white text-slate-700 text-sm focus:outline-none focus:ring-2 focus:ring-medical-400 focus:border-transparent transition [color-scheme:light]"
-                  >
-                    <option value="">—</option>
-                    {PREFIXES.map((p) => <option key={p} value={p}>{p}</option>)}
-                  </select>
+                  <PrefixSelectInput value={prefix} onChange={setPrefix} />
                   <div className="relative flex-1">
                     <User className="absolute left-3.5 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400 pointer-events-none" />
                     <input
@@ -208,7 +200,6 @@ export default function DocRegisterPage() {
                   <HospitalTagInput
                     value={hospitals}
                     onChange={setHospitals}
-                    max={1}
                   />
                 </div>
               </div>
