@@ -8,6 +8,7 @@ import { doctorTestsCompleted } from "@/lib/email/templates";
 import { logApiCall } from "@/lib/api-logger";
 import { logLabActivity } from "@/lib/lab-activity";
 import { createServerClient } from "@/lib/supabase/server";
+import { resolveTests } from "@/lib/resolve-tests";
 
 const UpdateStatusSchema = z.object({
   requestId: z.string().uuid(),
@@ -85,24 +86,38 @@ export async function POST(request: NextRequest) {
     if (status === "seen") updateData.seen_at = new Date();
     if (status === "done") updateData.completed_at = new Date();
 
-    // When marking "seen" — calculate Poveon commission from test_breakdown
-    if (status === "seen" && req.test_breakdown) {
+    // When marking "seen" — re-resolve tests against the current lab catalog to
+    // get accurate commission. We re-resolve rather than using the stored breakdown
+    // so that (a) catalog additions after request creation are picked up, and
+    // (b) matching improvements apply to historical requests retroactively.
+    if (status === "seen") {
       try {
-        type BreakdownItem = { source?: string; poveon_fee?: number | null; unit_price?: number };
-        const breakdown = req.test_breakdown as BreakdownItem[];
-        if (Array.isArray(breakdown)) {
-          let poveonTotal = 0;
-          let labRevenueTotal = 0;
-          for (const item of breakdown) {
-            if (item.source === "lab_catalog") {
-              poveonTotal += item.poveon_fee ?? 0;
-              labRevenueTotal += item.unit_price ?? 0;
-            }
-          }
-          updateData.poveon_amount = poveonTotal;
-          updateData.lab_revenue_amount = labRevenueTotal;
+        const testsString = req.tests && req.tests !== "See attached image" ? req.tests : null;
+        let breakdown: Array<{ source?: string; poveon_fee?: number | null; unit_price?: number }> = [];
+
+        if (testsString) {
+          // Re-resolve fresh against current catalog
+          breakdown = await resolveTests(testsString, req.lab_id);
+          // Also update stored breakdown so the lab dashboard reflects correct source info
+          updateData.test_breakdown = breakdown;
+        } else if (req.test_breakdown && Array.isArray(req.test_breakdown)) {
+          // Image-based request — use stored breakdown (already resolved via AI extraction)
+          breakdown = req.test_breakdown as Array<{ source?: string; poveon_fee?: number | null; unit_price?: number }>;
         }
-      } catch { /* non-critical */ }
+
+        let poveonTotal = 0;
+        let labRevenueTotal = 0;
+        for (const item of breakdown) {
+          if (item.source === "lab_catalog") {
+            poveonTotal += item.poveon_fee ?? 0;
+            labRevenueTotal += item.unit_price ?? 0;
+          }
+        }
+        updateData.poveon_amount = poveonTotal;
+        updateData.lab_revenue_amount = labRevenueTotal;
+      } catch (e) {
+        console.error("[commission] recalculation failed:", e);
+      }
     }
 
     await prisma.request.update({ where: { id: requestId }, data: updateData });

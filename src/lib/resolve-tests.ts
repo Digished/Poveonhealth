@@ -116,9 +116,19 @@ function normStr(s: string): string {
   return s.toLowerCase().replace(/[^a-z0-9\s]/g, " ").replace(/\s+/g, " ").trim();
 }
 
-/** Tokenize a normalized string into words (≥2 chars) */
+const STOP_WORDS = new Set(["of", "the", "and", "for", "in", "on", "to", "a", "an", "at", "by", "or", "with", "test", "level", "count"]);
+
+/** Tokenize a normalized string into meaningful words (≥2 chars, no stop words) */
 function tokens(s: string): string[] {
-  return normStr(s).split(" ").filter((w) => w.length >= 2);
+  return normStr(s).split(" ").filter((w) => w.length >= 2 && !STOP_WORDS.has(w));
+}
+
+/** Check if short is an acronym of the words in long (e.g. "fbc" → "full blood count") */
+function isAcronym(short: string, long: string): boolean {
+  const shortNorm = normStr(short).replace(/\s/g, "");
+  const longWords = normStr(long).split(" ").filter((w) => w.length > 0);
+  if (shortNorm.length < 2 || shortNorm.length !== longWords.length) return false;
+  return longWords.every((w, i) => w[0] === shortNorm[i]);
 }
 
 function makeCatalogResult(normalized: string, entry: LabCatalogEntry): ResolvedTest {
@@ -144,24 +154,38 @@ function labCatalogMatch(
 
   // Pass 1: exact normalized match against raw_name or any synonym
   for (const entry of catalog) {
-    if (normStr(entry.raw_name) === q) return makeCatalogResult(normalized, entry);
-    const synonyms = Array.isArray(entry.synonyms) ? (entry.synonyms as unknown[]) : [];
-    if (synonyms.some((s) => typeof s === "string" && normStr(s) === q)) {
+    const allNames = [entry.raw_name, ...(Array.isArray(entry.synonyms) ? entry.synonyms as string[] : [])];
+    if (allNames.some((n) => typeof n === "string" && normStr(n) === q)) {
       return makeCatalogResult(normalized, entry);
     }
   }
 
-  // Pass 2: token overlap — all tokens of the shorter string appear in the longer (≥2 matching tokens)
+  // Pass 2: acronym match — e.g. "FBC" matches "Full Blood Count"
+  for (const entry of catalog) {
+    const allNames = [entry.raw_name, ...(Array.isArray(entry.synonyms) ? entry.synonyms as string[] : [])];
+    for (const name of allNames) {
+      if (typeof name !== "string") continue;
+      // Either the query is an acronym of the catalog name, or vice versa
+      if (isAcronym(q, normStr(name)) || isAcronym(normStr(name), q)) {
+        return makeCatalogResult(normalized, entry);
+      }
+    }
+  }
+
+  // Pass 3: token overlap — meaningful tokens (stop-word filtered) must mostly overlap
   const qTokens = tokens(normalized);
-  if (qTokens.length >= 2) {
+  if (qTokens.length >= 1) {
     for (const entry of catalog) {
-      const candidates = [entry.raw_name, ...(Array.isArray(entry.synonyms) ? entry.synonyms as string[] : [])];
-      for (const candidate of candidates) {
-        if (typeof candidate !== "string") continue;
-        const cTokens = tokens(candidate);
+      const allNames = [entry.raw_name, ...(Array.isArray(entry.synonyms) ? entry.synonyms as string[] : [])];
+      for (const name of allNames) {
+        if (typeof name !== "string") continue;
+        const cTokens = tokens(name);
+        if (cTokens.length === 0) continue;
         const overlap = qTokens.filter((t) => cTokens.includes(t)).length;
         const minLen = Math.min(qTokens.length, cTokens.length);
-        if (overlap >= 2 && overlap >= minLen * 0.7) {
+        // Need ≥1 overlap when minLen=1 (single meaningful token like "urinalysis"),
+        // ≥2 overlap when minLen≥2, and coverage ≥60%
+        if (overlap >= Math.min(2, minLen) && overlap >= minLen * 0.6) {
           return makeCatalogResult(normalized, entry);
         }
       }
@@ -171,17 +195,19 @@ function labCatalogMatch(
   return null;
 }
 
-// ── Step 0b: AI-based lab catalog match ───────────────────────────────────────
-// Falls back to GPT when exact/token matching fails. Sends all catalog entry names
-// in a single prompt and asks the model to identify the best match.
+// ── Step 0b: AI-based lab catalog match (batched) ────────────────────────────
+// Called once per request (not once per test). Sends all unmatched test names +
+// the full catalog in a single prompt, getting back a mapping of test → catalog index.
 
-async function aiCatalogMatch(
-  normalized: string,
+async function aiBatchCatalogMatch(
+  unmatchedTests: string[],
   catalog: LabCatalogEntry[]
-): Promise<ResolvedTest | null> {
-  if (!process.env.OPENAI_API_KEY || catalog.length === 0) return null;
+): Promise<Map<string, ResolvedTest>> {
+  const results = new Map<string, ResolvedTest>();
+  if (!process.env.OPENAI_API_KEY || catalog.length === 0 || unmatchedTests.length === 0) return results;
 
-  const catalogList = catalog.map((e, i) => `${i}. ${e.raw_name}`).join("\n");
+  const catalogList = catalog.map((e, i) => `${i}: ${e.raw_name}`).join("\n");
+  const testList = unmatchedTests.map((t, i) => `${i}: ${t}`).join("\n");
 
   try {
     const response = await openai.chat.completions.create({
@@ -191,33 +217,32 @@ async function aiCatalogMatch(
       messages: [
         {
           role: "system",
-          content: `You are a medical lab expert. Given a test name requested by a doctor and a lab's catalog of available tests, identify whether the requested test matches any catalog entry (by meaning, not just wording).
-Return JSON: { "match_index": number | null, "confidence": number (0–1) }
-Return null for match_index if no reasonable match exists. Only match if you're reasonably confident (confidence >= 0.6).`,
+          content: `You are a medical laboratory expert. Match each requested test to the best entry in the lab's catalog by medical meaning (abbreviations, synonyms, descriptions all count).
+Return JSON: { "matches": [ { "test_index": number, "catalog_index": number | null, "confidence": number } ] }
+Set catalog_index to null if no reasonable match (confidence < 0.6). One entry per test.`,
         },
         {
           role: "user",
-          content: `Requested test: "${normalized}"\n\nLab catalog:\n${catalogList}`,
+          content: `Requested tests:\n${testList}\n\nLab catalog:\n${catalogList}`,
         },
       ],
     });
 
     const parsed = JSON.parse(response.choices[0].message.content ?? "{}") as {
-      match_index?: number | null;
-      confidence?: number;
+      matches?: Array<{ test_index?: number; catalog_index?: number | null; confidence?: number }>;
     };
 
-    if (parsed.match_index == null || (parsed.confidence ?? 0) < 0.6) return null;
-    const entry = catalog[parsed.match_index];
-    if (!entry) return null;
-
-    return {
-      ...makeCatalogResult(normalized, entry),
-      confidence: parsed.confidence ?? 0.7,
-    };
+    for (const m of parsed.matches ?? []) {
+      if (m.catalog_index == null || (m.confidence ?? 0) < 0.6) continue;
+      const testName = unmatchedTests[m.test_index ?? -1];
+      const entry = catalog[m.catalog_index];
+      if (!testName || !entry) continue;
+      results.set(testName, { ...makeCatalogResult(testName, entry), confidence: m.confidence ?? 0.7 });
+    }
   } catch {
-    return null;
+    // non-critical
   }
+  return results;
 }
 
 // ── Step 1: Exact synonym match ───────────────────────────────────────────────
@@ -424,19 +449,20 @@ async function resolveOne(
   raw: string,
   labId: string | null,
   labCatalog: LabCatalogEntry[],
+  aiCatalogResults: Map<string, ResolvedTest> = new Map(),
 ): Promise<ResolvedTest> {
   const normalized = raw.trim();
   if (!normalized) return othersResult(raw, labId);
 
-  // 0. Lab catalog — highest priority, uses lab's real price + commission
+  // 0. Lab catalog — exact/token/acronym matching
   if (labCatalog.length > 0) {
     const catalogMatch = labCatalogMatch(normalized, labCatalog);
     if (catalogMatch) return catalogMatch;
-
-    // 0b. AI catalog match — semantic match against lab's catalog entries
-    const aiCatalog = await aiCatalogMatch(normalized, labCatalog);
-    if (aiCatalog) return aiCatalog;
   }
+
+  // 0b. AI batch catalog match result (pre-computed at resolveTests level)
+  const aiCatalog = aiCatalogResults.get(normalized);
+  if (aiCatalog) return aiCatalog;
 
   // 1. Exact synonym
   const exact = await exactMatch(normalized, labId);
@@ -492,7 +518,28 @@ export async function resolveTests(
     });
   }
 
-  return Promise.all(items.map((item) => resolveOne(item, labId, labCatalog)));
+  // Step 0: attempt exact/token/acronym match for each item
+  const preMatched = new Map<string, ResolvedTest>();
+  const stillUnmatched: string[] = [];
+  for (const item of items) {
+    const m = labCatalog.length > 0 ? labCatalogMatch(item.trim(), labCatalog) : null;
+    if (m) preMatched.set(item.trim(), m);
+    else stillUnmatched.push(item.trim());
+  }
+
+  // Step 0b: batch AI catalog match for anything not yet matched
+  const aiCatalogResults = labCatalog.length > 0 && stillUnmatched.length > 0
+    ? await aiBatchCatalogMatch(stillUnmatched, labCatalog)
+    : new Map<string, ResolvedTest>();
+
+  return Promise.all(
+    items.map((item) => {
+      const norm = item.trim();
+      const pre = preMatched.get(norm);
+      if (pre) return Promise.resolve(pre);
+      return resolveOne(item, labId, labCatalog, aiCatalogResults);
+    })
+  );
 }
 
 /**
