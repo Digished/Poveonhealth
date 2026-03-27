@@ -1,13 +1,17 @@
 "use client";
 
 import { useState, useRef, useEffect, Suspense } from "react";
-import { Mail, KeyRound, ArrowRight, RefreshCw, ChevronLeft, Lock, ShieldCheck } from "lucide-react";
+import {
+  Mail, KeyRound, ArrowRight, RefreshCw, ChevronLeft,
+  Lock, ShieldCheck, User, Check,
+} from "lucide-react";
 import { PoveonLogo } from "@/components/PoveonLogo";
+import { HospitalTagInput } from "@/components/ui/HospitalTagInput";
 import { useRouter, useSearchParams } from "next/navigation";
 
-type Stage = "email" | "pin" | "otp" | "create-pin";
+type Stage = "email" | "pin" | "otp" | "onboarding" | "create-pin";
 
-// Defined at module level so React never remounts the inputs on re-render (which would lose focus).
+// Defined at module level so React never remounts inputs on re-render (which would lose focus).
 function PinBoxes({
   values, setValues, refs, label,
 }: {
@@ -55,6 +59,48 @@ function Spinner() {
   );
 }
 
+// Step indicator shown during the new-user onboarding sub-flow (otp → onboarding → create-pin)
+function OnboardingSteps({ stage }: { stage: Stage }) {
+  const steps: { key: Stage; label: string }[] = [
+    { key: "otp", label: "Verify email" },
+    { key: "onboarding", label: "Your details" },
+    { key: "create-pin", label: "Create PIN" },
+  ];
+  const activeIdx = steps.findIndex((s) => s.key === stage);
+
+  return (
+    <div className="flex items-center mb-6">
+      {steps.map((s, i) => {
+        const done = i < activeIdx;
+        const active = i === activeIdx;
+        return (
+          <div key={s.key} className="flex items-center flex-1 last:flex-none">
+            <div className="flex items-center gap-1.5 shrink-0">
+              <div className={`w-6 h-6 rounded-full flex items-center justify-center text-[10px] font-bold transition-colors ${
+                done
+                  ? "bg-emerald-500 text-white"
+                  : active
+                  ? "bg-white border-2 border-medical-400 text-medical-600"
+                  : "bg-white border-2 border-slate-200 text-slate-300"
+              }`}>
+                {done ? <Check className="w-3 h-3" /> : i + 1}
+              </div>
+              <span className={`text-[10px] font-medium hidden sm:block ${active ? "text-slate-700" : done ? "text-emerald-600" : "text-slate-300"}`}>
+                {s.label}
+              </span>
+            </div>
+            {i < steps.length - 1 && (
+              <div className={`flex-1 h-px mx-2 transition-colors ${done ? "bg-emerald-300" : "bg-slate-200"}`} />
+            )}
+          </div>
+        );
+      })}
+    </div>
+  );
+}
+
+const PREFIX_OPTIONS = ["Dr.", "Prof.", "Nurse", "Pharm.", "Physio.", "Mr.", "Mrs.", "Ms."];
+
 function DocLoginInner() {
   const router = useRouter();
   const searchParams = useSearchParams();
@@ -68,7 +114,14 @@ function DocLoginInner() {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
   const [countdown, setCountdown] = useState(0);
-  const [afterOtp, setAfterOtp] = useState<"dashboard" | "reset-pin">("dashboard");
+  const [afterOtp, setAfterOtp] = useState<"dashboard" | "reset-pin" | "onboard">("dashboard");
+
+  // Onboarding form fields
+  const [obPrefix, setObPrefix] = useState("Dr.");
+  const [obName, setObName] = useState("");
+  const [obPhone, setObPhone] = useState("");
+  const [obHospitals, setObHospitals] = useState<string[]>([]);
+
   const pinRefs = useRef<(HTMLInputElement | null)[]>([]);
   const otpRefs = useRef<(HTMLInputElement | null)[]>([]);
   const newPinRefs = useRef<(HTMLInputElement | null)[]>([]);
@@ -83,7 +136,7 @@ function DocLoginInner() {
   function handleDigitChange(
     arr: string[], setArr: React.Dispatch<React.SetStateAction<string[]>>,
     refs: React.MutableRefObject<(HTMLInputElement | null)[]>,
-    maxLen: number, index: number, value: string
+    maxLen: number, index: number, value: string,
   ) {
     const digit = value.replace(/\D/g, "").slice(-1);
     const next = [...arr];
@@ -94,12 +147,11 @@ function DocLoginInner() {
 
   function handleDigitKeyDown(
     arr: string[], refs: React.MutableRefObject<(HTMLInputElement | null)[]>,
-    index: number, e: React.KeyboardEvent<HTMLInputElement>
+    index: number, e: React.KeyboardEvent<HTMLInputElement>,
   ) {
     if (e.key === "Backspace" && !arr[index] && index > 0) refs.current[index - 1]?.focus();
   }
 
-  // Email submit — check for PIN
   async function handleEmailSubmit(e: React.FormEvent) {
     e.preventDefault();
     setError("");
@@ -146,7 +198,6 @@ function DocLoginInner() {
     try { await sendOtp(); } catch { setError("Network error."); } finally { setLoading(false); }
   }
 
-  // PIN login
   async function handlePinSubmit(e: React.FormEvent) {
     e.preventDefault();
     setError("");
@@ -169,7 +220,6 @@ function DocLoginInner() {
     }
   }
 
-  // Forgot PIN — sends OTP then will reset PIN after
   async function handleForgotPin() {
     setError("");
     setLoading(true);
@@ -183,7 +233,6 @@ function DocLoginInner() {
     }
   }
 
-  // OTP verify
   async function handleOtpSubmit(e: React.FormEvent) {
     e.preventDefault();
     setError("");
@@ -198,7 +247,19 @@ function DocLoginInner() {
       });
       const data = await res.json();
       if (!res.ok) { setError(data.error ?? "Invalid code."); return; }
-      if (afterOtp === "reset-pin" || data.should_create_pin) {
+
+      if (afterOtp === "reset-pin") {
+        // Existing user resetting PIN — skip onboarding
+        setNewPin(["", "", "", ""]);
+        setConfirmPin(["", "", "", ""]);
+        setStage("create-pin");
+        setTimeout(() => newPinRefs.current[0]?.focus(), 100);
+      } else if (data.should_create_pin && !data.has_profile) {
+        // Brand-new user — collect details first
+        setAfterOtp("onboard");
+        setStage("onboarding");
+      } else if (data.should_create_pin) {
+        // Has profile but no PIN yet
         setNewPin(["", "", "", ""]);
         setConfirmPin(["", "", "", ""]);
         setStage("create-pin");
@@ -213,7 +274,35 @@ function DocLoginInner() {
     }
   }
 
-  // Create/reset PIN
+  async function handleOnboardingSubmit(e: React.FormEvent) {
+    e.preventDefault();
+    setError("");
+    if (!obName.trim()) { setError("Please enter your full name."); return; }
+    setLoading(true);
+    try {
+      const res = await fetch("/api/doc-login/profile", {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          prefix: obPrefix || null,
+          full_name: obName.trim(),
+          phone: obPhone.trim() || null,
+          hospital: obHospitals[0] ?? null,
+        }),
+      });
+      const data = await res.json();
+      if (!res.ok) { setError(data.error ?? "Failed to save details."); return; }
+      setNewPin(["", "", "", ""]);
+      setConfirmPin(["", "", "", ""]);
+      setStage("create-pin");
+      setTimeout(() => newPinRefs.current[0]?.focus(), 100);
+    } catch {
+      setError("Network error. Please try again.");
+    } finally {
+      setLoading(false);
+    }
+  }
+
   async function handleCreatePin(e: React.FormEvent) {
     e.preventDefault();
     setError("");
@@ -238,6 +327,8 @@ function DocLoginInner() {
     }
   }
 
+  const showOnboardingSteps = stage === "otp" || stage === "onboarding" || stage === "create-pin";
+
   return (
     <div className="min-h-dvh bg-gradient-to-br from-sky-50 via-blue-50 to-indigo-50 flex flex-col items-center justify-center px-4 py-12">
       <div className="w-full max-w-sm">
@@ -250,6 +341,11 @@ function DocLoginInner() {
         </div>
 
         <div className="bg-white/80 backdrop-blur-sm border border-white/60 rounded-3xl shadow-xl p-6">
+
+          {/* Step indicators — shown during the new-user onboarding flow */}
+          {showOnboardingSteps && afterOtp !== "reset-pin" && (
+            <OnboardingSteps stage={stage} />
+          )}
 
           {/* ── Email stage ── */}
           {stage === "email" && (
@@ -339,7 +435,7 @@ function DocLoginInner() {
               {error && <p className="text-xs text-red-600 bg-red-50 border border-red-100 rounded-xl px-3 py-2">{error}</p>}
               <button type="submit" disabled={loading || otp.join("").length !== 6}
                 className="w-full flex items-center justify-center gap-2 bg-medical-600 hover:bg-medical-700 disabled:opacity-60 text-white font-semibold text-sm px-4 py-3 rounded-xl transition shadow-md">
-                {loading ? <Spinner /> : <>Sign In <ArrowRight className="w-4 h-4" /></>}
+                {loading ? <Spinner /> : <>Verify Code <ArrowRight className="w-4 h-4" /></>}
               </button>
               <div className="text-center">
                 <button type="button" disabled={countdown > 0 || loading} onClick={handleResend}
@@ -351,6 +447,64 @@ function DocLoginInner() {
             </form>
           )}
 
+          {/* ── Onboarding stage — new user details ── */}
+          {stage === "onboarding" && (
+            <form onSubmit={handleOnboardingSubmit} className="space-y-4">
+              <div className="flex items-center gap-2 mb-1">
+                <User className="w-4 h-4 text-medical-600" />
+                <p className="text-sm font-semibold text-slate-700">Tell us about yourself</p>
+              </div>
+              <p className="text-xs text-slate-400 -mt-2">This helps labs and patients identify you on requests.</p>
+
+              {/* Prefix + Name */}
+              <div>
+                <label className="block text-xs font-medium text-slate-600 mb-1">Title &amp; Full Name <span className="text-red-400">*</span></label>
+                <div className="flex gap-2">
+                  <select
+                    value={obPrefix}
+                    onChange={(e) => setObPrefix(e.target.value)}
+                    className="px-3 py-2.5 rounded-xl border border-slate-200 bg-white text-slate-700 text-sm focus:outline-none focus:ring-2 focus:ring-medical-400 focus:border-transparent transition shrink-0"
+                  >
+                    {PREFIX_OPTIONS.map((p) => (
+                      <option key={p} value={p}>{p}</option>
+                    ))}
+                  </select>
+                  <input
+                    type="text"
+                    placeholder="Full name"
+                    value={obName}
+                    onChange={(e) => { setObName(e.target.value); setError(""); }}
+                    className="flex-1 px-4 py-2.5 rounded-xl border border-slate-200 bg-white text-slate-800 placeholder-slate-400 text-sm focus:outline-none focus:ring-2 focus:ring-medical-400 focus:border-transparent transition"
+                  />
+                </div>
+              </div>
+
+              {/* Phone */}
+              <div>
+                <label className="block text-xs font-medium text-slate-600 mb-1">Phone Number</label>
+                <input
+                  type="tel"
+                  placeholder="+234 800 123 4567"
+                  value={obPhone}
+                  onChange={(e) => setObPhone(e.target.value)}
+                  className="w-full px-4 py-2.5 rounded-xl border border-slate-200 bg-white text-slate-800 placeholder-slate-400 text-sm focus:outline-none focus:ring-2 focus:ring-medical-400 focus:border-transparent transition"
+                />
+              </div>
+
+              {/* Hospital */}
+              <div>
+                <label className="block text-xs font-medium text-slate-600 mb-1">Hospital / Clinic</label>
+                <HospitalTagInput value={obHospitals} onChange={setObHospitals} max={1} />
+              </div>
+
+              {error && <p className="text-xs text-red-600 bg-red-50 border border-red-100 rounded-xl px-3 py-2">{error}</p>}
+              <button type="submit" disabled={loading || !obName.trim()}
+                className="w-full flex items-center justify-center gap-2 bg-medical-600 hover:bg-medical-700 disabled:opacity-60 text-white font-semibold text-sm px-4 py-3 rounded-xl transition shadow-md">
+                {loading ? <Spinner /> : <>Continue <ArrowRight className="w-4 h-4" /></>}
+              </button>
+            </form>
+          )}
+
           {/* ── Create/Reset PIN stage ── */}
           {stage === "create-pin" && (
             <form onSubmit={handleCreatePin} className="space-y-5">
@@ -359,7 +513,7 @@ function DocLoginInner() {
                 <p className="text-sm font-semibold text-slate-700">
                   {afterOtp === "reset-pin" ? "Reset your PIN" : "Create a 4-digit PIN"}
                 </p>
-                <p className="text-xs text-slate-400 mt-1">You can use this PIN instead of a code next time you log in.</p>
+                <p className="text-xs text-slate-400 mt-1">Use this PIN instead of a code next time you log in.</p>
               </div>
               <PinBoxes values={newPin} setValues={setNewPin} refs={newPinRefs} label="Choose your 4-digit PIN" />
               <PinBoxes values={confirmPin} setValues={setConfirmPin} refs={confirmPinRefs} label="Confirm your PIN" />
