@@ -97,7 +97,6 @@ export async function POST(request: NextRequest) {
 
         if (testsString) {
           breakdown = await resolveTests(testsString, req.lab_id);
-          updateData.test_breakdown = breakdown;
         } else if (req.test_breakdown && Array.isArray(req.test_breakdown)) {
           breakdown = req.test_breakdown as Array<{ source?: string; poveon_fee?: number | null; unit_price?: number }>;
         }
@@ -111,8 +110,15 @@ export async function POST(request: NextRequest) {
           }
         }
 
-        updateData.poveon_amount = poveonTotal;
-        updateData.lab_revenue_amount = labRevenueTotal;
+        // Explicit typed update so Prisma's generated client correctly maps these fields
+        await prisma.request.update({
+          where: { id: requestId },
+          data: {
+            poveon_amount: poveonTotal,
+            lab_revenue_amount: labRevenueTotal,
+            ...(testsString ? { test_breakdown: breakdown } : {}),
+          },
+        });
       } catch (e) {
         console.error("[commission] recalculation failed:", e);
       }
