@@ -2,10 +2,11 @@
 
 import { useState, useRef, useEffect } from "react";
 import {
-  User, Mail, Building2, ArrowRight, ChevronLeft,
+  User, Mail, ArrowRight, ChevronLeft,
   ShieldCheck, Check, Eye, EyeOff,
 } from "lucide-react";
 import { PoveonLogo } from "@/components/PoveonLogo";
+import { HospitalTagInput } from "@/components/ui/HospitalTagInput";
 import { useRouter } from "next/navigation";
 
 const PREFIXES = ["Dr.", "Prof.", "Mr.", "Mrs.", "Ms.", "Pharm.", "Nurse"];
@@ -54,17 +55,15 @@ function Spinner() {
   );
 }
 
-type Step = 1 | 2;
-
 export default function DocRegisterPage() {
   const router = useRouter();
-  const [step, setStep] = useState<Step>(1);
+  const [step, setStep] = useState<1 | 2>(1);
 
   // Step 1 fields
   const [email, setEmail] = useState("");
   const [prefix, setPrefix] = useState("");
   const [fullName, setFullName] = useState("");
-  const [hospital, setHospital] = useState("");
+  const [hospitals, setHospitals] = useState<string[]>([]); // list of selected hospital names
 
   // Step 2 PIN fields
   const [pin, setPin] = useState(["", "", "", ""]);
@@ -108,7 +107,7 @@ export default function DocRegisterPage() {
           email: email.trim().toLowerCase(),
           prefix: prefix || null,
           full_name: fullName.trim(),
-          hospital: hospital.trim() || null,
+          hospital: hospitals[0] ?? null,
           pin: p1,
         }),
       });
@@ -122,13 +121,13 @@ export default function DocRegisterPage() {
     }
   }
 
-  const step1Done = email.trim() && fullName.trim();
+  const step1Done = !!email.trim() && !!fullName.trim();
 
   return (
     <div className="min-h-dvh bg-gradient-to-br from-sky-50 via-blue-50 to-indigo-50 flex flex-col items-center justify-center px-4 py-12">
       <div className="w-full max-w-sm">
 
-        {/* Logo + heading */}
+        {/* Logo */}
         <div className="flex flex-col items-center mb-8">
           <div className="w-12 h-12 rounded-2xl bg-slate-900 flex items-center justify-center shadow-lg mb-3 p-2.5">
             <PoveonLogo className="w-full h-full text-white" />
@@ -138,22 +137,26 @@ export default function DocRegisterPage() {
         </div>
 
         {/* Step indicators */}
-        <div className="flex items-center gap-2 mb-6">
-          {[1, 2].map((s) => (
-            <div key={s} className="flex items-center flex-1">
-              <div className={`w-8 h-8 rounded-full flex items-center justify-center text-xs font-bold border-2 transition-all ${
-                step > s ? "bg-emerald-500 border-emerald-500 text-white" :
-                step === s ? "bg-white border-medical-400 text-medical-600" :
-                "bg-white border-slate-200 text-slate-400"
-              }`}>
-                {step > s ? <Check className="w-3.5 h-3.5" /> : s}
-              </div>
-              <p className={`ml-2 text-xs font-medium flex-1 ${step >= s ? "text-slate-700" : "text-slate-400"}`}>
-                {s === 1 ? "Your details" : "Create PIN"}
-              </p>
-              {s < 2 && <div className={`h-px flex-1 mx-2 ${step > s ? "bg-emerald-400" : "bg-slate-200"}`} />}
+        <div className="flex items-center mb-6">
+          <div className="flex items-center gap-2 shrink-0">
+            <div className={`w-8 h-8 rounded-full flex items-center justify-center text-xs font-bold border-2 transition-all ${
+              step > 1 ? "bg-emerald-500 border-emerald-500 text-white" : "bg-white border-medical-400 text-medical-600"
+            }`}>
+              {step > 1 ? <Check className="w-3.5 h-3.5" /> : "1"}
             </div>
-          ))}
+            <span className={`text-xs font-medium ${step >= 1 ? "text-slate-700" : "text-slate-400"}`}>Your details</span>
+          </div>
+
+          <div className={`flex-1 h-px mx-3 transition-colors ${step > 1 ? "bg-emerald-400" : "bg-slate-200"}`} />
+
+          <div className="flex items-center gap-2 shrink-0">
+            <div className={`w-8 h-8 rounded-full flex items-center justify-center text-xs font-bold border-2 transition-all ${
+              step === 2 ? "bg-white border-medical-400 text-medical-600" : "bg-white border-slate-200 text-slate-400"
+            }`}>
+              2
+            </div>
+            <span className={`text-xs font-medium ${step === 2 ? "text-slate-700" : "text-slate-400"}`}>Create PIN</span>
+          </div>
         </div>
 
         <div className="bg-white/80 backdrop-blur-sm border border-white/60 rounded-3xl shadow-xl p-6">
@@ -161,56 +164,52 @@ export default function DocRegisterPage() {
           {/* ── Step 1: Details ── */}
           {step === 1 && (
             <form onSubmit={handleStep1} className="space-y-4">
-              <div>
-                <p className="text-xs font-semibold text-slate-500 uppercase tracking-wider mb-4">Your information</p>
+              <p className="text-xs font-semibold text-slate-500 uppercase tracking-wider">Your information</p>
 
+              <div className="space-y-3">
                 {/* Email */}
-                <div className="space-y-3">
-                  <div className="relative">
-                    <Mail className="absolute left-3.5 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400 pointer-events-none" />
-                    <input
-                      type="email"
-                      placeholder="Email address"
-                      value={email}
-                      onChange={(e) => setEmail(e.target.value)}
-                      autoFocus
-                      className="w-full pl-10 pr-4 py-3 rounded-xl border border-slate-200 bg-white text-slate-800 placeholder-slate-400 text-sm focus:outline-none focus:ring-2 focus:ring-medical-400 focus:border-transparent transition"
-                    />
-                  </div>
+                <div className="relative">
+                  <Mail className="absolute left-3.5 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400 pointer-events-none" />
+                  <input
+                    type="email"
+                    placeholder="Email address"
+                    value={email}
+                    onChange={(e) => setEmail(e.target.value)}
+                    autoFocus
+                    className="w-full pl-10 pr-4 py-3 rounded-xl border border-slate-200 bg-white text-slate-800 placeholder-slate-400 text-sm focus:outline-none focus:ring-2 focus:ring-medical-400 focus:border-transparent transition"
+                  />
+                </div>
 
-                  {/* Prefix + Name */}
-                  <div className="flex gap-2">
-                    <select
-                      value={prefix}
-                      onChange={(e) => setPrefix(e.target.value)}
-                      className="w-24 px-2 py-3 rounded-xl border border-slate-200 bg-white text-slate-700 text-sm focus:outline-none focus:ring-2 focus:ring-medical-400 focus:border-transparent transition"
-                    >
-                      <option value="">—</option>
-                      {PREFIXES.map((p) => <option key={p} value={p}>{p}</option>)}
-                    </select>
-                    <div className="relative flex-1">
-                      <User className="absolute left-3.5 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400 pointer-events-none" />
-                      <input
-                        type="text"
-                        placeholder="Full name"
-                        value={fullName}
-                        onChange={(e) => setFullName(e.target.value)}
-                        className="w-full pl-10 pr-4 py-3 rounded-xl border border-slate-200 bg-white text-slate-800 placeholder-slate-400 text-sm focus:outline-none focus:ring-2 focus:ring-medical-400 focus:border-transparent transition"
-                      />
-                    </div>
-                  </div>
-
-                  {/* Hospital */}
-                  <div className="relative">
-                    <Building2 className="absolute left-3.5 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400 pointer-events-none" />
+                {/* Prefix + Name */}
+                <div className="flex gap-2">
+                  <select
+                    value={prefix}
+                    onChange={(e) => setPrefix(e.target.value)}
+                    className="w-24 px-2 py-3 rounded-xl border border-slate-200 bg-white text-slate-700 text-sm focus:outline-none focus:ring-2 focus:ring-medical-400 focus:border-transparent transition [color-scheme:light]"
+                  >
+                    <option value="">—</option>
+                    {PREFIXES.map((p) => <option key={p} value={p}>{p}</option>)}
+                  </select>
+                  <div className="relative flex-1">
+                    <User className="absolute left-3.5 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400 pointer-events-none" />
                     <input
                       type="text"
-                      placeholder="Hospital / clinic (optional)"
-                      value={hospital}
-                      onChange={(e) => setHospital(e.target.value)}
+                      placeholder="Full name"
+                      value={fullName}
+                      onChange={(e) => setFullName(e.target.value)}
                       className="w-full pl-10 pr-4 py-3 rounded-xl border border-slate-200 bg-white text-slate-800 placeholder-slate-400 text-sm focus:outline-none focus:ring-2 focus:ring-medical-400 focus:border-transparent transition"
                     />
                   </div>
+                </div>
+
+                {/* Hospital */}
+                <div>
+                  <label className="block text-xs text-slate-500 mb-1.5">Hospital / clinic <span className="text-slate-400">(optional)</span></label>
+                  <HospitalTagInput
+                    value={hospitals}
+                    onChange={setHospitals}
+                    max={1}
+                  />
                 </div>
               </div>
 
@@ -226,7 +225,7 @@ export default function DocRegisterPage() {
                 Continue <ArrowRight className="w-4 h-4" />
               </button>
 
-              <p className="text-center text-xs text-slate-400">
+              <p className="text-center text-xs text-slate-400 pt-1">
                 Already have an account?{" "}
                 <a href="/doc-login" className="text-medical-600 font-semibold hover:underline">Sign in</a>
               </p>
@@ -245,12 +244,12 @@ export default function DocRegisterPage() {
               </div>
 
               <div className="space-y-5">
-                <div className="space-y-3">
-                  <p className="text-xs text-center text-slate-500">Choose a PIN</p>
+                <div className="space-y-2">
+                  <p className="text-xs text-center text-slate-500 font-medium">Choose a PIN</p>
                   <PinBoxes values={pin} setValues={setPin} refs={pinRefs} show={showPin} />
                 </div>
-                <div className="space-y-3">
-                  <p className="text-xs text-center text-slate-500">Confirm PIN</p>
+                <div className="space-y-2">
+                  <p className="text-xs text-center text-slate-500 font-medium">Confirm PIN</p>
                   <PinBoxes values={confirmPin} setValues={setConfirmPin} refs={confirmPinRefs} show={showPin} />
                 </div>
                 <button

@@ -473,3 +473,27 @@ model LabOfferedTest {
   @@index([lab_id])
   @@map("lab_offered_tests")
 }
+
+// ── Hospitals / Medical Workplaces ────────────────────────────────────────────
+
+model Hospital {
+  id         String   @id @default(uuid())
+  name       String   @unique
+  city       String?
+  is_active  Boolean  @default(true)
+  created_at DateTime @default(now())
+  @@map("hospitals")
+}
+
+// ── Global Knowledge Base Tests ───────────────────────────────────────────────
+
+model KbTest {
+  id             String   @id @default(uuid())
+  canonical_name String   @unique
+  synonyms       Json     @default("[]") // all known aliases for this test
+  category       String?
+  description    String?
+  created_at     DateTime @default(now())
+  updated_at     DateTime @updatedAt
+  @@map("kb_tests")
+}

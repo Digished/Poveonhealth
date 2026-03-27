@@ -3,6 +3,7 @@
 import { useState, useEffect, useRef, useCallback } from "react";
 import { createPortal } from "react-dom";
 import { toast } from "react-hot-toast";
+import { HospitalTagInput } from "@/components/ui/HospitalTagInput";
 import {
   FlaskConical, User, MapPin, Phone, Stethoscope,
   TestTube2, ChevronRight, ChevronLeft, Building2, Check,
@@ -1980,10 +1981,10 @@ export function DoctorRequestForm({
                     <p className="text-xs font-semibold text-slate-600 mb-2">Hospital / clinic <span className="font-normal text-slate-400">(optional)</span></p>
                     {docSubStep === 2 ? (
                       <div className="space-y-2">
-                        <Input
-                          placeholder="e.g. LUTH, Private practice"
-                          value={form.doctor_hospital}
-                          onChange={(e) => set("doctor_hospital", e.target.value)}
+                        <HospitalTagInput
+                          value={form.doctor_hospital ? [form.doctor_hospital] : []}
+                          onChange={(names) => set("doctor_hospital", names[names.length - 1] ?? "")}
+                          max={1}
                         />
                         <button
                           type="button"

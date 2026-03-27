@@ -8,6 +8,7 @@ import {
   Phone, Upload, Check, MapPin, Users, ChevronRight, ChevronDown, ChevronUp,
   Code2, Key, Copy, TrendingUp, Link, Sun, Moon, Star, GitBranch,
   ArrowUpRight, ArrowDownRight, Settings, CreditCard, MessageCircle, Tag,
+  BookOpen, Database, Sparkles, Search, Layers,
 } from "lucide-react";
 import { useDashTheme } from "@/hooks/useDashTheme";
 import LabCatalogSheet, { type CatalogJob } from "@/components/LabCatalogSheet";
@@ -20,7 +21,7 @@ import { format } from "date-fns";
 import { createClient } from "@/lib/supabase/client"; // still used for auth sign-out
 import { useRouter } from "next/navigation";
 
-type AdminTab = "metrics" | "requests" | "referrals" | "labs" | "analytics" | "marketers" | "settings" | "transactions";
+type AdminTab = "metrics" | "requests" | "referrals" | "labs" | "analytics" | "marketers" | "settings" | "transactions" | "knowledge-base";
 
 interface ReferralGroup {
   key: string; // doctor_email
@@ -457,6 +458,7 @@ const [catalogModalLabId, setCatalogModalLabId] = useState<string | null>(null);
             { key: "marketers" as AdminTab, label: "Marketers", icon: <TrendingUp className="w-4 h-4" /> },
             { key: "settings" as AdminTab, label: "Settings", icon: <Settings className="w-4 h-4" /> },
             { key: "transactions" as AdminTab, label: "Transactions", icon: <CreditCard className="w-4 h-4" /> },
+            { key: "knowledge-base" as AdminTab, label: "Knowledge Base", icon: <BookOpen className="w-4 h-4" /> },
           ];
           const current = tabs.find((t) => t.key === activeTab) ?? tabs[0];
           return (
@@ -1330,6 +1332,9 @@ const [catalogModalLabId, setCatalogModalLabId] = useState<string | null>(null);
 
         {/* ── TRANSACTIONS ── */}
         {activeTab === "transactions" && <AdminTransactionsTab labs={labs} />}
+
+        {/* ── KNOWLEDGE BASE ── */}
+        {activeTab === "knowledge-base" && <AdminKnowledgeBaseTab />}
 
       </div>
 
@@ -3711,6 +3716,361 @@ function AdminTransactionsTab({ labs }: { labs: Lab[] }) {
               </div>
             );
           })}
+        </div>
+      )}
+    </div>
+  );
+}
+
+/* ─────────────────────────────────────────────
+   Admin Knowledge Base Tab
+───────────────────────────────────────────── */
+type KbTest = {
+  id: string; canonical_name: string; synonyms: string[];
+  category: string | null; description: string | null;
+  updated_at: string; lab_count: number;
+  labs: { lab_id: string; lab_name: string; price: number }[];
+};
+
+function AdminKnowledgeBaseTab() {
+  const [tests, setTests] = useState<KbTest[]>([]);
+  const [stats, setStats] = useState<{ total_kb: number; total_lab_tests: number; total_labs: number } | null>(null);
+  const [loading, setLoading] = useState(false);
+  const [fetched, setFetched] = useState(false);
+  const [search, setSearch] = useState("");
+  const [expandedId, setExpandedId] = useState<string | null>(null);
+  const [showAdd, setShowAdd] = useState(false);
+  const [addName, setAddName] = useState("");
+  const [addCategory, setAddCategory] = useState("");
+  const [addSyns, setAddSyns] = useState("");
+  const [adding, setAdding] = useState(false);
+  const [editingSyns, setEditingSyns] = useState<{ id: string; value: string } | null>(null);
+  const [savingSyn, setSavingSyn] = useState(false);
+  const [syncing, setSyncing] = useState(false);
+  const [syncMode, setSyncMode] = useState<"new_only" | "merge_synonyms">("new_only");
+  const [hospitalTab, setHospitalTab] = useState(false);
+  const [hospitals, setHospitals] = useState<{ id: string; name: string; city: string | null; is_active: boolean }[]>([]);
+  const [hospLoading, setHospLoading] = useState(false);
+  const [hospSearch, setHospSearch] = useState("");
+  const [showAddHosp, setShowAddHosp] = useState(false);
+  const [newHospName, setNewHospName] = useState("");
+  const [newHospCity, setNewHospCity] = useState("");
+
+  const fetchKb = useCallback(async (q?: string) => {
+    setLoading(true);
+    const url = `/api/admin/kb${q ? `?q=${encodeURIComponent(q)}` : ""}`;
+    try {
+      const res = await fetch(url);
+      const data = await res.json();
+      if (data.success) { setTests(data.tests); setStats(data.stats); }
+    } catch { /* ignore */ }
+    setLoading(false);
+    setFetched(true);
+  }, []);
+
+  const fetchHospitals = useCallback(async () => {
+    setHospLoading(true);
+    try {
+      const res = await fetch(`/api/admin/hospitals${hospSearch ? `?q=${encodeURIComponent(hospSearch)}` : ""}`);
+      const data = await res.json();
+      if (data.success) setHospitals(data.hospitals);
+    } catch { /* ignore */ }
+    setHospLoading(false);
+  }, [hospSearch]);
+
+  useEffect(() => { fetchKb(); }, [fetchKb]);
+  useEffect(() => { if (hospitalTab) fetchHospitals(); }, [hospitalTab, fetchHospitals]);
+
+  async function handleSync() {
+    setSyncing(true);
+    try {
+      const res = await fetch("/api/admin/kb/sync", {
+        method: "POST", headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ mode: syncMode }),
+      });
+      const data = await res.json();
+      if (data.success) {
+        toast.success(`Synced: ${data.created} new · ${data.merged} merged · ${data.total_scanned} scanned`);
+        fetchKb();
+      } else { toast.error("Sync failed"); }
+    } catch { toast.error("Sync failed"); }
+    setSyncing(false);
+  }
+
+  async function handleAdd() {
+    if (!addName.trim()) return;
+    setAdding(true);
+    try {
+      const syns = addSyns.split(",").map((s) => s.trim()).filter(Boolean);
+      const res = await fetch("/api/admin/kb", {
+        method: "POST", headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ canonical_name: addName.trim(), synonyms: syns, category: addCategory.trim() || null }),
+      });
+      if (res.ok) {
+        toast.success("Added to knowledge base");
+        setAddName(""); setAddCategory(""); setAddSyns(""); setShowAdd(false); fetchKb();
+      } else { toast.error("Failed to add"); }
+    } catch { toast.error("Failed"); }
+    setAdding(false);
+  }
+
+  async function handleDelete(id: string, name: string) {
+    if (!confirm(`Remove "${name}" from the knowledge base?`)) return;
+    await fetch(`/api/admin/kb/${id}`, { method: "DELETE" });
+    setTests((prev) => prev.filter((t) => t.id !== id));
+  }
+
+  async function saveSynonyms(id: string, raw: string) {
+    setSavingSyn(true);
+    const syns = raw.split(",").map((s) => s.trim()).filter(Boolean);
+    const res = await fetch(`/api/admin/kb/${id}`, {
+      method: "PATCH", headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ synonyms: syns }),
+    });
+    const data = await res.json();
+    if (data.success) {
+      setTests((prev) => prev.map((t) => t.id === id ? { ...t, synonyms: data.test.synonyms } : t));
+      setEditingSyns(null); toast.success("Synonyms updated");
+    } else { toast.error("Failed"); }
+    setSavingSyn(false);
+  }
+
+  async function handleAddHospital() {
+    if (!newHospName.trim()) return;
+    const res = await fetch("/api/admin/hospitals", {
+      method: "POST", headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ name: newHospName.trim(), city: newHospCity.trim() || null }),
+    });
+    const data = await res.json();
+    if (data.success) {
+      toast.success("Hospital added"); setNewHospName(""); setNewHospCity(""); setShowAddHosp(false); fetchHospitals();
+    } else { toast.error(data.error ?? "Failed"); }
+  }
+
+  async function toggleHospActive(id: string, current: boolean) {
+    await fetch(`/api/admin/hospitals/${id}`, {
+      method: "PATCH", headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ is_active: !current }),
+    });
+    setHospitals((prev) => prev.map((h) => h.id === id ? { ...h, is_active: !current } : h));
+  }
+
+  async function deleteHospital(id: string, name: string) {
+    if (!confirm(`Remove "${name}"?`)) return;
+    await fetch(`/api/admin/hospitals/${id}`, { method: "DELETE" });
+    setHospitals((prev) => prev.filter((h) => h.id !== id));
+  }
+
+  const filtered = search
+    ? tests.filter((t) =>
+        t.canonical_name.toLowerCase().includes(search.toLowerCase()) ||
+        (t.synonyms as string[]).some((s) => s.toLowerCase().includes(search.toLowerCase()))
+      )
+    : tests;
+
+  return (
+    <div className="animate-fade-in space-y-5">
+      {/* Sub-tabs */}
+      <div className="flex gap-1 bg-white/5 rounded-xl p-1 w-fit">
+        <button onClick={() => setHospitalTab(false)} className={`flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-medium transition-all ${!hospitalTab ? "bg-white/15 text-white" : "text-slate-400 hover:text-white"}`}>
+          <Database className="w-4 h-4" />Test Catalog
+        </button>
+        <button onClick={() => setHospitalTab(true)} className={`flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-medium transition-all ${hospitalTab ? "bg-white/15 text-white" : "text-slate-400 hover:text-white"}`}>
+          <Building2 className="w-4 h-4" />Hospitals
+        </button>
+      </div>
+
+      {/* ── Test Catalog ── */}
+      {!hospitalTab && (
+        <div className="space-y-5">
+          {stats && (
+            <div className="grid grid-cols-3 gap-3">
+              {[
+                { label: "KB Tests", value: stats.total_kb, icon: <BookOpen className="w-4 h-4 text-sky-400" /> },
+                { label: "Lab Tests", value: stats.total_lab_tests, icon: <Layers className="w-4 h-4 text-emerald-400" /> },
+                { label: "Labs", value: stats.total_labs, icon: <Building2 className="w-4 h-4 text-violet-400" /> },
+              ].map((s) => (
+                <div key={s.label} className="bg-white/5 border border-white/10 rounded-xl p-4 flex items-center gap-3">
+                  {s.icon}
+                  <div>
+                    <p className="text-xl font-bold text-white">{s.value}</p>
+                    <p className="text-xs text-slate-400">{s.label}</p>
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
+
+          <div className="bg-white/5 border border-white/10 rounded-2xl p-4 space-y-3">
+            <div className="flex items-center gap-2 flex-wrap">
+              <div className="relative flex-1 min-w-[200px]">
+                <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-500 pointer-events-none" />
+                <input
+                  value={search}
+                  onChange={(e) => setSearch(e.target.value)}
+                  placeholder="Search tests or synonyms…"
+                  className="w-full pl-9 pr-4 py-2 rounded-xl bg-white/8 border border-white/10 text-sm text-white placeholder-slate-500 focus:outline-none focus:border-white/25"
+                />
+              </div>
+              <button onClick={() => setShowAdd((v) => !v)} className="flex items-center gap-1.5 px-3 py-2 rounded-xl bg-emerald-600/20 border border-emerald-600/30 text-emerald-400 text-sm hover:bg-emerald-600/30 transition-colors">
+                <Plus className="w-4 h-4" />Add Test
+              </button>
+              <button onClick={() => fetchKb(search || undefined)} disabled={loading} className="p-2 rounded-xl bg-white/8 border border-white/10 text-slate-400 hover:text-white transition-colors">
+                <RefreshCw className={`w-4 h-4 ${loading ? "animate-spin" : ""}`} />
+              </button>
+            </div>
+            <div className="flex items-center gap-3 pt-1 border-t border-white/8">
+              <Sparkles className="w-4 h-4 text-amber-400 shrink-0" />
+              <p className="text-xs text-slate-400 flex-1">Auto-sync imports test names from all lab catalogs into this knowledge base.</p>
+              <select value={syncMode} onChange={(e) => setSyncMode(e.target.value as "new_only" | "merge_synonyms")} className="text-xs bg-white/8 border border-white/10 text-slate-300 rounded-lg px-2 py-1.5 [color-scheme:dark] focus:outline-none">
+                <option value="new_only">New entries only</option>
+                <option value="merge_synonyms">Merge synonyms too</option>
+              </select>
+              <button onClick={handleSync} disabled={syncing} className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-amber-500/20 border border-amber-500/30 text-amber-300 text-xs font-semibold hover:bg-amber-500/30 transition-colors disabled:opacity-50">
+                {syncing ? <RefreshCw className="w-3.5 h-3.5 animate-spin" /> : <Sparkles className="w-3.5 h-3.5" />}
+                {syncing ? "Syncing…" : "Sync from Labs"}
+              </button>
+            </div>
+          </div>
+
+          {showAdd && (
+            <div className="bg-emerald-500/5 border border-emerald-500/20 rounded-2xl p-4 space-y-3">
+              <p className="text-sm font-semibold text-emerald-300">New Knowledge Base Entry</p>
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                <input value={addName} onChange={(e) => setAddName(e.target.value)} placeholder="Canonical name *" className="px-3 py-2 rounded-xl bg-white/8 border border-white/10 text-sm text-white placeholder-slate-500 focus:outline-none focus:border-white/25" />
+                <input value={addCategory} onChange={(e) => setAddCategory(e.target.value)} placeholder="Category (optional)" className="px-3 py-2 rounded-xl bg-white/8 border border-white/10 text-sm text-white placeholder-slate-500 focus:outline-none focus:border-white/25" />
+              </div>
+              <input value={addSyns} onChange={(e) => setAddSyns(e.target.value)} placeholder="Synonyms, comma-separated (e.g. FBC, CBC, full blood count)" className="w-full px-3 py-2 rounded-xl bg-white/8 border border-white/10 text-sm text-white placeholder-slate-500 focus:outline-none focus:border-white/25" />
+              <div className="flex gap-2">
+                <button onClick={handleAdd} disabled={adding || !addName.trim()} className="flex items-center gap-1.5 px-4 py-2 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white text-sm font-semibold disabled:opacity-50">
+                  <Check className="w-4 h-4" />{adding ? "Adding…" : "Add"}
+                </button>
+                <button onClick={() => setShowAdd(false)} className="px-4 py-2 rounded-xl bg-white/8 text-slate-400 text-sm">Cancel</button>
+              </div>
+            </div>
+          )}
+
+          {loading && !fetched ? (
+            <div className="space-y-2">{[...Array(5)].map((_, i) => <div key={i} className="bg-white/5 border border-white/10 rounded-xl h-14 animate-pulse" />)}</div>
+          ) : filtered.length === 0 ? (
+            <div className="text-center py-16 text-slate-500">
+              {search ? "No tests match your search." : `Knowledge base is empty. Click "Sync from Labs" to populate it.`}
+            </div>
+          ) : (
+            <div className="space-y-2">
+              {filtered.map((test) => {
+                const isExpanded = expandedId === test.id;
+                return (
+                  <div key={test.id} className="bg-white/5 border border-white/10 rounded-xl overflow-hidden">
+                    <button type="button" onClick={() => setExpandedId(isExpanded ? null : test.id)} className="w-full flex items-center gap-3 px-4 py-3 text-left hover:bg-white/5 transition-colors">
+                      <div className="flex-1 min-w-0">
+                        <div className="flex items-center gap-2 flex-wrap">
+                          <p className="text-sm font-semibold text-white">{test.canonical_name}</p>
+                          {test.category && <span className="text-[10px] bg-sky-500/15 text-sky-400 border border-sky-500/20 px-1.5 py-0.5 rounded-full">{test.category}</span>}
+                        </div>
+                        <p className="text-xs text-slate-500 mt-0.5 truncate">
+                          {test.synonyms.length > 0 ? test.synonyms.slice(0, 4).join(" · ") + (test.synonyms.length > 4 ? ` +${test.synonyms.length - 4}` : "") : "No synonyms"}
+                        </p>
+                      </div>
+                      <div className="shrink-0 text-right">
+                        <p className="text-xs text-emerald-400 font-semibold">{test.lab_count} lab{test.lab_count !== 1 ? "s" : ""}</p>
+                        <ChevronDown className={`w-3.5 h-3.5 text-slate-500 ml-auto mt-0.5 transition-transform ${isExpanded ? "rotate-180" : ""}`} />
+                      </div>
+                    </button>
+                    {isExpanded && (
+                      <div className="border-t border-white/8 px-4 py-4 space-y-4 bg-slate-950/40">
+                        <div>
+                          <p className="text-xs text-slate-400 font-semibold uppercase tracking-wider mb-2">Synonyms</p>
+                          {editingSyns?.id === test.id ? (
+                            <div className="flex gap-2 items-center">
+                              <input value={editingSyns.value} onChange={(e) => setEditingSyns({ id: test.id, value: e.target.value })} className="flex-1 px-3 py-1.5 rounded-lg bg-white/8 border border-white/15 text-sm text-white placeholder-slate-500 focus:outline-none focus:border-white/30" placeholder="Comma-separated synonyms" />
+                              <button onClick={() => saveSynonyms(test.id, editingSyns.value)} disabled={savingSyn} className="px-3 py-1.5 rounded-lg bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-semibold disabled:opacity-50">{savingSyn ? "…" : "Save"}</button>
+                              <button onClick={() => setEditingSyns(null)} className="p-1.5 text-slate-500 hover:text-white"><X className="w-3.5 h-3.5" /></button>
+                            </div>
+                          ) : (
+                            <div className="flex flex-wrap gap-1.5 items-center">
+                              {test.synonyms.length > 0
+                                ? test.synonyms.map((s) => <span key={s} className="text-xs bg-blue-500/10 text-blue-300 border border-blue-500/20 px-2 py-0.5 rounded-full">{s}</span>)
+                                : <span className="text-xs text-slate-600 italic">none yet</span>}
+                              <button onClick={() => setEditingSyns({ id: test.id, value: test.synonyms.join(", ") })} className="text-xs text-slate-500 hover:text-white border border-dashed border-slate-700 hover:border-white/30 px-2 py-0.5 rounded-full transition-colors">Edit</button>
+                            </div>
+                          )}
+                        </div>
+                        {test.labs.length > 0 && (
+                          <div>
+                            <p className="text-xs text-slate-400 font-semibold uppercase tracking-wider mb-2">Labs offering this test</p>
+                            <div className="space-y-1">
+                              {test.labs.map((lab) => (
+                                <div key={lab.lab_id} className="flex items-center justify-between text-xs py-1 border-b border-white/5 last:border-0">
+                                  <span className="text-slate-200">{lab.lab_name}</span>
+                                  <span className="font-mono text-white">₦{lab.price.toLocaleString()}</span>
+                                </div>
+                              ))}
+                            </div>
+                          </div>
+                        )}
+                        <button onClick={() => handleDelete(test.id, test.canonical_name)} className="text-xs text-rose-400 hover:text-rose-300 border border-rose-500/20 hover:border-rose-500/40 px-3 py-1.5 rounded-lg transition-colors">Remove from KB</button>
+                      </div>
+                    )}
+                  </div>
+                );
+              })}
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* ── Hospitals ── */}
+      {hospitalTab && (
+        <div className="space-y-4">
+          <div className="bg-white/5 border border-white/10 rounded-2xl p-4 flex items-center gap-3 flex-wrap">
+            <div className="relative flex-1 min-w-[200px]">
+              <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-500 pointer-events-none" />
+              <input value={hospSearch} onChange={(e) => setHospSearch(e.target.value)} placeholder="Search hospitals…" className="w-full pl-9 pr-4 py-2 rounded-xl bg-white/8 border border-white/10 text-sm text-white placeholder-slate-500 focus:outline-none focus:border-white/25" />
+            </div>
+            <button onClick={() => setShowAddHosp((v) => !v)} className="flex items-center gap-1.5 px-3 py-2 rounded-xl bg-emerald-600/20 border border-emerald-600/30 text-emerald-400 text-sm hover:bg-emerald-600/30 transition-colors">
+              <Plus className="w-4 h-4" />Add Hospital
+            </button>
+            <button onClick={fetchHospitals} disabled={hospLoading} className="p-2 rounded-xl bg-white/8 border border-white/10 text-slate-400 hover:text-white transition-colors">
+              <RefreshCw className={`w-4 h-4 ${hospLoading ? "animate-spin" : ""}`} />
+            </button>
+          </div>
+          {showAddHosp && (
+            <div className="bg-emerald-500/5 border border-emerald-500/20 rounded-2xl p-4 space-y-3">
+              <p className="text-sm font-semibold text-emerald-300">Add Hospital / Clinic</p>
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                <input value={newHospName} onChange={(e) => setNewHospName(e.target.value)} placeholder="Name *" className="px-3 py-2 rounded-xl bg-white/8 border border-white/10 text-sm text-white placeholder-slate-500 focus:outline-none focus:border-white/25" />
+                <input value={newHospCity} onChange={(e) => setNewHospCity(e.target.value)} placeholder="City (optional)" className="px-3 py-2 rounded-xl bg-white/8 border border-white/10 text-sm text-white placeholder-slate-500 focus:outline-none focus:border-white/25" />
+              </div>
+              <div className="flex gap-2">
+                <button onClick={handleAddHospital} disabled={!newHospName.trim()} className="flex items-center gap-1.5 px-4 py-2 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white text-sm font-semibold disabled:opacity-50"><Check className="w-4 h-4" />Add</button>
+                <button onClick={() => setShowAddHosp(false)} className="px-4 py-2 rounded-xl bg-white/8 text-slate-400 text-sm">Cancel</button>
+              </div>
+            </div>
+          )}
+          {hospLoading ? (
+            <div className="space-y-2">{[...Array(4)].map((_, i) => <div key={i} className="bg-white/5 border border-white/10 rounded-xl h-12 animate-pulse" />)}</div>
+          ) : hospitals.filter((h) => !hospSearch || h.name.toLowerCase().includes(hospSearch.toLowerCase())).length === 0 ? (
+            <div className="text-center py-12 text-slate-500">No hospitals yet. Add one to start building the list.</div>
+          ) : (
+            <div className="space-y-1.5">
+              {hospitals.filter((h) => !hospSearch || h.name.toLowerCase().includes(hospSearch.toLowerCase())).map((h) => (
+                <div key={h.id} className={`flex items-center gap-3 px-4 py-3 rounded-xl border ${h.is_active ? "bg-white/5 border-white/10" : "bg-white/2 border-white/5 opacity-50"}`}>
+                  <Building2 className="w-4 h-4 text-slate-500 shrink-0" />
+                  <div className="flex-1 min-w-0">
+                    <p className="text-sm text-white font-medium">{h.name}</p>
+                    {h.city && <p className="text-xs text-slate-500">{h.city}</p>}
+                  </div>
+                  <button onClick={() => toggleHospActive(h.id, h.is_active)} className={`text-xs px-2.5 py-1 rounded-full border font-medium ${h.is_active ? "text-emerald-400 border-emerald-500/30 bg-emerald-500/10 hover:bg-emerald-500/20" : "text-slate-500 border-slate-700 bg-white/5 hover:bg-white/10"}`}>
+                    {h.is_active ? "Active" : "Inactive"}
+                  </button>
+                  <button onClick={() => deleteHospital(h.id, h.name)} className="p-1.5 text-slate-600 hover:text-rose-400 transition-colors">
+                    <Trash2 className="w-3.5 h-3.5" />
+                  </button>
+                </div>
+              ))}
+            </div>
+          )}
         </div>
       )}
     </div>

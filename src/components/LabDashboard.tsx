@@ -2059,7 +2059,22 @@ export function LabDashboard({ lab, isOwner = false, roleName = "Lab Owner", can
                     )}
                     <div className="border-t border-white/10 pt-3" />
                     <DetailRow label="Tests">
-                      <span className="text-white font-medium">{selectedRequest.tests}</span>
+                      {selectedRequest.tests === "See attached image" ? (
+                        <span className="text-white font-medium">See attached image</span>
+                      ) : (
+                        <ul className="space-y-1 mt-0.5">
+                          {selectedRequest.tests
+                            .split(/[,\n]+/)
+                            .map((t) => t.trim())
+                            .filter(Boolean)
+                            .map((test, i) => (
+                              <li key={i} className="text-white font-medium text-sm flex items-start gap-1.5">
+                                <span className="text-slate-500 mt-0.5 shrink-0">·</span>
+                                {test}
+                              </li>
+                            ))}
+                        </ul>
+                      )}
                     </DetailRow>
                     {selectedRequest.diagnosis && (
                       <DetailRow label="Diagnosis">{selectedRequest.diagnosis}</DetailRow>
