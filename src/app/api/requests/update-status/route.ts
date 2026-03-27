@@ -83,49 +83,46 @@ export async function POST(request: NextRequest) {
     }
 
     if (status === "seen") {
-      // Re-resolve tests against the current lab catalog so commission is always
-      // calculated from up-to-date catalog data.
-      // Uses raw SQL for the entire seen update — this is the proven approach
-      // (identical SQL logic works via Supabase console).
       const testsString = req.tests && req.tests !== "See attached image" ? req.tests : null;
 
+      // Resolve tests to get fresh breakdown
+      type BreakdownItem = { source?: string; poveon_fee?: number | null; unit_price?: number };
+      let breakdown: BreakdownItem[] = [];
       if (testsString) {
-        // Resolve tests, then write breakdown + status + commission in two steps.
-        // Step 1: write the resolved breakdown via Prisma (Json field — works reliably).
-        let breakdown: object[] = [];
         try {
-          breakdown = await resolveTests(testsString, req.lab_id);
+          breakdown = await resolveTests(testsString, req.lab_id) as BreakdownItem[];
         } catch (e) {
           console.error("[update-status] resolveTests failed:", e);
         }
+      } else if (Array.isArray(req.test_breakdown)) {
+        breakdown = req.test_breakdown as BreakdownItem[];
+      }
 
-        if (breakdown.length > 0) {
-          await prisma.request.update({
-            where: { id: requestId },
-            data: { test_breakdown: breakdown },
-          });
+      // Compute totals directly in JavaScript — no DB subquery, no timing issues
+      let poveonTotal = 0;
+      let labRevenueTotal = 0;
+      for (const item of breakdown) {
+        if (item.source === "lab_catalog") {
+          poveonTotal += Number(item.poveon_fee ?? 0);
+          labRevenueTotal += Number(item.unit_price ?? 0);
         }
       }
 
-      // Step 2: atomic SQL — mark seen + compute commission from whatever is in
-      // test_breakdown. This mirrors the exact SQL that worked in Supabase console.
-      await prisma.$executeRawUnsafe(
-        `UPDATE requests
-         SET status = 'seen',
-             seen_at = NOW(),
-             poveon_amount = (
-               SELECT COALESCE(SUM((item->>'poveon_fee')::numeric), 0)
-               FROM jsonb_array_elements(COALESCE(test_breakdown, '[]'::jsonb)) AS item
-               WHERE item->>'source' = 'lab_catalog'
-             ),
-             lab_revenue_amount = (
-               SELECT COALESCE(SUM((item->>'unit_price')::numeric), 0)
-               FROM jsonb_array_elements(COALESCE(test_breakdown, '[]'::jsonb)) AS item
-               WHERE item->>'source' = 'lab_catalog'
-             )
-         WHERE id = $1`,
-        requestId
-      );
+      console.log(`[commission] ${req.code}: ${breakdown.length} items, poveon=₦${poveonTotal}, revenue=₦${labRevenueTotal}`);
+
+      // Single atomic SQL: write status + breakdown + explicit numeric totals
+      const breakdownJson = breakdown.length > 0 ? JSON.stringify(breakdown) : null;
+      if (breakdownJson) {
+        await prisma.$executeRawUnsafe(
+          `UPDATE requests SET status='seen', seen_at=NOW(), test_breakdown=$1::jsonb, poveon_amount=$2, lab_revenue_amount=$3 WHERE id=$4`,
+          breakdownJson, poveonTotal, labRevenueTotal, requestId
+        );
+      } else {
+        await prisma.$executeRawUnsafe(
+          `UPDATE requests SET status='seen', seen_at=NOW(), poveon_amount=$1, lab_revenue_amount=$2 WHERE id=$3`,
+          poveonTotal, labRevenueTotal, requestId
+        );
+      }
     } else {
       // status === "done"
       await prisma.request.update({

@@ -3130,6 +3130,9 @@ function LabPoveonView({ data, loading, onLoad }: { data: PoveonViewData; loadin
               const isOpen = expanded.has(req.id);
               const catalogItems = req.test_breakdown.filter((t) => t.source === "lab_catalog");
               const othersItems = req.test_breakdown.filter((t) => t.source !== "lab_catalog");
+              // Always derive totals from the JSON items — guaranteed to match per-row display
+              const totalPrice = catalogItems.reduce((s, t) => s + Number(t.unit_price ?? 0), 0);
+              const totalCommission = catalogItems.reduce((s, t) => s + Number(t.poveon_fee ?? 0), 0);
               return (
                 <div key={req.id} className="bg-white/5 border border-white/8 rounded-xl overflow-hidden">
                   {/* Request row — click to expand */}
@@ -3182,8 +3185,8 @@ function LabPoveonView({ data, loading, onLoad }: { data: PoveonViewData; loadin
                       ))}
                       <div className="grid grid-cols-3 gap-2 px-1 pt-2 border-t border-white/8">
                         <p className="text-xs text-slate-400 font-semibold">Total</p>
-                        <p className="text-xs text-white text-right font-mono font-semibold">₦{req.lab_revenue_amount.toLocaleString()}</p>
-                        <p className="text-xs text-amber-300 text-right font-mono font-semibold">₦{req.poveon_amount.toLocaleString()}</p>
+                        <p className="text-xs text-white text-right font-mono font-semibold">₦{totalPrice.toLocaleString()}</p>
+                        <p className="text-xs text-amber-300 text-right font-mono font-semibold">₦{totalCommission.toLocaleString()}</p>
                       </div>
                     </div>
                   )}
