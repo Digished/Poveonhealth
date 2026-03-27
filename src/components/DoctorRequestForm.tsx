@@ -2001,19 +2001,31 @@ export function DoctorRequestForm({
                   <div className="flex-1 pb-2">
                     <p className="text-xs font-semibold text-slate-600 mb-2">Bank details <span className="font-normal text-amber-500">optional</span></p>
                     {docSubStep === 3 ? (
-                      <div className="space-y-2">
-                        <Input placeholder="Bank name" value={form.doctor_bank_name} onChange={(e) => set("doctor_bank_name", e.target.value)} />
-                        <Input placeholder="Account number" value={form.doctor_account_number} onChange={(e) => set("doctor_account_number", e.target.value)} />
-                        <Input placeholder="Account name" value={form.doctor_account_name} onChange={(e) => set("doctor_account_name", e.target.value)} />
-                        <div className="flex gap-2">
-                          <button type="button" onClick={() => setDocSubStep(null)} className="flex-1 py-2 rounded-xl bg-slate-100 text-slate-600 text-sm font-medium">Skip</button>
-                          <button type="button" onClick={() => setDocSubStep(null)} className="flex-1 py-2 rounded-xl bg-amber-500 text-white text-sm font-semibold">Save</button>
+                      <div className="space-y-3">
+                        <BankAccountInput
+                          bankName={form.doctor_bank_name}
+                          bankCode={bankCode}
+                          accountNumber={form.doctor_account_number}
+                          accountName={form.doctor_account_name}
+                          onBankChange={(name, code) => { set("doctor_bank_name", name); setBankCode(code); }}
+                          onAccountNumberChange={(v) => set("doctor_account_number", v)}
+                          onAccountNameChange={(v) => set("doctor_account_name", v)}
+                          onVerifiedChange={(v) => setBankVerified(v)}
+                        />
+                        <div className="flex gap-2 pt-1">
+                          <button type="button" onClick={() => { set("doctor_bank_name", ""); set("doctor_account_number", ""); set("doctor_account_name", ""); setBankCode(""); setBankVerified(false); setDocSubStep(null); }} className="flex-1 py-2 rounded-xl bg-slate-100 text-slate-600 text-sm font-medium">Skip</button>
+                          <button type="button" disabled={!!form.doctor_account_number && !bankVerified} onClick={() => setDocSubStep(null)} className="flex-1 py-2 rounded-xl bg-amber-500 disabled:opacity-40 text-white text-sm font-semibold">Save</button>
                         </div>
                       </div>
                     ) : form.doctor_bank_name.trim() ? (
                       <div className="flex items-center justify-between">
-                        <p className="text-sm text-slate-700">{form.doctor_bank_name}</p>
-                        <button type="button" onClick={() => setDocSubStep(3)} className="text-xs text-medical-500 underline">Edit</button>
+                        <div className="min-w-0">
+                          <p className="text-sm text-slate-700 truncate">{form.doctor_bank_name}</p>
+                          {form.doctor_account_name && (
+                            <p className="text-xs text-slate-500 truncate">{form.doctor_account_name} · ****{form.doctor_account_number.slice(-4)}</p>
+                          )}
+                        </div>
+                        <button type="button" onClick={() => setDocSubStep(3)} className="text-xs text-medical-500 underline shrink-0 ml-2">Edit</button>
                       </div>
                     ) : docSubStep === null ? (
                       <p className="text-xs text-slate-400">Not set</p>
