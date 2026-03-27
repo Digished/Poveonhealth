@@ -4222,19 +4222,25 @@ function AdminUsersTab() {
 // LabWalletButton — provision DVA or show existing account details, per lab card
 // ─────────────────────────────────────────────────────────────────────────────
 function LabWalletButton({ labId }: { labId: string }) {
-  const [state, setState] = useState<"idle" | "loading" | "done" | "error">("idle");
+  const [state, setState] = useState<"idle" | "form" | "loading" | "done" | "error">("idle");
+  const [phone, setPhone] = useState("");
   const [dva, setDva] = useState<{ bank_name: string | null; account_number: string; account_name: string | null } | null>(null);
   const [showDetails, setShowDetails] = useState(false);
   const [copied, setCopied] = useState(false);
 
   async function provision() {
+    if (!phone.trim()) return;
     setState("loading");
     try {
-      const res = await fetch(`/api/admin/wallet/provision/${labId}`, { method: "POST" });
+      const res = await fetch(`/api/admin/wallet/provision/${labId}`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ phone: phone.trim() }),
+      });
       const d = await res.json();
       if (!res.ok) {
         toast.error(d.error ?? "Provisioning failed");
-        setState("error");
+        setState("form");
         return;
       }
       setDva({ bank_name: d.dva_bank_name, account_number: d.dva_account_number, account_name: d.dva_account_name });
@@ -4243,7 +4249,7 @@ function LabWalletButton({ labId }: { labId: string }) {
       else toast.success("Virtual account created!");
     } catch {
       toast.error("Network error");
-      setState("error");
+      setState("form");
     }
   }
 
@@ -4280,9 +4286,38 @@ function LabWalletButton({ labId }: { labId: string }) {
     );
   }
 
+  if (state === "form") {
+    return (
+      <div className="col-span-2 mt-1 flex gap-2 items-center">
+        <input
+          type="tel"
+          value={phone}
+          onChange={(e) => setPhone(e.target.value)}
+          onKeyDown={(e) => e.key === "Enter" && provision()}
+          placeholder="08012345678"
+          autoFocus
+          className="flex-1 px-3 py-1.5 rounded-lg bg-white/8 border border-white/15 text-white text-xs placeholder-slate-500 focus:outline-none focus:ring-1 focus:ring-violet-400 font-mono"
+        />
+        <button
+          onClick={provision}
+          disabled={!phone.trim()}
+          className="px-3 py-1.5 rounded-lg bg-violet-500/20 hover:bg-violet-500/30 text-violet-300 text-xs transition-colors disabled:opacity-40 shrink-0"
+        >
+          Create
+        </button>
+        <button
+          onClick={() => setState("idle")}
+          className="p-1.5 rounded-lg text-slate-500 hover:text-white transition-colors"
+        >
+          <X className="w-3 h-3" />
+        </button>
+      </div>
+    );
+  }
+
   return (
     <button
-      onClick={provision}
+      onClick={() => setState("form")}
       disabled={state === "loading"}
       className="flex items-center justify-center gap-1 px-2.5 py-1.5 rounded-lg bg-violet-500/10 hover:bg-violet-500/20 text-violet-400 hover:text-violet-300 text-xs transition-colors disabled:opacity-50"
     >

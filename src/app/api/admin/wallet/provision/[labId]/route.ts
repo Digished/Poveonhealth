@@ -28,18 +28,29 @@ async function paystackPost(path: string, body: object) {
 /**
  * POST /api/admin/wallet/provision/[labId]
  * Creates a Paystack customer + dedicated virtual account for the lab.
+ * Accepts { phone } in request body — required by Paystack for DVA eligibility.
  * Safe to call again — idempotent (skips if DVA already assigned).
  */
 export async function POST(
-  _req: NextRequest,
+  req: NextRequest,
   { params }: { params: { labId: string } },
 ) {
   const admin = await verifyAdmin();
   if (!admin) return NextResponse.json({ error: "Forbidden" }, { status: 403 });
 
+  const body = await req.json().catch(() => ({}));
+  const phoneInput: string = (body.phone ?? "").toString().trim();
+
+  if (!phoneInput) {
+    return NextResponse.json({ error: "Phone number is required." }, { status: 400 });
+  }
+
+  // Normalise: strip non-digits, convert international prefix to local
+  const phone = phoneInput.replace(/\D/g, "").replace(/^234/, "0");
+
   const lab = await prisma.lab.findUnique({
     where: { id: params.labId },
-    select: { id: true, name: true, email: true, request_email: true, phones: true },
+    select: { id: true, name: true, email: true, request_email: true },
   });
   if (!lab) return NextResponse.json({ error: "Lab not found" }, { status: 404 });
 
@@ -67,16 +78,11 @@ export async function POST(
 
   if (!customerCode) {
     const nameParts = lab.name.split(" ");
-    const phones = Array.isArray(lab.phones) ? lab.phones as string[] : [];
-    // Paystack requires phone; normalise to digits-only with leading zero
-    const rawPhone = phones[0] ?? "";
-    const phone = rawPhone.replace(/\D/g, "").replace(/^234/, "0");
-
     const custRes = await paystackPost("/customer", {
       email: labEmail,
       first_name: nameParts[0],
       last_name: nameParts.slice(1).join(" ") || "Lab",
-      phone: phone || "08000000000", // fallback placeholder if no phone on record
+      phone,
       metadata: { lab_id: lab.id },
     });
 
