@@ -111,13 +111,8 @@ export async function POST(request: NextRequest) {
           }
         }
 
-        // Use raw SQL to write commission fields — bypasses stale Prisma client
-        // that may not know about these columns if prisma generate hasn't been re-run.
-        await prisma.$executeRaw`
-          UPDATE requests
-          SET poveon_amount = ${poveonTotal},
-              lab_revenue_amount = ${labRevenueTotal}
-          WHERE id = ${requestId}`;
+        updateData.poveon_amount = poveonTotal;
+        updateData.lab_revenue_amount = labRevenueTotal;
       } catch (e) {
         console.error("[commission] recalculation failed:", e);
       }
