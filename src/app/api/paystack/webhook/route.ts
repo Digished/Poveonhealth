@@ -64,10 +64,29 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ received: true });
   }
 
-  // 3. Find lab wallet by customer code
-  const wallet = await prisma.labWallet.findUnique({
+  // 3. Find lab wallet — try customer_code first, then fall back to DVA account number
+  let wallet = await prisma.labWallet.findUnique({
     where: { paystack_customer_id: customerCode },
   });
+
+  if (!wallet) {
+    // Paystack DVA webhooks include a dedicated_account object — try matching on account number
+    const dedicatedAccount = data.dedicated_account as Record<string, unknown> | null;
+    const dvaAccountNumber = (dedicatedAccount?.account_number as string) ?? "";
+    if (dvaAccountNumber) {
+      wallet = await prisma.labWallet.findFirst({
+        where: { dva_account_number: dvaAccountNumber },
+      });
+      if (wallet) {
+        console.log("[webhook] Found wallet via DVA account number:", dvaAccountNumber);
+        // Backfill customer code for future lookups
+        await prisma.labWallet.update({
+          where: { lab_id: wallet.lab_id },
+          data: { paystack_customer_id: customerCode },
+        });
+      }
+    }
+  }
 
   if (!wallet) {
     console.error("[webhook] No wallet found for customer_code:", customerCode);

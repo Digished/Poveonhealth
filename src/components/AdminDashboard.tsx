@@ -4222,11 +4222,14 @@ function AdminUsersTab() {
 // LabWalletButton — provision DVA or show existing account details, per lab card
 // ─────────────────────────────────────────────────────────────────────────────
 function LabWalletButton({ labId }: { labId: string }) {
-  const [state, setState] = useState<"idle" | "form" | "loading" | "done" | "error">("idle");
+  const [state, setState] = useState<"idle" | "form" | "loading" | "done" | "credit-form">("idle");
   const [phone, setPhone] = useState("");
   const [dva, setDva] = useState<{ bank_name: string | null; account_number: string; account_name: string | null } | null>(null);
+  const [balance, setBalance] = useState<number | null>(null);
   const [showDetails, setShowDetails] = useState(false);
   const [copied, setCopied] = useState(false);
+  const [creditRef, setCreditRef] = useState("");
+  const [crediting, setCrediting] = useState(false);
 
   async function provision() {
     if (!phone.trim()) return;
@@ -4238,50 +4241,95 @@ function LabWalletButton({ labId }: { labId: string }) {
         body: JSON.stringify({ phone: phone.trim() }),
       });
       const d = await res.json();
-      if (!res.ok) {
-        toast.error(d.error ?? "Provisioning failed");
-        setState("form");
-        return;
-      }
+      if (!res.ok) { toast.error(d.error ?? "Provisioning failed"); setState("form"); return; }
       setDva({ bank_name: d.dva_bank_name, account_number: d.dva_account_number, account_name: d.dva_account_name });
+      setBalance(d.balance ?? 0);
       setState("done");
       if (d.already_provisioned) toast.success("DVA already provisioned — details loaded");
       else toast.success("Virtual account created!");
-    } catch {
-      toast.error("Network error");
-      setState("form");
-    }
+    } catch { toast.error("Network error"); setState("form"); }
+  }
+
+  async function manualCredit() {
+    if (!creditRef.trim()) return;
+    setCrediting(true);
+    try {
+      const res = await fetch("/api/admin/wallet/manual-credit", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ reference: creditRef.trim() }),
+      });
+      const d = await res.json();
+      if (!res.ok) { toast.error(d.error ?? "Credit failed"); return; }
+      toast.success(`₦${Number(d.amount).toLocaleString()} credited to wallet`);
+      setBalance((prev) => (prev ?? 0) + Number(d.amount));
+      setCreditRef("");
+      setState("done");
+    } catch { toast.error("Network error"); }
+    finally { setCrediting(false); }
   }
 
   function copyAcc() {
     if (!dva?.account_number) return;
-    navigator.clipboard.writeText(dva.account_number).then(() => {
-      setCopied(true);
-      setTimeout(() => setCopied(false), 2000);
-    });
+    navigator.clipboard.writeText(dva.account_number).then(() => { setCopied(true); setTimeout(() => setCopied(false), 2000); });
   }
 
   if (state === "done" && dva) {
     return (
-      <div className="col-span-2 sm:col-span-auto">
+      <div className="col-span-2 space-y-1.5">
         <button
           onClick={() => setShowDetails((s) => !s)}
-          className="w-full flex items-center justify-center gap-1 px-2.5 py-1.5 rounded-lg bg-emerald-500/10 hover:bg-emerald-500/20 text-emerald-400 text-xs transition-colors"
+          className="w-full flex items-center justify-between gap-1 px-2.5 py-1.5 rounded-lg bg-emerald-500/10 hover:bg-emerald-500/20 text-emerald-400 text-xs transition-colors"
         >
-          <Wallet className="w-3 h-3" />DVA {showDetails ? "▲" : "▼"}
+          <span className="flex items-center gap-1"><Wallet className="w-3 h-3" /> DVA</span>
+          <span className="font-mono font-semibold">{balance != null ? `₦${balance.toLocaleString()}` : ""} {showDetails ? "▲" : "▼"}</span>
         </button>
         {showDetails && (
-          <div className="mt-2 p-3 bg-white/5 border border-white/10 rounded-xl col-span-2">
-            <p className="text-[10px] text-slate-500 uppercase tracking-wider mb-1">{dva.bank_name}</p>
-            <div className="flex items-center gap-2">
-              <p className="font-mono text-sm text-white font-bold tracking-widest">{dva.account_number}</p>
-              <button onClick={copyAcc} className="p-1 rounded text-slate-400 hover:text-white transition">
-                {copied ? <Check className="w-3 h-3 text-emerald-400" /> : <Copy className="w-3 h-3" />}
-              </button>
+          <div className="p-3 bg-white/5 border border-white/10 rounded-xl space-y-2">
+            <div>
+              <p className="text-[10px] text-slate-500 uppercase tracking-wider mb-1">{dva.bank_name}</p>
+              <div className="flex items-center gap-2">
+                <p className="font-mono text-sm text-white font-bold tracking-widest">{dva.account_number}</p>
+                <button onClick={copyAcc} className="p-1 rounded text-slate-400 hover:text-white transition">
+                  {copied ? <Check className="w-3 h-3 text-emerald-400" /> : <Copy className="w-3 h-3" />}
+                </button>
+              </div>
+              <p className="text-[10px] text-slate-500 mt-0.5">{dva.account_name}</p>
             </div>
-            <p className="text-[10px] text-slate-500 mt-0.5">{dva.account_name}</p>
+            <button
+              onClick={() => setState("credit-form")}
+              className="w-full flex items-center justify-center gap-1 px-2 py-1 rounded-lg bg-sky-500/10 hover:bg-sky-500/20 text-sky-400 text-[11px] transition-colors"
+            >
+              + Manual credit (missed payment)
+            </button>
           </div>
         )}
+      </div>
+    );
+  }
+
+  if (state === "credit-form") {
+    return (
+      <div className="col-span-2 space-y-1.5">
+        <p className="text-[10px] text-slate-400">Paste Paystack reference to verify & credit:</p>
+        <div className="flex gap-1.5 items-center">
+          <input
+            type="text"
+            value={creditRef}
+            onChange={(e) => setCreditRef(e.target.value)}
+            onKeyDown={(e) => e.key === "Enter" && manualCredit()}
+            placeholder="e.g. T123456789"
+            autoFocus
+            className="flex-1 px-2.5 py-1.5 rounded-lg bg-white/8 border border-white/15 text-white text-xs placeholder-slate-500 focus:outline-none focus:ring-1 focus:ring-sky-400 font-mono"
+          />
+          <button onClick={manualCredit} disabled={!creditRef.trim() || crediting}
+            className="px-2.5 py-1.5 rounded-lg bg-sky-500/20 hover:bg-sky-500/30 text-sky-300 text-xs transition-colors disabled:opacity-40 shrink-0">
+            {crediting ? <RefreshCw className="w-3 h-3 animate-spin" /> : "Credit"}
+          </button>
+          <button onClick={() => setState("done")} className="p-1.5 rounded-lg text-slate-500 hover:text-white transition-colors">
+            <X className="w-3 h-3" />
+          </button>
+        </div>
       </div>
     );
   }
@@ -4298,17 +4346,11 @@ function LabWalletButton({ labId }: { labId: string }) {
           autoFocus
           className="flex-1 px-3 py-1.5 rounded-lg bg-white/8 border border-white/15 text-white text-xs placeholder-slate-500 focus:outline-none focus:ring-1 focus:ring-violet-400 font-mono"
         />
-        <button
-          onClick={provision}
-          disabled={!phone.trim()}
-          className="px-3 py-1.5 rounded-lg bg-violet-500/20 hover:bg-violet-500/30 text-violet-300 text-xs transition-colors disabled:opacity-40 shrink-0"
-        >
+        <button onClick={provision} disabled={!phone.trim()}
+          className="px-3 py-1.5 rounded-lg bg-violet-500/20 hover:bg-violet-500/30 text-violet-300 text-xs transition-colors disabled:opacity-40 shrink-0">
           Create
         </button>
-        <button
-          onClick={() => setState("idle")}
-          className="p-1.5 rounded-lg text-slate-500 hover:text-white transition-colors"
-        >
+        <button onClick={() => setState("idle")} className="p-1.5 rounded-lg text-slate-500 hover:text-white transition-colors">
           <X className="w-3 h-3" />
         </button>
       </div>
@@ -4321,9 +4363,7 @@ function LabWalletButton({ labId }: { labId: string }) {
       disabled={state === "loading"}
       className="flex items-center justify-center gap-1 px-2.5 py-1.5 rounded-lg bg-violet-500/10 hover:bg-violet-500/20 text-violet-400 hover:text-violet-300 text-xs transition-colors disabled:opacity-50"
     >
-      {state === "loading"
-        ? <RefreshCw className="w-3 h-3 animate-spin" />
-        : <Wallet className="w-3 h-3" />}
+      {state === "loading" ? <RefreshCw className="w-3 h-3 animate-spin" /> : <Wallet className="w-3 h-3" />}
       {state === "loading" ? "Provisioning…" : "Wallet DVA"}
     </button>
   );
