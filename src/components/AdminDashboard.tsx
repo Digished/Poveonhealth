@@ -4222,13 +4222,29 @@ function AdminUsersTab() {
 // LabWalletButton — provision DVA or show existing account details, per lab card
 // ─────────────────────────────────────────────────────────────────────────────
 function LabWalletButton({ labId }: { labId: string }) {
-  const [state, setState] = useState<"idle" | "form" | "loading" | "done" | "credit-form">("idle");
+  const [state, setState] = useState<"loading" | "idle" | "form" | "done" | "credit-form">("loading");
   const [phone, setPhone] = useState("");
   const [dva, setDva] = useState<{ bank_name: string | null; account_number: string; account_name: string | null } | null>(null);
   const [balance, setBalance] = useState<number | null>(null);
   const [showDetails, setShowDetails] = useState(false);
   const [copied, setCopied] = useState(false);
   const [creditRef, setCreditRef] = useState("");
+
+  // Load existing wallet state on mount
+  useEffect(() => {
+    fetch(`/api/admin/wallet/${labId}`)
+      .then((r) => r.json())
+      .then((d) => {
+        if (d.dva_account_number) {
+          setDva({ bank_name: d.dva_bank_name, account_number: d.dva_account_number, account_name: d.dva_account_name });
+          setBalance(d.balance ?? 0);
+          setState("done");
+        } else {
+          setState("idle");
+        }
+      })
+      .catch(() => setState("idle"));
+  }, [labId]);
   const [crediting, setCrediting] = useState(false);
 
   async function provision() {
@@ -4357,14 +4373,17 @@ function LabWalletButton({ labId }: { labId: string }) {
     );
   }
 
+  // "loading" = initial fetch to check existing wallet; "idle" = no wallet yet
+  if (state === "loading") {
+    return <div className="h-7 w-20 rounded-lg bg-white/5 animate-pulse" />;
+  }
+
   return (
     <button
       onClick={() => setState("form")}
-      disabled={state === "loading"}
-      className="flex items-center justify-center gap-1 px-2.5 py-1.5 rounded-lg bg-violet-500/10 hover:bg-violet-500/20 text-violet-400 hover:text-violet-300 text-xs transition-colors disabled:opacity-50"
+      className="flex items-center justify-center gap-1 px-2.5 py-1.5 rounded-lg bg-violet-500/10 hover:bg-violet-500/20 text-violet-400 hover:text-violet-300 text-xs transition-colors"
     >
-      {state === "loading" ? <RefreshCw className="w-3 h-3 animate-spin" /> : <Wallet className="w-3 h-3" />}
-      {state === "loading" ? "Provisioning…" : "Wallet DVA"}
+      <Wallet className="w-3 h-3" /> Wallet DVA
     </button>
   );
 }
