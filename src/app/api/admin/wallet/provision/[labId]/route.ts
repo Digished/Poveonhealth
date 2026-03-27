@@ -76,8 +76,9 @@ export async function POST(
   // Step 1: Create (or reuse) Paystack customer
   let customerCode = wallet?.paystack_customer_id ?? null;
 
+  const nameParts = lab.name.split(" ");
+
   if (!customerCode) {
-    const nameParts = lab.name.split(" ");
     const custRes = await paystackPost("/customer", {
       email: labEmail,
       first_name: nameParts[0],
@@ -98,6 +99,13 @@ export async function POST(
       where: { lab_id: lab.id },
       create: { lab_id: lab.id, paystack_customer_id: customerCode },
       update: { paystack_customer_id: customerCode },
+    });
+  } else {
+    // Customer already exists — update phone so DVA creation won't reject it
+    await fetch(`https://api.paystack.co/customer/${customerCode}`, {
+      method: "PUT",
+      headers: { Authorization: `Bearer ${SECRET}`, "Content-Type": "application/json" },
+      body: JSON.stringify({ phone, first_name: nameParts[0], last_name: nameParts.slice(1).join(" ") || "Lab" }),
     });
   }
 
