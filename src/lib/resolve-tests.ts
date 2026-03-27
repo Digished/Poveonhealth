@@ -109,35 +109,115 @@ async function othersResult(raw: string, labId: string | null): Promise<Resolved
 
 // ── Step 0: Lab catalog match ─────────────────────────────────────────────────
 // Highest priority. Checks the lab's own uploaded test catalog (lab_offered_tests).
-// Matches the normalized test name against each row's synonyms JSON array.
-// Uses lab_price directly — no catalog resolution needed.
+// Uses a 3-pass strategy: exact synonym → token overlap → AI semantic match.
+
+/** Normalize a string for comparison: lowercase, strip punctuation, collapse spaces */
+function normStr(s: string): string {
+  return s.toLowerCase().replace(/[^a-z0-9\s]/g, " ").replace(/\s+/g, " ").trim();
+}
+
+/** Tokenize a normalized string into words (≥2 chars) */
+function tokens(s: string): string[] {
+  return normStr(s).split(" ").filter((w) => w.length >= 2);
+}
+
+function makeCatalogResult(normalized: string, entry: LabCatalogEntry): ResolvedTest {
+  return {
+    raw: normalized,
+    canonical_id: null,
+    canonical_name: entry.raw_name,
+    category: entry.category_label ?? "Lab Test",
+    unit_price: Number(entry.lab_price),
+    confidence: 1.0,
+    is_others: false,
+    lab_offered_test_id: entry.id,
+    poveon_fee: entry.poveon_fee ? Number(entry.poveon_fee) : null,
+    source: "lab_catalog",
+  };
+}
 
 function labCatalogMatch(
   normalized: string,
   catalog: LabCatalogEntry[]
 ): ResolvedTest | null {
-  const q = normalized.toLowerCase();
+  const q = normStr(normalized);
+
+  // Pass 1: exact normalized match against raw_name or any synonym
   for (const entry of catalog) {
+    if (normStr(entry.raw_name) === q) return makeCatalogResult(normalized, entry);
     const synonyms = Array.isArray(entry.synonyms) ? (entry.synonyms as unknown[]) : [];
-    const matched = synonyms.some(
-      (s) => typeof s === "string" && s.toLowerCase() === q
-    );
-    if (matched) {
-      return {
-        raw: normalized,
-        canonical_id: null,
-        canonical_name: entry.raw_name,
-        category: entry.category_label ?? "Lab Test",
-        unit_price: Number(entry.lab_price),
-        confidence: 1.0,
-        is_others: false,
-        lab_offered_test_id: entry.id,
-        poveon_fee: entry.poveon_fee ? Number(entry.poveon_fee) : null,
-        source: "lab_catalog",
-      };
+    if (synonyms.some((s) => typeof s === "string" && normStr(s) === q)) {
+      return makeCatalogResult(normalized, entry);
     }
   }
+
+  // Pass 2: token overlap — all tokens of the shorter string appear in the longer (≥2 matching tokens)
+  const qTokens = tokens(normalized);
+  if (qTokens.length >= 2) {
+    for (const entry of catalog) {
+      const candidates = [entry.raw_name, ...(Array.isArray(entry.synonyms) ? entry.synonyms as string[] : [])];
+      for (const candidate of candidates) {
+        if (typeof candidate !== "string") continue;
+        const cTokens = tokens(candidate);
+        const overlap = qTokens.filter((t) => cTokens.includes(t)).length;
+        const minLen = Math.min(qTokens.length, cTokens.length);
+        if (overlap >= 2 && overlap >= minLen * 0.7) {
+          return makeCatalogResult(normalized, entry);
+        }
+      }
+    }
+  }
+
   return null;
+}
+
+// ── Step 0b: AI-based lab catalog match ───────────────────────────────────────
+// Falls back to GPT when exact/token matching fails. Sends all catalog entry names
+// in a single prompt and asks the model to identify the best match.
+
+async function aiCatalogMatch(
+  normalized: string,
+  catalog: LabCatalogEntry[]
+): Promise<ResolvedTest | null> {
+  if (!process.env.OPENAI_API_KEY || catalog.length === 0) return null;
+
+  const catalogList = catalog.map((e, i) => `${i}. ${e.raw_name}`).join("\n");
+
+  try {
+    const response = await openai.chat.completions.create({
+      model: "gpt-4o-mini",
+      temperature: 0,
+      response_format: { type: "json_object" },
+      messages: [
+        {
+          role: "system",
+          content: `You are a medical lab expert. Given a test name requested by a doctor and a lab's catalog of available tests, identify whether the requested test matches any catalog entry (by meaning, not just wording).
+Return JSON: { "match_index": number | null, "confidence": number (0–1) }
+Return null for match_index if no reasonable match exists. Only match if you're reasonably confident (confidence >= 0.6).`,
+        },
+        {
+          role: "user",
+          content: `Requested test: "${normalized}"\n\nLab catalog:\n${catalogList}`,
+        },
+      ],
+    });
+
+    const parsed = JSON.parse(response.choices[0].message.content ?? "{}") as {
+      match_index?: number | null;
+      confidence?: number;
+    };
+
+    if (parsed.match_index == null || (parsed.confidence ?? 0) < 0.6) return null;
+    const entry = catalog[parsed.match_index];
+    if (!entry) return null;
+
+    return {
+      ...makeCatalogResult(normalized, entry),
+      confidence: parsed.confidence ?? 0.7,
+    };
+  } catch {
+    return null;
+  }
 }
 
 // ── Step 1: Exact synonym match ───────────────────────────────────────────────
@@ -352,6 +432,10 @@ async function resolveOne(
   if (labCatalog.length > 0) {
     const catalogMatch = labCatalogMatch(normalized, labCatalog);
     if (catalogMatch) return catalogMatch;
+
+    // 0b. AI catalog match — semantic match against lab's catalog entries
+    const aiCatalog = await aiCatalogMatch(normalized, labCatalog);
+    if (aiCatalog) return aiCatalog;
   }
 
   // 1. Exact synonym

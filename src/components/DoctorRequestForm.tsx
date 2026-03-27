@@ -651,6 +651,8 @@ export function DoctorRequestForm({
   const [docProfileInfo, setDocProfileInfo] = useState<{ prefix: string | null; full_name: string | null; hospital: string | null; has_bank: boolean } | null>(null);
   // Sub-step for collecting doctor details inline when profile is incomplete (1=name, 2=hospital, 3=bank)
   const [docSubStep, setDocSubStep] = useState<1 | 2 | 3 | null>(null);
+  // Track which fields were auto-filled from a doctor profile lookup so we can clear them on email change
+  const docAutofillRef = useRef<{ email: string; prefix: string; name: string; hospital: string }>({ email: "", prefix: "", name: "", hospital: "" });
 
   // Auto-fill from patient profile when phone is entered
   useEffect(() => {
@@ -719,6 +721,19 @@ export function DoctorRequestForm({
   // Step 3: debounced doctor email profile check
   useEffect(() => {
     const email = form.doctor_email.trim();
+
+    // When the email changes, clear any fields that were auto-filled from the previous profile
+    const prev = docAutofillRef.current;
+    if (prev.email !== email) {
+      setForm((f) => ({
+        ...f,
+        doctor_prefix: f.doctor_prefix === prev.prefix ? "" : f.doctor_prefix,
+        doctor_name: f.doctor_name === prev.name ? "" : f.doctor_name,
+        doctor_hospital: f.doctor_hospital === prev.hospital ? "" : f.doctor_hospital,
+      }));
+      docAutofillRef.current = { email, prefix: "", name: "", hospital: "" };
+    }
+
     const valid = /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email);
     if (!valid) {
       setDocProfileStatus("idle");
@@ -739,7 +754,9 @@ export function DoctorRequestForm({
             if (data.profile_complete) {
               setDocProfileStatus("found_complete");
               setDocSubStep(null);
-              // Auto-fill form fields from the live profile
+              // Auto-fill form fields from the live profile and record what was filled
+              const filled = { email, prefix: data.prefix ?? "", name: data.full_name ?? "", hospital: data.hospital ?? "" };
+              docAutofillRef.current = filled;
               setForm((prev) => ({
                 ...prev,
                 doctor_prefix: data.prefix ?? prev.doctor_prefix,
@@ -1906,24 +1923,16 @@ export function DoctorRequestForm({
                     <p className="text-xs font-semibold text-slate-600 mb-2">Your name</p>
                     {docSubStep === 1 ? (
                       <div className="space-y-2">
-                        <div className="flex gap-2">
-                          <select
-                            value={form.doctor_prefix}
-                            onChange={(e) => set("doctor_prefix", e.target.value)}
-                            className="border border-slate-200 rounded-xl px-2.5 py-2 text-sm text-slate-700 bg-white outline-none focus:ring-2 focus:ring-medical-500/30 w-24 shrink-0"
-                          >
-                            <option value="">Title</option>
-                            {["Dr.", "Prof.", "Mr.", "Mrs.", "Ms.", "Nurse", "Pharm."].map((p) => (
-                              <option key={p} value={p}>{p}</option>
-                            ))}
-                          </select>
-                          <Input
-                            placeholder="Full name"
-                            value={form.doctor_name}
-                            onChange={(e) => set("doctor_name", e.target.value)}
-                            className="flex-1"
-                          />
-                        </div>
+                        <PrefixSelect
+                          value={form.doctor_prefix}
+                          onChange={(v) => set("doctor_prefix", v)}
+                          label=""
+                        />
+                        <Input
+                          placeholder="Full name"
+                          value={form.doctor_name}
+                          onChange={(e) => set("doctor_name", e.target.value)}
+                        />
                         <button
                           type="button"
                           disabled={!form.doctor_name.trim()}
