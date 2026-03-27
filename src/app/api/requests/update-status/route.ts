@@ -82,49 +82,57 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    const updateData: Record<string, unknown> = { status };
-    if (status === "seen") updateData.seen_at = new Date();
-    if (status === "done") updateData.completed_at = new Date();
-
-    // When marking "seen" — re-resolve tests against the current lab catalog to
-    // get accurate commission. We re-resolve rather than using the stored breakdown
-    // so that (a) catalog additions after request creation are picked up, and
-    // (b) matching improvements apply to historical requests retroactively.
     if (status === "seen") {
-      try {
-        const testsString = req.tests && req.tests !== "See attached image" ? req.tests : null;
-        let breakdown: Array<{ source?: string; poveon_fee?: number | null; unit_price?: number }> = [];
+      // Re-resolve tests against the current lab catalog so commission is always
+      // calculated from up-to-date catalog data.
+      // Uses raw SQL for the entire seen update — this is the proven approach
+      // (identical SQL logic works via Supabase console).
+      const testsString = req.tests && req.tests !== "See attached image" ? req.tests : null;
 
-        if (testsString) {
+      if (testsString) {
+        // Resolve tests, then write breakdown + status + commission in two steps.
+        // Step 1: write the resolved breakdown via Prisma (Json field — works reliably).
+        let breakdown: object[] = [];
+        try {
           breakdown = await resolveTests(testsString, req.lab_id);
-        } else if (req.test_breakdown && Array.isArray(req.test_breakdown)) {
-          breakdown = req.test_breakdown as Array<{ source?: string; poveon_fee?: number | null; unit_price?: number }>;
+        } catch (e) {
+          console.error("[update-status] resolveTests failed:", e);
         }
 
-        let poveonTotal = 0;
-        let labRevenueTotal = 0;
-        for (const item of breakdown) {
-          if (item.source === "lab_catalog") {
-            poveonTotal += item.poveon_fee ?? 0;
-            labRevenueTotal += item.unit_price ?? 0;
-          }
+        if (breakdown.length > 0) {
+          await prisma.request.update({
+            where: { id: requestId },
+            data: { test_breakdown: breakdown },
+          });
         }
-
-        // Explicit typed update so Prisma's generated client correctly maps these fields
-        await prisma.request.update({
-          where: { id: requestId },
-          data: {
-            poveon_amount: poveonTotal,
-            lab_revenue_amount: labRevenueTotal,
-            ...(testsString ? { test_breakdown: breakdown } : {}),
-          },
-        });
-      } catch (e) {
-        console.error("[commission] recalculation failed:", e);
       }
-    }
 
-    await prisma.request.update({ where: { id: requestId }, data: updateData });
+      // Step 2: atomic SQL — mark seen + compute commission from whatever is in
+      // test_breakdown. This mirrors the exact SQL that worked in Supabase console.
+      await prisma.$executeRawUnsafe(
+        `UPDATE requests
+         SET status = 'seen',
+             seen_at = NOW(),
+             poveon_amount = (
+               SELECT COALESCE(SUM((item->>'poveon_fee')::numeric), 0)
+               FROM jsonb_array_elements(COALESCE(test_breakdown, '[]'::jsonb)) AS item
+               WHERE item->>'source' = 'lab_catalog'
+             ),
+             lab_revenue_amount = (
+               SELECT COALESCE(SUM((item->>'unit_price')::numeric), 0)
+               FROM jsonb_array_elements(COALESCE(test_breakdown, '[]'::jsonb)) AS item
+               WHERE item->>'source' = 'lab_catalog'
+             )
+         WHERE id = $1`,
+        requestId
+      );
+    } else {
+      // status === "done"
+      await prisma.request.update({
+        where: { id: requestId },
+        data: { status: "done", completed_at: new Date() },
+      });
+    }
 
     // Log activity
     try {

@@ -85,7 +85,7 @@ export function LabDashboard({ lab, isOwner = false, roleName = "Lab Owner", can
   const router = useRouter();
   const { isLight, toggle, themeClass } = useDashTheme("lab_dash_theme");
   const [mainView, setMainView] = useState<"requests" | "referrals" | "clients" | "analytics" | "activity" | "feedback" | "poveon">("requests");
-  const [poveonData, setPoveonData] = useState<{ total_owed: number; total_lab_revenue: number; total_paid: number; outstanding: number; requests: { id: string; code: string; patient_name: string | null; tests: string; poveon_amount: number; lab_revenue_amount: number; is_paid_to_poveon: boolean; seen_at: string | null; completed_at: string | null }[] } | null>(null);
+  const [poveonData, setPoveonData] = useState<PoveonViewData>(null);
   const [poveonLoading, setPoveonLoading] = useState(false);
   const [mobileNavOpen, setMobileNavOpen] = useState(false);
   const [mobileHeaderOpen, setMobileHeaderOpen] = useState(false);
@@ -3030,14 +3030,20 @@ function LabFeedbackView({ labId }: { labId: string }) {
 // =============================================================================
 // Lab Poveon View
 // =============================================================================
+type BreakdownItem = {
+  raw: string; canonical_name: string; source?: string;
+  unit_price: number; poveon_fee?: number | null;
+};
 type PoveonReq = {
   id: string; code: string; patient_name: string | null; tests: string;
   poveon_amount: number; lab_revenue_amount: number; is_paid_to_poveon: boolean;
   seen_at: string | null; completed_at: string | null;
+  test_breakdown: BreakdownItem[];
 };
 type PoveonViewData = { total_owed: number; total_lab_revenue: number; total_paid: number; outstanding: number; requests: PoveonReq[] } | null;
 
 function LabPoveonView({ data, loading, onLoad }: { data: PoveonViewData; loading: boolean; onLoad: () => void }) {
+  const [expanded, setExpanded] = useState<Set<string>>(new Set());
   useEffect(() => { if (!data) onLoad(); }, [data, onLoad]);
 
   if (loading) {
@@ -3055,6 +3061,14 @@ function LabPoveonView({ data, loading, onLoad }: { data: PoveonViewData; loadin
   const totalPaid = data?.total_paid ?? 0;
   const totalLabRevenue = data?.total_lab_revenue ?? 0;
   const requests = data?.requests ?? [];
+
+  function toggleExpand(id: string) {
+    setExpanded((prev) => {
+      const next = new Set(prev);
+      next.has(id) ? next.delete(id) : next.add(id);
+      return next;
+    });
+  }
 
   return (
     <div className="space-y-6">
@@ -3091,7 +3105,6 @@ function LabPoveonView({ data, loading, onLoad }: { data: PoveonViewData; loadin
             Each time you mark a request as <strong className="text-white">Seen</strong>, Poveon calculates the commission from your test catalog.
             The commission rate is set per test in your catalog. Only tests in your price list contribute to the commission.
             Tests not in your catalog cost ₦0 commission.
-            {/* TODO: Paystack payment integration — labs will be able to pay their outstanding balance directly from here */}
           </p>
         </div>
       </div>
@@ -3113,28 +3126,70 @@ function LabPoveonView({ data, loading, onLoad }: { data: PoveonViewData; loadin
           </div>
         ) : (
           <div className="space-y-2">
-            {requests.map((req) => (
-              <div key={req.id} className="flex items-center gap-3 bg-white/5 border border-white/8 rounded-xl px-4 py-3">
-                <div className={`w-8 h-8 rounded-xl flex items-center justify-center shrink-0 ${req.is_paid_to_poveon ? "bg-emerald-500/15" : "bg-amber-500/15"}`}>
-                  {req.is_paid_to_poveon
-                    ? <Check className="w-4 h-4 text-emerald-400" />
-                    : <CreditCard className="w-4 h-4 text-amber-400" />}
+            {requests.map((req) => {
+              const isOpen = expanded.has(req.id);
+              const catalogItems = req.test_breakdown.filter((t) => t.source === "lab_catalog");
+              const othersItems = req.test_breakdown.filter((t) => t.source !== "lab_catalog");
+              return (
+                <div key={req.id} className="bg-white/5 border border-white/8 rounded-xl overflow-hidden">
+                  {/* Request row — click to expand */}
+                  <button
+                    onClick={() => toggleExpand(req.id)}
+                    className="w-full flex items-center gap-3 px-4 py-3 hover:bg-white/5 transition-colors text-left"
+                  >
+                    <div className={`w-8 h-8 rounded-xl flex items-center justify-center shrink-0 ${req.is_paid_to_poveon ? "bg-emerald-500/15" : "bg-amber-500/15"}`}>
+                      {req.is_paid_to_poveon
+                        ? <Check className="w-4 h-4 text-emerald-400" />
+                        : <CreditCard className="w-4 h-4 text-amber-400" />}
+                    </div>
+                    <div className="flex-1 min-w-0">
+                      <div className="flex items-center gap-2">
+                        <p className="text-sm text-white font-mono font-medium">{req.code}</p>
+                        {req.is_paid_to_poveon && (
+                          <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-emerald-500/15 text-emerald-400 font-medium">Paid</span>
+                        )}
+                      </div>
+                      <p className="text-xs text-slate-500 truncate">{req.patient_name ?? "Patient"} · {req.tests.slice(0, 50)}</p>
+                    </div>
+                    <div className="text-right shrink-0 mr-1">
+                      <p className="text-sm font-bold font-mono text-amber-300">₦{req.poveon_amount.toLocaleString()}</p>
+                      <p className="text-xs text-slate-500">{req.seen_at ? format(new Date(req.seen_at), "dd MMM yyyy") : ""}</p>
+                    </div>
+                    <ChevronDown className={`w-3.5 h-3.5 text-slate-500 shrink-0 transition-transform ${isOpen ? "rotate-180" : ""}`} />
+                  </button>
+
+                  {/* Expanded breakdown */}
+                  {isOpen && req.test_breakdown.length > 0 && (
+                    <div className="border-t border-white/8 px-4 py-3 space-y-1">
+                      <div className="grid grid-cols-3 gap-2 mb-2 px-1">
+                        <p className="text-[10px] text-slate-500 uppercase tracking-wider">Test</p>
+                        <p className="text-[10px] text-slate-500 uppercase tracking-wider text-right">Price</p>
+                        <p className="text-[10px] text-slate-500 uppercase tracking-wider text-right">Commission</p>
+                      </div>
+                      {catalogItems.map((item, i) => (
+                        <div key={i} className="grid grid-cols-3 gap-2 px-1 py-1 rounded-lg bg-emerald-500/5">
+                          <p className="text-xs text-slate-200 truncate">{item.canonical_name || item.raw}</p>
+                          <p className="text-xs text-slate-300 text-right font-mono">₦{Number(item.unit_price).toLocaleString()}</p>
+                          <p className="text-xs text-amber-300 text-right font-mono font-semibold">₦{Number(item.poveon_fee ?? 0).toLocaleString()}</p>
+                        </div>
+                      ))}
+                      {othersItems.map((item, i) => (
+                        <div key={i} className="grid grid-cols-3 gap-2 px-1 py-1 rounded-lg">
+                          <p className="text-xs text-slate-500 truncate italic">{item.raw}</p>
+                          <p className="text-xs text-slate-600 text-right font-mono">—</p>
+                          <p className="text-xs text-slate-600 text-right font-mono">₦0</p>
+                        </div>
+                      ))}
+                      <div className="grid grid-cols-3 gap-2 px-1 pt-2 border-t border-white/8">
+                        <p className="text-xs text-slate-400 font-semibold">Total</p>
+                        <p className="text-xs text-white text-right font-mono font-semibold">₦{req.lab_revenue_amount.toLocaleString()}</p>
+                        <p className="text-xs text-amber-300 text-right font-mono font-semibold">₦{req.poveon_amount.toLocaleString()}</p>
+                      </div>
+                    </div>
+                  )}
                 </div>
-                <div className="flex-1 min-w-0">
-                  <div className="flex items-center gap-2">
-                    <p className="text-sm text-white font-mono font-medium">{req.code}</p>
-                    {req.is_paid_to_poveon && (
-                      <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-emerald-500/15 text-emerald-400 font-medium">Paid</span>
-                    )}
-                  </div>
-                  <p className="text-xs text-slate-500 truncate">{req.patient_name ?? "Patient"} · {req.tests.slice(0, 50)}</p>
-                </div>
-                <div className="text-right shrink-0">
-                  <p className="text-sm font-bold font-mono text-amber-300">₦{req.poveon_amount.toLocaleString()}</p>
-                  <p className="text-xs text-slate-500">{req.seen_at ? format(new Date(req.seen_at), "dd MMM yyyy") : ""}</p>
-                </div>
-              </div>
-            ))}
+              );
+            })}
           </div>
         )}
       </div>

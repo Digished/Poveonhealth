@@ -7,7 +7,6 @@ export async function GET(request: NextRequest) {
   const auth = await getLabAuth(request);
   if (!auth) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
 
-  // Raw SQL for all commission fields — bypasses stale Prisma client
   const [totalsRaw, paidRaw, requestsRaw] = await Promise.all([
     prisma.$queryRaw<[{ poveon_sum: string; revenue_sum: string }]>`
       SELECT COALESCE(SUM(poveon_amount),0)::text AS poveon_sum,
@@ -24,11 +23,13 @@ export async function GET(request: NextRequest) {
       id: string; code: string; patient_name: string | null; tests: string;
       poveon_amount: string; lab_revenue_amount: string;
       is_paid_to_poveon: boolean; seen_at: Date | null; completed_at: Date | null;
+      test_breakdown: unknown;
     }>>`
       SELECT id, code, patient_name, tests,
              COALESCE(poveon_amount,0)::text AS poveon_amount,
              COALESCE(lab_revenue_amount,0)::text AS lab_revenue_amount,
-             is_paid_to_poveon, seen_at, completed_at
+             is_paid_to_poveon, seen_at, completed_at,
+             test_breakdown
       FROM requests
       WHERE lab_id = ${auth.lab_id} AND status IN ('seen','done')
       ORDER BY seen_at DESC NULLS LAST
@@ -54,6 +55,7 @@ export async function GET(request: NextRequest) {
       is_paid_to_poveon: r.is_paid_to_poveon,
       seen_at: r.seen_at,
       completed_at: r.completed_at,
+      test_breakdown: Array.isArray(r.test_breakdown) ? r.test_breakdown : [],
     })),
   });
 }
