@@ -4254,7 +4254,7 @@ function LabWalletButton({ labId }: { labId: string }) {
     if (!creditRef.trim()) return;
     setCrediting(true);
     try {
-      const res = await fetch("/api/admin/wallet/manual-credit", {
+      const res = await fetch("/api/admin/wallet/credit", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ reference: creditRef.trim() }),

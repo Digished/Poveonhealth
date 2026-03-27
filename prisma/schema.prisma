@@ -35,9 +35,8 @@ model Lab {
   branches        LabBranch[]         @relation("BranchParent") // branches where this lab is the parent
   branch_of       LabBranch[]         @relation("BranchChild") // entries where this lab is a branch
   feedbacks       LabFeedback[]
-  wallet          LabWallet?
-  transactions    WalletTransaction[]
-  lab_offered_tests   LabOfferedTest[]
+  wallet            LabWallet?
+  lab_offered_tests LabOfferedTest[]
 
   @@map("labs")
 }
@@ -183,9 +182,8 @@ model Request {
   seen_at               DateTime?
   completed_at          DateTime?
 
-  lab          Lab                 @relation(fields: [lab_id], references: [id], onDelete: Cascade)
-  branch       LabBranch?          @relation(fields: [branch_id], references: [id])
-  transactions WalletTransaction[]
+  lab    Lab        @relation(fields: [lab_id], references: [id], onDelete: Cascade)
+  branch LabBranch? @relation(fields: [branch_id], references: [id])
 
   @@map("requests")
 }
@@ -405,41 +403,42 @@ model SystemSetting {
   @@map("system_settings")
 }
 
-// Current wallet balance for each lab
-model LabWallet {
-  id                   String   @id @default(uuid())
-  lab_id               String   @unique
-  balance              Decimal  @default(0) @db.Decimal(12, 2)
-  paystack_customer_id String?  @unique   // CUS_xxxxxxxx
-  dva_bank_name        String?            // "Wema Bank"
-  dva_account_number   String?            // "0123456789"
-  dva_account_name     String?            // "Poveon/Lab Name"
-  updated_at           DateTime @updatedAt
+// ── Wallet ────────────────────────────────────────────────────────────────────
 
-  lab Lab @relation(fields: [lab_id], references: [id], onDelete: Cascade)
+// One wallet per lab — holds DVA account info and running balance
+model LabWallet {
+  id                   String        @id @default(uuid())
+  lab_id               String        @unique
+  balance              Decimal       @default(0) @db.Decimal(12, 2)
+  paystack_customer_id String?       @unique  // CUS_xxxxxxxx — for webhook lookup
+  dva_bank_name        String?
+  dva_account_number   String?
+  dva_account_name     String?
+  created_at           DateTime      @default(now())
+  updated_at           DateTime      @updatedAt
+
+  lab     Lab               @relation(fields: [lab_id], references: [id], onDelete: Cascade)
+  credits LabWalletCredit[]
 
   @@map("lab_wallets")
 }
 
-// Ledger of every wallet movement (top-ups, deductions, adjustments)
-model WalletTransaction {
-  id            String   @id @default(uuid())
-  lab_id        String
-  type          String // "topup" | "deduction" | "adjustment"
-  direction     String // "credit" | "debit"
-  amount        Decimal  @db.Decimal(12, 2)
-  balance_after Decimal  @db.Decimal(12, 2)
-  description   String?
-  reference     String?  @unique // Paystack reference for topup — ensures idempotency
-  request_id    String? // populated for "deduction" type
-  actor_email   String? // admin email for topup/adjustment
-  created_at    DateTime @default(now())
+// Every payment received into the DVA — source of truth for wallet credits
+model LabWalletCredit {
+  id            String    @id @default(uuid())
+  wallet_id     String
+  amount        Decimal   @db.Decimal(12, 2)   // amount credited (always positive)
+  balance_after Decimal   @db.Decimal(12, 2)   // wallet balance after this credit
+  reference     String    @unique              // Paystack reference — prevents double-credit
+  channel       String    @default("dva")      // "dva" | "manual"
+  sender_name   String?
+  sender_bank   String?
+  created_at    DateTime  @default(now())
 
-  lab     Lab      @relation(fields: [lab_id], references: [id], onDelete: Cascade)
-  request Request? @relation(fields: [request_id], references: [id])
+  wallet LabWallet @relation(fields: [wallet_id], references: [id], onDelete: Cascade)
 
-  @@index([lab_id, created_at])
-  @@map("wallet_transactions")
+  @@index([wallet_id, created_at])
+  @@map("lab_wallet_credits")
 }
 
 // Free-text test names that could not be resolved; reviewed by admin

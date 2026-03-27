@@ -3174,7 +3174,8 @@ type PoveonReq = {
 };
 type PoveonViewData = { total_owed: number; total_lab_revenue: number; total_paid: number; outstanding: number; requests: PoveonReq[] } | null;
 
-type WalletData = { balance: number; dva: { bank_name: string | null; account_number: string; account_name: string | null } | null; transactions: { id: string; type: string; direction: string; amount: number; balance_after: number; description: string | null; reference: string | null; created_at: string }[] } | null;
+type WalletCredit = { id: string; amount: number; balance_after: number; reference: string; channel: string; sender_name: string | null; sender_bank: string | null; created_at: string };
+type WalletData = { balance: number; dva: { bank_name: string; account_number: string; account_name: string } | null; credits: WalletCredit[] } | null;
 
 function LabWalletPanel() {
   const [wallet, setWallet] = useState<WalletData>(null);
@@ -3182,7 +3183,7 @@ function LabWalletPanel() {
   const [refreshing, setRefreshing] = useState(false);
   const [copied, setCopied] = useState(false);
 
-  function loadWallet(isRefresh = false) {
+  function load(isRefresh = false) {
     if (isRefresh) setRefreshing(true); else setLoading(true);
     fetch("/api/lab/wallet")
       .then((r) => r.json())
@@ -3191,27 +3192,18 @@ function LabWalletPanel() {
       .finally(() => { setLoading(false); setRefreshing(false); });
   }
 
-  useEffect(() => { loadWallet(); }, []);
-
-  function copyAccNumber() {
-    if (!wallet?.dva?.account_number) return;
-    navigator.clipboard.writeText(wallet.dva.account_number).then(() => {
-      setCopied(true);
-      setTimeout(() => setCopied(false), 2000);
-    });
-  }
+  useEffect(() => { load(); }, []);
 
   if (loading) return <div className="h-28 bg-white/5 rounded-2xl animate-pulse" />;
 
   const balance = wallet?.balance ?? 0;
-  const dva = wallet?.dva ?? null;
-  const recentTx = wallet?.transactions.slice(0, 8) ?? [];
+  const dva     = wallet?.dva    ?? null;
+  const credits = wallet?.credits ?? [];
 
   return (
     <div className="space-y-3">
-      {/* Balance + DVA row */}
       <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-        {/* Balance */}
+        {/* Balance card */}
         <div className="bg-gradient-to-br from-emerald-500/15 to-emerald-600/5 border border-emerald-500/25 rounded-2xl p-4 flex items-center gap-4">
           <div className="w-10 h-10 rounded-xl bg-emerald-500/20 flex items-center justify-center shrink-0">
             <Wallet2 className="w-5 h-5 text-emerald-400" />
@@ -3220,17 +3212,12 @@ function LabWalletPanel() {
             <p className="text-xs text-slate-400 uppercase tracking-wider mb-0.5">Wallet Balance</p>
             <p className="text-2xl font-bold font-mono text-white">₦{balance.toLocaleString()}</p>
           </div>
-          <button
-            onClick={() => loadWallet(true)}
-            disabled={refreshing}
-            className="shrink-0 p-2 rounded-xl bg-white/8 hover:bg-white/15 text-slate-400 hover:text-white transition disabled:opacity-50"
-            title="Refresh balance"
-          >
+          <button onClick={() => load(true)} disabled={refreshing} className="shrink-0 p-2 rounded-xl bg-white/8 hover:bg-white/15 text-slate-400 hover:text-white transition disabled:opacity-50" title="Refresh">
             <RefreshCw className={`w-4 h-4 ${refreshing ? "animate-spin" : ""}`} />
           </button>
         </div>
 
-        {/* DVA account */}
+        {/* DVA account card */}
         {dva ? (
           <div className="bg-white/5 border border-white/10 rounded-2xl p-4">
             <p className="text-xs text-slate-400 uppercase tracking-wider mb-2">Your Dedicated Account</p>
@@ -3239,58 +3226,49 @@ function LabWalletPanel() {
                 <p className="text-lg font-bold font-mono text-white tracking-widest">{dva.account_number}</p>
                 <p className="text-xs text-slate-400 mt-0.5">{dva.bank_name} · {dva.account_name}</p>
               </div>
-              <button
-                onClick={copyAccNumber}
-                className="shrink-0 p-2 rounded-xl bg-white/8 hover:bg-white/15 text-slate-300 hover:text-white transition"
-                title="Copy account number"
-              >
+              <button onClick={() => { navigator.clipboard.writeText(dva.account_number).then(() => { setCopied(true); setTimeout(() => setCopied(false), 2000); }); }} className="shrink-0 p-2 rounded-xl bg-white/8 hover:bg-white/15 text-slate-300 hover:text-white transition">
                 {copied ? <Check className="w-4 h-4 text-emerald-400" /> : <Copy className="w-4 h-4" />}
               </button>
             </div>
-            <p className="text-[10px] text-slate-500 mt-2 leading-relaxed">
-              Transfer from any bank to fund your wallet. Balance updates automatically within seconds.
-            </p>
+            <p className="text-[10px] text-slate-500 mt-2">Transfer to this account from any bank to top up your wallet.</p>
           </div>
         ) : (
           <div className="bg-white/5 border border-white/10 border-dashed rounded-2xl p-4 flex items-center gap-3">
             <Wallet2 className="w-5 h-5 text-slate-500 shrink-0" />
             <div>
               <p className="text-sm text-slate-400 font-medium">No virtual account yet</p>
-              <p className="text-xs text-slate-500 mt-0.5">Contact your admin to provision a dedicated payment account.</p>
+              <p className="text-xs text-slate-500 mt-0.5">Ask your admin to provision a dedicated payment account.</p>
             </div>
           </div>
         )}
       </div>
 
-      {/* Transaction ledger */}
-      {recentTx.length > 0 && (
+      {/* Payment history */}
+      {credits.length > 0 && (
         <div className="bg-white/5 border border-white/10 rounded-2xl overflow-hidden">
-          <p className="text-xs font-semibold text-slate-400 uppercase tracking-wider px-4 py-3 border-b border-white/8">Recent Transactions</p>
+          <p className="text-xs font-semibold text-slate-400 uppercase tracking-wider px-4 py-3 border-b border-white/8">Payment History</p>
           <div className="divide-y divide-white/5">
-            {recentTx.map((t) => {
-              const isCredit = t.direction === "credit";
-              return (
-                <div key={t.id} className="flex items-center justify-between px-4 py-2.5 gap-3">
-                  <div className="flex items-center gap-2.5 min-w-0">
-                    <div className={`w-6 h-6 rounded-full flex items-center justify-center shrink-0 ${isCredit ? "bg-emerald-500/15" : "bg-amber-500/15"}`}>
-                      {isCredit
-                        ? <ArrowUpRight className="w-3.5 h-3.5 text-emerald-400" />
-                        : <CreditCard className="w-3.5 h-3.5 text-amber-400" />}
-                    </div>
-                    <div className="min-w-0">
-                      <p className="text-xs text-slate-300 truncate">{t.description ?? (isCredit ? "Top-up" : "Commission")}</p>
-                      <p className="text-[10px] text-slate-500">{new Date(t.created_at).toLocaleDateString()}</p>
-                    </div>
+            {credits.slice(0, 10).map((c) => (
+              <div key={c.id} className="flex items-center justify-between px-4 py-2.5 gap-3">
+                <div className="flex items-center gap-2.5 min-w-0">
+                  <div className="w-6 h-6 rounded-full bg-emerald-500/15 flex items-center justify-center shrink-0">
+                    <ArrowUpRight className="w-3.5 h-3.5 text-emerald-400" />
                   </div>
-                  <div className="text-right shrink-0">
-                    <p className={`text-sm font-semibold font-mono ${isCredit ? "text-emerald-300" : "text-amber-300"}`}>
-                      {isCredit ? "+" : "−"}₦{Number(t.amount).toLocaleString()}
+                  <div className="min-w-0">
+                    <p className="text-xs text-slate-300 truncate">
+                      {c.sender_name ? `From ${c.sender_name}` : "Bank transfer"}
+                      {c.sender_bank ? ` · ${c.sender_bank}` : ""}
+                      {c.channel === "manual" ? " (manual)" : ""}
                     </p>
-                    <p className="text-[10px] text-slate-500">bal ₦{Number(t.balance_after).toLocaleString()}</p>
+                    <p className="text-[10px] text-slate-500">{new Date(c.created_at).toLocaleDateString()}</p>
                   </div>
                 </div>
-              );
-            })}
+                <div className="text-right shrink-0">
+                  <p className="text-sm font-semibold font-mono text-emerald-300">+₦{Number(c.amount).toLocaleString()}</p>
+                  <p className="text-[10px] text-slate-500">bal ₦{Number(c.balance_after).toLocaleString()}</p>
+                </div>
+              </div>
+            ))}
           </div>
         </div>
       )}
