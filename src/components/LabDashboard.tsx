@@ -3179,15 +3179,19 @@ type WalletData = { balance: number; dva: { bank_name: string | null; account_nu
 function LabWalletPanel() {
   const [wallet, setWallet] = useState<WalletData>(null);
   const [loading, setLoading] = useState(true);
+  const [refreshing, setRefreshing] = useState(false);
   const [copied, setCopied] = useState(false);
 
-  useEffect(() => {
+  function loadWallet(isRefresh = false) {
+    if (isRefresh) setRefreshing(true); else setLoading(true);
     fetch("/api/lab/wallet")
       .then((r) => r.json())
       .then((d) => { if (d.success) setWallet(d); })
       .catch(() => {})
-      .finally(() => setLoading(false));
-  }, []);
+      .finally(() => { setLoading(false); setRefreshing(false); });
+  }
+
+  useEffect(() => { loadWallet(); }, []);
 
   function copyAccNumber() {
     if (!wallet?.dva?.account_number) return;
@@ -3212,10 +3216,18 @@ function LabWalletPanel() {
           <div className="w-10 h-10 rounded-xl bg-emerald-500/20 flex items-center justify-center shrink-0">
             <Wallet2 className="w-5 h-5 text-emerald-400" />
           </div>
-          <div>
+          <div className="flex-1 min-w-0">
             <p className="text-xs text-slate-400 uppercase tracking-wider mb-0.5">Wallet Balance</p>
             <p className="text-2xl font-bold font-mono text-white">₦{balance.toLocaleString()}</p>
           </div>
+          <button
+            onClick={() => loadWallet(true)}
+            disabled={refreshing}
+            className="shrink-0 p-2 rounded-xl bg-white/8 hover:bg-white/15 text-slate-400 hover:text-white transition disabled:opacity-50"
+            title="Refresh balance"
+          >
+            <RefreshCw className={`w-4 h-4 ${refreshing ? "animate-spin" : ""}`} />
+          </button>
         </div>
 
         {/* DVA account */}
@@ -3383,47 +3395,50 @@ function LabPoveonView({ data, loading, onLoad }: { data: PoveonViewData; loadin
                         : <CreditCard className="w-4 h-4 text-amber-400" />}
                     </div>
                     <div className="flex-1 min-w-0">
-                      <div className="flex items-center gap-2">
+                      <div className="flex items-center gap-2 flex-wrap">
                         <p className="text-sm text-white font-mono font-medium">{req.code}</p>
                         {req.is_paid_to_poveon && (
                           <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-emerald-500/15 text-emerald-400 font-medium">Paid</span>
                         )}
                       </div>
-                      <p className="text-xs text-slate-500 truncate">{req.patient_name ?? "Patient"} · {req.tests.slice(0, 50)}</p>
+                      <p className="text-xs text-slate-500 truncate">{req.patient_name ?? "Patient"} · {req.tests.slice(0, 40)}</p>
+                      <p className="text-[10px] text-slate-600 mt-0.5 sm:hidden">{req.seen_at ? format(new Date(req.seen_at), "dd MMM yyyy") : ""}</p>
                     </div>
                     <div className="text-right shrink-0 mr-1">
                       <p className="text-sm font-bold font-mono text-amber-300">₦{req.poveon_amount.toLocaleString()}</p>
-                      <p className="text-xs text-slate-500">{req.seen_at ? format(new Date(req.seen_at), "dd MMM yyyy") : ""}</p>
+                      <p className="text-xs text-slate-500 hidden sm:block">{req.seen_at ? format(new Date(req.seen_at), "dd MMM yyyy") : ""}</p>
                     </div>
                     <ChevronDown className={`w-3.5 h-3.5 text-slate-500 shrink-0 transition-transform ${isOpen ? "rotate-180" : ""}`} />
                   </button>
 
                   {/* Expanded breakdown */}
                   {isOpen && req.test_breakdown.length > 0 && (
-                    <div className="border-t border-white/8 px-4 py-3 space-y-1">
-                      <div className="grid grid-cols-3 gap-2 mb-2 px-1">
-                        <p className="text-[10px] text-slate-500 uppercase tracking-wider">Test</p>
-                        <p className="text-[10px] text-slate-500 uppercase tracking-wider text-right">Price</p>
-                        <p className="text-[10px] text-slate-500 uppercase tracking-wider text-right">Commission</p>
-                      </div>
-                      {catalogItems.map((item, i) => (
-                        <div key={i} className="grid grid-cols-3 gap-2 px-1 py-1 rounded-lg bg-emerald-500/5">
-                          <p className="text-xs text-slate-200 truncate">{item.canonical_name || item.raw}</p>
-                          <p className="text-xs text-slate-300 text-right font-mono">₦{Number(item.unit_price).toLocaleString()}</p>
-                          <p className="text-xs text-amber-300 text-right font-mono font-semibold">₦{Number(item.poveon_fee ?? 0).toLocaleString()}</p>
+                    <div className="border-t border-white/8 px-3 sm:px-4 py-3 space-y-1 overflow-x-auto">
+                      <div className="min-w-[280px]">
+                        <div className="grid grid-cols-3 gap-2 mb-2 px-1">
+                          <p className="text-[10px] text-slate-500 uppercase tracking-wider">Test</p>
+                          <p className="text-[10px] text-slate-500 uppercase tracking-wider text-right">Price</p>
+                          <p className="text-[10px] text-slate-500 uppercase tracking-wider text-right">Commission</p>
                         </div>
-                      ))}
-                      {othersItems.map((item, i) => (
-                        <div key={i} className="grid grid-cols-3 gap-2 px-1 py-1 rounded-lg">
-                          <p className="text-xs text-slate-500 truncate italic">{item.raw}</p>
-                          <p className="text-xs text-slate-600 text-right font-mono">—</p>
-                          <p className="text-xs text-slate-600 text-right font-mono">₦0</p>
+                        {catalogItems.map((item, i) => (
+                          <div key={i} className="grid grid-cols-3 gap-2 px-1 py-1 rounded-lg bg-emerald-500/5">
+                            <p className="text-xs text-slate-200 truncate">{item.canonical_name || item.raw}</p>
+                            <p className="text-xs text-slate-300 text-right font-mono">₦{Number(item.unit_price).toLocaleString()}</p>
+                            <p className="text-xs text-amber-300 text-right font-mono font-semibold">₦{Number(item.poveon_fee ?? 0).toLocaleString()}</p>
+                          </div>
+                        ))}
+                        {othersItems.map((item, i) => (
+                          <div key={i} className="grid grid-cols-3 gap-2 px-1 py-1 rounded-lg">
+                            <p className="text-xs text-slate-500 truncate italic">{item.raw}</p>
+                            <p className="text-xs text-slate-600 text-right font-mono">—</p>
+                            <p className="text-xs text-slate-600 text-right font-mono">₦0</p>
+                          </div>
+                        ))}
+                        <div className="grid grid-cols-3 gap-2 px-1 pt-2 border-t border-white/8">
+                          <p className="text-xs text-slate-400 font-semibold">Total</p>
+                          <p className="text-xs text-white text-right font-mono font-semibold">₦{totalPrice.toLocaleString()}</p>
+                          <p className="text-xs text-amber-300 text-right font-mono font-semibold">₦{totalCommission.toLocaleString()}</p>
                         </div>
-                      ))}
-                      <div className="grid grid-cols-3 gap-2 px-1 pt-2 border-t border-white/8">
-                        <p className="text-xs text-slate-400 font-semibold">Total</p>
-                        <p className="text-xs text-white text-right font-mono font-semibold">₦{totalPrice.toLocaleString()}</p>
-                        <p className="text-xs text-amber-300 text-right font-mono font-semibold">₦{totalCommission.toLocaleString()}</p>
                       </div>
                     </div>
                   )}
