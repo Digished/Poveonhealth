@@ -1906,6 +1906,21 @@ export function DoctorRequestForm({
               </div>
             )}
 
+            {/* ── Account creation nudge (not_found only) ── */}
+            {docProfileStatus === "not_found" && docSubStep !== null && (
+              <a
+                href="/doc-register"
+                target="_blank"
+                rel="noopener noreferrer"
+                className="flex items-center justify-between gap-3 px-4 py-3 rounded-2xl bg-medical-50 border border-medical-200 hover:bg-medical-100 transition-colors group mb-3"
+              >
+                <p className="text-xs text-medical-700 leading-snug">
+                  <span className="font-semibold">Save your details permanently</span> — create a free account
+                </p>
+                <span className="text-medical-500 text-xs font-semibold shrink-0 group-hover:underline">Sign up →</span>
+              </a>
+            )}
+
             {/* ── Profile incomplete / new — inline substeps ── */}
             {(docProfileStatus === "found_partial" || docProfileStatus === "not_found") && docSubStep !== null && (
               <div className="relative pt-1 space-y-0">

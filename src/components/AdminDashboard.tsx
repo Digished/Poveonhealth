@@ -3464,12 +3464,12 @@ function AdminTransactionsTab({ labs }: { labs: Lab[] }) {
   const [expandedId, setExpandedId] = useState<string | null>(null);
   const [fetched, setFetched] = useState(false);
 
-  const fetchTx = useCallback(async () => {
+  const fetchTx = useCallback(async (lab?: string, from?: string, to?: string) => {
     setLoading(true);
     const params = new URLSearchParams({ limit: "500" });
-    if (labFilter) params.set("lab_id", labFilter);
-    if (dateFrom) params.set("from", dateFrom);
-    if (dateTo) params.set("to", dateTo);
+    if (lab) params.set("lab_id", lab);
+    if (from) params.set("from", from);
+    if (to) params.set("to", to);
     try {
       const res = await fetch(`/api/admin/transactions?${params}`);
       const json = await res.json();
@@ -3477,8 +3477,9 @@ function AdminTransactionsTab({ labs }: { labs: Lab[] }) {
     } catch { /* ignore */ }
     setLoading(false);
     setFetched(true);
-  }, [labFilter, dateFrom, dateTo]);
+  }, []);
 
+  // Initial load only
   useEffect(() => { fetchTx(); }, [fetchTx]);
 
   function exportCSV() {
@@ -3532,7 +3533,7 @@ function AdminTransactionsTab({ labs }: { labs: Lab[] }) {
           </h2>
           <div className="flex gap-2 flex-wrap">
             <button
-              onClick={fetchTx}
+              onClick={() => fetchTx(labFilter, dateFrom, dateTo)}
               disabled={loading}
               className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-white/8 border border-white/10 text-xs text-slate-300 hover:bg-white/12 transition-colors"
             >
@@ -3557,7 +3558,7 @@ function AdminTransactionsTab({ labs }: { labs: Lab[] }) {
             <select
               value={labFilter}
               onChange={(e) => setLabFilter(e.target.value)}
-              className="w-full px-3 py-2 rounded-xl bg-white/8 border border-white/10 text-sm text-white focus:outline-none focus:ring-2 focus:ring-medical-500"
+              className="w-full px-3 py-2 rounded-xl bg-slate-800 border border-white/10 text-sm text-white focus:outline-none focus:ring-2 focus:ring-medical-500 [color-scheme:dark]"
             >
               <option value="">All Labs</option>
               {labs.map((l) => <option key={l.id} value={l.id}>{l.name}</option>)}
@@ -3573,12 +3574,19 @@ function AdminTransactionsTab({ labs }: { labs: Lab[] }) {
             <input type="date" value={dateTo} onChange={(e) => setDateTo(e.target.value)}
               className="w-full px-3 py-2 rounded-xl bg-white/8 border border-white/10 text-sm text-white focus:outline-none focus:ring-2 focus:ring-medical-500 [color-scheme:dark]" />
           </div>
-          <div className="flex items-end">
+          <div className="flex items-end gap-2">
             <button
-              onClick={() => { setLabFilter(""); setDateFrom(""); setDateTo(""); }}
-              className="w-full px-3 py-2 rounded-xl bg-white/8 border border-white/10 text-sm text-slate-400 hover:bg-white/12 transition-colors"
+              onClick={() => fetchTx(labFilter, dateFrom, dateTo)}
+              disabled={loading}
+              className="flex-1 px-3 py-2 rounded-xl bg-medical-600 border border-medical-500/30 text-sm text-white font-medium hover:bg-medical-500 transition-colors disabled:opacity-50"
             >
-              Clear filters
+              Apply
+            </button>
+            <button
+              onClick={() => { setLabFilter(""); setDateFrom(""); setDateTo(""); fetchTx(); }}
+              className="px-3 py-2 rounded-xl bg-white/8 border border-white/10 text-sm text-slate-400 hover:bg-white/12 transition-colors"
+            >
+              Clear
             </button>
           </div>
         </div>

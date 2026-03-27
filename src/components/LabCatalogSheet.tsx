@@ -107,22 +107,84 @@ function InlineText({
   );
 }
 
-// ─── Synonyms display ─────────────────────────────────────────────────────────
-function SynonymTags({ synonyms, rawName }: { synonyms: string[]; rawName: string }) {
+// ─── Synonyms display + inline add/remove ─────────────────────────────────────
+function SynonymTags({
+  synonyms, rawName, onUpdate,
+}: {
+  synonyms: string[];
+  rawName: string;
+  onUpdate?: (next: string[]) => Promise<void>;
+}) {
   const [expanded, setExpanded] = useState(false);
+  const [adding, setAdding] = useState(false);
+  const [inputVal, setInputVal] = useState("");
+  const inputRef = useRef<HTMLInputElement>(null);
   const others = synonyms.filter((s) => s.toLowerCase() !== rawName.toLowerCase());
-  if (others.length === 0) return <span className="text-xs text-slate-600 italic">none yet</span>;
+
+  async function addSynonym() {
+    const val = inputVal.trim();
+    if (!val || !onUpdate) return;
+    if (synonyms.some((s) => s.toLowerCase() === val.toLowerCase())) {
+      setInputVal(""); setAdding(false); return;
+    }
+    await onUpdate([...synonyms, val]);
+    setInputVal(""); setAdding(false);
+  }
+
+  async function removeSynonym(s: string) {
+    if (!onUpdate) return;
+    await onUpdate(synonyms.filter((x) => x.toLowerCase() !== s.toLowerCase()));
+  }
+
+  useEffect(() => { if (adding) inputRef.current?.focus(); }, [adding]);
+
   const visible = expanded ? others : others.slice(0, 3);
   return (
     <div className="flex flex-wrap gap-1 items-center">
       {visible.map((s) => (
-        <span key={s} className="text-xs bg-blue-500/10 text-blue-300 border border-blue-500/20 px-1.5 py-0.5 rounded-full">{s}</span>
+        <span key={s} className="inline-flex items-center gap-0.5 text-xs bg-blue-500/10 text-blue-300 border border-blue-500/20 px-1.5 py-0.5 rounded-full group">
+          {s}
+          {onUpdate && (
+            <button
+              onClick={() => removeSynonym(s)}
+              className="opacity-0 group-hover:opacity-100 ml-0.5 text-blue-400 hover:text-rose-400 transition-opacity leading-none"
+              title="Remove synonym"
+            >×</button>
+          )}
+        </span>
       ))}
       {others.length > 3 && (
         <button onClick={() => setExpanded((v) => !v)} className="text-xs text-slate-500 hover:text-slate-300 flex items-center gap-0.5">
           {expanded ? "less" : `+${others.length - 3} more`}
           <ChevronDown className={`w-3 h-3 transition-transform ${expanded ? "rotate-180" : ""}`} />
         </button>
+      )}
+      {others.length === 0 && !adding && (
+        <span className="text-xs text-slate-600 italic">none yet</span>
+      )}
+      {onUpdate && !adding && (
+        <button
+          onClick={() => setAdding(true)}
+          className="text-xs text-slate-600 hover:text-blue-400 border border-dashed border-slate-700 hover:border-blue-500/40 px-1.5 py-0.5 rounded-full transition-colors"
+          title="Add synonym"
+        >+ add</button>
+      )}
+      {adding && (
+        <form
+          onSubmit={(e) => { e.preventDefault(); addSynonym(); }}
+          className="flex items-center gap-1"
+        >
+          <input
+            ref={inputRef}
+            value={inputVal}
+            onChange={(e) => setInputVal(e.target.value)}
+            onKeyDown={(e) => { if (e.key === "Escape") { setAdding(false); setInputVal(""); } }}
+            placeholder="synonym…"
+            className="text-xs bg-white/10 border border-blue-500/30 rounded-full px-2 py-0.5 text-white placeholder-slate-600 focus:outline-none focus:border-blue-500 w-24"
+          />
+          <button type="submit" className="text-xs text-blue-400 hover:text-blue-300">✓</button>
+          <button type="button" onClick={() => { setAdding(false); setInputVal(""); }} className="text-xs text-slate-500 hover:text-slate-300">✕</button>
+        </form>
       )}
     </div>
   );
@@ -172,6 +234,21 @@ export default function LabCatalogSheet({
   const [adding, setAdding] = useState(false);
 
   const fileRef = useRef<HTMLInputElement>(null);
+
+  // Spreadsheet diff/preview
+  type DiffNew = { test_name: string; price: number; category?: string; commission_pct?: number };
+  type DiffUpdated = {
+    test_id: string; test_name: string;
+    old: { price: number; commission_pct: number | null; category: string | null };
+    new_values: { price: number; commission_pct?: number; category?: string };
+    changed_fields: string[];
+  };
+  type DiffResult = { added: DiffNew[]; updated: DiffUpdated[]; unchanged: { test_name: string }[] };
+  const [previewData, setPreviewData] = useState<DiffResult | null>(null);
+  const [previewLoading, setPreviewLoading] = useState(false);
+  // Set of test names whose updates have been reverted by the user
+  const [revertedNames, setRevertedNames] = useState<Set<string>>(new Set());
+  const [applyingDiff, setApplyingDiff] = useState(false);
 
   // Notify parent of active background work; clear on unmount
   const notifyJob = useCallback((job: CatalogJob | null) => {
@@ -267,45 +344,67 @@ export default function LabCatalogSheet({
   async function handleUpload(e: React.ChangeEvent<HTMLInputElement>) {
     const file = e.target.files?.[0];
     if (!file) return;
-    setUploadPhase("uploading");
-    setUploadPct(0);
-    notifyJob({ labId: lab.id, labName: lab.name, phase: "uploading", pct: 0 });
+    if (fileRef.current) fileRef.current.value = "";
+    setPreviewLoading(true);
+    setPreviewData(null);
+    setRevertedNames(new Set());
     try {
-      const data = await uploadWithProgress(
-        file,
-        `/api/admin/labs/${lab.id}/catalog/upload`,
-        (pct) => {
-          setUploadPct(pct);
-          notifyJob({ labId: lab.id, labName: lab.name, phase: "uploading", pct });
-        },
-        () => {
-          setUploadPhase("processing");
-          notifyJob({ labId: lab.id, labName: lab.name, phase: "processing" });
-        },
-      );
+      const form = new FormData();
+      form.append("file", file);
+      const res = await fetch(`/api/admin/labs/${lab.id}/catalog/preview`, { method: "POST", body: form });
+      const data = await res.json();
       if (data.success) {
-        const r = data.results as { created: number; updated: number; errors: number; noSynonyms: number };
-        toast.success(`${r.created} added · ${r.updated} updated${r.errors ? ` · ${r.errors} errors` : ""}`);
-        setUploadPhase("idle");
-        const freshTests = await load();
-        const needsSynonyms = freshTests.filter((t) => t.synonyms.length <= 1);
-        if (needsSynonyms.length > 0) {
-          await runSynonymGeneration(needsSynonyms);
-        } else {
-          notifyJob(null);
-        }
+        setPreviewData(data.diff as DiffResult);
       } else {
-        toast.error((data.error as string) ?? "Upload failed");
-        setUploadPhase("idle");
-        notifyJob(null);
+        toast.error((data.error as string) ?? "Preview failed");
       }
     } catch (err) {
-      toast.error(err instanceof Error ? err.message : "Upload failed");
-      setUploadPhase("idle");
-      notifyJob(null);
+      toast.error(err instanceof Error ? err.message : "Preview failed");
     } finally {
-      if (fileRef.current) fileRef.current.value = "";
+      setPreviewLoading(false);
     }
+  }
+
+  async function applyDiffChanges() {
+    if (!previewData) return;
+    setApplyingDiff(true);
+    let created = 0, updated = 0, errors = 0;
+    // Apply new tests
+    for (const item of previewData.added) {
+      try {
+        const body: Record<string, unknown> = { raw_name: item.test_name, lab_price: item.price };
+        if (item.category) body.category_label = item.category;
+        if (item.commission_pct != null) body.commission_pct = item.commission_pct;
+        const res = await fetch(`/api/admin/labs/${lab.id}/catalog`, {
+          method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body),
+        });
+        if ((await res.json()).success) created++; else errors++;
+      } catch { errors++; }
+    }
+    // Apply updated tests (excluding reverted)
+    for (const item of previewData.updated) {
+      if (revertedNames.has(item.test_name)) continue;
+      try {
+        const body: Record<string, unknown> = { lab_price: item.new_values.price };
+        if (item.new_values.commission_pct != null) body.commission_pct = item.new_values.commission_pct;
+        if (item.new_values.category !== undefined) body.category_label = item.new_values.category;
+        const res = await fetch(`/api/admin/labs/${lab.id}/catalog/${item.test_id}`, {
+          method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body),
+        });
+        const data = await res.json();
+        if (data.success) {
+          updated++;
+          setTests((prev) => prev.map((t) => t.id === item.test_id ? { ...t, ...data.test, synonyms: data.test.synonyms ?? t.synonyms } : t));
+        } else errors++;
+      } catch { errors++; }
+    }
+    setApplyingDiff(false);
+    setPreviewData(null);
+    toast.success(`${created} added · ${updated} updated${errors ? ` · ${errors} errors` : ""}`);
+    const freshTests = await load();
+    const needsSynonyms = freshTests.filter((t) => t.synonyms.length <= 1);
+    if (needsSynonyms.length > 0) await runSynonymGeneration(needsSynonyms);
+    else notifyJob(null);
   }
 
   /** Core loop — generate synonyms sequentially for a given list, with live progress */
@@ -444,6 +543,20 @@ export default function LabCatalogSheet({
     }
   }
 
+  async function handleSynonymUpdate(testId: string, nextSynonyms: string[]) {
+    const res = await fetch(`/api/admin/labs/${lab.id}/catalog/${testId}`, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ synonyms: nextSynonyms }),
+    });
+    const data = await res.json();
+    if (data.success) {
+      setTests((prev) => prev.map((t) => t.id === testId ? { ...t, synonyms: data.test.synonyms ?? nextSynonyms } : t));
+    } else {
+      toast.error(data.error ?? "Failed to update synonyms");
+    }
+  }
+
   async function handleAdd(e: React.FormEvent) {
     e.preventDefault();
     const price = parseFloat(addPrice);
@@ -536,10 +649,10 @@ export default function LabCatalogSheet({
               </button>
             )}
             <input ref={fileRef} type="file" accept=".csv,.xlsx,.xls" className="hidden" onChange={handleUpload} />
-            <button onClick={() => fileRef.current?.click()} disabled={uploadPhase !== "idle"}
+            <button onClick={() => fileRef.current?.click()} disabled={previewLoading || applyingDiff}
               className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-blue-600/20 hover:bg-blue-600/30 text-blue-400 text-xs transition-colors disabled:opacity-50">
               <Upload className="w-3.5 h-3.5" />
-              {uploadPhase === "uploading" ? `${uploadPct}%` : uploadPhase === "processing" ? "Processing…" : "Upload"}
+              {previewLoading ? "Analysing…" : "Upload"}
             </button>
             <button onClick={() => window.open(`/api/admin/labs/${lab.id}/catalog/export`, "_blank")}
               className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-white/5 hover:bg-white/10 text-slate-400 text-xs transition-colors">
@@ -593,6 +706,95 @@ export default function LabCatalogSheet({
               Columns: <span className="font-mono text-slate-400">test_name, price, category (opt), commission_pct (opt)</span>
               <span className="ml-2 text-slate-600">— synonyms generated after upload</span>
             </p>
+          </div>
+        )}
+
+        {/* ── Preview loading ───────────────────────────────────────────────── */}
+        {previewLoading && (
+          <div className="flex items-center gap-2 px-5 py-2.5 bg-blue-500/8 border-b border-white/5 shrink-0">
+            <RefreshCw className="w-3.5 h-3.5 text-blue-400 animate-spin shrink-0" />
+            <span className="text-xs text-blue-400">Analysing file…</span>
+          </div>
+        )}
+
+        {/* ── Diff preview panel ─────────────────────────────────────────────── */}
+        {previewData && !previewLoading && (
+          <div className="shrink-0 border-b border-white/10 bg-slate-900/60 max-h-[45vh] overflow-y-auto">
+            <div className="flex items-center justify-between px-5 py-3 border-b border-white/8 sticky top-0 bg-slate-900/90 backdrop-blur z-10">
+              <div className="flex items-center gap-4 text-xs">
+                <span className="text-emerald-400 font-semibold">{previewData.added.length} new</span>
+                <span className="text-amber-400 font-semibold">{previewData.updated.length} changed</span>
+                <span className="text-slate-500">{previewData.unchanged.length} unchanged</span>
+              </div>
+              <div className="flex items-center gap-2">
+                <button
+                  onClick={applyDiffChanges}
+                  disabled={applyingDiff || (previewData.added.length === 0 && previewData.updated.filter((u) => !revertedNames.has(u.test_name)).length === 0)}
+                  className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-semibold transition-colors disabled:opacity-40"
+                >
+                  {applyingDiff ? <><RefreshCw className="w-3 h-3 animate-spin" />Applying…</> : <><Check className="w-3 h-3" />Apply Changes</>}
+                </button>
+                <button onClick={() => setPreviewData(null)} className="p-1.5 text-slate-500 hover:text-white transition-colors">
+                  <X className="w-3.5 h-3.5" />
+                </button>
+              </div>
+            </div>
+
+            <div className="divide-y divide-white/5">
+              {/* New tests */}
+              {previewData.added.map((item) => (
+                <div key={item.test_name} className="flex items-center gap-3 px-5 py-2.5">
+                  <span className="text-[10px] font-bold uppercase tracking-wider text-emerald-400 bg-emerald-500/10 px-1.5 py-0.5 rounded shrink-0">New</span>
+                  <span className="text-sm text-white flex-1">{item.test_name}</span>
+                  <span className="text-xs font-mono text-slate-300">₦{Number(item.price).toLocaleString()}</span>
+                  {item.category && <span className="text-xs text-slate-500">{item.category}</span>}
+                </div>
+              ))}
+              {/* Updated tests */}
+              {previewData.updated.map((item) => {
+                const reverted = revertedNames.has(item.test_name);
+                return (
+                  <div key={item.test_name} className={`flex items-start gap-3 px-5 py-2.5 ${reverted ? "opacity-40" : ""}`}>
+                    <button
+                      title={reverted ? "Re-include this change" : "Revert this change"}
+                      onClick={() => setRevertedNames((prev) => {
+                        const next = new Set(prev);
+                        reverted ? next.delete(item.test_name) : next.add(item.test_name);
+                        return next;
+                      })}
+                      className="shrink-0 mt-0.5"
+                    >
+                      <span className={`text-[10px] font-bold uppercase tracking-wider px-1.5 py-0.5 rounded border ${reverted ? "text-slate-500 border-slate-700 bg-slate-800" : "text-amber-400 bg-amber-500/10 border-amber-500/20"}`}>
+                        {reverted ? "Skip" : "Edit"}
+                      </span>
+                    </button>
+                    <div className="flex-1 min-w-0">
+                      <p className="text-sm text-white">{item.test_name}</p>
+                      <div className="flex flex-wrap gap-x-4 gap-y-0.5 mt-0.5">
+                        {item.changed_fields.includes("price") && (
+                          <p className="text-xs">
+                            <span className="text-slate-500 line-through">₦{item.old.price.toLocaleString()}</span>
+                            <span className="text-amber-300 ml-1">→ ₦{Number(item.new_values.price).toLocaleString()}</span>
+                          </p>
+                        )}
+                        {item.changed_fields.includes("commission_pct") && (
+                          <p className="text-xs">
+                            <span className="text-slate-500 line-through">{item.old.commission_pct ?? 0}%</span>
+                            <span className="text-amber-300 ml-1">→ {item.new_values.commission_pct ?? 0}%</span>
+                          </p>
+                        )}
+                        {item.changed_fields.includes("category") && (
+                          <p className="text-xs">
+                            <span className="text-slate-500 line-through">{item.old.category || "—"}</span>
+                            <span className="text-amber-300 ml-1">→ {item.new_values.category || "—"}</span>
+                          </p>
+                        )}
+                      </div>
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
           </div>
         )}
 
@@ -751,7 +953,11 @@ export default function LabCatalogSheet({
                       />
                     </td>
                     <td className="px-4 py-2.5 max-w-[260px]">
-                      <SynonymTags synonyms={t.synonyms} rawName={t.raw_name} />
+                      <SynonymTags
+                        synonyms={t.synonyms}
+                        rawName={t.raw_name}
+                        onUpdate={(next) => handleSynonymUpdate(t.id, next)}
+                      />
                     </td>
                     <td className="px-4 py-2.5 text-right">
                       <EditableNumber value={t.lab_price} onSave={(v) => handleFieldUpdate(t.id, "lab_price", v)} />

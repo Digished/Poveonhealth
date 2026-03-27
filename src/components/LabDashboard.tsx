@@ -84,9 +84,11 @@ export function LabDashboard({ lab, isOwner = false, roleName = "Lab Owner", can
   const { name: labName, logo_url: labLogoUrl } = lab;
   const router = useRouter();
   const { isLight, toggle, themeClass } = useDashTheme("lab_dash_theme");
-  const [mainView, setMainView] = useState<"requests" | "referrals" | "clients" | "analytics" | "activity" | "feedback" | "poveon">("requests");
+  const [mainView, setMainView] = useState<"requests" | "referrals" | "clients" | "analytics" | "activity" | "feedback" | "poveon" | "price-list">("requests");
   const [poveonData, setPoveonData] = useState<PoveonViewData>(null);
   const [poveonLoading, setPoveonLoading] = useState(false);
+  const [priceListData, setPriceListData] = useState<{ category: string; tests: { id: string; name: string; lab_price: number; poveon_fee: number | null; commission_pct: number | null }[] }[] | null>(null);
+  const [priceListLoading, setPriceListLoading] = useState(false);
   const [mobileNavOpen, setMobileNavOpen] = useState(false);
   const [mobileHeaderOpen, setMobileHeaderOpen] = useState(false);
   const [activeTab, setActiveTab] = useState<RequestStatus>("seen");
@@ -564,6 +566,7 @@ export function LabDashboard({ lab, isOwner = false, roleName = "Lab Owner", can
             { key: "activity" as const, label: "Activity", icon: <Activity className="w-4 h-4" />, show: isOwner || canViewActivity },
             { key: "feedback" as const, label: "Feedback", icon: <Star className="w-4 h-4" />, show: isOwner || canViewFeedback },
             { key: "poveon" as const, label: "Poveon", icon: <CreditCard className="w-4 h-4" />, show: isOwner || canViewWallet },
+            { key: "price-list" as const, label: "Price List", icon: <Layers className="w-4 h-4" />, show: isOwner || canViewWallet },
           ].filter((item) => item.show);
           if (navItems.length <= 1) return null;
           const currentItem = navItems.find((n) => n.key === mainView) ?? navItems[0];
@@ -590,6 +593,10 @@ export function LabDashboard({ lab, isOwner = false, roleName = "Lab Owner", can
                             setPoveonLoading(true);
                             fetch("/api/lab/poveon").then((r) => r.json()).then((d) => { if (d.success) setPoveonData(d); }).catch(() => {}).finally(() => setPoveonLoading(false));
                           }
+                          if (item.key === "price-list" && !priceListData) {
+                            setPriceListLoading(true);
+                            fetch("/api/lab/price-schedule").then((r) => r.json()).then((d) => { if (d.success) setPriceListData(d.schedule); }).catch(() => {}).finally(() => setPriceListLoading(false));
+                          }
                         }}
                         className={`flex items-center gap-3 w-full px-4 py-3.5 text-sm font-medium transition-colors border-b border-white/5 last:border-0 ${
                           mainView === item.key
@@ -612,6 +619,10 @@ export function LabDashboard({ lab, isOwner = false, roleName = "Lab Owner", can
                     if (item.key === "poveon" && !poveonData) {
                       setPoveonLoading(true);
                       fetch("/api/lab/poveon").then((r) => r.json()).then((d) => { if (d.success) setPoveonData(d); }).catch(() => {}).finally(() => setPoveonLoading(false));
+                    }
+                    if (item.key === "price-list" && !priceListData) {
+                      setPriceListLoading(true);
+                      fetch("/api/lab/price-schedule").then((r) => r.json()).then((d) => { if (d.success) setPriceListData(d.schedule); }).catch(() => {}).finally(() => setPriceListLoading(false));
                     }
                   }}
                     className={`flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-medium transition-all ${
@@ -1675,6 +1686,20 @@ export function LabDashboard({ lab, isOwner = false, roleName = "Lab Owner", can
                 const d = await res.json();
                 if (d.success) setPoveonData(d);
               } catch { /* non-critical */ } finally { setPoveonLoading(false); }
+            }}
+          />
+        )}
+
+        {/* Price list view */}
+        {mainView === "price-list" && (isOwner || canViewWallet) && (
+          <LabPriceListView
+            data={priceListData}
+            loading={priceListLoading}
+            onLoad={() => {
+              if (!priceListData) {
+                setPriceListLoading(true);
+                fetch("/api/lab/price-schedule").then((r) => r.json()).then((d) => { if (d.success) setPriceListData(d.schedule); }).catch(() => {}).finally(() => setPriceListLoading(false));
+              }
             }}
           />
         )}
@@ -3021,6 +3046,98 @@ function LabFeedbackView({ labId }: { labId: string }) {
             className="flex items-center gap-1.5 text-xs font-semibold text-slate-400 hover:text-white disabled:opacity-30 transition px-3 py-2 rounded-lg hover:bg-white/5">
             Next<ChevronRight className="w-3.5 h-3.5" />
           </button>
+        </div>
+      )}
+    </div>
+  );
+}
+
+// =============================================================================
+// Lab Price List View
+// =============================================================================
+type PriceListTest = { id: string; name: string; lab_price: number; poveon_fee: number | null; commission_pct: number | null };
+type PriceListCategory = { category: string; tests: PriceListTest[] };
+
+function LabPriceListView({ data, loading, onLoad }: { data: PriceListCategory[] | null; loading: boolean; onLoad: () => void }) {
+  const [search, setSearch] = useState("");
+  useEffect(() => { if (!data && !loading) onLoad(); }, [data, loading, onLoad]);
+
+  if (loading) {
+    return (
+      <div className="space-y-4 animate-pulse">
+        <div className="h-12 bg-white/5 rounded-xl" />
+        <div className="h-48 bg-white/5 rounded-2xl" />
+        <div className="h-32 bg-white/5 rounded-2xl" />
+      </div>
+    );
+  }
+
+  const schedule = data ?? [];
+  const q = search.trim().toLowerCase();
+  const filtered = schedule
+    .map((cat) => ({ ...cat, tests: q ? cat.tests.filter((t) => t.name.toLowerCase().includes(q)) : cat.tests }))
+    .filter((cat) => cat.tests.length > 0);
+
+  const totalTests = schedule.reduce((s, c) => s + c.tests.length, 0);
+
+  return (
+    <div className="space-y-6">
+      {/* Header */}
+      <div className="flex flex-col sm:flex-row sm:items-center gap-3">
+        <div className="flex-1">
+          <h2 className="text-lg font-bold text-white">Your Price List</h2>
+          <p className="text-xs text-slate-400 mt-0.5">{totalTests} test{totalTests !== 1 ? "s" : ""} across {schedule.length} categor{schedule.length !== 1 ? "ies" : "y"}</p>
+        </div>
+        <div className="relative">
+          <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-500 pointer-events-none" />
+          <input
+            value={search}
+            onChange={(e) => setSearch(e.target.value)}
+            placeholder="Search tests…"
+            className="pl-9 pr-4 py-2.5 rounded-xl bg-white/8 border border-white/10 text-sm text-white placeholder-slate-500 focus:outline-none focus:border-white/25 w-full sm:w-64"
+          />
+        </div>
+      </div>
+
+      {filtered.length === 0 ? (
+        <div className="text-center py-16 text-slate-500">
+          {q ? "No tests match your search." : "No tests in your catalog yet."}
+        </div>
+      ) : (
+        <div className="space-y-5">
+          {filtered.map((cat) => (
+            <div key={cat.category} className="bg-white/5 border border-white/8 rounded-2xl overflow-hidden">
+              {/* Category header */}
+              <div className="px-5 py-3 bg-white/5 border-b border-white/8 flex items-center justify-between">
+                <p className="text-sm font-semibold text-white">{cat.category}</p>
+                <p className="text-xs text-slate-500">{cat.tests.length} test{cat.tests.length !== 1 ? "s" : ""}</p>
+              </div>
+              {/* Column headers */}
+              <div className="grid grid-cols-4 px-5 py-2 text-[11px] uppercase tracking-wider text-slate-500 border-b border-white/5">
+                <p className="col-span-2">Test Name</p>
+                <p className="text-right">Your Price</p>
+                <p className="text-right">Poveon Fee</p>
+              </div>
+              {/* Test rows */}
+              {cat.tests.map((test, idx) => (
+                <div
+                  key={test.id}
+                  className={`grid grid-cols-4 px-5 py-3 items-center ${idx < cat.tests.length - 1 ? "border-b border-white/5" : ""} hover:bg-white/3 transition-colors`}
+                >
+                  <p className="col-span-2 text-sm text-slate-200 pr-4">{test.name}</p>
+                  <p className="text-right text-sm font-mono text-white font-medium">₦{Number(test.lab_price).toLocaleString()}</p>
+                  <div className="text-right">
+                    <p className="text-sm font-mono text-amber-300 font-semibold">
+                      {test.poveon_fee != null ? `₦${Number(test.poveon_fee).toLocaleString()}` : "—"}
+                    </p>
+                    {test.commission_pct != null && (
+                      <p className="text-[10px] text-slate-500">{Number(test.commission_pct).toFixed(1)}%</p>
+                    )}
+                  </div>
+                </div>
+              ))}
+            </div>
+          ))}
         </div>
       )}
     </div>
