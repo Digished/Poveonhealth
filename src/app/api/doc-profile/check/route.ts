@@ -21,7 +21,9 @@ export async function GET(request: NextRequest) {
       prefix: true,
       full_name: true,
       hospital: true,
-      // bank / pin_hash intentionally excluded
+      bank_name: true,
+      account_number: true,
+      // pin_hash intentionally excluded
     },
   });
 
@@ -31,6 +33,7 @@ export async function GET(request: NextRequest) {
 
   const hasName = !!(profile.full_name?.trim());
   const hasHospital = !!(profile.hospital?.trim());
+  const hasBank = !!(profile.bank_name?.trim() && profile.account_number?.trim());
 
   return NextResponse.json({
     exists: true,
@@ -38,5 +41,6 @@ export async function GET(request: NextRequest) {
     prefix: profile.prefix ?? null,
     full_name: hasName ? profile.full_name : null,
     hospital: hasHospital ? profile.hospital : null,
+    has_bank: hasBank,
   });
 }

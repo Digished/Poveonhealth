@@ -23,12 +23,10 @@ import { useRouter } from "next/navigation";
 type AdminTab = "metrics" | "requests" | "referrals" | "labs" | "analytics" | "marketers" | "settings" | "pricing" | "transactions";
 
 interface ReferralGroup {
-  key: string;
+  key: string; // doctor_email
+  email: string;
   referrerName: string;
   hospital: string | null;
-  bankName: string | null;
-  accountNumber: string | null;
-  accountName: string | null;
   requests: LabRequest[];
   thisMonthCount: number;
 }
@@ -284,23 +282,22 @@ const [catalogModalLabId, setCatalogModalLabId] = useState<string | null>(null);
     const map = new Map<string, ReferralGroup>();
     const now = new Date();
     for (const req of requests) {
-      const key = req.doctor_account_number
-        ? `acc:${req.doctor_account_number}`
-        : `name:${[req.doctor_prefix, req.doctor_name].filter(Boolean).join(" ")}`;
+      const key = req.doctor_email?.trim().toLowerCase() || `nomail:${[req.doctor_prefix, req.doctor_name].filter(Boolean).join(" ")}`;
       const d = new Date(req.created_at);
       const isThisMonth = d.getMonth() === now.getMonth() && d.getFullYear() === now.getFullYear();
       const existing = map.get(key);
       if (existing) {
         existing.requests.push(req);
         if (isThisMonth) existing.thisMonthCount++;
+        // Keep most complete name seen across requests
+        if (!existing.referrerName && req.doctor_name) existing.referrerName = [req.doctor_prefix, req.doctor_name].filter(Boolean).join(" ");
+        if (!existing.hospital && req.doctor_hospital) existing.hospital = req.doctor_hospital;
       } else {
         map.set(key, {
           key,
+          email: req.doctor_email ?? "",
           referrerName: [req.doctor_prefix, req.doctor_name].filter(Boolean).join(" "),
           hospital: req.doctor_hospital ?? null,
-          bankName: req.doctor_bank_name,
-          accountNumber: req.doctor_account_number,
-          accountName: req.doctor_account_name,
           requests: [req],
           thisMonthCount: isThisMonth ? 1 : 0,
         });
@@ -781,10 +778,7 @@ const [catalogModalLabId, setCatalogModalLabId] = useState<string | null>(null);
         {activeTab === "referrals" && (
           <div className="animate-fade-in space-y-4">
             <div className="flex items-center justify-between">
-              <div>
-                <h2 className="font-semibold text-white">Referral Tracking</h2>
-                <p className="text-xs text-slate-500 mt-0.5">Grouped by unique bank account</p>
-              </div>
+              <h2 className="font-semibold text-white">Referral Tracking</h2>
               <span className="text-xs text-slate-500 bg-white/5 px-3 py-1.5 rounded-full">{referralGroups.length} referrer{referralGroups.length !== 1 ? "s" : ""}</span>
             </div>
 
@@ -810,15 +804,12 @@ const [catalogModalLabId, setCatalogModalLabId] = useState<string | null>(null);
                       </div>
                       <ChevronRight className="w-4 h-4 text-slate-600 group-hover:text-slate-400 transition-colors mt-1" />
                     </div>
-                    <p className="font-semibold text-white text-sm truncate">{group.referrerName || "—"}</p>
+                    <p className="font-semibold text-white text-sm truncate">{group.referrerName || group.email || "—"}</p>
+                    {group.referrerName && group.email && (
+                      <p className="text-xs text-slate-400 truncate mt-0.5">{group.email}</p>
+                    )}
                     {group.hospital && (
-                      <p className="text-xs text-slate-400 truncate mt-0.5">{group.hospital}</p>
-                    )}
-                    {group.accountName && (
-                      <p className="text-xs text-slate-400 truncate mt-0.5">{group.accountName}</p>
-                    )}
-                    {group.bankName && (
-                      <p className="text-xs text-slate-500 truncate">{group.bankName}{group.accountNumber ? ` · ${group.accountNumber}` : ""}</p>
+                      <p className="text-xs text-slate-500 truncate">{group.hospital}</p>
                     )}
                     <div className="flex items-center gap-3 mt-4 pt-3 border-t border-white/5">
                       <div>
@@ -2093,14 +2084,9 @@ function ReferralDetailModal({ group, onClose }: { group: ReferralGroup; onClose
         {/* Header */}
         <div className="flex items-start justify-between p-5 border-b border-white/10 shrink-0">
           <div>
-            <h2 className="font-semibold text-white">{group.referrerName || "Unknown Referrer"}</h2>
-            {group.hospital && <p className="text-xs text-slate-400 mt-0.5">{group.hospital}</p>}
-            {group.accountName && <p className="text-sm text-slate-400 mt-0.5">{group.accountName}</p>}
-            {group.bankName && (
-              <p className="text-xs text-slate-500 mt-0.5">
-                {group.bankName}{group.accountNumber ? ` · ${group.accountNumber}` : ""}
-              </p>
-            )}
+            <h2 className="font-semibold text-white">{group.referrerName || group.email || "Unknown Referrer"}</h2>
+            {group.referrerName && group.email && <p className="text-xs text-slate-400 mt-0.5">{group.email}</p>}
+            {group.hospital && <p className="text-xs text-slate-500 mt-0.5">{group.hospital}</p>}
           </div>
           <button onClick={onClose} className="p-1.5 rounded-lg hover:bg-white/10 text-slate-400 transition-colors mt-0.5">
             <X className="w-4 h-4" />

@@ -697,10 +697,13 @@ export function LabDashboard({ lab, isOwner = false, roleName = "Lab Owner", can
                         </div>
                         <div className="flex-1 min-w-0">
                           <p className="font-semibold text-white truncate leading-tight">
-                            {[doc.doctor_prefix, doc.doctor_name].filter(Boolean).join(" ")}
+                            {[doc.doctor_prefix, doc.doctor_name].filter(Boolean).join(" ") || doc.doctor_email}
                           </p>
+                          {[doc.doctor_prefix, doc.doctor_name].filter(Boolean).join(" ") && (
+                            <p className="text-xs text-slate-500 truncate">{doc.doctor_email}</p>
+                          )}
                           {doc.doctor_hospital && (
-                            <p className="text-xs text-slate-500 truncate mt-0.5">{doc.doctor_hospital}</p>
+                            <p className="text-xs text-slate-500 truncate">{doc.doctor_hospital}</p>
                           )}
                         </div>
                         <span className="shrink-0 text-xs font-bold bg-medical-900/50 text-medical-300 border border-medical-800/30 px-2 py-0.5 rounded-full">
