@@ -12,17 +12,14 @@ export async function GET(_req: NextRequest) {
     const adminRecord = await prisma.adminUser.findUnique({ where: { user_id: user.id } });
     if (!adminRecord) return NextResponse.json({ success: false, error: "Admin access required" }, { status: 403 });
 
-    // Raw SQL for all commission fields — bypasses stale Prisma client
-    const [totalsRaw, paidTotalRaw, byLabRaw, paidByLabRaw, recentRaw] = await Promise.all([
+    const [totalsRaw, byLabRaw, walletBalancesRaw, dvaTotalsRaw, recentRaw] = await Promise.all([
+      // Platform-wide commission totals from requests
       prisma.$queryRaw<[{ poveon_sum: string; revenue_sum: string }]>`
         SELECT COALESCE(SUM(poveon_amount),0)::text AS poveon_sum,
                COALESCE(SUM(lab_revenue_amount),0)::text AS revenue_sum
         FROM requests WHERE status IN ('seen','done')`,
 
-      prisma.$queryRaw<[{ paid_sum: string }]>`
-        SELECT COALESCE(SUM(poveon_amount),0)::text AS paid_sum
-        FROM requests WHERE is_paid_to_poveon = true`,
-
+      // Per-lab commission totals
       prisma.$queryRaw<Array<{ lab_id: string; poveon_sum: string; revenue_sum: string; req_count: string }>>`
         SELECT lab_id,
                COALESCE(SUM(poveon_amount),0)::text AS poveon_sum,
@@ -31,11 +28,18 @@ export async function GET(_req: NextRequest) {
         FROM requests WHERE status IN ('seen','done')
         GROUP BY lab_id`,
 
-      prisma.$queryRaw<Array<{ lab_id: string; paid_sum: string }>>`
-        SELECT lab_id, COALESCE(SUM(poveon_amount),0)::text AS paid_sum
-        FROM requests WHERE is_paid_to_poveon = true
-        GROUP BY lab_id`,
+      // Per-lab wallet balances (current position)
+      prisma.$queryRaw<Array<{ lab_id: string; balance: string }>>`
+        SELECT lab_id, balance::text AS balance FROM lab_wallets`,
 
+      // Per-lab total DVA deposited (actual cash received from each lab)
+      prisma.$queryRaw<Array<{ lab_id: string; deposited: string }>>`
+        SELECT lw.lab_id, COALESCE(SUM(lwc.amount),0)::text AS deposited
+        FROM lab_wallets lw
+        LEFT JOIN lab_wallet_credits lwc ON lwc.wallet_id = lw.id
+        GROUP BY lw.lab_id`,
+
+      // Recent seen/done requests
       prisma.$queryRaw<Array<{
         id: string; code: string; lab_id: string; patient_name: string | null;
         tests: string; poveon_amount: string; lab_revenue_amount: string;
@@ -55,50 +59,55 @@ export async function GET(_req: NextRequest) {
     const labs = await prisma.lab.findMany({ where: { id: { in: labIds } }, select: { id: true, name: true } });
     const labNameMap = Object.fromEntries(labs.map((l) => [l.id, l.name]));
 
-    const paidByLabMap: Record<string, number> = Object.fromEntries(
-      paidByLabRaw.map((r) => [r.lab_id, Number(r.paid_sum)])
+    const walletBalanceMap: Record<string, number> = Object.fromEntries(
+      walletBalancesRaw.map((r) => [r.lab_id, Number(r.balance)])
+    );
+    const dvaDepositedMap: Record<string, number> = Object.fromEntries(
+      dvaTotalsRaw.map((r) => [r.lab_id, Number(r.deposited)])
     );
 
     const byLab = byLabRaw.map((row) => {
-      const totalOwed = Number(row.poveon_sum);
-      const totalPaidLab = paidByLabMap[row.lab_id] ?? 0;
+      const totalCommission = Number(row.poveon_sum);
+      const totalDeposited  = dvaDepositedMap[row.lab_id] ?? 0;
+      const walletBalance   = walletBalanceMap[row.lab_id] ?? null; // null = no wallet provisioned
       return {
-        lab_id: row.lab_id,
-        lab_name: labNameMap[row.lab_id] ?? row.lab_id,
-        request_count: Number(row.req_count),
-        total_poveon_amount: totalOwed,
-        total_lab_revenue: Number(row.revenue_sum),
-        total_paid: totalPaidLab,
-        outstanding: totalOwed - totalPaidLab,
+        lab_id:              row.lab_id,
+        lab_name:            labNameMap[row.lab_id] ?? row.lab_id,
+        request_count:       Number(row.req_count),
+        total_poveon_amount: totalCommission,
+        total_lab_revenue:   Number(row.revenue_sum),
+        total_deposited:     totalDeposited,
+        wallet_balance:      walletBalance,
       };
-    }).sort((a, b) => b.outstanding - a.outstanding);
+    }).sort((a, b) => (a.wallet_balance ?? 0) - (b.wallet_balance ?? 0)); // most indebted first
 
-    const totalOwed = Number(totalsRaw[0]?.poveon_sum ?? 0);
-    const totalPaid = Number(paidTotalRaw[0]?.paid_sum ?? 0);
+    const totalPoveonEarned = Number(totalsRaw[0]?.poveon_sum ?? 0);
+    const totalLabRevenue   = Number(totalsRaw[0]?.revenue_sum ?? 0);
+    // Total cash actually received from labs = sum of all DVA credits across all wallets
+    const totalReceived = dvaTotalsRaw.reduce((sum, r) => sum + Number(r.deposited), 0);
 
-    // Fetch lab names for recent requests
     const recentLabIds = Array.from(new Set(recentRaw.map((r) => r.lab_id)));
     const recentLabs = await prisma.lab.findMany({ where: { id: { in: recentLabIds } }, select: { id: true, name: true } });
     const recentLabMap = Object.fromEntries(recentLabs.map((l) => [l.id, l.name]));
 
     return NextResponse.json({
       success: true,
-      total_poveon_earned: totalOwed,
-      total_lab_revenue: Number(totalsRaw[0]?.revenue_sum ?? 0),
-      total_paid: totalPaid,
-      total_outstanding: totalOwed - totalPaid,
-      by_lab: byLab,
+      total_poveon_earned:  totalPoveonEarned, // cumulative commission accrued
+      total_lab_revenue:    totalLabRevenue,
+      total_received:       totalReceived,     // actual cash received from all lab DVA payments
+      total_outstanding:    totalPoveonEarned - totalReceived, // net still owed to Poveon
+      by_lab:               byLab,
       recent_requests: recentRaw.map((r) => ({
-        id: r.id,
-        code: r.code,
-        lab_id: r.lab_id,
-        lab_name: recentLabMap[r.lab_id] ?? r.lab_id,
-        patient_name: r.patient_name,
-        tests: r.tests,
-        poveon_amount: Number(r.poveon_amount),
+        id:                r.id,
+        code:              r.code,
+        lab_id:            r.lab_id,
+        lab_name:          recentLabMap[r.lab_id] ?? r.lab_id,
+        patient_name:      r.patient_name,
+        tests:             r.tests,
+        poveon_amount:     Number(r.poveon_amount),
         lab_revenue_amount: Number(r.lab_revenue_amount),
         is_paid_to_poveon: r.is_paid_to_poveon,
-        seen_at: r.seen_at,
+        seen_at:           r.seen_at,
       })),
     });
   } catch (error) {

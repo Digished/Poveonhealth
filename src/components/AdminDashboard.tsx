@@ -131,9 +131,9 @@ const [catalogModalLabId, setCatalogModalLabId] = useState<string | null>(null);
   type RevenueData = {
     total_poveon_earned: number;
     total_lab_revenue: number;
-    total_paid: number;
-    total_outstanding: number;
-    by_lab: { lab_id: string; lab_name: string; request_count: number; total_poveon_amount: number; total_lab_revenue: number; total_paid: number; outstanding: number }[];
+    total_received: number;      // actual cash received via DVA top-ups
+    total_outstanding: number;   // total_poveon_earned - total_received
+    by_lab: { lab_id: string; lab_name: string; request_count: number; total_poveon_amount: number; total_lab_revenue: number; total_deposited: number; wallet_balance: number | null }[];
     recent_requests: { id: string; code: string; lab_id: string; lab_name: string; patient_name: string | null; tests: string; poveon_amount: number; lab_revenue_amount: number; is_paid_to_poveon: boolean; seen_at: string | null }[];
   };
   const [revenueData, setRevenueData] = useState<RevenueData | null>(null);
@@ -575,7 +575,7 @@ const [catalogModalLabId, setCatalogModalLabId] = useState<string | null>(null);
                     {/* Revenue summary cards */}
                     <div className="grid grid-cols-1 sm:grid-cols-4 gap-4">
                       <div className="bg-gradient-to-br from-emerald-500/20 to-emerald-600/10 border border-emerald-500/30 rounded-2xl p-5">
-                        <p className="text-xs text-slate-400 font-medium uppercase tracking-wider mb-1">Total Poveon Commission</p>
+                        <p className="text-xs text-slate-400 font-medium uppercase tracking-wider mb-1">Total Commission Accrued</p>
                         <p className="text-3xl font-bold text-white">₦{revenueData.total_poveon_earned.toLocaleString()}</p>
                       </div>
                       <div className="bg-gradient-to-br from-sky-500/20 to-sky-600/10 border border-sky-500/30 rounded-2xl p-5">
@@ -583,12 +583,14 @@ const [catalogModalLabId, setCatalogModalLabId] = useState<string | null>(null);
                         <p className="text-3xl font-bold text-white">₦{revenueData.total_lab_revenue.toLocaleString()}</p>
                       </div>
                       <div className="bg-gradient-to-br from-violet-500/20 to-violet-600/10 border border-violet-500/30 rounded-2xl p-5">
-                        <p className="text-xs text-slate-400 font-medium uppercase tracking-wider mb-1">Total Paid to Poveon</p>
-                        <p className="text-3xl font-bold text-white">₦{revenueData.total_paid.toLocaleString()}</p>
+                        <p className="text-xs text-slate-400 font-medium uppercase tracking-wider mb-1">Total Received from Labs</p>
+                        <p className="text-3xl font-bold text-white">₦{revenueData.total_received.toLocaleString()}</p>
+                        <p className="text-xs text-slate-500 mt-1">via DVA top-ups</p>
                       </div>
                       <div className="bg-gradient-to-br from-amber-500/20 to-amber-600/10 border border-amber-500/30 rounded-2xl p-5">
-                        <p className="text-xs text-slate-400 font-medium uppercase tracking-wider mb-1">Outstanding</p>
+                        <p className="text-xs text-slate-400 font-medium uppercase tracking-wider mb-1">Net Outstanding</p>
                         <p className="text-3xl font-bold text-amber-300">₦{revenueData.total_outstanding.toLocaleString()}</p>
+                        <p className="text-xs text-slate-500 mt-1">commission - received</p>
                       </div>
                     </div>
 
@@ -613,17 +615,17 @@ const [catalogModalLabId, setCatalogModalLabId] = useState<string | null>(null);
                               </div>
                               <div className="flex items-center gap-4 text-xs shrink-0">
                                 <div className="text-right">
-                                  <p className="text-slate-400">Owed</p>
+                                  <p className="text-slate-400">Commission</p>
                                   <p className="text-emerald-400 font-mono font-bold">₦{row.total_poveon_amount.toLocaleString()}</p>
                                 </div>
                                 <div className="text-right">
-                                  <p className="text-slate-400">Paid</p>
-                                  <p className="text-violet-400 font-mono font-bold">₦{row.total_paid.toLocaleString()}</p>
+                                  <p className="text-slate-400">Deposited</p>
+                                  <p className="text-violet-400 font-mono font-bold">₦{row.total_deposited.toLocaleString()}</p>
                                 </div>
                                 <div className="text-right">
-                                  <p className="text-slate-400">Outstanding</p>
-                                  <p className={`font-mono font-bold ${row.outstanding > 0 ? "text-amber-400" : "text-slate-500"}`}>
-                                    ₦{row.outstanding.toLocaleString()}
+                                  <p className="text-slate-400">Wallet</p>
+                                  <p className={`font-mono font-bold ${row.wallet_balance === null ? "text-slate-600" : row.wallet_balance < 0 ? "text-amber-400" : "text-emerald-400"}`}>
+                                    {row.wallet_balance === null ? "No wallet" : `₦${row.wallet_balance.toLocaleString()}`}
                                   </p>
                                 </div>
                               </div>

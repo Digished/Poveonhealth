@@ -3172,7 +3172,7 @@ type PoveonReq = {
   seen_at: string | null; completed_at: string | null;
   test_breakdown: BreakdownItem[];
 };
-type PoveonViewData = { total_owed: number; total_lab_revenue: number; total_paid: number; outstanding: number; requests: PoveonReq[] } | null;
+type PoveonViewData = { total_owed: number; total_lab_revenue: number; total_deposited: number; wallet_balance: number; requests: PoveonReq[] } | null;
 
 type WalletCredit = { id: string; amount: number; balance_after: number; reference: string; channel: string; sender_name: string | null; sender_bank: string | null; created_at: string };
 type WalletData = { balance: number; dva: { bank_name: string; account_number: string; account_name: string } | null; credits: WalletCredit[] } | null;
@@ -3290,11 +3290,11 @@ function LabPoveonView({ data, loading, onLoad }: { data: PoveonViewData; loadin
     );
   }
 
-  const outstanding = data?.outstanding ?? 0;
-  const totalOwed = data?.total_owed ?? 0;
-  const totalPaid = data?.total_paid ?? 0;
+  const totalOwed       = data?.total_owed       ?? 0;
   const totalLabRevenue = data?.total_lab_revenue ?? 0;
-  const requests = data?.requests ?? [];
+  const totalDeposited  = data?.total_deposited  ?? 0;
+  const walletBalance   = data?.wallet_balance   ?? 0;
+  const requests        = data?.requests         ?? [];
 
   function toggleExpand(id: string) {
     setExpanded((prev) => {
@@ -3322,14 +3322,14 @@ function LabPoveonView({ data, loading, onLoad }: { data: PoveonViewData; loadin
           <p className="text-xs text-slate-500 mt-1">cumulative commission</p>
         </div>
         <div className="bg-gradient-to-br from-violet-500/20 to-violet-600/10 border border-violet-500/30 rounded-2xl p-5 text-center">
-          <p className="text-xs text-slate-400 uppercase tracking-wider mb-1">Total Paid</p>
-          <p className="text-2xl font-bold font-mono text-white">₦{totalPaid.toLocaleString()}</p>
-          <p className="text-xs text-slate-500 mt-1">to Poveon so far</p>
+          <p className="text-xs text-slate-400 uppercase tracking-wider mb-1">Total Deposited</p>
+          <p className="text-2xl font-bold font-mono text-white">₦{totalDeposited.toLocaleString()}</p>
+          <p className="text-xs text-slate-500 mt-1">paid into wallet via DVA</p>
         </div>
-        <div className={`bg-gradient-to-br rounded-2xl p-5 text-center border ${outstanding > 0 ? "from-amber-500/20 to-amber-600/10 border-amber-500/30" : "from-emerald-500/20 to-emerald-600/10 border-emerald-500/30"}`}>
-          <p className="text-xs text-slate-400 uppercase tracking-wider mb-1">Outstanding</p>
-          <p className={`text-2xl font-bold font-mono ${outstanding > 0 ? "text-amber-300" : "text-emerald-300"}`}>₦{outstanding.toLocaleString()}</p>
-          <p className="text-xs text-slate-500 mt-1">{outstanding > 0 ? "amount due" : "fully paid"}</p>
+        <div className={`bg-gradient-to-br rounded-2xl p-5 text-center border ${walletBalance < 0 ? "from-amber-500/20 to-amber-600/10 border-amber-500/30" : "from-emerald-500/20 to-emerald-600/10 border-emerald-500/30"}`}>
+          <p className="text-xs text-slate-400 uppercase tracking-wider mb-1">Wallet Balance</p>
+          <p className={`text-2xl font-bold font-mono ${walletBalance < 0 ? "text-amber-300" : "text-emerald-300"}`}>₦{walletBalance.toLocaleString()}</p>
+          <p className="text-xs text-slate-500 mt-1">{walletBalance < 0 ? "amount owed to Poveon" : walletBalance === 0 ? "fully settled" : "in credit"}</p>
         </div>
       </div>
 

@@ -18,35 +18,38 @@ export async function GET() {
       return NextResponse.json({ success: false, error: "Admin access required" }, { status: 403 });
     }
 
-    const [labs, ratings, poveonByLabRaw, paidByLabRaw] = await Promise.all([
+    const [labs, ratings, poveonByLabRaw, walletBalancesRaw] = await Promise.all([
       prisma.lab.findMany({ orderBy: { name: "asc" } }),
       prisma.labFeedback.groupBy({
         by: ["lab_id"],
         _avg: { rating_overall: true },
         _count: { id: true },
       }),
-      // Raw SQL — bypasses stale Prisma client for commission columns
+      // Cumulative commission per lab
       prisma.$queryRaw<Array<{ lab_id: string; total: string }>>`
         SELECT lab_id, COALESCE(SUM(poveon_amount),0)::text AS total
         FROM requests WHERE status IN ('seen','done')
         GROUP BY lab_id`,
-      prisma.$queryRaw<Array<{ lab_id: string; total: string }>>`
-        SELECT lab_id, COALESCE(SUM(poveon_amount),0)::text AS total
-        FROM requests WHERE is_paid_to_poveon = true
-        GROUP BY lab_id`,
+      // Actual wallet balance per lab — negative means lab owes Poveon
+      prisma.$queryRaw<Array<{ lab_id: string; balance: string }>>`
+        SELECT lab_id, balance::text AS balance FROM lab_wallets`,
     ]);
 
     const ratingsMap = Object.fromEntries(
       ratings.map((r) => [r.lab_id, { avg: r._avg.rating_overall, count: r._count.id }])
     );
     const poveonMap = Object.fromEntries(poveonByLabRaw.map((r) => [r.lab_id, Number(r.total)]));
-    const paidMap = Object.fromEntries(paidByLabRaw.map((r) => [r.lab_id, Number(r.total)]));
+    const walletMap = Object.fromEntries(walletBalancesRaw.map((r) => [r.lab_id, Number(r.balance)]));
 
     const labsWithData = labs.map((lab) => ({
       ...lab,
       rating_avg:         ratingsMap[lab.id]?.avg   ?? null,
       rating_count:       ratingsMap[lab.id]?.count ?? 0,
-      poveon_outstanding: (poveonMap[lab.id] ?? 0) - (paidMap[lab.id] ?? 0),
+      // poveon_outstanding: negative wallet balance = amount lab owes Poveon.
+      // If no wallet provisioned, falls back to full commission accrued.
+      poveon_outstanding: lab.id in walletMap
+        ? Math.max(0, -(walletMap[lab.id] ?? 0))
+        : (poveonMap[lab.id] ?? 0),
     }));
 
     return NextResponse.json({ success: true, labs: labsWithData });
