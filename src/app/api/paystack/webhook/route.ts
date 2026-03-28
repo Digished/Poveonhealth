@@ -9,11 +9,14 @@ const SECRET = process.env.PAYSTACK_SECRET_KEY!;
 export async function POST(req: NextRequest) {
   const raw = await req.text();
 
+  // Log every incoming call so we can diagnose in Vercel function logs
+  console.log(`[webhook] received POST — body length=${raw.length} has-sig=${!!req.headers.get("x-paystack-signature")}`);
+
   // Verify HMAC-SHA512 signature
   const sig      = req.headers.get("x-paystack-signature") ?? "";
   const expected = createHmac("sha512", SECRET).update(raw).digest("hex");
   if (sig !== expected) {
-    console.error("[webhook] bad signature");
+    console.error(`[webhook] signature mismatch — got="${sig.slice(0, 16)}…" expected="${expected.slice(0, 16)}…" SECRET_SET=${!!SECRET}`);
     return NextResponse.json({ ok: true });
   }
 
@@ -24,7 +27,7 @@ export async function POST(req: NextRequest) {
 
   // Only process successful DVA (dedicated virtual account) payments
   const channel = String(data.channel ?? "");
-  console.log(`[webhook] event=${event} channel=${channel}`);
+  console.log(`[webhook] event=${event} channel=${channel} amount=${data.amount} ref=${data.reference}`);
 
   if (event !== "charge.success" || channel !== "dedicated_nuban") {
     return NextResponse.json({ ok: true });
