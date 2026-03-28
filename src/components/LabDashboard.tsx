@@ -89,6 +89,8 @@ export function LabDashboard({ lab, isOwner = false, roleName = "Lab Owner", can
   const router = useRouter();
   const { isLight, toggle, themeClass } = useDashTheme("lab_dash_theme");
   const [mainView, setMainView] = useState<"requests" | "referrals" | "clients" | "analytics" | "activity" | "feedback" | "poveon" | "price-list">("requests");
+  const [walletData, setWalletData] = useState<WalletData | null>(null);
+  const [walletRefreshing, setWalletRefreshing] = useState(false);
   const [poveonData, setPoveonData] = useState<PoveonViewData>(null);
   const [poveonLoading, setPoveonLoading] = useState(false);
   const [priceListData, setPriceListData] = useState<{ category: string; tests: { id: string; name: string; lab_price: number; poveon_fee: number | null; commission_pct: number | null }[] }[] | null>(null);
@@ -203,7 +205,18 @@ export function LabDashboard({ lab, isOwner = false, roleName = "Lab Owner", can
     return () => clearInterval(interval);
   }, [fetchRequests]);
 
-  // Eagerly fetch Poveon balance so the "amount owed" banner appears on all tabs
+  // Eagerly fetch Poveon + wallet data so tabs are instant, no per-mount skeleton
+  const fetchWallet = useCallback(async (isRefresh = false) => {
+    if (isRefresh) setWalletRefreshing(true);
+    try {
+      const res = await fetch("/api/lab/wallet");
+      const d = await res.json();
+      if (d.success) setWalletData(d);
+    } catch { /* non-critical */ } finally {
+      setWalletRefreshing(false);
+    }
+  }, []);
+
   useEffect(() => {
     if (!isOwner && !canViewWallet) return;
     fetch("/api/lab/poveon")
@@ -215,6 +228,9 @@ export function LabDashboard({ lab, isOwner = false, roleName = "Lab Owner", can
         }
       })
       .catch(() => {});
+    fetchWallet();
+    const walletInterval = setInterval(() => fetchWallet(true), 30_000);
+    return () => clearInterval(walletInterval);
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
@@ -581,13 +597,13 @@ export function LabDashboard({ lab, isOwner = false, roleName = "Lab Owner", can
         {/* Top-level navigation */}
         {(() => {
           const navItems = [
+            { key: "poveon" as const, label: "Poveon", icon: <CreditCard className="w-4 h-4" />, show: isOwner || canViewWallet },
             { key: "requests" as const, label: "Requests", icon: <FlaskConical className="w-4 h-4" />, show: true },
             { key: "referrals" as const, label: "Referrals", icon: <Users className="w-4 h-4" />, show: isOwner || canViewReferrals },
             { key: "clients" as const, label: "Clients", icon: <UserCircle className="w-4 h-4" />, show: isOwner || canViewClients },
             { key: "analytics" as const, label: "Analytics", icon: <BarChart3 className="w-4 h-4" />, show: isOwner || canViewAnalytics },
             { key: "activity" as const, label: "Activity", icon: <Activity className="w-4 h-4" />, show: isOwner || canViewActivity },
             { key: "feedback" as const, label: "Feedback", icon: <Star className="w-4 h-4" />, show: isOwner || canViewFeedback },
-            { key: "poveon" as const, label: "Poveon", icon: <CreditCard className="w-4 h-4" />, show: isOwner || canViewWallet },
             { key: "price-list" as const, label: "Price List", icon: <Layers className="w-4 h-4" />, show: isOwner || canViewWallet },
           ].filter((item) => item.show);
           if (navItems.length <= 1) return null;
@@ -1700,6 +1716,9 @@ export function LabDashboard({ lab, isOwner = false, roleName = "Lab Owner", can
           <LabPoveonView
             data={poveonData}
             loading={poveonLoading}
+            walletData={walletData}
+            walletRefreshing={walletRefreshing}
+            onRefreshWallet={() => fetchWallet(true)}
             onLoad={async () => {
               setPoveonLoading(true);
               try {
@@ -3215,78 +3234,121 @@ type PoveonViewData = { total_owed: number; total_lab_revenue: number; total_dep
 type WalletCredit = { id: string; amount: number; balance_after: number; reference: string; channel: string; sender_name: string | null; sender_bank: string | null; created_at: string };
 type WalletData = { balance: number; dva: { bank_name: string; account_number: string; account_name: string } | null; credits: WalletCredit[] } | null;
 
-function LabWalletPanel() {
-  const [wallet, setWallet] = useState<WalletData>(null);
-  const [loading, setLoading] = useState(true);
-  const [refreshing, setRefreshing] = useState(false);
+function LabWalletPanel({ wallet, refreshing, onRefresh }: {
+  wallet: WalletData | null;
+  refreshing: boolean;
+  onRefresh: () => void;
+}) {
   const [copied, setCopied] = useState(false);
 
-  function load(isRefresh = false) {
-    if (isRefresh) setRefreshing(true); else setLoading(true);
-    fetch("/api/lab/wallet")
-      .then((r) => r.json())
-      .then((d) => { if (d.success) setWallet(d); })
-      .catch(() => {})
-      .finally(() => { setLoading(false); setRefreshing(false); });
-  }
+  if (!wallet) return <div className="h-28 bg-white/5 rounded-2xl animate-pulse" />;
 
-  useEffect(() => {
-    load();
-    // Poll every 30 s so incoming DVA payments appear without manual refresh
-    const interval = setInterval(() => load(true), 30_000);
-    return () => clearInterval(interval);
-  }, []);
-
-  if (loading) return <div className="h-28 bg-white/5 rounded-2xl animate-pulse" />;
-
-  const balance = wallet?.balance ?? 0;
-  const dva     = wallet?.dva    ?? null;
-  const credits = wallet?.credits ?? [];
+  const balance = wallet.balance ?? 0;
+  const dva     = wallet.dva    ?? null;
 
   return (
-    <div className="space-y-3">
-      <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-        {/* Balance card */}
-        <div className="bg-gradient-to-br from-emerald-500/15 to-emerald-600/5 border border-emerald-500/25 rounded-2xl p-4 flex items-center gap-4">
-          <div className="w-10 h-10 rounded-xl bg-emerald-500/20 flex items-center justify-center shrink-0">
-            <Wallet2 className="w-5 h-5 text-emerald-400" />
-          </div>
-          <div className="flex-1 min-w-0">
-            <p className="text-xs text-slate-400 uppercase tracking-wider mb-0.5">Wallet Balance</p>
-            <p className="text-2xl font-bold font-mono text-white">₦{balance.toLocaleString()}</p>
-          </div>
-          <button onClick={() => load(true)} disabled={refreshing} className="shrink-0 p-2 rounded-xl bg-white/8 hover:bg-white/15 text-slate-400 hover:text-white transition disabled:opacity-50" title="Refresh">
-            <RefreshCw className={`w-4 h-4 ${refreshing ? "animate-spin" : ""}`} />
-          </button>
+    <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+      {/* Balance card */}
+      <div className="bg-gradient-to-br from-emerald-500/15 to-emerald-600/5 border border-emerald-500/25 rounded-2xl p-4 flex items-center gap-4">
+        <div className="w-10 h-10 rounded-xl bg-emerald-500/20 flex items-center justify-center shrink-0">
+          <Wallet2 className="w-5 h-5 text-emerald-400" />
         </div>
-
-        {/* DVA account card */}
-        {dva ? (
-          <div className="bg-white/5 border border-white/10 rounded-2xl p-4">
-            <p className="text-xs text-slate-400 uppercase tracking-wider mb-2">Your Dedicated Account</p>
-            <div className="flex items-center justify-between gap-2">
-              <div>
-                <p className="text-lg font-bold font-mono text-white tracking-widest">{dva.account_number}</p>
-                <p className="text-xs text-slate-400 mt-0.5">{dva.bank_name} · {dva.account_name}</p>
-              </div>
-              <button onClick={() => { navigator.clipboard.writeText(dva.account_number).then(() => { setCopied(true); setTimeout(() => setCopied(false), 2000); }); }} className="shrink-0 p-2 rounded-xl bg-white/8 hover:bg-white/15 text-slate-300 hover:text-white transition">
-                {copied ? <Check className="w-4 h-4 text-emerald-400" /> : <Copy className="w-4 h-4" />}
-              </button>
-            </div>
-            <p className="text-[10px] text-slate-500 mt-2">Transfer to this account from any bank to top up your wallet.</p>
-          </div>
-        ) : (
-          <div className="bg-white/5 border border-white/10 border-dashed rounded-2xl p-4 flex items-center gap-3">
-            <Wallet2 className="w-5 h-5 text-slate-500 shrink-0" />
-            <div>
-              <p className="text-sm text-slate-400 font-medium">No virtual account yet</p>
-              <p className="text-xs text-slate-500 mt-0.5">Ask your admin to provision a dedicated payment account.</p>
-            </div>
-          </div>
-        )}
+        <div className="flex-1 min-w-0">
+          <p className="text-xs text-slate-400 uppercase tracking-wider mb-0.5">Wallet Balance</p>
+          <p className="text-2xl font-bold font-mono text-white">₦{balance.toLocaleString()}</p>
+        </div>
+        <button onClick={onRefresh} disabled={refreshing} className="shrink-0 p-2 rounded-xl bg-white/8 hover:bg-white/15 text-slate-400 hover:text-white transition disabled:opacity-50" title="Refresh">
+          <RefreshCw className={`w-4 h-4 ${refreshing ? "animate-spin" : ""}`} />
+        </button>
       </div>
 
-      {/* How Poveon commission works */}
+      {/* DVA account card */}
+      {dva ? (
+        <div className="bg-white/5 border border-white/10 rounded-2xl p-4">
+          <p className="text-xs text-slate-400 uppercase tracking-wider mb-2">Your Dedicated Account</p>
+          <div className="flex items-center justify-between gap-2">
+            <div>
+              <p className="text-lg font-bold font-mono text-white tracking-widest">{dva.account_number}</p>
+              <p className="text-xs text-slate-400 mt-0.5">{dva.bank_name} · {dva.account_name}</p>
+            </div>
+            <button onClick={() => { navigator.clipboard.writeText(dva.account_number).then(() => { setCopied(true); setTimeout(() => setCopied(false), 2000); }); }} className="shrink-0 p-2 rounded-xl bg-white/8 hover:bg-white/15 text-slate-300 hover:text-white transition">
+              {copied ? <Check className="w-4 h-4 text-emerald-400" /> : <Copy className="w-4 h-4" />}
+            </button>
+          </div>
+          <p className="text-[10px] text-slate-500 mt-2">Transfer to this account from any bank to top up your wallet.</p>
+        </div>
+      ) : (
+        <div className="bg-white/5 border border-white/10 border-dashed rounded-2xl p-4 flex items-center gap-3">
+          <Wallet2 className="w-5 h-5 text-slate-500 shrink-0" />
+          <div>
+            <p className="text-sm text-slate-400 font-medium">No virtual account yet</p>
+            <p className="text-xs text-slate-500 mt-0.5">Ask your admin to provision a dedicated payment account.</p>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+function LabPoveonView({ data, loading, walletData, walletRefreshing, onRefreshWallet, onLoad }: {
+  data: PoveonViewData; loading: boolean;
+  walletData: WalletData | null; walletRefreshing: boolean; onRefreshWallet: () => void;
+  onLoad: () => void;
+}) {
+  const [expanded, setExpanded] = useState<Set<string>>(new Set());
+  useEffect(() => { if (!data) onLoad(); }, [data, onLoad]);
+
+  if (loading) {
+    return (
+      <div className="space-y-4 animate-pulse">
+        <div className="h-32 bg-white/5 rounded-2xl" />
+        <div className="h-20 bg-white/5 rounded-2xl" />
+        <div className="h-48 bg-white/5 rounded-2xl" />
+      </div>
+    );
+  }
+
+  const totalOwed       = data?.total_owed       ?? 0;
+  const totalLabRevenue = data?.total_lab_revenue ?? 0;
+  const totalDeposited  = data?.total_deposited  ?? 0;
+  const requests        = data?.requests         ?? [];
+
+  function toggleExpand(id: string) {
+    setExpanded((prev) => {
+      const next = new Set(prev);
+      next.has(id) ? next.delete(id) : next.add(id);
+      return next;
+    });
+  }
+
+  const credits = walletData?.credits ?? [];
+
+  return (
+    <div className="space-y-4">
+      {/* 1 — Wallet balance + DVA */}
+      <LabWalletPanel wallet={walletData} refreshing={walletRefreshing} onRefresh={onRefreshWallet} />
+
+      {/* 2 — Summary cards: immediately below wallet, no gap */}
+      {loading ? (
+        <div className="grid grid-cols-3 gap-3">
+          {[...Array(3)].map((_, i) => <div key={i} className="h-16 bg-white/5 rounded-2xl animate-pulse" />)}
+        </div>
+      ) : (
+        <div className="grid grid-cols-3 gap-3">
+          {[
+            { label: "Your Revenue", value: totalLabRevenue, color: "from-emerald-500/20 to-emerald-600/10 border-emerald-500/30" },
+            { label: "Poveon Fee", value: totalOwed, color: "from-sky-500/20 to-sky-600/10 border-sky-500/30" },
+            { label: "Deposited", value: totalDeposited, color: "from-violet-500/20 to-violet-600/10 border-violet-500/30" },
+          ].map((s) => (
+            <div key={s.label} className={`bg-gradient-to-br ${s.color} border rounded-2xl px-3 py-3 text-center`}>
+              <p className="text-[10px] text-slate-400 uppercase tracking-wider mb-0.5 leading-tight">{s.label}</p>
+              <p className="text-lg font-bold font-mono text-white leading-tight">₦{s.value.toLocaleString()}</p>
+            </div>
+          ))}
+        </div>
+      )}
+
+      {/* 3 — How Poveon commission works */}
       <div className="bg-white/5 border border-white/10 rounded-2xl px-5 py-4 flex items-start gap-3">
         <CreditCard className="w-4 h-4 text-slate-400 mt-0.5 shrink-0" />
         <div className="space-y-1 flex-1">
@@ -3299,7 +3361,7 @@ function LabWalletPanel() {
         </div>
       </div>
 
-      {/* Payment history */}
+      {/* 4 — Payment history */}
       {credits.length > 0 && (
         <div className="bg-white/5 border border-white/10 rounded-2xl overflow-hidden">
           <p className="text-xs font-semibold text-slate-400 uppercase tracking-wider px-4 py-3 border-b border-white/8">Payment History</p>
@@ -3328,77 +3390,8 @@ function LabWalletPanel() {
           </div>
         </div>
       )}
-    </div>
-  );
-}
 
-function LabPoveonView({ data, loading, onLoad }: { data: PoveonViewData; loading: boolean; onLoad: () => void }) {
-  const [expanded, setExpanded] = useState<Set<string>>(new Set());
-  useEffect(() => { if (!data) onLoad(); }, [data, onLoad]);
-
-  if (loading) {
-    return (
-      <div className="space-y-4 animate-pulse">
-        <div className="h-32 bg-white/5 rounded-2xl" />
-        <div className="h-20 bg-white/5 rounded-2xl" />
-        <div className="h-48 bg-white/5 rounded-2xl" />
-      </div>
-    );
-  }
-
-  const totalOwed       = data?.total_owed       ?? 0;
-  const totalLabRevenue = data?.total_lab_revenue ?? 0;
-  const totalDeposited  = data?.total_deposited  ?? 0;
-  const requests        = data?.requests         ?? [];
-
-  function toggleExpand(id: string) {
-    setExpanded((prev) => {
-      const next = new Set(prev);
-      next.has(id) ? next.delete(id) : next.add(id);
-      return next;
-    });
-  }
-
-  return (
-    <div className="space-y-6">
-      {/* Wallet panel — balance + DVA account */}
-      <LabWalletPanel />
-
-      {/* Summary cards */}
-      <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
-        <div className="bg-gradient-to-br from-emerald-500/20 to-emerald-600/10 border border-emerald-500/30 rounded-2xl p-5 flex items-center gap-4 sm:flex-col sm:items-center sm:text-center">
-          <div className="sm:hidden w-10 h-10 rounded-xl bg-emerald-500/20 flex items-center justify-center shrink-0">
-            <CreditCard className="w-5 h-5 text-emerald-400" />
-          </div>
-          <div className="flex-1 sm:flex-none">
-            <p className="text-xs text-slate-400 uppercase tracking-wider mb-1">Your Revenue</p>
-            <p className="text-2xl font-bold font-mono text-white">₦{totalLabRevenue.toLocaleString()}</p>
-            <p className="text-xs text-slate-500 mt-1">from listed tests</p>
-          </div>
-        </div>
-        <div className="bg-gradient-to-br from-sky-500/20 to-sky-600/10 border border-sky-500/30 rounded-2xl p-5 flex items-center gap-4 sm:flex-col sm:items-center sm:text-center">
-          <div className="sm:hidden w-10 h-10 rounded-xl bg-sky-500/20 flex items-center justify-center shrink-0">
-            <CreditCard className="w-5 h-5 text-sky-400" />
-          </div>
-          <div className="flex-1 sm:flex-none">
-            <p className="text-xs text-slate-400 uppercase tracking-wider mb-1">Total Poveon Fee</p>
-            <p className="text-2xl font-bold font-mono text-white">₦{totalOwed.toLocaleString()}</p>
-            <p className="text-xs text-slate-500 mt-1">cumulative commission</p>
-          </div>
-        </div>
-        <div className="bg-gradient-to-br from-violet-500/20 to-violet-600/10 border border-violet-500/30 rounded-2xl p-5 flex items-center gap-4 sm:flex-col sm:items-center sm:text-center">
-          <div className="sm:hidden w-10 h-10 rounded-xl bg-violet-500/20 flex items-center justify-center shrink-0">
-            <CreditCard className="w-5 h-5 text-violet-400" />
-          </div>
-          <div className="flex-1 sm:flex-none">
-            <p className="text-xs text-slate-400 uppercase tracking-wider mb-1">Total Deposited</p>
-            <p className="text-2xl font-bold font-mono text-white">₦{totalDeposited.toLocaleString()}</p>
-            <p className="text-xs text-slate-500 mt-1">paid into wallet via DVA</p>
-          </div>
-        </div>
-      </div>
-
-      {/* Request history */}
+      {/* 5 — Commission by Request */}
       <div>
         <div className="flex items-center justify-between mb-4">
           <p className="text-sm font-semibold text-white">Commission by Request ({requests.length})</p>
@@ -3429,17 +3422,12 @@ function LabPoveonView({ data, loading, onLoad }: { data: PoveonViewData; loadin
                     onClick={() => toggleExpand(req.id)}
                     className="w-full flex items-center gap-3 px-4 py-3 hover:bg-white/5 transition-colors text-left"
                   >
-                    <div className={`w-8 h-8 rounded-xl flex items-center justify-center shrink-0 ${req.is_paid_to_poveon ? "bg-emerald-500/15" : "bg-amber-500/15"}`}>
-                      {req.is_paid_to_poveon
-                        ? <Check className="w-4 h-4 text-emerald-400" />
-                        : <CreditCard className="w-4 h-4 text-amber-400" />}
+                    <div className="w-8 h-8 rounded-xl flex items-center justify-center shrink-0 bg-amber-500/15">
+                      <CreditCard className="w-4 h-4 text-amber-400" />
                     </div>
                     <div className="flex-1 min-w-0">
                       <div className="flex items-center gap-2 flex-wrap">
                         <p className="text-sm text-white font-mono font-medium">{req.code}</p>
-                        {req.is_paid_to_poveon && (
-                          <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-emerald-500/15 text-emerald-400 font-medium">Paid</span>
-                        )}
                       </div>
                       <p className="text-xs text-slate-500 truncate">{req.patient_name ?? "Patient"} · {req.tests.slice(0, 40)}</p>
                       <p className="text-[10px] text-slate-600 mt-0.5 sm:hidden">{req.seen_at ? format(new Date(req.seen_at), "dd MMM yyyy") : ""}</p>
