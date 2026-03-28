@@ -33,7 +33,7 @@ interface ReferralGroup {
 }
 
 // Shared white input class for dark-background modals
-const whiteInput = "bg-white border-slate-200 text-slate-800 placeholder-slate-300";
+const whiteInput = "bg-white border-slate-400 text-slate-800 placeholder-slate-500";
 
 const COUNTRY_CODES = [
   { code: "+234", label: "🇳🇬 NG +234" },
