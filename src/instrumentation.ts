@@ -8,4 +8,7 @@ export async function register() {
 
   const { fixCommissionPct } = await import("@/lib/startup/fix-commission-pct");
   await fixCommissionPct();
+
+  const { ensurePriceChangeLogsTable } = await import("@/lib/startup/ensure-price-change-logs");
+  await ensurePriceChangeLogsTable();
 }
