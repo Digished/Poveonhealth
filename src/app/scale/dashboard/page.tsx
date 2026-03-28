@@ -373,7 +373,7 @@ export default function ScaleDashboardPage() {
 
   const uniqueHospitals = useMemo(() => {
     const hs = doctors.map((d) => d.doctor_hospital).filter((h): h is string => !!h?.trim());
-    return [...new Set(hs)].sort();
+    return Array.from(new Set(hs)).sort();
   }, [doctors]);
 
   const filteredDoctors = useMemo(() => {
