@@ -1369,18 +1369,6 @@ const [catalogModalLabId, setCatalogModalLabId] = useState<string | null>(null);
                       </span>
                       <span className="text-xs text-slate-500">{m.doctor_count} doctor{m.doctor_count !== 1 ? "s" : ""}</span>
                     </div>
-                    <div className="bg-white/5 rounded-xl border border-white/10 px-3 py-2 flex items-center gap-2">
-                      <Link className="w-3 h-3 text-slate-500 shrink-0" />
-                      <span className="text-xs text-slate-500 flex-1 truncate font-mono">{refLink(m.code)}</span>
-                      <button
-                        type="button"
-                        onClick={() => { navigator.clipboard.writeText(refLink(m.code)); toast.success("Referral link copied!"); }}
-                        className="shrink-0 text-slate-400 hover:text-white transition-colors"
-                        title="Copy referral link"
-                      >
-                        <Copy className="w-3.5 h-3.5" />
-                      </button>
-                    </div>
                     <div className="flex items-center justify-between pt-1">
                       <p className="text-xs text-slate-600">Added {format(new Date(m.created_at), "dd MMM yyyy")}</p>
                       <div className="flex items-center gap-1">

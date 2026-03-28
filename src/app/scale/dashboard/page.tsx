@@ -1,12 +1,12 @@
 "use client";
 
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, useMemo } from "react";
 import { useRouter } from "next/navigation";
 import {
   TrendingUp, LogOut, RefreshCw, User, Building2,
   Phone, TestTube2, ChevronDown, ChevronUp,
   Clock, CheckCircle, Eye, Plus, X, Loader2,
-  ShieldAlert,
+  ShieldAlert, Filter,
 } from "lucide-react";
 import { PoveonLogo } from "@/components/PoveonLogo";
 import { PrefixSelect } from "@/components/PrefixSelect";
@@ -342,6 +342,7 @@ export default function ScaleDashboardPage() {
   const [error, setError]             = useState("");
   const [loggingOut, setLoggingOut]   = useState(false);
   const [search, setSearch]           = useState("");
+  const [hospitalFilter, setHospitalFilter] = useState("");
   const [showCreate, setShowCreate]   = useState(false);
 
   const load = useCallback(async () => {
@@ -370,14 +371,27 @@ export default function ScaleDashboardPage() {
     router.replace("/scale");
   }
 
-  const filteredDoctors = search.trim()
-    ? doctors.filter(
+  const uniqueHospitals = useMemo(() => {
+    const hs = doctors.map((d) => d.doctor_hospital).filter((h): h is string => !!h?.trim());
+    return [...new Set(hs)].sort();
+  }, [doctors]);
+
+  const filteredDoctors = useMemo(() => {
+    let result = doctors;
+    if (search.trim()) {
+      const q = search.toLowerCase();
+      result = result.filter(
         (d) =>
-          d.doctor_name.toLowerCase().includes(search.toLowerCase()) ||
-          d.doctor_hospital?.toLowerCase().includes(search.toLowerCase()) ||
-          d.doctor_email.toLowerCase().includes(search.toLowerCase())
-      )
-    : doctors;
+          d.doctor_name.toLowerCase().includes(q) ||
+          d.doctor_hospital?.toLowerCase().includes(q) ||
+          d.doctor_email.toLowerCase().includes(q),
+      );
+    }
+    if (hospitalFilter) {
+      result = result.filter((d) => d.doctor_hospital === hospitalFilter);
+    }
+    return result;
+  }, [doctors, search, hospitalFilter]);
 
   return (
     <div className="min-h-dvh bg-gradient-to-br from-emerald-50 via-teal-50 to-cyan-50">
@@ -442,9 +456,9 @@ export default function ScaleDashboardPage() {
           <div className="bg-red-50 border border-red-100 rounded-xl px-4 py-3 text-sm text-red-600">{error}</div>
         )}
 
-        {/* Search */}
+        {/* Search + hospital filter */}
         {doctors.length > 3 && (
-          <div className="relative">
+          <div className="flex flex-col gap-2">
             <input
               type="text"
               placeholder="Search by name, hospital, or email..."
@@ -452,6 +466,30 @@ export default function ScaleDashboardPage() {
               onChange={(e) => setSearch(e.target.value)}
               className="w-full px-4 py-3 rounded-xl border border-slate-200 bg-white text-slate-800 placeholder-slate-400 text-sm focus:outline-none focus:ring-2 focus:ring-emerald-400 focus:border-transparent transition"
             />
+            {uniqueHospitals.length > 1 && (
+              <div className="flex items-center gap-2 bg-white border border-slate-200 rounded-xl px-3 py-2">
+                <Filter className="w-3.5 h-3.5 text-slate-400 shrink-0" />
+                <select
+                  value={hospitalFilter}
+                  onChange={(e) => setHospitalFilter(e.target.value)}
+                  className="flex-1 bg-transparent text-sm text-slate-700 outline-none cursor-pointer"
+                >
+                  <option value="">All hospitals</option>
+                  {uniqueHospitals.map((h) => (
+                    <option key={h} value={h}>{h}</option>
+                  ))}
+                </select>
+                {hospitalFilter && (
+                  <button
+                    type="button"
+                    onClick={() => setHospitalFilter("")}
+                    className="shrink-0 text-slate-400 hover:text-slate-700 transition"
+                  >
+                    <X className="w-3.5 h-3.5" />
+                  </button>
+                )}
+              </div>
+            )}
           </div>
         )}
 
@@ -478,11 +516,11 @@ export default function ScaleDashboardPage() {
           <div className="bg-white rounded-2xl border border-slate-100 p-8 text-center">
             <User className="w-10 h-10 text-slate-200 mx-auto mb-3" />
             <p className="text-sm font-semibold text-slate-600">
-              {search ? "No professionals match your search" : "No professionals yet"}
+              {search || hospitalFilter ? "No professionals match your filters" : "No professionals yet"}
             </p>
             <p className="text-xs text-slate-400 mt-1">
-              {search
-                ? "Try a different search term."
+              {search || hospitalFilter
+                ? "Try adjusting your search or hospital filter."
                 : "Add the doctors you work with. They'll be able to claim their profile when they log in."}
             </p>
             {!search && (

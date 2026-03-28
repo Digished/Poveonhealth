@@ -90,6 +90,8 @@ export function LabDashboard({ lab, isOwner = false, roleName = "Lab Owner", can
   const [priceListData, setPriceListData] = useState<{ category: string; tests: { id: string; name: string; lab_price: number; poveon_fee: number | null; commission_pct: number | null }[] }[] | null>(null);
   const [priceListLoading, setPriceListLoading] = useState(false);
   const [mobileNavOpen, setMobileNavOpen] = useState(false);
+  // Eagerly loaded wallet balance for the "amount owed" banner shown on all tabs
+  const [poveonBalance, setPoveonBalance] = useState<number | null>(null);
   const [mobileHeaderOpen, setMobileHeaderOpen] = useState(false);
   const [activeTab, setActiveTab] = useState<RequestStatus>("seen");
   const [requests, setRequests] = useState<LabRequest[]>([]);
@@ -195,6 +197,21 @@ export function LabDashboard({ lab, isOwner = false, roleName = "Lab Owner", can
     const interval = setInterval(() => fetchRequests(true), 30_000);
     return () => clearInterval(interval);
   }, [fetchRequests]);
+
+  // Eagerly fetch Poveon balance so the "amount owed" banner appears on all tabs
+  useEffect(() => {
+    if (!isOwner && !canViewWallet) return;
+    fetch("/api/lab/poveon")
+      .then((r) => r.json())
+      .then((d) => {
+        if (d.success) {
+          setPoveonData(d);
+          setPoveonBalance(d.wallet_balance ?? null);
+        }
+      })
+      .catch(() => {});
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
 
   const fetchClients = useCallback(async () => {
@@ -635,6 +652,24 @@ export function LabDashboard({ lab, isOwner = false, roleName = "Lab Owner", can
             </div>
           );
         })()}
+
+        {/* Amount owed banner — shown on all tabs when lab has a negative wallet balance */}
+        {poveonBalance !== null && poveonBalance < 0 && (isOwner || canViewWallet) && (
+          <div className="mb-5 flex items-center gap-3 bg-amber-500/15 border border-amber-500/30 rounded-2xl px-4 py-3">
+            <CreditCard className="w-4 h-4 text-amber-400 shrink-0" />
+            <p className="text-sm text-amber-200 flex-1">
+              Your lab owes Poveon{" "}
+              <span className="font-bold font-mono text-amber-300">₦{Math.abs(poveonBalance).toLocaleString()}</span>.
+              {" "}Top up your wallet to settle the balance.
+            </p>
+            <button
+              onClick={() => setMainView("poveon")}
+              className="shrink-0 text-xs font-semibold text-amber-300 hover:text-amber-100 underline underline-offset-2 transition"
+            >
+              View →
+            </button>
+          </div>
+        )}
 
         {/* Referrals view */}
         {mainView === "referrals" && (
@@ -3298,7 +3333,6 @@ function LabPoveonView({ data, loading, onLoad }: { data: PoveonViewData; loadin
   const totalOwed       = data?.total_owed       ?? 0;
   const totalLabRevenue = data?.total_lab_revenue ?? 0;
   const totalDeposited  = data?.total_deposited  ?? 0;
-  const walletBalance   = data?.wallet_balance   ?? 0;
   const requests        = data?.requests         ?? [];
 
   function toggleExpand(id: string) {
@@ -3315,26 +3349,36 @@ function LabPoveonView({ data, loading, onLoad }: { data: PoveonViewData; loadin
       <LabWalletPanel />
 
       {/* Summary cards */}
-      <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
-        <div className="bg-gradient-to-br from-emerald-500/20 to-emerald-600/10 border border-emerald-500/30 rounded-2xl p-5 text-center">
-          <p className="text-xs text-slate-400 uppercase tracking-wider mb-1">Your Revenue</p>
-          <p className="text-2xl font-bold font-mono text-white">₦{totalLabRevenue.toLocaleString()}</p>
-          <p className="text-xs text-slate-500 mt-1">from listed tests</p>
+      <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+        <div className="bg-gradient-to-br from-emerald-500/20 to-emerald-600/10 border border-emerald-500/30 rounded-2xl p-5 flex items-center gap-4 sm:flex-col sm:items-center sm:text-center">
+          <div className="sm:hidden w-10 h-10 rounded-xl bg-emerald-500/20 flex items-center justify-center shrink-0">
+            <CreditCard className="w-5 h-5 text-emerald-400" />
+          </div>
+          <div className="flex-1 sm:flex-none">
+            <p className="text-xs text-slate-400 uppercase tracking-wider mb-1">Your Revenue</p>
+            <p className="text-2xl font-bold font-mono text-white">₦{totalLabRevenue.toLocaleString()}</p>
+            <p className="text-xs text-slate-500 mt-1">from listed tests</p>
+          </div>
         </div>
-        <div className="bg-gradient-to-br from-sky-500/20 to-sky-600/10 border border-sky-500/30 rounded-2xl p-5 text-center">
-          <p className="text-xs text-slate-400 uppercase tracking-wider mb-1">Total Poveon Fee</p>
-          <p className="text-2xl font-bold font-mono text-white">₦{totalOwed.toLocaleString()}</p>
-          <p className="text-xs text-slate-500 mt-1">cumulative commission</p>
+        <div className="bg-gradient-to-br from-sky-500/20 to-sky-600/10 border border-sky-500/30 rounded-2xl p-5 flex items-center gap-4 sm:flex-col sm:items-center sm:text-center">
+          <div className="sm:hidden w-10 h-10 rounded-xl bg-sky-500/20 flex items-center justify-center shrink-0">
+            <CreditCard className="w-5 h-5 text-sky-400" />
+          </div>
+          <div className="flex-1 sm:flex-none">
+            <p className="text-xs text-slate-400 uppercase tracking-wider mb-1">Total Poveon Fee</p>
+            <p className="text-2xl font-bold font-mono text-white">₦{totalOwed.toLocaleString()}</p>
+            <p className="text-xs text-slate-500 mt-1">cumulative commission</p>
+          </div>
         </div>
-        <div className="bg-gradient-to-br from-violet-500/20 to-violet-600/10 border border-violet-500/30 rounded-2xl p-5 text-center">
-          <p className="text-xs text-slate-400 uppercase tracking-wider mb-1">Total Deposited</p>
-          <p className="text-2xl font-bold font-mono text-white">₦{totalDeposited.toLocaleString()}</p>
-          <p className="text-xs text-slate-500 mt-1">paid into wallet via DVA</p>
-        </div>
-        <div className={`bg-gradient-to-br rounded-2xl p-5 text-center border ${walletBalance < 0 ? "from-amber-500/20 to-amber-600/10 border-amber-500/30" : "from-emerald-500/20 to-emerald-600/10 border-emerald-500/30"}`}>
-          <p className="text-xs text-slate-400 uppercase tracking-wider mb-1">Wallet Balance</p>
-          <p className={`text-2xl font-bold font-mono ${walletBalance < 0 ? "text-amber-300" : "text-emerald-300"}`}>₦{walletBalance.toLocaleString()}</p>
-          <p className="text-xs text-slate-500 mt-1">{walletBalance < 0 ? "amount owed to Poveon" : walletBalance === 0 ? "fully settled" : "in credit"}</p>
+        <div className="bg-gradient-to-br from-violet-500/20 to-violet-600/10 border border-violet-500/30 rounded-2xl p-5 flex items-center gap-4 sm:flex-col sm:items-center sm:text-center">
+          <div className="sm:hidden w-10 h-10 rounded-xl bg-violet-500/20 flex items-center justify-center shrink-0">
+            <CreditCard className="w-5 h-5 text-violet-400" />
+          </div>
+          <div className="flex-1 sm:flex-none">
+            <p className="text-xs text-slate-400 uppercase tracking-wider mb-1">Total Deposited</p>
+            <p className="text-2xl font-bold font-mono text-white">₦{totalDeposited.toLocaleString()}</p>
+            <p className="text-xs text-slate-500 mt-1">paid into wallet via DVA</p>
+          </div>
         </div>
       </div>
 
