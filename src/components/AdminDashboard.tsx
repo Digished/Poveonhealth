@@ -109,6 +109,7 @@ export function AdminDashboard() {
   const [metrics, setMetrics] = useState<AdminMetrics | null>(null);
   const [loading, setLoading] = useState(true);
   const [showCreateLab, setShowCreateLab] = useState(false);
+  const [byLabOpen, setByLabOpen] = useState(false);
   const [showCreateMarketer, setShowCreateMarketer] = useState(false);
   const [marketers, setMarketers] = useState<{ id: string; name: string; email: string; phone: string | null; code: string; suspended: boolean; created_at: string; doctor_count: number; referral_link: string }[]>([]);
   const [selectedMarketerId, setSelectedMarketerId] = useState<string | null>(null);
@@ -537,8 +538,15 @@ const [catalogModalLabId, setCatalogModalLabId] = useState<string | null>(null);
             ) : metrics ? (
               <>
                 <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+                  <button
+                    onClick={() => setByLabOpen(true)}
+                    className="bg-gradient-to-br from-blue-500/20 to-blue-600/10 border border-blue-500/30 rounded-2xl p-5 text-left hover:border-blue-400/50 hover:from-blue-500/25 transition-all group"
+                  >
+                    <p className="text-xs text-slate-400 font-medium uppercase tracking-wider mb-1">Total</p>
+                    <p className="text-4xl font-bold text-white">{metrics.total}</p>
+                    <p className="text-[10px] text-blue-400 mt-1 group-hover:text-blue-300 transition-colors">By lab →</p>
+                  </button>
                   {[
-                    { label: "Total", value: metrics.total, color: "from-blue-500/20 to-blue-600/10 border-blue-500/30" },
                     { label: "Incoming", value: metrics.incoming, color: "from-blue-400/20 to-blue-500/10 border-blue-400/30" },
                     { label: "Seen", value: metrics.seen, color: "from-amber-400/20 to-amber-500/10 border-amber-400/30" },
                     { label: "Done", value: metrics.done, color: "from-emerald-400/20 to-emerald-500/10 border-emerald-400/30" },
@@ -549,21 +557,30 @@ const [catalogModalLabId, setCatalogModalLabId] = useState<string | null>(null);
                     </div>
                   ))}
                 </div>
-                <div className="bg-white/5 border border-white/10 rounded-2xl p-5">
-                  <h3 className="text-sm font-semibold text-slate-300 mb-4">By Laboratory</h3>
-                  <div className="space-y-3">
-                    {metrics.byLab.map((lab) => (
-                      <div key={lab.lab_id} className="flex items-center gap-3">
-                        <p className="text-sm text-white flex-1 min-w-0 truncate">{lab.lab_name}</p>
-                        <div className="flex-1 bg-white/10 rounded-full h-2 overflow-hidden">
-                          <div className="h-full bg-medical-500 rounded-full" style={{ width: `${metrics.total ? (lab.total / metrics.total) * 100 : 0}%` }} />
-                        </div>
-                        <span className="text-sm text-slate-400 font-mono w-8 text-right">{lab.total}</span>
+
+                {/* By Lab modal */}
+                {byLabOpen && (
+                  <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm" onClick={() => setByLabOpen(false)}>
+                    <div className="bg-slate-900 border border-white/15 rounded-2xl w-full max-w-md shadow-2xl animate-slide-up overflow-hidden" onClick={(e) => e.stopPropagation()}>
+                      <div className="flex items-center justify-between px-5 py-4 border-b border-white/10">
+                        <h3 className="font-semibold text-white">Requests by Laboratory</h3>
+                        <button onClick={() => setByLabOpen(false)} className="p-1.5 rounded-lg hover:bg-white/10 text-slate-400 transition-colors"><X className="w-4 h-4" /></button>
                       </div>
-                    ))}
-                    {metrics.byLab.length === 0 && <p className="text-sm text-slate-500 text-center py-4">No data yet</p>}
+                      <div className="p-5 space-y-3 max-h-[60vh] overflow-y-auto">
+                        {metrics.byLab.map((lab) => (
+                          <div key={lab.lab_id} className="flex items-center gap-3">
+                            <p className="text-sm text-white min-w-0 truncate" style={{ flex: "1 1 40%" }}>{lab.lab_name}</p>
+                            <div className="flex-1 bg-white/10 rounded-full h-2 overflow-hidden">
+                              <div className="h-full bg-medical-500 rounded-full" style={{ width: `${metrics.total ? (lab.total / metrics.total) * 100 : 0}%` }} />
+                            </div>
+                            <span className="text-sm text-slate-400 font-mono w-8 text-right shrink-0">{lab.total}</span>
+                          </div>
+                        ))}
+                        {metrics.byLab.length === 0 && <p className="text-sm text-slate-500 text-center py-4">No data yet</p>}
+                      </div>
+                    </div>
                   </div>
-                </div>
+                )}
 
                 {/* ── Poveon Revenue ── */}
                 {revenueLoading ? (
@@ -821,44 +838,36 @@ const [catalogModalLabId, setCatalogModalLabId] = useState<string | null>(null);
             </div>
 
             {loading ? (
-              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+              <div className="space-y-1">
                 {[...Array(6)].map((_, i) => (
-                  <div key={i} className="bg-white/5 border border-white/10 rounded-2xl p-5 animate-pulse h-32" />
+                  <div key={i} className="bg-white/5 border border-white/10 rounded-xl h-14 animate-pulse" />
                 ))}
               </div>
             ) : referralGroups.length === 0 ? (
               <div className="text-center py-20 text-slate-500">No referrals yet</div>
             ) : (
-              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+              <div className="rounded-2xl overflow-hidden border border-white/8 divide-y divide-white/5">
                 {referralGroups.map((group) => (
                   <button
                     key={group.key}
                     onClick={() => setSelectedReferralGroup(group)}
-                    className="bg-white/5 border border-white/10 hover:border-white/20 rounded-2xl p-5 text-left transition-all hover:bg-white/8 group"
+                    className="w-full flex items-center gap-3 px-4 py-3 bg-white/3 hover:bg-white/8 text-left transition-colors group"
                   >
-                    <div className="flex items-start justify-between mb-3">
-                      <div className="w-9 h-9 bg-medical-700/40 rounded-xl flex items-center justify-center shrink-0">
-                        <Users className="w-4 h-4 text-medical-400" />
-                      </div>
-                      <ChevronRight className="w-4 h-4 text-slate-600 group-hover:text-slate-400 transition-colors mt-1" />
+                    <div className="w-8 h-8 bg-medical-700/40 rounded-lg flex items-center justify-center shrink-0">
+                      <Users className="w-4 h-4 text-medical-400" />
                     </div>
-                    <p className="font-semibold text-white text-sm truncate">{group.referrerName || group.email || "—"}</p>
-                    {group.referrerName && group.email && (
-                      <p className="text-xs text-slate-400 truncate mt-0.5">{group.email}</p>
-                    )}
-                    {group.hospital && (
-                      <p className="text-xs text-slate-500 truncate">{group.hospital}</p>
-                    )}
-                    <div className="flex items-center gap-3 mt-4 pt-3 border-t border-white/5">
-                      <div>
-                        <p className="text-2xl font-bold text-white">{group.requests.length}</p>
-                        <p className="text-xs text-slate-500">total</p>
-                      </div>
-                      <div className="border-l border-white/10 pl-3">
-                        <p className="text-2xl font-bold text-medical-400">{group.thisMonthCount}</p>
-                        <p className="text-xs text-slate-500">this month</p>
-                      </div>
+                    <div className="flex-1 min-w-0">
+                      <p className="text-sm font-semibold text-white truncate leading-tight">{group.referrerName || group.email || "—"}</p>
+                      <p className="text-xs text-slate-500 truncate">{group.hospital || (group.referrerName ? group.email : "")}</p>
                     </div>
+                    <div className="shrink-0 text-right">
+                      <span className="text-sm font-bold text-white">{group.requests.length}</span>
+                      <span className="text-xs text-slate-500 ml-1">total</span>
+                      {group.thisMonthCount > 0 && (
+                        <p className="text-[10px] text-medical-400">{group.thisMonthCount} this mo.</p>
+                      )}
+                    </div>
+                    <ChevronRight className="w-3.5 h-3.5 text-slate-600 group-hover:text-slate-400 transition-colors shrink-0" />
                   </button>
                 ))}
               </div>
@@ -1334,69 +1343,52 @@ const [catalogModalLabId, setCatalogModalLabId] = useState<string | null>(null);
               <div className="bg-white/5 border border-white/10 rounded-2xl p-10 text-center">
                 <TrendingUp className="w-10 h-10 text-slate-600 mx-auto mb-3" />
                 <p className="text-sm font-semibold text-slate-400">No marketers yet</p>
-                <p className="text-xs text-slate-500 mt-1">Add a marketer to generate their referral link.</p>
+                <p className="text-xs text-slate-500 mt-1">Add a marketer to track their referrals.</p>
               </div>
             ) : (
-              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+              <div className="rounded-2xl overflow-hidden border border-white/8 divide-y divide-white/5">
                 {marketers.map((m) => (
-                  <div key={m.id} className={`bg-white/5 border rounded-2xl p-5 space-y-3 transition-opacity ${m.suspended ? "border-white/5 opacity-60" : "border-white/10"}`}>
-                    {/* Header — clickable to open detail */}
+                  <div key={m.id} className={`flex items-center gap-3 px-4 py-3 bg-white/3 transition-opacity ${m.suspended ? "opacity-60" : ""}`}>
                     <button
                       type="button"
                       onClick={() => setSelectedMarketerId(m.id)}
-                      className="w-full flex items-center gap-2 text-left hover:opacity-80 transition-opacity"
+                      className="flex items-center gap-3 flex-1 min-w-0 text-left group"
                     >
                       <div className={`w-8 h-8 rounded-lg flex items-center justify-center shrink-0 ${m.suspended ? "bg-slate-700/40" : "bg-emerald-700/40"}`}>
                         <TrendingUp className={`w-4 h-4 ${m.suspended ? "text-slate-500" : "text-emerald-400"}`} />
                       </div>
                       <div className="min-w-0 flex-1">
-                        <div className="flex items-center gap-2 flex-wrap">
-                          <p className="font-semibold text-white text-sm truncate">{m.name}</p>
-                          {m.suspended && <span className="text-xs bg-red-900/40 text-red-400 border border-red-800/30 px-1.5 py-0.5 rounded-full">Suspended</span>}
+                        <div className="flex items-center gap-2 min-w-0">
+                          <p className="text-sm font-semibold text-white truncate leading-tight">{m.name}</p>
+                          {m.suspended && <span className="text-[10px] bg-red-900/40 text-red-400 border border-red-800/30 px-1.5 py-0.5 rounded-full shrink-0">Suspended</span>}
                         </div>
-                        <p className="text-xs text-slate-400 truncate">{m.email}</p>
+                        <p className="text-xs text-slate-500 truncate">{m.email}</p>
                       </div>
-                      <ChevronRight className="w-4 h-4 text-slate-600 shrink-0" />
+                      <div className="shrink-0 text-right mr-1">
+                        <span className="text-xs font-mono text-emerald-400">{m.code}</span>
+                        <p className="text-[10px] text-slate-500">{m.doctor_count} dr</p>
+                      </div>
+                      <ChevronRight className="w-3.5 h-3.5 text-slate-600 group-hover:text-slate-400 transition-colors shrink-0" />
                     </button>
-                    {m.phone && (
-                      <p className="text-xs text-slate-500 flex items-center gap-1">
-                        <Phone className="w-3 h-3 text-slate-600 shrink-0" />{m.phone}
-                      </p>
-                    )}
-                    <div className="flex items-center gap-2">
-                      <span className="text-xs bg-emerald-900/40 text-emerald-400 border border-emerald-800/30 px-2 py-0.5 rounded-full font-mono">
-                        {m.code}
-                      </span>
-                      <span className="text-xs text-slate-500">{m.doctor_count} doctor{m.doctor_count !== 1 ? "s" : ""}</span>
-                    </div>
-                    <div className="flex items-center justify-between pt-1">
-                      <p className="text-xs text-slate-600">Added {format(new Date(m.created_at), "dd MMM yyyy")}</p>
-                      <div className="flex items-center gap-1">
-                        <button
-                          type="button"
-                          onClick={() => handleToggleMarketerSuspended(m)}
-                          disabled={togglingMarketerId === m.id}
-                          title={m.suspended ? "Unsuspend" : "Suspend"}
-                          className={`p-1.5 rounded-lg text-xs transition-colors disabled:opacity-40 ${m.suspended ? "hover:bg-emerald-500/15 text-slate-500 hover:text-emerald-400" : "hover:bg-amber-500/15 text-slate-500 hover:text-amber-400"}`}
-                        >
-                          {togglingMarketerId === m.id ? (
-                            <RefreshCw className="w-3.5 h-3.5 animate-spin" />
-                          ) : m.suspended ? (
-                            <Eye className="w-3.5 h-3.5" />
-                          ) : (
-                            <EyeOff className="w-3.5 h-3.5" />
-                          )}
-                        </button>
-                        <button
-                          type="button"
-                          onClick={() => handleDeleteMarketer(m)}
-                          disabled={deletingMarketerId === m.id}
-                          title="Delete marketer"
-                          className="p-1.5 rounded-lg hover:bg-red-500/15 text-slate-500 hover:text-red-400 transition-colors disabled:opacity-40"
-                        >
-                          {deletingMarketerId === m.id ? <RefreshCw className="w-3.5 h-3.5 animate-spin" /> : <Trash2 className="w-3.5 h-3.5" />}
-                        </button>
-                      </div>
+                    <div className="flex items-center gap-1 shrink-0">
+                      <button
+                        type="button"
+                        onClick={() => handleToggleMarketerSuspended(m)}
+                        disabled={togglingMarketerId === m.id}
+                        title={m.suspended ? "Unsuspend" : "Suspend"}
+                        className={`p-1.5 rounded-lg transition-colors disabled:opacity-40 ${m.suspended ? "hover:bg-emerald-500/15 text-slate-500 hover:text-emerald-400" : "hover:bg-amber-500/15 text-slate-500 hover:text-amber-400"}`}
+                      >
+                        {togglingMarketerId === m.id ? <RefreshCw className="w-3.5 h-3.5 animate-spin" /> : m.suspended ? <Eye className="w-3.5 h-3.5" /> : <EyeOff className="w-3.5 h-3.5" />}
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => handleDeleteMarketer(m)}
+                        disabled={deletingMarketerId === m.id}
+                        title="Delete marketer"
+                        className="p-1.5 rounded-lg hover:bg-red-500/15 text-slate-500 hover:text-red-400 transition-colors disabled:opacity-40"
+                      >
+                        {deletingMarketerId === m.id ? <RefreshCw className="w-3.5 h-3.5 animate-spin" /> : <Trash2 className="w-3.5 h-3.5" />}
+                      </button>
                     </div>
                   </div>
                 ))}
@@ -3183,26 +3175,11 @@ function CreateMarketerModal({ onClose, onSuccess }: { onClose: () => void; onSu
                 <TrendingUp className="w-6 h-6 text-emerald-400" />
               </div>
               <h3 className="font-semibold text-white mb-1">Marketer Created!</h3>
-              <p className="text-sm text-slate-400">Share the referral link below with them.</p>
+              <p className="text-sm text-slate-400">Their referral code is ready.</p>
             </div>
-            <div className="bg-white/5 border border-white/10 rounded-xl p-4 space-y-2">
-              <div>
-                <p className="text-xs text-slate-400 mb-1 font-semibold uppercase tracking-wider">Referral Code</p>
-                <p className="font-mono text-lg text-emerald-400 font-bold">{created.code}</p>
-              </div>
-              <div>
-                <p className="text-xs text-slate-400 mb-1 font-semibold uppercase tracking-wider">Referral Link</p>
-                <div className="flex items-center gap-2 bg-white/5 rounded-lg px-3 py-2">
-                  <span className="text-xs text-slate-300 flex-1 truncate font-mono">{refLink(created.code)}</span>
-                  <button
-                    type="button"
-                    onClick={() => { navigator.clipboard.writeText(refLink(created.code)); toast.success("Copied!"); }}
-                    className="text-slate-400 hover:text-white transition-colors shrink-0"
-                  >
-                    <Copy className="w-3.5 h-3.5" />
-                  </button>
-                </div>
-              </div>
+            <div className="bg-white/5 border border-white/10 rounded-xl p-4">
+              <p className="text-xs text-slate-400 mb-1 font-semibold uppercase tracking-wider">Referral Code</p>
+              <p className="font-mono text-lg text-emerald-400 font-bold">{created.code}</p>
             </div>
             <p className="text-xs text-slate-500 leading-relaxed">
               The marketer can log in at <span className="text-slate-300 font-mono">/scale</span> using their email address (OTP-based, no password needed).
@@ -3406,29 +3383,14 @@ function MarketerDetailModal({
           {error && <p className="text-sm text-red-400 bg-red-500/10 border border-red-500/20 rounded-xl px-4 py-3">{error}</p>}
           {data && (
             <>
-              {/* Info + referral link */}
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                <div className="bg-white/5 border border-white/10 rounded-xl p-4 space-y-2">
-                  <p className="text-xs text-slate-500 font-semibold uppercase tracking-wider">Details</p>
-                  {data.marketer.phone && (
-                    <p className="text-xs text-slate-300 flex items-center gap-1.5"><Phone className="w-3 h-3 text-slate-500" />{data.marketer.phone}</p>
-                  )}
-                  <p className="text-xs text-slate-400">Code: <span className="font-mono text-emerald-400">{data.marketer.code}</span></p>
-                  <p className="text-xs text-slate-600">Joined {format(new Date(data.marketer.created_at), "dd MMM yyyy")}</p>
-                </div>
-                <div className="bg-white/5 border border-white/10 rounded-xl p-4 space-y-2">
-                  <p className="text-xs text-slate-500 font-semibold uppercase tracking-wider">Referral Link</p>
-                  <div className="flex items-center gap-2">
-                    <span className="text-xs text-slate-400 flex-1 truncate font-mono">{refLink(data.marketer.code)}</span>
-                    <button
-                      type="button"
-                      onClick={() => { navigator.clipboard.writeText(refLink(data.marketer.code)); toast.success("Copied!"); }}
-                      className="shrink-0 text-slate-400 hover:text-white transition-colors"
-                    >
-                      <Copy className="w-3.5 h-3.5" />
-                    </button>
-                  </div>
-                </div>
+              {/* Info */}
+              <div className="bg-white/5 border border-white/10 rounded-xl p-4 space-y-2">
+                <p className="text-xs text-slate-500 font-semibold uppercase tracking-wider">Details</p>
+                {data.marketer.phone && (
+                  <p className="text-xs text-slate-300 flex items-center gap-1.5"><Phone className="w-3 h-3 text-slate-500" />{data.marketer.phone}</p>
+                )}
+                <p className="text-xs text-slate-400">Code: <span className="font-mono text-emerald-400">{data.marketer.code}</span></p>
+                <p className="text-xs text-slate-600">Joined {format(new Date(data.marketer.created_at), "dd MMM yyyy")}</p>
               </div>
 
               {/* Stats */}
@@ -4158,26 +4120,36 @@ function AdminKnowledgeBaseTab() {
 // ─────────────────────────────────────────────────────────
 // Admin Users Tab — view & delete doctor portal users
 // ─────────────────────────────────────────────────────────
-interface DocUser {
-  email: string;
-  prefix: string | null;
-  full_name: string | null;
-  phone: string | null;
-  hospitals: string[];
-  has_pin: boolean;
-  updated_at: string;
+interface PortalUser {
+  email: string; name: string | null; phone: string | null;
+  role: string; sub_role: string | null; detail: string | null;
+  updated_at: string; has_pin: boolean;
 }
 
+const ROLE_TABS = [
+  { key: "all", label: "All" },
+  { key: "doctor", label: "Doctors" },
+  { key: "lab", label: "Lab Staff" },
+  { key: "admin", label: "Admins" },
+] as const;
+
+const ROLE_COLORS: Record<string, string> = {
+  doctor: "bg-medical-500/15 text-medical-400 border-medical-500/20",
+  lab:    "bg-emerald-500/15 text-emerald-400 border-emerald-500/20",
+  admin:  "bg-violet-500/15 text-violet-400 border-violet-500/20",
+};
+
 function AdminUsersTab() {
-  const [users, setUsers] = useState<DocUser[]>([]);
+  const [users, setUsers] = useState<PortalUser[]>([]);
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState("");
+  const [roleFilter, setRoleFilter] = useState<"all" | "doctor" | "lab" | "admin">("all");
   const [deletingEmail, setDeletingEmail] = useState<string | null>(null);
 
-  const fetchUsers = useCallback(async (q = "") => {
+  const fetchUsers = useCallback(async () => {
     setLoading(true);
     try {
-      const res = await fetch(`/api/admin/users${q ? `?q=${encodeURIComponent(q)}` : ""}`);
+      const res = await fetch(`/api/admin/users?role=${roleFilter}`);
       if (res.ok) {
         const data = await res.json();
         setUsers(data.users ?? []);
@@ -4185,7 +4157,7 @@ function AdminUsersTab() {
     } finally {
       setLoading(false);
     }
-  }, []);
+  }, [roleFilter]);
 
   useEffect(() => { fetchUsers(); }, [fetchUsers]);
 
@@ -4209,7 +4181,8 @@ function AdminUsersTab() {
   const filtered = search.trim()
     ? users.filter((u) =>
         u.email.toLowerCase().includes(search.toLowerCase()) ||
-        (u.full_name ?? "").toLowerCase().includes(search.toLowerCase())
+        (u.name ?? "").toLowerCase().includes(search.toLowerCase()) ||
+        (u.detail ?? "").toLowerCase().includes(search.toLowerCase())
       )
     : users;
 
@@ -4218,12 +4191,25 @@ function AdminUsersTab() {
       {/* Header */}
       <div className="flex items-center justify-between gap-3 flex-wrap">
         <div>
-          <h2 className="text-lg font-bold text-white">Doctor Portal Users</h2>
-          <p className="text-xs text-slate-400 mt-0.5">{users.length} registered users</p>
+          <h2 className="text-lg font-bold text-white">Portal Users</h2>
+          <p className="text-xs text-slate-400 mt-0.5">{filtered.length} user{filtered.length !== 1 ? "s" : ""}{search ? " matching" : ""}</p>
         </div>
-        <button onClick={() => fetchUsers(search)} className="p-2 rounded-xl text-slate-400 hover:text-white hover:bg-white/8 transition">
+        <button onClick={fetchUsers} className="p-2 rounded-xl text-slate-400 hover:text-white hover:bg-white/8 transition">
           <RefreshCw className="w-4 h-4" />
         </button>
+      </div>
+
+      {/* Role filter tabs */}
+      <div className="flex gap-1 bg-white/5 p-1 rounded-xl w-fit">
+        {ROLE_TABS.map((t) => (
+          <button
+            key={t.key}
+            onClick={() => setRoleFilter(t.key)}
+            className={`px-3 py-1.5 rounded-lg text-xs font-medium transition-all ${roleFilter === t.key ? "bg-white/15 text-white" : "text-slate-400 hover:text-white"}`}
+          >
+            {t.label}
+          </button>
+        ))}
       </div>
 
       {/* Search */}
@@ -4232,7 +4218,7 @@ function AdminUsersTab() {
         <input
           value={search}
           onChange={(e) => setSearch(e.target.value)}
-          placeholder="Search by email or name…"
+          placeholder="Search by email, name, or lab…"
           className="w-full pl-9 pr-4 py-2.5 rounded-xl bg-white/5 border border-white/10 text-sm text-white placeholder-slate-500 focus:outline-none focus:ring-2 focus:ring-medical-500 transition"
         />
       </div>
@@ -4247,42 +4233,37 @@ function AdminUsersTab() {
           <p className="text-sm">No users found</p>
         </div>
       ) : (
-        <div className="space-y-2">
+        <div className="rounded-2xl overflow-hidden border border-white/8 divide-y divide-white/5">
           {filtered.map((u) => (
-            <div key={u.email} className="bg-white/5 border border-white/8 rounded-2xl px-4 py-3 flex items-start gap-3">
-              <div className="w-9 h-9 rounded-full bg-medical-500/20 flex items-center justify-center shrink-0 mt-0.5">
-                <UserCircle className="w-5 h-5 text-medical-400" />
+            <div key={`${u.role}-${u.email}`} className="flex items-center gap-3 px-4 py-3 bg-white/3 hover:bg-white/5 transition-colors">
+              <div className="w-8 h-8 rounded-full bg-white/8 flex items-center justify-center shrink-0">
+                <UserCircle className="w-4 h-4 text-slate-400" />
               </div>
               <div className="flex-1 min-w-0">
-                <div className="flex items-center gap-2 flex-wrap">
-                  <span className="text-sm font-semibold text-white">
-                    {u.prefix ? `${u.prefix} ` : ""}{u.full_name ?? <span className="text-slate-500 font-normal italic">No name</span>}
+                <div className="flex items-center gap-2 flex-wrap min-w-0">
+                  <p className="text-sm font-semibold text-white truncate leading-tight">
+                    {u.name ?? <span className="text-slate-500 font-normal italic">No name</span>}
+                  </p>
+                  <span className={`text-[10px] border rounded-full px-1.5 py-0.5 shrink-0 ${ROLE_COLORS[u.role] ?? ""}`}>
+                    {u.sub_role ?? u.role}
                   </span>
-                  {u.has_pin && (
-                    <span className="text-[10px] bg-emerald-500/15 text-emerald-400 border border-emerald-500/20 rounded-full px-2 py-0.5">PIN set</span>
-                  )}
+                  {u.has_pin && <span className="text-[10px] bg-emerald-500/15 text-emerald-400 border border-emerald-500/20 rounded-full px-1.5 py-0.5 shrink-0">PIN</span>}
                 </div>
-                <p className="text-xs text-slate-400 mt-0.5">{u.email}</p>
-                {u.phone && <p className="text-xs text-slate-500 mt-0.5">{u.phone}</p>}
-                {u.hospitals.length > 0 && (
-                  <div className="flex flex-wrap gap-1 mt-1.5">
-                    {u.hospitals.map((h) => (
-                      <span key={h} className="text-[10px] bg-sky-500/10 text-sky-400 border border-sky-500/20 rounded-full px-2 py-0.5">{h}</span>
-                    ))}
-                  </div>
-                )}
-                <p className="text-[10px] text-slate-600 mt-1.5">Updated {format(new Date(u.updated_at), "dd MMM yyyy · HH:mm")}</p>
+                <p className="text-xs text-slate-500 truncate">{u.email}</p>
+                {u.detail && <p className="text-[10px] text-slate-600 truncate">{u.detail}</p>}
               </div>
-              <button
-                onClick={() => handleDelete(u.email)}
-                disabled={deletingEmail === u.email}
-                className="p-1.5 rounded-lg text-slate-600 hover:text-rose-400 hover:bg-rose-500/10 transition shrink-0"
-                title="Delete user"
-              >
-                {deletingEmail === u.email
-                  ? <RefreshCw className="w-4 h-4 animate-spin" />
-                  : <Trash2 className="w-4 h-4" />}
-              </button>
+              {u.role === "doctor" && (
+                <button
+                  onClick={() => handleDelete(u.email)}
+                  disabled={deletingEmail === u.email}
+                  className="p-1.5 rounded-lg text-slate-600 hover:text-rose-400 hover:bg-rose-500/10 transition shrink-0"
+                  title="Delete user"
+                >
+                  {deletingEmail === u.email
+                    ? <RefreshCw className="w-3.5 h-3.5 animate-spin" />
+                    : <Trash2 className="w-3.5 h-3.5" />}
+                </button>
+              )}
             </div>
           ))}
         </div>

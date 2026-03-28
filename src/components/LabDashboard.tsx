@@ -996,7 +996,7 @@ export function LabDashboard({ lab, isOwner = false, roleName = "Lab Owner", can
                       </div>
                       <div className="shrink-0 text-right">
                         <span className="text-xs font-bold text-medical-300 bg-medical-600/20 border border-medical-500/30 px-2 py-0.5 rounded-full">
-                          {client.visit_count}v
+                          {client.visit_count}
                         </span>
                         <p className="text-[10px] text-slate-500 mt-0.5">
                           {new Date(client.last_visit).toLocaleDateString("en-GB", { day: "numeric", month: "short" })}
@@ -1743,14 +1743,16 @@ export function LabDashboard({ lab, isOwner = false, roleName = "Lab Owner", can
             Enter the patient code to reveal their full information.
           </p>
           <div className="flex gap-2">
-            <Input
-              placeholder="Enter patient code (e.g. LABA-8X4K29Q)"
-              value={codeInput}
-              onChange={(e) => setCodeInput(e.target.value)}
-              onKeyDown={(e) => e.key === "Enter" && handleRetrieve()}
-              className="!bg-white !backdrop-blur-none border-slate-200 text-slate-800 placeholder-slate-300 font-mono"
-            />
-            <Button onClick={handleRetrieve} loading={retrieving} className="shrink-0">
+            <div className="flex-1 min-w-0">
+              <Input
+                placeholder="Enter patient code (e.g. LABA-8X4K29Q)"
+                value={codeInput}
+                onChange={(e) => setCodeInput(e.target.value)}
+                onKeyDown={(e) => e.key === "Enter" && handleRetrieve()}
+                className="!bg-white !backdrop-blur-none border-slate-200 text-slate-800 placeholder-slate-300 font-mono w-full"
+              />
+            </div>
+            <Button onClick={handleRetrieve} loading={retrieving} className="shrink-0 sm:px-6">
               <Search className="w-4 h-4" />
               Reveal
             </Button>
@@ -3142,7 +3144,7 @@ function LabPriceListView({ data, loading, onLoad, onManage }: { data: PriceList
           </div>
           <button
             onClick={onManage}
-            className="flex items-center gap-2 px-4 py-2.5 rounded-xl bg-sky-500/15 border border-sky-500/30 text-sky-300 hover:bg-sky-500/25 hover:text-sky-200 text-sm font-medium transition-all whitespace-nowrap"
+            className="flex items-center gap-2 px-4 py-2.5 rounded-xl bg-sky-600 border border-sky-600 text-white hover:bg-sky-700 text-sm font-medium transition-all whitespace-nowrap shadow-sm"
           >
             <Settings2 className="w-4 h-4" />
             Manage &amp; Edit
@@ -3284,6 +3286,19 @@ function LabWalletPanel() {
         )}
       </div>
 
+      {/* How Poveon commission works */}
+      <div className="bg-white/5 border border-white/10 rounded-2xl px-5 py-4 flex items-start gap-3">
+        <CreditCard className="w-4 h-4 text-slate-400 mt-0.5 shrink-0" />
+        <div className="space-y-1 flex-1">
+          <p className="text-sm font-semibold text-white">How Poveon commission works</p>
+          <p className="text-xs text-slate-400 leading-relaxed">
+            Each time you mark a request as <strong className="text-white">Seen</strong>, Poveon calculates the commission from your test catalog.
+            The commission rate is set per test in your catalog. Only tests in your price list contribute to the commission.
+            Tests not in your catalog cost ₦0 commission.
+          </p>
+        </div>
+      </div>
+
       {/* Payment history */}
       {credits.length > 0 && (
         <div className="bg-white/5 border border-white/10 rounded-2xl overflow-hidden">
@@ -3380,19 +3395,6 @@ function LabPoveonView({ data, loading, onLoad }: { data: PoveonViewData; loadin
             <p className="text-2xl font-bold font-mono text-white">₦{totalDeposited.toLocaleString()}</p>
             <p className="text-xs text-slate-500 mt-1">paid into wallet via DVA</p>
           </div>
-        </div>
-      </div>
-
-      {/* Info card */}
-      <div className="bg-white/5 border border-white/10 rounded-2xl px-5 py-4 flex items-start gap-3">
-        <CreditCard className="w-4 h-4 text-slate-400 mt-0.5 shrink-0" />
-        <div className="space-y-1 flex-1">
-          <p className="text-sm font-semibold text-white">How Poveon commission works</p>
-          <p className="text-xs text-slate-400 leading-relaxed">
-            Each time you mark a request as <strong className="text-white">Seen</strong>, Poveon calculates the commission from your test catalog.
-            The commission rate is set per test in your catalog. Only tests in your price list contribute to the commission.
-            Tests not in your catalog cost ₦0 commission.
-          </p>
         </div>
       </div>
 

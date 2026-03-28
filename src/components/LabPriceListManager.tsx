@@ -473,7 +473,7 @@ export default function LabPriceListManager({ onClose }: LabPriceListManagerProp
             <ChevronDown className="w-3.5 h-3.5" />
           </button>
           {dlOpen && (
-            <div className="absolute right-0 top-full mt-2 w-44 bg-white border border-gray-200 rounded-xl shadow-lg overflow-hidden z-20">
+            <div className="absolute right-0 top-full mt-2 w-44 bg-white border border-gray-200 rounded-xl shadow-lg overflow-hidden z-[200]">
               <button onClick={() => download("xlsx")}
                 className="flex items-center gap-3 w-full px-4 py-3 text-sm text-gray-700 hover:bg-gray-50 transition">
                 <FileSpreadsheet className="w-4 h-4 text-emerald-600 shrink-0" />
