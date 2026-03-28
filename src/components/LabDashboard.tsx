@@ -3192,7 +3192,12 @@ function LabWalletPanel() {
       .finally(() => { setLoading(false); setRefreshing(false); });
   }
 
-  useEffect(() => { load(); }, []);
+  useEffect(() => {
+    load();
+    // Poll every 30 s so incoming DVA payments appear without manual refresh
+    const interval = setInterval(() => load(true), 30_000);
+    return () => clearInterval(interval);
+  }, []);
 
   if (loading) return <div className="h-28 bg-white/5 rounded-2xl animate-pulse" />;
 

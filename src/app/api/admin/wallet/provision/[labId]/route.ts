@@ -89,11 +89,11 @@ export async function POST(req: NextRequest, { params }: { params: { labId: stri
 
   // Create dedicated virtual account
   const dva = await paystackPost("/dedicated_account", {
-    customer: customerCode, preferred_bank: "wema-bank",
+    customer: customerCode, preferred_bank: "titan-paystack",
   });
   if (!dva.status) return NextResponse.json({ error: dva.message ?? "Failed to create virtual account." }, { status: 502 });
 
-  const bankName      = dva.data.bank?.name     ?? "Wema Bank";
+  const bankName      = dva.data.bank?.name     ?? "Titan Trust Bank";
   const accountNumber = dva.data.account_number as string;
   const accountName   = dva.data.account_name   as string;
 
