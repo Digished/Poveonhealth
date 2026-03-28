@@ -6,6 +6,7 @@ import { resend, labSender } from "@/lib/email/resend";
 import { doctorPatientArrived } from "@/lib/email/templates";
 import { logApiCall } from "@/lib/api-logger";
 import { getLabAuth } from "@/lib/lab-auth";
+import { resolveTests } from "@/lib/resolve-tests";
 
 const RetrieveSchema = z.object({
   code: z.string().min(1).max(50).transform((s) => s.trim().toUpperCase()),
@@ -64,13 +65,61 @@ export async function POST(request: NextRequest) {
 
     const brand = req.lab.notification_email ? { name: req.lab.name } : undefined;
 
-    // Move incoming → seen: deduct wallet and notify doctor
+    // Move incoming → seen: calculate commission, deduct from wallet, notify doctor
     if (req.status === "incoming") {
-      await prisma.request.update({
-        where: { id: req.id },
-        data: { status: "seen", seen_at: new Date() },
-      });
+      // Resolve tests against lab catalog to calculate commission
+      type BreakdownItem = { source?: string; poveon_fee?: number | null; unit_price?: number };
+      let breakdown: BreakdownItem[] = [];
+      const testsString = req.tests && req.tests !== "See attached image" ? req.tests : null;
+      if (testsString) {
+        try { breakdown = await resolveTests(testsString, req.lab_id) as BreakdownItem[]; } catch { /* non-fatal */ }
+      } else if (Array.isArray(req.test_breakdown)) {
+        breakdown = req.test_breakdown as BreakdownItem[];
+      }
 
+      let poveonFee = 0;
+      let labRevenue = 0;
+      for (const item of breakdown) {
+        if (item.source === "lab_catalog") {
+          poveonFee  += Number(item.poveon_fee ?? 0);
+          labRevenue += Number(item.unit_price ?? 0);
+        }
+      }
+
+      // Deduct commission from wallet — balance allowed to go negative (lab owes Poveon).
+      // Only skipped if the lab has no wallet provisioned at all.
+      let isPaidToPoveon = false;
+      if (poveonFee > 0) {
+        try {
+          const wallet = await prisma.labWallet.findUnique({ where: { lab_id: req.lab_id } });
+          if (wallet) {
+            await prisma.labWallet.update({
+              where: { lab_id: req.lab_id },
+              data: { balance: { decrement: poveonFee } },
+            });
+            isPaidToPoveon = true;
+          } else {
+            console.log(`[retrieve] no wallet for lab ${req.lab_id} — commission outstanding`);
+          }
+        } catch (err) {
+          console.error("[retrieve] wallet deduction failed:", err);
+          // Non-fatal — request still moves to seen, commission tracked as outstanding
+        }
+      }
+
+      // Update request: status, commission fields, and breakdown
+      const breakdownJson = breakdown.length > 0 ? JSON.stringify(breakdown) : null;
+      if (breakdownJson) {
+        await prisma.$executeRawUnsafe(
+          `UPDATE requests SET status='seen', seen_at=NOW(), test_breakdown=$1::jsonb, poveon_amount=$2, lab_revenue_amount=$3, is_paid_to_poveon=$4 WHERE id=$5`,
+          breakdownJson, poveonFee, labRevenue, isPaidToPoveon, req.id,
+        );
+      } else {
+        await prisma.$executeRawUnsafe(
+          `UPDATE requests SET status='seen', seen_at=NOW(), poveon_amount=$1, lab_revenue_amount=$2, is_paid_to_poveon=$3 WHERE id=$4`,
+          poveonFee, labRevenue, isPaidToPoveon, req.id,
+        );
+      }
 
       resend.emails.send({
         from: labSender(req.lab),
