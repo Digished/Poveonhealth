@@ -2,6 +2,30 @@ import { NextRequest, NextResponse } from "next/server";
 import { createServerClient, type CookieOptions } from "@supabase/ssr";
 
 export async function middleware(request: NextRequest) {
+  // ── Subdomain → path rewrite ───────────────────────────────────────────────
+  // acmelabs.poveon.com  →  internally served as  /acmelabs
+  const host = request.headers.get("host") ?? "";
+  const hostname = host.split(":")[0]; // strip port for local dev
+  const rootDomain = process.env.ROOT_DOMAIN ?? "poveon.com";
+
+  const isSubdomain =
+    hostname !== rootDomain &&
+    hostname !== `www.${rootDomain}` &&
+    hostname.endsWith(`.${rootDomain}`);
+
+  if (isSubdomain) {
+    const slug = hostname.slice(0, -(`.${rootDomain}`.length));
+    const url = request.nextUrl.clone();
+    // Only rewrite root; deeper paths (e.g. /api/*) pass through unchanged
+    if (url.pathname === "/" || url.pathname === "") {
+      url.pathname = `/${slug}`;
+    } else {
+      url.pathname = `/${slug}${url.pathname}`;
+    }
+    return NextResponse.rewrite(url);
+  }
+
+  // ── Supabase session refresh (existing auth logic) ─────────────────────────
   let response = NextResponse.next({ request });
 
   const supabase = createServerClient(
@@ -62,7 +86,6 @@ export async function middleware(request: NextRequest) {
     if (!token) {
       return NextResponse.redirect(new URL("/scale", request.url));
     }
-    // Session validity is checked in the API; middleware only verifies cookie presence
   }
 
   // ── Redirect authenticated marketers away from login page ─────────────────
@@ -79,7 +102,6 @@ export async function middleware(request: NextRequest) {
     if (!token) {
       return NextResponse.redirect(new URL("/login", request.url));
     }
-    // Session validity is checked in the API; middleware only verifies cookie presence
   }
 
   // ── Redirect authenticated patients away from login page ──────────────────
@@ -95,13 +117,15 @@ export async function middleware(request: NextRequest) {
 
 export const config = {
   matcher: [
-    "/lab-dashboard/:path*",
-    "/admin/:path*",
-    "/admin-login",
-    "/lab-login",
-    "/scale",
-    "/scale/dashboard/:path*",
-    "/dashboard/:path*",
-    "/login",
+    /*
+     * Match all paths except:
+     * - _next/static  (static files)
+     * - _next/image   (image optimisation)
+     * - favicon.ico, sitemap.xml, robots.txt
+     * - Public asset extensions
+     * The subdomain check runs first; the Supabase auth check only runs for
+     * non-subdomain requests that hit the protected routes below.
+     */
+    "/((?!_next/static|_next/image|favicon\\.ico|sitemap\\.xml|robots\\.txt|.*\\.(?:png|jpg|jpeg|gif|svg|ico|webp|woff2?|ttf|otf|css|js)$).*)",
   ],
 };
