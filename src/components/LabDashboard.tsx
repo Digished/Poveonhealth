@@ -660,16 +660,16 @@ export function LabDashboard({ lab, isOwner = false, roleName = "Lab Owner", can
 
         {/* Amount owed banner — shown on all tabs when lab has a negative wallet balance */}
         {poveonBalance !== null && poveonBalance < 0 && (isOwner || canViewWallet) && (
-          <div className="mb-5 flex items-center gap-3 bg-amber-500/15 border border-amber-500/30 rounded-2xl px-4 py-3">
-            <CreditCard className="w-4 h-4 text-amber-400 shrink-0" />
-            <p className="text-sm text-amber-200 flex-1">
+          <div className="mb-5 flex items-center gap-3 bg-red-500/20 border border-red-500/30 rounded-2xl px-4 py-3">
+            <AlertTriangle className="w-4 h-4 text-red-400 shrink-0" />
+            <p className="text-sm text-slate-200 flex-1">
               Your lab owes Poveon{" "}
-              <span className="font-bold font-mono text-amber-300">₦{Math.abs(poveonBalance).toLocaleString()}</span>.
+              <span className="font-bold font-mono text-red-400">₦{Math.abs(poveonBalance).toLocaleString()}</span>.
               {" "}Top up your wallet to settle the balance.
             </p>
             <button
               onClick={() => setMainView("poveon")}
-              className="shrink-0 text-xs font-semibold text-amber-300 hover:text-amber-100 underline underline-offset-2 transition"
+              className="shrink-0 text-xs font-semibold text-red-400 hover:text-red-300 underline underline-offset-2 transition"
             >
               View →
             </button>
@@ -733,47 +733,37 @@ export function LabDashboard({ lab, isOwner = false, roleName = "Lab Owner", can
               </div>
             ) : (
               <>
-                {/* Doctor cards — unified for all screen sizes, each opens a popup */}
-                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
-                  {referrals.map((doc) => (
-                    <button
-                      key={doc.doctor_email}
-                      type="button"
-                      onClick={() => startTransition(() => setExpandedDoctor(doc.doctor_email))}
-                      className="text-left bg-white/5 hover:bg-white/10 border border-white/10 hover:border-white/20 rounded-2xl p-4 transition-all group"
-                    >
-                      <div className="flex items-start gap-3 mb-3">
-                        <div className="w-10 h-10 rounded-full bg-medical-600/20 border border-medical-500/30 flex items-center justify-center shrink-0">
-                          <Stethoscope className="w-5 h-5 text-medical-400" />
+                {/* Doctor rows — compact list */}
+                <div className="rounded-2xl overflow-hidden border border-white/8 divide-y divide-white/5">
+                  {referrals.map((doc) => {
+                    const displayName = [doc.doctor_prefix, doc.doctor_name].filter(Boolean).join(" ") || doc.doctor_email;
+                    const subline = doc.doctor_hospital || ([doc.doctor_prefix, doc.doctor_name].filter(Boolean).length > 0 ? doc.doctor_email : null);
+                    return (
+                      <button
+                        key={doc.doctor_email}
+                        type="button"
+                        onClick={() => startTransition(() => setExpandedDoctor(doc.doctor_email))}
+                        className="w-full text-left flex items-center gap-3 px-4 py-3 bg-white/3 hover:bg-white/8 transition-colors group"
+                      >
+                        <div className="w-8 h-8 rounded-full bg-medical-600/20 border border-medical-500/30 flex items-center justify-center shrink-0">
+                          <Stethoscope className="w-4 h-4 text-medical-400" />
                         </div>
                         <div className="flex-1 min-w-0">
-                          <p className="font-semibold text-white truncate leading-tight">
-                            {[doc.doctor_prefix, doc.doctor_name].filter(Boolean).join(" ") || doc.doctor_email}
-                          </p>
-                          {[doc.doctor_prefix, doc.doctor_name].filter(Boolean).join(" ") && (
-                            <p className="text-xs text-slate-500 truncate">{doc.doctor_email}</p>
-                          )}
-                          {doc.doctor_hospital && (
-                            <p className="text-xs text-slate-500 truncate">{doc.doctor_hospital}</p>
-                          )}
+                          <p className="text-sm font-semibold text-white truncate leading-tight">{displayName}</p>
+                          {subline && <p className="text-xs text-slate-500 truncate">{subline}</p>}
                         </div>
-                        <span className="shrink-0 text-xs font-bold bg-medical-900/50 text-medical-300 border border-medical-800/30 px-2 py-0.5 rounded-full">
-                          {doc.total_referrals}
-                        </span>
-                      </div>
-                      <div className="flex flex-wrap gap-1 mb-3">
-                        {doc.tests.slice(0, 3).map((t) => (
-                          <span key={t} className="text-xs bg-white/5 text-slate-400 border border-white/10 px-2 py-0.5 rounded-full">{t}</span>
-                        ))}
-                        {doc.tests.length > 3 && (
-                          <span className="text-xs text-slate-500">+{doc.tests.length - 3} more</span>
-                        )}
-                      </div>
-                      <p className="text-xs text-slate-500">
-                        Last: {new Date(doc.last_referral).toLocaleDateString("en-GB", { day: "numeric", month: "short", year: "numeric" })}
-                      </p>
-                    </button>
-                  ))}
+                        <div className="shrink-0 text-right">
+                          <span className="text-xs font-bold bg-medical-900/50 text-medical-300 border border-medical-800/30 px-2 py-0.5 rounded-full">
+                            {doc.total_referrals}
+                          </span>
+                          <p className="text-[10px] text-slate-500 mt-0.5">
+                            {new Date(doc.last_referral).toLocaleDateString("en-GB", { day: "numeric", month: "short" })}
+                          </p>
+                        </div>
+                        <ChevronRight className="w-3.5 h-3.5 text-slate-500 shrink-0 group-hover:text-slate-300 transition-colors" />
+                      </button>
+                    );
+                  })}
                 </div>
 
                 {/* Doctor detail popup */}
@@ -985,46 +975,37 @@ export function LabDashboard({ lab, isOwner = false, roleName = "Lab Owner", can
                 <p className="text-slate-500 text-sm mt-1">Clients appear here after their code is entered at the lab.</p>
               </div>
             ) : (
-              <div className="space-y-3">
-                <p className="text-xs text-slate-500 font-semibold uppercase tracking-wider mb-4">{clients.length} client{clients.length !== 1 ? "s" : ""}</p>
-                {clients.map((client) => (
-                  <button
-                    key={client.patient_phone}
-                    type="button"
-                    onClick={() => setSelectedClient(client)}
-                    className="w-full text-left bg-white/5 hover:bg-white/10 border border-white/10 hover:border-white/20 rounded-2xl p-4 transition-all group"
-                  >
-                    <div className="flex items-start justify-between gap-3">
-                      <div className="flex items-center gap-3 min-w-0">
-                        <div className="w-10 h-10 rounded-full bg-medical-600/20 border border-medical-500/30 flex items-center justify-center shrink-0">
-                          <UserCircle className="w-5 h-5 text-medical-400" />
-                        </div>
-                        <div className="min-w-0">
-                          {client.patient_name ? (
-                            <p className="text-sm font-bold text-white leading-tight truncate">{client.patient_name}</p>
-                          ) : null}
-                          <a
-                            href={`tel:${client.patient_phone}`}
-                            onClick={(e) => e.stopPropagation()}
-                            className="text-xs text-medical-400 hover:text-medical-300 font-mono flex items-center gap-1 mt-0.5"
-                          >
-                            <Phone className="w-3 h-3" />
-                            {client.patient_phone}
-                          </a>
-                        </div>
+              <div>
+                <p className="text-xs text-slate-500 font-semibold uppercase tracking-wider mb-3">{clients.length} client{clients.length !== 1 ? "s" : ""}</p>
+                <div className="rounded-2xl overflow-hidden border border-white/8 divide-y divide-white/5">
+                  {clients.map((client) => (
+                    <button
+                      key={client.patient_phone}
+                      type="button"
+                      onClick={() => setSelectedClient(client)}
+                      className="w-full text-left flex items-center gap-3 px-4 py-3 bg-white/3 hover:bg-white/8 transition-colors group"
+                    >
+                      <div className="w-8 h-8 rounded-full bg-medical-600/20 border border-medical-500/30 flex items-center justify-center shrink-0">
+                        <UserCircle className="w-4 h-4 text-medical-400" />
                       </div>
-                      <div className="text-right shrink-0">
-                        <span className="inline-block text-xs font-bold text-medical-300 bg-medical-600/20 border border-medical-500/30 px-2 py-0.5 rounded-full">
-                          {client.visit_count} visit{client.visit_count !== 1 ? "s" : ""}
+                      <div className="flex-1 min-w-0">
+                        {client.patient_name && (
+                          <p className="text-sm font-semibold text-white truncate leading-tight">{client.patient_name}</p>
+                        )}
+                        <p className="text-xs text-slate-500 font-mono truncate">{client.patient_phone}</p>
+                      </div>
+                      <div className="shrink-0 text-right">
+                        <span className="text-xs font-bold text-medical-300 bg-medical-600/20 border border-medical-500/30 px-2 py-0.5 rounded-full">
+                          {client.visit_count}v
                         </span>
-                        <p className="text-xs text-slate-500 mt-1">{new Date(client.last_visit).toLocaleDateString("en-GB", { day: "numeric", month: "short", year: "numeric" })}</p>
+                        <p className="text-[10px] text-slate-500 mt-0.5">
+                          {new Date(client.last_visit).toLocaleDateString("en-GB", { day: "numeric", month: "short" })}
+                        </p>
                       </div>
-                    </div>
-                    <div className="mt-3 pt-3 border-t border-white/5">
-                      <p className="text-xs text-slate-400 line-clamp-1"><span className="text-slate-500">Last: </span>{client.recent_tests}</p>
-                    </div>
-                  </button>
-                ))}
+                      <ChevronRight className="w-3.5 h-3.5 text-slate-500 shrink-0 group-hover:text-slate-300 transition-colors" />
+                    </button>
+                  ))}
+                </div>
               </div>
             )}
 
