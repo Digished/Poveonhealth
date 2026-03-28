@@ -64,11 +64,12 @@ export async function POST(request: NextRequest) {
         }
       }
 
-      // Auto-deduct commission from wallet if balance is sufficient
+      // Deduct commission from wallet — balance is allowed to go negative (lab owes Poveon).
+      // Only skipped if the lab has no wallet provisioned at all.
       let isPaidToPoveon = false;
       if (poveonFee > 0) {
         const wallet = await prisma.labWallet.findUnique({ where: { lab_id: req.lab_id } });
-        if (wallet && Number(wallet.balance) >= poveonFee) {
+        if (wallet) {
           await prisma.labWallet.update({
             where: { lab_id: req.lab_id },
             data: { balance: { decrement: poveonFee } },
