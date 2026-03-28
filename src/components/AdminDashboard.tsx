@@ -7,7 +7,7 @@ import {
   Building2, Trash2, Eye, EyeOff, RefreshCw, X, Pencil,
   Phone, Upload, Check, MapPin, Users, ChevronRight, ChevronDown, ChevronUp,
   Code2, Key, Copy, TrendingUp, Link, Sun, Moon, Star, GitBranch,
-  ArrowUpRight, ArrowDownRight, Settings, CreditCard, MessageCircle, Tag,
+  ArrowUpRight, ArrowDownRight, ArrowDownToLine, Settings, CreditCard, MessageCircle, Tag,
   BookOpen, Database, Sparkles, Search, Layers, UserCircle, Wallet,
 } from "lucide-react";
 import { useDashTheme } from "@/hooks/useDashTheme";
@@ -131,10 +131,11 @@ const [catalogModalLabId, setCatalogModalLabId] = useState<string | null>(null);
   type RevenueData = {
     total_poveon_earned: number;
     total_lab_revenue: number;
-    total_received: number;      // actual cash received via DVA top-ups
-    total_outstanding: number;   // total_poveon_earned - total_received
-    by_lab: { lab_id: string; lab_name: string; request_count: number; total_poveon_amount: number; total_lab_revenue: number; total_deposited: number; wallet_balance: number | null }[];
+    total_received: number;
+    total_outstanding: number;
+    by_lab: { lab_id: string; lab_name: string; request_count: number; total_poveon_amount: number; total_lab_revenue: number; total_deposited: number; wallet_balance: number | null; owed: number }[];
     recent_requests: { id: string; code: string; lab_id: string; lab_name: string; patient_name: string | null; tests: string; poveon_amount: number; lab_revenue_amount: number; is_paid_to_poveon: boolean; seen_at: string | null }[];
+    recent_dva_credits: { id: string; lab_id: string; lab_name: string; amount: number; reference: string; channel: string; sender_name: string | null; sender_bank: string | null; created_at: string }[];
   };
   const [revenueData, setRevenueData] = useState<RevenueData | null>(null);
   const [revenueLoading, setRevenueLoading] = useState(false);
@@ -577,41 +578,45 @@ const [catalogModalLabId, setCatalogModalLabId] = useState<string | null>(null);
                       <div className="bg-gradient-to-br from-emerald-500/20 to-emerald-600/10 border border-emerald-500/30 rounded-2xl p-5">
                         <p className="text-xs text-slate-400 font-medium uppercase tracking-wider mb-1">Total Commission Accrued</p>
                         <p className="text-3xl font-bold text-white">₦{revenueData.total_poveon_earned.toLocaleString()}</p>
+                        <p className="text-xs text-slate-500 mt-1">from all seen/done requests</p>
                       </div>
                       <div className="bg-gradient-to-br from-sky-500/20 to-sky-600/10 border border-sky-500/30 rounded-2xl p-5">
                         <p className="text-xs text-slate-400 font-medium uppercase tracking-wider mb-1">Total Lab Revenue</p>
                         <p className="text-3xl font-bold text-white">₦{revenueData.total_lab_revenue.toLocaleString()}</p>
+                        <p className="text-xs text-slate-500 mt-1">labs' share of test fees</p>
                       </div>
                       <div className="bg-gradient-to-br from-violet-500/20 to-violet-600/10 border border-violet-500/30 rounded-2xl p-5">
                         <p className="text-xs text-slate-400 font-medium uppercase tracking-wider mb-1">Total Received from Labs</p>
                         <p className="text-3xl font-bold text-white">₦{revenueData.total_received.toLocaleString()}</p>
-                        <p className="text-xs text-slate-500 mt-1">via DVA top-ups</p>
+                        <p className="text-xs text-slate-500 mt-1">cash deposited via DVA</p>
                       </div>
-                      <div className="bg-gradient-to-br from-amber-500/20 to-amber-600/10 border border-amber-500/30 rounded-2xl p-5">
+                      <div className={`bg-gradient-to-br rounded-2xl p-5 border ${revenueData.total_outstanding === 0 ? "from-emerald-500/20 to-emerald-600/10 border-emerald-500/30" : "from-amber-500/20 to-amber-600/10 border-amber-500/30"}`}>
                         <p className="text-xs text-slate-400 font-medium uppercase tracking-wider mb-1">Net Outstanding</p>
-                        <p className="text-3xl font-bold text-amber-300">₦{revenueData.total_outstanding.toLocaleString()}</p>
-                        <p className="text-xs text-slate-500 mt-1">commission - received</p>
+                        <p className={`text-3xl font-bold ${revenueData.total_outstanding === 0 ? "text-emerald-300" : "text-amber-300"}`}>
+                          ₦{revenueData.total_outstanding.toLocaleString()}
+                        </p>
+                        <p className="text-xs text-slate-500 mt-1">{revenueData.total_outstanding === 0 ? "fully settled" : "still owed to Poveon"}</p>
                       </div>
                     </div>
 
-                    {/* Per-lab breakdown */}
+                    {/* Per-lab breakdown — sorted by most indebted first */}
                     {revenueData.by_lab.length > 0 && (
                       <div className="bg-white/5 border border-white/10 rounded-2xl p-5">
                         <div className="flex items-center justify-between mb-4">
                           <h3 className="text-sm font-semibold text-slate-300">Lab Commission Breakdown</h3>
-                          <button
-                            onClick={fetchRevenue}
-                            className="flex items-center gap-1.5 text-xs text-slate-400 hover:text-white transition px-2 py-1 rounded-lg hover:bg-white/10"
-                          >
+                          <button onClick={fetchRevenue} className="flex items-center gap-1.5 text-xs text-slate-400 hover:text-white transition px-2 py-1 rounded-lg hover:bg-white/10">
                             <RefreshCw className="w-3 h-3" />Refresh
                           </button>
                         </div>
-                        <div className="space-y-2 max-h-64 overflow-y-auto pr-1">
+                        <div className="space-y-2 max-h-72 overflow-y-auto pr-1">
                           {revenueData.by_lab.map((row) => (
-                            <div key={row.lab_id} className="flex items-center gap-3 py-2 border-b border-white/5 last:border-0">
+                            <div key={row.lab_id} className="flex items-center gap-3 py-2.5 border-b border-white/5 last:border-0">
                               <div className="flex-1 min-w-0">
                                 <p className="text-sm text-white truncate">{row.lab_name}</p>
-                                <p className="text-xs text-slate-500">{row.request_count} request{row.request_count !== 1 ? "s" : ""}</p>
+                                <p className="text-xs text-slate-500">
+                                  {row.request_count} request{row.request_count !== 1 ? "s" : ""}
+                                  {row.wallet_balance === null && <span className="ml-1.5 text-amber-500">· no wallet</span>}
+                                </p>
                               </div>
                               <div className="flex items-center gap-4 text-xs shrink-0">
                                 <div className="text-right">
@@ -622,10 +627,10 @@ const [catalogModalLabId, setCatalogModalLabId] = useState<string | null>(null);
                                   <p className="text-slate-400">Deposited</p>
                                   <p className="text-violet-400 font-mono font-bold">₦{row.total_deposited.toLocaleString()}</p>
                                 </div>
-                                <div className="text-right">
-                                  <p className="text-slate-400">Wallet</p>
-                                  <p className={`font-mono font-bold ${row.wallet_balance === null ? "text-slate-600" : row.wallet_balance < 0 ? "text-amber-400" : "text-emerald-400"}`}>
-                                    {row.wallet_balance === null ? "No wallet" : `₦${row.wallet_balance.toLocaleString()}`}
+                                <div className="text-right min-w-[60px]">
+                                  <p className="text-slate-400">Owed</p>
+                                  <p className={`font-mono font-bold ${row.owed === 0 ? "text-emerald-400" : "text-amber-400"}`}>
+                                    {row.owed === 0 ? "Settled" : `₦${row.owed.toLocaleString()}`}
                                   </p>
                                 </div>
                               </div>
@@ -635,17 +640,45 @@ const [catalogModalLabId, setCatalogModalLabId] = useState<string | null>(null);
                       </div>
                     )}
 
-                    {/* Recent seen requests with commission */}
+                    {/* DVA deposit history — actual cash received from labs */}
+                    {revenueData.recent_dva_credits.length > 0 && (
+                      <div className="bg-white/5 border border-white/10 rounded-2xl p-5">
+                        <h3 className="text-sm font-semibold text-slate-300 mb-4">Recent DVA Deposits</h3>
+                        <div className="space-y-1 max-h-64 overflow-y-auto pr-1">
+                          {revenueData.recent_dva_credits.map((c) => (
+                            <div key={c.id} className="flex items-center gap-3 py-2.5 px-3 rounded-xl hover:bg-white/3 transition-colors">
+                              <div className="w-7 h-7 rounded-full bg-violet-500/15 flex items-center justify-center shrink-0">
+                                <ArrowDownToLine className="w-3.5 h-3.5 text-violet-400" />
+                              </div>
+                              <div className="flex-1 min-w-0">
+                                <div className="flex items-center gap-2">
+                                  <p className="text-xs text-white font-medium truncate">{c.lab_name}</p>
+                                  {c.channel === "manual" && <span className="text-[10px] text-slate-500 bg-white/5 px-1.5 py-0.5 rounded-full">manual</span>}
+                                </div>
+                                <p className="text-xs text-slate-500 truncate">
+                                  {c.sender_name ? `From ${c.sender_name}` : "Bank transfer"}
+                                  {c.sender_bank ? ` · ${c.sender_bank}` : ""}
+                                </p>
+                              </div>
+                              <div className="text-right shrink-0">
+                                <p className="text-sm font-bold font-mono text-violet-300">+₦{c.amount.toLocaleString()}</p>
+                                <p className="text-[10px] text-slate-500">{new Date(c.created_at).toLocaleDateString("en-GB", { day: "numeric", month: "short" })}</p>
+                              </div>
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+                    )}
+
+                    {/* Recent commission activity — one row per request */}
                     {revenueData.recent_requests.length > 0 && (
                       <div className="bg-white/5 border border-white/10 rounded-2xl p-5">
                         <h3 className="text-sm font-semibold text-slate-300 mb-4">Recent Commission Activity</h3>
                         <div className="space-y-1 max-h-[32rem] overflow-y-auto pr-1">
                           {revenueData.recent_requests.map((req) => (
                             <div key={req.id} className="flex items-center gap-3 py-2.5 px-3 rounded-xl hover:bg-white/3 transition-colors">
-                              <div className={`w-7 h-7 rounded-full flex items-center justify-center shrink-0 ${req.is_paid_to_poveon ? "bg-emerald-500/15" : "bg-amber-500/15"}`}>
-                                {req.is_paid_to_poveon
-                                  ? <Check className="w-3.5 h-3.5 text-emerald-400" />
-                                  : <CreditCard className="w-3.5 h-3.5 text-amber-400" />}
+                              <div className="w-7 h-7 rounded-full bg-emerald-500/10 flex items-center justify-center shrink-0">
+                                <CreditCard className="w-3.5 h-3.5 text-emerald-400" />
                               </div>
                               <div className="flex-1 min-w-0">
                                 <div className="flex items-center gap-2">
