@@ -4130,7 +4130,6 @@ const ROLE_TABS = [
   { key: "all", label: "All" },
   { key: "doctor", label: "Doctors" },
   { key: "lab", label: "Lab Staff" },
-  { key: "admin", label: "Admins" },
 ] as const;
 
 const ROLE_COLORS: Record<string, string> = {
@@ -4143,7 +4142,7 @@ function AdminUsersTab() {
   const [users, setUsers] = useState<PortalUser[]>([]);
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState("");
-  const [roleFilter, setRoleFilter] = useState<"all" | "doctor" | "lab" | "admin">("all");
+  const [roleFilter, setRoleFilter] = useState<"all" | "doctor" | "lab">("all");
   const [deletingEmail, setDeletingEmail] = useState<string | null>(null);
 
   const fetchUsers = useCallback(async () => {

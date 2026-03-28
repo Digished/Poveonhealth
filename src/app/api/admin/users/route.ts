@@ -17,7 +17,7 @@ export async function GET(req: NextRequest) {
 
   const { searchParams } = new URL(req.url);
   const q = searchParams.get("q")?.trim().toLowerCase() ?? "";
-  const role = searchParams.get("role") ?? "all"; // "all" | "doctor" | "lab" | "admin"
+  const role = searchParams.get("role") ?? "all"; // "all" | "doctor" | "lab"
 
   const results: {
     email: string; name: string | null; phone: string | null;
@@ -66,26 +66,6 @@ export async function GET(req: NextRequest) {
         sub_role: m.role.name,
         detail: m.lab.name,
         updated_at: m.created_at.toISOString(),
-        has_pin: false,
-      });
-    }
-  }
-
-  // Admins
-  if (role === "all" || role === "admin") {
-    const admins = await prisma.adminUser.findMany({
-      orderBy: { created_at: "desc" },
-      select: { email: true, created_at: true },
-    });
-    for (const a of admins) {
-      results.push({
-        email: a.email,
-        name: null,
-        phone: null,
-        role: "admin",
-        sub_role: null,
-        detail: null,
-        updated_at: a.created_at.toISOString(),
         has_pin: false,
       });
     }
