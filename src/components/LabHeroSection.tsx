@@ -39,7 +39,10 @@ export function LabHeroSection({ labName, logoUrl }: LabHeroSectionProps) {
     if (!main) return;
     const sections = main.children;
     if (sections.length >= 2) {
-      (sections[1] as HTMLElement).scrollIntoView({ behavior: "smooth", block: "start" });
+      // Use scrollTop directly so the hero section is fully out of main's viewport,
+      // which allows the sticky header's logo to appear immediately on desktop.
+      const target = sections[1] as HTMLElement;
+      main.scrollTo({ top: target.offsetTop, behavior: "smooth" });
     }
   }
 

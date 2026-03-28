@@ -178,7 +178,7 @@ function DocLoginInner() {
   const [claimPrefix,        setClaimPrefix]        = useState("Dr.");
   const [claimName,          setClaimName]          = useState("");
   const [claimPhone,         setClaimPhone]         = useState("");
-  const [claimHospital,      setClaimHospital]      = useState("");
+  const [claimHospitals,     setClaimHospitals]     = useState<string[]>([]);
   const [claimBankName,      setClaimBankName]      = useState("");
   const [claimBankCode,      setClaimBankCode]      = useState("");
   const [claimAccountNumber, setClaimAccountNumber] = useState("");
@@ -356,7 +356,7 @@ function DocLoginInner() {
             prefix:         claimPrefix   || null,
             full_name:      claimName.trim(),
             phone:          claimPhone.trim()     || null,
-            hospitals:      claimHospital.trim() ? [claimHospital.trim()] : [],
+            hospitals:      claimHospitals,
             bank_name:      claimBankName.trim()        || null,
             account_number: claimAccountNumber.trim()   || null,
             account_name:   claimAccountName.trim()     || null,
@@ -562,8 +562,7 @@ function DocLoginInner() {
               {/* Hospital */}
               <div>
                 <label className={labelCls}>Hospital / Clinic</label>
-                <input type="text" placeholder="e.g. Lagos Teaching Hospital" value={claimHospital}
-                  onChange={(e) => setClaimHospital(e.target.value)} className={inputCls} />
+                <HospitalTagInput value={claimHospitals} onChange={setClaimHospitals} />
               </div>
 
               {/* Bank details */}
@@ -667,13 +666,7 @@ function DocLoginInner() {
               {/* Phone */}
               <div>
                 <label className="block text-xs font-medium text-slate-600 mb-1">Phone Number</label>
-                <input
-                  type="tel"
-                  placeholder="+234 800 123 4567"
-                  value={obPhone}
-                  onChange={(e) => setObPhone(e.target.value)}
-                  className="w-full px-4 py-2.5 rounded-xl border border-slate-200 bg-white text-slate-800 placeholder-slate-400 text-sm focus:outline-none focus:ring-2 focus:ring-medical-400 focus:border-transparent transition"
-                />
+                <PhoneInput value={obPhone} onChange={setObPhone} />
               </div>
 
               {/* Hospital */}
