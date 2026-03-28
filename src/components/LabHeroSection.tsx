@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import { FlaskConical, ChevronDown } from "lucide-react";
 import { PoveonLogo } from "@/components/PoveonLogo";
 
 type TimeOfDay = "morning" | "afternoon" | "evening" | "night";
@@ -33,8 +34,20 @@ export function LabHeroSection({ labName, logoUrl }: LabHeroSectionProps) {
     setMounted(true);
   }, []);
 
+  function scrollToForm() {
+    const main = document.querySelector("main");
+    if (!main) return;
+    const sections = main.children;
+    if (sections.length >= 2) {
+      // Use scrollTop directly so the hero section is fully out of main's viewport,
+      // which allows the sticky header's logo to appear immediately on desktop.
+      const target = sections[1] as HTMLElement;
+      main.scrollTo({ top: target.offsetTop, behavior: "smooth" });
+    }
+  }
+
   return (
-    <div id="lab-hero" className="relative overflow-hidden pt-12 pb-24 px-4">
+    <div id="lab-hero" className="relative overflow-hidden pt-8 pb-7 px-4">
 
       {/* ── Background layer: blurred logo palette wash ── */}
       {logoUrl ? (
@@ -58,7 +71,7 @@ export function LabHeroSection({ labName, logoUrl }: LabHeroSectionProps) {
         </div>
       )}
 
-      {/* ── White veil: radial from centre → transparent edges ── */}
+      {/* ── White veil ── */}
       <div
         className="absolute inset-0 pointer-events-none"
         aria-hidden="true"
@@ -68,7 +81,7 @@ export function LabHeroSection({ labName, logoUrl }: LabHeroSectionProps) {
         }}
       />
 
-      {/* ── Subtle dot-grid texture (1% opacity) ── */}
+      {/* ── Subtle dot-grid texture ── */}
       <div
         className="absolute inset-0 pointer-events-none"
         aria-hidden="true"
@@ -81,62 +94,53 @@ export function LabHeroSection({ labName, logoUrl }: LabHeroSectionProps) {
 
       {/* ── Content ── */}
       <div
-        className={`relative z-10 flex flex-col items-center text-center gap-6 max-w-xs sm:max-w-sm mx-auto transition-[opacity,transform] duration-700 ${
+        className={`relative z-10 flex flex-col items-center text-center gap-4 max-w-xs sm:max-w-sm mx-auto transition-[opacity,transform] duration-700 ${
           mounted ? "opacity-100 translate-y-0" : "opacity-0 translate-y-3"
         }`}
       >
-        {/* Logo — with ambient glow + float animation */}
+        {/* Logo */}
         <div className="relative flex items-center justify-center" style={{ animation: "lab-hero-float 5s ease-in-out infinite" }}>
-          <div className="absolute w-28 h-28 rounded-[30px] bg-sky-100/80 pointer-events-none" aria-hidden="true" />
-
-          {/* Frosted halo */}
-          <div className="absolute w-[108px] h-[108px] rounded-[30px] bg-white/50 backdrop-blur-sm pointer-events-none" aria-hidden="true" />
-
-          {/* Logo image or fallback */}
+          <div className="absolute w-22 h-22 rounded-[28px] bg-sky-100/80 pointer-events-none" aria-hidden="true" style={{ width: 88, height: 88 }} />
+          <div className="absolute rounded-[28px] bg-white/50 backdrop-blur-sm pointer-events-none" aria-hidden="true" style={{ width: 84, height: 84 }} />
           {logoUrl ? (
             <img
               src={logoUrl}
               alt={labName}
-              width={92}
-              height={92}
-              className="relative rounded-[24px] object-contain shadow-2xl ring-[3px] ring-white/90"
-              style={{ width: 92, height: 92 }}
+              width={76}
+              height={76}
+              className="relative rounded-[22px] object-contain shadow-2xl ring-[3px] ring-white/90"
+              style={{ width: 76, height: 76 }}
             />
           ) : (
-            <div className="relative w-[92px] h-[92px] rounded-[24px] bg-gradient-to-br from-medical-500 to-sky-400 shadow-2xl flex items-center justify-center ring-[3px] ring-white/80">
-              <PoveonLogo className="w-12 h-12 text-white" />
+            <div className="relative rounded-[22px] bg-gradient-to-br from-medical-500 to-sky-400 shadow-2xl flex items-center justify-center ring-[3px] ring-white/80" style={{ width: 76, height: 76 }}>
+              <PoveonLogo className="w-10 h-10 text-white" />
             </div>
           )}
         </div>
 
         {/* Text block */}
-        <div className="space-y-1.5">
-          {/* Time-of-day greeting */}
+        <div className="space-y-1">
           <p className="text-[10px] font-bold text-slate-400 uppercase tracking-[0.24em]">
             {GREETING[tod]}
           </p>
-
-          {/* Lab name — large, bold, tight */}
-          <h1 className="text-[30px] sm:text-4xl font-black text-slate-900 tracking-tight leading-[1.1]">
+          <h1 className="text-[26px] sm:text-3xl font-black text-slate-900 tracking-tight leading-[1.1]">
             {labName}
           </h1>
-
-          <p className="text-[13px] text-slate-500 leading-relaxed pt-0.5">
+          <p className="text-[13px] text-slate-500 leading-relaxed">
             What test does your patient need today?
           </p>
-
-          {/* Subtle scroll CTA */}
-          <div className="flex flex-col items-center gap-1 mt-1">
-            <p className="text-[10px] text-slate-400 font-medium tracking-wide uppercase">No login needed · scroll to request</p>
-            <svg
-              className="w-4 h-4 text-slate-300 animate-bounce"
-              viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"
-              strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"
-            >
-              <path d="M12 5v14M5 12l7 7 7-7" />
-            </svg>
-          </div>
         </div>
+
+        {/* CTA button */}
+        <button
+          type="button"
+          onClick={scrollToForm}
+          className="inline-flex items-center gap-2 px-6 py-3 bg-slate-900 hover:bg-slate-700 active:scale-95 text-white text-sm font-bold rounded-2xl shadow-lg transition-all"
+        >
+          <FlaskConical className="w-4 h-4" />
+          Create a Lab Request
+          <ChevronDown className="w-4 h-4" />
+        </button>
       </div>
     </div>
   );

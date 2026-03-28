@@ -10,6 +10,7 @@ import {
 } from "lucide-react";
 import { PoveonLogo } from "@/components/PoveonLogo";
 import { PhoneInput } from "@/components/PhoneInput";
+import { HospitalTagInput } from "@/components/ui/HospitalTagInput";
 import { BankAccountInput } from "@/components/BankAccountInput";
 import { PrefixSelect } from "@/components/PrefixSelect";
 
@@ -1033,7 +1034,7 @@ function DocProfileSection({
   const [localPrefix, setLocalPrefix] = useState(profile.prefix ?? "");
   const [localName, setLocalName] = useState(profile.full_name ?? "");
   const [localPhone, setLocalPhone] = useState(profile.phone ?? "");
-  const [localHospital, setLocalHospital] = useState(profile.hospital ?? "");
+  const [localHospitals, setLocalHospitals] = useState<string[]>(profile.hospital ? [profile.hospital] : []);
   const [localBankName, setLocalBankName] = useState(profile.bank_name ?? "");
   const [localBankCode, setLocalBankCode] = useState("");
   const [localAccountNumber, setLocalAccountNumber] = useState(profile.account_number ?? "");
@@ -1078,7 +1079,7 @@ function DocProfileSection({
   }
 
   async function saveHospital() {
-    const ok = await saveFields({ hospital: localHospital || null });
+    const ok = await saveFields({ hospital: localHospitals[0] || null });
     if (ok) {
       setEditingHospital(false);
       if (isOnboarding) setOnboardStep(3);
@@ -1199,19 +1200,12 @@ function DocProfileSection({
             <div className="px-4 pb-4 pt-1 space-y-3 border-t border-slate-100">
               <div>
                 <label className="text-xs font-semibold text-slate-500 block mb-1">Hospital / Clinic Name</label>
-                <input
-                  type="text"
-                  placeholder="e.g. Lagos Teaching Hospital or Private"
-                  value={localHospital}
-                  onChange={(e) => setLocalHospital(e.target.value)}
-                  className="w-full px-3 py-2.5 rounded-xl border border-slate-200 bg-white text-slate-800 text-sm placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-medical-400 focus:border-transparent transition"
-                />
-                <p className="text-xs text-slate-400 mt-1">Use &ldquo;Private&rdquo; if not affiliated with any institution</p>
+                <HospitalTagInput value={localHospitals} onChange={setLocalHospitals} />
               </div>
               {saveError && <p className="text-xs text-red-600 bg-red-50 border border-red-100 rounded-lg px-3 py-2">{saveError}</p>}
               <button
                 onClick={saveHospital}
-                disabled={saving || !localHospital.trim()}
+                disabled={saving || localHospitals.length === 0}
                 className="w-full py-2.5 rounded-xl bg-medical-600 hover:bg-medical-700 disabled:opacity-50 text-white text-sm font-semibold transition flex items-center justify-center gap-2"
               >
                 {saving ? <RefreshCw className="w-4 h-4 animate-spin" /> : <ChevronRight className="w-4 h-4" />}
@@ -1371,11 +1365,8 @@ function DocProfileSection({
           </div>
         ) : (
           <div className="px-4 pb-4 pt-3 space-y-3">
-            <input type="text" value={localHospital} onChange={(e) => setLocalHospital(e.target.value)}
-              placeholder="e.g. Lagos Teaching Hospital or Private"
-              className="w-full px-3 py-2.5 rounded-xl border border-slate-200 bg-white text-slate-800 text-sm placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-medical-400 focus:border-transparent transition" />
-            <p className="text-xs text-slate-400 mt-1">Use &ldquo;Private&rdquo; if not affiliated with any institution</p>
-            <button onClick={saveHospital} disabled={saving || !localHospital.trim()}
+            <HospitalTagInput value={localHospitals} onChange={setLocalHospitals} />
+            <button onClick={saveHospital} disabled={saving || localHospitals.length === 0}
               className="w-full py-2.5 rounded-xl bg-medical-600 hover:bg-medical-700 disabled:opacity-50 text-white text-sm font-semibold transition flex items-center justify-center gap-2">
               {saving ? <RefreshCw className="w-4 h-4 animate-spin" /> : <Check className="w-4 h-4" />}
               {saving ? "Saving…" : "Save Changes"}

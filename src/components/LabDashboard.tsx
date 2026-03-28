@@ -9,7 +9,11 @@ import {
   Users, CreditCard, Filter, ChevronDown, AlertTriangle, Truck, ExternalLink,
   MessageCircle, ChevronLeft, FileImage, Sun, Moon, Pencil, Save, BarChart3, Lock,
   Menu, Activity, KeyRound, ArrowRight, Star, MessageSquare, Wallet2, Copy, ArrowUpRight,
+  Settings2,
 } from "lucide-react";
+import dynamic from "next/dynamic";
+
+const LabPriceListManager = dynamic(() => import("@/components/LabPriceListManager"), { ssr: false });
 import { useDashTheme } from "@/hooks/useDashTheme";
 import { Button } from "@/components/ui/Button";
 import { Input } from "@/components/ui/Input";
@@ -85,10 +89,13 @@ export function LabDashboard({ lab, isOwner = false, roleName = "Lab Owner", can
   const router = useRouter();
   const { isLight, toggle, themeClass } = useDashTheme("lab_dash_theme");
   const [mainView, setMainView] = useState<"requests" | "referrals" | "clients" | "analytics" | "activity" | "feedback" | "poveon" | "price-list">("requests");
+  const [walletData, setWalletData] = useState<WalletData | null>(null);
+  const [walletRefreshing, setWalletRefreshing] = useState(false);
   const [poveonData, setPoveonData] = useState<PoveonViewData>(null);
   const [poveonLoading, setPoveonLoading] = useState(false);
   const [priceListData, setPriceListData] = useState<{ category: string; tests: { id: string; name: string; lab_price: number; poveon_fee: number | null; commission_pct: number | null }[] }[] | null>(null);
   const [priceListLoading, setPriceListLoading] = useState(false);
+  const [priceManagerOpen, setPriceManagerOpen] = useState(false);
   const [mobileNavOpen, setMobileNavOpen] = useState(false);
   // Eagerly loaded wallet balance for the "amount owed" banner shown on all tabs
   const [poveonBalance, setPoveonBalance] = useState<number | null>(null);
@@ -198,7 +205,18 @@ export function LabDashboard({ lab, isOwner = false, roleName = "Lab Owner", can
     return () => clearInterval(interval);
   }, [fetchRequests]);
 
-  // Eagerly fetch Poveon balance so the "amount owed" banner appears on all tabs
+  // Eagerly fetch Poveon + wallet data so tabs are instant, no per-mount skeleton
+  const fetchWallet = useCallback(async (isRefresh = false) => {
+    if (isRefresh) setWalletRefreshing(true);
+    try {
+      const res = await fetch("/api/lab/wallet");
+      const d = await res.json();
+      if (d.success) setWalletData(d);
+    } catch { /* non-critical */ } finally {
+      setWalletRefreshing(false);
+    }
+  }, []);
+
   useEffect(() => {
     if (!isOwner && !canViewWallet) return;
     fetch("/api/lab/poveon")
@@ -210,6 +228,9 @@ export function LabDashboard({ lab, isOwner = false, roleName = "Lab Owner", can
         }
       })
       .catch(() => {});
+    fetchWallet();
+    const walletInterval = setInterval(() => fetchWallet(true), 30_000);
+    return () => clearInterval(walletInterval);
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
@@ -576,13 +597,13 @@ export function LabDashboard({ lab, isOwner = false, roleName = "Lab Owner", can
         {/* Top-level navigation */}
         {(() => {
           const navItems = [
+            { key: "poveon" as const, label: "Poveon", icon: <CreditCard className="w-4 h-4" />, show: isOwner || canViewWallet },
             { key: "requests" as const, label: "Requests", icon: <FlaskConical className="w-4 h-4" />, show: true },
             { key: "referrals" as const, label: "Referrals", icon: <Users className="w-4 h-4" />, show: isOwner || canViewReferrals },
             { key: "clients" as const, label: "Clients", icon: <UserCircle className="w-4 h-4" />, show: isOwner || canViewClients },
             { key: "analytics" as const, label: "Analytics", icon: <BarChart3 className="w-4 h-4" />, show: isOwner || canViewAnalytics },
             { key: "activity" as const, label: "Activity", icon: <Activity className="w-4 h-4" />, show: isOwner || canViewActivity },
             { key: "feedback" as const, label: "Feedback", icon: <Star className="w-4 h-4" />, show: isOwner || canViewFeedback },
-            { key: "poveon" as const, label: "Poveon", icon: <CreditCard className="w-4 h-4" />, show: isOwner || canViewWallet },
             { key: "price-list" as const, label: "Price List", icon: <Layers className="w-4 h-4" />, show: isOwner || canViewWallet },
           ].filter((item) => item.show);
           if (navItems.length <= 1) return null;
@@ -655,16 +676,16 @@ export function LabDashboard({ lab, isOwner = false, roleName = "Lab Owner", can
 
         {/* Amount owed banner — shown on all tabs when lab has a negative wallet balance */}
         {poveonBalance !== null && poveonBalance < 0 && (isOwner || canViewWallet) && (
-          <div className="mb-5 flex items-center gap-3 bg-amber-500/15 border border-amber-500/30 rounded-2xl px-4 py-3">
-            <CreditCard className="w-4 h-4 text-amber-400 shrink-0" />
-            <p className="text-sm text-amber-200 flex-1">
+          <div className="mb-5 flex items-center gap-3 bg-red-500/20 border border-red-500/30 rounded-2xl px-4 py-3">
+            <AlertTriangle className="w-4 h-4 text-red-400 shrink-0" />
+            <p className="text-sm text-slate-200 flex-1">
               Your lab owes Poveon{" "}
-              <span className="font-bold font-mono text-amber-300">₦{Math.abs(poveonBalance).toLocaleString()}</span>.
+              <span className="font-bold font-mono text-red-400">₦{Math.abs(poveonBalance).toLocaleString()}</span>.
               {" "}Top up your wallet to settle the balance.
             </p>
             <button
               onClick={() => setMainView("poveon")}
-              className="shrink-0 text-xs font-semibold text-amber-300 hover:text-amber-100 underline underline-offset-2 transition"
+              className="shrink-0 text-xs font-semibold text-red-400 hover:text-red-300 underline underline-offset-2 transition"
             >
               View →
             </button>
@@ -728,47 +749,37 @@ export function LabDashboard({ lab, isOwner = false, roleName = "Lab Owner", can
               </div>
             ) : (
               <>
-                {/* Doctor cards — unified for all screen sizes, each opens a popup */}
-                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
-                  {referrals.map((doc) => (
-                    <button
-                      key={doc.doctor_email}
-                      type="button"
-                      onClick={() => startTransition(() => setExpandedDoctor(doc.doctor_email))}
-                      className="text-left bg-white/5 hover:bg-white/10 border border-white/10 hover:border-white/20 rounded-2xl p-4 transition-all group"
-                    >
-                      <div className="flex items-start gap-3 mb-3">
-                        <div className="w-10 h-10 rounded-full bg-medical-600/20 border border-medical-500/30 flex items-center justify-center shrink-0">
-                          <Stethoscope className="w-5 h-5 text-medical-400" />
+                {/* Doctor rows — compact list */}
+                <div className="rounded-2xl overflow-hidden border border-white/8 divide-y divide-white/5">
+                  {referrals.map((doc) => {
+                    const displayName = [doc.doctor_prefix, doc.doctor_name].filter(Boolean).join(" ") || doc.doctor_email;
+                    const subline = doc.doctor_hospital || ([doc.doctor_prefix, doc.doctor_name].filter(Boolean).length > 0 ? doc.doctor_email : null);
+                    return (
+                      <button
+                        key={doc.doctor_email}
+                        type="button"
+                        onClick={() => startTransition(() => setExpandedDoctor(doc.doctor_email))}
+                        className="w-full text-left flex items-center gap-3 px-4 py-3 bg-white/3 hover:bg-white/8 transition-colors group"
+                      >
+                        <div className="w-8 h-8 rounded-full bg-medical-600/20 border border-medical-500/30 flex items-center justify-center shrink-0">
+                          <Stethoscope className="w-4 h-4 text-medical-400" />
                         </div>
                         <div className="flex-1 min-w-0">
-                          <p className="font-semibold text-white truncate leading-tight">
-                            {[doc.doctor_prefix, doc.doctor_name].filter(Boolean).join(" ") || doc.doctor_email}
-                          </p>
-                          {[doc.doctor_prefix, doc.doctor_name].filter(Boolean).join(" ") && (
-                            <p className="text-xs text-slate-500 truncate">{doc.doctor_email}</p>
-                          )}
-                          {doc.doctor_hospital && (
-                            <p className="text-xs text-slate-500 truncate">{doc.doctor_hospital}</p>
-                          )}
+                          <p className="text-sm font-semibold text-white truncate leading-tight">{displayName}</p>
+                          {subline && <p className="text-xs text-slate-500 truncate">{subline}</p>}
                         </div>
-                        <span className="shrink-0 text-xs font-bold bg-medical-900/50 text-medical-300 border border-medical-800/30 px-2 py-0.5 rounded-full">
-                          {doc.total_referrals}
-                        </span>
-                      </div>
-                      <div className="flex flex-wrap gap-1 mb-3">
-                        {doc.tests.slice(0, 3).map((t) => (
-                          <span key={t} className="text-xs bg-white/5 text-slate-400 border border-white/10 px-2 py-0.5 rounded-full">{t}</span>
-                        ))}
-                        {doc.tests.length > 3 && (
-                          <span className="text-xs text-slate-500">+{doc.tests.length - 3} more</span>
-                        )}
-                      </div>
-                      <p className="text-xs text-slate-500">
-                        Last: {new Date(doc.last_referral).toLocaleDateString("en-GB", { day: "numeric", month: "short", year: "numeric" })}
-                      </p>
-                    </button>
-                  ))}
+                        <div className="shrink-0 text-right">
+                          <span className="text-xs font-bold bg-medical-900/50 text-medical-300 border border-medical-800/30 px-2 py-0.5 rounded-full">
+                            {doc.total_referrals}
+                          </span>
+                          <p className="text-[10px] text-slate-500 mt-0.5">
+                            {new Date(doc.last_referral).toLocaleDateString("en-GB", { day: "numeric", month: "short" })}
+                          </p>
+                        </div>
+                        <ChevronRight className="w-3.5 h-3.5 text-slate-500 shrink-0 group-hover:text-slate-300 transition-colors" />
+                      </button>
+                    );
+                  })}
                 </div>
 
                 {/* Doctor detail popup */}
@@ -980,46 +991,37 @@ export function LabDashboard({ lab, isOwner = false, roleName = "Lab Owner", can
                 <p className="text-slate-500 text-sm mt-1">Clients appear here after their code is entered at the lab.</p>
               </div>
             ) : (
-              <div className="space-y-3">
-                <p className="text-xs text-slate-500 font-semibold uppercase tracking-wider mb-4">{clients.length} client{clients.length !== 1 ? "s" : ""}</p>
-                {clients.map((client) => (
-                  <button
-                    key={client.patient_phone}
-                    type="button"
-                    onClick={() => setSelectedClient(client)}
-                    className="w-full text-left bg-white/5 hover:bg-white/10 border border-white/10 hover:border-white/20 rounded-2xl p-4 transition-all group"
-                  >
-                    <div className="flex items-start justify-between gap-3">
-                      <div className="flex items-center gap-3 min-w-0">
-                        <div className="w-10 h-10 rounded-full bg-medical-600/20 border border-medical-500/30 flex items-center justify-center shrink-0">
-                          <UserCircle className="w-5 h-5 text-medical-400" />
-                        </div>
-                        <div className="min-w-0">
-                          {client.patient_name ? (
-                            <p className="text-sm font-bold text-white leading-tight truncate">{client.patient_name}</p>
-                          ) : null}
-                          <a
-                            href={`tel:${client.patient_phone}`}
-                            onClick={(e) => e.stopPropagation()}
-                            className="text-xs text-medical-400 hover:text-medical-300 font-mono flex items-center gap-1 mt-0.5"
-                          >
-                            <Phone className="w-3 h-3" />
-                            {client.patient_phone}
-                          </a>
-                        </div>
+              <div>
+                <p className="text-xs text-slate-500 font-semibold uppercase tracking-wider mb-3">{clients.length} client{clients.length !== 1 ? "s" : ""}</p>
+                <div className="rounded-2xl overflow-hidden border border-white/8 divide-y divide-white/5">
+                  {clients.map((client) => (
+                    <button
+                      key={client.patient_phone}
+                      type="button"
+                      onClick={() => setSelectedClient(client)}
+                      className="w-full text-left flex items-center gap-3 px-4 py-3 bg-white/3 hover:bg-white/8 transition-colors group"
+                    >
+                      <div className="w-8 h-8 rounded-full bg-medical-600/20 border border-medical-500/30 flex items-center justify-center shrink-0">
+                        <UserCircle className="w-4 h-4 text-medical-400" />
                       </div>
-                      <div className="text-right shrink-0">
-                        <span className="inline-block text-xs font-bold text-medical-300 bg-medical-600/20 border border-medical-500/30 px-2 py-0.5 rounded-full">
-                          {client.visit_count} visit{client.visit_count !== 1 ? "s" : ""}
+                      <div className="flex-1 min-w-0">
+                        {client.patient_name && (
+                          <p className="text-sm font-semibold text-white truncate leading-tight">{client.patient_name}</p>
+                        )}
+                        <p className="text-xs text-slate-500 font-mono truncate">{client.patient_phone}</p>
+                      </div>
+                      <div className="shrink-0 text-right">
+                        <span className="text-xs font-bold text-medical-300 bg-medical-600/20 border border-medical-500/30 px-2 py-0.5 rounded-full">
+                          {client.visit_count}
                         </span>
-                        <p className="text-xs text-slate-500 mt-1">{new Date(client.last_visit).toLocaleDateString("en-GB", { day: "numeric", month: "short", year: "numeric" })}</p>
+                        <p className="text-[10px] text-slate-500 mt-0.5">
+                          {new Date(client.last_visit).toLocaleDateString("en-GB", { day: "numeric", month: "short" })}
+                        </p>
                       </div>
-                    </div>
-                    <div className="mt-3 pt-3 border-t border-white/5">
-                      <p className="text-xs text-slate-400 line-clamp-1"><span className="text-slate-500">Last: </span>{client.recent_tests}</p>
-                    </div>
-                  </button>
-                ))}
+                      <ChevronRight className="w-3.5 h-3.5 text-slate-500 shrink-0 group-hover:text-slate-300 transition-colors" />
+                    </button>
+                  ))}
+                </div>
               </div>
             )}
 
@@ -1714,6 +1716,9 @@ export function LabDashboard({ lab, isOwner = false, roleName = "Lab Owner", can
           <LabPoveonView
             data={poveonData}
             loading={poveonLoading}
+            walletData={walletData}
+            walletRefreshing={walletRefreshing}
+            onRefreshWallet={() => fetchWallet(true)}
             onLoad={async () => {
               setPoveonLoading(true);
               try {
@@ -1727,16 +1732,22 @@ export function LabDashboard({ lab, isOwner = false, roleName = "Lab Owner", can
 
         {/* Price list view */}
         {mainView === "price-list" && (isOwner || canViewWallet) && (
-          <LabPriceListView
-            data={priceListData}
-            loading={priceListLoading}
-            onLoad={() => {
-              if (!priceListData) {
-                setPriceListLoading(true);
-                fetch("/api/lab/price-schedule").then((r) => r.json()).then((d) => { if (d.success) setPriceListData(d.schedule); }).catch(() => {}).finally(() => setPriceListLoading(false));
-              }
-            }}
-          />
+          <>
+            <LabPriceListView
+              data={priceListData}
+              loading={priceListLoading}
+              onManage={() => setPriceManagerOpen(true)}
+              onLoad={() => {
+                if (!priceListData) {
+                  setPriceListLoading(true);
+                  fetch("/api/lab/price-schedule").then((r) => r.json()).then((d) => { if (d.success) setPriceListData(d.schedule); }).catch(() => {}).finally(() => setPriceListLoading(false));
+                }
+              }}
+            />
+            {priceManagerOpen && (
+              <LabPriceListManager onClose={() => setPriceManagerOpen(false)} />
+            )}
+          </>
         )}
 
         {/* Requests view */}
@@ -1751,14 +1762,16 @@ export function LabDashboard({ lab, isOwner = false, roleName = "Lab Owner", can
             Enter the patient code to reveal their full information.
           </p>
           <div className="flex gap-2">
-            <Input
-              placeholder="Enter patient code (e.g. LABA-8X4K29Q)"
-              value={codeInput}
-              onChange={(e) => setCodeInput(e.target.value)}
-              onKeyDown={(e) => e.key === "Enter" && handleRetrieve()}
-              className="!bg-white !backdrop-blur-none border-slate-200 text-slate-800 placeholder-slate-300 font-mono"
-            />
-            <Button onClick={handleRetrieve} loading={retrieving} className="shrink-0">
+            <div className="flex-1 min-w-0">
+              <Input
+                placeholder="Enter patient code (e.g. LABA-8X4K29Q)"
+                value={codeInput}
+                onChange={(e) => setCodeInput(e.target.value)}
+                onKeyDown={(e) => e.key === "Enter" && handleRetrieve()}
+                className="!bg-white !backdrop-blur-none border-slate-200 text-slate-800 placeholder-slate-300 font-mono w-full"
+              />
+            </div>
+            <Button onClick={handleRetrieve} loading={retrieving} className="shrink-0 sm:px-6">
               <Search className="w-4 h-4" />
               Reveal
             </Button>
@@ -3108,7 +3121,7 @@ function LabFeedbackView({ labId }: { labId: string }) {
 type PriceListTest = { id: string; name: string; lab_price: number; poveon_fee: number | null; commission_pct: number | null };
 type PriceListCategory = { category: string; tests: PriceListTest[] };
 
-function LabPriceListView({ data, loading, onLoad }: { data: PriceListCategory[] | null; loading: boolean; onLoad: () => void }) {
+function LabPriceListView({ data, loading, onLoad, onManage }: { data: PriceListCategory[] | null; loading: boolean; onLoad: () => void; onManage: () => void }) {
   const [search, setSearch] = useState("");
   useEffect(() => { if (!data && !loading) onLoad(); }, [data, loading, onLoad]);
 
@@ -3138,14 +3151,23 @@ function LabPriceListView({ data, loading, onLoad }: { data: PriceListCategory[]
           <h2 className="text-lg font-bold text-white">Your Price List</h2>
           <p className="text-xs text-slate-400 mt-0.5">{totalTests} test{totalTests !== 1 ? "s" : ""} across {schedule.length} categor{schedule.length !== 1 ? "ies" : "y"}</p>
         </div>
-        <div className="relative">
-          <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-500 pointer-events-none" />
-          <input
-            value={search}
-            onChange={(e) => setSearch(e.target.value)}
-            placeholder="Search tests…"
-            className="pl-9 pr-4 py-2.5 rounded-xl bg-white/8 border border-white/10 text-sm text-white placeholder-slate-500 focus:outline-none focus:border-white/25 w-full sm:w-64"
-          />
+        <div className="flex items-center gap-2 flex-wrap">
+          <div className="relative">
+            <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-500 pointer-events-none" />
+            <input
+              value={search}
+              onChange={(e) => setSearch(e.target.value)}
+              placeholder="Search tests…"
+              className="pl-9 pr-4 py-2.5 rounded-xl bg-white/8 border border-white/10 text-sm text-white placeholder-slate-500 focus:outline-none focus:border-white/25 w-full sm:w-52"
+            />
+          </div>
+          <button
+            onClick={onManage}
+            className="flex items-center gap-2 px-4 py-2.5 rounded-xl bg-sky-600 border border-sky-600 text-white hover:bg-sky-700 text-sm font-medium transition-all whitespace-nowrap shadow-sm"
+          >
+            <Settings2 className="w-4 h-4" />
+            Manage &amp; Edit
+          </button>
         </div>
       </div>
 
@@ -3212,78 +3234,134 @@ type PoveonViewData = { total_owed: number; total_lab_revenue: number; total_dep
 type WalletCredit = { id: string; amount: number; balance_after: number; reference: string; channel: string; sender_name: string | null; sender_bank: string | null; created_at: string };
 type WalletData = { balance: number; dva: { bank_name: string; account_number: string; account_name: string } | null; credits: WalletCredit[] } | null;
 
-function LabWalletPanel() {
-  const [wallet, setWallet] = useState<WalletData>(null);
-  const [loading, setLoading] = useState(true);
-  const [refreshing, setRefreshing] = useState(false);
+function LabWalletPanel({ wallet, refreshing, onRefresh }: {
+  wallet: WalletData | null;
+  refreshing: boolean;
+  onRefresh: () => void;
+}) {
   const [copied, setCopied] = useState(false);
 
-  function load(isRefresh = false) {
-    if (isRefresh) setRefreshing(true); else setLoading(true);
-    fetch("/api/lab/wallet")
-      .then((r) => r.json())
-      .then((d) => { if (d.success) setWallet(d); })
-      .catch(() => {})
-      .finally(() => { setLoading(false); setRefreshing(false); });
-  }
+  if (!wallet) return <div className="h-28 bg-white/5 rounded-2xl animate-pulse" />;
 
-  useEffect(() => {
-    load();
-    // Poll every 30 s so incoming DVA payments appear without manual refresh
-    const interval = setInterval(() => load(true), 30_000);
-    return () => clearInterval(interval);
-  }, []);
-
-  if (loading) return <div className="h-28 bg-white/5 rounded-2xl animate-pulse" />;
-
-  const balance = wallet?.balance ?? 0;
-  const dva     = wallet?.dva    ?? null;
-  const credits = wallet?.credits ?? [];
+  const balance = wallet.balance ?? 0;
+  const dva     = wallet.dva    ?? null;
 
   return (
-    <div className="space-y-3">
-      <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-        {/* Balance card */}
-        <div className="bg-gradient-to-br from-emerald-500/15 to-emerald-600/5 border border-emerald-500/25 rounded-2xl p-4 flex items-center gap-4">
-          <div className="w-10 h-10 rounded-xl bg-emerald-500/20 flex items-center justify-center shrink-0">
-            <Wallet2 className="w-5 h-5 text-emerald-400" />
-          </div>
-          <div className="flex-1 min-w-0">
-            <p className="text-xs text-slate-400 uppercase tracking-wider mb-0.5">Wallet Balance</p>
-            <p className="text-2xl font-bold font-mono text-white">₦{balance.toLocaleString()}</p>
-          </div>
-          <button onClick={() => load(true)} disabled={refreshing} className="shrink-0 p-2 rounded-xl bg-white/8 hover:bg-white/15 text-slate-400 hover:text-white transition disabled:opacity-50" title="Refresh">
-            <RefreshCw className={`w-4 h-4 ${refreshing ? "animate-spin" : ""}`} />
-          </button>
+    <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+      {/* Balance card */}
+      <div className="bg-gradient-to-br from-emerald-500/15 to-emerald-600/5 border border-emerald-500/25 rounded-2xl p-4 flex items-center gap-4">
+        <div className="w-10 h-10 rounded-xl bg-emerald-500/20 flex items-center justify-center shrink-0">
+          <Wallet2 className="w-5 h-5 text-emerald-400" />
         </div>
-
-        {/* DVA account card */}
-        {dva ? (
-          <div className="bg-white/5 border border-white/10 rounded-2xl p-4">
-            <p className="text-xs text-slate-400 uppercase tracking-wider mb-2">Your Dedicated Account</p>
-            <div className="flex items-center justify-between gap-2">
-              <div>
-                <p className="text-lg font-bold font-mono text-white tracking-widest">{dva.account_number}</p>
-                <p className="text-xs text-slate-400 mt-0.5">{dva.bank_name} · {dva.account_name}</p>
-              </div>
-              <button onClick={() => { navigator.clipboard.writeText(dva.account_number).then(() => { setCopied(true); setTimeout(() => setCopied(false), 2000); }); }} className="shrink-0 p-2 rounded-xl bg-white/8 hover:bg-white/15 text-slate-300 hover:text-white transition">
-                {copied ? <Check className="w-4 h-4 text-emerald-400" /> : <Copy className="w-4 h-4" />}
-              </button>
-            </div>
-            <p className="text-[10px] text-slate-500 mt-2">Transfer to this account from any bank to top up your wallet.</p>
-          </div>
-        ) : (
-          <div className="bg-white/5 border border-white/10 border-dashed rounded-2xl p-4 flex items-center gap-3">
-            <Wallet2 className="w-5 h-5 text-slate-500 shrink-0" />
-            <div>
-              <p className="text-sm text-slate-400 font-medium">No virtual account yet</p>
-              <p className="text-xs text-slate-500 mt-0.5">Ask your admin to provision a dedicated payment account.</p>
-            </div>
-          </div>
-        )}
+        <div className="flex-1 min-w-0">
+          <p className="text-xs text-slate-400 uppercase tracking-wider mb-0.5">Wallet Balance</p>
+          <p className="text-2xl font-bold font-mono text-white">₦{balance.toLocaleString()}</p>
+        </div>
+        <button onClick={onRefresh} disabled={refreshing} className="shrink-0 p-2 rounded-xl bg-white/8 hover:bg-white/15 text-slate-400 hover:text-white transition disabled:opacity-50" title="Refresh">
+          <RefreshCw className={`w-4 h-4 ${refreshing ? "animate-spin" : ""}`} />
+        </button>
       </div>
 
-      {/* Payment history */}
+      {/* DVA account card */}
+      {dva ? (
+        <div className="bg-white/5 border border-white/10 rounded-2xl p-4">
+          <p className="text-xs text-slate-400 uppercase tracking-wider mb-2">Your Dedicated Account</p>
+          <div className="flex items-center justify-between gap-2">
+            <div>
+              <p className="text-lg font-bold font-mono text-white tracking-widest">{dva.account_number}</p>
+              <p className="text-xs text-slate-400 mt-0.5">{dva.bank_name} · {dva.account_name}</p>
+            </div>
+            <button onClick={() => { navigator.clipboard.writeText(dva.account_number).then(() => { setCopied(true); setTimeout(() => setCopied(false), 2000); }); }} className="shrink-0 p-2 rounded-xl bg-white/8 hover:bg-white/15 text-slate-300 hover:text-white transition">
+              {copied ? <Check className="w-4 h-4 text-emerald-400" /> : <Copy className="w-4 h-4" />}
+            </button>
+          </div>
+          <p className="text-[10px] text-slate-500 mt-2">Transfer to this account from any bank to top up your wallet.</p>
+        </div>
+      ) : (
+        <div className="bg-white/5 border border-white/10 border-dashed rounded-2xl p-4 flex items-center gap-3">
+          <Wallet2 className="w-5 h-5 text-slate-500 shrink-0" />
+          <div>
+            <p className="text-sm text-slate-400 font-medium">No virtual account yet</p>
+            <p className="text-xs text-slate-500 mt-0.5">Ask your admin to provision a dedicated payment account.</p>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+function LabPoveonView({ data, loading, walletData, walletRefreshing, onRefreshWallet, onLoad }: {
+  data: PoveonViewData; loading: boolean;
+  walletData: WalletData | null; walletRefreshing: boolean; onRefreshWallet: () => void;
+  onLoad: () => void;
+}) {
+  const [expanded, setExpanded] = useState<Set<string>>(new Set());
+  useEffect(() => { if (!data) onLoad(); }, [data, onLoad]);
+
+  if (loading) {
+    return (
+      <div className="space-y-4 animate-pulse">
+        <div className="h-32 bg-white/5 rounded-2xl" />
+        <div className="h-20 bg-white/5 rounded-2xl" />
+        <div className="h-48 bg-white/5 rounded-2xl" />
+      </div>
+    );
+  }
+
+  const totalOwed       = data?.total_owed       ?? 0;
+  const totalLabRevenue = data?.total_lab_revenue ?? 0;
+  const totalDeposited  = data?.total_deposited  ?? 0;
+  const requests        = data?.requests         ?? [];
+
+  function toggleExpand(id: string) {
+    setExpanded((prev) => {
+      const next = new Set(prev);
+      next.has(id) ? next.delete(id) : next.add(id);
+      return next;
+    });
+  }
+
+  const credits = walletData?.credits ?? [];
+
+  return (
+    <div className="space-y-4">
+      {/* 1 — Wallet balance + DVA */}
+      <LabWalletPanel wallet={walletData} refreshing={walletRefreshing} onRefresh={onRefreshWallet} />
+
+      {/* 2 — Summary cards: immediately below wallet, no gap */}
+      {loading ? (
+        <div className="grid grid-cols-3 gap-3">
+          {[...Array(3)].map((_, i) => <div key={i} className="h-16 bg-white/5 rounded-2xl animate-pulse" />)}
+        </div>
+      ) : (
+        <div className="grid grid-cols-3 gap-3">
+          {[
+            { label: "Your Revenue", value: totalLabRevenue, color: "from-emerald-500/20 to-emerald-600/10 border-emerald-500/30" },
+            { label: "Poveon Fee", value: totalOwed, color: "from-sky-500/20 to-sky-600/10 border-sky-500/30" },
+            { label: "Deposited", value: totalDeposited, color: "from-violet-500/20 to-violet-600/10 border-violet-500/30" },
+          ].map((s) => (
+            <div key={s.label} className={`bg-gradient-to-br ${s.color} border rounded-2xl px-3 py-3 text-center`}>
+              <p className="text-[10px] text-slate-400 uppercase tracking-wider mb-0.5 leading-tight">{s.label}</p>
+              <p className="text-lg font-bold font-mono text-white leading-tight">₦{s.value.toLocaleString()}</p>
+            </div>
+          ))}
+        </div>
+      )}
+
+      {/* 3 — How Poveon commission works */}
+      <div className="bg-white/5 border border-white/10 rounded-2xl px-5 py-4 flex items-start gap-3">
+        <CreditCard className="w-4 h-4 text-slate-400 mt-0.5 shrink-0" />
+        <div className="space-y-1 flex-1">
+          <p className="text-sm font-semibold text-white">How Poveon commission works</p>
+          <p className="text-xs text-slate-400 leading-relaxed">
+            Each time you mark a request as <strong className="text-white">Seen</strong>, Poveon calculates the commission from your test catalog.
+            The commission rate is set per test in your catalog. Only tests in your price list contribute to the commission.
+            Tests not in your catalog cost ₦0 commission.
+          </p>
+        </div>
+      </div>
+
+      {/* 4 — Payment history */}
       {credits.length > 0 && (
         <div className="bg-white/5 border border-white/10 rounded-2xl overflow-hidden">
           <p className="text-xs font-semibold text-slate-400 uppercase tracking-wider px-4 py-3 border-b border-white/8">Payment History</p>
@@ -3312,90 +3390,8 @@ function LabWalletPanel() {
           </div>
         </div>
       )}
-    </div>
-  );
-}
 
-function LabPoveonView({ data, loading, onLoad }: { data: PoveonViewData; loading: boolean; onLoad: () => void }) {
-  const [expanded, setExpanded] = useState<Set<string>>(new Set());
-  useEffect(() => { if (!data) onLoad(); }, [data, onLoad]);
-
-  if (loading) {
-    return (
-      <div className="space-y-4 animate-pulse">
-        <div className="h-32 bg-white/5 rounded-2xl" />
-        <div className="h-20 bg-white/5 rounded-2xl" />
-        <div className="h-48 bg-white/5 rounded-2xl" />
-      </div>
-    );
-  }
-
-  const totalOwed       = data?.total_owed       ?? 0;
-  const totalLabRevenue = data?.total_lab_revenue ?? 0;
-  const totalDeposited  = data?.total_deposited  ?? 0;
-  const requests        = data?.requests         ?? [];
-
-  function toggleExpand(id: string) {
-    setExpanded((prev) => {
-      const next = new Set(prev);
-      next.has(id) ? next.delete(id) : next.add(id);
-      return next;
-    });
-  }
-
-  return (
-    <div className="space-y-6">
-      {/* Wallet panel — balance + DVA account */}
-      <LabWalletPanel />
-
-      {/* Summary cards */}
-      <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
-        <div className="bg-gradient-to-br from-emerald-500/20 to-emerald-600/10 border border-emerald-500/30 rounded-2xl p-5 flex items-center gap-4 sm:flex-col sm:items-center sm:text-center">
-          <div className="sm:hidden w-10 h-10 rounded-xl bg-emerald-500/20 flex items-center justify-center shrink-0">
-            <CreditCard className="w-5 h-5 text-emerald-400" />
-          </div>
-          <div className="flex-1 sm:flex-none">
-            <p className="text-xs text-slate-400 uppercase tracking-wider mb-1">Your Revenue</p>
-            <p className="text-2xl font-bold font-mono text-white">₦{totalLabRevenue.toLocaleString()}</p>
-            <p className="text-xs text-slate-500 mt-1">from listed tests</p>
-          </div>
-        </div>
-        <div className="bg-gradient-to-br from-sky-500/20 to-sky-600/10 border border-sky-500/30 rounded-2xl p-5 flex items-center gap-4 sm:flex-col sm:items-center sm:text-center">
-          <div className="sm:hidden w-10 h-10 rounded-xl bg-sky-500/20 flex items-center justify-center shrink-0">
-            <CreditCard className="w-5 h-5 text-sky-400" />
-          </div>
-          <div className="flex-1 sm:flex-none">
-            <p className="text-xs text-slate-400 uppercase tracking-wider mb-1">Total Poveon Fee</p>
-            <p className="text-2xl font-bold font-mono text-white">₦{totalOwed.toLocaleString()}</p>
-            <p className="text-xs text-slate-500 mt-1">cumulative commission</p>
-          </div>
-        </div>
-        <div className="bg-gradient-to-br from-violet-500/20 to-violet-600/10 border border-violet-500/30 rounded-2xl p-5 flex items-center gap-4 sm:flex-col sm:items-center sm:text-center">
-          <div className="sm:hidden w-10 h-10 rounded-xl bg-violet-500/20 flex items-center justify-center shrink-0">
-            <CreditCard className="w-5 h-5 text-violet-400" />
-          </div>
-          <div className="flex-1 sm:flex-none">
-            <p className="text-xs text-slate-400 uppercase tracking-wider mb-1">Total Deposited</p>
-            <p className="text-2xl font-bold font-mono text-white">₦{totalDeposited.toLocaleString()}</p>
-            <p className="text-xs text-slate-500 mt-1">paid into wallet via DVA</p>
-          </div>
-        </div>
-      </div>
-
-      {/* Info card */}
-      <div className="bg-white/5 border border-white/10 rounded-2xl px-5 py-4 flex items-start gap-3">
-        <CreditCard className="w-4 h-4 text-slate-400 mt-0.5 shrink-0" />
-        <div className="space-y-1 flex-1">
-          <p className="text-sm font-semibold text-white">How Poveon commission works</p>
-          <p className="text-xs text-slate-400 leading-relaxed">
-            Each time you mark a request as <strong className="text-white">Seen</strong>, Poveon calculates the commission from your test catalog.
-            The commission rate is set per test in your catalog. Only tests in your price list contribute to the commission.
-            Tests not in your catalog cost ₦0 commission.
-          </p>
-        </div>
-      </div>
-
-      {/* Request history */}
+      {/* 5 — Commission by Request */}
       <div>
         <div className="flex items-center justify-between mb-4">
           <p className="text-sm font-semibold text-white">Commission by Request ({requests.length})</p>
@@ -3426,17 +3422,12 @@ function LabPoveonView({ data, loading, onLoad }: { data: PoveonViewData; loadin
                     onClick={() => toggleExpand(req.id)}
                     className="w-full flex items-center gap-3 px-4 py-3 hover:bg-white/5 transition-colors text-left"
                   >
-                    <div className={`w-8 h-8 rounded-xl flex items-center justify-center shrink-0 ${req.is_paid_to_poveon ? "bg-emerald-500/15" : "bg-amber-500/15"}`}>
-                      {req.is_paid_to_poveon
-                        ? <Check className="w-4 h-4 text-emerald-400" />
-                        : <CreditCard className="w-4 h-4 text-amber-400" />}
+                    <div className="w-8 h-8 rounded-xl flex items-center justify-center shrink-0 bg-amber-500/15">
+                      <CreditCard className="w-4 h-4 text-amber-400" />
                     </div>
                     <div className="flex-1 min-w-0">
                       <div className="flex items-center gap-2 flex-wrap">
                         <p className="text-sm text-white font-mono font-medium">{req.code}</p>
-                        {req.is_paid_to_poveon && (
-                          <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-emerald-500/15 text-emerald-400 font-medium">Paid</span>
-                        )}
                       </div>
                       <p className="text-xs text-slate-500 truncate">{req.patient_name ?? "Patient"} · {req.tests.slice(0, 40)}</p>
                       <p className="text-[10px] text-slate-600 mt-0.5 sm:hidden">{req.seen_at ? format(new Date(req.seen_at), "dd MMM yyyy") : ""}</p>

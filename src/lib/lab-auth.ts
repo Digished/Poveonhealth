@@ -39,6 +39,8 @@ export interface LabAuthResult {
   /** "session" = logged-in lab user via cookie; "api_key" = LIMS/developer; "member" = lab staff */
   auth_method: "session" | "api_key" | "member";
   permissions: LabPermissions;
+  /** Email of the authenticated actor — used for audit trails (undefined for API-key auth) */
+  actor_email?: string;
 }
 
 /**
@@ -64,7 +66,12 @@ export async function getLabAuth(request: NextRequest): Promise<LabAuthResult | 
           select: { lab_id: true },
         });
         if (labUser) {
-          return { lab_id: labUser.lab_id, auth_method: "session", permissions: FULL_PERMISSIONS };
+          return {
+            lab_id:      labUser.lab_id,
+            auth_method: "session",
+            permissions: FULL_PERMISSIONS,
+            actor_email: user.email,
+          };
         }
       }
 
@@ -74,6 +81,7 @@ export async function getLabAuth(request: NextRequest): Promise<LabAuthResult | 
           where: { user_id: user.id },
           select: {
             lab_id: true,
+            email:  true,
             role: {
               select: {
                 can_view_requests:   true,
@@ -97,6 +105,7 @@ export async function getLabAuth(request: NextRequest): Promise<LabAuthResult | 
             lab_id:      member.lab_id,
             auth_method: "member",
             permissions: member.role,
+            actor_email: member.email ?? user.email,
           };
         }
       }

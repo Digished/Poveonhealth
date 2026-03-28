@@ -172,7 +172,7 @@ export function HeroSection() {
   return (
     <>
       <div
-        className={`relative overflow-hidden py-10 px-4 pb-12 transition-colors duration-700 ${
+        className={`relative overflow-hidden pt-5 pb-5 px-4 transition-colors duration-700 ${
           isDay
             ? "bg-gradient-to-b from-sky-200/70 via-sky-100/50 to-transparent"
             : "bg-gradient-to-b from-indigo-200/60 via-slate-100/40 to-transparent"
@@ -180,9 +180,9 @@ export function HeroSection() {
       >
         {isDay ? <CloudLayer /> : <StarField />}
 
-        <div className="relative z-10 flex flex-col items-center text-center gap-2.5 max-w-md mx-auto">
-          <div className="mb-1">{isDay ? <SunIcon /> : <MoonIcon />}</div>
-          <h1 className="text-3xl font-bold text-slate-800 tracking-tight">
+        <div className="relative z-10 flex flex-col items-center text-center gap-1.5 max-w-md mx-auto">
+          <div>{isDay ? <SunIcon /> : <MoonIcon />}</div>
+          <h1 className="text-2xl font-bold text-slate-800 tracking-tight">
             {GREETING[tod]}
           </h1>
           <p className="text-sm text-slate-500 leading-relaxed max-w-xs">
@@ -195,18 +195,6 @@ export function HeroSection() {
               Learn more
             </button>
           </p>
-
-          {/* Subtle scroll CTA */}
-          <div className="flex flex-col items-center gap-1 mt-2">
-            <p className="text-[11px] text-slate-400 font-medium">No login needed · scroll to fill a request</p>
-            <svg
-              className="w-4 h-4 text-slate-300 animate-bounce"
-              viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"
-              strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"
-            >
-              <path d="M12 5v14M5 12l7 7 7-7" />
-            </svg>
-          </div>
         </div>
       </div>
 

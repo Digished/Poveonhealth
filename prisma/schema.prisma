@@ -493,6 +493,31 @@ model Hospital {
   @@map("hospitals")
 }
 
+// ── Price Change Audit Log ────────────────────────────────────────────────────
+
+// Every time a lab test price (or status) is changed — by the lab owner, a
+// member, or an admin — we write one row here so the lab can see *who* changed
+// what and *when*.
+model PriceChangeLog {
+  id                  String   @id @default(uuid())
+  lab_offered_test_id String                       // the test that was edited
+  lab_id              String                       // denormalised for quick per-lab queries
+  test_name           String                       // snapshot so history survives test deletion
+  changed_by_email    String                       // actor's email address
+  changed_by_role     String   @default("owner")  // "owner" | "member" | "admin"
+  field_changed       String   @default("lab_price") // "lab_price" | "is_active" | "category_label"
+  old_value           String?                      // stringified old value
+  new_value           String?                      // stringified new value
+  // Convenience columns for price changes (mirrors field_changed = "lab_price")
+  old_price           Decimal? @db.Decimal(12, 2)
+  new_price           Decimal? @db.Decimal(12, 2)
+  changed_at          DateTime @default(now())
+
+  @@index([lab_offered_test_id])
+  @@index([lab_id, changed_at])
+  @@map("price_change_logs")
+}
+
 // ── Global Knowledge Base Tests ───────────────────────────────────────────────
 
 model KbTest {

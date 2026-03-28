@@ -11,6 +11,8 @@ import {
 import { PoveonLogo } from "@/components/PoveonLogo";
 import { PrefixSelect } from "@/components/PrefixSelect";
 import { BankAccountInput } from "@/components/BankAccountInput";
+import { PhoneInput } from "@/components/PhoneInput";
+import { HospitalTagInput } from "@/components/ui/HospitalTagInput";
 
 interface Marketer {
   name: string;
@@ -205,7 +207,7 @@ function CreateProfessionalModal({ onClose, onCreated }: { onClose: () => void; 
   const [prefix,      setPrefix]      = useState("Dr.");
   const [fullName,    setFullName]    = useState("");
   const [phone,       setPhone]       = useState("");
-  const [hospital,    setHospital]    = useState("");
+  const [hospitals,   setHospitals]   = useState<string[]>([]);
   // Bank fields — bankCode used only for Paystack verification, not stored
   const [bankName,      setBankName]      = useState("");
   const [bankCode,      setBankCode]      = useState("");
@@ -230,7 +232,7 @@ function CreateProfessionalModal({ onClose, onCreated }: { onClose: () => void; 
           prefix:         prefix          || null,
           full_name:      fullName.trim(),
           phone:          phone.trim()           || null,
-          hospitals:      hospital.trim() ? [hospital.trim()] : [],
+          hospitals:      hospitals,
           bank_name:      bankName               || null,
           account_number: accountNumber          || null,
           account_name:   accountName            || null,
@@ -289,15 +291,13 @@ function CreateProfessionalModal({ onClose, onCreated }: { onClose: () => void; 
             {/* Phone */}
             <div>
               <label className={labelCls}>Phone Number</label>
-              <input type="tel" placeholder="+234 800 123 4567" value={phone}
-                onChange={(e) => setPhone(e.target.value)} className={inputCls} />
+              <PhoneInput value={phone} onChange={setPhone} />
             </div>
 
             {/* Hospital */}
             <div>
               <label className={labelCls}>Hospital / Clinic</label>
-              <input type="text" placeholder="Hospital or clinic name" value={hospital}
-                onChange={(e) => setHospital(e.target.value)} className={inputCls} />
+              <HospitalTagInput value={hospitals} onChange={setHospitals} />
             </div>
 
             {/* Bank details — with full NUBAN verification */}
