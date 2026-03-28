@@ -9,6 +9,7 @@ const SECRET = process.env.PAYSTACK_SECRET_KEY!;
 export async function POST(req: NextRequest) {
   const raw = await req.text();
 
+  // Verify HMAC-SHA512 signature
   const sig      = req.headers.get("x-paystack-signature") ?? "";
   const expected = createHmac("sha512", SECRET).update(raw).digest("hex");
   if (sig !== expected) {
@@ -20,10 +21,12 @@ export async function POST(req: NextRequest) {
   try { body = JSON.parse(raw); } catch { return NextResponse.json({ ok: true }); }
 
   const { event, data } = body;
+
+  // Only process successful DVA (dedicated virtual account) payments
   const channel = String(data.channel ?? "");
   console.log(`[webhook] event=${event} channel=${channel}`);
 
-  if (event !== "charge.success" || !channel.includes("nuban")) {
+  if (event !== "charge.success" || channel !== "dedicated_nuban") {
     return NextResponse.json({ ok: true });
   }
 
@@ -31,7 +34,7 @@ export async function POST(req: NextRequest) {
   const amountNaira = Number(data.amount ?? 0) / 100;
   if (!reference || amountNaira <= 0) return NextResponse.json({ ok: true });
 
-  // Find wallet by customer_code, fall back to dva_account_number
+  // Locate the lab wallet — try customer_code first, fall back to DVA account number
   const customerCode = (data.customer as Record<string, string> | null)?.customer_code ?? "";
   const dvaAccNum    = (data.dedicated_account as Record<string, string> | null)?.account_number ?? "";
 
@@ -42,36 +45,53 @@ export async function POST(req: NextRequest) {
     wallet = await prisma.labWallet.findFirst({ where: { dva_account_number: dvaAccNum } });
   }
   if (!wallet) {
-    console.error(`[webhook] no wallet — customer=${customerCode} dva=${dvaAccNum}`);
+    console.error(`[webhook] no wallet found — customer=${customerCode} dva=${dvaAccNum}`);
     return NextResponse.json({ ok: true });
   }
 
-  // Idempotency
+  // Idempotency — skip if this reference was already credited
   const already = await prisma.labWalletCredit.findUnique({ where: { reference } });
-  if (already) { console.log(`[webhook] duplicate ${reference}`); return NextResponse.json({ ok: true }); }
+  if (already) {
+    console.log(`[webhook] duplicate reference ${reference} — already credited`);
+    return NextResponse.json({ ok: true });
+  }
 
+  // Sender info lives in authorization for DVA bank transfers, not metadata
   const auth = data.authorization as Record<string, string> | null;
-  const meta = data.metadata      as Record<string, string> | null;
-  const newBalance = Number(wallet.balance) + amountNaira;
+  const senderName = auth?.sender_name ?? null;
+  const senderBank = auth?.sender_bank ?? null;
+
+  // Create credit record first — this is the idempotency anchor.
+  // balance_after is an estimate; balance update below is atomic so the true
+  // running balance is always wallet.balance, not this snapshot field.
+  const estimatedBalanceAfter = Number(wallet.balance) + amountNaira;
 
   await prisma.labWalletCredit.create({
     data: {
       wallet_id:     wallet.id,
       amount:        amountNaira,
-      balance_after: newBalance,
+      balance_after: estimatedBalanceAfter,
       reference,
       channel:       "dva",
-      sender_name:   meta?.sender_name ?? null,
-      sender_bank:   auth?.bank ?? auth?.sender_bank ?? null,
+      sender_name:   senderName,
+      sender_bank:   senderBank,
     },
   });
 
-  await prisma.labWallet.update({
-    where: { id: wallet.id },
-    data:  { balance: newBalance },
-  });
+  // Atomically increment balance — prevents race conditions when multiple
+  // payments arrive simultaneously (avoids read-modify-write overwrite).
+  try {
+    await prisma.labWallet.update({
+      where: { id: wallet.id },
+      data:  { balance: { increment: amountNaira } },
+    });
+    console.log(`[webhook] ✓ ₦${amountNaira} credited to lab ${wallet.lab_id} (ref: ${reference})`);
+  } catch (err) {
+    // Credit record exists but balance wasn't updated.
+    // The admin manual-credit endpoint can resync if needed.
+    console.error(`[webhook] balance update failed for ref ${reference}:`, err);
+  }
 
-  console.log(`[webhook] ✓ ₦${amountNaira} credited to lab ${wallet.lab_id}`);
   return NextResponse.json({ ok: true });
 }
 

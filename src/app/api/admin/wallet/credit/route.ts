@@ -1,3 +1,5 @@
+export const dynamic = "force-dynamic";
+
 import { NextRequest, NextResponse } from "next/server";
 import { createServerClient } from "@/lib/supabase/server";
 import { prisma } from "@/lib/prisma";
@@ -52,24 +54,35 @@ export async function POST(req: NextRequest) {
   const already = await prisma.labWalletCredit.findUnique({ where: { reference } });
   if (already) return NextResponse.json({ error: "Already credited.", already_credited: true }, { status: 409 });
 
-  const newBalance = Number(wallet.balance) + amountNaira;
+  // Estimate balance_after for the credit record snapshot.
+  // The actual balance is updated atomically below — wallet.balance is the source of truth.
+  const estimatedBalanceAfter = Number(wallet.balance) + amountNaira;
+
+  // Sender info lives in authorization for DVA bank transfers
+  const auth = tx.authorization as Record<string, string> | null;
+  const senderName = auth?.sender_name ?? null;
+  const senderBank = auth?.sender_bank ?? null;
 
   await prisma.labWalletCredit.create({
     data: {
       wallet_id:     wallet.id,
       amount:        amountNaira,
-      balance_after: newBalance,
+      balance_after: estimatedBalanceAfter,
       reference,
       channel:      "manual",
-      sender_name:  tx.metadata?.sender_name ?? null,
-      sender_bank:  tx.authorization?.bank   ?? null,
+      sender_name:  senderName,
+      sender_bank:  senderBank,
     },
   });
 
+  // Atomic increment — prevents race conditions if multiple manual credits run concurrently
   await prisma.labWallet.update({
     where: { id: wallet.id },
-    data:  { balance: newBalance },
+    data:  { balance: { increment: amountNaira } },
   });
+
+  const updated = await prisma.labWallet.findUnique({ where: { id: wallet.id }, select: { balance: true } });
+  const newBalance = Number(updated?.balance ?? estimatedBalanceAfter);
 
   return NextResponse.json({ success: true, amount: amountNaira, new_balance: newBalance });
 }
