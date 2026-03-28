@@ -1910,15 +1910,15 @@ export function DoctorRequestForm({
             {/* ── Account creation nudge (not_found only) ── */}
             {docProfileStatus === "not_found" && docSubStep !== null && (
               <a
-                href="/doc-register"
+                href="/doc-login"
                 target="_blank"
                 rel="noopener noreferrer"
                 className="flex items-center justify-between gap-3 px-4 py-3 rounded-2xl bg-medical-50 border border-medical-200 hover:bg-medical-100 transition-colors group mb-3"
               >
                 <p className="text-xs text-medical-700 leading-snug">
-                  <span className="font-semibold">Save your details permanently</span> — create a free account
+                  <span className="font-semibold">Save your details permanently</span> — sign in or create a free account
                 </p>
-                <span className="text-medical-500 text-xs font-semibold shrink-0 group-hover:underline">Sign up →</span>
+                <span className="text-medical-500 text-xs font-semibold shrink-0 group-hover:underline">Sign in →</span>
               </a>
             )}
 
