@@ -8,6 +8,8 @@ import {
 import { PoveonLogo } from "@/components/PoveonLogo";
 import { HospitalTagInput } from "@/components/ui/HospitalTagInput";
 import { PrefixSelect } from "@/components/PrefixSelect";
+import { BankAccountInput } from "@/components/BankAccountInput";
+import { PhoneInput } from "@/components/PhoneInput";
 import { useRouter, useSearchParams } from "next/navigation";
 
 type Stage = "email" | "pin" | "otp" | "claim" | "onboarding" | "create-pin";
@@ -178,6 +180,7 @@ function DocLoginInner() {
   const [claimPhone,         setClaimPhone]         = useState("");
   const [claimHospital,      setClaimHospital]      = useState("");
   const [claimBankName,      setClaimBankName]      = useState("");
+  const [claimBankCode,      setClaimBankCode]      = useState("");
   const [claimAccountNumber, setClaimAccountNumber] = useState("");
   const [claimAccountName,   setClaimAccountName]   = useState("");
 
@@ -191,6 +194,12 @@ function DocLoginInner() {
     const t = setTimeout(() => setCountdown((c) => c - 1), 1000);
     return () => clearTimeout(t);
   }, [countdown]);
+
+  // Pre-fill email from ?email= query param (e.g. when redirected from DoctorRequestForm)
+  useEffect(() => {
+    const emailParam = searchParams.get("email");
+    if (emailParam) setEmail(emailParam.trim());
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
   function handleDigitChange(
     arr: string[], setArr: React.Dispatch<React.SetStateAction<string[]>>,
@@ -547,8 +556,7 @@ function DocLoginInner() {
               {/* Phone */}
               <div>
                 <label className={labelCls}>Phone Number</label>
-                <input type="tel" placeholder="+234 800 123 4567" value={claimPhone}
-                  onChange={(e) => setClaimPhone(e.target.value)} className={inputCls} />
+                <PhoneInput value={claimPhone} onChange={setClaimPhone} />
               </div>
 
               {/* Hospital */}
@@ -559,23 +567,18 @@ function DocLoginInner() {
               </div>
 
               {/* Bank details */}
-              <div className="rounded-2xl border border-slate-100 bg-slate-50/60 p-3 space-y-3">
-                <p className="text-xs font-semibold text-slate-500 uppercase tracking-wider">Bank Details</p>
-                <div>
-                  <label className={labelCls}>Bank Name</label>
-                  <input type="text" placeholder="e.g. GTBank" value={claimBankName}
-                    onChange={(e) => setClaimBankName(e.target.value)} className={inputCls} />
-                </div>
-                <div>
-                  <label className={labelCls}>Account Number</label>
-                  <input type="text" placeholder="10-digit account number" value={claimAccountNumber}
-                    onChange={(e) => setClaimAccountNumber(e.target.value)} className={inputCls} />
-                </div>
-                <div>
-                  <label className={labelCls}>Account Name</label>
-                  <input type="text" placeholder="Account holder name" value={claimAccountName}
-                    onChange={(e) => setClaimAccountName(e.target.value)} className={inputCls} />
-                </div>
+              <div className="rounded-2xl border border-slate-100 bg-slate-50/60 p-3">
+                <p className="text-xs font-semibold text-slate-500 uppercase tracking-wider mb-3">Bank Details</p>
+                <BankAccountInput
+                  bankName={claimBankName}
+                  bankCode={claimBankCode}
+                  accountNumber={claimAccountNumber}
+                  accountName={claimAccountName}
+                  onBankChange={(name, code) => { setClaimBankName(name); setClaimBankCode(code); }}
+                  onAccountNumberChange={setClaimAccountNumber}
+                  onAccountNameChange={setClaimAccountName}
+                  onVerifiedChange={() => {}}
+                />
               </div>
 
               {error && <p className="text-xs text-red-600 bg-red-50 border border-red-100 rounded-xl px-3 py-2">{error}</p>}

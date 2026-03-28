@@ -3,7 +3,6 @@
 import { useState, useEffect, useRef, useCallback } from "react";
 import { createPortal } from "react-dom";
 import { toast } from "react-hot-toast";
-import { HospitalTagInput } from "@/components/ui/HospitalTagInput";
 import {
   FlaskConical, User, MapPin, Phone, Stethoscope,
   TestTube2, ChevronRight, ChevronLeft, Building2, Check,
@@ -608,8 +607,6 @@ export function DoctorRequestForm({
   const [doctorEditing, setDoctorEditing] = useState(false);
   const [doctorOptionalOpen, setDoctorOptionalOpen] = useState(false);
   const [savedProfile, setSavedProfile] = useState<{ prefix: string; name: string; email: string; phone: string; hospital: string; bankName: string; bankCode: string; accountNumber: string; accountName: string } | null>(null);
-  const [bankCode, setBankCode] = useState("");
-  const [bankVerified, setBankVerified] = useState(false);
   const [maxStep, setMaxStep] = useState(startStep);
   const [clinicalMode, setClinicalMode] = useState<"type" | "picture">("type");
   // Index into the locations[] array; drives which lab_id is submitted
@@ -649,9 +646,8 @@ export function DoctorRequestForm({
 
   // Step 3: doctor profile check
   const [docProfileStatus, setDocProfileStatus] = useState<"idle" | "checking" | "found_complete" | "found_partial" | "not_found">("idle");
-  const [docProfileInfo, setDocProfileInfo] = useState<{ prefix: string | null; full_name: string | null; hospital: string | null; has_bank: boolean } | null>(null);
+  const [docProfileInfo, setDocProfileInfo] = useState<{ prefix: string | null; full_name: string | null; hospital: string | null; has_bank: boolean; claimed: boolean } | null>(null);
   // Sub-step for collecting doctor details inline when profile is incomplete (1=name, 2=hospital, 3=bank)
-  const [docSubStep, setDocSubStep] = useState<1 | 2 | 3 | null>(null);
   // Track which fields were auto-filled from a doctor profile lookup so we can clear them on email change
   const docAutofillRef = useRef<{ email: string; prefix: string; name: string; hospital: string }>({ email: "", prefix: "", name: "", hospital: "" });
 
@@ -739,7 +735,6 @@ export function DoctorRequestForm({
     if (!valid) {
       setDocProfileStatus("idle");
       setDocProfileInfo(null);
-      setDocSubStep(null);
       return;
     }
     setDocProfileStatus("checking");
@@ -748,13 +743,12 @@ export function DoctorRequestForm({
       fetch(`/api/doc-profile/check?email=${encodeURIComponent(email)}`, { signal: controller.signal })
         .then((r) => r.ok ? r.json() : null)
         .then((data) => {
-          if (!data) { setDocProfileStatus("not_found"); setDocSubStep(1); return; }
+          if (!data) { setDocProfileStatus("not_found"); return; }
           if (data.exists) {
-            const info = { prefix: data.prefix, full_name: data.full_name, hospital: data.hospital, has_bank: !!data.has_bank };
+            const info = { prefix: data.prefix, full_name: data.full_name, hospital: data.hospital, has_bank: !!data.has_bank, claimed: data.claimed !== false };
             setDocProfileInfo(info);
             if (data.profile_complete) {
               setDocProfileStatus("found_complete");
-              setDocSubStep(null);
               // Auto-fill form fields from the live profile and record what was filled
               const filled = { email, prefix: data.prefix ?? "", name: data.full_name ?? "", hospital: data.hospital ?? "" };
               docAutofillRef.current = filled;
@@ -766,15 +760,13 @@ export function DoctorRequestForm({
               }));
             } else {
               setDocProfileStatus("found_partial");
-              setDocSubStep(1);
             }
           } else {
             setDocProfileInfo(null);
             setDocProfileStatus("not_found");
-            setDocSubStep(1);
           }
         })
-        .catch(() => { setDocProfileStatus("not_found"); setDocSubStep(1); });
+        .catch(() => { setDocProfileStatus("not_found"); });
     }, 600);
     return () => { clearTimeout(timer); controller.abort(); };
   }, [form.doctor_email]); // eslint-disable-line react-hooks/exhaustive-deps
@@ -1882,8 +1874,8 @@ export function DoctorRequestForm({
               </div>
             )}
 
-            {/* ── Profile found & complete — read-only summary ── */}
-            {docProfileStatus === "found_complete" && docProfileInfo && (
+            {/* ── Profile found & complete (claimed) — read-only summary ── */}
+            {docProfileStatus === "found_complete" && docProfileInfo && docProfileInfo.claimed && (
               <div className="space-y-2">
                 {/* Name row */}
                 <div className="flex items-center gap-3 px-4 py-3 bg-emerald-50 border border-emerald-200 rounded-2xl">
@@ -1907,148 +1899,50 @@ export function DoctorRequestForm({
               </div>
             )}
 
-            {/* ── Account creation nudge (not_found only) ── */}
-            {docProfileStatus === "not_found" && docSubStep !== null && (
-              <a
-                href="/doc-login"
-                target="_blank"
-                rel="noopener noreferrer"
-                className="flex items-center justify-between gap-3 px-4 py-3 rounded-2xl bg-medical-50 border border-medical-200 hover:bg-medical-100 transition-colors group mb-3"
-              >
-                <p className="text-xs text-medical-700 leading-snug">
-                  <span className="font-semibold">Save your details permanently</span> — sign in or create a free account
-                </p>
-                <span className="text-medical-500 text-xs font-semibold shrink-0 group-hover:underline">Sign in →</span>
-              </a>
+            {/* ── Profile found but not yet claimed — prompt to claim ── */}
+            {docProfileStatus === "found_complete" && docProfileInfo && !docProfileInfo.claimed && (
+              <div className="space-y-2">
+                <div className="flex items-center gap-3 px-4 py-3 bg-orange-50 border border-orange-200 rounded-2xl">
+                  <Info className="w-4 h-4 text-orange-500 shrink-0" />
+                  <div className="min-w-0 flex-1">
+                    <p className="text-sm font-semibold text-slate-800 truncate">
+                      {[docProfileInfo.prefix, docProfileInfo.full_name].filter(Boolean).join(" ")}
+                    </p>
+                    <p className="text-xs text-orange-600 mt-0.5">Account not yet claimed</p>
+                  </div>
+                </div>
+                <a
+                  href={`/doc-login?email=${encodeURIComponent(form.doctor_email)}`}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="flex items-center justify-between gap-3 px-4 py-3 rounded-2xl bg-medical-50 border border-medical-200 hover:bg-medical-100 transition-colors group"
+                >
+                  <p className="text-xs text-medical-700 leading-snug">
+                    <span className="font-semibold">Claim your account</span> — verify your email to activate this profile
+                  </p>
+                  <span className="text-medical-500 text-xs font-semibold shrink-0 group-hover:underline">Claim →</span>
+                </a>
+              </div>
             )}
 
-            {/* ── Profile incomplete / new — inline substeps ── */}
-            {(docProfileStatus === "found_partial" || docProfileStatus === "not_found") && docSubStep !== null && (
-              <div className="relative pt-1 space-y-0">
-                {/* Substep 1: Name */}
-                <div className="relative flex gap-3">
-                  <div className="flex flex-col items-center shrink-0 pt-1">
-                    <div className={`w-7 h-7 rounded-full flex items-center justify-center text-xs font-bold border-2 transition-all shrink-0 ${
-                      form.doctor_name.trim() ? "bg-emerald-500 border-emerald-500 text-white" : docSubStep === 1 ? "bg-white border-medical-400 text-medical-600" : "bg-white border-slate-200 text-slate-400"
-                    }`}>
-                      {form.doctor_name.trim() ? <Check className="w-3.5 h-3.5" /> : "1"}
-                    </div>
-                    <div className="w-px flex-1 bg-slate-200 my-1" />
-                  </div>
-                  <div className="flex-1 pb-5">
-                    <p className="text-xs font-semibold text-slate-600 mb-2">Your name</p>
-                    {docSubStep === 1 ? (
-                      <div className="space-y-2">
-                        <PrefixSelect
-                          value={form.doctor_prefix}
-                          onChange={(v) => set("doctor_prefix", v)}
-                          label=""
-                        />
-                        <Input
-                          placeholder="Full name"
-                          value={form.doctor_name}
-                          onChange={(e) => set("doctor_name", e.target.value)}
-                        />
-                        <button
-                          type="button"
-                          disabled={!form.doctor_name.trim()}
-                          onClick={() => setDocSubStep(2)}
-                          className="w-full py-2 rounded-xl bg-medical-600 disabled:opacity-40 text-white text-sm font-semibold transition-colors hover:bg-medical-500"
-                        >
-                          Continue
-                        </button>
-                      </div>
-                    ) : form.doctor_name.trim() ? (
-                      <div className="flex items-center justify-between">
-                        <p className="text-sm text-slate-700">{[form.doctor_prefix, form.doctor_name].filter(Boolean).join(" ")}</p>
-                        <button type="button" onClick={() => setDocSubStep(1)} className="text-xs text-medical-500 underline">Edit</button>
-                      </div>
-                    ) : null}
-                  </div>
-                </div>
-
-                {/* Substep 2: Hospital */}
-                <div className="relative flex gap-3">
-                  <div className="flex flex-col items-center shrink-0 pt-1">
-                    <div className={`w-7 h-7 rounded-full flex items-center justify-center text-xs font-bold border-2 transition-all shrink-0 ${
-                      form.doctor_hospital.trim() ? "bg-emerald-500 border-emerald-500 text-white" : docSubStep === 2 ? "bg-white border-medical-400 text-medical-600" : "bg-white border-slate-200 text-slate-400"
-                    }`}>
-                      {form.doctor_hospital.trim() ? <Check className="w-3.5 h-3.5" /> : "2"}
-                    </div>
-                    <div className="w-px flex-1 bg-slate-200 my-1" />
-                  </div>
-                  <div className="flex-1 pb-5">
-                    <p className="text-xs font-semibold text-slate-600 mb-2">Hospital / clinic <span className="font-normal text-slate-400">(optional)</span></p>
-                    {docSubStep === 2 ? (
-                      <div className="space-y-2">
-                        <HospitalTagInput
-                          value={form.doctor_hospital ? [form.doctor_hospital] : []}
-                          onChange={(names) => set("doctor_hospital", names[names.length - 1] ?? "")}
-                          max={1}
-                        />
-                        <button
-                          type="button"
-                          onClick={() => setDocSubStep(3)}
-                          className="w-full py-2 rounded-xl bg-medical-600 text-white text-sm font-semibold transition-colors hover:bg-medical-500"
-                        >
-                          Continue
-                        </button>
-                      </div>
-                    ) : form.doctor_hospital.trim() ? (
-                      <div className="flex items-center justify-between">
-                        <p className="text-sm text-slate-700">{form.doctor_hospital}</p>
-                        <button type="button" onClick={() => setDocSubStep(2)} className="text-xs text-medical-500 underline">Edit</button>
-                      </div>
-                    ) : docSubStep !== null && docSubStep > 2 ? (
-                      <button type="button" onClick={() => setDocSubStep(2)} className="text-xs text-slate-400 underline">Add hospital</button>
-                    ) : null}
-                  </div>
-                </div>
-
-                {/* Substep 3: Bank (optional) */}
-                <div className="relative flex gap-3">
-                  <div className="flex flex-col items-center shrink-0 pt-1">
-                    <div className={`w-7 h-7 rounded-full flex items-center justify-center text-xs font-bold border-2 transition-all shrink-0 ${
-                      form.doctor_bank_name.trim() ? "bg-emerald-500 border-emerald-500 text-white" : docSubStep === 3 ? "bg-white border-amber-400 text-amber-600" : "bg-white border-slate-200 text-slate-400"
-                    }`}>
-                      {form.doctor_bank_name.trim() ? <Check className="w-3.5 h-3.5" /> : "3"}
-                    </div>
-                  </div>
-                  <div className="flex-1 pb-2">
-                    <p className="text-xs font-semibold text-slate-600 mb-2">Bank details <span className="font-normal text-amber-500">optional</span></p>
-                    {docSubStep === 3 ? (
-                      <div className="space-y-3">
-                        <BankAccountInput
-                          bankName={form.doctor_bank_name}
-                          bankCode={bankCode}
-                          accountNumber={form.doctor_account_number}
-                          accountName={form.doctor_account_name}
-                          onBankChange={(name, code) => { set("doctor_bank_name", name); setBankCode(code); }}
-                          onAccountNumberChange={(v) => set("doctor_account_number", v)}
-                          onAccountNameChange={(v) => set("doctor_account_name", v)}
-                          onVerifiedChange={(v) => setBankVerified(v)}
-                        />
-                        <div className="flex gap-2 pt-1">
-                          <button type="button" onClick={() => { set("doctor_bank_name", ""); set("doctor_account_number", ""); set("doctor_account_name", ""); setBankCode(""); setBankVerified(false); setDocSubStep(null); }} className="flex-1 py-2 rounded-xl bg-slate-100 text-slate-600 text-sm font-medium">Skip</button>
-                          <button type="button" disabled={!!form.doctor_account_number && !bankVerified} onClick={() => setDocSubStep(null)} className="flex-1 py-2 rounded-xl bg-amber-500 disabled:opacity-40 text-white text-sm font-semibold">Save</button>
-                        </div>
-                      </div>
-                    ) : form.doctor_bank_name.trim() ? (
-                      <div className="flex items-center justify-between">
-                        <div className="min-w-0">
-                          <p className="text-sm text-slate-700 truncate">{form.doctor_bank_name}</p>
-                          {form.doctor_account_name && (
-                            <p className="text-xs text-slate-500 truncate">{form.doctor_account_name} · ****{form.doctor_account_number.slice(-4)}</p>
-                          )}
-                        </div>
-                        <button type="button" onClick={() => setDocSubStep(3)} className="text-xs text-medical-500 underline shrink-0 ml-2">Edit</button>
-                      </div>
-                    ) : docSubStep === null ? (
-                      <p className="text-xs text-slate-400">Not set</p>
-                    ) : null}
-                  </div>
-                </div>
-              </div>
+            {/* ── No account found or profile incomplete — prompt to create / complete ── */}
+            {(docProfileStatus === "not_found" || docProfileStatus === "found_partial") && (
+              <a
+                href={`/doc-login?email=${encodeURIComponent(form.doctor_email)}`}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="flex items-center justify-between gap-3 px-4 py-3 rounded-2xl bg-medical-50 border border-medical-200 hover:bg-medical-100 transition-colors group"
+              >
+                <p className="text-xs text-medical-700 leading-snug">
+                  <span className="font-semibold">
+                    {docProfileStatus === "found_partial" ? "Complete your profile" : "Create your account"}
+                  </span>
+                  {" "}— sign in at the Doctor Portal to set up your details
+                </p>
+                <span className="text-medical-500 text-xs font-semibold shrink-0 group-hover:underline">
+                  {docProfileStatus === "found_partial" ? "Complete →" : "Create →"}
+                </span>
+              </a>
             )}
           </div>
         )}

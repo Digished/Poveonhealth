@@ -23,6 +23,7 @@ export async function GET(request: NextRequest) {
       hospitals: true,
       bank_name: true,
       account_number: true,
+      claimed: true,
       // pin_hash intentionally excluded
     },
   });
@@ -38,6 +39,7 @@ export async function GET(request: NextRequest) {
   return NextResponse.json({
     exists: true,
     profile_complete: hasName,
+    claimed: profile.claimed,
     prefix: profile.prefix ?? null,
     full_name: hasName ? profile.full_name : null,
     hospital: hasHospital ? profile.hospitals[0] : null,
