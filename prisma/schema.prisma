@@ -194,11 +194,14 @@ model DoctorProfile {
   pin_hash       String?  // SHA-256 of 4-digit PIN; null = no PIN set
   prefix         String?  // e.g. "Dr.", "Prof.", "Nurse"
   full_name      String?  // doctor's full name
+  specialty      String?  // e.g. "Cardiologist", "General Practitioner"
   phone          String?  // with country code e.g. "+2348001234567"
   hospitals      String[] @default([]) // hospitals or clinics
   bank_name      String?  // bank name for referral payment
   account_number String?  // bank account number
   account_name   String?  // account holder name (verified)
+  claimed        Boolean  @default(true) // false = pre-created by marketer, not yet verified by doctor
+  created_by_marketer_id String? // marketer who pre-created this profile
   updated_at     DateTime @updatedAt
 
   @@map("doctor_profiles")

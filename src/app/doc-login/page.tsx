@@ -3,14 +3,14 @@
 import { useState, useRef, useEffect, Suspense } from "react";
 import {
   Mail, KeyRound, ArrowRight, RefreshCw, ChevronLeft,
-  Lock, ShieldCheck, User, Check,
+  Lock, ShieldCheck, User, Check, Info,
 } from "lucide-react";
 import { PoveonLogo } from "@/components/PoveonLogo";
 import { HospitalTagInput } from "@/components/ui/HospitalTagInput";
 import { PrefixSelectInput } from "@/components/ui/PrefixSelectInput";
 import { useRouter, useSearchParams } from "next/navigation";
 
-type Stage = "email" | "pin" | "otp" | "onboarding" | "create-pin";
+type Stage = "email" | "pin" | "otp" | "claim" | "onboarding" | "create-pin";
 
 // Defined at module level so React never remounts inputs on re-render (which would lose focus).
 function PinBoxes({
@@ -72,7 +72,7 @@ function OnboardingSteps({ stage }: { stage: Stage }) {
   return (
     <div className="flex items-center mb-6">
       {steps.map((s, i) => {
-        const done = i < activeIdx;
+        const done   = i < activeIdx;
         const active = i === activeIdx;
         return (
           <div key={s.key} className="flex items-center flex-1 last:flex-none">
@@ -100,31 +100,92 @@ function OnboardingSteps({ stage }: { stage: Stage }) {
   );
 }
 
+// Step indicator for the claim flow (claim → otp → create-pin)
+function ClaimSteps({ stage }: { stage: Stage }) {
+  const steps: { key: Stage; label: string }[] = [
+    { key: "claim",      label: "Review details" },
+    { key: "otp",        label: "Verify email" },
+    { key: "create-pin", label: "Create PIN" },
+  ];
+  const activeIdx = steps.findIndex((s) => s.key === stage);
+
+  return (
+    <div className="flex items-center mb-6">
+      {steps.map((s, i) => {
+        const done   = i < activeIdx;
+        const active = i === activeIdx;
+        return (
+          <div key={s.key} className="flex items-center flex-1 last:flex-none">
+            <div className="flex items-center gap-1.5 shrink-0">
+              <div className={`w-6 h-6 rounded-full flex items-center justify-center text-[10px] font-bold transition-colors ${
+                done
+                  ? "bg-emerald-500 text-white"
+                  : active
+                  ? "bg-white border-2 border-medical-400 text-medical-600"
+                  : "bg-white border-2 border-slate-200 text-slate-300"
+              }`}>
+                {done ? <Check className="w-3 h-3" /> : i + 1}
+              </div>
+              <span className={`text-[10px] font-medium hidden sm:block ${active ? "text-slate-700" : done ? "text-emerald-600" : "text-slate-300"}`}>
+                {s.label}
+              </span>
+            </div>
+            {i < steps.length - 1 && (
+              <div className={`flex-1 h-px mx-2 transition-colors ${done ? "bg-emerald-300" : "bg-slate-200"}`} />
+            )}
+          </div>
+        );
+      })}
+    </div>
+  );
+}
+
+interface PrefilledProfile {
+  prefix:         string | null;
+  full_name:      string | null;
+  specialty:      string | null;
+  phone:          string | null;
+  hospitals:      string[];
+  bank_name:      string | null;
+  account_number: string | null;
+  account_name:   string | null;
+}
 
 function DocLoginInner() {
-  const router = useRouter();
+  const router      = useRouter();
   const searchParams = useSearchParams();
   const editId = searchParams.get("edit");
-  const [stage, setStage] = useState<Stage>("email");
-  const [email, setEmail] = useState("");
-  const [pin, setPin] = useState(["", "", "", ""]);
-  const [otp, setOtp] = useState(["", "", "", "", "", ""]);
-  const [newPin, setNewPin] = useState(["", "", "", ""]);
+
+  const [stage, setStage]     = useState<Stage>("email");
+  const [email, setEmail]     = useState("");
+  const [pin, setPin]         = useState(["", "", "", ""]);
+  const [otp, setOtp]         = useState(["", "", "", "", "", ""]);
+  const [newPin, setNewPin]   = useState(["", "", "", ""]);
   const [confirmPin, setConfirmPin] = useState(["", "", "", ""]);
   const [loading, setLoading] = useState(false);
-  const [error, setError] = useState("");
+  const [error, setError]     = useState("");
   const [countdown, setCountdown] = useState(0);
-  const [afterOtp, setAfterOtp] = useState<"dashboard" | "reset-pin" | "onboard">("dashboard");
+  const [afterOtp, setAfterOtp] = useState<"dashboard" | "reset-pin" | "onboard" | "claim">("dashboard");
 
   // Onboarding form fields
-  const [obPrefix, setObPrefix] = useState("Dr.");
-  const [obName, setObName] = useState("");
-  const [obPhone, setObPhone] = useState("");
+  const [obPrefix,    setObPrefix]    = useState("Dr.");
+  const [obName,      setObName]      = useState("");
+  const [obPhone,     setObPhone]     = useState("");
   const [obHospitals, setObHospitals] = useState<string[]>([]);
 
-  const pinRefs = useRef<(HTMLInputElement | null)[]>([]);
-  const otpRefs = useRef<(HTMLInputElement | null)[]>([]);
-  const newPinRefs = useRef<(HTMLInputElement | null)[]>([]);
+  // Claim form fields (pre-filled by marketer, doctor can edit)
+  const [claimPrefix,        setClaimPrefix]        = useState("Dr.");
+  const [claimName,          setClaimName]          = useState("");
+  const [claimSpecialty,     setClaimSpecialty]     = useState("");
+  const [claimPhone,         setClaimPhone]         = useState("");
+  const [claimHospitals,     setClaimHospitals]     = useState<string[]>([]);
+  const [claimBankName,      setClaimBankName]      = useState("");
+  const [claimAccountNumber, setClaimAccountNumber] = useState("");
+  const [claimAccountName,   setClaimAccountName]   = useState("");
+
+  const pinRefs        = useRef<(HTMLInputElement | null)[]>([]);
+  const otpRefs        = useRef<(HTMLInputElement | null)[]>([]);
+  const newPinRefs     = useRef<(HTMLInputElement | null)[]>([]);
   const confirmPinRefs = useRef<(HTMLInputElement | null)[]>([]);
 
   useEffect(() => {
@@ -164,6 +225,22 @@ function DocLoginInner() {
         body: JSON.stringify({ email: email.trim() }),
       });
       const data = await res.json();
+
+      // Unclaimed profile — pre-created by marketer, show details for doctor to review
+      if (data.unclaimed && data.profile) {
+        const p = data.profile as PrefilledProfile;
+        setClaimPrefix(p.prefix ?? "Dr.");
+        setClaimName(p.full_name ?? "");
+        setClaimSpecialty(p.specialty ?? "");
+        setClaimPhone(p.phone ?? "");
+        setClaimHospitals(p.hospitals ?? []);
+        setClaimBankName(p.bank_name ?? "");
+        setClaimAccountNumber(p.account_number ?? "");
+        setClaimAccountName(p.account_name ?? "");
+        setStage("claim");
+        return;
+      }
+
       if (data.hasPin) {
         setStage("pin");
         setTimeout(() => pinRefs.current[0]?.focus(), 100);
@@ -233,6 +310,22 @@ function DocLoginInner() {
     }
   }
 
+  // Claim stage: doctor reviews/edits marketer-prefilled data, then triggers OTP
+  async function handleClaimContinue(e: React.FormEvent) {
+    e.preventDefault();
+    setError("");
+    if (!claimName.trim()) { setError("Please enter your full name."); return; }
+    setLoading(true);
+    try {
+      setAfterOtp("claim");
+      await sendOtp();
+    } catch {
+      setError("Network error.");
+    } finally {
+      setLoading(false);
+    }
+  }
+
   async function handleOtpSubmit(e: React.FormEvent) {
     e.preventDefault();
     setError("");
@@ -248,18 +341,44 @@ function DocLoginInner() {
       const data = await res.json();
       if (!res.ok) { setError(data.error ?? "Invalid code."); return; }
 
+      if (afterOtp === "claim") {
+        // Save the (possibly-edited) claim data and mark profile as claimed
+        const patchRes = await fetch("/api/doc-login/profile", {
+          method: "PATCH",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            prefix:         claimPrefix   || null,
+            full_name:      claimName.trim(),
+            specialty:      claimSpecialty.trim() || null,
+            phone:          claimPhone.trim()     || null,
+            hospitals:      claimHospitals,
+            bank_name:      claimBankName.trim()        || null,
+            account_number: claimAccountNumber.trim()   || null,
+            account_name:   claimAccountName.trim()     || null,
+            claimed:        true,
+          }),
+        });
+        if (!patchRes.ok) {
+          const patchData = await patchRes.json();
+          setError(patchData.error ?? "Failed to save profile.");
+          return;
+        }
+        setNewPin(["", "", "", ""]);
+        setConfirmPin(["", "", "", ""]);
+        setStage("create-pin");
+        setTimeout(() => newPinRefs.current[0]?.focus(), 100);
+        return;
+      }
+
       if (afterOtp === "reset-pin") {
-        // Existing user resetting PIN — skip onboarding
         setNewPin(["", "", "", ""]);
         setConfirmPin(["", "", "", ""]);
         setStage("create-pin");
         setTimeout(() => newPinRefs.current[0]?.focus(), 100);
       } else if (data.should_create_pin && !data.has_profile) {
-        // Brand-new user — collect details first
         setAfterOtp("onboard");
         setStage("onboarding");
       } else if (data.should_create_pin) {
-        // Has profile but no PIN yet
         setNewPin(["", "", "", ""]);
         setConfirmPin(["", "", "", ""]);
         setStage("create-pin");
@@ -284,9 +403,9 @@ function DocLoginInner() {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          prefix: obPrefix || null,
+          prefix:    obPrefix || null,
           full_name: obName.trim(),
-          phone: obPhone.trim() || null,
+          phone:     obPhone.trim() || null,
           hospitals: obHospitals,
         }),
       });
@@ -327,7 +446,11 @@ function DocLoginInner() {
     }
   }
 
-  const showOnboardingSteps = stage === "otp" || stage === "onboarding" || stage === "create-pin";
+  const showOnboardingSteps = (stage === "otp" || stage === "onboarding" || stage === "create-pin") && afterOtp === "onboard";
+  const showClaimSteps      = stage === "claim" || (stage === "otp" && afterOtp === "claim") || (stage === "create-pin" && afterOtp === "claim");
+
+  const inputCls = "w-full px-4 py-2.5 rounded-xl border border-slate-200 bg-white text-slate-800 placeholder-slate-400 text-sm focus:outline-none focus:ring-2 focus:ring-medical-400 focus:border-transparent transition";
+  const labelCls = "block text-xs font-medium text-slate-600 mb-1";
 
   return (
     <div className="min-h-dvh bg-gradient-to-br from-sky-50 via-blue-50 to-indigo-50 flex flex-col items-center justify-center px-4 py-12">
@@ -342,10 +465,9 @@ function DocLoginInner() {
 
         <div className="bg-white/80 backdrop-blur-sm border border-white/60 rounded-3xl shadow-xl p-6">
 
-          {/* Step indicators — shown during the new-user onboarding flow */}
-          {showOnboardingSteps && afterOtp !== "reset-pin" && (
-            <OnboardingSteps stage={stage} />
-          )}
+          {/* Step indicators */}
+          {showClaimSteps      && <ClaimSteps      stage={stage} />}
+          {showOnboardingSteps && <OnboardingSteps stage={stage} />}
 
           {/* ── Email stage ── */}
           {stage === "email" && (
@@ -401,12 +523,90 @@ function DocLoginInner() {
             </form>
           )}
 
+          {/* ── Claim stage — doctor reviews marketer-prefilled details ── */}
+          {stage === "claim" && (
+            <form onSubmit={handleClaimContinue} className="space-y-4">
+              <button type="button" onClick={() => { setStage("email"); setError(""); }}
+                className="flex items-center gap-1 text-xs text-slate-400 hover:text-slate-600 transition mb-1">
+                <ChevronLeft className="w-3 h-3" /> Change email
+              </button>
+              <div className="flex items-start gap-2 bg-blue-50 border border-blue-100 rounded-xl px-3 py-2.5">
+                <Info className="w-4 h-4 text-blue-500 shrink-0 mt-0.5" />
+                <p className="text-xs text-blue-700 leading-relaxed">
+                  A profile has been created for you. Review the details below, edit anything that&apos;s incorrect, then verify your email to claim your account.
+                </p>
+              </div>
+
+              {/* Prefix + Name */}
+              <div>
+                <label className={labelCls}>Title &amp; Full Name <span className="text-red-400">*</span></label>
+                <div className="flex gap-2">
+                  <PrefixSelectInput value={claimPrefix} onChange={setClaimPrefix} />
+                  <input type="text" placeholder="Full name" value={claimName}
+                    onChange={(e) => { setClaimName(e.target.value); setError(""); }}
+                    className={`${inputCls} flex-1`} />
+                </div>
+              </div>
+
+              {/* Specialty */}
+              <div>
+                <label className={labelCls}>Specialty</label>
+                <input type="text" placeholder="e.g. Cardiologist" value={claimSpecialty}
+                  onChange={(e) => setClaimSpecialty(e.target.value)} className={inputCls} />
+              </div>
+
+              {/* Phone */}
+              <div>
+                <label className={labelCls}>Phone Number</label>
+                <input type="tel" placeholder="+234 800 123 4567" value={claimPhone}
+                  onChange={(e) => setClaimPhone(e.target.value)} className={inputCls} />
+              </div>
+
+              {/* Hospital */}
+              <div>
+                <label className={labelCls}>Hospital / Clinic</label>
+                <HospitalTagInput value={claimHospitals} onChange={setClaimHospitals} />
+              </div>
+
+              {/* Bank details */}
+              <div className="rounded-2xl border border-slate-100 bg-slate-50/60 p-3 space-y-3">
+                <p className="text-xs font-semibold text-slate-500 uppercase tracking-wider">Bank Details</p>
+                <div>
+                  <label className={labelCls}>Bank Name</label>
+                  <input type="text" placeholder="e.g. GTBank" value={claimBankName}
+                    onChange={(e) => setClaimBankName(e.target.value)} className={inputCls} />
+                </div>
+                <div>
+                  <label className={labelCls}>Account Number</label>
+                  <input type="text" placeholder="10-digit account number" value={claimAccountNumber}
+                    onChange={(e) => setClaimAccountNumber(e.target.value)} className={inputCls} />
+                </div>
+                <div>
+                  <label className={labelCls}>Account Name</label>
+                  <input type="text" placeholder="Account holder name" value={claimAccountName}
+                    onChange={(e) => setClaimAccountName(e.target.value)} className={inputCls} />
+                </div>
+              </div>
+
+              {error && <p className="text-xs text-red-600 bg-red-50 border border-red-100 rounded-xl px-3 py-2">{error}</p>}
+              <button type="submit" disabled={loading || !claimName.trim()}
+                className="w-full flex items-center justify-center gap-2 bg-medical-600 hover:bg-medical-700 disabled:opacity-60 text-white font-semibold text-sm px-4 py-3 rounded-xl transition shadow-md">
+                {loading ? <Spinner /> : <>Verify Email to Claim <ArrowRight className="w-4 h-4" /></>}
+              </button>
+            </form>
+          )}
+
           {/* ── OTP stage ── */}
           {stage === "otp" && (
             <form onSubmit={handleOtpSubmit} className="space-y-4">
-              <button type="button" onClick={() => { setStage("email"); setOtp(["", "", "", "", "", ""]); setError(""); setAfterOtp("dashboard"); }}
+              <button type="button" onClick={() => {
+                setStage(afterOtp === "claim" ? "claim" : "email");
+                setOtp(["", "", "", "", "", ""]);
+                setError("");
+                if (afterOtp !== "claim") setAfterOtp("dashboard");
+              }}
                 className="flex items-center gap-1 text-xs text-slate-400 hover:text-slate-600 transition mb-1">
-                <ChevronLeft className="w-3 h-3" /> Change email
+                <ChevronLeft className="w-3 h-3" /> Back
               </button>
               <div>
                 <div className="flex items-center gap-2 mb-1">

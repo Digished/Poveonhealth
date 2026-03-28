@@ -12,27 +12,32 @@ export async function PATCH(req: NextRequest) {
     }
 
     const body = await req.json();
-    const { prefix, full_name, phone, hospitals } = body;
+    const { prefix, full_name, specialty, phone, hospitals, bank_name, account_number, account_name, claimed } = body;
 
     if (!full_name?.trim()) {
       return NextResponse.json({ error: "Full name is required." }, { status: 400 });
     }
 
+    const data: Record<string, unknown> = {
+      prefix:    prefix    ?? null,
+      full_name: full_name.trim(),
+      specialty: specialty?.trim() || null,
+      phone:     phone?.trim()     || null,
+      hospitals: Array.isArray(hospitals) ? hospitals.filter(Boolean) : [],
+    };
+
+    // Bank details — only set if provided (doctor is confirming/editing marketer-prefilled data)
+    if (bank_name      !== undefined) data.bank_name      = bank_name?.trim()      || null;
+    if (account_number !== undefined) data.account_number = account_number?.trim() || null;
+    if (account_name   !== undefined) data.account_name   = account_name?.trim()   || null;
+
+    // Claim flag — only allow setting to true (not resetting to false)
+    if (claimed === true) data.claimed = true;
+
     await prisma.doctorProfile.upsert({
-      where: { email: session.doctor_email },
-      create: {
-        email: session.doctor_email,
-        prefix: prefix ?? null,
-        full_name: full_name.trim(),
-        phone: phone?.trim() || null,
-        hospitals: Array.isArray(hospitals) ? hospitals.filter(Boolean) : [],
-      },
-      update: {
-        prefix: prefix ?? null,
-        full_name: full_name.trim(),
-        phone: phone?.trim() || null,
-        hospitals: Array.isArray(hospitals) ? hospitals.filter(Boolean) : [],
-      },
+      where:  { email: session.doctor_email },
+      create: { email: session.doctor_email, claimed: true, ...data },
+      update: data,
     });
 
     return NextResponse.json({ success: true });
