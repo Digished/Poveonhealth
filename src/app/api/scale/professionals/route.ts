@@ -31,13 +31,17 @@ export async function POST(req: NextRequest) {
 
   const normalised = email.trim().toLowerCase();
 
-  // Check if a claimed profile already exists for this email
+  // Check if a profile already exists for this email
   const existing = await prisma.doctorProfile.findUnique({
     where: { email: normalised },
-    select: { claimed: true },
+    select: { claimed: true, created_by_marketer_id: true },
   });
   if (existing?.claimed) {
     return NextResponse.json({ error: "A doctor with this email has already registered." }, { status: 409 });
+  }
+  // Another marketer already created an unclaimed profile for this email
+  if (existing && existing.created_by_marketer_id && existing.created_by_marketer_id !== marketer.id) {
+    return NextResponse.json({ error: "This email has already been added by another marketer." }, { status: 409 });
   }
 
   // Upsert the profile (create or overwrite an existing unclaimed draft)
