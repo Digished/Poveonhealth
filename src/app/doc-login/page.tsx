@@ -239,7 +239,7 @@ function DocLoginInner() {
         setClaimPrefix(p.prefix ?? "Dr.");
         setClaimName(p.full_name ?? "");
         setClaimPhone(p.phone ?? "");
-        setClaimHospital(p.hospitals?.[0] ?? "");
+        setClaimHospitals(p.hospitals ?? []);
         setClaimBankName(p.bank_name ?? "");
         setClaimAccountNumber(p.account_number ?? "");
         setClaimAccountName(p.account_name ?? "");
