@@ -64,16 +64,29 @@ export async function POST(request: NextRequest) {
         }
       }
 
+      // Auto-deduct commission from wallet if balance is sufficient
+      let isPaidToPoveon = false;
+      if (poveonFee > 0) {
+        const wallet = await prisma.labWallet.findUnique({ where: { lab_id: req.lab_id } });
+        if (wallet && Number(wallet.balance) >= poveonFee) {
+          await prisma.labWallet.update({
+            where: { lab_id: req.lab_id },
+            data: { balance: { decrement: poveonFee } },
+          });
+          isPaidToPoveon = true;
+        }
+      }
+
       const breakdownJson = breakdown.length > 0 ? JSON.stringify(breakdown) : null;
       if (breakdownJson) {
         await prisma.$executeRawUnsafe(
-          `UPDATE requests SET status='seen', seen_at=NOW(), test_breakdown=$1::jsonb, poveon_amount=$2, lab_revenue_amount=$3 WHERE id=$4`,
-          breakdownJson, poveonFee, labRevenue, requestId,
+          `UPDATE requests SET status='seen', seen_at=NOW(), test_breakdown=$1::jsonb, poveon_amount=$2, lab_revenue_amount=$3, is_paid_to_poveon=$4 WHERE id=$5`,
+          breakdownJson, poveonFee, labRevenue, isPaidToPoveon, requestId,
         );
       } else {
         await prisma.$executeRawUnsafe(
-          `UPDATE requests SET status='seen', seen_at=NOW(), poveon_amount=$1, lab_revenue_amount=$2 WHERE id=$3`,
-          poveonFee, labRevenue, requestId,
+          `UPDATE requests SET status='seen', seen_at=NOW(), poveon_amount=$1, lab_revenue_amount=$2, is_paid_to_poveon=$3 WHERE id=$4`,
+          poveonFee, labRevenue, isPaidToPoveon, requestId,
         );
       }
     } else {
