@@ -9,7 +9,11 @@ import {
   Users, CreditCard, Filter, ChevronDown, AlertTriangle, Truck, ExternalLink,
   MessageCircle, ChevronLeft, FileImage, Sun, Moon, Pencil, Save, BarChart3, Lock,
   Menu, Activity, KeyRound, ArrowRight, Star, MessageSquare, Wallet2, Copy, ArrowUpRight,
+  Settings2,
 } from "lucide-react";
+import dynamic from "next/dynamic";
+
+const LabPriceListManager = dynamic(() => import("@/components/LabPriceListManager"), { ssr: false });
 import { useDashTheme } from "@/hooks/useDashTheme";
 import { Button } from "@/components/ui/Button";
 import { Input } from "@/components/ui/Input";
@@ -89,6 +93,7 @@ export function LabDashboard({ lab, isOwner = false, roleName = "Lab Owner", can
   const [poveonLoading, setPoveonLoading] = useState(false);
   const [priceListData, setPriceListData] = useState<{ category: string; tests: { id: string; name: string; lab_price: number; poveon_fee: number | null; commission_pct: number | null }[] }[] | null>(null);
   const [priceListLoading, setPriceListLoading] = useState(false);
+  const [priceManagerOpen, setPriceManagerOpen] = useState(false);
   const [mobileNavOpen, setMobileNavOpen] = useState(false);
   // Eagerly loaded wallet balance for the "amount owed" banner shown on all tabs
   const [poveonBalance, setPoveonBalance] = useState<number | null>(null);
@@ -1727,16 +1732,22 @@ export function LabDashboard({ lab, isOwner = false, roleName = "Lab Owner", can
 
         {/* Price list view */}
         {mainView === "price-list" && (isOwner || canViewWallet) && (
-          <LabPriceListView
-            data={priceListData}
-            loading={priceListLoading}
-            onLoad={() => {
-              if (!priceListData) {
-                setPriceListLoading(true);
-                fetch("/api/lab/price-schedule").then((r) => r.json()).then((d) => { if (d.success) setPriceListData(d.schedule); }).catch(() => {}).finally(() => setPriceListLoading(false));
-              }
-            }}
-          />
+          <>
+            <LabPriceListView
+              data={priceListData}
+              loading={priceListLoading}
+              onManage={() => setPriceManagerOpen(true)}
+              onLoad={() => {
+                if (!priceListData) {
+                  setPriceListLoading(true);
+                  fetch("/api/lab/price-schedule").then((r) => r.json()).then((d) => { if (d.success) setPriceListData(d.schedule); }).catch(() => {}).finally(() => setPriceListLoading(false));
+                }
+              }}
+            />
+            {priceManagerOpen && (
+              <LabPriceListManager onClose={() => setPriceManagerOpen(false)} />
+            )}
+          </>
         )}
 
         {/* Requests view */}
@@ -3108,7 +3119,7 @@ function LabFeedbackView({ labId }: { labId: string }) {
 type PriceListTest = { id: string; name: string; lab_price: number; poveon_fee: number | null; commission_pct: number | null };
 type PriceListCategory = { category: string; tests: PriceListTest[] };
 
-function LabPriceListView({ data, loading, onLoad }: { data: PriceListCategory[] | null; loading: boolean; onLoad: () => void }) {
+function LabPriceListView({ data, loading, onLoad, onManage }: { data: PriceListCategory[] | null; loading: boolean; onLoad: () => void; onManage: () => void }) {
   const [search, setSearch] = useState("");
   useEffect(() => { if (!data && !loading) onLoad(); }, [data, loading, onLoad]);
 
@@ -3138,14 +3149,23 @@ function LabPriceListView({ data, loading, onLoad }: { data: PriceListCategory[]
           <h2 className="text-lg font-bold text-white">Your Price List</h2>
           <p className="text-xs text-slate-400 mt-0.5">{totalTests} test{totalTests !== 1 ? "s" : ""} across {schedule.length} categor{schedule.length !== 1 ? "ies" : "y"}</p>
         </div>
-        <div className="relative">
-          <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-500 pointer-events-none" />
-          <input
-            value={search}
-            onChange={(e) => setSearch(e.target.value)}
-            placeholder="Search tests…"
-            className="pl-9 pr-4 py-2.5 rounded-xl bg-white/8 border border-white/10 text-sm text-white placeholder-slate-500 focus:outline-none focus:border-white/25 w-full sm:w-64"
-          />
+        <div className="flex items-center gap-2 flex-wrap">
+          <div className="relative">
+            <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-500 pointer-events-none" />
+            <input
+              value={search}
+              onChange={(e) => setSearch(e.target.value)}
+              placeholder="Search tests…"
+              className="pl-9 pr-4 py-2.5 rounded-xl bg-white/8 border border-white/10 text-sm text-white placeholder-slate-500 focus:outline-none focus:border-white/25 w-full sm:w-52"
+            />
+          </div>
+          <button
+            onClick={onManage}
+            className="flex items-center gap-2 px-4 py-2.5 rounded-xl bg-sky-500/15 border border-sky-500/30 text-sky-300 hover:bg-sky-500/25 hover:text-sky-200 text-sm font-medium transition-all whitespace-nowrap"
+          >
+            <Settings2 className="w-4 h-4" />
+            Manage &amp; Edit
+          </button>
         </div>
       </div>
 
