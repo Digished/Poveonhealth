@@ -72,12 +72,12 @@ export async function POST(request: NextRequest) {
     // Enrich doctor fields from DoctorProfile if not provided in the request body
     const doctorProfile = await prisma.doctorProfile.findUnique({
       where: { email: data.doctor_email },
-      select: { prefix: true, full_name: true, phone: true, hospital: true, bank_name: true, account_number: true, account_name: true },
+      select: { prefix: true, full_name: true, phone: true, hospitals: true, bank_name: true, account_number: true, account_name: true },
     });
     const doctorPrefix = data.doctor_prefix || doctorProfile?.prefix || null;
     const doctorName = data.doctor_name || doctorProfile?.full_name || "";
     const doctorPhone = data.doctor_phone || doctorProfile?.phone || null;
-    const doctorHospital = data.doctor_hospital || doctorProfile?.hospital || null;
+    const doctorHospital = data.doctor_hospital || doctorProfile?.hospitals[0] || null;
     const doctorBankName = data.doctor_bank_name || doctorProfile?.bank_name || null;
     const doctorAccountNumber = data.doctor_account_number || doctorProfile?.account_number || null;
     const doctorAccountName = data.doctor_account_name || doctorProfile?.account_name || null;

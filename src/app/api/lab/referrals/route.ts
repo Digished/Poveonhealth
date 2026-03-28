@@ -130,7 +130,7 @@ export async function GET(request: NextRequest) {
   const uniqueEmails = Array.from(doctorMap.keys());
   const profiles = await prisma.doctorProfile.findMany({
     where: { email: { in: uniqueEmails } },
-    select: { email: true, prefix: true, full_name: true, phone: true, hospital: true, bank_name: true, account_number: true, account_name: true },
+    select: { email: true, prefix: true, full_name: true, phone: true, hospitals: true, bank_name: true, account_number: true, account_name: true },
   });
   const profileMap = new Map(profiles.map((p) => [p.email, p]));
 
@@ -144,7 +144,7 @@ export async function GET(request: NextRequest) {
         doctor_name: liveProfile?.full_name || d.doctor_name,
         doctor_prefix: liveProfile?.prefix || d.doctor_prefix,
         doctor_phone: liveProfile?.phone || d.doctor_phone,
-        doctor_hospital: liveProfile?.hospital || d.doctor_hospital,
+        doctor_hospital: liveProfile?.hospitals[0] || d.doctor_hospital,
         doctor_bank_name: liveProfile?.bank_name || d.doctor_bank_name,
         doctor_account_number: liveProfile?.account_number || d.doctor_account_number,
         doctor_account_name: liveProfile?.account_name || d.doctor_account_name,

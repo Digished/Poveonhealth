@@ -27,7 +27,7 @@ export async function GET(req: NextRequest) {
       prefix: profile?.prefix ?? null,
       full_name: profile?.full_name ?? null,
       phone: profile?.phone ?? null,
-      hospital: profile?.hospital ?? null,
+      hospitals: profile?.hospitals ?? [],
       bank_name: profile?.bank_name ?? null,
       account_number: profile?.account_number ?? null,
       account_name: profile?.account_name ?? null,
@@ -39,7 +39,7 @@ const UpdateSchema = z.object({
   prefix: z.string().max(30).optional().or(z.literal("")),
   full_name: z.string().max(200).optional().or(z.literal("")),
   phone: z.string().max(50).optional().or(z.literal("")),
-  hospital: z.string().max(200).optional().or(z.literal("")),
+  hospitals: z.array(z.string().max(200)).optional(),
   bank_name: z.string().max(100).optional().or(z.literal("")),
   account_number: z.string().max(20).optional().or(z.literal("")),
   account_name: z.string().max(200).optional().or(z.literal("")),
@@ -69,12 +69,11 @@ export async function PATCH(req: NextRequest) {
 
   const data = parsed.data;
 
-  // Build only the fields that were provided
-  const updateData: Record<string, string | null> = {};
+  const updateData: Record<string, string | null | string[]> = {};
   if (data.prefix !== undefined) updateData.prefix = data.prefix || null;
   if (data.full_name !== undefined) updateData.full_name = data.full_name || null;
   if (data.phone !== undefined) updateData.phone = data.phone || null;
-  if (data.hospital !== undefined) updateData.hospital = data.hospital || null;
+  if (data.hospitals !== undefined) updateData.hospitals = data.hospitals.filter(Boolean);
   if (data.bank_name !== undefined) updateData.bank_name = data.bank_name || null;
   if (data.account_number !== undefined) updateData.account_number = data.account_number || null;
   if (data.account_name !== undefined) updateData.account_name = data.account_name || null;
@@ -92,7 +91,7 @@ export async function PATCH(req: NextRequest) {
       prefix: profile.prefix ?? null,
       full_name: profile.full_name ?? null,
       phone: profile.phone ?? null,
-      hospital: profile.hospital ?? null,
+      hospitals: profile.hospitals ?? [],
       bank_name: profile.bank_name ?? null,
       account_number: profile.account_number ?? null,
       account_name: profile.account_name ?? null,

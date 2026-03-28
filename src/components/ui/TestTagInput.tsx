@@ -302,11 +302,17 @@ export function TestTagInput({ value, onChange, labId, error, label, disabled }:
                 "inline-flex items-center gap-1 text-xs px-2.5 py-1 rounded-full font-medium max-w-full",
                 tag.catalog_test_id
                   ? "bg-medical-100 text-medical-800 border border-medical-200"
+                  : tag.low_confidence
+                  ? "bg-amber-50 text-amber-800 border border-amber-300"
                   : "bg-slate-100 text-slate-700 border border-slate-200",
               ].join(" ")}
+              title={tag.low_confidence && !tag.catalog_test_id ? "Not found in lab catalog — will be sent as-is" : undefined}
             >
               {tag.is_rapid_test && (
                 <span className="w-1.5 h-1.5 rounded-full bg-amber-400 flex-shrink-0" title="Rapid test" />
+              )}
+              {tag.low_confidence && !tag.catalog_test_id && (
+                <span className="w-1.5 h-1.5 rounded-full bg-amber-400 flex-shrink-0" title="Not matched in catalog" />
               )}
               {/* break-words so very long names wrap inside the pill */}
               <span className="break-words min-w-0">{tag.name}</span>
@@ -322,18 +328,25 @@ export function TestTagInput({ value, onChange, labId, error, label, disabled }:
             </span>
           ))}
 
-          <input
-            ref={inputRef}
-            value={inputText}
-            onChange={(e) => setInputText(e.target.value)}
-            onKeyDown={handleKeyDown}
-            onFocus={() => { if (results.length > 0) setOpen(true); }}
-            disabled={disabled}
-            data-no-enter-nav="true"
-            enterKeyHint="done"
-            placeholder={value.length === 0 ? "Type test name e.g. FBC, CRP, Chest Xray" : ""}
-            className="flex-1 min-w-[160px] bg-transparent text-slate-800 text-sm placeholder-slate-400 outline-none py-0.5 my-0.5"
-          />
+          <div className="flex-1 min-w-[160px] flex items-center gap-1.5 relative">
+            <input
+              ref={inputRef}
+              value={inputText}
+              onChange={(e) => setInputText(e.target.value)}
+              onKeyDown={handleKeyDown}
+              onFocus={() => { if (results.length > 0) setOpen(true); }}
+              disabled={disabled}
+              data-no-enter-nav="true"
+              enterKeyHint="done"
+              placeholder={value.length === 0 ? "Type test name e.g. FBC, CRP, Chest Xray" : ""}
+              className="flex-1 bg-transparent text-slate-800 text-sm placeholder-slate-400 outline-none py-0.5 my-0.5"
+            />
+            {inputText.trim().length > 0 && (
+              <span className="shrink-0 text-[10px] text-slate-400 bg-slate-100 border border-slate-200 rounded px-1 py-0.5 pointer-events-none">
+                ↵ save
+              </span>
+            )}
+          </div>
         </div>
 
         {dropdown}
@@ -352,11 +365,11 @@ export function TestTagInput({ value, onChange, labId, error, label, disabled }:
       )}
 
       {error && <p className="text-xs text-red-600 font-medium">{error}</p>}
-      {!error && !inputText.trim() && value.length === 0 && (
+      {!error && value.length === 0 && !inputText.trim() && (
         <p className="text-xs text-slate-400">
-          Press{" "}
+          Type a test name, then press{" "}
           <kbd className="px-1 py-0.5 bg-slate-100 rounded text-slate-600 font-mono text-[10px]">Enter</kbd>
-          {" "}to add any test
+          {" "}to add it
         </p>
       )}
     </div>

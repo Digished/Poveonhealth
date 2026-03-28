@@ -3,12 +3,12 @@
 import { useState, useEffect, useCallback, useRef, useMemo, startTransition } from "react";
 import { toast } from "react-hot-toast";
 import {
-  Search, RefreshCw, CheckCircle, Clock, FlaskConical,
+  Search, RefreshCw, CheckCircle, Check, Clock, FlaskConical,
   ChevronRight, Calendar, Stethoscope, LogOut, Eye, EyeOff, Phone, X,
   Link2, Paperclip, Send, SkipForward, UserCircle, MapPin, Shield, Layers,
   Users, CreditCard, Filter, ChevronDown, AlertTriangle, Truck, ExternalLink,
   MessageCircle, ChevronLeft, FileImage, Sun, Moon, Pencil, Save, BarChart3, Lock,
-  Menu, Activity, KeyRound, ArrowRight, Star, MessageSquare, Wallet, ArrowUpRight, ArrowDownRight,
+  Menu, Activity, KeyRound, ArrowRight, Star, MessageSquare, Wallet2, Copy, ArrowUpRight,
 } from "lucide-react";
 import { useDashTheme } from "@/hooks/useDashTheme";
 import { Button } from "@/components/ui/Button";
@@ -84,12 +84,14 @@ export function LabDashboard({ lab, isOwner = false, roleName = "Lab Owner", can
   const { name: labName, logo_url: labLogoUrl } = lab;
   const router = useRouter();
   const { isLight, toggle, themeClass } = useDashTheme("lab_dash_theme");
-  const [mainView, setMainView] = useState<"requests" | "referrals" | "clients" | "analytics" | "activity" | "feedback" | "wallet">("requests");
-  const [walletData, setWalletData] = useState<{ balance: number; transactions: { id: string; type: string; direction: string; amount: number; balance_after: number; description: string | null; actor_email: string | null; created_at: string; request_id: string | null; test_breakdown: unknown; tests_raw: string | null }[] } | null>(null);
-  const [walletLoading, setWalletLoading] = useState(false);
-  // Live balance — fetched on mount and polled every 60 s so the low-balance banner is always current
-  const [liveBalance, setLiveBalance] = useState<number | null>(null);
+  const [mainView, setMainView] = useState<"requests" | "referrals" | "clients" | "analytics" | "activity" | "feedback" | "poveon" | "price-list">("requests");
+  const [poveonData, setPoveonData] = useState<PoveonViewData>(null);
+  const [poveonLoading, setPoveonLoading] = useState(false);
+  const [priceListData, setPriceListData] = useState<{ category: string; tests: { id: string; name: string; lab_price: number; poveon_fee: number | null; commission_pct: number | null }[] }[] | null>(null);
+  const [priceListLoading, setPriceListLoading] = useState(false);
   const [mobileNavOpen, setMobileNavOpen] = useState(false);
+  // Eagerly loaded wallet balance for the "amount owed" banner shown on all tabs
+  const [poveonBalance, setPoveonBalance] = useState<number | null>(null);
   const [mobileHeaderOpen, setMobileHeaderOpen] = useState(false);
   const [activeTab, setActiveTab] = useState<RequestStatus>("seen");
   const [requests, setRequests] = useState<LabRequest[]>([]);
@@ -196,20 +198,21 @@ export function LabDashboard({ lab, isOwner = false, roleName = "Lab Owner", can
     return () => clearInterval(interval);
   }, [fetchRequests]);
 
-  // Fetch wallet balance on mount + poll every 60 s for real-time low-balance notification
+  // Eagerly fetch Poveon balance so the "amount owed" banner appears on all tabs
   useEffect(() => {
     if (!isOwner && !canViewWallet) return;
-    const fetchBalance = () => {
-      fetch("/api/lab/wallet")
-        .then((r) => r.json())
-        .then((d) => { if (d.success) { setLiveBalance(d.balance); if (walletData) setWalletData((prev) => prev ? { ...prev, balance: d.balance } : prev); } })
-        .catch(() => {});
-    };
-    fetchBalance();
-    const iv = setInterval(fetchBalance, 60_000);
-    return () => clearInterval(iv);
+    fetch("/api/lab/poveon")
+      .then((r) => r.json())
+      .then((d) => {
+        if (d.success) {
+          setPoveonData(d);
+          setPoveonBalance(d.wallet_balance ?? null);
+        }
+      })
+      .catch(() => {});
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [isOwner, canViewWallet]);
+  }, []);
+
 
   const fetchClients = useCallback(async () => {
     setClientsLoading(true);
@@ -569,30 +572,6 @@ export function LabDashboard({ lab, isOwner = false, roleName = "Lab Owner", can
       </header>
 
       <div className="max-w-6xl mx-auto px-4 py-8">
-        {/* Low-balance banner — visible on all tabs */}
-        {liveBalance !== null && liveBalance < 10_000 && (isOwner || canViewWallet) && (
-          <div className={`mb-6 flex items-start gap-3 px-4 py-3.5 rounded-2xl border text-sm animate-fade-in ${liveBalance < 0 ? "bg-red-500/10 border-red-500/30" : liveBalance < 3000 ? "bg-red-500/8 border-red-500/25" : "bg-amber-500/8 border-amber-500/25"}`}>
-            <div className={`shrink-0 w-8 h-8 rounded-xl flex items-center justify-center ${liveBalance < 0 ? "bg-red-500/20" : liveBalance < 3000 ? "bg-red-500/15" : "bg-amber-500/15"}`}>
-              <Wallet className={`w-4 h-4 ${liveBalance < 0 ? "text-red-400" : liveBalance < 3000 ? "text-red-400" : "text-amber-400"}`} />
-            </div>
-            <div className="flex-1 min-w-0">
-              <p className={`font-semibold ${liveBalance < 0 ? "text-red-300" : liveBalance < 3000 ? "text-red-300" : "text-amber-300"}`}>
-                {liveBalance < 0 ? "Wallet overdrawn" : liveBalance < 3000 ? "Wallet critically low" : "Low wallet balance"}
-              </p>
-              <p className={`text-xs mt-0.5 ${liveBalance < 0 ? "text-red-400/80" : liveBalance < 3000 ? "text-red-400/80" : "text-amber-400/80"}`}>
-                {liveBalance < 0
-                  ? `Your balance is ₦${Math.abs(liveBalance).toLocaleString()} overdrawn. New requests may be blocked. Contact your account manager immediately.`
-                  : `Balance: ₦${liveBalance.toLocaleString()}. Top up soon to keep accepting requests.`}
-              </p>
-            </div>
-            <button
-              onClick={() => setMainView("wallet")}
-              className={`shrink-0 text-xs font-semibold px-3 py-1.5 rounded-xl transition-colors ${liveBalance < 0 ? "bg-red-500/20 text-red-300 hover:bg-red-500/30" : "bg-amber-500/15 text-amber-300 hover:bg-amber-500/25"}`}
-            >
-              View wallet →
-            </button>
-          </div>
-        )}
 
         {/* Top-level navigation */}
         {(() => {
@@ -603,7 +582,8 @@ export function LabDashboard({ lab, isOwner = false, roleName = "Lab Owner", can
             { key: "analytics" as const, label: "Analytics", icon: <BarChart3 className="w-4 h-4" />, show: isOwner || canViewAnalytics },
             { key: "activity" as const, label: "Activity", icon: <Activity className="w-4 h-4" />, show: isOwner || canViewActivity },
             { key: "feedback" as const, label: "Feedback", icon: <Star className="w-4 h-4" />, show: isOwner || canViewFeedback },
-            { key: "wallet" as const, label: "Wallet", icon: <Wallet className="w-4 h-4" />, show: isOwner || canViewWallet },
+            { key: "poveon" as const, label: "Poveon", icon: <CreditCard className="w-4 h-4" />, show: isOwner || canViewWallet },
+            { key: "price-list" as const, label: "Price List", icon: <Layers className="w-4 h-4" />, show: isOwner || canViewWallet },
           ].filter((item) => item.show);
           if (navItems.length <= 1) return null;
           const currentItem = navItems.find((n) => n.key === mainView) ?? navItems[0];
@@ -626,9 +606,13 @@ export function LabDashboard({ lab, isOwner = false, roleName = "Lab Owner", can
                         onClick={() => {
                           setMainView(item.key);
                           setMobileNavOpen(false);
-                          if (item.key === "wallet" && !walletData) {
-                            setWalletLoading(true);
-                            fetch("/api/lab/wallet").then((r) => r.json()).then((d) => { if (d.success) setWalletData(d); }).catch(() => {}).finally(() => setWalletLoading(false));
+                          if (item.key === "poveon" && !poveonData) {
+                            setPoveonLoading(true);
+                            fetch("/api/lab/poveon").then((r) => r.json()).then((d) => { if (d.success) setPoveonData(d); }).catch(() => {}).finally(() => setPoveonLoading(false));
+                          }
+                          if (item.key === "price-list" && !priceListData) {
+                            setPriceListLoading(true);
+                            fetch("/api/lab/price-schedule").then((r) => r.json()).then((d) => { if (d.success) setPriceListData(d.schedule); }).catch(() => {}).finally(() => setPriceListLoading(false));
                           }
                         }}
                         className={`flex items-center gap-3 w-full px-4 py-3.5 text-sm font-medium transition-colors border-b border-white/5 last:border-0 ${
@@ -649,9 +633,13 @@ export function LabDashboard({ lab, isOwner = false, roleName = "Lab Owner", can
                 {navItems.map((item) => (
                   <button key={item.key} onClick={() => {
                     setMainView(item.key);
-                    if (item.key === "wallet" && !walletData) {
-                      setWalletLoading(true);
-                      fetch("/api/lab/wallet").then((r) => r.json()).then((d) => { if (d.success) setWalletData(d); }).catch(() => {}).finally(() => setWalletLoading(false));
+                    if (item.key === "poveon" && !poveonData) {
+                      setPoveonLoading(true);
+                      fetch("/api/lab/poveon").then((r) => r.json()).then((d) => { if (d.success) setPoveonData(d); }).catch(() => {}).finally(() => setPoveonLoading(false));
+                    }
+                    if (item.key === "price-list" && !priceListData) {
+                      setPriceListLoading(true);
+                      fetch("/api/lab/price-schedule").then((r) => r.json()).then((d) => { if (d.success) setPriceListData(d.schedule); }).catch(() => {}).finally(() => setPriceListLoading(false));
                     }
                   }}
                     className={`flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-medium transition-all ${
@@ -664,6 +652,24 @@ export function LabDashboard({ lab, isOwner = false, roleName = "Lab Owner", can
             </div>
           );
         })()}
+
+        {/* Amount owed banner — shown on all tabs when lab has a negative wallet balance */}
+        {poveonBalance !== null && poveonBalance < 0 && (isOwner || canViewWallet) && (
+          <div className="mb-5 flex items-center gap-3 bg-amber-500/15 border border-amber-500/30 rounded-2xl px-4 py-3">
+            <CreditCard className="w-4 h-4 text-amber-400 shrink-0" />
+            <p className="text-sm text-amber-200 flex-1">
+              Your lab owes Poveon{" "}
+              <span className="font-bold font-mono text-amber-300">₦{Math.abs(poveonBalance).toLocaleString()}</span>.
+              {" "}Top up your wallet to settle the balance.
+            </p>
+            <button
+              onClick={() => setMainView("poveon")}
+              className="shrink-0 text-xs font-semibold text-amber-300 hover:text-amber-100 underline underline-offset-2 transition"
+            >
+              View →
+            </button>
+          </div>
+        )}
 
         {/* Referrals view */}
         {mainView === "referrals" && (
@@ -737,10 +743,13 @@ export function LabDashboard({ lab, isOwner = false, roleName = "Lab Owner", can
                         </div>
                         <div className="flex-1 min-w-0">
                           <p className="font-semibold text-white truncate leading-tight">
-                            {[doc.doctor_prefix, doc.doctor_name].filter(Boolean).join(" ")}
+                            {[doc.doctor_prefix, doc.doctor_name].filter(Boolean).join(" ") || doc.doctor_email}
                           </p>
+                          {[doc.doctor_prefix, doc.doctor_name].filter(Boolean).join(" ") && (
+                            <p className="text-xs text-slate-500 truncate">{doc.doctor_email}</p>
+                          )}
                           {doc.doctor_hospital && (
-                            <p className="text-xs text-slate-500 truncate mt-0.5">{doc.doctor_hospital}</p>
+                            <p className="text-xs text-slate-500 truncate">{doc.doctor_hospital}</p>
                           )}
                         </div>
                         <span className="shrink-0 text-xs font-bold bg-medical-900/50 text-medical-300 border border-medical-800/30 px-2 py-0.5 rounded-full">
@@ -1700,18 +1709,32 @@ export function LabDashboard({ lab, isOwner = false, roleName = "Lab Owner", can
           <LabFeedbackView labId={lab.id} />
         )}
 
-        {/* Wallet view */}
-        {mainView === "wallet" && (isOwner || canViewWallet) && (
-          <LabWalletView
-            walletData={walletData}
-            loading={walletLoading}
+        {/* Poveon commission view */}
+        {mainView === "poveon" && (isOwner || canViewWallet) && (
+          <LabPoveonView
+            data={poveonData}
+            loading={poveonLoading}
             onLoad={async () => {
-              setWalletLoading(true);
+              setPoveonLoading(true);
               try {
-                const res = await fetch("/api/lab/wallet");
-                const data = await res.json();
-                if (data.success) setWalletData(data);
-              } catch { /* non-critical */ } finally { setWalletLoading(false); }
+                const res = await fetch("/api/lab/poveon");
+                const d = await res.json();
+                if (d.success) setPoveonData(d);
+              } catch { /* non-critical */ } finally { setPoveonLoading(false); }
+            }}
+          />
+        )}
+
+        {/* Price list view */}
+        {mainView === "price-list" && (isOwner || canViewWallet) && (
+          <LabPriceListView
+            data={priceListData}
+            loading={priceListLoading}
+            onLoad={() => {
+              if (!priceListData) {
+                setPriceListLoading(true);
+                fetch("/api/lab/price-schedule").then((r) => r.json()).then((d) => { if (d.success) setPriceListData(d.schedule); }).catch(() => {}).finally(() => setPriceListLoading(false));
+              }
             }}
           />
         )}
@@ -2071,7 +2094,22 @@ export function LabDashboard({ lab, isOwner = false, roleName = "Lab Owner", can
                     )}
                     <div className="border-t border-white/10 pt-3" />
                     <DetailRow label="Tests">
-                      <span className="text-white font-medium">{selectedRequest.tests}</span>
+                      {selectedRequest.tests === "See attached image" ? (
+                        <span className="text-white font-medium">See attached image</span>
+                      ) : (
+                        <ul className="space-y-1 mt-0.5">
+                          {selectedRequest.tests
+                            .split(/[,\n]+/)
+                            .map((t) => t.trim())
+                            .filter(Boolean)
+                            .map((test, i) => (
+                              <li key={i} className="text-white font-medium text-sm flex items-start gap-1.5">
+                                <span className="text-slate-500 mt-0.5 shrink-0">·</span>
+                                {test}
+                              </li>
+                            ))}
+                        </ul>
+                      )}
                     </DetailRow>
                     {selectedRequest.diagnosis && (
                       <DetailRow label="Diagnosis">{selectedRequest.diagnosis}</DetailRow>
@@ -3065,36 +3103,222 @@ function LabFeedbackView({ labId }: { labId: string }) {
 }
 
 // =============================================================================
-// Lab Wallet View
+// Lab Price List View
 // =============================================================================
-type BreakdownItem = { raw: string; canonical_name: string; category: string; unit_price: number; confidence: number };
-type WalletTxn = {
-  id: string; type: string; direction: string; amount: number; balance_after: number;
-  description: string | null; actor_email: string | null; created_at: string;
-  request_id: string | null; test_breakdown: unknown; tests_raw: string | null;
-};
-type WalletViewData = { balance: number; transactions: WalletTxn[] } | null;
+type PriceListTest = { id: string; name: string; lab_price: number; poveon_fee: number | null; commission_pct: number | null };
+type PriceListCategory = { category: string; tests: PriceListTest[] };
 
-function LabWalletView({ walletData, loading, onLoad }: { walletData: WalletViewData; loading: boolean; onLoad: () => void }) {
-  const [expandedTxn, setExpandedTxn] = useState<string | null>(null);
-  const [showSchedule, setShowSchedule] = useState(false);
-  const [schedule, setSchedule] = useState<{ category: string; tests: { id: string; name: string; effective_price: number; is_custom: boolean; is_rapid_test: boolean }[] }[]>([]);
-  const [scheduleLoading, setScheduleLoading] = useState(false);
-  const [scheduleSearch, setScheduleSearch] = useState("");
-  const [dateFrom, setDateFrom] = useState("");
-  const [dateTo, setDateTo] = useState("");
+function LabPriceListView({ data, loading, onLoad }: { data: PriceListCategory[] | null; loading: boolean; onLoad: () => void }) {
+  const [search, setSearch] = useState("");
+  useEffect(() => { if (!data && !loading) onLoad(); }, [data, loading, onLoad]);
 
-  useEffect(() => { if (!walletData) onLoad(); }, [walletData, onLoad]);
-
-  async function loadSchedule() {
-    if (schedule.length > 0) { setShowSchedule(true); return; }
-    setScheduleLoading(true);
-    const res = await fetch("/api/lab/price-schedule");
-    const data = await res.json();
-    setSchedule(data.schedule ?? []);
-    setScheduleLoading(false);
-    setShowSchedule(true);
+  if (loading) {
+    return (
+      <div className="space-y-4 animate-pulse">
+        <div className="h-12 bg-white/5 rounded-xl" />
+        <div className="h-48 bg-white/5 rounded-2xl" />
+        <div className="h-32 bg-white/5 rounded-2xl" />
+      </div>
+    );
   }
+
+  const schedule = data ?? [];
+  const q = search.trim().toLowerCase();
+  const filtered = schedule
+    .map((cat) => ({ ...cat, tests: q ? cat.tests.filter((t) => t.name.toLowerCase().includes(q)) : cat.tests }))
+    .filter((cat) => cat.tests.length > 0);
+
+  const totalTests = schedule.reduce((s, c) => s + c.tests.length, 0);
+
+  return (
+    <div className="space-y-6">
+      {/* Header */}
+      <div className="flex flex-col sm:flex-row sm:items-center gap-3">
+        <div className="flex-1">
+          <h2 className="text-lg font-bold text-white">Your Price List</h2>
+          <p className="text-xs text-slate-400 mt-0.5">{totalTests} test{totalTests !== 1 ? "s" : ""} across {schedule.length} categor{schedule.length !== 1 ? "ies" : "y"}</p>
+        </div>
+        <div className="relative">
+          <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-500 pointer-events-none" />
+          <input
+            value={search}
+            onChange={(e) => setSearch(e.target.value)}
+            placeholder="Search tests…"
+            className="pl-9 pr-4 py-2.5 rounded-xl bg-white/8 border border-white/10 text-sm text-white placeholder-slate-500 focus:outline-none focus:border-white/25 w-full sm:w-64"
+          />
+        </div>
+      </div>
+
+      {filtered.length === 0 ? (
+        <div className="text-center py-16 text-slate-500">
+          {q ? "No tests match your search." : "No tests in your catalog yet."}
+        </div>
+      ) : (
+        <div className="space-y-5">
+          {filtered.map((cat) => (
+            <div key={cat.category} className="bg-white/5 border border-white/8 rounded-2xl overflow-hidden">
+              {/* Category header */}
+              <div className="px-5 py-3 bg-white/5 border-b border-white/8 flex items-center justify-between">
+                <p className="text-sm font-semibold text-white">{cat.category}</p>
+                <p className="text-xs text-slate-500">{cat.tests.length} test{cat.tests.length !== 1 ? "s" : ""}</p>
+              </div>
+              {/* Column headers */}
+              <div className="grid grid-cols-4 px-5 py-2 text-[11px] uppercase tracking-wider text-slate-500 border-b border-white/5">
+                <p className="col-span-2">Test Name</p>
+                <p className="text-right">Your Price</p>
+                <p className="text-right">Poveon Fee</p>
+              </div>
+              {/* Test rows */}
+              {cat.tests.map((test, idx) => (
+                <div
+                  key={test.id}
+                  className={`grid grid-cols-4 px-5 py-3 items-center ${idx < cat.tests.length - 1 ? "border-b border-white/5" : ""} hover:bg-white/3 transition-colors`}
+                >
+                  <p className="col-span-2 text-sm text-slate-200 pr-4">{test.name}</p>
+                  <p className="text-right text-sm font-mono text-white font-medium">₦{Number(test.lab_price).toLocaleString()}</p>
+                  <div className="text-right">
+                    <p className="text-sm font-mono text-amber-300 font-semibold">
+                      {test.poveon_fee != null ? `₦${Number(test.poveon_fee).toLocaleString()}` : "—"}
+                    </p>
+                    {test.commission_pct != null && (
+                      <p className="text-[10px] text-slate-500">{Number(test.commission_pct).toFixed(1)}%</p>
+                    )}
+                  </div>
+                </div>
+              ))}
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
+// =============================================================================
+// Lab Poveon View
+// =============================================================================
+type BreakdownItem = {
+  raw: string; canonical_name: string; source?: string;
+  unit_price: number; poveon_fee?: number | null;
+};
+type PoveonReq = {
+  id: string; code: string; patient_name: string | null; tests: string;
+  poveon_amount: number; lab_revenue_amount: number; is_paid_to_poveon: boolean;
+  seen_at: string | null; completed_at: string | null;
+  test_breakdown: BreakdownItem[];
+};
+type PoveonViewData = { total_owed: number; total_lab_revenue: number; total_deposited: number; wallet_balance: number; requests: PoveonReq[] } | null;
+
+type WalletCredit = { id: string; amount: number; balance_after: number; reference: string; channel: string; sender_name: string | null; sender_bank: string | null; created_at: string };
+type WalletData = { balance: number; dva: { bank_name: string; account_number: string; account_name: string } | null; credits: WalletCredit[] } | null;
+
+function LabWalletPanel() {
+  const [wallet, setWallet] = useState<WalletData>(null);
+  const [loading, setLoading] = useState(true);
+  const [refreshing, setRefreshing] = useState(false);
+  const [copied, setCopied] = useState(false);
+
+  function load(isRefresh = false) {
+    if (isRefresh) setRefreshing(true); else setLoading(true);
+    fetch("/api/lab/wallet")
+      .then((r) => r.json())
+      .then((d) => { if (d.success) setWallet(d); })
+      .catch(() => {})
+      .finally(() => { setLoading(false); setRefreshing(false); });
+  }
+
+  useEffect(() => {
+    load();
+    // Poll every 30 s so incoming DVA payments appear without manual refresh
+    const interval = setInterval(() => load(true), 30_000);
+    return () => clearInterval(interval);
+  }, []);
+
+  if (loading) return <div className="h-28 bg-white/5 rounded-2xl animate-pulse" />;
+
+  const balance = wallet?.balance ?? 0;
+  const dva     = wallet?.dva    ?? null;
+  const credits = wallet?.credits ?? [];
+
+  return (
+    <div className="space-y-3">
+      <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+        {/* Balance card */}
+        <div className="bg-gradient-to-br from-emerald-500/15 to-emerald-600/5 border border-emerald-500/25 rounded-2xl p-4 flex items-center gap-4">
+          <div className="w-10 h-10 rounded-xl bg-emerald-500/20 flex items-center justify-center shrink-0">
+            <Wallet2 className="w-5 h-5 text-emerald-400" />
+          </div>
+          <div className="flex-1 min-w-0">
+            <p className="text-xs text-slate-400 uppercase tracking-wider mb-0.5">Wallet Balance</p>
+            <p className="text-2xl font-bold font-mono text-white">₦{balance.toLocaleString()}</p>
+          </div>
+          <button onClick={() => load(true)} disabled={refreshing} className="shrink-0 p-2 rounded-xl bg-white/8 hover:bg-white/15 text-slate-400 hover:text-white transition disabled:opacity-50" title="Refresh">
+            <RefreshCw className={`w-4 h-4 ${refreshing ? "animate-spin" : ""}`} />
+          </button>
+        </div>
+
+        {/* DVA account card */}
+        {dva ? (
+          <div className="bg-white/5 border border-white/10 rounded-2xl p-4">
+            <p className="text-xs text-slate-400 uppercase tracking-wider mb-2">Your Dedicated Account</p>
+            <div className="flex items-center justify-between gap-2">
+              <div>
+                <p className="text-lg font-bold font-mono text-white tracking-widest">{dva.account_number}</p>
+                <p className="text-xs text-slate-400 mt-0.5">{dva.bank_name} · {dva.account_name}</p>
+              </div>
+              <button onClick={() => { navigator.clipboard.writeText(dva.account_number).then(() => { setCopied(true); setTimeout(() => setCopied(false), 2000); }); }} className="shrink-0 p-2 rounded-xl bg-white/8 hover:bg-white/15 text-slate-300 hover:text-white transition">
+                {copied ? <Check className="w-4 h-4 text-emerald-400" /> : <Copy className="w-4 h-4" />}
+              </button>
+            </div>
+            <p className="text-[10px] text-slate-500 mt-2">Transfer to this account from any bank to top up your wallet.</p>
+          </div>
+        ) : (
+          <div className="bg-white/5 border border-white/10 border-dashed rounded-2xl p-4 flex items-center gap-3">
+            <Wallet2 className="w-5 h-5 text-slate-500 shrink-0" />
+            <div>
+              <p className="text-sm text-slate-400 font-medium">No virtual account yet</p>
+              <p className="text-xs text-slate-500 mt-0.5">Ask your admin to provision a dedicated payment account.</p>
+            </div>
+          </div>
+        )}
+      </div>
+
+      {/* Payment history */}
+      {credits.length > 0 && (
+        <div className="bg-white/5 border border-white/10 rounded-2xl overflow-hidden">
+          <p className="text-xs font-semibold text-slate-400 uppercase tracking-wider px-4 py-3 border-b border-white/8">Payment History</p>
+          <div className="divide-y divide-white/5">
+            {credits.slice(0, 10).map((c) => (
+              <div key={c.id} className="flex items-center justify-between px-4 py-2.5 gap-3">
+                <div className="flex items-center gap-2.5 min-w-0">
+                  <div className="w-6 h-6 rounded-full bg-emerald-500/15 flex items-center justify-center shrink-0">
+                    <ArrowUpRight className="w-3.5 h-3.5 text-emerald-400" />
+                  </div>
+                  <div className="min-w-0">
+                    <p className="text-xs text-slate-300 truncate">
+                      {c.sender_name ? `From ${c.sender_name}` : "Bank transfer"}
+                      {c.sender_bank ? ` · ${c.sender_bank}` : ""}
+                      {c.channel === "manual" ? " (manual)" : ""}
+                    </p>
+                    <p className="text-[10px] text-slate-500">{new Date(c.created_at).toLocaleDateString()}</p>
+                  </div>
+                </div>
+                <div className="text-right shrink-0">
+                  <p className="text-sm font-semibold font-mono text-emerald-300">+₦{Number(c.amount).toLocaleString()}</p>
+                  <p className="text-[10px] text-slate-500">bal ₦{Number(c.balance_after).toLocaleString()}</p>
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+function LabPoveonView({ data, loading, onLoad }: { data: PoveonViewData; loading: boolean; onLoad: () => void }) {
+  const [expanded, setExpanded] = useState<Set<string>>(new Set());
+  useEffect(() => { if (!data) onLoad(); }, [data, onLoad]);
 
   if (loading) {
     return (
@@ -3106,212 +3330,152 @@ function LabWalletView({ walletData, loading, onLoad }: { walletData: WalletView
     );
   }
 
-  const balance = walletData?.balance ?? 0;
-  const allTransactions = walletData?.transactions ?? [];
-  const isNegative = balance < 0;
-  const isLow = !isNegative && balance < 5000;
+  const totalOwed       = data?.total_owed       ?? 0;
+  const totalLabRevenue = data?.total_lab_revenue ?? 0;
+  const totalDeposited  = data?.total_deposited  ?? 0;
+  const requests        = data?.requests         ?? [];
 
-  // Apply date filters
-  const transactions = allTransactions.filter((t) => {
-    if (dateFrom && t.created_at < dateFrom) return false;
-    if (dateTo && t.created_at > dateTo + "T23:59:59") return false;
-    return true;
-  });
-
-  // CSV export
-  function exportCSV() {
-    const rows = [
-      ["Date", "Description", "Type", "Amount (₦)", "Balance After (₦)"],
-      ...transactions.map((t) => [
-        format(new Date(t.created_at), "dd MMM yyyy HH:mm"),
-        (t.description ?? "").replace(/,/g, " "),
-        t.direction === "credit" ? "Credit" : "Debit",
-        t.direction === "credit" ? `+${t.amount}` : `-${t.amount}`,
-        String(t.balance_after),
-      ]),
-    ];
-    const csv = rows.map((r) => r.map((c) => `"${c}"`).join(",")).join("\n");
-    const blob = new Blob([csv], { type: "text/csv" });
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement("a");
-    a.href = url; a.download = `transactions_${format(new Date(), "yyyy-MM-dd")}.csv`;
-    a.click(); URL.revokeObjectURL(url);
+  function toggleExpand(id: string) {
+    setExpanded((prev) => {
+      const next = new Set(prev);
+      next.has(id) ? next.delete(id) : next.add(id);
+      return next;
+    });
   }
-
-  const filteredSchedule = scheduleSearch.trim()
-    ? schedule.map((g) => ({
-        ...g,
-        tests: g.tests.filter((t) => t.name.toLowerCase().includes(scheduleSearch.toLowerCase())),
-      })).filter((g) => g.tests.length > 0)
-    : schedule;
 
   return (
     <div className="space-y-6">
-      {/* Balance card */}
-      <div className={`rounded-2xl p-6 text-center border ${isNegative ? "bg-red-500/10 border-red-500/20" : isLow ? "bg-amber-500/10 border-amber-500/20" : "bg-emerald-500/10 border-emerald-500/20"}`}>
-        <Wallet className={`w-8 h-8 mx-auto mb-2 ${isNegative ? "text-red-400" : isLow ? "text-amber-400" : "text-emerald-400"}`} />
-        <p className="text-xs text-slate-400 uppercase tracking-wider mb-1">Wallet Balance</p>
-        <p className={`text-5xl font-bold font-mono ${isNegative ? "text-red-400" : isLow ? "text-amber-400" : "text-emerald-300"}`}>
-          ₦{balance.toLocaleString()}
-        </p>
-        {isNegative && <p className="mt-3 text-sm text-red-400 font-semibold">Your wallet is overdrawn. Please contact support to top up.</p>}
-        {isLow && <p className="mt-3 text-sm text-amber-400">Your balance is running low. Contact your account manager to top up.</p>}
+      {/* Wallet panel — balance + DVA account */}
+      <LabWalletPanel />
+
+      {/* Summary cards */}
+      <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+        <div className="bg-gradient-to-br from-emerald-500/20 to-emerald-600/10 border border-emerald-500/30 rounded-2xl p-5 flex items-center gap-4 sm:flex-col sm:items-center sm:text-center">
+          <div className="sm:hidden w-10 h-10 rounded-xl bg-emerald-500/20 flex items-center justify-center shrink-0">
+            <CreditCard className="w-5 h-5 text-emerald-400" />
+          </div>
+          <div className="flex-1 sm:flex-none">
+            <p className="text-xs text-slate-400 uppercase tracking-wider mb-1">Your Revenue</p>
+            <p className="text-2xl font-bold font-mono text-white">₦{totalLabRevenue.toLocaleString()}</p>
+            <p className="text-xs text-slate-500 mt-1">from listed tests</p>
+          </div>
+        </div>
+        <div className="bg-gradient-to-br from-sky-500/20 to-sky-600/10 border border-sky-500/30 rounded-2xl p-5 flex items-center gap-4 sm:flex-col sm:items-center sm:text-center">
+          <div className="sm:hidden w-10 h-10 rounded-xl bg-sky-500/20 flex items-center justify-center shrink-0">
+            <CreditCard className="w-5 h-5 text-sky-400" />
+          </div>
+          <div className="flex-1 sm:flex-none">
+            <p className="text-xs text-slate-400 uppercase tracking-wider mb-1">Total Poveon Fee</p>
+            <p className="text-2xl font-bold font-mono text-white">₦{totalOwed.toLocaleString()}</p>
+            <p className="text-xs text-slate-500 mt-1">cumulative commission</p>
+          </div>
+        </div>
+        <div className="bg-gradient-to-br from-violet-500/20 to-violet-600/10 border border-violet-500/30 rounded-2xl p-5 flex items-center gap-4 sm:flex-col sm:items-center sm:text-center">
+          <div className="sm:hidden w-10 h-10 rounded-xl bg-violet-500/20 flex items-center justify-center shrink-0">
+            <CreditCard className="w-5 h-5 text-violet-400" />
+          </div>
+          <div className="flex-1 sm:flex-none">
+            <p className="text-xs text-slate-400 uppercase tracking-wider mb-1">Total Deposited</p>
+            <p className="text-2xl font-bold font-mono text-white">₦{totalDeposited.toLocaleString()}</p>
+            <p className="text-xs text-slate-500 mt-1">paid into wallet via DVA</p>
+          </div>
+        </div>
       </div>
 
       {/* Info card */}
       <div className="bg-white/5 border border-white/10 rounded-2xl px-5 py-4 flex items-start gap-3">
         <CreditCard className="w-4 h-4 text-slate-400 mt-0.5 shrink-0" />
         <div className="space-y-1 flex-1">
-          <p className="text-sm font-semibold text-white">How charges work</p>
+          <p className="text-sm font-semibold text-white">How Poveon commission works</p>
           <p className="text-xs text-slate-400 leading-relaxed">
-            Each time you mark a patient request as <strong className="text-white">Seen</strong>, the total price of the requested tests is deducted from your wallet.
-            Prices are calculated per test at the time the request is submitted.
-            Contact your Poveon account manager to top up your balance.
+            Each time you mark a request as <strong className="text-white">Seen</strong>, Poveon calculates the commission from your test catalog.
+            The commission rate is set per test in your catalog. Only tests in your price list contribute to the commission.
+            Tests not in your catalog cost ₦0 commission.
           </p>
-          <button
-            onClick={loadSchedule}
-            disabled={scheduleLoading}
-            className="mt-2 text-xs text-medical-400 hover:text-medical-300 underline underline-offset-2 flex items-center gap-1.5 disabled:opacity-60"
-          >
-            {scheduleLoading && <RefreshCw className="w-3 h-3 animate-spin" />}
-            {showSchedule ? "Hide price schedule" : scheduleLoading ? "Loading schedule…" : "View your price schedule →"}
-          </button>
         </div>
       </div>
 
-      {/* Price schedule */}
-      {showSchedule && (
-        <div className="bg-white/5 border border-white/10 rounded-2xl p-5 space-y-4">
-          <div className="flex items-center justify-between">
-            <p className="text-sm font-semibold text-white">Your Price Schedule</p>
-            <button onClick={() => setShowSchedule(false)} className="text-slate-400 hover:text-white text-xs">Hide</button>
-          </div>
-          <input
-            value={scheduleSearch} onChange={(e) => setScheduleSearch(e.target.value)}
-            placeholder="Search test name..."
-            className="w-full bg-white/5 border border-white/10 rounded-xl px-3 py-2 text-white text-sm placeholder-slate-500 outline-none focus:ring-2 focus:ring-medical-500/50"
-          />
-          {scheduleLoading ? (
-            <p className="text-slate-400 text-sm">Loading...</p>
-          ) : filteredSchedule.length === 0 ? (
-            <p className="text-slate-400 text-sm">No tests found.</p>
-          ) : (
-            <div className="space-y-4 max-h-96 overflow-y-auto pr-1">
-              {filteredSchedule.map((group) => (
-                <div key={group.category}>
-                  <p className="text-xs font-semibold text-slate-400 uppercase tracking-wider mb-2">{group.category}</p>
-                  <div className="space-y-1">
-                    {group.tests.map((t) => (
-                      <div key={t.id} className="flex items-center justify-between px-3 py-2 rounded-lg bg-white/5">
-                        <div className="flex items-center gap-2">
-                          <span className="text-sm text-white">{t.name}</span>
-                          {t.is_rapid_test && <span className="text-xs bg-amber-500/20 text-amber-400 px-1.5 py-0.5 rounded-full">rapid</span>}
-                        </div>
-                        <div className="flex items-center gap-2">
-                          <span className={`text-sm font-mono ${t.is_custom ? "text-amber-300 font-semibold" : "text-slate-300"}`}>
-                            ₦{t.effective_price.toLocaleString()}
-                          </span>
-                          {t.is_custom && <span className="text-xs text-amber-500">custom</span>}
-                        </div>
-                      </div>
-                    ))}
-                  </div>
-                </div>
-              ))}
-            </div>
-          )}
-        </div>
-      )}
-
-      {/* Transaction history */}
+      {/* Request history */}
       <div>
-        <div className="flex flex-wrap items-center justify-between gap-3 mb-4">
-          <p className="text-sm font-semibold text-white">Transaction History</p>
-          <div className="flex items-center gap-2 flex-wrap">
-            <input
-              type="date"
-              value={dateFrom}
-              onChange={(e) => setDateFrom(e.target.value)}
-              className="bg-white/5 border border-white/10 rounded-xl px-2.5 py-1.5 text-xs text-slate-300 outline-none focus:ring-1 focus:ring-medical-500/50"
-              title="From date"
-            />
-            <span className="text-slate-500 text-xs">to</span>
-            <input
-              type="date"
-              value={dateTo}
-              onChange={(e) => setDateTo(e.target.value)}
-              className="bg-white/5 border border-white/10 rounded-xl px-2.5 py-1.5 text-xs text-slate-300 outline-none focus:ring-1 focus:ring-medical-500/50"
-              title="To date"
-            />
-            {(dateFrom || dateTo) && (
-              <button onClick={() => { setDateFrom(""); setDateTo(""); }} className="text-xs text-slate-400 hover:text-white px-2 py-1.5 rounded-xl hover:bg-white/10 transition-colors">Clear</button>
-            )}
-            <button onClick={exportCSV} className="flex items-center gap-1.5 text-xs font-semibold px-3 py-1.5 rounded-xl bg-emerald-500/15 text-emerald-300 hover:bg-emerald-500/25 transition-colors border border-emerald-500/20">
-              <ArrowDownRight className="w-3.5 h-3.5" />
-              Export CSV
-            </button>
-            <button onClick={onLoad} className="p-1.5 rounded-lg hover:bg-white/10 text-slate-400 hover:text-white transition-colors">
-              <RefreshCw className="w-3.5 h-3.5" />
-            </button>
-          </div>
+        <div className="flex items-center justify-between mb-4">
+          <p className="text-sm font-semibold text-white">Commission by Request ({requests.length})</p>
+          <button onClick={onLoad} className="p-1.5 rounded-lg hover:bg-white/10 text-slate-400 hover:text-white transition-colors">
+            <RefreshCw className="w-3.5 h-3.5" />
+          </button>
         </div>
 
-        {transactions.length === 0 ? (
+        {requests.length === 0 ? (
           <div className="bg-white/5 border border-white/10 rounded-2xl p-10 text-center">
-            <Wallet className="w-8 h-8 text-slate-600 mx-auto mb-3" />
-            <p className="text-sm text-slate-400">No transactions yet</p>
+            <CreditCard className="w-8 h-8 text-slate-600 mx-auto mb-3" />
+            <p className="text-sm text-slate-400">No commission data yet</p>
+            <p className="text-xs text-slate-500 mt-1">Commission appears once requests are marked as Seen</p>
           </div>
         ) : (
           <div className="space-y-2">
-            {transactions.map((txn) => {
-              const breakdown = Array.isArray(txn.test_breakdown) ? (txn.test_breakdown as BreakdownItem[]) : null;
-              const hasBreakdown = breakdown && breakdown.length > 0;
-              const isExpanded = expandedTxn === txn.id;
-
+            {requests.map((req) => {
+              const isOpen = expanded.has(req.id);
+              const catalogItems = req.test_breakdown.filter((t) => t.source === "lab_catalog");
+              const othersItems = req.test_breakdown.filter((t) => t.source !== "lab_catalog");
+              // Always derive totals from the JSON items — guaranteed to match per-row display
+              const totalPrice = catalogItems.reduce((s, t) => s + Number(t.unit_price ?? 0), 0);
+              const totalCommission = catalogItems.reduce((s, t) => s + Number(t.poveon_fee ?? 0), 0);
               return (
-                <div key={txn.id} className="bg-white/5 border border-white/8 rounded-xl overflow-hidden">
-                  <div
-                    className={`flex items-center gap-3 px-4 py-3.5 ${hasBreakdown ? "cursor-pointer hover:bg-white/8" : ""}`}
-                    onClick={() => hasBreakdown && setExpandedTxn(isExpanded ? null : txn.id)}
+                <div key={req.id} className="bg-white/5 border border-white/8 rounded-xl overflow-hidden">
+                  {/* Request row — click to expand */}
+                  <button
+                    onClick={() => toggleExpand(req.id)}
+                    className="w-full flex items-center gap-3 px-4 py-3 hover:bg-white/5 transition-colors text-left"
                   >
-                    <div className={`w-8 h-8 rounded-xl flex items-center justify-center shrink-0 ${txn.direction === "credit" ? "bg-emerald-500/15" : "bg-red-500/15"}`}>
-                      {txn.direction === "credit"
-                        ? <ArrowUpRight className="w-4 h-4 text-emerald-400" />
-                        : <ArrowDownRight className="w-4 h-4 text-red-400" />}
+                    <div className={`w-8 h-8 rounded-xl flex items-center justify-center shrink-0 ${req.is_paid_to_poveon ? "bg-emerald-500/15" : "bg-amber-500/15"}`}>
+                      {req.is_paid_to_poveon
+                        ? <Check className="w-4 h-4 text-emerald-400" />
+                        : <CreditCard className="w-4 h-4 text-amber-400" />}
                     </div>
                     <div className="flex-1 min-w-0">
-                      <p className="text-sm text-white truncate">
-                        {txn.description ?? (txn.type === "topup" ? "Wallet top-up" : txn.type === "deduction" ? "Request charge" : "Adjustment")}
-                      </p>
-                      <p className="text-xs text-slate-500">{format(new Date(txn.created_at), "dd MMM yyyy · HH:mm")}</p>
+                      <div className="flex items-center gap-2 flex-wrap">
+                        <p className="text-sm text-white font-mono font-medium">{req.code}</p>
+                        {req.is_paid_to_poveon && (
+                          <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-emerald-500/15 text-emerald-400 font-medium">Paid</span>
+                        )}
+                      </div>
+                      <p className="text-xs text-slate-500 truncate">{req.patient_name ?? "Patient"} · {req.tests.slice(0, 40)}</p>
+                      <p className="text-[10px] text-slate-600 mt-0.5 sm:hidden">{req.seen_at ? format(new Date(req.seen_at), "dd MMM yyyy") : ""}</p>
                     </div>
-                    <div className="text-right shrink-0">
-                      <p className={`text-sm font-bold font-mono ${txn.direction === "credit" ? "text-emerald-400" : "text-white"}`}>
-                        {txn.direction === "credit" ? "+" : "-"}₦{txn.amount.toLocaleString()}
-                      </p>
-                      <p className="text-xs text-slate-500 font-mono">bal: ₦{txn.balance_after.toLocaleString()}</p>
+                    <div className="text-right shrink-0 mr-1">
+                      <p className="text-sm font-bold font-mono text-amber-300">₦{req.poveon_amount.toLocaleString()}</p>
+                      <p className="text-xs text-slate-500 hidden sm:block">{req.seen_at ? format(new Date(req.seen_at), "dd MMM yyyy") : ""}</p>
                     </div>
-                    {hasBreakdown && (
-                      <ChevronDown className={`w-4 h-4 text-slate-500 shrink-0 transition-transform ${isExpanded ? "rotate-180" : ""}`} />
-                    )}
-                  </div>
+                    <ChevronDown className={`w-3.5 h-3.5 text-slate-500 shrink-0 transition-transform ${isOpen ? "rotate-180" : ""}`} />
+                  </button>
 
-                  {/* Test breakdown drill-down */}
-                  {isExpanded && breakdown && (
-                    <div className="border-t border-white/8 px-4 pb-3 pt-2 space-y-1.5">
-                      <p className="text-xs text-slate-500 font-medium mb-2">Test breakdown</p>
-                      {breakdown.map((item, i) => (
-                        <div key={i} className="flex items-center justify-between text-xs">
-                          <div className="flex items-center gap-2 min-w-0">
-                            <span className="text-white truncate">{item.canonical_name}</span>
-                            <span className="text-slate-500 shrink-0">{item.category}</span>
-                          </div>
-                          <span className="font-mono text-slate-300 shrink-0">₦{item.unit_price.toLocaleString()}</span>
+                  {/* Expanded breakdown */}
+                  {isOpen && req.test_breakdown.length > 0 && (
+                    <div className="border-t border-white/8 px-3 sm:px-4 py-3 space-y-1 overflow-x-auto">
+                      <div className="min-w-[280px]">
+                        <div className="grid grid-cols-3 gap-2 mb-2 px-1">
+                          <p className="text-[10px] text-slate-500 uppercase tracking-wider">Test</p>
+                          <p className="text-[10px] text-slate-500 uppercase tracking-wider text-right">Price</p>
+                          <p className="text-[10px] text-slate-500 uppercase tracking-wider text-right">Commission</p>
                         </div>
-                      ))}
-                      <div className="flex items-center justify-between text-xs border-t border-white/8 pt-1.5 mt-1.5">
-                        <span className="text-slate-400 font-medium">Total charged</span>
-                        <span className="font-mono text-white font-bold">₦{txn.amount.toLocaleString()}</span>
+                        {catalogItems.map((item, i) => (
+                          <div key={i} className="grid grid-cols-3 gap-2 px-1 py-1 rounded-lg bg-emerald-500/5">
+                            <p className="text-xs text-slate-200 truncate">{item.canonical_name || item.raw}</p>
+                            <p className="text-xs text-slate-300 text-right font-mono">₦{Number(item.unit_price).toLocaleString()}</p>
+                            <p className="text-xs text-amber-300 text-right font-mono font-semibold">₦{Number(item.poveon_fee ?? 0).toLocaleString()}</p>
+                          </div>
+                        ))}
+                        {othersItems.map((item, i) => (
+                          <div key={i} className="grid grid-cols-3 gap-2 px-1 py-1 rounded-lg">
+                            <p className="text-xs text-slate-500 truncate italic">{item.raw}</p>
+                            <p className="text-xs text-slate-600 text-right font-mono">—</p>
+                            <p className="text-xs text-slate-600 text-right font-mono">₦0</p>
+                          </div>
+                        ))}
+                        <div className="grid grid-cols-3 gap-2 px-1 pt-2 border-t border-white/8">
+                          <p className="text-xs text-slate-400 font-semibold">Total</p>
+                          <p className="text-xs text-white text-right font-mono font-semibold">₦{totalPrice.toLocaleString()}</p>
+                          <p className="text-xs text-amber-300 text-right font-mono font-semibold">₦{totalCommission.toLocaleString()}</p>
+                        </div>
                       </div>
                     </div>
                   )}

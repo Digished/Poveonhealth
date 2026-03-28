@@ -7,9 +7,11 @@ import {
   Building2, Trash2, Eye, EyeOff, RefreshCw, X, Pencil,
   Phone, Upload, Check, MapPin, Users, ChevronRight, ChevronDown, ChevronUp,
   Code2, Key, Copy, TrendingUp, Link, Sun, Moon, Star, GitBranch,
-  Wallet, ArrowUpRight, ArrowDownRight, Settings, CreditCard, MessageCircle, Tag,
+  ArrowUpRight, ArrowDownRight, ArrowDownToLine, Settings, CreditCard, MessageCircle, Tag,
+  BookOpen, Database, Sparkles, Search, Layers, UserCircle, Wallet,
 } from "lucide-react";
 import { useDashTheme } from "@/hooks/useDashTheme";
+import LabCatalogSheet, { type CatalogJob } from "@/components/LabCatalogSheet";
 import { Button } from "@/components/ui/Button";
 import { Input, Textarea } from "@/components/ui/Input";
 import { StatusBadge, Badge } from "@/components/ui/Badge";
@@ -19,15 +21,13 @@ import { format } from "date-fns";
 import { createClient } from "@/lib/supabase/client"; // still used for auth sign-out
 import { useRouter } from "next/navigation";
 
-type AdminTab = "metrics" | "requests" | "referrals" | "labs" | "analytics" | "marketers" | "settings" | "pricing" | "transactions";
+type AdminTab = "metrics" | "requests" | "referrals" | "labs" | "analytics" | "marketers" | "settings" | "transactions" | "knowledge-base" | "users";
 
 interface ReferralGroup {
-  key: string;
+  key: string; // doctor_email
+  email: string;
   referrerName: string;
   hospital: string | null;
-  bankName: string | null;
-  accountNumber: string | null;
-  accountName: string | null;
   requests: LabRequest[];
   thisMonthCount: number;
 }
@@ -122,21 +122,24 @@ export function AdminDashboard() {
   const [apiLogs, setApiLogs] = useState<ApiLog[]>([]);
   const [apiLogSummary, setApiLogSummary] = useState<ApiLogSummary | null>(null);
   const [expandedLabIntegration, setExpandedLabIntegration] = useState<string | null>(null);
+  const [expandedLabIds, setExpandedLabIds] = useState<Set<string>>(new Set());
   const [branchModalLabId, setBranchModalLabId] = useState<string | null>(null);
-  const [walletModalLabId, setWalletModalLabId] = useState<string | null>(null);
+const [catalogModalLabId, setCatalogModalLabId] = useState<string | null>(null);
+  const [catalogJob, setCatalogJob] = useState<CatalogJob | null>(null);
   const [defaultRequestPrice, setDefaultRequestPrice] = useState<string>("500");
   const [savingSettings, setSavingSettings] = useState(false);
 
   type RevenueData = {
-    total_credited: number;
-    total_debited: number;
-    wallets: { lab_id: string; lab_name: string; balance: number }[];
-    recent_transactions: { id: string; lab_id: string; lab_name: string; type: string; direction: string; amount: number; balance_after: number; description: string | null; created_at: string }[];
-    by_lab: { lab_id: string; lab_name: string; total_credited: number; total_debited: number; balance: number | { toNumber?: () => number } }[];
+    total_poveon_earned: number;
+    total_lab_revenue: number;
+    total_received: number;
+    total_outstanding: number;
+    by_lab: { lab_id: string; lab_name: string; request_count: number; total_poveon_amount: number; total_lab_revenue: number; total_deposited: number; wallet_balance: number | null; owed: number }[];
+    recent_requests: { id: string; code: string; lab_id: string; lab_name: string; patient_name: string | null; tests: string; poveon_amount: number; lab_revenue_amount: number; is_paid_to_poveon: boolean; seen_at: string | null }[];
+    recent_dva_credits: { id: string; lab_id: string; lab_name: string; amount: number; reference: string; channel: string; sender_name: string | null; sender_bank: string | null; created_at: string }[];
   };
   const [revenueData, setRevenueData] = useState<RevenueData | null>(null);
   const [revenueLoading, setRevenueLoading] = useState(false);
-  const [expandedTxId, setExpandedTxId] = useState<string | null>(null);
 
   // Per-lab analytics modal
   type LabAnalytics = {
@@ -282,23 +285,22 @@ export function AdminDashboard() {
     const map = new Map<string, ReferralGroup>();
     const now = new Date();
     for (const req of requests) {
-      const key = req.doctor_account_number
-        ? `acc:${req.doctor_account_number}`
-        : `name:${[req.doctor_prefix, req.doctor_name].filter(Boolean).join(" ")}`;
+      const key = req.doctor_email?.trim().toLowerCase() || `nomail:${[req.doctor_prefix, req.doctor_name].filter(Boolean).join(" ")}`;
       const d = new Date(req.created_at);
       const isThisMonth = d.getMonth() === now.getMonth() && d.getFullYear() === now.getFullYear();
       const existing = map.get(key);
       if (existing) {
         existing.requests.push(req);
         if (isThisMonth) existing.thisMonthCount++;
+        // Keep most complete name seen across requests
+        if (!existing.referrerName && req.doctor_name) existing.referrerName = [req.doctor_prefix, req.doctor_name].filter(Boolean).join(" ");
+        if (!existing.hospital && req.doctor_hospital) existing.hospital = req.doctor_hospital;
       } else {
         map.set(key, {
           key,
+          email: req.doctor_email ?? "",
           referrerName: [req.doctor_prefix, req.doctor_name].filter(Boolean).join(" "),
           hospital: req.doctor_hospital ?? null,
-          bankName: req.doctor_bank_name,
-          accountNumber: req.doctor_account_number,
-          accountName: req.doctor_account_name,
           requests: [req],
           thisMonthCount: isThisMonth ? 1 : 0,
         });
@@ -457,8 +459,9 @@ export function AdminDashboard() {
             { key: "analytics" as AdminTab, label: "API Analytics", icon: <BarChart3 className="w-4 h-4" /> },
             { key: "marketers" as AdminTab, label: "Marketers", icon: <TrendingUp className="w-4 h-4" /> },
             { key: "settings" as AdminTab, label: "Settings", icon: <Settings className="w-4 h-4" /> },
-            { key: "pricing" as AdminTab, label: "Pricing", icon: <Tag className="w-4 h-4" />, href: "/admin/pricing" },
             { key: "transactions" as AdminTab, label: "Transactions", icon: <CreditCard className="w-4 h-4" /> },
+            { key: "knowledge-base" as AdminTab, label: "Knowledge Base", icon: <BookOpen className="w-4 h-4" /> },
+            { key: "users" as AdminTab, label: "Users", icon: <UserCircle className="w-4 h-4" /> },
           ];
           const current = tabs.find((t) => t.key === activeTab) ?? tabs[0];
           return (
@@ -562,7 +565,7 @@ export function AdminDashboard() {
                   </div>
                 </div>
 
-                {/* ── Revenue & Transactions ── */}
+                {/* ── Poveon Revenue ── */}
                 {revenueLoading ? (
                   <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                     {[...Array(2)].map((_, i) => (
@@ -572,150 +575,125 @@ export function AdminDashboard() {
                 ) : revenueData && (
                   <>
                     {/* Revenue summary cards */}
-                    <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+                    <div className="grid grid-cols-1 sm:grid-cols-4 gap-4">
                       <div className="bg-gradient-to-br from-emerald-500/20 to-emerald-600/10 border border-emerald-500/30 rounded-2xl p-5">
-                        <p className="text-xs text-slate-400 font-medium uppercase tracking-wider mb-1">Total Topups</p>
-                        <p className="text-3xl font-bold text-white">₦{revenueData.total_credited.toLocaleString()}</p>
+                        <p className="text-xs text-slate-400 font-medium uppercase tracking-wider mb-1">Total Commission Accrued</p>
+                        <p className="text-3xl font-bold text-white">₦{revenueData.total_poveon_earned.toLocaleString()}</p>
+                        <p className="text-xs text-slate-500 mt-1">from all seen/done requests</p>
                       </div>
-                      <div className="bg-gradient-to-br from-rose-500/20 to-rose-600/10 border border-rose-500/30 rounded-2xl p-5">
-                        <p className="text-xs text-slate-400 font-medium uppercase tracking-wider mb-1">Total Revenue (Reveal Charges)</p>
-                        <p className="text-3xl font-bold text-white">₦{revenueData.total_debited.toLocaleString()}</p>
+                      <div className="bg-gradient-to-br from-sky-500/20 to-sky-600/10 border border-sky-500/30 rounded-2xl p-5">
+                        <p className="text-xs text-slate-400 font-medium uppercase tracking-wider mb-1">Total Lab Revenue</p>
+                        <p className="text-3xl font-bold text-white">₦{revenueData.total_lab_revenue.toLocaleString()}</p>
+                        <p className="text-xs text-slate-500 mt-1">labs' share of test fees</p>
                       </div>
                       <div className="bg-gradient-to-br from-violet-500/20 to-violet-600/10 border border-violet-500/30 rounded-2xl p-5">
-                        <p className="text-xs text-slate-400 font-medium uppercase tracking-wider mb-1">Outstanding Balances</p>
-                        <p className="text-3xl font-bold text-white">
-                          ₦{revenueData.wallets.reduce((s, w) => s + (w.balance > 0 ? w.balance : 0), 0).toLocaleString()}
+                        <p className="text-xs text-slate-400 font-medium uppercase tracking-wider mb-1">Total Received from Labs</p>
+                        <p className="text-3xl font-bold text-white">₦{revenueData.total_received.toLocaleString()}</p>
+                        <p className="text-xs text-slate-500 mt-1">cash deposited via DVA</p>
+                      </div>
+                      <div className={`bg-gradient-to-br rounded-2xl p-5 border ${revenueData.total_outstanding === 0 ? "from-emerald-500/20 to-emerald-600/10 border-emerald-500/30" : "from-amber-500/20 to-amber-600/10 border-amber-500/30"}`}>
+                        <p className="text-xs text-slate-400 font-medium uppercase tracking-wider mb-1">Net Outstanding</p>
+                        <p className={`text-3xl font-bold ${revenueData.total_outstanding === 0 ? "text-emerald-300" : "text-amber-300"}`}>
+                          ₦{revenueData.total_outstanding.toLocaleString()}
                         </p>
+                        <p className="text-xs text-slate-500 mt-1">{revenueData.total_outstanding === 0 ? "fully settled" : "still owed to Poveon"}</p>
                       </div>
                     </div>
 
-                    {/* Per-lab wallet breakdown */}
+                    {/* Per-lab breakdown — sorted by most indebted first */}
                     {revenueData.by_lab.length > 0 && (
                       <div className="bg-white/5 border border-white/10 rounded-2xl p-5">
                         <div className="flex items-center justify-between mb-4">
-                          <h3 className="text-sm font-semibold text-slate-300">Lab Wallet Breakdown</h3>
-                          <button
-                            onClick={fetchRevenue}
-                            className="flex items-center gap-1.5 text-xs text-slate-400 hover:text-white transition px-2 py-1 rounded-lg hover:bg-white/10"
-                          >
+                          <h3 className="text-sm font-semibold text-slate-300">Lab Commission Breakdown</h3>
+                          <button onClick={fetchRevenue} className="flex items-center gap-1.5 text-xs text-slate-400 hover:text-white transition px-2 py-1 rounded-lg hover:bg-white/10">
                             <RefreshCw className="w-3 h-3" />Refresh
                           </button>
                         </div>
-                        <div className="space-y-2 max-h-64 overflow-y-auto pr-1">
-                          {revenueData.by_lab.map((row) => {
-                            const bal = typeof row.balance === "object" && row.balance !== null && "toNumber" in row.balance
-                              ? (row.balance as { toNumber: () => number }).toNumber()
-                              : Number(row.balance);
-                            return (
-                              <div key={row.lab_id} className="flex items-center gap-3 py-2 border-b border-white/5 last:border-0">
-                                <p className="text-sm text-white flex-1 min-w-0 truncate">{row.lab_name}</p>
-                                <div className="flex items-center gap-3 text-xs shrink-0">
-                                  <span className="text-emerald-400 font-mono">+₦{row.total_credited.toLocaleString()}</span>
-                                  <span className="text-rose-400 font-mono">-₦{row.total_debited.toLocaleString()}</span>
-                                  <span className={`font-bold font-mono ${bal < 0 ? "text-red-400" : bal < 500 ? "text-amber-400" : "text-slate-300"}`}>
-                                    ₦{bal.toLocaleString()}
-                                  </span>
+                        <div className="space-y-2 max-h-72 overflow-y-auto pr-1">
+                          {revenueData.by_lab.map((row) => (
+                            <div key={row.lab_id} className="flex items-center gap-3 py-2.5 border-b border-white/5 last:border-0">
+                              <div className="flex-1 min-w-0">
+                                <p className="text-sm text-white truncate">{row.lab_name}</p>
+                                <p className="text-xs text-slate-500">
+                                  {row.request_count} request{row.request_count !== 1 ? "s" : ""}
+                                  {row.wallet_balance === null && <span className="ml-1.5 text-amber-500">· no wallet</span>}
+                                </p>
+                              </div>
+                              <div className="flex items-center gap-4 text-xs shrink-0">
+                                <div className="text-right">
+                                  <p className="text-slate-400">Commission</p>
+                                  <p className="text-emerald-400 font-mono font-bold">₦{row.total_poveon_amount.toLocaleString()}</p>
+                                </div>
+                                <div className="text-right">
+                                  <p className="text-slate-400">Deposited</p>
+                                  <p className="text-violet-400 font-mono font-bold">₦{row.total_deposited.toLocaleString()}</p>
+                                </div>
+                                <div className="text-right min-w-[60px]">
+                                  <p className="text-slate-400">Owed</p>
+                                  <p className={`font-mono font-bold ${row.owed === 0 ? "text-emerald-400" : "text-amber-400"}`}>
+                                    {row.owed === 0 ? "Settled" : `₦${row.owed.toLocaleString()}`}
+                                  </p>
                                 </div>
                               </div>
-                            );
-                          })}
+                            </div>
+                          ))}
                         </div>
                       </div>
                     )}
 
-                    {/* Recent transactions */}
-                    {revenueData.recent_transactions.length > 0 && (
+                    {/* DVA deposit history — actual cash received from labs */}
+                    {revenueData.recent_dva_credits.length > 0 && (
                       <div className="bg-white/5 border border-white/10 rounded-2xl p-5">
-                        <h3 className="text-sm font-semibold text-slate-300 mb-4">Recent Transactions</h3>
-                        <div className="space-y-1 max-h-[32rem] overflow-y-auto pr-1">
-                          {revenueData.recent_transactions.map((tx) => {
-                            const isExpanded = expandedTxId === tx.id;
-                            const balanceBefore = tx.direction === "credit"
-                              ? tx.balance_after - tx.amount
-                              : tx.balance_after + tx.amount;
-                            return (
-                              <div key={tx.id} className={`rounded-xl border transition-colors ${isExpanded ? "border-white/10 bg-white/5" : "border-transparent hover:bg-white/3"}`}>
-                                {/* Summary row — click to toggle */}
-                                <button
-                                  onClick={() => setExpandedTxId(isExpanded ? null : tx.id)}
-                                  className="w-full flex items-center gap-3 py-2.5 px-3 text-left"
-                                >
-                                  <div className={`w-7 h-7 rounded-full flex items-center justify-center shrink-0 ${tx.direction === "credit" ? "bg-emerald-500/15" : "bg-rose-500/15"}`}>
-                                    {tx.direction === "credit"
-                                      ? <ArrowUpRight className="w-3.5 h-3.5 text-emerald-400" />
-                                      : <ArrowDownRight className="w-3.5 h-3.5 text-rose-400" />}
-                                  </div>
-                                  <div className="flex-1 min-w-0">
-                                    <div className="flex items-center gap-2 flex-wrap">
-                                      <p className="text-xs text-white font-medium truncate">{tx.description ?? tx.type}</p>
-                                      <span className={`text-[10px] px-1.5 py-0.5 rounded-full font-medium shrink-0 ${
-                                        tx.type === "top_up" ? "bg-emerald-500/15 text-emerald-400" :
-                                        tx.type === "charge" ? "bg-rose-500/15 text-rose-400" :
-                                        tx.type === "refund" ? "bg-amber-500/15 text-amber-400" :
-                                        "bg-slate-500/30 text-slate-400"
-                                      }`}>{tx.type.replace(/_/g, " ")}</span>
-                                    </div>
-                                    <div className="flex items-center gap-2 mt-0.5">
-                                      <p className="text-xs text-slate-500">{tx.lab_name}</p>
-                                      <span className="text-slate-700">·</span>
-                                      <p className="text-xs text-slate-600">{new Date(tx.created_at).toLocaleString("en-GB", { day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" })}</p>
-                                    </div>
-                                  </div>
-                                  <div className="text-right shrink-0">
-                                    <p className={`text-sm font-bold font-mono ${tx.direction === "credit" ? "text-emerald-400" : "text-rose-400"}`}>
-                                      {tx.direction === "credit" ? "+" : "-"}₦{tx.amount.toLocaleString()}
-                                    </p>
-                                    <p className="text-[10px] text-slate-500 font-mono mt-0.5">bal ₦{tx.balance_after.toLocaleString()}</p>
-                                  </div>
-                                  <ChevronDown className={`w-3.5 h-3.5 text-slate-500 shrink-0 transition-transform ${isExpanded ? "rotate-180" : ""}`} />
-                                </button>
-
-                                {/* Expanded detail panel */}
-                                {isExpanded && (
-                                  <div className="px-4 pb-4 pt-1 border-t border-white/8 grid grid-cols-2 sm:grid-cols-3 gap-x-4 gap-y-3">
-                                    <div>
-                                      <p className="text-[10px] text-slate-500 uppercase tracking-wider font-medium">Lab</p>
-                                      <p className="text-xs text-slate-200 mt-0.5">{tx.lab_name}</p>
-                                    </div>
-                                    <div>
-                                      <p className="text-[10px] text-slate-500 uppercase tracking-wider font-medium">Type</p>
-                                      <p className="text-xs text-slate-200 mt-0.5 capitalize">{tx.type.replace(/_/g, " ")}</p>
-                                    </div>
-                                    <div>
-                                      <p className="text-[10px] text-slate-500 uppercase tracking-wider font-medium">Direction</p>
-                                      <p className={`text-xs mt-0.5 font-medium capitalize ${tx.direction === "credit" ? "text-emerald-400" : "text-rose-400"}`}>{tx.direction}</p>
-                                    </div>
-                                    <div>
-                                      <p className="text-[10px] text-slate-500 uppercase tracking-wider font-medium">Amount</p>
-                                      <p className={`text-xs font-bold font-mono mt-0.5 ${tx.direction === "credit" ? "text-emerald-400" : "text-rose-400"}`}>
-                                        {tx.direction === "credit" ? "+" : "-"}₦{tx.amount.toLocaleString()}
-                                      </p>
-                                    </div>
-                                    <div>
-                                      <p className="text-[10px] text-slate-500 uppercase tracking-wider font-medium">Balance before</p>
-                                      <p className="text-xs text-slate-300 font-mono mt-0.5">₦{balanceBefore.toLocaleString()}</p>
-                                    </div>
-                                    <div>
-                                      <p className="text-[10px] text-slate-500 uppercase tracking-wider font-medium">Balance after</p>
-                                      <p className="text-xs text-slate-300 font-mono mt-0.5">₦{tx.balance_after.toLocaleString()}</p>
-                                    </div>
-                                    <div className="col-span-2 sm:col-span-3">
-                                      <p className="text-[10px] text-slate-500 uppercase tracking-wider font-medium">Description</p>
-                                      <p className="text-xs text-slate-300 mt-0.5 break-words">{tx.description ?? "—"}</p>
-                                    </div>
-                                    <div className="col-span-2 sm:col-span-2">
-                                      <p className="text-[10px] text-slate-500 uppercase tracking-wider font-medium">Date & time</p>
-                                      <p className="text-xs text-slate-400 mt-0.5">{new Date(tx.created_at).toLocaleString("en-GB", { weekday: "short", day: "numeric", month: "long", year: "numeric", hour: "2-digit", minute: "2-digit", second: "2-digit" })}</p>
-                                    </div>
-                                    <div>
-                                      <p className="text-[10px] text-slate-500 uppercase tracking-wider font-medium">Transaction ID</p>
-                                      <p className="text-[10px] text-slate-600 font-mono mt-0.5 break-all">{tx.id}</p>
-                                    </div>
-                                  </div>
-                                )}
+                        <h3 className="text-sm font-semibold text-slate-300 mb-4">Recent DVA Deposits</h3>
+                        <div className="space-y-1 max-h-64 overflow-y-auto pr-1">
+                          {revenueData.recent_dva_credits.map((c) => (
+                            <div key={c.id} className="flex items-center gap-3 py-2.5 px-3 rounded-xl hover:bg-white/3 transition-colors">
+                              <div className="w-7 h-7 rounded-full bg-violet-500/15 flex items-center justify-center shrink-0">
+                                <ArrowDownToLine className="w-3.5 h-3.5 text-violet-400" />
                               </div>
-                            );
-                          })}
+                              <div className="flex-1 min-w-0">
+                                <div className="flex items-center gap-2">
+                                  <p className="text-xs text-white font-medium truncate">{c.lab_name}</p>
+                                  {c.channel === "manual" && <span className="text-[10px] text-slate-500 bg-white/5 px-1.5 py-0.5 rounded-full">manual</span>}
+                                </div>
+                                <p className="text-xs text-slate-500 truncate">
+                                  {c.sender_name ? `From ${c.sender_name}` : "Bank transfer"}
+                                  {c.sender_bank ? ` · ${c.sender_bank}` : ""}
+                                </p>
+                              </div>
+                              <div className="text-right shrink-0">
+                                <p className="text-sm font-bold font-mono text-violet-300">+₦{c.amount.toLocaleString()}</p>
+                                <p className="text-[10px] text-slate-500">{new Date(c.created_at).toLocaleDateString("en-GB", { day: "numeric", month: "short" })}</p>
+                              </div>
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+                    )}
+
+                    {/* Recent commission activity — one row per request */}
+                    {revenueData.recent_requests.length > 0 && (
+                      <div className="bg-white/5 border border-white/10 rounded-2xl p-5">
+                        <h3 className="text-sm font-semibold text-slate-300 mb-4">Recent Commission Activity</h3>
+                        <div className="space-y-1 max-h-[32rem] overflow-y-auto pr-1">
+                          {revenueData.recent_requests.map((req) => (
+                            <div key={req.id} className="flex items-center gap-3 py-2.5 px-3 rounded-xl hover:bg-white/3 transition-colors">
+                              <div className="w-7 h-7 rounded-full bg-emerald-500/10 flex items-center justify-center shrink-0">
+                                <CreditCard className="w-3.5 h-3.5 text-emerald-400" />
+                              </div>
+                              <div className="flex-1 min-w-0">
+                                <div className="flex items-center gap-2">
+                                  <p className="text-xs text-white font-medium font-mono">{req.code}</p>
+                                  <p className="text-xs text-slate-500 truncate">{req.lab_name}</p>
+                                </div>
+                                <p className="text-xs text-slate-600 truncate">{req.patient_name ?? "Patient"} · {req.tests.slice(0, 60)}</p>
+                              </div>
+                              <div className="text-right shrink-0">
+                                <p className="text-sm font-bold font-mono text-emerald-400">₦{req.poveon_amount.toLocaleString()}</p>
+                                <p className="text-[10px] text-slate-500">{req.seen_at ? new Date(req.seen_at).toLocaleDateString("en-GB", { day: "numeric", month: "short" }) : ""}</p>
+                              </div>
+                            </div>
+                          ))}
                         </div>
                       </div>
                     )}
@@ -838,10 +816,7 @@ export function AdminDashboard() {
         {activeTab === "referrals" && (
           <div className="animate-fade-in space-y-4">
             <div className="flex items-center justify-between">
-              <div>
-                <h2 className="font-semibold text-white">Referral Tracking</h2>
-                <p className="text-xs text-slate-500 mt-0.5">Grouped by unique bank account</p>
-              </div>
+              <h2 className="font-semibold text-white">Referral Tracking</h2>
               <span className="text-xs text-slate-500 bg-white/5 px-3 py-1.5 rounded-full">{referralGroups.length} referrer{referralGroups.length !== 1 ? "s" : ""}</span>
             </div>
 
@@ -867,15 +842,12 @@ export function AdminDashboard() {
                       </div>
                       <ChevronRight className="w-4 h-4 text-slate-600 group-hover:text-slate-400 transition-colors mt-1" />
                     </div>
-                    <p className="font-semibold text-white text-sm truncate">{group.referrerName || "—"}</p>
+                    <p className="font-semibold text-white text-sm truncate">{group.referrerName || group.email || "—"}</p>
+                    {group.referrerName && group.email && (
+                      <p className="text-xs text-slate-400 truncate mt-0.5">{group.email}</p>
+                    )}
                     {group.hospital && (
-                      <p className="text-xs text-slate-400 truncate mt-0.5">{group.hospital}</p>
-                    )}
-                    {group.accountName && (
-                      <p className="text-xs text-slate-400 truncate mt-0.5">{group.accountName}</p>
-                    )}
-                    {group.bankName && (
-                      <p className="text-xs text-slate-500 truncate">{group.bankName}{group.accountNumber ? ` · ${group.accountNumber}` : ""}</p>
+                      <p className="text-xs text-slate-500 truncate">{group.hospital}</p>
                     )}
                     <div className="flex items-center gap-3 mt-4 pt-3 border-t border-white/5">
                       <div>
@@ -896,9 +868,9 @@ export function AdminDashboard() {
 
         {/* ── LABS ── */}
         {activeTab === "labs" && (
-          <div className="animate-fade-in space-y-6">
+          <div className="animate-fade-in space-y-4">
             <div className="flex items-center justify-between">
-              <h2 className="font-semibold text-white">Registered Laboratories ({labs.length})</h2>
+              <h2 className="font-semibold text-white">Registered Laboratories <span className="text-slate-500 font-normal text-sm">({labs.length})</span></h2>
               <Button onClick={() => setShowCreateLab(true)}>
                 <Plus className="w-4 h-4" />
                 <span className="hidden sm:inline">Add Laboratory</span>
@@ -906,181 +878,236 @@ export function AdminDashboard() {
             </div>
 
             {loading ? (
-              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-                {[...Array(3)].map((_, i) => (
-                  <div key={i} className="bg-white/5 border border-white/10 rounded-2xl p-5 animate-pulse h-40" />
+              <div className="space-y-2">
+                {[...Array(4)].map((_, i) => (
+                  <div key={i} className="bg-white/5 border border-white/10 rounded-2xl p-4 animate-pulse h-16" />
                 ))}
               </div>
+            ) : labs.length === 0 ? (
+              <div className="text-center py-16 text-slate-500">No laboratories yet.</div>
             ) : (
-              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-                {labs.map((lab) => (
-                  <div key={lab.id} className={`bg-white/5 border rounded-2xl p-5 transition-opacity ${lab.hidden ? "border-white/5 opacity-60" : "border-white/10"}`}>
-                    <div className="flex items-center gap-2 mb-3">
-                      {lab.logo_url ? (
-                        <img src={lab.logo_url} alt={lab.name} className="w-8 h-8 rounded-lg object-cover" />
-                      ) : (
-                        <div className="w-8 h-8 bg-medical-700/50 rounded-lg flex items-center justify-center">
-                          <Building2 className="w-4 h-4 text-medical-400" />
+              <div className="border border-white/10 rounded-2xl overflow-hidden divide-y divide-white/5">
+                {labs.map((lab) => {
+                  const isExpanded = expandedLabIds.has(lab.id);
+                  const phones     = lab.phones as string[];
+                  const services   = lab.service_categories as string[];
+                  const certs      = lab.certifications as string[];
+                  const outstanding = lab.poveon_outstanding ?? 0;
+
+                  const toggleExpand = () => setExpandedLabIds((prev) => {
+                    const next = new Set(prev);
+                    isExpanded ? next.delete(lab.id) : next.add(lab.id);
+                    return next;
+                  });
+
+                  const openStats = () => {
+                    setLabAnalyticsLabId(lab.id);
+                    setLabAnalyticsLabName(lab.name);
+                    setLabAnalytics(null);
+                    setLabAnalyticsMonth("");
+                    setLabAnalyticsStatus("");
+                    setLabAnalyticsTest("");
+                    fetchLabAnalytics(lab.id);
+                  };
+
+                  return (
+                    <div key={lab.id} className={`transition-colors ${lab.hidden ? "opacity-55" : ""} ${isExpanded ? "bg-white/4" : "hover:bg-white/2"}`}>
+
+                      {/* ── Main row ── */}
+                      <div className="flex items-center gap-3 px-4 py-3">
+
+                        {/* Logo */}
+                        {lab.logo_url ? (
+                          <img src={lab.logo_url} alt={lab.name} className="w-9 h-9 rounded-xl object-cover shrink-0" />
+                        ) : (
+                          <div className="w-9 h-9 bg-medical-700/40 rounded-xl flex items-center justify-center shrink-0">
+                            <Building2 className="w-4 h-4 text-medical-400" />
+                          </div>
+                        )}
+
+                        {/* Name + badges */}
+                        <div className="flex-1 min-w-0">
+                          <div className="flex items-center gap-1.5 flex-wrap">
+                            <p className="text-sm font-semibold text-white leading-tight">{lab.name}</p>
+                            <Badge variant="blue">Prefix: {lab.prefix}</Badge>
+                            {lab.hidden && <span className="text-[10px] text-slate-500 bg-white/5 px-1.5 py-0.5 rounded">hidden</span>}
+                            {lab.slug && (
+                              <a href={`/${lab.slug}`} target="_blank" rel="noopener noreferrer"
+                                className="text-[10px] text-blue-400 hover:text-blue-300 font-mono bg-blue-500/8 border border-blue-500/20 px-1.5 py-0.5 rounded"
+                                title={`Direct URL: poveon.com/${lab.slug}`}>/{lab.slug}</a>
+                            )}
+                            {lab.whatsapp && (
+                              <span className="text-[10px] bg-green-900/30 text-green-400 border border-green-800/30 px-1.5 py-0.5 rounded-full" title={`WhatsApp: ${lab.whatsapp}`}>WA</span>
+                            )}
+                            {lab.request_email && (
+                              <span className="text-[10px] bg-blue-900/30 text-blue-400 border border-blue-800/30 px-1.5 py-0.5 rounded-full" title={`Requests: ${lab.request_email}`}>Mail</span>
+                            )}
+                          </div>
+                          {/* Email on mobile */}
+                          <p className="text-xs text-slate-500 mt-0.5 md:hidden truncate">{lab.email}</p>
                         </div>
-                      )}
-                      <div>
-                        <p className="font-semibold text-white text-sm">{lab.name}</p>
-                        <div className="flex items-center gap-1.5 mt-0.5">
-                          <Badge variant="blue">Prefix: {lab.prefix}</Badge>
-                          {lab.hidden && <span className="text-xs text-slate-500">hidden</span>}
-                        </div>
-                      </div>
-                    </div>
-                    <p className="text-xs text-slate-400 mb-1">{lab.email}</p>
-                    {lab.notification_email && (
-                      <p className="text-xs text-emerald-400 flex items-center gap-1 mb-1" title="Custom notification email configured">
-                        <span>✉</span> {lab.notification_email}
-                      </p>
-                    )}
-                    {(lab.slug || lab.whatsapp || lab.request_email) && (
-                      <div className="flex flex-wrap items-center gap-1.5 mb-1">
-                        {lab.slug && (
-                          <a
-                            href={`/${lab.slug}`}
-                            target="_blank"
-                            rel="noopener noreferrer"
-                            className="text-xs text-blue-400 hover:text-blue-300 underline underline-offset-2 font-mono"
-                            title={`Direct URL: poveon.com/${lab.slug}`}
-                          >
-                            /{lab.slug}
-                          </a>
-                        )}
-                        {lab.whatsapp && (
-                          <span className="inline-flex items-center gap-1 text-xs bg-green-900/30 text-green-400 border border-green-800/30 px-1.5 py-0.5 rounded-full" title={`WhatsApp: ${lab.whatsapp}`}>
-                            <Phone className="w-2.5 h-2.5" />WA
-                          </span>
-                        )}
-                        {lab.request_email && (
-                          <span className="inline-flex items-center gap-1 text-xs bg-blue-900/30 text-blue-400 border border-blue-800/30 px-1.5 py-0.5 rounded-full" title={`Request email: ${lab.request_email}`}>
-                            <span>✉</span> Requests
-                          </span>
-                        )}
-                      </div>
-                    )}
-                    {lab.address && (
-                      <p className="text-xs text-slate-500 flex items-start gap-1 mt-0.5">
-                        <MapPin className="w-3 h-3 text-slate-600 mt-0.5 shrink-0" />{lab.address}
-                      </p>
-                    )}
-                    {(lab.phones as string[]).length > 0 && (lab.phones as string[]).map((ph, i) => (
-                      <p key={i} className="text-xs text-slate-500 flex items-center gap-1 mt-0.5">
-                        <Phone className="w-3 h-3 text-slate-600 shrink-0" />{ph}
-                      </p>
-                    ))}
-                    {(lab.service_categories as string[]).length > 0 && (
-                      <div className="mt-3">
-                        <p className="text-xs text-slate-600 mb-1.5">Services</p>
-                        <div className="flex flex-wrap gap-1">
-                          {(lab.service_categories as string[]).slice(0, 4).map((c) => (
-                            <span key={c} className="text-xs bg-medical-900/50 text-medical-300 border border-medical-800/40 px-2 py-0.5 rounded-full">{c}</span>
-                          ))}
-                          {(lab.service_categories as string[]).length > 4 && (
-                            <span className="text-xs text-slate-500 px-1">+{(lab.service_categories as string[]).length - 4} more</span>
+
+                        {/* Email (md+) */}
+                        <div className="hidden md:block w-52 shrink-0 min-w-0">
+                          <p className="text-xs text-slate-400 truncate">{lab.email}</p>
+                          {lab.notification_email && (
+                            <p className="text-[10px] text-emerald-400 truncate mt-0.5">{lab.notification_email}</p>
                           )}
                         </div>
-                      </div>
-                    )}
-                    {(lab.certifications as string[]).length > 0 && (
-                      <div className="mt-2">
-                        <p className="text-xs text-slate-600 mb-1.5">Certifications</p>
-                        <div className="flex flex-wrap gap-1">
-                          {(lab.certifications as string[]).map((c) => (
-                            <span key={c} className="text-xs bg-amber-900/20 text-amber-400 border border-amber-800/30 px-2 py-0.5 rounded-full">{c}</span>
-                          ))}
-                        </div>
-                      </div>
-                    )}
-                    {/* Wallet balance */}
-                    <div className={`mt-3 flex items-center gap-2 px-3 py-2 rounded-xl ${(lab.wallet_balance ?? 0) < 0 ? "bg-red-500/10 border border-red-500/20" : (lab.wallet_balance ?? 0) < 1000 ? "bg-amber-500/10 border border-amber-500/20" : "bg-emerald-500/10 border border-emerald-500/20"}`}>
-                      <Wallet className={`w-3.5 h-3.5 shrink-0 ${(lab.wallet_balance ?? 0) < 0 ? "text-red-400" : (lab.wallet_balance ?? 0) < 1000 ? "text-amber-400" : "text-emerald-400"}`} />
-                      <span className="text-xs text-slate-400 flex-1">Wallet balance</span>
-                      <span className={`text-sm font-bold font-mono ${(lab.wallet_balance ?? 0) < 0 ? "text-red-400" : (lab.wallet_balance ?? 0) < 1000 ? "text-amber-400" : "text-emerald-300"}`}>
-                        ₦{(lab.wallet_balance ?? 0).toLocaleString()}
-                      </span>
-                    </div>
 
-                    <div className="flex items-center justify-between mt-3">
-                      <p className="text-xs text-slate-600">Added {format(new Date(lab.created_at), "dd MMM yyyy")}</p>
-                      {lab.rating_avg != null ? (
-                        <div className="flex items-center gap-1">
-                          {[1, 2, 3, 4, 5].map((i) => (
-                            <Star key={i} className={`w-3 h-3 ${i <= Math.round(lab.rating_avg!) ? "text-amber-400 fill-amber-400" : "text-slate-600"}`} />
-                          ))}
-                          <span className="text-xs text-amber-400 font-semibold ml-0.5">{lab.rating_avg.toFixed(1)}</span>
-                          <span className="text-xs text-slate-600">({lab.rating_count})</span>
+                        {/* Outstanding + rating (sm+) */}
+                        <div className="hidden sm:flex flex-col items-end gap-1 w-28 shrink-0">
+                          {outstanding > 0 && (
+                            <span className="text-xs font-mono font-bold text-amber-300 bg-amber-500/10 px-2 py-0.5 rounded-lg border border-amber-500/20">
+                              ₦{outstanding.toLocaleString()}
+                            </span>
+                          )}
+                          {lab.rating_avg != null ? (
+                            <div className="flex items-center gap-0.5">
+                              {[1,2,3,4,5].map((i) => (
+                                <Star key={i} className={`w-2.5 h-2.5 ${i <= Math.round(lab.rating_avg!) ? "text-amber-400 fill-amber-400" : "text-slate-700"}`} />
+                              ))}
+                              <span className="text-[10px] text-amber-400 font-semibold ml-0.5">{lab.rating_avg.toFixed(1)}</span>
+                            </div>
+                          ) : (
+                            <span className="text-[10px] text-slate-600">No ratings</span>
+                          )}
                         </div>
-                      ) : (
-                        <span className="text-xs text-slate-600 italic">No ratings</span>
+
+                        {/* Desktop quick-actions (icon buttons, lg+) */}
+                        <div className="hidden lg:flex items-center gap-0.5 shrink-0">
+                          <button onClick={() => setEditLab(lab)} title="Edit" className="p-2 rounded-lg hover:bg-white/8 text-slate-500 hover:text-white transition-colors">
+                            <Pencil className="w-3.5 h-3.5" />
+                          </button>
+                          <button onClick={() => setBranchModalLabId(lab.id)} title="Branches" className="p-2 rounded-lg hover:bg-white/8 text-slate-500 hover:text-white transition-colors">
+                            <GitBranch className="w-3.5 h-3.5" />
+                          </button>
+                          <button onClick={() => handleToggleHidden(lab)} disabled={togglingId === lab.id} title={lab.hidden ? "Show" : "Hide"} className="p-2 rounded-lg hover:bg-white/8 text-slate-500 hover:text-white transition-colors">
+                            {lab.hidden ? <Eye className="w-3.5 h-3.5" /> : <EyeOff className="w-3.5 h-3.5" />}
+                          </button>
+                          <button onClick={openStats} title="Stats" className="p-2 rounded-lg hover:bg-emerald-500/15 text-slate-500 hover:text-emerald-400 transition-colors">
+                            <BarChart3 className="w-3.5 h-3.5" />
+                          </button>
+                          <button onClick={() => setCatalogModalLabId(lab.id)} title="Catalog" className="relative p-2 rounded-lg hover:bg-amber-500/15 text-slate-500 hover:text-amber-400 transition-colors">
+                            <Tag className="w-3.5 h-3.5" />
+                            {catalogJob?.labId === lab.id && <span className="absolute top-1 right-1 w-1.5 h-1.5 rounded-full bg-amber-400 animate-pulse" />}
+                          </button>
+                          <button onClick={() => setExpandedLabIntegration(lab.id)} title="Dev / Integration" className="p-2 rounded-lg hover:bg-blue-500/15 text-slate-500 hover:text-blue-400 transition-colors">
+                            <Code2 className="w-3.5 h-3.5" />
+                          </button>
+                          <LabWalletButton labId={lab.id} />
+                          <button onClick={() => handleDeleteLab(lab)} disabled={deletingId === lab.id} title="Delete" className="p-2 rounded-lg hover:bg-red-500/15 text-slate-600 hover:text-red-400 transition-colors">
+                            <Trash2 className="w-3.5 h-3.5" />
+                          </button>
+                        </div>
+
+                        {/* Expand toggle */}
+                        <button onClick={toggleExpand} className="p-2 rounded-lg hover:bg-white/8 text-slate-600 hover:text-slate-300 transition-colors shrink-0" title={isExpanded ? "Collapse" : "Expand"}>
+                          {isExpanded ? <ChevronUp className="w-4 h-4" /> : <ChevronDown className="w-4 h-4" />}
+                        </button>
+                      </div>
+
+                      {/* ── Expanded panel ── */}
+                      {isExpanded && (
+                        <div className="px-4 pt-3 pb-4 border-t border-white/5 space-y-4">
+
+                          {/* Detail grid */}
+                          <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-x-6 gap-y-3 text-xs">
+                            <div className="md:hidden col-span-2 sm:col-span-3">
+                              <p className="text-slate-500 mb-0.5">Email</p>
+                              <p className="text-slate-300 break-all">{lab.email}</p>
+                              {lab.notification_email && <p className="text-emerald-400 mt-0.5 break-all">{lab.notification_email}</p>}
+                            </div>
+                            {phones.length > 0 && (
+                              <div>
+                                <p className="text-slate-500 mb-0.5">Phone{phones.length > 1 ? "s" : ""}</p>
+                                {phones.map((ph, i) => (
+                                  <p key={i} className="text-slate-300 flex items-center gap-1"><Phone className="w-3 h-3 text-slate-600 shrink-0" />{ph}</p>
+                                ))}
+                              </div>
+                            )}
+                            {lab.address && (
+                              <div className="col-span-2 sm:col-span-1">
+                                <p className="text-slate-500 mb-0.5">Address</p>
+                                <p className="text-slate-300 leading-snug">{lab.address}</p>
+                              </div>
+                            )}
+                            <div>
+                              <p className="text-slate-500 mb-0.5">Added</p>
+                              <p className="text-slate-400">{format(new Date(lab.created_at), "dd MMM yyyy")}</p>
+                            </div>
+                            {outstanding > 0 && (
+                              <div className="sm:hidden">
+                                <p className="text-slate-500 mb-0.5">Outstanding</p>
+                                <p className="text-amber-300 font-mono font-bold">₦{outstanding.toLocaleString()}</p>
+                              </div>
+                            )}
+                            {lab.rating_avg != null && (
+                              <div className="sm:hidden">
+                                <p className="text-slate-500 mb-0.5">Rating</p>
+                                <p className="text-amber-400">{lab.rating_avg.toFixed(1)} / 5 ({lab.rating_count})</p>
+                              </div>
+                            )}
+                          </div>
+
+                          {/* Services + certifications */}
+                          {(services.length > 0 || certs.length > 0) && (
+                            <div className="flex flex-wrap gap-4">
+                              {services.length > 0 && (
+                                <div>
+                                  <p className="text-[10px] text-slate-500 uppercase tracking-wider mb-1.5">Services</p>
+                                  <div className="flex flex-wrap gap-1">
+                                    {services.map((c) => (
+                                      <span key={c} className="text-xs bg-medical-900/50 text-medical-300 border border-medical-800/40 px-2 py-0.5 rounded-full">{c}</span>
+                                    ))}
+                                  </div>
+                                </div>
+                              )}
+                              {certs.length > 0 && (
+                                <div>
+                                  <p className="text-[10px] text-slate-500 uppercase tracking-wider mb-1.5">Certifications</p>
+                                  <div className="flex flex-wrap gap-1">
+                                    {certs.map((c) => (
+                                      <span key={c} className="text-xs bg-amber-900/20 text-amber-400 border border-amber-800/30 px-2 py-0.5 rounded-full">{c}</span>
+                                    ))}
+                                  </div>
+                                </div>
+                              )}
+                            </div>
+                          )}
+
+                          {/* Action buttons — mobile & tablet (< lg) */}
+                          <div className="lg:hidden grid grid-cols-2 sm:grid-cols-4 gap-2 pt-1">
+                            <button onClick={() => setEditLab(lab)} className="flex items-center justify-center gap-1.5 px-3 py-2 rounded-xl bg-white/5 hover:bg-white/10 text-slate-300 text-xs font-medium transition-colors">
+                              <Pencil className="w-3.5 h-3.5" />Edit
+                            </button>
+                            <button onClick={() => setBranchModalLabId(lab.id)} className="flex items-center justify-center gap-1.5 px-3 py-2 rounded-xl bg-white/5 hover:bg-white/10 text-slate-300 text-xs font-medium transition-colors">
+                              <GitBranch className="w-3.5 h-3.5" />Branches
+                            </button>
+                            <button onClick={() => handleToggleHidden(lab)} disabled={togglingId === lab.id} className="flex items-center justify-center gap-1.5 px-3 py-2 rounded-xl bg-white/5 hover:bg-white/10 text-slate-300 text-xs font-medium transition-colors">
+                              {lab.hidden ? <Eye className="w-3.5 h-3.5" /> : <EyeOff className="w-3.5 h-3.5" />}
+                              {lab.hidden ? "Show" : "Hide"}
+                            </button>
+                            <button onClick={openStats} className="flex items-center justify-center gap-1.5 px-3 py-2 rounded-xl bg-emerald-500/10 hover:bg-emerald-500/20 text-emerald-400 text-xs font-medium transition-colors">
+                              <BarChart3 className="w-3.5 h-3.5" />Stats
+                            </button>
+                            <button onClick={() => setCatalogModalLabId(lab.id)} className="relative flex items-center justify-center gap-1.5 px-3 py-2 rounded-xl bg-amber-500/10 hover:bg-amber-500/20 text-amber-400 text-xs font-medium transition-colors">
+                              <Tag className="w-3.5 h-3.5" />Catalog
+                              {catalogJob?.labId === lab.id && <span className="absolute -top-0.5 -right-0.5 w-2 h-2 rounded-full bg-amber-400 animate-pulse" />}
+                            </button>
+                            <button onClick={() => setExpandedLabIntegration(lab.id)} className="flex items-center justify-center gap-1.5 px-3 py-2 rounded-xl bg-blue-500/10 hover:bg-blue-500/20 text-blue-400 text-xs font-medium transition-colors">
+                              <Code2 className="w-3.5 h-3.5" />Dev
+                            </button>
+                            <div><LabWalletButton labId={lab.id} /></div>
+                            <button onClick={() => handleDeleteLab(lab)} disabled={deletingId === lab.id} className="flex items-center justify-center gap-1.5 px-3 py-2 rounded-xl bg-red-500/10 hover:bg-red-500/20 text-red-400 text-xs font-medium transition-colors">
+                              <Trash2 className="w-3.5 h-3.5" />Delete
+                            </button>
+                          </div>
+                        </div>
                       )}
                     </div>
-
-                    <div className="mt-4 pt-3 border-t border-white/5">
-                      <div className="grid grid-cols-2 sm:flex sm:flex-wrap gap-2">
-                        <button
-                          onClick={() => setEditLab(lab)}
-                          className="flex items-center justify-center gap-1 px-2.5 py-1.5 rounded-lg bg-white/5 hover:bg-white/10 text-slate-400 hover:text-white text-xs transition-colors"
-                        >
-                          <Pencil className="w-3 h-3" />Edit
-                        </button>
-                        <button
-                          onClick={() => setBranchModalLabId(lab.id)}
-                          className="flex items-center justify-center gap-1 px-2.5 py-1.5 rounded-lg bg-white/5 hover:bg-white/10 text-slate-400 hover:text-white text-xs transition-colors"
-                        >
-                          <GitBranch className="w-3 h-3" />Branches
-                        </button>
-                        <button
-                          onClick={() => handleToggleHidden(lab)}
-                          disabled={togglingId === lab.id}
-                          className="flex items-center justify-center gap-1 px-2.5 py-1.5 rounded-lg bg-white/5 hover:bg-white/10 text-slate-400 hover:text-white text-xs transition-colors"
-                        >
-                          {lab.hidden ? <Eye className="w-3 h-3" /> : <EyeOff className="w-3 h-3" />}
-                          {lab.hidden ? "Show" : "Hide"}
-                        </button>
-                        <button
-                          onClick={() => {
-                            setLabAnalyticsLabId(lab.id);
-                            setLabAnalyticsLabName(lab.name);
-                            setLabAnalytics(null);
-                            setLabAnalyticsMonth("");
-                            setLabAnalyticsStatus("");
-                            setLabAnalyticsTest("");
-                            fetchLabAnalytics(lab.id);
-                          }}
-                          className="flex items-center justify-center gap-1 px-2.5 py-1.5 rounded-lg bg-emerald-500/10 hover:bg-emerald-500/20 text-emerald-400 hover:text-emerald-300 text-xs transition-colors"
-                        >
-                          <BarChart3 className="w-3 h-3" />Stats
-                        </button>
-                        <button
-                          onClick={() => setWalletModalLabId(lab.id)}
-                          className="flex items-center justify-center gap-1 px-2.5 py-1.5 rounded-lg bg-violet-500/10 hover:bg-violet-500/20 text-violet-400 hover:text-violet-300 text-xs transition-colors"
-                        >
-                          <Wallet className="w-3 h-3" />Wallet
-                        </button>
-                        <button
-                          onClick={() => setExpandedLabIntegration(lab.id)}
-                          className="flex items-center justify-center gap-1 px-2.5 py-1.5 rounded-lg bg-blue-500/10 hover:bg-blue-500/20 text-blue-400 hover:text-blue-300 text-xs transition-colors"
-                        >
-                          <Code2 className="w-3 h-3" />Dev
-                        </button>
-                        <button
-                          onClick={() => handleDeleteLab(lab)}
-                          disabled={deletingId === lab.id}
-                          className="col-span-2 sm:col-span-1 flex items-center justify-center gap-1 px-2.5 py-1.5 rounded-lg bg-red-500/10 hover:bg-red-500/20 text-red-400 hover:text-red-300 text-xs transition-colors sm:ml-auto"
-                        >
-                          <Trash2 className="w-3 h-3" />Delete
-                        </button>
-                      </div>
-                    </div>
-                  </div>
-                ))}
-                {labs.length === 0 && (
-                  <div className="col-span-3 text-center py-16 text-slate-500">No laboratories yet.</div>
-                )}
+                  );
+                })}
               </div>
             )}
           </div>
@@ -1228,19 +1255,14 @@ export function AdminDashboard() {
           <div className="animate-fade-in space-y-6 max-w-lg">
             <div>
               <h2 className="font-semibold text-white">Platform Settings</h2>
-              <p className="text-xs text-slate-500 mt-0.5">Configure system-wide pricing and behaviour</p>
+              <p className="text-xs text-slate-500 mt-0.5">Configure system-wide behaviour</p>
             </div>
 
             <div className="bg-white/5 border border-white/10 rounded-2xl p-5 space-y-5">
               <div className="flex items-center gap-2">
                 <CreditCard className="w-4 h-4 text-violet-400" />
-                <p className="font-semibold text-white text-sm">Pricing Defaults</p>
+                <p className="font-semibold text-white text-sm">Request Defaults</p>
               </div>
-              <p className="text-xs text-slate-400 leading-relaxed">
-                These fallback values are used when a request has no catalog-resolved price.
-                Set real per-test prices in the{" "}
-                <a href="/admin/pricing" className="text-violet-400 hover:underline">Pricing Catalog</a>.
-              </p>
 
               <div className="space-y-3">
                 <div>
@@ -1267,14 +1289,14 @@ export function AdminDashboard() {
               </button>
             </div>
 
-            {/* Low balance labs alert */}
-            {labs.filter((l) => (l.wallet_balance ?? 0) < 1000).length > 0 && (
+            {/* Labs with outstanding Poveon commission */}
+            {labs.filter((l) => (l.poveon_outstanding ?? 0) > 0).length > 0 && (
               <div className="bg-amber-500/8 border border-amber-500/20 rounded-2xl p-5 space-y-3">
                 <p className="text-sm font-semibold text-amber-400 flex items-center gap-2">
-                  <Wallet className="w-4 h-4" />
-                  Labs with low balance (below ₦1,000)
+                  <CreditCard className="w-4 h-4" />
+                  Labs with outstanding Poveon commission
                 </p>
-                {labs.filter((l) => (l.wallet_balance ?? 0) < 1000).map((lab) => (
+                {labs.filter((l) => (l.poveon_outstanding ?? 0) > 0).map((lab) => (
                   <div key={lab.id} className="flex items-center justify-between gap-3 bg-white/5 rounded-xl px-4 py-3">
                     <div className="min-w-0">
                       <p className="text-sm font-medium text-white truncate">{lab.name}</p>
@@ -1286,15 +1308,9 @@ export function AdminDashboard() {
                       )}
                     </div>
                     <div className="flex flex-col items-end gap-1.5 shrink-0">
-                      <span className={`text-sm font-bold font-mono ${(lab.wallet_balance ?? 0) < 0 ? "text-red-400" : "text-amber-400"}`}>
-                        ₦{(lab.wallet_balance ?? 0).toLocaleString()}
+                      <span className="text-sm font-bold font-mono text-amber-400">
+                        ₦{(lab.poveon_outstanding ?? 0).toLocaleString()}
                       </span>
-                      <button
-                        onClick={() => setWalletModalLabId(lab.id)}
-                        className="text-xs px-2.5 py-1 rounded-lg bg-violet-500/20 hover:bg-violet-500/30 text-violet-300 transition-colors"
-                      >
-                        Top up
-                      </button>
                     </div>
                   </div>
                 ))}
@@ -1353,18 +1369,6 @@ export function AdminDashboard() {
                       </span>
                       <span className="text-xs text-slate-500">{m.doctor_count} doctor{m.doctor_count !== 1 ? "s" : ""}</span>
                     </div>
-                    <div className="bg-white/5 rounded-xl border border-white/10 px-3 py-2 flex items-center gap-2">
-                      <Link className="w-3 h-3 text-slate-500 shrink-0" />
-                      <span className="text-xs text-slate-500 flex-1 truncate font-mono">{refLink(m.code)}</span>
-                      <button
-                        type="button"
-                        onClick={() => { navigator.clipboard.writeText(refLink(m.code)); toast.success("Referral link copied!"); }}
-                        className="shrink-0 text-slate-400 hover:text-white transition-colors"
-                        title="Copy referral link"
-                      >
-                        <Copy className="w-3.5 h-3.5" />
-                      </button>
-                    </div>
                     <div className="flex items-center justify-between pt-1">
                       <p className="text-xs text-slate-600">Added {format(new Date(m.created_at), "dd MMM yyyy")}</p>
                       <div className="flex items-center gap-1">
@@ -1404,6 +1408,12 @@ export function AdminDashboard() {
         {/* ── TRANSACTIONS ── */}
         {activeTab === "transactions" && <AdminTransactionsTab labs={labs} />}
 
+        {/* ── KNOWLEDGE BASE ── */}
+        {activeTab === "knowledge-base" && <AdminKnowledgeBaseTab />}
+
+        {/* ── USERS ── */}
+        {activeTab === "users" && <AdminUsersTab />}
+
       </div>
 
       {showCreateMarketer && (
@@ -1438,10 +1448,14 @@ export function AdminDashboard() {
           <LabBranchModal lab={lab} onClose={() => setBranchModalLabId(null)} allLabs={labs} />
         ) : null;
       })()}
-      {walletModalLabId && (() => {
-        const lab = labs.find((l) => l.id === walletModalLabId);
+      {catalogModalLabId && (() => {
+        const lab = labs.find((l) => l.id === catalogModalLabId);
         return lab ? (
-          <LabWalletModal lab={lab} onClose={() => { setWalletModalLabId(null); fetchLabs(); }} />
+          <LabCatalogSheet
+            lab={lab}
+            onClose={() => { setCatalogModalLabId(null); setCatalogJob(null); }}
+            onJobChange={setCatalogJob}
+          />
         ) : null;
       })()}
 
@@ -1678,183 +1692,6 @@ export function AdminDashboard() {
   );
 }
 
-// =============================================================================
-// Lab Wallet Modal
-// =============================================================================
-function LabWalletModal({ lab, onClose }: { lab: Lab; onClose: () => void }) {
-  type Txn = { id: string; type: string; direction: string; amount: number; balance_after: number; description: string | null; actor_email: string | null; created_at: string };
-  const [balance, setBalance] = useState<number | null>(null);
-  const [transactions, setTransactions] = useState<Txn[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [amount, setAmount] = useState("");
-  const [direction, setDirection] = useState<"credit" | "debit">("credit");
-  const [description, setDescription] = useState("");
-  const [submitting, setSubmitting] = useState(false);
-
-  const load = useCallback(async () => {
-    setLoading(true);
-    try {
-      const res = await fetch(`/api/admin/labs/${lab.id}/wallet`);
-      const data = await res.json();
-      if (data.success) { setBalance(data.balance); setTransactions(data.transactions); }
-    } catch { /* non-critical */ } finally { setLoading(false); }
-  }, [lab.id]);
-
-  useEffect(() => { load(); }, [load]);
-
-  async function handleSubmit(e: React.FormEvent) {
-    e.preventDefault();
-    const val = parseFloat(amount);
-    if (!val || val <= 0 || isNaN(val)) { toast.error("Enter a valid amount"); return; }
-    setSubmitting(true);
-    try {
-      const res = await fetch(`/api/admin/labs/${lab.id}/wallet`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ direction, amount: val, description: description.trim() || undefined }),
-      });
-      const data = await res.json();
-      if (data.success) {
-        toast.success(direction === "credit" ? "Funds added" : "Funds removed");
-        setAmount(""); setDescription("");
-        setBalance(data.balance);
-        setTransactions((prev) => [data.transaction, ...prev]);
-      } else {
-        toast.error(data.error ?? "Failed");
-      }
-    } catch { toast.error("Network error"); } finally { setSubmitting(false); }
-  }
-
-  return (
-    <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center p-3 sm:p-4"
-      style={{ backgroundColor: "rgba(2,6,23,0.88)", backdropFilter: "blur(6px)" }}
-      onClick={onClose}
-    >
-      <div className="w-full max-w-lg bg-slate-900 border border-white/10 rounded-3xl shadow-2xl overflow-hidden max-h-[94vh] flex flex-col"
-        onClick={(e) => e.stopPropagation()}
-      >
-        {/* Header */}
-        <div className="px-5 pt-5 pb-4 border-b border-white/10 flex items-center justify-between gap-3 shrink-0">
-          <div className="flex items-center gap-2 min-w-0">
-            <Wallet className="w-5 h-5 text-violet-400 shrink-0" />
-            <div className="min-w-0">
-              <p className="font-bold text-white truncate">{lab.name}</p>
-              <p className="text-xs text-slate-500">Wallet Management</p>
-            </div>
-          </div>
-          <button onClick={onClose} className="p-1.5 rounded-xl hover:bg-white/10 text-slate-400 hover:text-white transition-colors shrink-0">
-            <X className="w-5 h-5" />
-          </button>
-        </div>
-
-        <div className="flex-1 overflow-y-auto p-5 space-y-5">
-          {/* Balance */}
-          {loading ? (
-            <div className="h-20 bg-white/5 rounded-2xl animate-pulse" />
-          ) : (
-            <div className={`rounded-2xl p-5 text-center border ${balance !== null && balance < 0 ? "bg-red-500/10 border-red-500/20" : balance !== null && balance < 1000 ? "bg-amber-500/10 border-amber-500/20" : "bg-violet-500/10 border-violet-500/20"}`}>
-              <p className="text-xs text-slate-400 mb-1 uppercase tracking-wider">Current Balance</p>
-              <p className={`text-4xl font-bold font-mono ${balance !== null && balance < 0 ? "text-red-400" : balance !== null && balance < 1000 ? "text-amber-400" : "text-violet-300"}`}>
-                ₦{(balance ?? 0).toLocaleString()}
-              </p>
-              {balance !== null && balance < 1000 && (
-                <p className="text-xs text-amber-400/80 mt-2">⚠ Low balance — contact lab to top up</p>
-              )}
-            </div>
-          )}
-
-          {/* Contact info for reminder */}
-          <div className="bg-white/5 border border-white/10 rounded-xl px-4 py-3 space-y-1">
-            <p className="text-xs font-semibold text-slate-400 mb-2">Lab Contact</p>
-            <p className="text-xs text-slate-300">{lab.email}</p>
-            {(lab.phones as string[]).map((ph, i) => (
-              <p key={i} className="text-xs text-slate-400 flex items-center gap-1"><Phone className="w-3 h-3 text-slate-600" />{ph}</p>
-            ))}
-          </div>
-
-          {/* Adjust form */}
-          <form onSubmit={handleSubmit} className="space-y-3">
-            <p className="text-xs font-semibold text-slate-400 uppercase tracking-wider">Adjust Balance</p>
-            <div className="grid grid-cols-2 gap-2">
-              <button
-                type="button"
-                onClick={() => setDirection("credit")}
-                className={`flex items-center justify-center gap-2 py-2.5 rounded-xl border text-sm font-medium transition-all ${direction === "credit" ? "bg-emerald-500/20 border-emerald-500/40 text-emerald-300" : "bg-white/5 border-white/10 text-slate-400 hover:text-white"}`}
-              >
-                <ArrowUpRight className="w-4 h-4" />Top Up
-              </button>
-              <button
-                type="button"
-                onClick={() => setDirection("debit")}
-                className={`flex items-center justify-center gap-2 py-2.5 rounded-xl border text-sm font-medium transition-all ${direction === "debit" ? "bg-red-500/20 border-red-500/40 text-red-300" : "bg-white/5 border-white/10 text-slate-400 hover:text-white"}`}
-              >
-                <ArrowDownRight className="w-4 h-4" />Deduct
-              </button>
-            </div>
-            <input
-              type="number"
-              min="1"
-              step="1"
-              value={amount}
-              onChange={(e) => setAmount(e.target.value)}
-              required
-              placeholder="Amount (₦)"
-              className="w-full bg-white/5 border border-white/10 rounded-xl px-3 py-2.5 text-white text-sm placeholder-slate-500 outline-none focus:ring-2 focus:ring-violet-500/50"
-            />
-            <input
-              type="text"
-              value={description}
-              onChange={(e) => setDescription(e.target.value)}
-              placeholder={direction === "credit" ? "Reason (e.g. Bank transfer received)" : "Reason for deduction"}
-              className="w-full bg-white/5 border border-white/10 rounded-xl px-3 py-2.5 text-white text-sm placeholder-slate-500 outline-none focus:ring-2 focus:ring-violet-500/50"
-            />
-            <button
-              type="submit"
-              disabled={submitting}
-              className={`w-full py-2.5 rounded-xl font-semibold text-sm transition-colors disabled:opacity-50 flex items-center justify-center gap-2 ${direction === "credit" ? "bg-emerald-600 hover:bg-emerald-500 text-white" : "bg-red-600 hover:bg-red-500 text-white"}`}
-            >
-              {submitting ? <RefreshCw className="w-4 h-4 animate-spin" /> : direction === "credit" ? <ArrowUpRight className="w-4 h-4" /> : <ArrowDownRight className="w-4 h-4" />}
-              {direction === "credit" ? "Add Funds" : "Remove Funds"}
-            </button>
-          </form>
-
-          {/* Transaction history */}
-          <div>
-            <p className="text-xs font-semibold text-slate-400 uppercase tracking-wider mb-3">Transaction History</p>
-            {loading ? (
-              <div className="space-y-2">{[...Array(3)].map((_, i) => <div key={i} className="h-14 bg-white/5 rounded-xl animate-pulse" />)}</div>
-            ) : transactions.length === 0 ? (
-              <p className="text-sm text-slate-500 text-center py-6">No transactions yet</p>
-            ) : (
-              <div className="space-y-2">
-                {transactions.map((txn) => (
-                  <div key={txn.id} className="flex items-center gap-3 bg-white/5 border border-white/8 rounded-xl px-4 py-3">
-                    <div className={`w-7 h-7 rounded-lg flex items-center justify-center shrink-0 ${txn.direction === "credit" ? "bg-emerald-500/15" : "bg-red-500/15"}`}>
-                      {txn.direction === "credit"
-                        ? <ArrowUpRight className="w-3.5 h-3.5 text-emerald-400" />
-                        : <ArrowDownRight className="w-3.5 h-3.5 text-red-400" />}
-                    </div>
-                    <div className="flex-1 min-w-0">
-                      <p className="text-xs text-white truncate">{txn.description ?? txn.type}</p>
-                      <p className="text-xs text-slate-500">{format(new Date(txn.created_at), "dd MMM yyyy · HH:mm")}</p>
-                      {txn.actor_email && <p className="text-xs text-slate-600 truncate">by {txn.actor_email}</p>}
-                    </div>
-                    <div className="text-right shrink-0">
-                      <p className={`text-sm font-bold font-mono ${txn.direction === "credit" ? "text-emerald-400" : "text-red-400"}`}>
-                        {txn.direction === "credit" ? "+" : "-"}₦{txn.amount.toLocaleString()}
-                      </p>
-                      <p className="text-xs text-slate-500 font-mono">₦{txn.balance_after.toLocaleString()}</p>
-                    </div>
-                  </div>
-                ))}
-              </div>
-            )}
-          </div>
-        </div>
-      </div>
-    </div>
-  );
-}
 
 // =============================================================================
 // Create Lab Modal
@@ -2324,14 +2161,9 @@ function ReferralDetailModal({ group, onClose }: { group: ReferralGroup; onClose
         {/* Header */}
         <div className="flex items-start justify-between p-5 border-b border-white/10 shrink-0">
           <div>
-            <h2 className="font-semibold text-white">{group.referrerName || "Unknown Referrer"}</h2>
-            {group.hospital && <p className="text-xs text-slate-400 mt-0.5">{group.hospital}</p>}
-            {group.accountName && <p className="text-sm text-slate-400 mt-0.5">{group.accountName}</p>}
-            {group.bankName && (
-              <p className="text-xs text-slate-500 mt-0.5">
-                {group.bankName}{group.accountNumber ? ` · ${group.accountNumber}` : ""}
-              </p>
-            )}
+            <h2 className="font-semibold text-white">{group.referrerName || group.email || "Unknown Referrer"}</h2>
+            {group.referrerName && group.email && <p className="text-xs text-slate-400 mt-0.5">{group.email}</p>}
+            {group.hospital && <p className="text-xs text-slate-500 mt-0.5">{group.hospital}</p>}
           </div>
           <button onClick={onClose} className="p-1.5 rounded-lg hover:bg-white/10 text-slate-400 transition-colors mt-0.5">
             <X className="w-4 h-4" />
@@ -3715,12 +3547,12 @@ function AdminTransactionsTab({ labs }: { labs: Lab[] }) {
   const [expandedId, setExpandedId] = useState<string | null>(null);
   const [fetched, setFetched] = useState(false);
 
-  const fetchTx = useCallback(async () => {
+  const fetchTx = useCallback(async (lab?: string, from?: string, to?: string) => {
     setLoading(true);
     const params = new URLSearchParams({ limit: "500" });
-    if (labFilter) params.set("lab_id", labFilter);
-    if (dateFrom) params.set("from", dateFrom);
-    if (dateTo) params.set("to", dateTo);
+    if (lab) params.set("lab_id", lab);
+    if (from) params.set("from", from);
+    if (to) params.set("to", to);
     try {
       const res = await fetch(`/api/admin/transactions?${params}`);
       const json = await res.json();
@@ -3728,8 +3560,9 @@ function AdminTransactionsTab({ labs }: { labs: Lab[] }) {
     } catch { /* ignore */ }
     setLoading(false);
     setFetched(true);
-  }, [labFilter, dateFrom, dateTo]);
+  }, []);
 
+  // Initial load only
   useEffect(() => { fetchTx(); }, [fetchTx]);
 
   function exportCSV() {
@@ -3783,7 +3616,7 @@ function AdminTransactionsTab({ labs }: { labs: Lab[] }) {
           </h2>
           <div className="flex gap-2 flex-wrap">
             <button
-              onClick={fetchTx}
+              onClick={() => fetchTx(labFilter, dateFrom, dateTo)}
               disabled={loading}
               className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-white/8 border border-white/10 text-xs text-slate-300 hover:bg-white/12 transition-colors"
             >
@@ -3808,7 +3641,7 @@ function AdminTransactionsTab({ labs }: { labs: Lab[] }) {
             <select
               value={labFilter}
               onChange={(e) => setLabFilter(e.target.value)}
-              className="w-full px-3 py-2 rounded-xl bg-white/8 border border-white/10 text-sm text-white focus:outline-none focus:ring-2 focus:ring-medical-500"
+              className="w-full px-3 py-2 rounded-xl bg-slate-800 border border-white/10 text-sm text-white focus:outline-none focus:ring-2 focus:ring-medical-500 [color-scheme:dark]"
             >
               <option value="">All Labs</option>
               {labs.map((l) => <option key={l.id} value={l.id}>{l.name}</option>)}
@@ -3824,12 +3657,19 @@ function AdminTransactionsTab({ labs }: { labs: Lab[] }) {
             <input type="date" value={dateTo} onChange={(e) => setDateTo(e.target.value)}
               className="w-full px-3 py-2 rounded-xl bg-white/8 border border-white/10 text-sm text-white focus:outline-none focus:ring-2 focus:ring-medical-500 [color-scheme:dark]" />
           </div>
-          <div className="flex items-end">
+          <div className="flex items-end gap-2">
             <button
-              onClick={() => { setLabFilter(""); setDateFrom(""); setDateTo(""); }}
-              className="w-full px-3 py-2 rounded-xl bg-white/8 border border-white/10 text-sm text-slate-400 hover:bg-white/12 transition-colors"
+              onClick={() => fetchTx(labFilter, dateFrom, dateTo)}
+              disabled={loading}
+              className="flex-1 px-3 py-2 rounded-xl bg-medical-600 border border-medical-500/30 text-sm text-white font-medium hover:bg-medical-500 transition-colors disabled:opacity-50"
             >
-              Clear filters
+              Apply
+            </button>
+            <button
+              onClick={() => { setLabFilter(""); setDateFrom(""); setDateTo(""); fetchTx(); }}
+              className="px-3 py-2 rounded-xl bg-white/8 border border-white/10 text-sm text-slate-400 hover:bg-white/12 transition-colors"
+            >
+              Clear
             </button>
           </div>
         </div>
@@ -3957,5 +3797,666 @@ function AdminTransactionsTab({ labs }: { labs: Lab[] }) {
         </div>
       )}
     </div>
+  );
+}
+
+/* ─────────────────────────────────────────────
+   Admin Knowledge Base Tab
+───────────────────────────────────────────── */
+type KbTest = {
+  id: string; canonical_name: string; synonyms: string[];
+  category: string | null; description: string | null;
+  updated_at: string; lab_count: number;
+  labs: { lab_id: string; lab_name: string; price: number }[];
+};
+
+function AdminKnowledgeBaseTab() {
+  const [tests, setTests] = useState<KbTest[]>([]);
+  const [stats, setStats] = useState<{ total_kb: number; total_lab_tests: number; total_labs: number } | null>(null);
+  const [loading, setLoading] = useState(false);
+  const [fetched, setFetched] = useState(false);
+  const [search, setSearch] = useState("");
+  const [expandedId, setExpandedId] = useState<string | null>(null);
+  const [showAdd, setShowAdd] = useState(false);
+  const [addName, setAddName] = useState("");
+  const [addCategory, setAddCategory] = useState("");
+  const [addSyns, setAddSyns] = useState("");
+  const [adding, setAdding] = useState(false);
+  const [editingSyns, setEditingSyns] = useState<{ id: string; value: string } | null>(null);
+  const [savingSyn, setSavingSyn] = useState(false);
+  const [syncing, setSyncing] = useState(false);
+  const [syncMode, setSyncMode] = useState<"new_only" | "merge_synonyms">("new_only");
+  const [hospitalTab, setHospitalTab] = useState(false);
+  const [hospitals, setHospitals] = useState<{ id: string; name: string; city: string | null; is_active: boolean }[]>([]);
+  const [hospLoading, setHospLoading] = useState(false);
+  const [hospSearch, setHospSearch] = useState("");
+  const [showAddHosp, setShowAddHosp] = useState(false);
+  const [newHospName, setNewHospName] = useState("");
+  const [newHospCity, setNewHospCity] = useState("");
+
+  const fetchKb = useCallback(async (q?: string) => {
+    setLoading(true);
+    const url = `/api/admin/kb${q ? `?q=${encodeURIComponent(q)}` : ""}`;
+    try {
+      const res = await fetch(url);
+      const data = await res.json();
+      if (data.success) { setTests(data.tests); setStats(data.stats); }
+    } catch { /* ignore */ }
+    setLoading(false);
+    setFetched(true);
+  }, []);
+
+  const fetchHospitals = useCallback(async () => {
+    setHospLoading(true);
+    try {
+      const res = await fetch(`/api/admin/hospitals${hospSearch ? `?q=${encodeURIComponent(hospSearch)}` : ""}`);
+      const data = await res.json();
+      if (data.success) setHospitals(data.hospitals);
+    } catch { /* ignore */ }
+    setHospLoading(false);
+  }, [hospSearch]);
+
+  useEffect(() => { fetchKb(); }, [fetchKb]);
+  useEffect(() => { if (hospitalTab) fetchHospitals(); }, [hospitalTab, fetchHospitals]);
+
+  async function handleSync() {
+    setSyncing(true);
+    try {
+      const res = await fetch("/api/admin/kb/sync", {
+        method: "POST", headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ mode: syncMode }),
+      });
+      const data = await res.json();
+      if (data.success) {
+        toast.success(`Synced: ${data.created} new · ${data.merged} merged · ${data.total_scanned} scanned`);
+        fetchKb();
+      } else { toast.error("Sync failed"); }
+    } catch { toast.error("Sync failed"); }
+    setSyncing(false);
+  }
+
+  async function handleAdd() {
+    if (!addName.trim()) return;
+    setAdding(true);
+    try {
+      const syns = addSyns.split(",").map((s) => s.trim()).filter(Boolean);
+      const res = await fetch("/api/admin/kb", {
+        method: "POST", headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ canonical_name: addName.trim(), synonyms: syns, category: addCategory.trim() || null }),
+      });
+      if (res.ok) {
+        toast.success("Added to knowledge base");
+        setAddName(""); setAddCategory(""); setAddSyns(""); setShowAdd(false); fetchKb();
+      } else { toast.error("Failed to add"); }
+    } catch { toast.error("Failed"); }
+    setAdding(false);
+  }
+
+  async function handleDelete(id: string, name: string) {
+    if (!confirm(`Remove "${name}" from the knowledge base?`)) return;
+    await fetch(`/api/admin/kb/${id}`, { method: "DELETE" });
+    setTests((prev) => prev.filter((t) => t.id !== id));
+  }
+
+  async function saveSynonyms(id: string, raw: string) {
+    setSavingSyn(true);
+    const syns = raw.split(",").map((s) => s.trim()).filter(Boolean);
+    const res = await fetch(`/api/admin/kb/${id}`, {
+      method: "PATCH", headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ synonyms: syns }),
+    });
+    const data = await res.json();
+    if (data.success) {
+      setTests((prev) => prev.map((t) => t.id === id ? { ...t, synonyms: data.test.synonyms } : t));
+      setEditingSyns(null); toast.success("Synonyms updated");
+    } else { toast.error("Failed"); }
+    setSavingSyn(false);
+  }
+
+  async function handleAddHospital() {
+    if (!newHospName.trim()) return;
+    const res = await fetch("/api/admin/hospitals", {
+      method: "POST", headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ name: newHospName.trim(), city: newHospCity.trim() || null }),
+    });
+    const data = await res.json();
+    if (data.success) {
+      toast.success("Hospital added"); setNewHospName(""); setNewHospCity(""); setShowAddHosp(false); fetchHospitals();
+    } else { toast.error(data.error ?? "Failed"); }
+  }
+
+  async function toggleHospActive(id: string, current: boolean) {
+    await fetch(`/api/admin/hospitals/${id}`, {
+      method: "PATCH", headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ is_active: !current }),
+    });
+    setHospitals((prev) => prev.map((h) => h.id === id ? { ...h, is_active: !current } : h));
+  }
+
+  async function deleteHospital(id: string, name: string) {
+    if (!confirm(`Remove "${name}"?`)) return;
+    await fetch(`/api/admin/hospitals/${id}`, { method: "DELETE" });
+    setHospitals((prev) => prev.filter((h) => h.id !== id));
+  }
+
+  const filtered = search
+    ? tests.filter((t) =>
+        t.canonical_name.toLowerCase().includes(search.toLowerCase()) ||
+        (t.synonyms as string[]).some((s) => s.toLowerCase().includes(search.toLowerCase()))
+      )
+    : tests;
+
+  return (
+    <div className="animate-fade-in space-y-5">
+      {/* Sub-tabs */}
+      <div className="flex gap-1 bg-white/5 rounded-xl p-1 w-fit">
+        <button onClick={() => setHospitalTab(false)} className={`flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-medium transition-all ${!hospitalTab ? "bg-white/15 text-white" : "text-slate-400 hover:text-white"}`}>
+          <Database className="w-4 h-4" />Test Catalog
+        </button>
+        <button onClick={() => setHospitalTab(true)} className={`flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-medium transition-all ${hospitalTab ? "bg-white/15 text-white" : "text-slate-400 hover:text-white"}`}>
+          <Building2 className="w-4 h-4" />Hospitals
+        </button>
+      </div>
+
+      {/* ── Test Catalog ── */}
+      {!hospitalTab && (
+        <div className="space-y-5">
+          {stats && (
+            <div className="grid grid-cols-3 gap-3">
+              {[
+                { label: "KB Tests", value: stats.total_kb, icon: <BookOpen className="w-4 h-4 text-sky-400" /> },
+                { label: "Lab Tests", value: stats.total_lab_tests, icon: <Layers className="w-4 h-4 text-emerald-400" /> },
+                { label: "Labs", value: stats.total_labs, icon: <Building2 className="w-4 h-4 text-violet-400" /> },
+              ].map((s) => (
+                <div key={s.label} className="bg-white/5 border border-white/10 rounded-xl p-4 flex items-center gap-3">
+                  {s.icon}
+                  <div>
+                    <p className="text-xl font-bold text-white">{s.value}</p>
+                    <p className="text-xs text-slate-400">{s.label}</p>
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
+
+          <div className="bg-white/5 border border-white/10 rounded-2xl p-4 space-y-3">
+            <div className="flex items-center gap-2 flex-wrap">
+              <div className="relative flex-1 min-w-[200px]">
+                <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-500 pointer-events-none" />
+                <input
+                  value={search}
+                  onChange={(e) => setSearch(e.target.value)}
+                  placeholder="Search tests or synonyms…"
+                  className="w-full pl-9 pr-4 py-2 rounded-xl bg-white/8 border border-white/10 text-sm text-white placeholder-slate-500 focus:outline-none focus:border-white/25"
+                />
+              </div>
+              <button onClick={() => setShowAdd((v) => !v)} className="flex items-center gap-1.5 px-3 py-2 rounded-xl bg-emerald-600/20 border border-emerald-600/30 text-emerald-400 text-sm hover:bg-emerald-600/30 transition-colors">
+                <Plus className="w-4 h-4" />Add Test
+              </button>
+              <button onClick={() => fetchKb(search || undefined)} disabled={loading} className="p-2 rounded-xl bg-white/8 border border-white/10 text-slate-400 hover:text-white transition-colors">
+                <RefreshCw className={`w-4 h-4 ${loading ? "animate-spin" : ""}`} />
+              </button>
+            </div>
+            <div className="flex items-center gap-3 pt-1 border-t border-white/8">
+              <Sparkles className="w-4 h-4 text-amber-400 shrink-0" />
+              <p className="text-xs text-slate-400 flex-1">Auto-sync imports test names from all lab catalogs into this knowledge base.</p>
+              <select value={syncMode} onChange={(e) => setSyncMode(e.target.value as "new_only" | "merge_synonyms")} className="text-xs bg-white/8 border border-white/10 text-slate-300 rounded-lg px-2 py-1.5 [color-scheme:dark] focus:outline-none">
+                <option value="new_only">New entries only</option>
+                <option value="merge_synonyms">Merge synonyms too</option>
+              </select>
+              <button onClick={handleSync} disabled={syncing} className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-amber-500/20 border border-amber-500/30 text-amber-300 text-xs font-semibold hover:bg-amber-500/30 transition-colors disabled:opacity-50">
+                {syncing ? <RefreshCw className="w-3.5 h-3.5 animate-spin" /> : <Sparkles className="w-3.5 h-3.5" />}
+                {syncing ? "Syncing…" : "Sync from Labs"}
+              </button>
+            </div>
+          </div>
+
+          {showAdd && (
+            <div className="bg-emerald-500/5 border border-emerald-500/20 rounded-2xl p-4 space-y-3">
+              <p className="text-sm font-semibold text-emerald-300">New Knowledge Base Entry</p>
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                <input value={addName} onChange={(e) => setAddName(e.target.value)} placeholder="Canonical name *" className="px-3 py-2 rounded-xl bg-white/8 border border-white/10 text-sm text-white placeholder-slate-500 focus:outline-none focus:border-white/25" />
+                <input value={addCategory} onChange={(e) => setAddCategory(e.target.value)} placeholder="Category (optional)" className="px-3 py-2 rounded-xl bg-white/8 border border-white/10 text-sm text-white placeholder-slate-500 focus:outline-none focus:border-white/25" />
+              </div>
+              <input value={addSyns} onChange={(e) => setAddSyns(e.target.value)} placeholder="Synonyms, comma-separated (e.g. FBC, CBC, full blood count)" className="w-full px-3 py-2 rounded-xl bg-white/8 border border-white/10 text-sm text-white placeholder-slate-500 focus:outline-none focus:border-white/25" />
+              <div className="flex gap-2">
+                <button onClick={handleAdd} disabled={adding || !addName.trim()} className="flex items-center gap-1.5 px-4 py-2 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white text-sm font-semibold disabled:opacity-50">
+                  <Check className="w-4 h-4" />{adding ? "Adding…" : "Add"}
+                </button>
+                <button onClick={() => setShowAdd(false)} className="px-4 py-2 rounded-xl bg-white/8 text-slate-400 text-sm">Cancel</button>
+              </div>
+            </div>
+          )}
+
+          {loading && !fetched ? (
+            <div className="space-y-2">{[...Array(5)].map((_, i) => <div key={i} className="bg-white/5 border border-white/10 rounded-xl h-14 animate-pulse" />)}</div>
+          ) : filtered.length === 0 ? (
+            <div className="text-center py-16 text-slate-500">
+              {search ? "No tests match your search." : `Knowledge base is empty. Click "Sync from Labs" to populate it.`}
+            </div>
+          ) : (
+            <div className="space-y-2">
+              {filtered.map((test) => {
+                const isExpanded = expandedId === test.id;
+                return (
+                  <div key={test.id} className="bg-white/5 border border-white/10 rounded-xl overflow-hidden">
+                    <button type="button" onClick={() => setExpandedId(isExpanded ? null : test.id)} className="w-full flex items-center gap-3 px-4 py-3 text-left hover:bg-white/5 transition-colors">
+                      <div className="flex-1 min-w-0">
+                        <div className="flex items-center gap-2 flex-wrap">
+                          <p className="text-sm font-semibold text-white">{test.canonical_name}</p>
+                          {test.category && <span className="text-[10px] bg-sky-500/15 text-sky-400 border border-sky-500/20 px-1.5 py-0.5 rounded-full">{test.category}</span>}
+                        </div>
+                        <p className="text-xs text-slate-500 mt-0.5 truncate">
+                          {test.synonyms.length > 0 ? test.synonyms.slice(0, 4).join(" · ") + (test.synonyms.length > 4 ? ` +${test.synonyms.length - 4}` : "") : "No synonyms"}
+                        </p>
+                      </div>
+                      <div className="shrink-0 text-right">
+                        <p className="text-xs text-emerald-400 font-semibold">{test.lab_count} lab{test.lab_count !== 1 ? "s" : ""}</p>
+                        <ChevronDown className={`w-3.5 h-3.5 text-slate-500 ml-auto mt-0.5 transition-transform ${isExpanded ? "rotate-180" : ""}`} />
+                      </div>
+                    </button>
+                    {isExpanded && (
+                      <div className="border-t border-white/8 px-4 py-4 space-y-4 bg-slate-950/40">
+                        <div>
+                          <p className="text-xs text-slate-400 font-semibold uppercase tracking-wider mb-2">Synonyms</p>
+                          {editingSyns?.id === test.id ? (
+                            <div className="flex gap-2 items-center">
+                              <input value={editingSyns.value} onChange={(e) => setEditingSyns({ id: test.id, value: e.target.value })} className="flex-1 px-3 py-1.5 rounded-lg bg-white/8 border border-white/15 text-sm text-white placeholder-slate-500 focus:outline-none focus:border-white/30" placeholder="Comma-separated synonyms" />
+                              <button onClick={() => saveSynonyms(test.id, editingSyns.value)} disabled={savingSyn} className="px-3 py-1.5 rounded-lg bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-semibold disabled:opacity-50">{savingSyn ? "…" : "Save"}</button>
+                              <button onClick={() => setEditingSyns(null)} className="p-1.5 text-slate-500 hover:text-white"><X className="w-3.5 h-3.5" /></button>
+                            </div>
+                          ) : (
+                            <div className="flex flex-wrap gap-1.5 items-center">
+                              {test.synonyms.length > 0
+                                ? test.synonyms.map((s) => <span key={s} className="text-xs bg-blue-500/10 text-blue-300 border border-blue-500/20 px-2 py-0.5 rounded-full">{s}</span>)
+                                : <span className="text-xs text-slate-600 italic">none yet</span>}
+                              <button onClick={() => setEditingSyns({ id: test.id, value: test.synonyms.join(", ") })} className="text-xs text-slate-500 hover:text-white border border-dashed border-slate-700 hover:border-white/30 px-2 py-0.5 rounded-full transition-colors">Edit</button>
+                            </div>
+                          )}
+                        </div>
+                        {test.labs.length > 0 && (
+                          <div>
+                            <p className="text-xs text-slate-400 font-semibold uppercase tracking-wider mb-2">Labs offering this test</p>
+                            <div className="space-y-1">
+                              {test.labs.map((lab) => (
+                                <div key={lab.lab_id} className="flex items-center justify-between text-xs py-1 border-b border-white/5 last:border-0">
+                                  <span className="text-slate-200">{lab.lab_name}</span>
+                                  <span className="font-mono text-white">₦{lab.price.toLocaleString()}</span>
+                                </div>
+                              ))}
+                            </div>
+                          </div>
+                        )}
+                        <button onClick={() => handleDelete(test.id, test.canonical_name)} className="text-xs text-rose-400 hover:text-rose-300 border border-rose-500/20 hover:border-rose-500/40 px-3 py-1.5 rounded-lg transition-colors">Remove from KB</button>
+                      </div>
+                    )}
+                  </div>
+                );
+              })}
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* ── Hospitals ── */}
+      {hospitalTab && (
+        <div className="space-y-4">
+          <div className="bg-white/5 border border-white/10 rounded-2xl p-4 flex items-center gap-3 flex-wrap">
+            <div className="relative flex-1 min-w-[200px]">
+              <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-500 pointer-events-none" />
+              <input value={hospSearch} onChange={(e) => setHospSearch(e.target.value)} placeholder="Search hospitals…" className="w-full pl-9 pr-4 py-2 rounded-xl bg-white/8 border border-white/10 text-sm text-white placeholder-slate-500 focus:outline-none focus:border-white/25" />
+            </div>
+            <button onClick={() => setShowAddHosp((v) => !v)} className="flex items-center gap-1.5 px-3 py-2 rounded-xl bg-emerald-600/20 border border-emerald-600/30 text-emerald-400 text-sm hover:bg-emerald-600/30 transition-colors">
+              <Plus className="w-4 h-4" />Add Hospital
+            </button>
+            <button onClick={fetchHospitals} disabled={hospLoading} className="p-2 rounded-xl bg-white/8 border border-white/10 text-slate-400 hover:text-white transition-colors">
+              <RefreshCw className={`w-4 h-4 ${hospLoading ? "animate-spin" : ""}`} />
+            </button>
+          </div>
+          {showAddHosp && (
+            <div className="bg-emerald-500/5 border border-emerald-500/20 rounded-2xl p-4 space-y-3">
+              <p className="text-sm font-semibold text-emerald-300">Add Hospital / Clinic</p>
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                <input value={newHospName} onChange={(e) => setNewHospName(e.target.value)} placeholder="Name *" className="px-3 py-2 rounded-xl bg-white/8 border border-white/10 text-sm text-white placeholder-slate-500 focus:outline-none focus:border-white/25" />
+                <input value={newHospCity} onChange={(e) => setNewHospCity(e.target.value)} placeholder="City (optional)" className="px-3 py-2 rounded-xl bg-white/8 border border-white/10 text-sm text-white placeholder-slate-500 focus:outline-none focus:border-white/25" />
+              </div>
+              <div className="flex gap-2">
+                <button onClick={handleAddHospital} disabled={!newHospName.trim()} className="flex items-center gap-1.5 px-4 py-2 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white text-sm font-semibold disabled:opacity-50"><Check className="w-4 h-4" />Add</button>
+                <button onClick={() => setShowAddHosp(false)} className="px-4 py-2 rounded-xl bg-white/8 text-slate-400 text-sm">Cancel</button>
+              </div>
+            </div>
+          )}
+          {hospLoading ? (
+            <div className="space-y-2">{[...Array(4)].map((_, i) => <div key={i} className="bg-white/5 border border-white/10 rounded-xl h-12 animate-pulse" />)}</div>
+          ) : hospitals.filter((h) => !hospSearch || h.name.toLowerCase().includes(hospSearch.toLowerCase())).length === 0 ? (
+            <div className="text-center py-12 text-slate-500">No hospitals yet. Add one to start building the list.</div>
+          ) : (
+            <div className="space-y-1.5">
+              {hospitals.filter((h) => !hospSearch || h.name.toLowerCase().includes(hospSearch.toLowerCase())).map((h) => (
+                <div key={h.id} className={`flex items-center gap-3 px-4 py-3 rounded-xl border ${h.is_active ? "bg-white/5 border-white/10" : "bg-white/2 border-white/5 opacity-50"}`}>
+                  <Building2 className="w-4 h-4 text-slate-500 shrink-0" />
+                  <div className="flex-1 min-w-0">
+                    <p className="text-sm text-white font-medium">{h.name}</p>
+                    {h.city && <p className="text-xs text-slate-500">{h.city}</p>}
+                  </div>
+                  <button onClick={() => toggleHospActive(h.id, h.is_active)} className={`text-xs px-2.5 py-1 rounded-full border font-medium ${h.is_active ? "text-emerald-400 border-emerald-500/30 bg-emerald-500/10 hover:bg-emerald-500/20" : "text-slate-500 border-slate-700 bg-white/5 hover:bg-white/10"}`}>
+                    {h.is_active ? "Active" : "Inactive"}
+                  </button>
+                  <button onClick={() => deleteHospital(h.id, h.name)} className="p-1.5 text-slate-600 hover:text-rose-400 transition-colors">
+                    <Trash2 className="w-3.5 h-3.5" />
+                  </button>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ─────────────────────────────────────────────────────────
+// Admin Users Tab — view & delete doctor portal users
+// ─────────────────────────────────────────────────────────
+interface DocUser {
+  email: string;
+  prefix: string | null;
+  full_name: string | null;
+  phone: string | null;
+  hospitals: string[];
+  has_pin: boolean;
+  updated_at: string;
+}
+
+function AdminUsersTab() {
+  const [users, setUsers] = useState<DocUser[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [search, setSearch] = useState("");
+  const [deletingEmail, setDeletingEmail] = useState<string | null>(null);
+
+  const fetchUsers = useCallback(async (q = "") => {
+    setLoading(true);
+    try {
+      const res = await fetch(`/api/admin/users${q ? `?q=${encodeURIComponent(q)}` : ""}`);
+      if (res.ok) {
+        const data = await res.json();
+        setUsers(data.users ?? []);
+      }
+    } finally {
+      setLoading(false);
+    }
+  }, []);
+
+  useEffect(() => { fetchUsers(); }, [fetchUsers]);
+
+  async function handleDelete(email: string) {
+    if (!confirm(`Delete user ${email}? This removes their profile, sessions, and OTPs.`)) return;
+    setDeletingEmail(email);
+    try {
+      const res = await fetch(`/api/admin/users/${encodeURIComponent(email)}`, { method: "DELETE" });
+      if (res.ok) {
+        toast.success("User deleted");
+        setUsers((prev) => prev.filter((u) => u.email !== email));
+      } else {
+        const d = await res.json();
+        toast.error(d.error ?? "Failed to delete");
+      }
+    } finally {
+      setDeletingEmail(null);
+    }
+  }
+
+  const filtered = search.trim()
+    ? users.filter((u) =>
+        u.email.toLowerCase().includes(search.toLowerCase()) ||
+        (u.full_name ?? "").toLowerCase().includes(search.toLowerCase())
+      )
+    : users;
+
+  return (
+    <div className="space-y-4">
+      {/* Header */}
+      <div className="flex items-center justify-between gap-3 flex-wrap">
+        <div>
+          <h2 className="text-lg font-bold text-white">Doctor Portal Users</h2>
+          <p className="text-xs text-slate-400 mt-0.5">{users.length} registered users</p>
+        </div>
+        <button onClick={() => fetchUsers(search)} className="p-2 rounded-xl text-slate-400 hover:text-white hover:bg-white/8 transition">
+          <RefreshCw className="w-4 h-4" />
+        </button>
+      </div>
+
+      {/* Search */}
+      <div className="relative">
+        <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-slate-500" />
+        <input
+          value={search}
+          onChange={(e) => setSearch(e.target.value)}
+          placeholder="Search by email or name…"
+          className="w-full pl-9 pr-4 py-2.5 rounded-xl bg-white/5 border border-white/10 text-sm text-white placeholder-slate-500 focus:outline-none focus:ring-2 focus:ring-medical-500 transition"
+        />
+      </div>
+
+      {loading ? (
+        <div className="flex items-center justify-center py-12">
+          <RefreshCw className="w-5 h-5 animate-spin text-slate-500" />
+        </div>
+      ) : filtered.length === 0 ? (
+        <div className="text-center py-12 text-slate-500">
+          <UserCircle className="w-8 h-8 mx-auto mb-2 opacity-40" />
+          <p className="text-sm">No users found</p>
+        </div>
+      ) : (
+        <div className="space-y-2">
+          {filtered.map((u) => (
+            <div key={u.email} className="bg-white/5 border border-white/8 rounded-2xl px-4 py-3 flex items-start gap-3">
+              <div className="w-9 h-9 rounded-full bg-medical-500/20 flex items-center justify-center shrink-0 mt-0.5">
+                <UserCircle className="w-5 h-5 text-medical-400" />
+              </div>
+              <div className="flex-1 min-w-0">
+                <div className="flex items-center gap-2 flex-wrap">
+                  <span className="text-sm font-semibold text-white">
+                    {u.prefix ? `${u.prefix} ` : ""}{u.full_name ?? <span className="text-slate-500 font-normal italic">No name</span>}
+                  </span>
+                  {u.has_pin && (
+                    <span className="text-[10px] bg-emerald-500/15 text-emerald-400 border border-emerald-500/20 rounded-full px-2 py-0.5">PIN set</span>
+                  )}
+                </div>
+                <p className="text-xs text-slate-400 mt-0.5">{u.email}</p>
+                {u.phone && <p className="text-xs text-slate-500 mt-0.5">{u.phone}</p>}
+                {u.hospitals.length > 0 && (
+                  <div className="flex flex-wrap gap-1 mt-1.5">
+                    {u.hospitals.map((h) => (
+                      <span key={h} className="text-[10px] bg-sky-500/10 text-sky-400 border border-sky-500/20 rounded-full px-2 py-0.5">{h}</span>
+                    ))}
+                  </div>
+                )}
+                <p className="text-[10px] text-slate-600 mt-1.5">Updated {format(new Date(u.updated_at), "dd MMM yyyy · HH:mm")}</p>
+              </div>
+              <button
+                onClick={() => handleDelete(u.email)}
+                disabled={deletingEmail === u.email}
+                className="p-1.5 rounded-lg text-slate-600 hover:text-rose-400 hover:bg-rose-500/10 transition shrink-0"
+                title="Delete user"
+              >
+                {deletingEmail === u.email
+                  ? <RefreshCw className="w-4 h-4 animate-spin" />
+                  : <Trash2 className="w-4 h-4" />}
+              </button>
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// LabWalletButton — provision DVA or show existing account details, per lab card
+// ─────────────────────────────────────────────────────────────────────────────
+function LabWalletButton({ labId }: { labId: string }) {
+  const [state, setState] = useState<"loading" | "idle" | "form" | "done" | "credit-form">("loading");
+  const [phone, setPhone] = useState("");
+  const [dva, setDva] = useState<{ bank_name: string | null; account_number: string; account_name: string | null } | null>(null);
+  const [balance, setBalance] = useState<number | null>(null);
+  const [showDetails, setShowDetails] = useState(false);
+  const [copied, setCopied] = useState(false);
+  const [creditRef, setCreditRef] = useState("");
+
+  // Load existing wallet state on mount
+  useEffect(() => {
+    fetch(`/api/admin/wallet/${labId}`)
+      .then((r) => r.json())
+      .then((d) => {
+        if (d.dva_account_number) {
+          setDva({ bank_name: d.dva_bank_name, account_number: d.dva_account_number, account_name: d.dva_account_name });
+          setBalance(d.balance ?? 0);
+          setState("done");
+        } else {
+          setState("idle");
+        }
+      })
+      .catch(() => setState("idle"));
+  }, [labId]);
+  const [crediting, setCrediting] = useState(false);
+
+  async function provision() {
+    if (!phone.trim()) return;
+    setState("loading");
+    try {
+      const res = await fetch(`/api/admin/wallet/provision/${labId}`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ phone: phone.trim() }),
+      });
+      const d = await res.json();
+      if (!res.ok) { toast.error(d.error ?? "Provisioning failed"); setState("form"); return; }
+      setDva({ bank_name: d.dva_bank_name, account_number: d.dva_account_number, account_name: d.dva_account_name });
+      setBalance(d.balance ?? 0);
+      setState("done");
+      if (d.already_provisioned) toast.success("DVA already provisioned — details loaded");
+      else toast.success("Virtual account created!");
+    } catch { toast.error("Network error"); setState("form"); }
+  }
+
+  async function manualCredit() {
+    if (!creditRef.trim()) return;
+    setCrediting(true);
+    try {
+      const res = await fetch("/api/admin/wallet/credit", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ reference: creditRef.trim() }),
+      });
+      const d = await res.json();
+      if (!res.ok) { toast.error(d.error ?? "Credit failed"); return; }
+      toast.success(`₦${Number(d.amount).toLocaleString()} credited to wallet`);
+      setBalance((prev) => (prev ?? 0) + Number(d.amount));
+      setCreditRef("");
+      setState("done");
+    } catch { toast.error("Network error"); }
+    finally { setCrediting(false); }
+  }
+
+  function copyAcc() {
+    if (!dva?.account_number) return;
+    navigator.clipboard.writeText(dva.account_number).then(() => { setCopied(true); setTimeout(() => setCopied(false), 2000); });
+  }
+
+  if (state === "done" && dva) {
+    return (
+      <div className="col-span-2 space-y-1.5">
+        <button
+          onClick={() => setShowDetails((s) => !s)}
+          className="w-full flex items-center justify-between gap-1 px-2.5 py-1.5 rounded-lg bg-emerald-500/10 hover:bg-emerald-500/20 text-emerald-400 text-xs transition-colors"
+        >
+          <span className="flex items-center gap-1"><Wallet className="w-3 h-3" /> DVA</span>
+          <span className="font-mono font-semibold">{balance != null ? `₦${balance.toLocaleString()}` : ""} {showDetails ? "▲" : "▼"}</span>
+        </button>
+        {showDetails && (
+          <div className="p-3 bg-white/5 border border-white/10 rounded-xl space-y-2">
+            <div>
+              <p className="text-[10px] text-slate-500 uppercase tracking-wider mb-1">{dva.bank_name}</p>
+              <div className="flex items-center gap-2">
+                <p className="font-mono text-sm text-white font-bold tracking-widest">{dva.account_number}</p>
+                <button onClick={copyAcc} className="p-1 rounded text-slate-400 hover:text-white transition">
+                  {copied ? <Check className="w-3 h-3 text-emerald-400" /> : <Copy className="w-3 h-3" />}
+                </button>
+              </div>
+              <p className="text-[10px] text-slate-500 mt-0.5">{dva.account_name}</p>
+            </div>
+            <button
+              onClick={() => setState("credit-form")}
+              className="w-full flex items-center justify-center gap-1 px-2 py-1 rounded-lg bg-sky-500/10 hover:bg-sky-500/20 text-sky-400 text-[11px] transition-colors"
+            >
+              + Manual credit (missed payment)
+            </button>
+          </div>
+        )}
+      </div>
+    );
+  }
+
+  if (state === "credit-form") {
+    return (
+      <div className="col-span-2 space-y-1.5">
+        <p className="text-[10px] text-slate-400">Paste Paystack reference to verify & credit:</p>
+        <div className="flex gap-1.5 items-center">
+          <input
+            type="text"
+            value={creditRef}
+            onChange={(e) => setCreditRef(e.target.value)}
+            onKeyDown={(e) => e.key === "Enter" && manualCredit()}
+            placeholder="e.g. T123456789"
+            autoFocus
+            className="flex-1 px-2.5 py-1.5 rounded-lg bg-white/8 border border-white/15 text-white text-xs placeholder-slate-500 focus:outline-none focus:ring-1 focus:ring-sky-400 font-mono"
+          />
+          <button onClick={manualCredit} disabled={!creditRef.trim() || crediting}
+            className="px-2.5 py-1.5 rounded-lg bg-sky-500/20 hover:bg-sky-500/30 text-sky-300 text-xs transition-colors disabled:opacity-40 shrink-0">
+            {crediting ? <RefreshCw className="w-3 h-3 animate-spin" /> : "Credit"}
+          </button>
+          <button onClick={() => setState("done")} className="p-1.5 rounded-lg text-slate-500 hover:text-white transition-colors">
+            <X className="w-3 h-3" />
+          </button>
+        </div>
+      </div>
+    );
+  }
+
+  if (state === "form") {
+    return (
+      <div className="col-span-2 mt-1 flex gap-2 items-center">
+        <input
+          type="tel"
+          value={phone}
+          onChange={(e) => setPhone(e.target.value)}
+          onKeyDown={(e) => e.key === "Enter" && provision()}
+          placeholder="08012345678"
+          autoFocus
+          className="flex-1 px-3 py-1.5 rounded-lg bg-white/8 border border-white/15 text-white text-xs placeholder-slate-500 focus:outline-none focus:ring-1 focus:ring-violet-400 font-mono"
+        />
+        <button onClick={provision} disabled={!phone.trim()}
+          className="px-3 py-1.5 rounded-lg bg-violet-500/20 hover:bg-violet-500/30 text-violet-300 text-xs transition-colors disabled:opacity-40 shrink-0">
+          Create
+        </button>
+        <button onClick={() => setState("idle")} className="p-1.5 rounded-lg text-slate-500 hover:text-white transition-colors">
+          <X className="w-3 h-3" />
+        </button>
+      </div>
+    );
+  }
+
+  // "loading" = initial fetch to check existing wallet; "idle" = no wallet yet
+  if (state === "loading") {
+    return <div className="h-7 w-20 rounded-lg bg-white/5 animate-pulse" />;
+  }
+
+  return (
+    <button
+      onClick={() => setState("form")}
+      className="flex items-center justify-center gap-1 px-2.5 py-1.5 rounded-lg bg-violet-500/10 hover:bg-violet-500/20 text-violet-400 hover:text-violet-300 text-xs transition-colors"
+    >
+      <Wallet className="w-3 h-3" /> Wallet DVA
+    </button>
   );
 }

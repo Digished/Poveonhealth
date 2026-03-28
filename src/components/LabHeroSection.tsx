@@ -124,6 +124,18 @@ export function LabHeroSection({ labName, logoUrl }: LabHeroSectionProps) {
           <p className="text-[13px] text-slate-500 leading-relaxed pt-0.5">
             What test does your patient need today?
           </p>
+
+          {/* Subtle scroll CTA */}
+          <div className="flex flex-col items-center gap-1 mt-1">
+            <p className="text-[10px] text-slate-400 font-medium tracking-wide uppercase">No login needed · scroll to request</p>
+            <svg
+              className="w-4 h-4 text-slate-300 animate-bounce"
+              viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"
+              strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"
+            >
+              <path d="M12 5v14M5 12l7 7 7-7" />
+            </svg>
+          </div>
         </div>
       </div>
     </div>

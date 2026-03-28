@@ -195,6 +195,18 @@ export function HeroSection() {
               Learn more
             </button>
           </p>
+
+          {/* Subtle scroll CTA */}
+          <div className="flex flex-col items-center gap-1 mt-2">
+            <p className="text-[11px] text-slate-400 font-medium">No login needed · scroll to fill a request</p>
+            <svg
+              className="w-4 h-4 text-slate-300 animate-bounce"
+              viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"
+              strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"
+            >
+              <path d="M12 5v14M5 12l7 7 7-7" />
+            </svg>
+          </div>
         </div>
       </div>
 
