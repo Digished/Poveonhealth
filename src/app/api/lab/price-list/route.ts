@@ -89,7 +89,7 @@ export async function GET(request: NextRequest) {
   });
 
   // Unique categories for filter dropdowns
-  const categories = [...new Set(tests.map((t) => t.category_label).filter(Boolean))].sort() as string[];
+  const categories = Array.from(new Set(tests.map((t) => t.category_label).filter(Boolean))).sort() as string[];
 
   return NextResponse.json({ success: true, tests: enriched, categories });
 }
