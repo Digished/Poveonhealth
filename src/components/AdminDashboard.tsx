@@ -122,6 +122,7 @@ export function AdminDashboard() {
   const [apiLogs, setApiLogs] = useState<ApiLog[]>([]);
   const [apiLogSummary, setApiLogSummary] = useState<ApiLogSummary | null>(null);
   const [expandedLabIntegration, setExpandedLabIntegration] = useState<string | null>(null);
+  const [expandedLabIds, setExpandedLabIds] = useState<Set<string>>(new Set());
   const [branchModalLabId, setBranchModalLabId] = useState<string | null>(null);
 const [catalogModalLabId, setCatalogModalLabId] = useState<string | null>(null);
   const [catalogJob, setCatalogJob] = useState<CatalogJob | null>(null);
@@ -867,9 +868,9 @@ const [catalogModalLabId, setCatalogModalLabId] = useState<string | null>(null);
 
         {/* ── LABS ── */}
         {activeTab === "labs" && (
-          <div className="animate-fade-in space-y-6">
+          <div className="animate-fade-in space-y-4">
             <div className="flex items-center justify-between">
-              <h2 className="font-semibold text-white">Registered Laboratories ({labs.length})</h2>
+              <h2 className="font-semibold text-white">Registered Laboratories <span className="text-slate-500 font-normal text-sm">({labs.length})</span></h2>
               <Button onClick={() => setShowCreateLab(true)}>
                 <Plus className="w-4 h-4" />
                 <span className="hidden sm:inline">Add Laboratory</span>
@@ -877,187 +878,236 @@ const [catalogModalLabId, setCatalogModalLabId] = useState<string | null>(null);
             </div>
 
             {loading ? (
-              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-                {[...Array(3)].map((_, i) => (
-                  <div key={i} className="bg-white/5 border border-white/10 rounded-2xl p-5 animate-pulse h-40" />
+              <div className="space-y-2">
+                {[...Array(4)].map((_, i) => (
+                  <div key={i} className="bg-white/5 border border-white/10 rounded-2xl p-4 animate-pulse h-16" />
                 ))}
               </div>
+            ) : labs.length === 0 ? (
+              <div className="text-center py-16 text-slate-500">No laboratories yet.</div>
             ) : (
-              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-                {labs.map((lab) => (
-                  <div key={lab.id} className={`bg-white/5 border rounded-2xl p-5 transition-opacity ${lab.hidden ? "border-white/5 opacity-60" : "border-white/10"}`}>
-                    <div className="flex items-center gap-2 mb-3">
-                      {lab.logo_url ? (
-                        <img src={lab.logo_url} alt={lab.name} className="w-8 h-8 rounded-lg object-cover" />
-                      ) : (
-                        <div className="w-8 h-8 bg-medical-700/50 rounded-lg flex items-center justify-center">
-                          <Building2 className="w-4 h-4 text-medical-400" />
+              <div className="border border-white/10 rounded-2xl overflow-hidden divide-y divide-white/5">
+                {labs.map((lab) => {
+                  const isExpanded = expandedLabIds.has(lab.id);
+                  const phones     = lab.phones as string[];
+                  const services   = lab.service_categories as string[];
+                  const certs      = lab.certifications as string[];
+                  const outstanding = lab.poveon_outstanding ?? 0;
+
+                  const toggleExpand = () => setExpandedLabIds((prev) => {
+                    const next = new Set(prev);
+                    isExpanded ? next.delete(lab.id) : next.add(lab.id);
+                    return next;
+                  });
+
+                  const openStats = () => {
+                    setLabAnalyticsLabId(lab.id);
+                    setLabAnalyticsLabName(lab.name);
+                    setLabAnalytics(null);
+                    setLabAnalyticsMonth("");
+                    setLabAnalyticsStatus("");
+                    setLabAnalyticsTest("");
+                    fetchLabAnalytics(lab.id);
+                  };
+
+                  return (
+                    <div key={lab.id} className={`transition-colors ${lab.hidden ? "opacity-55" : ""} ${isExpanded ? "bg-white/4" : "hover:bg-white/2"}`}>
+
+                      {/* ── Main row ── */}
+                      <div className="flex items-center gap-3 px-4 py-3">
+
+                        {/* Logo */}
+                        {lab.logo_url ? (
+                          <img src={lab.logo_url} alt={lab.name} className="w-9 h-9 rounded-xl object-cover shrink-0" />
+                        ) : (
+                          <div className="w-9 h-9 bg-medical-700/40 rounded-xl flex items-center justify-center shrink-0">
+                            <Building2 className="w-4 h-4 text-medical-400" />
+                          </div>
+                        )}
+
+                        {/* Name + badges */}
+                        <div className="flex-1 min-w-0">
+                          <div className="flex items-center gap-1.5 flex-wrap">
+                            <p className="text-sm font-semibold text-white leading-tight">{lab.name}</p>
+                            <Badge variant="blue">Prefix: {lab.prefix}</Badge>
+                            {lab.hidden && <span className="text-[10px] text-slate-500 bg-white/5 px-1.5 py-0.5 rounded">hidden</span>}
+                            {lab.slug && (
+                              <a href={`/${lab.slug}`} target="_blank" rel="noopener noreferrer"
+                                className="text-[10px] text-blue-400 hover:text-blue-300 font-mono bg-blue-500/8 border border-blue-500/20 px-1.5 py-0.5 rounded"
+                                title={`Direct URL: poveon.com/${lab.slug}`}>/{lab.slug}</a>
+                            )}
+                            {lab.whatsapp && (
+                              <span className="text-[10px] bg-green-900/30 text-green-400 border border-green-800/30 px-1.5 py-0.5 rounded-full" title={`WhatsApp: ${lab.whatsapp}`}>WA</span>
+                            )}
+                            {lab.request_email && (
+                              <span className="text-[10px] bg-blue-900/30 text-blue-400 border border-blue-800/30 px-1.5 py-0.5 rounded-full" title={`Requests: ${lab.request_email}`}>Mail</span>
+                            )}
+                          </div>
+                          {/* Email on mobile */}
+                          <p className="text-xs text-slate-500 mt-0.5 md:hidden truncate">{lab.email}</p>
                         </div>
-                      )}
-                      <div>
-                        <p className="font-semibold text-white text-sm">{lab.name}</p>
-                        <div className="flex items-center gap-1.5 mt-0.5">
-                          <Badge variant="blue">Prefix: {lab.prefix}</Badge>
-                          {lab.hidden && <span className="text-xs text-slate-500">hidden</span>}
-                        </div>
-                      </div>
-                    </div>
-                    <p className="text-xs text-slate-400 mb-1">{lab.email}</p>
-                    {lab.notification_email && (
-                      <p className="text-xs text-emerald-400 flex items-center gap-1 mb-1" title="Custom notification email configured">
-                        <span>✉</span> {lab.notification_email}
-                      </p>
-                    )}
-                    {(lab.slug || lab.whatsapp || lab.request_email) && (
-                      <div className="flex flex-wrap items-center gap-1.5 mb-1">
-                        {lab.slug && (
-                          <a
-                            href={`/${lab.slug}`}
-                            target="_blank"
-                            rel="noopener noreferrer"
-                            className="text-xs text-blue-400 hover:text-blue-300 underline underline-offset-2 font-mono"
-                            title={`Direct URL: poveon.com/${lab.slug}`}
-                          >
-                            /{lab.slug}
-                          </a>
-                        )}
-                        {lab.whatsapp && (
-                          <span className="inline-flex items-center gap-1 text-xs bg-green-900/30 text-green-400 border border-green-800/30 px-1.5 py-0.5 rounded-full" title={`WhatsApp: ${lab.whatsapp}`}>
-                            <Phone className="w-2.5 h-2.5" />WA
-                          </span>
-                        )}
-                        {lab.request_email && (
-                          <span className="inline-flex items-center gap-1 text-xs bg-blue-900/30 text-blue-400 border border-blue-800/30 px-1.5 py-0.5 rounded-full" title={`Request email: ${lab.request_email}`}>
-                            <span>✉</span> Requests
-                          </span>
-                        )}
-                      </div>
-                    )}
-                    {lab.address && (
-                      <p className="text-xs text-slate-500 flex items-start gap-1 mt-0.5">
-                        <MapPin className="w-3 h-3 text-slate-600 mt-0.5 shrink-0" />{lab.address}
-                      </p>
-                    )}
-                    {(lab.phones as string[]).length > 0 && (lab.phones as string[]).map((ph, i) => (
-                      <p key={i} className="text-xs text-slate-500 flex items-center gap-1 mt-0.5">
-                        <Phone className="w-3 h-3 text-slate-600 shrink-0" />{ph}
-                      </p>
-                    ))}
-                    {(lab.service_categories as string[]).length > 0 && (
-                      <div className="mt-3">
-                        <p className="text-xs text-slate-600 mb-1.5">Services</p>
-                        <div className="flex flex-wrap gap-1">
-                          {(lab.service_categories as string[]).slice(0, 4).map((c) => (
-                            <span key={c} className="text-xs bg-medical-900/50 text-medical-300 border border-medical-800/40 px-2 py-0.5 rounded-full">{c}</span>
-                          ))}
-                          {(lab.service_categories as string[]).length > 4 && (
-                            <span className="text-xs text-slate-500 px-1">+{(lab.service_categories as string[]).length - 4} more</span>
+
+                        {/* Email (md+) */}
+                        <div className="hidden md:block w-52 shrink-0 min-w-0">
+                          <p className="text-xs text-slate-400 truncate">{lab.email}</p>
+                          {lab.notification_email && (
+                            <p className="text-[10px] text-emerald-400 truncate mt-0.5">{lab.notification_email}</p>
                           )}
                         </div>
-                      </div>
-                    )}
-                    {(lab.certifications as string[]).length > 0 && (
-                      <div className="mt-2">
-                        <p className="text-xs text-slate-600 mb-1.5">Certifications</p>
-                        <div className="flex flex-wrap gap-1">
-                          {(lab.certifications as string[]).map((c) => (
-                            <span key={c} className="text-xs bg-amber-900/20 text-amber-400 border border-amber-800/30 px-2 py-0.5 rounded-full">{c}</span>
-                          ))}
-                        </div>
-                      </div>
-                    )}
-                    {/* Poveon outstanding */}
-                    {(lab.poveon_outstanding ?? 0) > 0 && (
-                      <div className="mt-3 flex items-center gap-2 px-3 py-2 rounded-xl bg-amber-500/10 border border-amber-500/20">
-                        <CreditCard className="w-3.5 h-3.5 shrink-0 text-amber-400" />
-                        <span className="text-xs text-slate-400 flex-1">Poveon outstanding</span>
-                        <span className="text-sm font-bold font-mono text-amber-300">
-                          ₦{(lab.poveon_outstanding ?? 0).toLocaleString()}
-                        </span>
-                      </div>
-                    )}
 
-                    <div className="flex items-center justify-between mt-3">
-                      <p className="text-xs text-slate-600">Added {format(new Date(lab.created_at), "dd MMM yyyy")}</p>
-                      {lab.rating_avg != null ? (
-                        <div className="flex items-center gap-1">
-                          {[1, 2, 3, 4, 5].map((i) => (
-                            <Star key={i} className={`w-3 h-3 ${i <= Math.round(lab.rating_avg!) ? "text-amber-400 fill-amber-400" : "text-slate-600"}`} />
-                          ))}
-                          <span className="text-xs text-amber-400 font-semibold ml-0.5">{lab.rating_avg.toFixed(1)}</span>
-                          <span className="text-xs text-slate-600">({lab.rating_count})</span>
+                        {/* Outstanding + rating (sm+) */}
+                        <div className="hidden sm:flex flex-col items-end gap-1 w-28 shrink-0">
+                          {outstanding > 0 && (
+                            <span className="text-xs font-mono font-bold text-amber-300 bg-amber-500/10 px-2 py-0.5 rounded-lg border border-amber-500/20">
+                              ₦{outstanding.toLocaleString()}
+                            </span>
+                          )}
+                          {lab.rating_avg != null ? (
+                            <div className="flex items-center gap-0.5">
+                              {[1,2,3,4,5].map((i) => (
+                                <Star key={i} className={`w-2.5 h-2.5 ${i <= Math.round(lab.rating_avg!) ? "text-amber-400 fill-amber-400" : "text-slate-700"}`} />
+                              ))}
+                              <span className="text-[10px] text-amber-400 font-semibold ml-0.5">{lab.rating_avg.toFixed(1)}</span>
+                            </div>
+                          ) : (
+                            <span className="text-[10px] text-slate-600">No ratings</span>
+                          )}
                         </div>
-                      ) : (
-                        <span className="text-xs text-slate-600 italic">No ratings</span>
+
+                        {/* Desktop quick-actions (icon buttons, lg+) */}
+                        <div className="hidden lg:flex items-center gap-0.5 shrink-0">
+                          <button onClick={() => setEditLab(lab)} title="Edit" className="p-2 rounded-lg hover:bg-white/8 text-slate-500 hover:text-white transition-colors">
+                            <Pencil className="w-3.5 h-3.5" />
+                          </button>
+                          <button onClick={() => setBranchModalLabId(lab.id)} title="Branches" className="p-2 rounded-lg hover:bg-white/8 text-slate-500 hover:text-white transition-colors">
+                            <GitBranch className="w-3.5 h-3.5" />
+                          </button>
+                          <button onClick={() => handleToggleHidden(lab)} disabled={togglingId === lab.id} title={lab.hidden ? "Show" : "Hide"} className="p-2 rounded-lg hover:bg-white/8 text-slate-500 hover:text-white transition-colors">
+                            {lab.hidden ? <Eye className="w-3.5 h-3.5" /> : <EyeOff className="w-3.5 h-3.5" />}
+                          </button>
+                          <button onClick={openStats} title="Stats" className="p-2 rounded-lg hover:bg-emerald-500/15 text-slate-500 hover:text-emerald-400 transition-colors">
+                            <BarChart3 className="w-3.5 h-3.5" />
+                          </button>
+                          <button onClick={() => setCatalogModalLabId(lab.id)} title="Catalog" className="relative p-2 rounded-lg hover:bg-amber-500/15 text-slate-500 hover:text-amber-400 transition-colors">
+                            <Tag className="w-3.5 h-3.5" />
+                            {catalogJob?.labId === lab.id && <span className="absolute top-1 right-1 w-1.5 h-1.5 rounded-full bg-amber-400 animate-pulse" />}
+                          </button>
+                          <button onClick={() => setExpandedLabIntegration(lab.id)} title="Dev / Integration" className="p-2 rounded-lg hover:bg-blue-500/15 text-slate-500 hover:text-blue-400 transition-colors">
+                            <Code2 className="w-3.5 h-3.5" />
+                          </button>
+                          <LabWalletButton labId={lab.id} />
+                          <button onClick={() => handleDeleteLab(lab)} disabled={deletingId === lab.id} title="Delete" className="p-2 rounded-lg hover:bg-red-500/15 text-slate-600 hover:text-red-400 transition-colors">
+                            <Trash2 className="w-3.5 h-3.5" />
+                          </button>
+                        </div>
+
+                        {/* Expand toggle */}
+                        <button onClick={toggleExpand} className="p-2 rounded-lg hover:bg-white/8 text-slate-600 hover:text-slate-300 transition-colors shrink-0" title={isExpanded ? "Collapse" : "Expand"}>
+                          {isExpanded ? <ChevronUp className="w-4 h-4" /> : <ChevronDown className="w-4 h-4" />}
+                        </button>
+                      </div>
+
+                      {/* ── Expanded panel ── */}
+                      {isExpanded && (
+                        <div className="px-4 pt-3 pb-4 border-t border-white/5 space-y-4">
+
+                          {/* Detail grid */}
+                          <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-x-6 gap-y-3 text-xs">
+                            <div className="md:hidden col-span-2 sm:col-span-3">
+                              <p className="text-slate-500 mb-0.5">Email</p>
+                              <p className="text-slate-300 break-all">{lab.email}</p>
+                              {lab.notification_email && <p className="text-emerald-400 mt-0.5 break-all">{lab.notification_email}</p>}
+                            </div>
+                            {phones.length > 0 && (
+                              <div>
+                                <p className="text-slate-500 mb-0.5">Phone{phones.length > 1 ? "s" : ""}</p>
+                                {phones.map((ph, i) => (
+                                  <p key={i} className="text-slate-300 flex items-center gap-1"><Phone className="w-3 h-3 text-slate-600 shrink-0" />{ph}</p>
+                                ))}
+                              </div>
+                            )}
+                            {lab.address && (
+                              <div className="col-span-2 sm:col-span-1">
+                                <p className="text-slate-500 mb-0.5">Address</p>
+                                <p className="text-slate-300 leading-snug">{lab.address}</p>
+                              </div>
+                            )}
+                            <div>
+                              <p className="text-slate-500 mb-0.5">Added</p>
+                              <p className="text-slate-400">{format(new Date(lab.created_at), "dd MMM yyyy")}</p>
+                            </div>
+                            {outstanding > 0 && (
+                              <div className="sm:hidden">
+                                <p className="text-slate-500 mb-0.5">Outstanding</p>
+                                <p className="text-amber-300 font-mono font-bold">₦{outstanding.toLocaleString()}</p>
+                              </div>
+                            )}
+                            {lab.rating_avg != null && (
+                              <div className="sm:hidden">
+                                <p className="text-slate-500 mb-0.5">Rating</p>
+                                <p className="text-amber-400">{lab.rating_avg.toFixed(1)} / 5 ({lab.rating_count})</p>
+                              </div>
+                            )}
+                          </div>
+
+                          {/* Services + certifications */}
+                          {(services.length > 0 || certs.length > 0) && (
+                            <div className="flex flex-wrap gap-4">
+                              {services.length > 0 && (
+                                <div>
+                                  <p className="text-[10px] text-slate-500 uppercase tracking-wider mb-1.5">Services</p>
+                                  <div className="flex flex-wrap gap-1">
+                                    {services.map((c) => (
+                                      <span key={c} className="text-xs bg-medical-900/50 text-medical-300 border border-medical-800/40 px-2 py-0.5 rounded-full">{c}</span>
+                                    ))}
+                                  </div>
+                                </div>
+                              )}
+                              {certs.length > 0 && (
+                                <div>
+                                  <p className="text-[10px] text-slate-500 uppercase tracking-wider mb-1.5">Certifications</p>
+                                  <div className="flex flex-wrap gap-1">
+                                    {certs.map((c) => (
+                                      <span key={c} className="text-xs bg-amber-900/20 text-amber-400 border border-amber-800/30 px-2 py-0.5 rounded-full">{c}</span>
+                                    ))}
+                                  </div>
+                                </div>
+                              )}
+                            </div>
+                          )}
+
+                          {/* Action buttons — mobile & tablet (< lg) */}
+                          <div className="lg:hidden grid grid-cols-2 sm:grid-cols-4 gap-2 pt-1">
+                            <button onClick={() => setEditLab(lab)} className="flex items-center justify-center gap-1.5 px-3 py-2 rounded-xl bg-white/5 hover:bg-white/10 text-slate-300 text-xs font-medium transition-colors">
+                              <Pencil className="w-3.5 h-3.5" />Edit
+                            </button>
+                            <button onClick={() => setBranchModalLabId(lab.id)} className="flex items-center justify-center gap-1.5 px-3 py-2 rounded-xl bg-white/5 hover:bg-white/10 text-slate-300 text-xs font-medium transition-colors">
+                              <GitBranch className="w-3.5 h-3.5" />Branches
+                            </button>
+                            <button onClick={() => handleToggleHidden(lab)} disabled={togglingId === lab.id} className="flex items-center justify-center gap-1.5 px-3 py-2 rounded-xl bg-white/5 hover:bg-white/10 text-slate-300 text-xs font-medium transition-colors">
+                              {lab.hidden ? <Eye className="w-3.5 h-3.5" /> : <EyeOff className="w-3.5 h-3.5" />}
+                              {lab.hidden ? "Show" : "Hide"}
+                            </button>
+                            <button onClick={openStats} className="flex items-center justify-center gap-1.5 px-3 py-2 rounded-xl bg-emerald-500/10 hover:bg-emerald-500/20 text-emerald-400 text-xs font-medium transition-colors">
+                              <BarChart3 className="w-3.5 h-3.5" />Stats
+                            </button>
+                            <button onClick={() => setCatalogModalLabId(lab.id)} className="relative flex items-center justify-center gap-1.5 px-3 py-2 rounded-xl bg-amber-500/10 hover:bg-amber-500/20 text-amber-400 text-xs font-medium transition-colors">
+                              <Tag className="w-3.5 h-3.5" />Catalog
+                              {catalogJob?.labId === lab.id && <span className="absolute -top-0.5 -right-0.5 w-2 h-2 rounded-full bg-amber-400 animate-pulse" />}
+                            </button>
+                            <button onClick={() => setExpandedLabIntegration(lab.id)} className="flex items-center justify-center gap-1.5 px-3 py-2 rounded-xl bg-blue-500/10 hover:bg-blue-500/20 text-blue-400 text-xs font-medium transition-colors">
+                              <Code2 className="w-3.5 h-3.5" />Dev
+                            </button>
+                            <div><LabWalletButton labId={lab.id} /></div>
+                            <button onClick={() => handleDeleteLab(lab)} disabled={deletingId === lab.id} className="flex items-center justify-center gap-1.5 px-3 py-2 rounded-xl bg-red-500/10 hover:bg-red-500/20 text-red-400 text-xs font-medium transition-colors">
+                              <Trash2 className="w-3.5 h-3.5" />Delete
+                            </button>
+                          </div>
+                        </div>
                       )}
                     </div>
-
-                    <div className="mt-4 pt-3 border-t border-white/5">
-                      <div className="grid grid-cols-2 sm:flex sm:flex-wrap gap-2">
-                        <button
-                          onClick={() => setEditLab(lab)}
-                          className="flex items-center justify-center gap-1 px-2.5 py-1.5 rounded-lg bg-white/5 hover:bg-white/10 text-slate-400 hover:text-white text-xs transition-colors"
-                        >
-                          <Pencil className="w-3 h-3" />Edit
-                        </button>
-                        <button
-                          onClick={() => setBranchModalLabId(lab.id)}
-                          className="flex items-center justify-center gap-1 px-2.5 py-1.5 rounded-lg bg-white/5 hover:bg-white/10 text-slate-400 hover:text-white text-xs transition-colors"
-                        >
-                          <GitBranch className="w-3 h-3" />Branches
-                        </button>
-                        <button
-                          onClick={() => handleToggleHidden(lab)}
-                          disabled={togglingId === lab.id}
-                          className="flex items-center justify-center gap-1 px-2.5 py-1.5 rounded-lg bg-white/5 hover:bg-white/10 text-slate-400 hover:text-white text-xs transition-colors"
-                        >
-                          {lab.hidden ? <Eye className="w-3 h-3" /> : <EyeOff className="w-3 h-3" />}
-                          {lab.hidden ? "Show" : "Hide"}
-                        </button>
-                        <button
-                          onClick={() => {
-                            setLabAnalyticsLabId(lab.id);
-                            setLabAnalyticsLabName(lab.name);
-                            setLabAnalytics(null);
-                            setLabAnalyticsMonth("");
-                            setLabAnalyticsStatus("");
-                            setLabAnalyticsTest("");
-                            fetchLabAnalytics(lab.id);
-                          }}
-                          className="flex items-center justify-center gap-1 px-2.5 py-1.5 rounded-lg bg-emerald-500/10 hover:bg-emerald-500/20 text-emerald-400 hover:text-emerald-300 text-xs transition-colors"
-                        >
-                          <BarChart3 className="w-3 h-3" />Stats
-                        </button>
-                        <button
-                          onClick={() => setCatalogModalLabId(lab.id)}
-                          className="relative flex items-center justify-center gap-1 px-2.5 py-1.5 rounded-lg bg-amber-500/10 hover:bg-amber-500/20 text-amber-400 hover:text-amber-300 text-xs transition-colors"
-                        >
-                          <Tag className="w-3 h-3" />Catalog
-                          {catalogJob?.labId === lab.id && (
-                            <span className="absolute -top-1 -right-1 w-2 h-2 rounded-full bg-amber-400 animate-pulse" />
-                          )}
-                        </button>
-                        <button
-                          onClick={() => setExpandedLabIntegration(lab.id)}
-                          className="flex items-center justify-center gap-1 px-2.5 py-1.5 rounded-lg bg-blue-500/10 hover:bg-blue-500/20 text-blue-400 hover:text-blue-300 text-xs transition-colors"
-                        >
-                          <Code2 className="w-3 h-3" />Dev
-                        </button>
-                        <LabWalletButton labId={lab.id} />
-                        <button
-                          onClick={() => handleDeleteLab(lab)}
-                          disabled={deletingId === lab.id}
-                          className="col-span-2 sm:col-span-1 flex items-center justify-center gap-1 px-2.5 py-1.5 rounded-lg bg-red-500/10 hover:bg-red-500/20 text-red-400 hover:text-red-300 text-xs transition-colors sm:ml-auto"
-                        >
-                          <Trash2 className="w-3 h-3" />Delete
-                        </button>
-                      </div>
-                    </div>
-                  </div>
-                ))}
-                {labs.length === 0 && (
-                  <div className="col-span-3 text-center py-16 text-slate-500">No laboratories yet.</div>
-                )}
+                  );
+                })}
               </div>
             )}
           </div>
