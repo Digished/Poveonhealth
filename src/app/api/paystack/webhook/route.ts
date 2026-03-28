@@ -37,9 +37,20 @@ export async function POST(req: NextRequest) {
   const amountNaira = Number(data.amount ?? 0) / 100;
   if (!reference || amountNaira <= 0) return NextResponse.json({ ok: true });
 
-  // Locate the lab wallet — try customer_code first, fall back to DVA account number
+  // Locate the lab wallet — try customer_code first, fall back to DVA account number.
+  // Note: Paystack does NOT always include a dedicated_account object in the payload.
+  // The receiver account number appears in authorization.receiver_bank_account_number
+  // and metadata.receiver_account_number instead.
   const customerCode = (data.customer as Record<string, string> | null)?.customer_code ?? "";
-  const dvaAccNum    = (data.dedicated_account as Record<string, string> | null)?.account_number ?? "";
+  const meta = data.metadata as Record<string, string> | null;
+  const auth = data.authorization as Record<string, string> | null;
+  const dvaAccNum =
+    (data.dedicated_account as Record<string, string> | null)?.account_number ??
+    auth?.receiver_bank_account_number ??
+    meta?.receiver_account_number ??
+    "";
+
+  console.log(`[webhook] lookup — customer_code=${customerCode} dva_acc=${dvaAccNum}`);
 
   let wallet = customerCode
     ? await prisma.labWallet.findUnique({ where: { paystack_customer_id: customerCode } })
@@ -59,8 +70,7 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ ok: true });
   }
 
-  // Sender info lives in authorization for DVA bank transfers, not metadata
-  const auth = data.authorization as Record<string, string> | null;
+  // auth already extracted above for DVA account number lookup
   const senderName = auth?.sender_name ?? null;
   const senderBank = auth?.sender_bank ?? null;
 
