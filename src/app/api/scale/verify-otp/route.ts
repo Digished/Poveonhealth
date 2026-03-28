@@ -19,7 +19,10 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: "Code must be a 6-digit number." }, { status: 400 });
     }
 
-    const marketer = await prisma.marketer.findUnique({ where: { email: normalised } });
+    const marketer = await prisma.marketer.findUnique({
+      where: { email: normalised },
+      select: { id: true, pin_hash: true, suspended: true },
+    });
     if (!marketer) {
       return NextResponse.json({ error: "Invalid or expired code. Please request a new one." }, { status: 401 });
     }
@@ -47,7 +50,8 @@ export async function POST(req: NextRequest) {
       data: { marketer_id: marketer.id, expires_at: expiresAt },
     });
 
-    const res = NextResponse.json({ success: true });
+    const should_create_pin = !marketer.pin_hash;
+    const res = NextResponse.json({ success: true, should_create_pin });
     res.cookies.set("scale_token", session.id, {
       httpOnly: true,
       secure: process.env.NODE_ENV === "production",

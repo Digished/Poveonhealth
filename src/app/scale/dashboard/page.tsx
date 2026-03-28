@@ -9,6 +9,8 @@ import {
   ShieldAlert,
 } from "lucide-react";
 import { PoveonLogo } from "@/components/PoveonLogo";
+import { PrefixSelectInput } from "@/components/ui/PrefixSelectInput";
+import { BankAccountInput } from "@/components/BankAccountInput";
 
 interface Marketer {
   name: string;
@@ -202,35 +204,26 @@ function DoctorCard({ doctor }: { doctor: Doctor }) {
   );
 }
 
-interface CreateFormData {
-  email: string;
-  prefix: string;
-  full_name: string;
-  specialty: string;
-  phone: string;
-  hospital: string;
-  bank_name: string;
-  account_number: string;
-  account_name: string;
-}
-
 function CreateProfessionalModal({ onClose, onCreated }: { onClose: () => void; onCreated: () => void }) {
-  const [form, setForm] = useState<CreateFormData>({
-    email: "", prefix: "Dr.", full_name: "", specialty: "",
-    phone: "", hospital: "", bank_name: "", account_number: "", account_name: "",
-  });
-  const [loading, setLoading] = useState(false);
-  const [error, setError] = useState("");
+  const [email,       setEmail]       = useState("");
+  const [prefix,      setPrefix]      = useState("Dr.");
+  const [fullName,    setFullName]    = useState("");
+  const [specialty,   setSpecialty]   = useState("");
+  const [phone,       setPhone]       = useState("");
+  const [hospital,    setHospital]    = useState("");
+  // Bank fields — bankCode used only for Paystack verification, not stored
+  const [bankName,      setBankName]      = useState("");
+  const [bankCode,      setBankCode]      = useState("");
+  const [accountNumber, setAccountNumber] = useState("");
+  const [accountName,   setAccountName]   = useState("");
 
-  function set(field: keyof CreateFormData, value: string) {
-    setForm((prev) => ({ ...prev, [field]: value }));
-    setError("");
-  }
+  const [loading, setLoading] = useState(false);
+  const [error,   setError]   = useState("");
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
-    if (!form.email.trim())     { setError("Email is required."); return; }
-    if (!form.full_name.trim()) { setError("Full name is required."); return; }
+    if (!email.trim())    { setError("Email is required."); return; }
+    if (!fullName.trim()) { setError("Full name is required."); return; }
 
     setLoading(true);
     try {
@@ -238,15 +231,15 @@ function CreateProfessionalModal({ onClose, onCreated }: { onClose: () => void; 
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          email:          form.email.trim(),
-          prefix:         form.prefix.trim()         || null,
-          full_name:      form.full_name.trim(),
-          specialty:      form.specialty.trim()       || null,
-          phone:          form.phone.trim()           || null,
-          hospitals:      form.hospital.trim() ? [form.hospital.trim()] : [],
-          bank_name:      form.bank_name.trim()       || null,
-          account_number: form.account_number.trim()  || null,
-          account_name:   form.account_name.trim()    || null,
+          email:          email.trim(),
+          prefix:         prefix          || null,
+          full_name:      fullName.trim(),
+          specialty:      specialty.trim()       || null,
+          phone:          phone.trim()           || null,
+          hospitals:      hospital.trim() ? [hospital.trim()] : [],
+          bank_name:      bankName               || null,
+          account_number: accountNumber          || null,
+          account_name:   accountName            || null,
         }),
       });
       const data = await res.json();
@@ -269,13 +262,10 @@ function CreateProfessionalModal({ onClose, onCreated }: { onClose: () => void; 
         <div className="flex items-center justify-between px-5 py-4 border-b border-slate-100 shrink-0">
           <div>
             <p className="text-sm font-bold text-slate-800">Add Professional</p>
-            <p className="text-xs text-slate-400 mt-0.5">Create a profile for a doctor you work with</p>
+            <p className="text-xs text-slate-400 mt-0.5">Create a profile for a medical professional you work with</p>
           </div>
-          <button
-            type="button"
-            onClick={onClose}
-            className="w-8 h-8 rounded-xl bg-slate-100 hover:bg-slate-200 flex items-center justify-center transition text-slate-500"
-          >
+          <button type="button" onClick={onClose}
+            className="w-8 h-8 rounded-xl bg-slate-100 hover:bg-slate-200 flex items-center justify-center transition text-slate-500">
             <X className="w-4 h-4" />
           </button>
         </div>
@@ -287,68 +277,55 @@ function CreateProfessionalModal({ onClose, onCreated }: { onClose: () => void; 
             {/* Email */}
             <div>
               <label className={labelCls}>Email Address <span className="text-red-400">*</span></label>
-              <input type="email" placeholder="doctor@clinic.com" value={form.email}
-                onChange={(e) => set("email", e.target.value)} className={inputCls} />
+              <input type="email" placeholder="doctor@clinic.com" value={email}
+                onChange={(e) => { setEmail(e.target.value); setError(""); }} className={inputCls} />
             </div>
 
-            {/* Prefix + Name */}
+            {/* Title + Name */}
             <div>
               <label className={labelCls}>Title &amp; Full Name <span className="text-red-400">*</span></label>
               <div className="flex gap-2">
-                <select
-                  value={form.prefix}
-                  onChange={(e) => set("prefix", e.target.value)}
-                  className="w-24 px-2 py-2.5 rounded-xl border border-slate-200 bg-white text-slate-800 text-sm focus:outline-none focus:ring-2 focus:ring-emerald-400 transition"
-                >
-                  {["Dr.", "Prof.", "Nurse", "Mr.", "Mrs.", "Ms.", ""].map((p) => (
-                    <option key={p} value={p}>{p || "—"}</option>
-                  ))}
-                </select>
-                <input type="text" placeholder="Full name" value={form.full_name}
-                  onChange={(e) => set("full_name", e.target.value)} className={`${inputCls} flex-1`} />
+                <PrefixSelectInput value={prefix} onChange={setPrefix} />
+                <input type="text" placeholder="Full name" value={fullName}
+                  onChange={(e) => { setFullName(e.target.value); setError(""); }}
+                  className={`${inputCls} flex-1`} />
               </div>
             </div>
 
             {/* Specialty */}
             <div>
               <label className={labelCls}>Specialty</label>
-              <input type="text" placeholder="e.g. Cardiologist, General Practitioner" value={form.specialty}
-                onChange={(e) => set("specialty", e.target.value)} className={inputCls} />
+              <input type="text" placeholder="e.g. Cardiologist, General Practitioner" value={specialty}
+                onChange={(e) => setSpecialty(e.target.value)} className={inputCls} />
             </div>
 
             {/* Phone */}
             <div>
               <label className={labelCls}>Phone Number</label>
-              <input type="tel" placeholder="+234 800 123 4567" value={form.phone}
-                onChange={(e) => set("phone", e.target.value)} className={inputCls} />
+              <input type="tel" placeholder="+234 800 123 4567" value={phone}
+                onChange={(e) => setPhone(e.target.value)} className={inputCls} />
             </div>
 
             {/* Hospital */}
             <div>
               <label className={labelCls}>Hospital / Clinic</label>
-              <input type="text" placeholder="Hospital or clinic name" value={form.hospital}
-                onChange={(e) => set("hospital", e.target.value)} className={inputCls} />
+              <input type="text" placeholder="Hospital or clinic name" value={hospital}
+                onChange={(e) => setHospital(e.target.value)} className={inputCls} />
             </div>
 
-            {/* Bank details */}
-            <div className="rounded-2xl border border-slate-100 bg-slate-50/60 p-3 space-y-3">
-              <p className="text-xs font-semibold text-slate-500 uppercase tracking-wider">Bank Details</p>
-              <p className="text-xs text-slate-400 -mt-1">Doctor will confirm these when they claim their profile.</p>
-              <div>
-                <label className={labelCls}>Bank Name</label>
-                <input type="text" placeholder="e.g. GTBank" value={form.bank_name}
-                  onChange={(e) => set("bank_name", e.target.value)} className={inputCls} />
-              </div>
-              <div>
-                <label className={labelCls}>Account Number</label>
-                <input type="text" placeholder="10-digit account number" value={form.account_number}
-                  onChange={(e) => set("account_number", e.target.value)} className={inputCls} />
-              </div>
-              <div>
-                <label className={labelCls}>Account Name</label>
-                <input type="text" placeholder="Account holder name" value={form.account_name}
-                  onChange={(e) => set("account_name", e.target.value)} className={inputCls} />
-              </div>
+            {/* Bank details — with full NUBAN verification */}
+            <div className="rounded-2xl border border-slate-100 bg-slate-50/60 p-3 space-y-1">
+              <p className="text-xs font-semibold text-slate-500 uppercase tracking-wider mb-1">Bank Details</p>
+              <p className="text-xs text-slate-400 mb-3">Doctor will confirm these when they claim their profile.</p>
+              <BankAccountInput
+                bankName={bankName}
+                bankCode={bankCode}
+                accountNumber={accountNumber}
+                accountName={accountName}
+                onBankChange={(name, code) => { setBankName(name); setBankCode(code); }}
+                onAccountNumberChange={setAccountNumber}
+                onAccountNameChange={setAccountName}
+              />
             </div>
 
             {error && (
@@ -357,11 +334,8 @@ function CreateProfessionalModal({ onClose, onCreated }: { onClose: () => void; 
           </div>
 
           <div className="px-5 pb-5 pt-1 shrink-0 border-t border-slate-100">
-            <button
-              type="submit"
-              disabled={loading}
-              className="w-full flex items-center justify-center gap-2 bg-emerald-600 hover:bg-emerald-700 disabled:opacity-60 text-white font-semibold text-sm px-4 py-3 rounded-xl transition shadow-md"
-            >
+            <button type="submit" disabled={loading}
+              className="w-full flex items-center justify-center gap-2 bg-emerald-600 hover:bg-emerald-700 disabled:opacity-60 text-white font-semibold text-sm px-4 py-3 rounded-xl transition shadow-md">
               {loading ? <Loader2 className="w-4 h-4 animate-spin" /> : <Plus className="w-4 h-4" />}
               {loading ? "Creating..." : "Add Professional"}
             </button>

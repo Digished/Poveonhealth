@@ -238,6 +238,7 @@ model Marketer {
   email      String   @unique
   phone      String?
   code       String   @unique // Short unique code used in referral links, e.g. "AMAKA001"
+  pin_hash   String?  // SHA-256 of 4-digit PIN; null = no PIN set
   suspended  Boolean  @default(false)
   created_at DateTime @default(now())
 
