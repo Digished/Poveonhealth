@@ -24,7 +24,7 @@ export async function POST(req: NextRequest) {
   if (marketer.suspended) return NextResponse.json({ error: "Account suspended" }, { status: 403 });
 
   const body = await req.json();
-  const { email, full_name, prefix, specialty, phone, hospitals, bank_name, account_number, account_name } = body;
+  const { email, full_name, prefix, phone, hospitals, bank_name, account_number, account_name } = body;
 
   if (!email?.trim())     return NextResponse.json({ error: "Email is required." }, { status: 400 });
   if (!full_name?.trim()) return NextResponse.json({ error: "Full name is required." }, { status: 400 });
@@ -47,7 +47,6 @@ export async function POST(req: NextRequest) {
       email:                  normalised,
       prefix:                 prefix?.trim()          || null,
       full_name:              full_name.trim(),
-      specialty:              specialty?.trim()        || null,
       phone:                  phone?.trim()            || null,
       hospitals:              Array.isArray(hospitals) ? hospitals.filter(Boolean) : [],
       bank_name:              bank_name?.trim()        || null,
@@ -59,7 +58,6 @@ export async function POST(req: NextRequest) {
     update: {
       prefix:                 prefix?.trim()          || null,
       full_name:              full_name.trim(),
-      specialty:              specialty?.trim()        || null,
       phone:                  phone?.trim()            || null,
       hospitals:              Array.isArray(hospitals) ? hospitals.filter(Boolean) : [],
       bank_name:              bank_name?.trim()        || null,

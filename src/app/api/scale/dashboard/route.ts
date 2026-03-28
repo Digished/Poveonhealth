@@ -5,7 +5,6 @@ type DoctorProfile = {
   email:     string;
   prefix:    string | null;
   full_name: string | null;
-  specialty: string | null;
   phone:     string | null;
   hospitals: string[];
   claimed:   boolean;
@@ -78,7 +77,6 @@ export async function GET(req: NextRequest) {
           email: true,
           prefix: true,
           full_name: true,
-          specialty: true,
           phone: true,
           hospitals: true,
           claimed: true,
@@ -116,7 +114,6 @@ export async function GET(req: NextRequest) {
         doctor_name:     displayName,
         doctor_phone:    profile?.phone    ?? entry?.doctor_phone    ?? null,
         doctor_hospital: profile?.hospitals?.[0] ?? entry?.doctor_hospital ?? null,
-        specialty:       profile?.specialty ?? null,
         claimed:         profile?.claimed  ?? true,
         total_requests:  entry?.requests.length ?? 0,
         linked_since:    link.created_at,

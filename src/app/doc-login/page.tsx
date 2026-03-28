@@ -7,7 +7,7 @@ import {
 } from "lucide-react";
 import { PoveonLogo } from "@/components/PoveonLogo";
 import { HospitalTagInput } from "@/components/ui/HospitalTagInput";
-import { PrefixSelectInput } from "@/components/ui/PrefixSelectInput";
+import { PrefixSelect } from "@/components/PrefixSelect";
 import { useRouter, useSearchParams } from "next/navigation";
 
 type Stage = "email" | "pin" | "otp" | "claim" | "onboarding" | "create-pin";
@@ -143,7 +143,6 @@ function ClaimSteps({ stage }: { stage: Stage }) {
 interface PrefilledProfile {
   prefix:         string | null;
   full_name:      string | null;
-  specialty:      string | null;
   phone:          string | null;
   hospitals:      string[];
   bank_name:      string | null;
@@ -176,9 +175,8 @@ function DocLoginInner() {
   // Claim form fields (pre-filled by marketer, doctor can edit)
   const [claimPrefix,        setClaimPrefix]        = useState("Dr.");
   const [claimName,          setClaimName]          = useState("");
-  const [claimSpecialty,     setClaimSpecialty]     = useState("");
   const [claimPhone,         setClaimPhone]         = useState("");
-  const [claimHospitals,     setClaimHospitals]     = useState<string[]>([]);
+  const [claimHospital,      setClaimHospital]      = useState("");
   const [claimBankName,      setClaimBankName]      = useState("");
   const [claimAccountNumber, setClaimAccountNumber] = useState("");
   const [claimAccountName,   setClaimAccountName]   = useState("");
@@ -231,9 +229,8 @@ function DocLoginInner() {
         const p = data.profile as PrefilledProfile;
         setClaimPrefix(p.prefix ?? "Dr.");
         setClaimName(p.full_name ?? "");
-        setClaimSpecialty(p.specialty ?? "");
         setClaimPhone(p.phone ?? "");
-        setClaimHospitals(p.hospitals ?? []);
+        setClaimHospital(p.hospitals?.[0] ?? "");
         setClaimBankName(p.bank_name ?? "");
         setClaimAccountNumber(p.account_number ?? "");
         setClaimAccountName(p.account_name ?? "");
@@ -349,9 +346,8 @@ function DocLoginInner() {
           body: JSON.stringify({
             prefix:         claimPrefix   || null,
             full_name:      claimName.trim(),
-            specialty:      claimSpecialty.trim() || null,
             phone:          claimPhone.trim()     || null,
-            hospitals:      claimHospitals,
+            hospitals:      claimHospital.trim() ? [claimHospital.trim()] : [],
             bank_name:      claimBankName.trim()        || null,
             account_number: claimAccountNumber.trim()   || null,
             account_name:   claimAccountName.trim()     || null,
@@ -540,19 +536,12 @@ function DocLoginInner() {
               {/* Prefix + Name */}
               <div>
                 <label className={labelCls}>Title &amp; Full Name <span className="text-red-400">*</span></label>
-                <div className="flex gap-2">
-                  <PrefixSelectInput value={claimPrefix} onChange={setClaimPrefix} />
+                <PrefixSelect value={claimPrefix} onChange={setClaimPrefix} />
+                <div className="mt-2">
                   <input type="text" placeholder="Full name" value={claimName}
                     onChange={(e) => { setClaimName(e.target.value); setError(""); }}
-                    className={`${inputCls} flex-1`} />
+                    className={inputCls} />
                 </div>
-              </div>
-
-              {/* Specialty */}
-              <div>
-                <label className={labelCls}>Specialty</label>
-                <input type="text" placeholder="e.g. Cardiologist" value={claimSpecialty}
-                  onChange={(e) => setClaimSpecialty(e.target.value)} className={inputCls} />
               </div>
 
               {/* Phone */}
@@ -565,7 +554,8 @@ function DocLoginInner() {
               {/* Hospital */}
               <div>
                 <label className={labelCls}>Hospital / Clinic</label>
-                <HospitalTagInput value={claimHospitals} onChange={setClaimHospitals} />
+                <input type="text" placeholder="e.g. Lagos Teaching Hospital" value={claimHospital}
+                  onChange={(e) => setClaimHospital(e.target.value)} className={inputCls} />
               </div>
 
               {/* Bank details */}
@@ -659,14 +649,14 @@ function DocLoginInner() {
               {/* Prefix + Name */}
               <div>
                 <label className="block text-xs font-medium text-slate-600 mb-1">Title &amp; Full Name <span className="text-red-400">*</span></label>
-                <div className="flex gap-2">
-                  <PrefixSelectInput value={obPrefix} onChange={setObPrefix} />
+                <PrefixSelect value={obPrefix} onChange={setObPrefix} />
+                <div className="mt-2">
                   <input
                     type="text"
                     placeholder="Full name"
                     value={obName}
                     onChange={(e) => { setObName(e.target.value); setError(""); }}
-                    className="flex-1 px-4 py-2.5 rounded-xl border border-slate-200 bg-white text-slate-800 placeholder-slate-400 text-sm focus:outline-none focus:ring-2 focus:ring-medical-400 focus:border-transparent transition"
+                    className="w-full px-4 py-2.5 rounded-xl border border-slate-200 bg-white text-slate-800 placeholder-slate-400 text-sm focus:outline-none focus:ring-2 focus:ring-medical-400 focus:border-transparent transition"
                   />
                 </div>
               </div>

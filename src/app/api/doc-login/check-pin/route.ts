@@ -14,7 +14,6 @@ export async function POST(req: NextRequest) {
         claimed: true,
         prefix: true,
         full_name: true,
-        specialty: true,
         phone: true,
         hospitals: true,
         bank_name: true,
@@ -31,7 +30,6 @@ export async function POST(req: NextRequest) {
         profile: {
           prefix:         profile.prefix,
           full_name:      profile.full_name,
-          specialty:      profile.specialty,
           phone:          profile.phone,
           hospitals:      profile.hospitals,
           bank_name:      profile.bank_name,

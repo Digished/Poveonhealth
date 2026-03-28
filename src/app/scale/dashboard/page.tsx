@@ -9,7 +9,7 @@ import {
   ShieldAlert,
 } from "lucide-react";
 import { PoveonLogo } from "@/components/PoveonLogo";
-import { PrefixSelectInput } from "@/components/ui/PrefixSelectInput";
+import { PrefixSelect } from "@/components/PrefixSelect";
 import { BankAccountInput } from "@/components/BankAccountInput";
 
 interface Marketer {
@@ -33,7 +33,6 @@ interface Doctor {
   doctor_name: string;
   doctor_phone: string | null;
   doctor_hospital: string | null;
-  specialty: string | null;
   claimed: boolean;
   total_requests: number;
   linked_since: string;
@@ -130,9 +129,6 @@ function DoctorCard({ doctor }: { doctor: Doctor }) {
               </span>
             )}
           </div>
-          {doctor.specialty && (
-            <p className="text-xs text-medical-600 font-medium mt-0.5">{doctor.specialty}</p>
-          )}
           {doctor.doctor_hospital && (
             <div className="flex items-center gap-1 mt-0.5">
               <Building2 className="w-3 h-3 text-slate-400 shrink-0" />
@@ -208,7 +204,6 @@ function CreateProfessionalModal({ onClose, onCreated }: { onClose: () => void; 
   const [email,       setEmail]       = useState("");
   const [prefix,      setPrefix]      = useState("Dr.");
   const [fullName,    setFullName]    = useState("");
-  const [specialty,   setSpecialty]   = useState("");
   const [phone,       setPhone]       = useState("");
   const [hospital,    setHospital]    = useState("");
   // Bank fields — bankCode used only for Paystack verification, not stored
@@ -234,7 +229,6 @@ function CreateProfessionalModal({ onClose, onCreated }: { onClose: () => void; 
           email:          email.trim(),
           prefix:         prefix          || null,
           full_name:      fullName.trim(),
-          specialty:      specialty.trim()       || null,
           phone:          phone.trim()           || null,
           hospitals:      hospital.trim() ? [hospital.trim()] : [],
           bank_name:      bankName               || null,
@@ -284,19 +278,12 @@ function CreateProfessionalModal({ onClose, onCreated }: { onClose: () => void; 
             {/* Title + Name */}
             <div>
               <label className={labelCls}>Title &amp; Full Name <span className="text-red-400">*</span></label>
-              <div className="flex gap-2">
-                <PrefixSelectInput value={prefix} onChange={setPrefix} />
+              <PrefixSelect value={prefix} onChange={setPrefix} />
+              <div className="mt-2">
                 <input type="text" placeholder="Full name" value={fullName}
                   onChange={(e) => { setFullName(e.target.value); setError(""); }}
-                  className={`${inputCls} flex-1`} />
+                  className={inputCls} />
               </div>
-            </div>
-
-            {/* Specialty */}
-            <div>
-              <label className={labelCls}>Specialty</label>
-              <input type="text" placeholder="e.g. Cardiologist, General Practitioner" value={specialty}
-                onChange={(e) => setSpecialty(e.target.value)} className={inputCls} />
             </div>
 
             {/* Phone */}
@@ -388,7 +375,6 @@ export default function ScaleDashboardPage() {
         (d) =>
           d.doctor_name.toLowerCase().includes(search.toLowerCase()) ||
           d.doctor_hospital?.toLowerCase().includes(search.toLowerCase()) ||
-          d.specialty?.toLowerCase().includes(search.toLowerCase()) ||
           d.doctor_email.toLowerCase().includes(search.toLowerCase())
       )
     : doctors;
@@ -461,7 +447,7 @@ export default function ScaleDashboardPage() {
           <div className="relative">
             <input
               type="text"
-              placeholder="Search by name, specialty, or hospital..."
+              placeholder="Search by name, hospital, or email..."
               value={search}
               onChange={(e) => setSearch(e.target.value)}
               className="w-full px-4 py-3 rounded-xl border border-slate-200 bg-white text-slate-800 placeholder-slate-400 text-sm focus:outline-none focus:ring-2 focus:ring-emerald-400 focus:border-transparent transition"
