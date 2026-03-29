@@ -11,7 +11,7 @@ async function verifyAdmin() {
   return adminRecord ? user : null;
 }
 
-/** GET /api/admin/hospitals — list all hospitals */
+/** GET /api/admin/hospitals — list all hospitals with doctor counts */
 export async function GET(req: NextRequest) {
   const admin = await verifyAdmin();
   if (!admin) return NextResponse.json({ error: "Forbidden" }, { status: 403 });
@@ -24,7 +24,21 @@ export async function GET(req: NextRequest) {
     orderBy: { name: "asc" },
   });
 
-  return NextResponse.json({ success: true, hospitals });
+  // Count how many doctor profiles list each hospital
+  const allProfiles = await prisma.doctorProfile.findMany({ select: { hospitals: true } });
+  const countMap = new Map<string, number>();
+  for (const p of allProfiles) {
+    for (const h of p.hospitals) {
+      countMap.set(h, (countMap.get(h) ?? 0) + 1);
+    }
+  }
+
+  const hospitalsWithCount = hospitals.map((h) => ({
+    ...h,
+    doctor_count: countMap.get(h.name) ?? 0,
+  }));
+
+  return NextResponse.json({ success: true, hospitals: hospitalsWithCount });
 }
 
 /** POST /api/admin/hospitals — create a hospital */

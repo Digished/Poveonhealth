@@ -489,7 +489,7 @@ interface DoctorProfileData {
   prefix: string | null;
   full_name: string | null;
   phone: string | null;
-  hospital: string | null;
+  hospitals: string[];
   bank_name: string | null;
   account_number: string | null;
   account_name: string | null;
@@ -1020,7 +1020,7 @@ function DocProfileSection({
   onProfileUpdate: (p: DoctorProfileData) => void;
 }) {
   const [profile, setProfile] = useState<DoctorProfileData>(
-    initialProfile ?? { prefix: null, full_name: null, phone: null, hospital: null, bank_name: null, account_number: null, account_name: null }
+    initialProfile ?? { prefix: null, full_name: null, phone: null, hospitals: [], bank_name: null, account_number: null, account_name: null }
   );
   const [onboardStep, setOnboardStep] = useState<OnboardStep>(1);
   const [saving, setSaving] = useState(false);
@@ -1034,7 +1034,7 @@ function DocProfileSection({
   const [localPrefix, setLocalPrefix] = useState(profile.prefix ?? "");
   const [localName, setLocalName] = useState(profile.full_name ?? "");
   const [localPhone, setLocalPhone] = useState(profile.phone ?? "");
-  const [localHospitals, setLocalHospitals] = useState<string[]>(profile.hospital ? [profile.hospital] : []);
+  const [localHospitals, setLocalHospitals] = useState<string[]>(profile.hospitals ?? []);
   const [localBankName, setLocalBankName] = useState(profile.bank_name ?? "");
   const [localBankCode, setLocalBankCode] = useState("");
   const [localAccountNumber, setLocalAccountNumber] = useState(profile.account_number ?? "");
@@ -1079,7 +1079,7 @@ function DocProfileSection({
   }
 
   async function saveHospital() {
-    const ok = await saveFields({ hospital: localHospitals[0] || null });
+    const ok = await saveFields({ hospitals: localHospitals });
     if (ok) {
       setEditingHospital(false);
       if (isOnboarding) setOnboardStep(3);
@@ -1094,7 +1094,7 @@ function DocProfileSection({
 
   // Onboarding progress
   const step1Done = !!(profile.full_name);
-  const step2Done = !!(profile.hospital);
+  const step2Done = profile.hospitals.length > 0;
   const step3Done = !!(profile.bank_name && profile.account_number);
   const allDone = step1Done && step2Done && step3Done;
 
@@ -1215,7 +1215,7 @@ function DocProfileSection({
           )}
           {step2Done && !editingHospital && (
             <div className="px-4 pb-3 text-xs text-slate-600 border-t border-slate-50 pt-2">
-              <span className="text-slate-400">Hospital:</span> {profile.hospital}
+              <span className="text-slate-400">Hospital:</span> {profile.hospitals.join(", ")}
             </div>
           )}
         </div>
@@ -1361,7 +1361,7 @@ function DocProfileSection({
         </div>
         {!editingHospital ? (
           <div className="px-4 py-3 text-xs text-slate-600">
-            <span className="text-slate-400 w-16 inline-block">Hospital</span>{profile.hospital || "—"}
+            <span className="text-slate-400 w-16 inline-block">Hospital</span>{profile.hospitals.length > 0 ? profile.hospitals.join(", ") : "—"}
           </div>
         ) : (
           <div className="px-4 pb-4 pt-3 space-y-3">

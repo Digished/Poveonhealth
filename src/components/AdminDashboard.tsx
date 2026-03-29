@@ -21,7 +21,7 @@ import { format } from "date-fns";
 import { createClient } from "@/lib/supabase/client"; // still used for auth sign-out
 import { useRouter } from "next/navigation";
 
-type AdminTab = "metrics" | "requests" | "referrals" | "labs" | "analytics" | "marketers" | "settings" | "transactions" | "knowledge-base" | "users";
+type AdminTab = "metrics" | "requests" | "referrals" | "labs" | "analytics" | "marketers" | "settings" | "transactions" | "knowledge-base" | "users" | "hospitals";
 
 interface ReferralGroup {
   key: string; // doctor_email
@@ -463,6 +463,7 @@ const [catalogModalLabId, setCatalogModalLabId] = useState<string | null>(null);
             { key: "transactions" as AdminTab, label: "Transactions", icon: <CreditCard className="w-4 h-4" /> },
             { key: "knowledge-base" as AdminTab, label: "Knowledge Base", icon: <BookOpen className="w-4 h-4" /> },
             { key: "users" as AdminTab, label: "Users", icon: <UserCircle className="w-4 h-4" /> },
+            { key: "hospitals" as AdminTab, label: "Hospitals", icon: <Building2 className="w-4 h-4" /> },
           ];
           const current = tabs.find((t) => t.key === activeTab) ?? tabs[0];
           return (
@@ -1405,6 +1406,9 @@ const [catalogModalLabId, setCatalogModalLabId] = useState<string | null>(null);
 
         {/* ── USERS ── */}
         {activeTab === "users" && <AdminUsersTab />}
+
+        {/* ── HOSPITALS ── */}
+        {activeTab === "hospitals" && <AdminHospitalsTab />}
 
       </div>
 
@@ -4267,6 +4271,187 @@ function AdminUsersTab() {
           ))}
         </div>
       )}
+    </div>
+  );
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// AdminHospitalsTab — full CRUD for the hospitals/clinics list
+// ─────────────────────────────────────────────────────────────────────────────
+interface HospitalRow { id: string; name: string; city: string | null; is_active: boolean; doctor_count: number }
+
+function AdminHospitalsTab() {
+  const [hospitals, setHospitals] = useState<HospitalRow[]>([]);
+  const [loading, setLoading]     = useState(true);
+  const [search, setSearch]       = useState("");
+  const [creating, setCreating]   = useState(false);
+  const [newName, setNewName]     = useState("");
+  const [newCity, setNewCity]     = useState("");
+  const [saving, setSaving]       = useState(false);
+  const [editId, setEditId]       = useState<string | null>(null);
+  const [editName, setEditName]   = useState("");
+  const [editCity, setEditCity]   = useState("");
+
+  async function load() {
+    setLoading(true);
+    try {
+      const res = await fetch("/api/admin/hospitals");
+      const d = await res.json();
+      if (d.success) setHospitals(d.hospitals);
+    } finally { setLoading(false); }
+  }
+
+  useEffect(() => { load(); }, []);
+
+  async function handleCreate(e: React.FormEvent) {
+    e.preventDefault();
+    if (!newName.trim()) return;
+    setSaving(true);
+    try {
+      const res = await fetch("/api/admin/hospitals", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ name: newName.trim(), city: newCity.trim() || null }),
+      });
+      const d = await res.json();
+      if (d.success) { setNewName(""); setNewCity(""); setCreating(false); load(); }
+      else toast.error(d.error ?? "Failed to create");
+    } finally { setSaving(false); }
+  }
+
+  async function handleEdit(id: string) {
+    setSaving(true);
+    try {
+      const res = await fetch(`/api/admin/hospitals/${id}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ name: editName.trim(), city: editCity.trim() || null }),
+      });
+      const d = await res.json();
+      if (d.success) { setEditId(null); load(); }
+      else toast.error(d.error ?? "Failed to update");
+    } finally { setSaving(false); }
+  }
+
+  async function handleToggle(id: string, current: boolean) {
+    await fetch(`/api/admin/hospitals/${id}`, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ is_active: !current }),
+    });
+    load();
+  }
+
+  async function handleDelete(id: string, name: string) {
+    if (!confirm(`Delete "${name}"? This cannot be undone.`)) return;
+    await fetch(`/api/admin/hospitals/${id}`, { method: "DELETE" });
+    load();
+  }
+
+  const filtered = hospitals.filter((h) =>
+    !search.trim() ||
+    h.name.toLowerCase().includes(search.toLowerCase()) ||
+    (h.city ?? "").toLowerCase().includes(search.toLowerCase())
+  );
+
+  const inputCls = "w-full px-3 py-2 rounded-xl border border-white/10 bg-white/5 text-white placeholder-slate-500 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500/50 transition";
+
+  return (
+    <div className="space-y-4 max-w-2xl">
+      <div className="flex items-center justify-between gap-3 flex-wrap">
+        <div>
+          <h2 className="text-base font-bold text-white">Hospitals &amp; Clinics</h2>
+          <p className="text-xs text-slate-400 mt-0.5">Manage the list doctors can select from</p>
+        </div>
+        <button type="button" onClick={() => setCreating(true)}
+          className="flex items-center gap-1.5 text-xs font-semibold bg-blue-600 hover:bg-blue-700 text-white px-3 py-2 rounded-xl transition">
+          <Plus className="w-3.5 h-3.5" /> Add Hospital
+        </button>
+      </div>
+
+      {/* Search */}
+      <div className="relative">
+        <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-slate-500 pointer-events-none" />
+        <input type="text" placeholder="Search hospitals…" value={search}
+          onChange={(e) => setSearch(e.target.value)}
+          className="w-full pl-9 pr-3 py-2.5 rounded-xl border border-white/10 bg-white/5 text-white placeholder-slate-500 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500/50 transition" />
+      </div>
+
+      {/* Create form */}
+      {creating && (
+        <form onSubmit={handleCreate} className="bg-white/5 border border-white/10 rounded-2xl p-4 space-y-3">
+          <p className="text-xs font-semibold text-slate-300 uppercase tracking-wider">New Hospital / Clinic</p>
+          <input type="text" placeholder="Hospital name *" value={newName} onChange={(e) => setNewName(e.target.value)} className={inputCls} required />
+          <input type="text" placeholder="City (optional)" value={newCity} onChange={(e) => setNewCity(e.target.value)} className={inputCls} />
+          <div className="flex gap-2">
+            <button type="submit" disabled={saving || !newName.trim()}
+              className="flex-1 flex items-center justify-center gap-1.5 bg-blue-600 hover:bg-blue-700 disabled:opacity-50 text-white text-xs font-semibold py-2 rounded-xl transition">
+              {saving ? <RefreshCw className="w-3.5 h-3.5 animate-spin" /> : <Check className="w-3.5 h-3.5" />} Save
+            </button>
+            <button type="button" onClick={() => { setCreating(false); setNewName(""); setNewCity(""); }}
+              className="px-4 text-xs font-semibold text-slate-400 hover:text-white bg-white/5 rounded-xl transition">
+              Cancel
+            </button>
+          </div>
+        </form>
+      )}
+
+      {/* List */}
+      {loading ? (
+        <div className="space-y-2">
+          {[1,2,3].map((i) => <div key={i} className="h-14 bg-white/5 rounded-2xl animate-pulse" />)}
+        </div>
+      ) : (
+        <div className="rounded-2xl border border-white/8 overflow-hidden divide-y divide-white/5">
+          {filtered.length === 0 && (
+            <div className="py-10 text-center text-sm text-slate-500">No hospitals found</div>
+          )}
+          {filtered.map((h) => (
+            <div key={h.id} className={`flex items-center gap-3 px-4 py-3 ${!h.is_active ? "opacity-50" : ""}`}>
+              {editId === h.id ? (
+                <div className="flex-1 flex gap-2 flex-wrap">
+                  <input value={editName} onChange={(e) => setEditName(e.target.value)}
+                    className="flex-1 min-w-0 px-2 py-1.5 rounded-lg border border-white/10 bg-white/5 text-white text-sm focus:outline-none focus:ring-2 focus:ring-blue-500/50" />
+                  <input value={editCity} onChange={(e) => setEditCity(e.target.value)} placeholder="City"
+                    className="w-32 px-2 py-1.5 rounded-lg border border-white/10 bg-white/5 text-white text-sm focus:outline-none focus:ring-2 focus:ring-blue-500/50" />
+                  <button onClick={() => handleEdit(h.id)} disabled={saving}
+                    className="px-3 py-1.5 text-xs font-semibold bg-blue-600 hover:bg-blue-700 text-white rounded-lg transition">Save</button>
+                  <button onClick={() => setEditId(null)}
+                    className="px-3 py-1.5 text-xs font-semibold text-slate-400 hover:text-white bg-white/5 rounded-lg transition">Cancel</button>
+                </div>
+              ) : (
+                <>
+                  <div className="flex-1 min-w-0">
+                    <p className="text-sm font-semibold text-white truncate">{h.name}</p>
+                    <div className="flex items-center gap-2 mt-0.5">
+                      {h.city && <span className="text-xs text-slate-400">{h.city}</span>}
+                      <span className="text-xs text-slate-500">{h.doctor_count} doctor{h.doctor_count !== 1 ? "s" : ""}</span>
+                      {!h.is_active && <span className="text-xs text-amber-500">inactive</span>}
+                    </div>
+                  </div>
+                  <div className="flex items-center gap-1 shrink-0">
+                    <button onClick={() => { setEditId(h.id); setEditName(h.name); setEditCity(h.city ?? ""); }}
+                      className="w-7 h-7 rounded-lg flex items-center justify-center text-slate-400 hover:text-white hover:bg-white/10 transition">
+                      <Pencil className="w-3.5 h-3.5" />
+                    </button>
+                    <button onClick={() => handleToggle(h.id, h.is_active)}
+                      className="w-7 h-7 rounded-lg flex items-center justify-center text-slate-400 hover:text-white hover:bg-white/10 transition"
+                      title={h.is_active ? "Deactivate" : "Activate"}>
+                      {h.is_active ? <EyeOff className="w-3.5 h-3.5" /> : <Eye className="w-3.5 h-3.5" />}
+                    </button>
+                    <button onClick={() => handleDelete(h.id, h.name)}
+                      className="w-7 h-7 rounded-lg flex items-center justify-center text-slate-400 hover:text-red-400 hover:bg-red-500/10 transition">
+                      <Trash2 className="w-3.5 h-3.5" />
+                    </button>
+                  </div>
+                </>
+              )}
+            </div>
+          ))}
+        </div>
+      )}
+
+      <p className="text-xs text-slate-500">{hospitals.length} hospital{hospitals.length !== 1 ? "s" : ""} total · {hospitals.filter(h => h.is_active).length} active</p>
     </div>
   );
 }
