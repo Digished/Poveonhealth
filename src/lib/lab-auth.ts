@@ -16,7 +16,6 @@ export interface LabPermissions {
   can_view_activity:    boolean;
   can_view_feedback:    boolean;
   can_view_wallet:      boolean;
-  can_manage_price_list: boolean;
 }
 
 /** Full permissions — granted to the lab owner (LabUser) and API keys */
@@ -33,7 +32,6 @@ export const FULL_PERMISSIONS: LabPermissions = {
   can_view_activity:     true,
   can_view_feedback:     true,
   can_view_wallet:       true,
-  can_manage_price_list: true,
 };
 
 export interface LabAuthResult {
@@ -98,7 +96,6 @@ export async function getLabAuth(request: NextRequest): Promise<LabAuthResult | 
                 can_view_activity:    true,
                 can_view_feedback:    true,
                 can_view_wallet:      true,
-                can_manage_price_list: true,
               },
             },
           },
