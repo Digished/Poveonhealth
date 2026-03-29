@@ -22,7 +22,7 @@ import type { LabRequest, RequestStatus, Sex } from "@/lib/types";
 import { SERVICE_CATEGORIES } from "@/lib/constants";
 import { format, differenceInYears } from "date-fns";
 import { createClient } from "@/lib/supabase/client";
-import { useRouter } from "next/navigation";
+import { useRouter, useSearchParams } from "next/navigation";
 
 interface ReferralDoctor {
   doctor_name: string;
@@ -61,6 +61,7 @@ interface LabDashboardProps {
   canViewActivity?: boolean;
   canViewFeedback?: boolean;
   canViewWallet?: boolean;
+  canManagePriceList?: boolean;
 }
 
 const TABS: { key: RequestStatus; label: string; icon: React.ReactNode }[] = [
@@ -84,9 +85,10 @@ function displayTests(raw: string | null | undefined): string {
 }
 
 
-export function LabDashboard({ lab, isOwner = false, roleName = "Lab Owner", canViewReferrals = false, canViewClients = false, canViewAnalytics = false, canViewActivity = false, canViewFeedback = false, canViewWallet = false }: LabDashboardProps) {
+export function LabDashboard({ lab, isOwner = false, roleName = "Lab Owner", canViewReferrals = false, canViewClients = false, canViewAnalytics = false, canViewActivity = false, canViewFeedback = false, canViewWallet = false, canManagePriceList = false }: LabDashboardProps) {
   const { name: labName, logo_url: labLogoUrl } = lab;
   const router = useRouter();
+  const searchParams = useSearchParams();
   const { isLight, toggle, themeClass } = useDashTheme("lab_dash_theme");
   const [mainView, setMainView] = useState<"requests" | "referrals" | "clients" | "analytics" | "activity" | "feedback" | "poveon" | "price-list">("requests");
   const [walletData, setWalletData] = useState<WalletData | null>(null);
@@ -96,6 +98,18 @@ export function LabDashboard({ lab, isOwner = false, roleName = "Lab Owner", can
   const [priceListData, setPriceListData] = useState<{ category: string; tests: { id: string; name: string; lab_price: number; poveon_fee: number | null; commission_pct: number | null }[] }[] | null>(null);
   const [priceListLoading, setPriceListLoading] = useState(false);
   const [priceManagerOpen, setPriceManagerOpen] = useState(false);
+  // Google Sheets integration state
+  const canSeeSheets = isOwner || canManagePriceList;
+  type SheetsConn = { connected: false } | { connected: true; sheet_id: string; sheet_url: string; last_synced_at: string | null; sync_status: string };
+  type SheetsDiffItem = { added: { raw_name: string; lab_price: number; category: string }[]; changed: { id: string; raw_name: string; old_price?: number; new_price?: number; old_active?: boolean; new_active?: boolean }[]; removed: { id: string; raw_name: string }[]; unchanged: number };
+  const [sheetsStatus, setSheetsStatus] = useState<SheetsConn | null>(null);
+  const [sheetsStatusLoading, setSheetsStatusLoading] = useState(false);
+  const [sheetsPushing, setSheetsPushing] = useState(false);
+  const [sheetsPulling, setSheetsPulling] = useState(false);
+  const [sheetsConfirming, setSheetsConfirming] = useState(false);
+  const [sheetsDisconnecting, setSheetsDisconnecting] = useState(false);
+  const [sheetsDiff, setSheetsDiff] = useState<SheetsDiffItem | null>(null);
+  const [showDiffModal, setShowDiffModal] = useState(false);
   const [mobileNavOpen, setMobileNavOpen] = useState(false);
   // Eagerly loaded wallet balance for the "amount owed" banner shown on all tabs
   const [poveonBalance, setPoveonBalance] = useState<number | null>(null);
@@ -233,6 +247,124 @@ export function LabDashboard({ lab, isOwner = false, roleName = "Lab Owner", can
     return () => clearInterval(walletInterval);
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
+
+  // Google Sheets: fetch connection status when price-list tab opens
+  const fetchSheetsStatus = useCallback(async () => {
+    if (!canSeeSheets) return;
+    setSheetsStatusLoading(true);
+    try {
+      const res = await fetch("/api/lab/sheets/status");
+      if (!res.ok) throw new Error("status fetch failed");
+      const d = await res.json();
+      setSheetsStatus(d);
+    } catch {
+      // API error or DB columns not yet migrated — show disconnected state
+      setSheetsStatus({ connected: false });
+    } finally {
+      setSheetsStatusLoading(false);
+    }
+  }, [canSeeSheets]);
+
+  // Handle OAuth callback redirect params (?sheets=connected|error|denied)
+  useEffect(() => {
+    const sheetsParam = searchParams.get("sheets");
+    if (!sheetsParam) return;
+    if (sheetsParam === "connected") {
+      toast.success("Google Sheets connected! Your price list has been exported.");
+      fetchSheetsStatus();
+      setMainView("price-list");
+    } else if (sheetsParam === "denied") {
+      toast("Google sign-in was cancelled.");
+    } else if (sheetsParam === "no_refresh_token") {
+      toast.error("Could not get a refresh token. Please disconnect any previous connection in your Google account and try again.");
+    } else if (sheetsParam === "error") {
+      toast.error("Google Sheets connection failed. Please try again.");
+    }
+    // Clean URL
+    router.replace("/lab-dashboard");
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  // Sheets actions
+  const handleSheetsPush = async () => {
+    setSheetsPushing(true);
+    try {
+      const res = await fetch("/api/lab/sheets/push", { method: "POST" });
+      const d = await res.json();
+      if (!d.success) throw new Error(d.error);
+      toast.success("Price list pushed to Google Sheets.");
+      await fetchSheetsStatus();
+    } catch {
+      toast.error("Failed to push to Google Sheets.");
+    } finally {
+      setSheetsPushing(false);
+    }
+  };
+
+  const handleSheetsPull = async () => {
+    setSheetsPulling(true);
+    try {
+      const res = await fetch("/api/lab/sheets/pull", { method: "POST" });
+      const d = await res.json();
+      if (d.error) throw new Error(d.error);
+      if (d.added.length === 0 && d.changed.length === 0 && d.removed.length === 0) {
+        toast.success("Your sheet is already in sync — no changes found.");
+        await fetchSheetsStatus();
+      } else {
+        setSheetsDiff(d);
+        setShowDiffModal(true);
+      }
+    } catch {
+      toast.error("Failed to read Google Sheet.");
+    } finally {
+      setSheetsPulling(false);
+    }
+  };
+
+  const handleSheetsConfirm = async () => {
+    if (!sheetsDiff) return;
+    setSheetsConfirming(true);
+    try {
+      const res = await fetch("/api/lab/sheets/confirm", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(sheetsDiff),
+      });
+      const d = await res.json();
+      if (!d.success) throw new Error(d.error);
+      const { added, changed, removed } = d.applied;
+      const parts = [];
+      if (added)   parts.push(`${added} added`);
+      if (changed) parts.push(`${changed} updated`);
+      if (removed) parts.push(`${removed} deactivated`);
+      toast.success(`Synced: ${parts.join(", ")}.${d.synonyms_generating ? " Generating synonyms in background." : ""}`);
+      setShowDiffModal(false);
+      setSheetsDiff(null);
+      // Reload price list and sheets status
+      setPriceListData(null);
+      await fetchSheetsStatus();
+    } catch {
+      toast.error("Failed to apply changes.");
+    } finally {
+      setSheetsConfirming(false);
+    }
+  };
+
+  const handleSheetsDisconnect = async () => {
+    if (!confirm("Disconnect Google Sheets? Your existing spreadsheet will stay in your Google Drive.")) return;
+    setSheetsDisconnecting(true);
+    try {
+      const res = await fetch("/api/lab/sheets/disconnect", { method: "DELETE" });
+      const d = await res.json();
+      if (!d.success) throw new Error(d.error);
+      toast.success("Google Sheets disconnected.");
+      setSheetsStatus({ connected: false });
+    } catch {
+      toast.error("Failed to disconnect.");
+    } finally {
+      setSheetsDisconnecting(false);
+    }
+  };
 
 
   const fetchClients = useCallback(async () => {
@@ -1733,6 +1865,19 @@ export function LabDashboard({ lab, isOwner = false, roleName = "Lab Owner", can
         {/* Price list view */}
         {mainView === "price-list" && (isOwner || canViewWallet) && (
           <>
+            {canSeeSheets && (
+              <LabGoogleSheetsPanel
+                status={sheetsStatus}
+                statusLoading={sheetsStatusLoading}
+                pushing={sheetsPushing}
+                pulling={sheetsPulling}
+                disconnecting={sheetsDisconnecting}
+                onFetchStatus={fetchSheetsStatus}
+                onPush={handleSheetsPush}
+                onPull={handleSheetsPull}
+                onDisconnect={handleSheetsDisconnect}
+              />
+            )}
             <LabPriceListView
               data={priceListData}
               loading={priceListLoading}
@@ -1742,10 +1887,19 @@ export function LabDashboard({ lab, isOwner = false, roleName = "Lab Owner", can
                   setPriceListLoading(true);
                   fetch("/api/lab/price-schedule").then((r) => r.json()).then((d) => { if (d.success) setPriceListData(d.schedule); }).catch(() => {}).finally(() => setPriceListLoading(false));
                 }
+                if (canSeeSheets && !sheetsStatus) fetchSheetsStatus();
               }}
             />
             {priceManagerOpen && (
               <LabPriceListManager onClose={() => setPriceManagerOpen(false)} />
+            )}
+            {showDiffModal && sheetsDiff && (
+              <SheetsDiffModal
+                diff={sheetsDiff}
+                confirming={sheetsConfirming}
+                onConfirm={handleSheetsConfirm}
+                onClose={() => { setShowDiffModal(false); setSheetsDiff(null); }}
+              />
             )}
           </>
         )}
@@ -3674,6 +3828,280 @@ function ChangePasswordModal({ onClose }: { onClose: () => void }) {
             </div>
           </form>
         )}
+      </div>
+    </div>
+  );
+}
+
+// =============================================================================
+// Google Sheets Panel
+// =============================================================================
+
+type SheetsConn = { connected: false } | { connected: true; sheet_id: string; sheet_url: string; last_synced_at: string | null; sync_status: string };
+type SheetsDiffData = {
+  added: { raw_name: string; lab_price: number; category: string }[];
+  changed: { id: string; raw_name: string; old_price?: number; new_price?: number; old_active?: boolean; new_active?: boolean }[];
+  removed: { id: string; raw_name: string }[];
+  unchanged: number;
+};
+
+function LabGoogleSheetsPanel({
+  status,
+  statusLoading,
+  pushing,
+  pulling,
+  disconnecting,
+  onFetchStatus,
+  onPush,
+  onPull,
+  onDisconnect,
+}: {
+  status: SheetsConn | null;
+  statusLoading: boolean;
+  pushing: boolean;
+  pulling: boolean;
+  disconnecting: boolean;
+  onFetchStatus: () => void;
+  onPush: () => void;
+  onPull: () => void;
+  onDisconnect: () => void;
+}) {
+  const [connecting, setConnecting] = useState(false);
+
+  useEffect(() => {
+    if (!status && !statusLoading) onFetchStatus();
+  }, [status, statusLoading, onFetchStatus]);
+
+  const isLoading = statusLoading || status === null;
+
+  if (isLoading) {
+    return (
+      <div className="bg-white/5 border border-white/10 rounded-2xl p-5 mb-6 animate-pulse">
+        <div className="h-5 w-48 bg-white/10 rounded mb-2" />
+        <div className="h-4 w-64 bg-white/5 rounded" />
+      </div>
+    );
+  }
+
+  // ── Not connected ────────────────────────────────────────────────────────────
+  if (!status?.connected) {
+    return (
+      <div className="bg-white/5 border border-white/10 rounded-2xl p-5 mb-6">
+        <div className="flex flex-col sm:flex-row sm:items-center gap-4">
+          <div className="flex-1">
+            <div className="flex items-center gap-2 mb-1">
+              <span className="text-base font-semibold text-white">Google Sheets</span>
+              <span className="text-[11px] px-2 py-0.5 rounded-full bg-slate-700 text-slate-400 font-medium">Not connected</span>
+            </div>
+            <p className="text-sm text-slate-400">
+              Edit your price list in Google Sheets — each category gets its own tab. Changes sync back to Poveon in a few clicks.
+            </p>
+          </div>
+          <button
+            onClick={() => { setConnecting(true); window.location.href = "/api/lab/sheets/auth"; }}
+            disabled={connecting}
+            className="inline-flex items-center gap-2 px-4 py-2.5 rounded-xl bg-emerald-600 hover:bg-emerald-500 disabled:opacity-70 text-white font-semibold text-sm transition-all whitespace-nowrap shadow-sm shrink-0"
+          >
+            {connecting
+              ? <RefreshCw className="w-4 h-4 animate-spin" />
+              : <svg className="w-4 h-4" viewBox="0 0 24 24" fill="currentColor"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8l-6-6zm-1 1.5L18.5 9H13V3.5zM6 20V4h5v7h7v9H6z"/></svg>
+            }
+            {connecting ? "Opening Google…" : "Connect Google Sheets"}
+          </button>
+        </div>
+      </div>
+    );
+  }
+
+  // ── Connected ────────────────────────────────────────────────────────────────
+  const syncStatus = status.sync_status;
+  const lastSynced = status.last_synced_at
+    ? new Intl.RelativeTimeFormat("en", { numeric: "auto" }).format(
+        Math.round((new Date(status.last_synced_at).getTime() - Date.now()) / 60000),
+        "minute"
+      )
+    : null;
+
+  const statusBadge =
+    syncStatus === "synced"
+      ? <span className="flex items-center gap-1 text-xs text-emerald-400 font-medium"><CheckCircle className="w-3.5 h-3.5" /> In sync</span>
+      : syncStatus === "error"
+      ? <span className="flex items-center gap-1 text-xs text-red-400 font-medium"><AlertTriangle className="w-3.5 h-3.5" /> Sync error</span>
+      : <span className="flex items-center gap-1 text-xs text-amber-400 font-medium"><Clock className="w-3.5 h-3.5" /> Never synced</span>;
+
+  return (
+    <div className="bg-white/5 border border-white/10 rounded-2xl p-5 mb-6">
+      <div className="flex flex-col sm:flex-row sm:items-start gap-4">
+        <div className="flex-1 min-w-0">
+          <div className="flex items-center gap-2 mb-1 flex-wrap">
+            <span className="text-base font-semibold text-white">Google Sheets</span>
+            {statusBadge}
+          </div>
+          <p className="text-xs text-slate-500">
+            {lastSynced ? `Last synced ${lastSynced}` : "Open the sheet to edit, then pull to sync changes back."}
+          </p>
+        </div>
+
+        <div className="flex items-center gap-2 flex-wrap shrink-0">
+          <a
+            href={status.sheet_url}
+            target="_blank"
+            rel="noopener noreferrer"
+            className="inline-flex items-center gap-1.5 px-3 py-2 rounded-xl border border-white/15 text-slate-300 hover:text-white hover:border-white/30 text-sm font-medium transition-all"
+          >
+            <ExternalLink className="w-3.5 h-3.5" />
+            Open Sheet
+          </a>
+
+          <button
+            onClick={onPull}
+            disabled={pulling || pushing}
+            className="inline-flex items-center gap-1.5 px-3 py-2 rounded-xl bg-sky-600 hover:bg-sky-500 disabled:opacity-50 text-white text-sm font-medium transition-all"
+          >
+            <RefreshCw className={`w-3.5 h-3.5 ${pulling ? "animate-spin" : ""}`} />
+            {pulling ? "Reading…" : "Pull from Sheet"}
+          </button>
+
+          <button
+            onClick={onPush}
+            disabled={pushing || pulling}
+            className="inline-flex items-center gap-1.5 px-3 py-2 rounded-xl border border-white/15 text-slate-300 hover:text-white hover:border-white/30 disabled:opacity-50 text-sm font-medium transition-all"
+          >
+            <RefreshCw className={`w-3.5 h-3.5 ${pushing ? "animate-spin" : ""}`} />
+            {pushing ? "Pushing…" : "Push to Sheet"}
+          </button>
+
+          <button
+            onClick={onDisconnect}
+            disabled={disconnecting}
+            className="inline-flex items-center gap-1.5 px-3 py-2 rounded-xl border border-red-500/30 text-red-400 hover:text-red-300 hover:border-red-500/50 disabled:opacity-50 text-sm font-medium transition-all"
+          >
+            <X className="w-3.5 h-3.5" />
+            {disconnecting ? "Disconnecting…" : "Disconnect"}
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// =============================================================================
+// Sheets Diff Modal
+// =============================================================================
+
+function SheetsDiffModal({
+  diff,
+  confirming,
+  onConfirm,
+  onClose,
+}: {
+  diff: SheetsDiffData;
+  confirming: boolean;
+  onConfirm: () => void;
+  onClose: () => void;
+}) {
+  const totalChanges = diff.added.length + diff.changed.length + diff.removed.length;
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/70 backdrop-blur-sm">
+      <div className="bg-slate-900 border border-white/10 rounded-2xl w-full max-w-lg max-h-[85vh] flex flex-col shadow-2xl">
+        {/* Header */}
+        <div className="px-6 py-4 border-b border-white/8 flex items-center justify-between shrink-0">
+          <div>
+            <h3 className="text-base font-bold text-white">Review Changes from Sheet</h3>
+            <p className="text-xs text-slate-400 mt-0.5">
+              {totalChanges} change{totalChanges !== 1 ? "s" : ""} found · {diff.unchanged} test{diff.unchanged !== 1 ? "s" : ""} unchanged
+            </p>
+          </div>
+          <button onClick={onClose} disabled={confirming} className="text-slate-500 hover:text-white transition-colors">
+            <X className="w-5 h-5" />
+          </button>
+        </div>
+
+        {/* Scrollable body */}
+        <div className="flex-1 overflow-y-auto px-6 py-4 space-y-5">
+          {diff.added.length > 0 && (
+            <div>
+              <p className="text-xs font-semibold text-emerald-400 uppercase tracking-wider mb-2">
+                New tests ({diff.added.length})
+              </p>
+              <div className="space-y-1">
+                {diff.added.map((t, i) => (
+                  <div key={i} className="flex items-center justify-between text-sm py-1.5 px-3 rounded-lg bg-emerald-500/8 border border-emerald-500/15">
+                    <span className="text-slate-200">{t.raw_name}</span>
+                    <span className="text-emerald-400 font-mono font-medium shrink-0 ml-3">₦{t.lab_price.toLocaleString()}</span>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+
+          {diff.changed.length > 0 && (
+            <div>
+              <p className="text-xs font-semibold text-sky-400 uppercase tracking-wider mb-2">
+                Updated ({diff.changed.length})
+              </p>
+              <div className="space-y-1">
+                {diff.changed.map((t) => (
+                  <div key={t.id} className="text-sm py-1.5 px-3 rounded-lg bg-sky-500/8 border border-sky-500/15">
+                    <p className="text-slate-200 mb-0.5">{t.raw_name}</p>
+                    <div className="flex flex-wrap gap-x-4 gap-y-0.5">
+                      {t.old_price !== undefined && (
+                        <span className="text-xs text-slate-400">
+                          Price: <span className="line-through text-slate-500">₦{t.old_price.toLocaleString()}</span>
+                          {" → "}
+                          <span className="text-sky-400 font-mono">₦{t.new_price?.toLocaleString()}</span>
+                        </span>
+                      )}
+                      {t.old_active !== undefined && (
+                        <span className="text-xs text-slate-400">
+                          Active: <span className="text-slate-500">{t.old_active ? "Yes" : "No"}</span>
+                          {" → "}
+                          <span className="text-sky-400">{t.new_active ? "Yes" : "No"}</span>
+                        </span>
+                      )}
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+
+          {diff.removed.length > 0 && (
+            <div>
+              <p className="text-xs font-semibold text-amber-400 uppercase tracking-wider mb-2">
+                Will be deactivated ({diff.removed.length})
+              </p>
+              <div className="space-y-1">
+                {diff.removed.map((t) => (
+                  <div key={t.id} className="flex items-center justify-between text-sm py-1.5 px-3 rounded-lg bg-amber-500/8 border border-amber-500/15">
+                    <span className="text-slate-400 line-through">{t.raw_name}</span>
+                    <span className="text-amber-400 text-xs shrink-0 ml-3">deactivated</span>
+                  </div>
+                ))}
+              </div>
+              <p className="text-xs text-slate-500 mt-1.5">Tests not in the sheet will be hidden (not deleted) — you can re-activate them from the price manager.</p>
+            </div>
+          )}
+        </div>
+
+        {/* Footer */}
+        <div className="px-6 py-4 border-t border-white/8 flex gap-3 shrink-0">
+          <button
+            onClick={onClose}
+            disabled={confirming}
+            className="flex-1 py-2.5 rounded-xl border border-white/10 text-slate-400 font-semibold text-sm hover:bg-white/5 transition disabled:opacity-50"
+          >
+            Cancel
+          </button>
+          <button
+            onClick={onConfirm}
+            disabled={confirming}
+            className="flex-1 py-2.5 rounded-xl bg-sky-600 hover:bg-sky-500 disabled:opacity-60 text-white font-semibold text-sm transition"
+          >
+            {confirming ? "Applying…" : `Apply ${totalChanges} Change${totalChanges !== 1 ? "s" : ""}`}
+          </button>
+        </div>
       </div>
     </div>
   );

@@ -433,7 +433,7 @@ export default function LabPriceListManager({ onClose }: LabPriceListManagerProp
     <div className="fixed inset-0 z-[9999] flex flex-col bg-gray-50" style={{ fontFamily: "inherit" }}>
 
       {/* ── TOP BAR ─────────────────────────────────────────────────────────── */}
-      <header className="shrink-0 flex items-center gap-3 px-4 sm:px-6 py-3.5 bg-white border-b border-gray-200 shadow-sm">
+      <header className="relative z-50 shrink-0 flex items-center gap-3 px-4 sm:px-6 py-3.5 bg-white border-b border-gray-200 shadow-sm">
         {/* Icon + title */}
         <div className="flex items-center gap-3 min-w-0">
           <div className="w-9 h-9 rounded-xl bg-blue-600 flex items-center justify-center shrink-0 shadow-sm">
