@@ -157,7 +157,7 @@ function DoctorCard({ doctor }: { doctor: Doctor }) {
             </span>
             {doctor.completed_requests > 0 && (
               <span className="inline-flex items-center gap-0.5 text-xs font-semibold px-1.5 py-0.5 rounded-full bg-emerald-50 text-emerald-700 border border-emerald-200">
-                <CheckCircle className="w-2.5 h-2.5" />{doctor.completed_requests} done
+                <CheckCircle className="w-2.5 h-2.5" />{doctor.completed_requests} visited
               </span>
             )}
             {incoming > 0 && (
@@ -436,7 +436,7 @@ export default function ScaleDashboardPage() {
         {stats && (
           <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
             <StatCard label="Professionals" value={stats.total_doctors}  color="text-emerald-600" />
-            <StatCard label="Completed"      value={stats.done}           color="text-emerald-700" />
+            <StatCard label="Visited"         value={stats.done}           color="text-emerald-700" />
             <StatCard label="Pending"        value={stats.pending}        color="text-amber-600" />
             <StatCard label="Total Requests" value={stats.total_requests} color="text-slate-700" />
           </div>

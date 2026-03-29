@@ -116,7 +116,7 @@ export async function GET(req: NextRequest) {
         doctor_hospital:     profile?.hospitals?.[0] ?? entry?.doctor_hospital ?? null,
         claimed:             profile?.claimed  ?? true,
         total_requests:      entry?.requests.length ?? 0,
-        completed_requests:  entry?.requests.filter((r: { status: string }) => r.status === "done").length ?? 0,
+        completed_requests:  entry?.requests.filter((r: { status: string }) => r.status === "seen" || r.status === "done").length ?? 0,
         linked_since:        link.created_at,
         requests: (entry?.requests ?? []).map((r: { id: string; code: string; patient_name: string | null; tests: string; status: string; created_at: Date; seen_at: Date | null; completed_at: Date | null }) => ({
           id:           r.id,
@@ -136,7 +136,7 @@ export async function GET(req: NextRequest) {
       total_requests: requests.length,
       pending:        requests.filter((r: { status: string }) => r.status === "incoming").length,
       seen:           requests.filter((r: { status: string }) => r.status === "seen").length,
-      done:           requests.filter((r: { status: string }) => r.status === "done").length,
+      done:           requests.filter((r: { status: string }) => r.status === "seen" || r.status === "done").length,
     };
 
     return NextResponse.json({
