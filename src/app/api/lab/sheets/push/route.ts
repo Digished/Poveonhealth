@@ -57,7 +57,7 @@ export async function POST(request: NextRequest) {
   try {
     await pushToSheet(
       lab.google_refresh_token,
-      getRedirectUri(request.url),
+      getRedirectUri(request),
       lab.google_sheet_id,
       Array.from(categoryMap.values())
     );

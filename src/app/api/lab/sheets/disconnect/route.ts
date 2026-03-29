@@ -33,7 +33,7 @@ export async function DELETE(request: NextRequest) {
   if (lab?.google_refresh_token) {
     // Best-effort token revocation — don't fail if Google rejects it
     try {
-      const oauthClient = buildOAuthClient(getRedirectUri(request.url));
+      const oauthClient = buildOAuthClient(getRedirectUri(request));
       oauthClient.setCredentials({ refresh_token: decrypt(lab.google_refresh_token) });
       await oauthClient.revokeCredentials();
     } catch (e) {

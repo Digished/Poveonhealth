@@ -31,7 +31,7 @@ export async function GET(request: NextRequest) {
   const nonce = randomBytes(16).toString("hex");
   const state = `${auth.lab_id}:${nonce}`;
 
-  const redirectUri = getRedirectUri(request.url);
+  const redirectUri = getRedirectUri(request);
   const oauthClient = buildOAuthClient(redirectUri);
   const authUrl = oauthClient.generateAuthUrl({
     access_type: "offline",

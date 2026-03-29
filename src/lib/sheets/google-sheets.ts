@@ -17,9 +17,16 @@ export const SHEETS_SCOPES = [
 ];
 
 /** Derive the OAuth callback URL from the incoming request so it works on
- *  any deployment (local, preview, production) without extra config. */
-export function getRedirectUri(requestUrl: string): string {
-  const { origin } = new URL(requestUrl);
+ *  any deployment (local, preview, production) without extra config.
+ *  Uses x-forwarded-proto/host headers when behind a proxy (Vercel). */
+export function getRedirectUri(request: { url: string; headers: { get: (h: string) => string | null } }): string {
+  const forwardedProto = request.headers.get("x-forwarded-proto");
+  const forwardedHost  = request.headers.get("x-forwarded-host");
+
+  const origin = (forwardedProto && forwardedHost)
+    ? `${forwardedProto.split(",")[0].trim()}://${forwardedHost.split(",")[0].trim()}`
+    : new URL(request.url).origin;
+
   return `${origin}/api/lab/sheets/callback`;
 }
 

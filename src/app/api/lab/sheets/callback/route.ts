@@ -47,7 +47,7 @@ export async function GET(request: NextRequest) {
 
   try {
     // Exchange code for tokens — redirect URI must match exactly what was sent in /auth
-    const redirectUri = getRedirectUri(request.url);
+    const redirectUri = getRedirectUri(request);
     const oauthClient = buildOAuthClient(redirectUri);
     const { tokens } = await oauthClient.getToken(code);
 

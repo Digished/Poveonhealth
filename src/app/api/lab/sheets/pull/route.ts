@@ -47,7 +47,7 @@ export async function POST(request: NextRequest) {
   // Read sheet rows
   let sheetRows;
   try {
-    sheetRows = await readFromSheet(lab.google_refresh_token, getRedirectUri(request.url), lab.google_sheet_id);
+    sheetRows = await readFromSheet(lab.google_refresh_token, getRedirectUri(request), lab.google_sheet_id);
   } catch (err) {
     console.error("[sheets/pull] Error reading sheet:", err);
     return NextResponse.json({ error: "Failed to read Google Sheet" }, { status: 500 });
