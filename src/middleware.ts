@@ -16,13 +16,23 @@ export async function middleware(request: NextRequest) {
   if (isSubdomain) {
     const slug = hostname.slice(0, -(`.${rootDomain}`.length));
     const url = request.nextUrl.clone();
-    // Only rewrite root; deeper paths (e.g. /api/*) pass through unchanged
+
+    // Rewrite root to the lab's page
     if (url.pathname === "/" || url.pathname === "") {
       url.pathname = `/${slug}`;
-    } else {
-      url.pathname = `/${slug}${url.pathname}`;
+      return NextResponse.rewrite(url);
     }
-    return NextResponse.rewrite(url);
+
+    // API calls made by the form on the subdomain must pass through unchanged
+    if (url.pathname.startsWith("/api/")) {
+      return NextResponse.next();
+    }
+
+    // Everything else (doc-login, dashboard, etc.) — redirect to main domain
+    // so links like /doc-login work correctly
+    const mainUrl = new URL(request.url);
+    mainUrl.hostname = rootDomain;
+    return NextResponse.redirect(mainUrl, 302);
   }
 
   // ── Supabase session refresh (existing auth logic) ─────────────────────────
