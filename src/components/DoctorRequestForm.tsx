@@ -570,6 +570,138 @@ interface Location {
   is_parent: boolean;  // true = this entry is the root/parent lab
 }
 
+// ─── Branch search dropdown ───────────────────────────────────────────────────
+
+function BranchSearchDropdown({
+  locations, selectedIdx, onSelect,
+}: { locations: Location[]; selectedIdx: number; onSelect: (idx: number) => void }) {
+  const [open, setOpen] = useState(false);
+  const [q, setQ] = useState("");
+
+  const selectedLoc = locations[selectedIdx] ?? null;
+  const filtered = locations
+    .map((loc, idx) => ({ loc, idx }))
+    .filter(({ loc }) => !q.trim() || loc.name.toLowerCase().includes(q.toLowerCase()) || loc.address.toLowerCase().includes(q.toLowerCase()));
+
+  function close() { setOpen(false); setQ(""); }
+
+  return (
+    <>
+      {/* Trigger button */}
+      <button
+        type="button"
+        onClick={() => setOpen(true)}
+        className={`w-full flex items-center gap-3 px-4 py-3.5 rounded-2xl border-2 text-left transition-all ${
+          selectedLoc
+            ? "border-medical-400 bg-medical-50"
+            : "border-slate-200 bg-white/60 hover:border-slate-300"
+        }`}
+      >
+        <MapPin className={`w-4 h-4 shrink-0 ${selectedLoc ? "text-medical-600" : "text-slate-400"}`} />
+        <div className="flex-1 min-w-0">
+          {selectedLoc ? (
+            <>
+              <p className="text-sm font-semibold text-medical-800 leading-tight truncate">
+                {selectedLoc.name}
+                {selectedLoc.is_parent && <span className="ml-2 text-xs bg-slate-100 text-slate-600 px-1.5 py-0.5 rounded-full font-medium">Main Lab</span>}
+                {!selectedLoc.is_parent && selectedLoc.is_main && <span className="ml-2 text-xs bg-medical-100 text-medical-700 px-1.5 py-0.5 rounded-full font-medium">Main Branch</span>}
+              </p>
+              {selectedLoc.address && (
+                <p className="text-xs text-medical-600/70 truncate mt-0.5">{selectedLoc.address}</p>
+              )}
+            </>
+          ) : (
+            <p className="text-sm text-slate-400">Select a branch…</p>
+          )}
+        </div>
+        <ChevronDown className="w-4 h-4 text-slate-400 shrink-0" />
+      </button>
+
+      {/* Modal */}
+      {open && createPortal(
+        <div
+          className="fixed inset-0 z-[200] bg-black/50 backdrop-blur-sm flex items-end sm:items-center justify-center p-0 sm:p-6"
+          onClick={close}
+        >
+          <div
+            className="bg-white w-full sm:w-[420px] rounded-t-3xl sm:rounded-2xl shadow-2xl flex flex-col max-h-[60dvh] sm:max-h-[500px]"
+            onClick={(e) => e.stopPropagation()}
+          >
+            {/* Header */}
+            <div className="flex items-center justify-between px-4 py-3.5 border-b border-slate-100 shrink-0">
+              <p className="text-sm font-bold text-slate-800">Choose a Branch</p>
+              <button type="button" onClick={close} className="w-7 h-7 rounded-lg bg-slate-100 hover:bg-slate-200 flex items-center justify-center transition text-slate-500">
+                <X className="w-3.5 h-3.5" />
+              </button>
+            </div>
+            {/* Search */}
+            <div className="px-4 py-2.5 border-b border-slate-100 shrink-0">
+              <div className="flex items-center gap-2 px-3 py-2 bg-slate-50 rounded-xl border border-slate-200">
+                <Search className="w-3.5 h-3.5 text-slate-400 shrink-0" />
+                <input
+                  autoFocus
+                  value={q}
+                  onChange={(e) => setQ(e.target.value)}
+                  placeholder="Search by name or address…"
+                  className="flex-1 bg-transparent text-sm text-slate-800 placeholder-slate-400 outline-none"
+                />
+                {q && (
+                  <button type="button" onClick={() => setQ("")} className="text-slate-400 hover:text-slate-600">
+                    <X className="w-3.5 h-3.5" />
+                  </button>
+                )}
+              </div>
+            </div>
+            {/* List */}
+            <div className="overflow-y-auto flex-1 overscroll-contain">
+              {filtered.map(({ loc, idx }) => {
+                const isSelected = selectedIdx === idx;
+                return (
+                  <button
+                    key={loc.lab_id + idx}
+                    type="button"
+                    onClick={() => { onSelect(idx); close(); }}
+                    className={`w-full flex items-start gap-3 px-4 py-3 text-left transition hover:bg-slate-50 border-b border-slate-50 last:border-0 ${
+                      isSelected ? "bg-medical-50/60" : ""
+                    }`}
+                  >
+                    <div className={`mt-1 w-3.5 h-3.5 rounded-full border-2 flex items-center justify-center shrink-0 transition-all ${isSelected ? "border-medical-500 bg-medical-500" : "border-slate-300"}`}>
+                      {isSelected && <div className="w-1.5 h-1.5 rounded-full bg-white" />}
+                    </div>
+                    <div className="min-w-0 flex-1">
+                      <p className={`text-sm font-semibold leading-tight ${isSelected ? "text-medical-800" : "text-slate-700"}`}>
+                        {loc.name}
+                        {loc.is_parent && <span className="ml-1.5 text-[10px] bg-slate-100 text-slate-600 px-1.5 py-0.5 rounded-full font-medium">Main Lab</span>}
+                        {!loc.is_parent && loc.is_main && <span className="ml-1.5 text-[10px] bg-medical-100 text-medical-700 px-1.5 py-0.5 rounded-full font-medium">Main Branch</span>}
+                      </p>
+                      {loc.address && (
+                        <p className="text-xs text-slate-400 flex items-start gap-1 mt-0.5">
+                          <MapPin className="w-3 h-3 shrink-0 mt-0.5" />
+                          {loc.address}
+                        </p>
+                      )}
+                      {loc.phones.length > 0 && (
+                        <p className="text-xs text-slate-400 flex items-center gap-1 mt-0.5">
+                          <Phone className="w-3 h-3 shrink-0" />
+                          {loc.phones[0]}{loc.phones.length > 1 ? ` +${loc.phones.length - 1}` : ""}
+                        </p>
+                      )}
+                    </div>
+                  </button>
+                );
+              })}
+              {filtered.length === 0 && (
+                <p className="text-xs text-slate-400 text-center py-8">No branches match your search</p>
+              )}
+            </div>
+          </div>
+        </div>,
+        document.body
+      )}
+    </>
+  );
+}
+
 export function DoctorRequestForm({
   preselectedLabId,
   preselectedLabName,
@@ -1353,56 +1485,11 @@ export function DoctorRequestForm({
                   Select Location
                 </h2>
                 <p className="text-sm text-slate-500">Choose the {preselectedLabName} location you are sending this request to.</p>
-                <div className="space-y-3">
-                  {locations.map((loc, idx) => {
-                    const selected = selectedLocIdx === idx;
-                    return (
-                      <button
-                        key={loc.lab_id + idx}
-                        type="button"
-                        onClick={() => selectLocation(idx)}
-                        className={`w-full flex items-start gap-3 p-4 rounded-2xl border-2 text-left transition-all ${
-                          selected
-                            ? "border-medical-400 bg-medical-50 ring-2 ring-medical-200"
-                            : "border-slate-200 bg-white/60 hover:border-slate-300 hover:bg-slate-50"
-                        }`}
-                      >
-                        <div className={`mt-0.5 w-4 h-4 rounded-full border-2 flex items-center justify-center shrink-0 transition-all ${selected ? "border-medical-500 bg-medical-500" : "border-slate-300"}`}>
-                          {selected && <div className="w-2 h-2 rounded-full bg-white" />}
-                        </div>
-                        <div className="min-w-0 flex-1">
-                          <p className={`text-sm font-semibold leading-tight ${selected ? "text-medical-800" : "text-slate-700"}`}>
-                            {loc.name}
-                            {loc.is_parent && <span className="ml-2 text-xs bg-slate-100 text-slate-600 px-2 py-0.5 rounded-full font-medium">Main Lab</span>}
-                            {!loc.is_parent && loc.is_main && <span className="ml-2 text-xs bg-medical-100 text-medical-700 px-2 py-0.5 rounded-full font-medium">Main Branch</span>}
-                          </p>
-                          {loc.address && (
-                            <p className="text-xs text-slate-400 flex items-start gap-1 mt-1">
-                              <MapPin className="w-3 h-3 shrink-0 mt-0.5" />
-                              {loc.address}
-                            </p>
-                          )}
-                          {loc.phones.length > 0 && (
-                            <p className="text-xs text-slate-400 flex items-center gap-1 mt-0.5">
-                              <Phone className="w-3 h-3 shrink-0" />
-                              {loc.phones[0]}{loc.phones.length > 1 ? ` +${loc.phones.length - 1} more` : ""}
-                            </p>
-                          )}
-                          {loc.whatsapp && (() => {
-                            let waNumbers: string[] = [];
-                            try { const p = JSON.parse(loc.whatsapp); waNumbers = Array.isArray(p) ? p.filter(Boolean) : [loc.whatsapp]; } catch { waNumbers = [loc.whatsapp]; }
-                            return waNumbers.map((num, i) => (
-                              <p key={i} className="text-xs text-green-600 flex items-center gap-1 mt-0.5">
-                                <svg className="w-3 h-3 shrink-0" viewBox="0 0 24 24" fill="currentColor"><path d="M17.472 14.382c-.297-.149-1.758-.867-2.03-.967-.273-.099-.471-.148-.67.15-.197.297-.767.966-.94 1.164-.173.199-.347.223-.644.075-.297-.15-1.255-.463-2.39-1.475-.883-.788-1.48-1.761-1.653-2.059-.173-.297-.018-.458.13-.606.134-.133.298-.347.446-.52.149-.174.198-.298.298-.497.099-.198.05-.371-.025-.52-.075-.149-.669-1.612-.916-2.207-.242-.579-.487-.5-.669-.51-.173-.008-.371-.01-.57-.01-.198 0-.52.074-.792.372-.272.297-1.04 1.016-1.04 2.479 0 1.462 1.065 2.875 1.213 3.074.149.198 2.096 3.2 5.077 4.487.709.306 1.262.489 1.694.625.712.227 1.36.195 1.871.118.571-.085 1.758-.719 2.006-1.413.248-.694.248-1.289.173-1.413-.074-.124-.272-.198-.57-.347m-5.421 7.403h-.004a9.87 9.87 0 01-5.031-1.378l-.361-.214-3.741.982.998-3.648-.235-.374a9.86 9.86 0 01-1.51-5.26c.001-5.45 4.436-9.884 9.888-9.884 2.64 0 5.122 1.03 6.988 2.898a9.825 9.825 0 012.893 6.994c-.003 5.45-4.437 9.884-9.885 9.884m8.413-18.297A11.815 11.815 0 0012.05 0C5.495 0 .16 5.335.157 11.892c0 2.096.547 4.142 1.588 5.945L.057 24l6.305-1.654a11.882 11.882 0 005.683 1.448h.005c6.554 0 11.89-5.335 11.893-11.893a11.821 11.821 0 00-3.48-8.413z" /></svg>
-                                {num}
-                              </p>
-                            ));
-                          })()}
-                        </div>
-                      </button>
-                    );
-                  })}
-                </div>
+                <BranchSearchDropdown
+                  locations={locations}
+                  selectedIdx={selectedLocIdx}
+                  onSelect={selectLocation}
+                />
                 {errors.lab_id && <p className="text-xs text-red-600 font-medium">{errors.lab_id}</p>}
               </div>
             )}
