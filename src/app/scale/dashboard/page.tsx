@@ -107,91 +107,105 @@ function RequestRow({ req }: { req: RequestSummary }) {
   );
 }
 
-// Hospital search dropdown (portal-style)
+// Hospital search modal (full-screen overlay)
 function HospitalDropdown({
   hospitals, value, onChange,
 }: { hospitals: { name: string; count: number; revenue: number }[]; value: string; onChange: (v: string) => void }) {
   const [open, setOpen] = useState(false);
   const [q, setQ] = useState("");
-  const ref = useRef<HTMLDivElement>(null);
-
-  useEffect(() => {
-    function onDown(e: MouseEvent) {
-      if (ref.current && !ref.current.contains(e.target as Node)) setOpen(false);
-    }
-    document.addEventListener("mousedown", onDown);
-    return () => document.removeEventListener("mousedown", onDown);
-  }, []);
 
   const filtered = hospitals.filter((h) => !q.trim() || h.name.toLowerCase().includes(q.toLowerCase()));
   const selected = hospitals.find((h) => h.name === value);
 
+  function close() { setOpen(false); setQ(""); }
+
   return (
-    <div ref={ref} className="relative flex-1 min-w-0">
+    <>
       <button
         type="button"
-        onClick={() => setOpen((v) => !v)}
-        className={`w-full flex items-center gap-2 px-3 py-2.5 rounded-xl border text-sm transition ${
+        onClick={() => setOpen(true)}
+        className={`flex-1 min-w-0 flex items-center gap-2 px-3 py-2.5 rounded-xl border text-sm transition ${
           value ? "border-emerald-400 bg-emerald-50 text-emerald-800 font-semibold" : "border-slate-200 bg-white text-slate-600"
         }`}
       >
         <Building2 className="w-3.5 h-3.5 shrink-0 text-slate-400" />
         <span className="flex-1 text-left truncate">{selected ? selected.name : "All Hospitals"}</span>
-        {value && (
+        {value ? (
           <span
             role="button"
             onClick={(e) => { e.stopPropagation(); onChange(""); }}
-            className="text-emerald-500 hover:text-emerald-700"
+            className="text-emerald-500 hover:text-emerald-700 shrink-0"
           >
             <X className="w-3.5 h-3.5" />
           </span>
+        ) : (
+          <ChevronDown className="w-3.5 h-3.5 shrink-0 text-slate-400" />
         )}
-        <ChevronDown className={`w-3.5 h-3.5 shrink-0 text-slate-400 transition-transform ${open ? "rotate-180" : ""}`} />
       </button>
 
       {open && (
-        <div className="absolute top-full left-0 right-0 mt-1 z-50 bg-white border border-slate-200 rounded-2xl shadow-xl overflow-hidden">
-          <div className="p-2 border-b border-slate-100">
-            <div className="flex items-center gap-2 px-2 py-1.5 bg-slate-50 rounded-xl">
-              <Search className="w-3.5 h-3.5 text-slate-400 shrink-0" />
-              <input
-                autoFocus
-                value={q}
-                onChange={(e) => setQ(e.target.value)}
-                placeholder="Search hospital…"
-                className="flex-1 bg-transparent text-sm text-slate-800 placeholder-slate-400 outline-none"
-              />
-            </div>
-          </div>
-          <div className="max-h-52 overflow-y-auto">
-            <button
-              type="button"
-              onClick={() => { onChange(""); setOpen(false); setQ(""); }}
-              className={`w-full flex items-center justify-between px-4 py-2.5 text-sm transition hover:bg-slate-50 ${!value ? "font-semibold text-emerald-700" : "text-slate-700"}`}
-            >
-              <span>All Hospitals</span>
-              <span className="text-xs text-slate-400">{hospitals.reduce((s, h) => s + h.count, 0)} doctors</span>
-            </button>
-            {filtered.map((h) => (
-              <button
-                key={h.name}
-                type="button"
-                onClick={() => { onChange(h.name); setOpen(false); setQ(""); }}
-                className={`w-full flex items-center justify-between px-4 py-2.5 text-sm transition hover:bg-slate-50 ${value === h.name ? "font-semibold text-emerald-700 bg-emerald-50" : "text-slate-700"}`}
-              >
-                <span className="truncate text-left flex-1">{h.name}</span>
-                <span className="text-xs text-slate-400 ml-2 shrink-0">
-                  {h.count} · {fmtNaira(h.revenue)}
-                </span>
+        <div
+          className="fixed inset-0 z-50 bg-black/40 backdrop-blur-sm flex items-end sm:items-center justify-center"
+          onClick={close}
+        >
+          <div
+            className="bg-white w-full sm:max-w-sm rounded-t-3xl sm:rounded-3xl shadow-2xl overflow-hidden flex flex-col max-h-[80dvh]"
+            onClick={(e) => e.stopPropagation()}
+          >
+            {/* Header */}
+            <div className="flex items-center justify-between px-5 py-4 border-b border-slate-100 shrink-0">
+              <p className="text-sm font-bold text-slate-800">Filter by Hospital</p>
+              <button type="button" onClick={close} className="w-8 h-8 rounded-xl bg-slate-100 hover:bg-slate-200 flex items-center justify-center transition text-slate-500">
+                <X className="w-4 h-4" />
               </button>
-            ))}
-            {filtered.length === 0 && (
-              <p className="text-xs text-slate-400 text-center py-4">No hospitals match</p>
-            )}
+            </div>
+            {/* Search */}
+            <div className="px-4 py-3 border-b border-slate-100 shrink-0">
+              <div className="flex items-center gap-2 px-3 py-2 bg-slate-50 rounded-xl border border-slate-200">
+                <Search className="w-3.5 h-3.5 text-slate-400 shrink-0" />
+                <input
+                  autoFocus
+                  value={q}
+                  onChange={(e) => setQ(e.target.value)}
+                  placeholder="Search hospital…"
+                  className="flex-1 bg-transparent text-sm text-slate-800 placeholder-slate-400 outline-none"
+                />
+                {q && (
+                  <button type="button" onClick={() => setQ("")} className="text-slate-400 hover:text-slate-600">
+                    <X className="w-3.5 h-3.5" />
+                  </button>
+                )}
+              </div>
+            </div>
+            {/* List */}
+            <div className="overflow-y-auto flex-1">
+              <button
+                type="button"
+                onClick={() => { onChange(""); close(); }}
+                className={`w-full flex items-center justify-between px-5 py-3.5 text-sm transition hover:bg-slate-50 border-b border-slate-50 ${!value ? "font-semibold text-emerald-700" : "text-slate-700"}`}
+              >
+                <span>All Hospitals</span>
+                <span className="text-xs text-slate-400">{hospitals.reduce((s, h) => s + h.count, 0)} professionals</span>
+              </button>
+              {filtered.map((h) => (
+                <button
+                  key={h.name}
+                  type="button"
+                  onClick={() => { onChange(h.name); close(); }}
+                  className={`w-full flex items-center justify-between px-5 py-3.5 text-sm transition hover:bg-slate-50 border-b border-slate-50 ${value === h.name ? "font-semibold text-emerald-700 bg-emerald-50/60" : "text-slate-700"}`}
+                >
+                  <span className="text-left flex-1 pr-3">{h.name}</span>
+                  <span className="text-xs text-slate-400 shrink-0">{h.count} professional{h.count !== 1 ? "s" : ""}</span>
+                </button>
+              ))}
+              {filtered.length === 0 && (
+                <p className="text-xs text-slate-400 text-center py-8">No hospitals match</p>
+              )}
+            </div>
           </div>
         </div>
       )}
-    </div>
+    </>
   );
 }
 
@@ -469,6 +483,7 @@ export default function ScaleDashboardPage() {
   const [hospitalFilter, setHospitalFilter] = useState("");
   const [monthFilter, setMonthFilter]       = useState("");
   const [showCreate, setShowCreate] = useState(false);
+  const [sortBy, setSortBy] = useState<"revenue-desc" | "revenue-asc" | "name-asc">("revenue-desc");
 
   const load = useCallback(async () => {
     setLoading(true); setError("");
@@ -518,7 +533,7 @@ export default function ScaleDashboardPage() {
       .sort((a, b) => b.revenue - a.revenue || a.name.localeCompare(b.name));
   }, [doctors, monthFilter]);
 
-  // Filter doctors by search, hospital, month
+  // Filter + sort doctors
   const filteredDoctors = useMemo(() => {
     let result = doctors;
     if (search.trim()) {
@@ -535,8 +550,16 @@ export default function ScaleDashboardPage() {
     if (monthFilter) {
       result = result.filter((d) => d.requests.some((r) => toYM(r.created_at) === monthFilter));
     }
+    // Sort
+    result = [...result].sort((a, b) => {
+      const revA = a.requests.filter((r) => isRevenue(r.status) && (!monthFilter || toYM(r.created_at) === monthFilter)).reduce((s, r) => s + r.lab_revenue_amount, 0);
+      const revB = b.requests.filter((r) => isRevenue(r.status) && (!monthFilter || toYM(r.created_at) === monthFilter)).reduce((s, r) => s + r.lab_revenue_amount, 0);
+      if (sortBy === "revenue-desc") return revB - revA;
+      if (sortBy === "revenue-asc") return revA - revB;
+      return a.doctor_name.localeCompare(b.doctor_name);
+    });
     return result;
-  }, [doctors, search, hospitalFilter, monthFilter]);
+  }, [doctors, search, hospitalFilter, monthFilter, sortBy]);
 
   // Compute filtered totals for summary
   const filteredRevenue = useMemo(() =>
@@ -630,12 +653,32 @@ export default function ScaleDashboardPage() {
                 </button>
               )}
             </div>
-            {/* Hospital + Month dropdowns */}
+            {/* Hospital + Month dropdowns + Sort */}
             <div className="flex gap-2">
               <HospitalDropdown hospitals={hospitalList} value={hospitalFilter} onChange={setHospitalFilter} />
               {availableMonths.length > 0 && (
                 <MonthDropdown months={availableMonths} value={monthFilter} onChange={setMonthFilter} />
               )}
+            </div>
+            {/* Sort */}
+            <div className="flex items-center gap-2">
+              <span className="text-xs text-slate-400 shrink-0">Sort:</span>
+              <div className="flex gap-1.5">
+                {(["revenue-desc", "revenue-asc", "name-asc"] as const).map((s) => (
+                  <button
+                    key={s}
+                    type="button"
+                    onClick={() => setSortBy(s)}
+                    className={`text-xs px-2.5 py-1.5 rounded-lg border transition font-medium ${
+                      sortBy === s
+                        ? "bg-emerald-600 text-white border-emerald-600"
+                        : "bg-white text-slate-600 border-slate-200 hover:border-emerald-300"
+                    }`}
+                  >
+                    {s === "revenue-desc" ? "Highest Earning" : s === "revenue-asc" ? "Lowest Earning" : "A–Z"}
+                  </button>
+                ))}
+              </div>
             </div>
           </div>
         )}
