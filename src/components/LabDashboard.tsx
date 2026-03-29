@@ -3334,15 +3334,21 @@ function LabPoveonView({ data, loading, walletData, walletRefreshing, onRefreshW
           {[...Array(3)].map((_, i) => <div key={i} className="h-16 bg-white/5 rounded-2xl animate-pulse" />)}
         </div>
       ) : (
-        <div className="grid grid-cols-3 gap-3">
+        <div className="grid grid-cols-3 gap-2 sm:gap-3">
           {[
             { label: "Your Revenue", value: totalLabRevenue, color: "from-emerald-500/20 to-emerald-600/10 border-emerald-500/30" },
             { label: "Poveon Fee", value: totalOwed, color: "from-sky-500/20 to-sky-600/10 border-sky-500/30" },
             { label: "Deposited", value: totalDeposited, color: "from-violet-500/20 to-violet-600/10 border-violet-500/30" },
           ].map((s) => (
-            <div key={s.label} className={`bg-gradient-to-br ${s.color} border rounded-2xl px-3 py-3 text-center`}>
-              <p className="text-[10px] text-slate-400 uppercase tracking-wider mb-0.5 leading-tight">{s.label}</p>
-              <p className="text-lg font-bold font-mono text-white leading-tight">₦{s.value.toLocaleString()}</p>
+            <div key={s.label} className={`bg-gradient-to-br ${s.color} border rounded-2xl px-2 sm:px-3 py-3 text-center`}>
+              <p className="text-[9px] sm:text-[10px] text-slate-400 uppercase tracking-wide mb-0.5 leading-tight">{s.label}</p>
+              <p className="text-sm sm:text-base font-bold font-mono text-white leading-tight break-all">
+                {s.value >= 1_000_000
+                  ? `₦${(s.value / 1_000_000).toFixed(1)}M`
+                  : s.value >= 1_000
+                  ? `₦${(s.value / 1_000).toFixed(0)}K`
+                  : `₦${s.value.toLocaleString()}`}
+              </p>
             </div>
           ))}
         </div>
