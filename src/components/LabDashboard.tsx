@@ -254,10 +254,12 @@ export function LabDashboard({ lab, isOwner = false, roleName = "Lab Owner", can
     setSheetsStatusLoading(true);
     try {
       const res = await fetch("/api/lab/sheets/status");
+      if (!res.ok) throw new Error("status fetch failed");
       const d = await res.json();
       setSheetsStatus(d);
     } catch {
-      // non-critical
+      // API error or DB columns not yet migrated — show disconnected state
+      setSheetsStatus({ connected: false });
     } finally {
       setSheetsStatusLoading(false);
     }
