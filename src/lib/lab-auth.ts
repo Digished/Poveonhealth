@@ -4,34 +4,36 @@ import { createServerClient } from "@/lib/supabase/server";
 import { prisma } from "@/lib/prisma";
 
 export interface LabPermissions {
-  can_view_requests:   boolean;
-  can_mark_seen:       boolean;
-  can_mark_done:       boolean;
-  can_send_results:    boolean;
-  can_manage_team:     boolean;
-  can_manage_api_keys: boolean;
-  can_view_referrals:  boolean;
-  can_view_clients:    boolean;
-  can_view_analytics:  boolean;
-  can_view_activity:   boolean;
-  can_view_feedback:   boolean;
-  can_view_wallet:     boolean;
+  can_view_requests:    boolean;
+  can_mark_seen:        boolean;
+  can_mark_done:        boolean;
+  can_send_results:     boolean;
+  can_manage_team:      boolean;
+  can_manage_api_keys:  boolean;
+  can_view_referrals:   boolean;
+  can_view_clients:     boolean;
+  can_view_analytics:   boolean;
+  can_view_activity:    boolean;
+  can_view_feedback:    boolean;
+  can_view_wallet:      boolean;
+  can_manage_price_list: boolean;
 }
 
 /** Full permissions — granted to the lab owner (LabUser) and API keys */
 export const FULL_PERMISSIONS: LabPermissions = {
-  can_view_requests:   true,
-  can_mark_seen:       true,
-  can_mark_done:       true,
-  can_send_results:    true,
-  can_manage_team:     true,
-  can_manage_api_keys: true,
-  can_view_referrals:  true,
-  can_view_clients:    true,
-  can_view_analytics:  true,
-  can_view_activity:   true,
-  can_view_feedback:   true,
-  can_view_wallet:     true,
+  can_view_requests:     true,
+  can_mark_seen:         true,
+  can_mark_done:         true,
+  can_send_results:      true,
+  can_manage_team:       true,
+  can_manage_api_keys:   true,
+  can_view_referrals:    true,
+  can_view_clients:      true,
+  can_view_analytics:    true,
+  can_view_activity:     true,
+  can_view_feedback:     true,
+  can_view_wallet:       true,
+  can_manage_price_list: true,
 };
 
 export interface LabAuthResult {
@@ -84,18 +86,19 @@ export async function getLabAuth(request: NextRequest): Promise<LabAuthResult | 
             email:  true,
             role: {
               select: {
-                can_view_requests:   true,
-                can_mark_seen:       true,
-                can_mark_done:       true,
-                can_send_results:    true,
-                can_manage_team:     true,
-                can_manage_api_keys: true,
-                can_view_referrals:  true,
-                can_view_clients:    true,
-                can_view_analytics:  true,
-                can_view_activity:   true,
-                can_view_feedback:   true,
-                can_view_wallet:     true,
+                can_view_requests:    true,
+                can_mark_seen:        true,
+                can_mark_done:        true,
+                can_send_results:     true,
+                can_manage_team:      true,
+                can_manage_api_keys:  true,
+                can_view_referrals:   true,
+                can_view_clients:     true,
+                can_view_analytics:   true,
+                can_view_activity:    true,
+                can_view_feedback:    true,
+                can_view_wallet:      true,
+                can_manage_price_list: true,
               },
             },
           },
