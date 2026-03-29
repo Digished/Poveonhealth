@@ -16,23 +16,26 @@ export const SHEETS_SCOPES = [
   "https://www.googleapis.com/auth/drive.file",
 ];
 
-export function getRedirectUri(): string {
-  const base = process.env.NEXT_PUBLIC_APP_URL ?? "http://localhost:3000";
-  return `${base}/api/lab/sheets/callback`;
+/** Derive the OAuth callback URL from the incoming request so it works on
+ *  any deployment (local, preview, production) without extra config. */
+export function getRedirectUri(requestUrl: string): string {
+  const { origin } = new URL(requestUrl);
+  return `${origin}/api/lab/sheets/callback`;
 }
 
 /** Build an OAuth2 client (unauthenticated — used for generating the auth URL). */
-export function buildOAuthClient() {
+export function buildOAuthClient(redirectUri: string) {
   return new google.auth.OAuth2(
     process.env.GOOGLE_CLIENT_ID,
     process.env.GOOGLE_CLIENT_SECRET,
-    getRedirectUri()
+    redirectUri
   );
 }
 
-/** Build an authenticated OAuth2 client for a lab using its stored encrypted refresh token. */
-export function buildAuthenticatedClient(encryptedRefreshToken: string) {
-  const client = buildOAuthClient();
+/** Build an authenticated OAuth2 client for a lab using its stored encrypted refresh token.
+ *  The redirect URI must match the one used during the original OAuth flow. */
+export function buildAuthenticatedClient(encryptedRefreshToken: string, redirectUri: string) {
+  const client = buildOAuthClient(redirectUri);
   client.setCredentials({ refresh_token: decrypt(encryptedRefreshToken) });
   return client;
 }
@@ -65,10 +68,11 @@ export interface SheetCategory {
  */
 export async function createSpreadsheet(
   encryptedRefreshToken: string,
+  redirectUri: string,
   labName: string,
   categories: SheetCategory[]
 ): Promise<string> {
-  const auth = buildAuthenticatedClient(encryptedRefreshToken);
+  const auth = buildAuthenticatedClient(encryptedRefreshToken, redirectUri);
   const sheetsApi = google.sheets({ version: "v4", auth });
 
   // 1. Create spreadsheet with one sheet per category + the help tab
@@ -247,10 +251,11 @@ export async function createSpreadsheet(
  */
 export async function pushToSheet(
   encryptedRefreshToken: string,
+  redirectUri: string,
   spreadsheetId: string,
   categories: SheetCategory[]
 ): Promise<void> {
-  const auth = buildAuthenticatedClient(encryptedRefreshToken);
+  const auth = buildAuthenticatedClient(encryptedRefreshToken, redirectUri);
   const sheetsApi = google.sheets({ version: "v4", auth });
 
   // Get current sheet metadata
@@ -384,9 +389,10 @@ export interface SheetRow {
  */
 export async function readFromSheet(
   encryptedRefreshToken: string,
+  redirectUri: string,
   spreadsheetId: string
 ): Promise<SheetRow[]> {
-  const auth = buildAuthenticatedClient(encryptedRefreshToken);
+  const auth = buildAuthenticatedClient(encryptedRefreshToken, redirectUri);
   const sheetsApi = google.sheets({ version: "v4", auth });
 
   const meta = await sheetsApi.spreadsheets.get({ spreadsheetId });

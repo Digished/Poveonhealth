@@ -11,7 +11,7 @@ export const dynamic = "force-dynamic";
 import { NextRequest, NextResponse } from "next/server";
 import { getLabAuth } from "@/lib/lab-auth";
 import { prisma } from "@/lib/prisma";
-import { buildOAuthClient } from "@/lib/sheets/google-sheets";
+import { buildOAuthClient, getRedirectUri } from "@/lib/sheets/google-sheets";
 import { decrypt } from "@/lib/sheets/encrypt";
 
 export async function DELETE(request: NextRequest) {
@@ -33,7 +33,7 @@ export async function DELETE(request: NextRequest) {
   if (lab?.google_refresh_token) {
     // Best-effort token revocation — don't fail if Google rejects it
     try {
-      const oauthClient = buildOAuthClient();
+      const oauthClient = buildOAuthClient(getRedirectUri(request.url));
       oauthClient.setCredentials({ refresh_token: decrypt(lab.google_refresh_token) });
       await oauthClient.revokeCredentials();
     } catch (e) {

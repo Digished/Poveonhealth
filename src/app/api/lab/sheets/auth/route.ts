@@ -11,7 +11,7 @@ export const dynamic = "force-dynamic";
 import { NextRequest, NextResponse } from "next/server";
 import { randomBytes } from "crypto";
 import { getLabAuth } from "@/lib/lab-auth";
-import { buildOAuthClient, SHEETS_SCOPES } from "@/lib/sheets/google-sheets";
+import { buildOAuthClient, getRedirectUri, SHEETS_SCOPES } from "@/lib/sheets/google-sheets";
 
 export async function GET(request: NextRequest) {
   const auth = await getLabAuth(request);
@@ -31,7 +31,8 @@ export async function GET(request: NextRequest) {
   const nonce = randomBytes(16).toString("hex");
   const state = `${auth.lab_id}:${nonce}`;
 
-  const oauthClient = buildOAuthClient();
+  const redirectUri = getRedirectUri(request.url);
+  const oauthClient = buildOAuthClient(redirectUri);
   const authUrl = oauthClient.generateAuthUrl({
     access_type: "offline",
     prompt: "consent", // always get a refresh_token

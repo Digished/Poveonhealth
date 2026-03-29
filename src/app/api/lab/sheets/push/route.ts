@@ -11,7 +11,7 @@ export const dynamic = "force-dynamic";
 import { NextRequest, NextResponse } from "next/server";
 import { getLabAuth } from "@/lib/lab-auth";
 import { prisma } from "@/lib/prisma";
-import { pushToSheet, SheetCategory } from "@/lib/sheets/google-sheets";
+import { pushToSheet, getRedirectUri, SheetCategory } from "@/lib/sheets/google-sheets";
 
 export async function POST(request: NextRequest) {
   const auth = await getLabAuth(request);
@@ -57,6 +57,7 @@ export async function POST(request: NextRequest) {
   try {
     await pushToSheet(
       lab.google_refresh_token,
+      getRedirectUri(request.url),
       lab.google_sheet_id,
       Array.from(categoryMap.values())
     );

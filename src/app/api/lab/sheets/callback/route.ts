@@ -15,6 +15,7 @@ import { prisma } from "@/lib/prisma";
 import { encrypt } from "@/lib/sheets/encrypt";
 import {
   buildOAuthClient,
+  getRedirectUri,
   createSpreadsheet,
   SheetCategory,
 } from "@/lib/sheets/google-sheets";
@@ -45,8 +46,9 @@ export async function GET(request: NextRequest) {
   }
 
   try {
-    // Exchange code for tokens
-    const oauthClient = buildOAuthClient();
+    // Exchange code for tokens — redirect URI must match exactly what was sent in /auth
+    const redirectUri = getRedirectUri(request.url);
+    const oauthClient = buildOAuthClient(redirectUri);
     const { tokens } = await oauthClient.getToken(code);
 
     if (!tokens.refresh_token) {
@@ -92,7 +94,7 @@ export async function GET(request: NextRequest) {
     const categories = Array.from(categoryMap.values());
 
     // Create the Google Spreadsheet
-    const spreadsheetId = await createSpreadsheet(encryptedToken, lab.name, categories);
+    const spreadsheetId = await createSpreadsheet(encryptedToken, redirectUri, lab.name, categories);
 
     // Persist connection on the lab record
     await prisma.lab.update({
