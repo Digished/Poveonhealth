@@ -8,7 +8,7 @@ import {
   Phone, Upload, Check, MapPin, Users, ChevronRight, ChevronDown, ChevronUp,
   Code2, Key, Copy, TrendingUp, Link, Sun, Moon, Star, GitBranch,
   ArrowUpRight, ArrowDownRight, ArrowDownToLine, Settings, CreditCard, MessageCircle,
-  BookOpen, Database, Sparkles, Search, Layers, UserCircle, Wallet,
+  BookOpen, Database, Sparkles, Search, Layers, UserCircle, Wallet, FileText,
 } from "lucide-react";
 import { useDashTheme } from "@/hooks/useDashTheme";
 import { Button } from "@/components/ui/Button";
@@ -20,7 +20,7 @@ import { format } from "date-fns";
 import { createClient } from "@/lib/supabase/client"; // still used for auth sign-out
 import { useRouter } from "next/navigation";
 
-type AdminTab = "metrics" | "requests" | "referrals" | "labs" | "analytics" | "marketers" | "settings" | "transactions" | "knowledge-base" | "users" | "hospitals";
+type AdminTab = "metrics" | "requests" | "referrals" | "labs" | "analytics" | "marketers" | "settings" | "transactions" | "knowledge-base" | "users" | "hospitals" | "agreements";
 
 interface ReferralGroup {
   key: string; // doctor_email
@@ -124,6 +124,10 @@ export function AdminDashboard() {
   const [expandedLabIntegration, setExpandedLabIntegration] = useState<string | null>(null);
   const [expandedLabIds, setExpandedLabIds] = useState<Set<string>>(new Set());
   const [branchModalLabId, setBranchModalLabId] = useState<string | null>(null);
+  const [sendingAgreementId, setSendingAgreementId] = useState<string | null>(null);
+  type AgreementRecord = { id: string; version: string; signed_at: string; signer_name: string; signer_email: string; signer_title: string | null; pdf_hash: string; lab: { id: string; name: string; email: string } };
+  const [agreements, setAgreements] = useState<AgreementRecord[]>([]);
+  const [agreementsLoading, setAgreementsLoading] = useState(false);
   const [defaultRequestPrice, setDefaultRequestPrice] = useState<string>("500");
   const [savingSettings, setSavingSettings] = useState(false);
 
@@ -461,6 +465,7 @@ export function AdminDashboard() {
             { key: "knowledge-base" as AdminTab, label: "Knowledge Base", icon: <BookOpen className="w-4 h-4" /> },
             { key: "users" as AdminTab, label: "Users", icon: <UserCircle className="w-4 h-4" /> },
             { key: "hospitals" as AdminTab, label: "Hospitals", icon: <Building2 className="w-4 h-4" /> },
+            { key: "agreements" as AdminTab, label: "Agreements", icon: <FileText className="w-4 h-4" /> },
           ];
           const current = tabs.find((t) => t.key === activeTab) ?? tabs[0];
           return (
@@ -998,6 +1003,23 @@ export function AdminDashboard() {
                           <button onClick={() => setExpandedLabIntegration(lab.id)} title="Dev / Integration" className="p-2 rounded-lg hover:bg-blue-500/15 text-slate-500 hover:text-blue-400 transition-colors">
                             <Code2 className="w-3.5 h-3.5" />
                           </button>
+                          <button
+                            onClick={async () => {
+                              setSendingAgreementId(lab.id);
+                              try {
+                                const r = await fetch(`/api/admin/labs/${lab.id}/send-agreement`, { method: "POST" });
+                                const d = await r.json();
+                                if (d.success) { toast.success(`Agreement invite sent to ${lab.email}`); }
+                                else throw new Error(d.error);
+                              } catch { toast.error("Failed to send agreement invite"); }
+                              finally { setSendingAgreementId(null); }
+                            }}
+                            disabled={sendingAgreementId === lab.id}
+                            title="Send Agreement Invite"
+                            className="p-2 rounded-lg hover:bg-violet-500/15 text-slate-500 hover:text-violet-400 transition-colors"
+                          >
+                            <FileText className="w-3.5 h-3.5" />
+                          </button>
                           <LabWalletButton labId={lab.id} />
                           <button onClick={() => handleDeleteLab(lab)} disabled={deletingId === lab.id} title="Delete" className="p-2 rounded-lg hover:bg-red-500/15 text-slate-600 hover:text-red-400 transition-colors">
                             <Trash2 className="w-3.5 h-3.5" />
@@ -1096,6 +1118,22 @@ export function AdminDashboard() {
                             </button>
                             <button onClick={() => setExpandedLabIntegration(lab.id)} className="flex items-center justify-center gap-1.5 px-3 py-2 rounded-xl bg-blue-500/10 hover:bg-blue-500/20 text-blue-400 text-xs font-medium transition-colors">
                               <Code2 className="w-3.5 h-3.5" />Dev
+                            </button>
+                            <button
+                              onClick={async () => {
+                                setSendingAgreementId(lab.id);
+                                try {
+                                  const r = await fetch(`/api/admin/labs/${lab.id}/send-agreement`, { method: "POST" });
+                                  const d = await r.json();
+                                  if (d.success) { toast.success(`Agreement invite sent to ${lab.email}`); }
+                                  else throw new Error(d.error);
+                                } catch { toast.error("Failed to send agreement invite"); }
+                                finally { setSendingAgreementId(null); }
+                              }}
+                              disabled={sendingAgreementId === lab.id}
+                              className="flex items-center justify-center gap-1.5 px-3 py-2 rounded-xl bg-violet-500/10 hover:bg-violet-500/20 text-violet-400 text-xs font-medium transition-colors"
+                            >
+                              <FileText className="w-3.5 h-3.5" />Agreement
                             </button>
                             <div><LabWalletButton labId={lab.id} /></div>
                             <button onClick={() => handleDeleteLab(lab)} disabled={deletingId === lab.id} className="flex items-center justify-center gap-1.5 px-3 py-2 rounded-xl bg-red-500/10 hover:bg-red-500/20 text-red-400 text-xs font-medium transition-colors">
@@ -1398,6 +1436,24 @@ export function AdminDashboard() {
 
         {/* ── HOSPITALS ── */}
         {activeTab === "hospitals" && <AdminHospitalsTab />}
+
+        {/* ── AGREEMENTS ── */}
+        {activeTab === "agreements" && (
+          <AdminAgreementsTab
+            agreements={agreements}
+            loading={agreementsLoading}
+            onLoad={() => {
+              if (agreements.length === 0 && !agreementsLoading) {
+                setAgreementsLoading(true);
+                fetch("/api/admin/agreements")
+                  .then((r) => r.json())
+                  .then((d) => { if (d.success) setAgreements(d.agreements); })
+                  .catch(() => {})
+                  .finally(() => setAgreementsLoading(false));
+              }
+            }}
+          />
+        )}
 
       </div>
 
@@ -4602,5 +4658,138 @@ function LabWalletButton({ labId }: { labId: string }) {
     >
       <Wallet className="w-3 h-3" /> Wallet DVA
     </button>
+  );
+}
+
+// =============================================================================
+// Admin Agreements Tab
+// =============================================================================
+
+function AdminAgreementsTab({
+  agreements,
+  loading,
+  onLoad,
+}: {
+  agreements: { id: string; version: string; signed_at: string; signer_name: string; signer_email: string; signer_title: string | null; pdf_hash: string; lab: { id: string; name: string; email: string } }[];
+  loading: boolean;
+  onLoad: () => void;
+}) {
+  const [downloading, setDownloading] = useState<string | null>(null);
+
+  useEffect(() => { onLoad(); }, []);
+
+  async function handleDownload(id: string, labName: string) {
+    setDownloading(id);
+    try {
+      const r = await fetch(`/api/admin/agreements/${id}/pdf`);
+      const d = await r.json();
+      if (!d.url) throw new Error("No URL");
+      window.open(d.url, "_blank");
+    } catch {
+      toast.error("Could not download PDF");
+    } finally {
+      setDownloading(null);
+    }
+  }
+
+  return (
+    <div>
+      <div className="flex items-center justify-between mb-6">
+        <div>
+          <h2 className="text-lg font-semibold text-white">Signed Agreements</h2>
+          <p className="text-xs text-slate-500 mt-0.5">
+            Digital partnership agreements signed by lab owners
+          </p>
+        </div>
+        <button
+          onClick={() => {
+            fetch("/api/admin/agreements").then((r) => r.json()).then((d) => {
+              if (d.success) {
+                const el = document.createElement("a");
+                const rows = [
+                  ["Reference", "Lab", "Signer", "Title", "Email", "Signed At", "Version"],
+                  ...d.agreements.map((a: { id: string; lab: { name: string }; signer_name: string; signer_title: string | null; signer_email: string; signed_at: string; version: string }) => [
+                    a.id.slice(0, 8).toUpperCase(), a.lab.name, a.signer_name,
+                    a.signer_title ?? "", a.signer_email,
+                    new Date(a.signed_at).toLocaleString(), a.version,
+                  ]),
+                ];
+                const csv = rows.map((r) => r.map((c: string) => `"${c}"`).join(",")).join("\n");
+                el.href = "data:text/csv;charset=utf-8," + encodeURIComponent(csv);
+                el.download = "poveon-agreements.csv";
+                el.click();
+              }
+            }).catch(() => {});
+          }}
+          className="flex items-center gap-1.5 px-3 py-2 rounded-xl bg-white/8 hover:bg-white/12 text-slate-300 text-xs font-medium transition-colors"
+        >
+          <ArrowDownToLine className="w-3.5 h-3.5" /> Export CSV
+        </button>
+      </div>
+
+      {loading ? (
+        <div className="space-y-3">
+          {[...Array(3)].map((_, i) => (
+            <div key={i} className="h-16 bg-white/5 rounded-2xl animate-pulse" />
+          ))}
+        </div>
+      ) : agreements.length === 0 ? (
+        <div className="bg-white/5 border border-white/10 rounded-2xl p-12 text-center">
+          <FileText className="w-9 h-9 text-slate-600 mx-auto mb-3" />
+          <p className="text-sm text-slate-400">No signed agreements yet</p>
+          <p className="text-xs text-slate-600 mt-1">
+            Send agreement invites to labs from the Labs tab
+          </p>
+        </div>
+      ) : (
+        <div className="bg-white/5 border border-white/10 rounded-2xl overflow-hidden">
+          <table className="w-full text-sm">
+            <thead>
+              <tr className="border-b border-white/8">
+                <th className="text-left px-4 py-3 text-xs font-semibold text-slate-500 uppercase tracking-wider">Laboratory</th>
+                <th className="text-left px-4 py-3 text-xs font-semibold text-slate-500 uppercase tracking-wider hidden sm:table-cell">Signed By</th>
+                <th className="text-left px-4 py-3 text-xs font-semibold text-slate-500 uppercase tracking-wider hidden md:table-cell">Date</th>
+                <th className="text-left px-4 py-3 text-xs font-semibold text-slate-500 uppercase tracking-wider hidden lg:table-cell">Version</th>
+                <th className="px-4 py-3" />
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-white/5">
+              {agreements.map((a) => (
+                <tr key={a.id} className="hover:bg-white/3 transition-colors">
+                  <td className="px-4 py-3">
+                    <p className="font-medium text-white text-sm">{a.lab.name}</p>
+                    <p className="text-xs text-slate-500">{a.lab.email}</p>
+                  </td>
+                  <td className="px-4 py-3 hidden sm:table-cell">
+                    <p className="text-slate-200 text-sm">{a.signer_name}</p>
+                    {a.signer_title && <p className="text-xs text-slate-500">{a.signer_title}</p>}
+                  </td>
+                  <td className="px-4 py-3 hidden md:table-cell">
+                    <p className="text-slate-300 text-sm">{new Date(a.signed_at).toLocaleDateString()}</p>
+                    <p className="text-xs text-slate-500">{new Date(a.signed_at).toLocaleTimeString()}</p>
+                  </td>
+                  <td className="px-4 py-3 hidden lg:table-cell">
+                    <span className="px-2 py-0.5 rounded-full bg-emerald-500/15 text-emerald-400 text-xs font-medium border border-emerald-500/20">
+                      {a.version}
+                    </span>
+                  </td>
+                  <td className="px-4 py-3 text-right">
+                    <button
+                      onClick={() => handleDownload(a.id, a.lab.name)}
+                      disabled={downloading === a.id}
+                      className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-white/8 hover:bg-white/15 text-slate-300 text-xs font-medium transition-colors ml-auto"
+                    >
+                      {downloading === a.id
+                        ? <><RefreshCw className="w-3 h-3 animate-spin" /> Loading…</>
+                        : <><ArrowDownToLine className="w-3 h-3" /> PDF</>}
+                    </button>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      )}
+    </div>
   );
 }

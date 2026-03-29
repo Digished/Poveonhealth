@@ -750,3 +750,137 @@ export function labNewRequest({
     ${divider}
   `, { name: labName });
 }
+
+// =============================================================================
+// Agreement Invite Email
+// =============================================================================
+
+export function agreementInviteEmail({
+  labName,
+  signingUrl,
+  expiresAt,
+}: {
+  labName: string;
+  signingUrl: string;
+  expiresAt: string;
+}): string {
+  return base(`
+    <p style="margin:0 0 8px;font-size:22px;font-weight:700;color:#0f172a;">Action Required</p>
+    <p style="margin:0 0 24px;font-size:15px;color:#475569;">Sign your Poveon Partnership Agreement</p>
+
+    <p style="margin:0 0 16px;font-size:14px;color:#334155;line-height:1.6;">
+      Dear ${labName} team,
+    </p>
+    <p style="margin:0 0 16px;font-size:14px;color:#334155;line-height:1.6;">
+      To complete your onboarding on the Poveon Health platform, please review and digitally sign
+      the <strong>Laboratory Partnership Agreement</strong>. This agreement sets out the terms under
+      which your laboratory will receive patient referrals and operate on our platform.
+    </p>
+    <p style="margin:0 0 24px;font-size:14px;color:#334155;line-height:1.6;">
+      The signing process takes approximately <strong>5 minutes</strong> and requires:
+    </p>
+    <ul style="margin:0 0 24px;padding-left:20px;color:#334155;font-size:14px;line-height:1.8;">
+      <li>Reading the full agreement</li>
+      <li>Providing your full name and title</li>
+      <li>Applying your digital signature</li>
+    </ul>
+
+    <div style="text-align:center;margin:32px 0;">
+      <a href="${signingUrl}"
+         style="display:inline-block;background:#0259a0;color:#ffffff;text-decoration:none;
+                padding:14px 36px;border-radius:8px;font-weight:700;font-size:15px;letter-spacing:0.2px;">
+        Review &amp; Sign Agreement →
+      </a>
+    </div>
+
+    <p style="margin:0 0 8px;font-size:12px;color:#94a3b8;text-align:center;">
+      This link expires on ${expiresAt}. Do not share it with others.
+    </p>
+    <p style="margin:0;font-size:12px;color:#94a3b8;text-align:center;">
+      If the button above doesn't work, copy and paste this link into your browser:<br/>
+      <a href="${signingUrl}" style="color:#0259a0;word-break:break-all;">${signingUrl}</a>
+    </p>
+  `);
+}
+
+// =============================================================================
+// Agreement Signed Confirmation Email
+// =============================================================================
+
+export function agreementSignedConfirmationEmail({
+  signerName,
+  labName,
+  refNo,
+  signedAt,
+  downloadUrl,
+}: {
+  signerName: string;
+  labName: string;
+  refNo: string;
+  signedAt: string;
+  downloadUrl: string;
+}): string {
+  return base(`
+    <p style="margin:0 0 8px;font-size:22px;font-weight:700;color:#0f172a;">Agreement Signed ✓</p>
+    <p style="margin:0 0 24px;font-size:15px;color:#475569;">Your Poveon Partnership Agreement is now active</p>
+
+    <p style="margin:0 0 16px;font-size:14px;color:#334155;line-height:1.6;">
+      Dear ${signerName},
+    </p>
+    <p style="margin:0 0 16px;font-size:14px;color:#334155;line-height:1.6;">
+      Thank you. The Poveon Laboratory Partnership Agreement for <strong>${labName}</strong>
+      has been successfully signed and is now legally binding.
+    </p>
+
+    <table width="100%" cellpadding="0" cellspacing="0"
+           style="background:#f8fafc;border:1px solid #e2e8f0;border-radius:8px;
+                  padding:20px;margin:24px 0;">
+      <tr>
+        <td style="font-size:11px;color:#94a3b8;text-transform:uppercase;
+                   letter-spacing:0.8px;padding-bottom:14px;font-weight:700;">
+          Agreement Details
+        </td>
+      </tr>
+      <tr>
+        <td style="font-size:13px;color:#475569;padding:4px 0;">
+          <strong style="color:#0f172a;">Reference:</strong>&nbsp; ${refNo}
+        </td>
+      </tr>
+      <tr>
+        <td style="font-size:13px;color:#475569;padding:4px 0;">
+          <strong style="color:#0f172a;">Signed by:</strong>&nbsp; ${signerName}
+        </td>
+      </tr>
+      <tr>
+        <td style="font-size:13px;color:#475569;padding:4px 0;">
+          <strong style="color:#0f172a;">Laboratory:</strong>&nbsp; ${labName}
+        </td>
+      </tr>
+      <tr>
+        <td style="font-size:13px;color:#475569;padding:4px 0;">
+          <strong style="color:#0f172a;">Date &amp; Time:</strong>&nbsp; ${signedAt}
+        </td>
+      </tr>
+    </table>
+
+    ${downloadUrl ? `
+    <div style="text-align:center;margin:28px 0 16px;">
+      <a href="${downloadUrl}"
+         style="display:inline-block;background:#0f172a;color:#ffffff;text-decoration:none;
+                padding:13px 32px;border-radius:8px;font-weight:600;font-size:14px;">
+        Download Signed Agreement (PDF)
+      </a>
+    </div>
+    <p style="margin:0 0 24px;font-size:11px;color:#94a3b8;text-align:center;">
+      Download link valid for 7 days
+    </p>
+    ` : ""}
+
+    <p style="margin:0;font-size:13px;color:#64748b;line-height:1.6;">
+      Please retain a copy of this agreement for your records. A copy has also been stored
+      securely on the Poveon platform and is accessible to Poveon administrators.
+      If you have any questions, contact us at <a href="mailto:legal@poveonhealth.com"
+      style="color:#0259a0;">legal@poveonhealth.com</a>.
+    </p>
+  `);
+}
