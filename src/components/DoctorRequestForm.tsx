@@ -1937,7 +1937,7 @@ export function DoctorRequestForm({
                   <span className="font-semibold">
                     {docProfileStatus === "found_partial" ? "Complete your profile" : "Create your account"}
                   </span>
-                  {" "}— sign in at the Doctor Portal to set up your details
+                  {" "}— sign in at the Professional Portal to set up your details in less than 2 minutes.
                 </p>
                 <span className="text-medical-500 text-xs font-semibold shrink-0 group-hover:underline">
                   {docProfileStatus === "found_partial" ? "Complete →" : "Create →"}
