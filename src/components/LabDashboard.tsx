@@ -90,7 +90,18 @@ export function LabDashboard({ lab, isOwner = false, roleName = "Lab Owner", can
   const router = useRouter();
   const searchParams = useSearchParams();
   const { isLight, toggle, themeClass } = useDashTheme("lab_dash_theme");
-  const [mainView, setMainView] = useState<"requests" | "referrals" | "clients" | "analytics" | "activity" | "feedback" | "poveon" | "price-list">("requests");
+  type MainView = "requests" | "referrals" | "clients" | "analytics" | "activity" | "feedback" | "poveon" | "price-list";
+  const VALID_TABS: MainView[] = ["requests", "referrals", "clients", "analytics", "activity", "feedback", "poveon", "price-list"];
+  const tabParam = searchParams.get("tab") as MainView | null;
+  const [mainView, setMainView] = useState<MainView>(
+    tabParam && VALID_TABS.includes(tabParam) ? tabParam : "requests"
+  );
+  const navigateToTab = useCallback((tab: MainView) => {
+    setMainView(tab);
+    const next = new URLSearchParams(searchParams.toString());
+    next.set("tab", tab);
+    router.replace(`/lab-dashboard?${next.toString()}`);
+  }, [router, searchParams]);
   const [walletData, setWalletData] = useState<WalletData | null>(null);
   const [walletRefreshing, setWalletRefreshing] = useState(false);
   const [poveonData, setPoveonData] = useState<PoveonViewData>(null);
@@ -231,22 +242,35 @@ export function LabDashboard({ lab, isOwner = false, roleName = "Lab Owner", can
     }
   }, []);
 
+  const fetchPoveon = useCallback(async (showLoading = false) => {
+    if (showLoading) setPoveonLoading(true);
+    try {
+      const res = await fetch("/api/lab/poveon");
+      const d = await res.json();
+      if (d.success) {
+        setPoveonData(d);
+        setPoveonBalance(d.wallet_balance ?? null);
+      }
+    } catch { /* non-critical */ } finally {
+      setPoveonLoading(false);
+    }
+  }, []);
+
   useEffect(() => {
     if (!isOwner && !canViewWallet) return;
-    fetch("/api/lab/poveon")
-      .then((r) => r.json())
-      .then((d) => {
-        if (d.success) {
-          setPoveonData(d);
-          setPoveonBalance(d.wallet_balance ?? null);
-        }
-      })
-      .catch(() => {});
+    fetchPoveon(true);
     fetchWallet();
     const walletInterval = setInterval(() => fetchWallet(true), 30_000);
     return () => clearInterval(walletInterval);
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
+
+  // Poll Poveon data every 30s when on the poveon tab (real-time updates)
+  useEffect(() => {
+    if (mainView !== "poveon" || (!isOwner && !canViewWallet)) return;
+    const interval = setInterval(() => fetchPoveon(), 30_000);
+    return () => clearInterval(interval);
+  }, [mainView, fetchPoveon, isOwner, canViewWallet]);
 
   // Google Sheets: fetch connection status when price-list tab opens
   const fetchSheetsStatus = useCallback(async () => {
@@ -280,8 +304,11 @@ export function LabDashboard({ lab, isOwner = false, roleName = "Lab Owner", can
     } else if (sheetsParam === "error") {
       toast.error("Google Sheets connection failed. Please try again.");
     }
-    // Clean URL
-    router.replace("/lab-dashboard");
+    // Clean URL — preserve tab param
+    const clean = new URLSearchParams(searchParams.toString());
+    clean.delete("sheets");
+    if (sheetsParam === "connected") clean.set("tab", "price-list");
+    router.replace(`/lab-dashboard${clean.toString() ? `?${clean.toString()}` : ""}`);
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
@@ -757,12 +784,8 @@ export function LabDashboard({ lab, isOwner = false, roleName = "Lab Owner", can
                     {navItems.map((item) => (
                       <button key={item.key}
                         onClick={() => {
-                          setMainView(item.key);
+                          navigateToTab(item.key);
                           setMobileNavOpen(false);
-                          if (item.key === "poveon" && !poveonData) {
-                            setPoveonLoading(true);
-                            fetch("/api/lab/poveon").then((r) => r.json()).then((d) => { if (d.success) setPoveonData(d); }).catch(() => {}).finally(() => setPoveonLoading(false));
-                          }
                           if (item.key === "price-list" && !priceListData) {
                             setPriceListLoading(true);
                             fetch("/api/lab/price-schedule").then((r) => r.json()).then((d) => { if (d.success) setPriceListData(d.schedule); }).catch(() => {}).finally(() => setPriceListLoading(false));
@@ -785,11 +808,7 @@ export function LabDashboard({ lab, isOwner = false, roleName = "Lab Owner", can
               <div className="hidden sm:flex gap-1 bg-white/5 rounded-xl p-1 w-fit">
                 {navItems.map((item) => (
                   <button key={item.key} onClick={() => {
-                    setMainView(item.key);
-                    if (item.key === "poveon" && !poveonData) {
-                      setPoveonLoading(true);
-                      fetch("/api/lab/poveon").then((r) => r.json()).then((d) => { if (d.success) setPoveonData(d); }).catch(() => {}).finally(() => setPoveonLoading(false));
-                    }
+                    navigateToTab(item.key);
                     if (item.key === "price-list" && !priceListData) {
                       setPriceListLoading(true);
                       fetch("/api/lab/price-schedule").then((r) => r.json()).then((d) => { if (d.success) setPriceListData(d.schedule); }).catch(() => {}).finally(() => setPriceListLoading(false));
@@ -816,7 +835,7 @@ export function LabDashboard({ lab, isOwner = false, roleName = "Lab Owner", can
               {" "}Top up your wallet to settle the balance.
             </p>
             <button
-              onClick={() => setMainView("poveon")}
+              onClick={() => navigateToTab("poveon")}
               className="shrink-0 text-xs font-semibold text-red-400 hover:text-red-300 underline underline-offset-2 transition"
             >
               View →
@@ -1851,14 +1870,7 @@ export function LabDashboard({ lab, isOwner = false, roleName = "Lab Owner", can
             walletData={walletData}
             walletRefreshing={walletRefreshing}
             onRefreshWallet={() => fetchWallet(true)}
-            onLoad={async () => {
-              setPoveonLoading(true);
-              try {
-                const res = await fetch("/api/lab/poveon");
-                const d = await res.json();
-                if (d.success) setPoveonData(d);
-              } catch { /* non-critical */ } finally { setPoveonLoading(false); }
-            }}
+            onLoad={() => fetchPoveon(true)}
           />
         )}
 
@@ -3450,6 +3462,8 @@ function LabPoveonView({ data, loading, walletData, walletRefreshing, onRefreshW
   onLoad: () => void;
 }) {
   const [expanded, setExpanded] = useState<Set<string>>(new Set());
+  const [dateFrom, setDateFrom] = useState("");
+  const [dateTo, setDateTo] = useState("");
   useEffect(() => { if (!data) onLoad(); }, [data, onLoad]);
 
   if (loading) {
@@ -3462,10 +3476,49 @@ function LabPoveonView({ data, loading, walletData, walletRefreshing, onRefreshW
     );
   }
 
-  const totalOwed       = data?.total_owed       ?? 0;
-  const totalLabRevenue = data?.total_lab_revenue ?? 0;
-  const totalDeposited  = data?.total_deposited  ?? 0;
-  const requests        = data?.requests         ?? [];
+  const allRequests = data?.requests ?? [];
+  const credits = walletData?.credits ?? [];
+
+  // Apply date filter to requests (by seen_at) and credits (by created_at)
+  const fromDate = dateFrom ? new Date(dateFrom + "T00:00:00") : null;
+  const toDate   = dateTo   ? new Date(dateTo   + "T23:59:59") : null;
+
+  const filteredRequests = allRequests.filter((r) => {
+    if (!r.seen_at) return false;
+    const d = new Date(r.seen_at);
+    if (fromDate && d < fromDate) return false;
+    if (toDate   && d > toDate)   return false;
+    return true;
+  });
+
+  const filteredCredits = credits.filter((c) => {
+    const d = new Date(c.created_at);
+    if (fromDate && d < fromDate) return false;
+    if (toDate   && d > toDate)   return false;
+    return true;
+  });
+
+  const isFiltered = !!dateFrom || !!dateTo;
+  const requests   = isFiltered ? filteredRequests : allRequests;
+  const shownCredits = isFiltered ? filteredCredits : credits;
+
+  // Recompute summary totals from filtered requests / credits
+  const totalLabRevenue = isFiltered
+    ? requests.reduce((s, r) => s + Number(r.lab_revenue_amount ?? 0), 0)
+    : (data?.total_lab_revenue ?? 0);
+  const totalOwed = isFiltered
+    ? requests.reduce((s, r) => s + Number(r.poveon_amount ?? 0), 0)
+    : (data?.total_owed ?? 0);
+  const totalDeposited = isFiltered
+    ? shownCredits.reduce((s, c) => s + Number(c.amount ?? 0), 0)
+    : (data?.total_deposited ?? 0);
+
+  function formatMoney(v: number) {
+    if (v >= 1_000_000) return `₦${(v / 1_000_000).toFixed(1)}M`;
+    if (v >= 10_000)    return `₦${(v / 1_000).toFixed(0)}k`;
+    if (v >= 1_000)     return `₦${(v / 1_000).toFixed(1)}k`;
+    return `₦${v.toLocaleString()}`;
+  }
 
   function toggleExpand(id: string) {
     setExpanded((prev) => {
@@ -3475,40 +3528,65 @@ function LabPoveonView({ data, loading, walletData, walletRefreshing, onRefreshW
     });
   }
 
-  const credits = walletData?.credits ?? [];
-
   return (
     <div className="space-y-4">
       {/* 1 — Wallet balance + DVA */}
       <LabWalletPanel wallet={walletData} refreshing={walletRefreshing} onRefresh={onRefreshWallet} />
 
-      {/* 2 — Summary cards: immediately below wallet, no gap */}
-      {loading ? (
-        <div className="grid grid-cols-3 gap-3">
-          {[...Array(3)].map((_, i) => <div key={i} className="h-16 bg-white/5 rounded-2xl animate-pulse" />)}
+      {/* 2 — Date filter */}
+      <div className="flex flex-wrap items-center gap-2">
+        <div className="flex items-center gap-1.5 text-slate-400">
+          <Calendar className="w-3.5 h-3.5 shrink-0" />
+          <span className="text-xs font-medium">Filter by date</span>
         </div>
-      ) : (
-        <div className="grid grid-cols-3 gap-2 sm:gap-3">
-          {[
-            { label: "Your Revenue", value: totalLabRevenue, color: "from-emerald-500/20 to-emerald-600/10 border-emerald-500/30" },
-            { label: "Poveon Fee", value: totalOwed, color: "from-sky-500/20 to-sky-600/10 border-sky-500/30" },
-            { label: "Deposited", value: totalDeposited, color: "from-violet-500/20 to-violet-600/10 border-violet-500/30" },
-          ].map((s) => (
-            <div key={s.label} className={`bg-gradient-to-br ${s.color} border rounded-2xl px-2 sm:px-3 py-3 text-center`}>
-              <p className="text-[9px] sm:text-[10px] text-slate-400 uppercase tracking-wide mb-0.5 leading-tight">{s.label}</p>
-              <p className="text-sm sm:text-base font-bold font-mono text-white leading-tight break-all">
-                {s.value >= 1_000_000
-                  ? `₦${(s.value / 1_000_000).toFixed(1)}M`
-                  : s.value >= 1_000
-                  ? `₦${(s.value / 1_000).toFixed(0)}K`
-                  : `₦${s.value.toLocaleString()}`}
-              </p>
-            </div>
-          ))}
-        </div>
-      )}
+        <input
+          type="date"
+          value={dateFrom}
+          onChange={(e) => setDateFrom(e.target.value)}
+          className="text-xs bg-white/5 border border-white/10 rounded-lg px-2.5 py-1.5 text-slate-200 focus:outline-none focus:border-white/30"
+          placeholder="From"
+        />
+        <span className="text-xs text-slate-500">to</span>
+        <input
+          type="date"
+          value={dateTo}
+          onChange={(e) => setDateTo(e.target.value)}
+          className="text-xs bg-white/5 border border-white/10 rounded-lg px-2.5 py-1.5 text-slate-200 focus:outline-none focus:border-white/30"
+          placeholder="To"
+        />
+        {isFiltered && (
+          <button
+            onClick={() => { setDateFrom(""); setDateTo(""); }}
+            className="text-xs text-slate-400 hover:text-white underline underline-offset-2 transition"
+          >
+            Clear
+          </button>
+        )}
+      </div>
 
-      {/* 3 — How Poveon commission works */}
+      {/* 3 — Summary cards */}
+      <div className="grid grid-cols-1 sm:grid-cols-3 gap-2 sm:gap-3">
+        {/* Revenue */}
+        <div className="bg-gradient-to-br from-emerald-500/20 to-emerald-600/10 border border-emerald-500/30 rounded-2xl px-4 py-3 flex sm:flex-col items-center sm:items-center justify-between sm:justify-center gap-2">
+          <div className="sm:text-center">
+            <p className="text-[10px] text-slate-400 uppercase tracking-wide leading-tight">Your Revenue</p>
+            <p className="text-[9px] text-slate-500 leading-tight mt-0.5">Approximate</p>
+          </div>
+          <p className="text-lg sm:text-base font-bold font-mono text-white sm:mt-1">{formatMoney(totalLabRevenue)}</p>
+        </div>
+        {/* Poveon Fee */}
+        <div className="bg-gradient-to-br from-sky-500/20 to-sky-600/10 border border-sky-500/30 rounded-2xl px-4 py-3 flex sm:flex-col items-center sm:items-center justify-between sm:justify-center gap-2">
+          <p className="text-[10px] text-slate-400 uppercase tracking-wide sm:text-center">Poveon Fee</p>
+          <p className="text-lg sm:text-base font-bold font-mono text-white sm:mt-1">{formatMoney(totalOwed)}</p>
+        </div>
+        {/* Deposited */}
+        <div className="bg-gradient-to-br from-violet-500/20 to-violet-600/10 border border-violet-500/30 rounded-2xl px-4 py-3 flex sm:flex-col items-center sm:items-center justify-between sm:justify-center gap-2">
+          <p className="text-[10px] text-slate-400 uppercase tracking-wide sm:text-center">Deposited</p>
+          <p className="text-lg sm:text-base font-bold font-mono text-white sm:mt-1">{formatMoney(totalDeposited)}</p>
+        </div>
+      </div>
+
+      {/* 4 — How Poveon commission works */}
       <div className="bg-white/5 border border-white/10 rounded-2xl px-5 py-4 flex items-start gap-3">
         <CreditCard className="w-4 h-4 text-slate-400 mt-0.5 shrink-0" />
         <div className="space-y-1 flex-1">
@@ -3521,12 +3599,12 @@ function LabPoveonView({ data, loading, walletData, walletRefreshing, onRefreshW
         </div>
       </div>
 
-      {/* 4 — Payment history */}
-      {credits.length > 0 && (
+      {/* 5 — Payment history */}
+      {shownCredits.length > 0 && (
         <div className="bg-white/5 border border-white/10 rounded-2xl overflow-hidden">
           <p className="text-xs font-semibold text-slate-400 uppercase tracking-wider px-4 py-3 border-b border-white/8">Payment History</p>
           <div className="divide-y divide-white/5">
-            {credits.slice(0, 10).map((c) => (
+            {shownCredits.slice(0, 10).map((c) => (
               <div key={c.id} className="flex items-center justify-between px-4 py-2.5 gap-3">
                 <div className="flex items-center gap-2.5 min-w-0">
                   <div className="w-6 h-6 rounded-full bg-emerald-500/15 flex items-center justify-center shrink-0">
@@ -3551,7 +3629,7 @@ function LabPoveonView({ data, loading, walletData, walletRefreshing, onRefreshW
         </div>
       )}
 
-      {/* 5 — Commission by Request */}
+      {/* 6 — Commission by Request */}
       <div>
         <div className="flex items-center justify-between mb-4">
           <p className="text-sm font-semibold text-white">Commission by Request ({requests.length})</p>
@@ -3563,8 +3641,8 @@ function LabPoveonView({ data, loading, walletData, walletRefreshing, onRefreshW
         {requests.length === 0 ? (
           <div className="bg-white/5 border border-white/10 rounded-2xl p-10 text-center">
             <CreditCard className="w-8 h-8 text-slate-600 mx-auto mb-3" />
-            <p className="text-sm text-slate-400">No commission data yet</p>
-            <p className="text-xs text-slate-500 mt-1">Commission appears once requests are marked as Seen</p>
+            <p className="text-sm text-slate-400">{isFiltered ? "No requests in selected date range" : "No commission data yet"}</p>
+            <p className="text-xs text-slate-500 mt-1">{isFiltered ? "Try adjusting the date filter above" : "Commission appears once requests are marked as Seen"}</p>
           </div>
         ) : (
           <div className="space-y-2">
