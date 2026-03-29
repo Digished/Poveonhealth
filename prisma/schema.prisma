@@ -26,12 +26,6 @@ model Lab {
   service_categories Json     @default("[]")
   certifications     Json     @default("[]")
   created_at         DateTime @default(now())
-  // Google Sheets integration
-  google_sheet_id        String?
-  google_refresh_token   String?  // AES-256-GCM encrypted refresh token
-  google_token_expiry    DateTime?
-  sheet_last_synced_at   DateTime?
-  sheet_sync_status      String?  // "synced" | "never" | "error"
 
   lab_users       LabUser[]
   lab_members     LabMember[]
@@ -110,7 +104,6 @@ model LabRole {
   can_view_activity   Boolean  @default(false)
   can_view_feedback      Boolean  @default(false)
   can_view_wallet        Boolean  @default(false)
-  can_manage_price_list  Boolean  @default(false)
   created_at             DateTime @default(now())
 
   lab     Lab         @relation(fields: [lab_id], references: [id], onDelete: Cascade)

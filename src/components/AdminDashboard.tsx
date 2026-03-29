@@ -7,11 +7,10 @@ import {
   Building2, Trash2, Eye, EyeOff, RefreshCw, X, Pencil,
   Phone, Upload, Check, MapPin, Users, ChevronRight, ChevronDown, ChevronUp,
   Code2, Key, Copy, TrendingUp, Link, Sun, Moon, Star, GitBranch,
-  ArrowUpRight, ArrowDownRight, ArrowDownToLine, Settings, CreditCard, MessageCircle, Tag,
+  ArrowUpRight, ArrowDownRight, ArrowDownToLine, Settings, CreditCard, MessageCircle,
   BookOpen, Database, Sparkles, Search, Layers, UserCircle, Wallet,
 } from "lucide-react";
 import { useDashTheme } from "@/hooks/useDashTheme";
-import LabCatalogSheet, { type CatalogJob } from "@/components/LabCatalogSheet";
 import { Button } from "@/components/ui/Button";
 import { Input, Textarea } from "@/components/ui/Input";
 import { StatusBadge, Badge } from "@/components/ui/Badge";
@@ -125,8 +124,6 @@ export function AdminDashboard() {
   const [expandedLabIntegration, setExpandedLabIntegration] = useState<string | null>(null);
   const [expandedLabIds, setExpandedLabIds] = useState<Set<string>>(new Set());
   const [branchModalLabId, setBranchModalLabId] = useState<string | null>(null);
-const [catalogModalLabId, setCatalogModalLabId] = useState<string | null>(null);
-  const [catalogJob, setCatalogJob] = useState<CatalogJob | null>(null);
   const [defaultRequestPrice, setDefaultRequestPrice] = useState<string>("500");
   const [savingSettings, setSavingSettings] = useState(false);
 
@@ -998,10 +995,6 @@ const [catalogModalLabId, setCatalogModalLabId] = useState<string | null>(null);
                           <button onClick={openStats} title="Stats" className="p-2 rounded-lg hover:bg-emerald-500/15 text-slate-500 hover:text-emerald-400 transition-colors">
                             <BarChart3 className="w-3.5 h-3.5" />
                           </button>
-                          <button onClick={() => setCatalogModalLabId(lab.id)} title="Catalog" className="relative p-2 rounded-lg hover:bg-amber-500/15 text-slate-500 hover:text-amber-400 transition-colors">
-                            <Tag className="w-3.5 h-3.5" />
-                            {catalogJob?.labId === lab.id && <span className="absolute top-1 right-1 w-1.5 h-1.5 rounded-full bg-amber-400 animate-pulse" />}
-                          </button>
                           <button onClick={() => setExpandedLabIntegration(lab.id)} title="Dev / Integration" className="p-2 rounded-lg hover:bg-blue-500/15 text-slate-500 hover:text-blue-400 transition-colors">
                             <Code2 className="w-3.5 h-3.5" />
                           </button>
@@ -1100,10 +1093,6 @@ const [catalogModalLabId, setCatalogModalLabId] = useState<string | null>(null);
                             </button>
                             <button onClick={openStats} className="flex items-center justify-center gap-1.5 px-3 py-2 rounded-xl bg-emerald-500/10 hover:bg-emerald-500/20 text-emerald-400 text-xs font-medium transition-colors">
                               <BarChart3 className="w-3.5 h-3.5" />Stats
-                            </button>
-                            <button onClick={() => setCatalogModalLabId(lab.id)} className="relative flex items-center justify-center gap-1.5 px-3 py-2 rounded-xl bg-amber-500/10 hover:bg-amber-500/20 text-amber-400 text-xs font-medium transition-colors">
-                              <Tag className="w-3.5 h-3.5" />Catalog
-                              {catalogJob?.labId === lab.id && <span className="absolute -top-0.5 -right-0.5 w-2 h-2 rounded-full bg-amber-400 animate-pulse" />}
                             </button>
                             <button onClick={() => setExpandedLabIntegration(lab.id)} className="flex items-center justify-center gap-1.5 px-3 py-2 rounded-xl bg-blue-500/10 hover:bg-blue-500/20 text-blue-400 text-xs font-medium transition-colors">
                               <Code2 className="w-3.5 h-3.5" />Dev
@@ -1442,16 +1431,6 @@ const [catalogModalLabId, setCatalogModalLabId] = useState<string | null>(null);
         const lab = labs.find((l) => l.id === branchModalLabId);
         return lab ? (
           <LabBranchModal lab={lab} onClose={() => setBranchModalLabId(null)} allLabs={labs} />
-        ) : null;
-      })()}
-      {catalogModalLabId && (() => {
-        const lab = labs.find((l) => l.id === catalogModalLabId);
-        return lab ? (
-          <LabCatalogSheet
-            lab={lab}
-            onClose={() => { setCatalogModalLabId(null); setCatalogJob(null); }}
-            onJobChange={setCatalogJob}
-          />
         ) : null;
       })()}
 
