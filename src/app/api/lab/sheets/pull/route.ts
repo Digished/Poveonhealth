@@ -73,7 +73,7 @@ export async function POST(request: NextRequest) {
   let   unchanged = 0;
 
   // Tests in sheet → compare against DB
-  for (const [key, row] of sheetByName) {
+  Array.from(sheetByName).forEach(([key, row]) => {
     const db = dbByName.get(key);
 
     if (!db) {
@@ -92,14 +92,14 @@ export async function POST(request: NextRequest) {
         unchanged++;
       }
     }
-  }
+  });
 
   // Tests in DB (active) but missing from sheet → will be deactivated
-  for (const [key, db] of dbByName) {
+  Array.from(dbByName).forEach(([key, db]) => {
     if (db.is_active && !sheetByName.has(key)) {
       removed.push({ id: db.id, raw_name: db.raw_name });
     }
-  }
+  });
 
   return NextResponse.json({ added, changed, removed, unchanged });
 }
