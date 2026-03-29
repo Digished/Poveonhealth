@@ -1,15 +1,14 @@
 export const dynamic = "force-dynamic";
+export const runtime = "nodejs";
 import { NextRequest, NextResponse } from "next/server";
 import { createHash } from "crypto";
-// eslint-disable-next-line @typescript-eslint/no-require-imports
-const { renderToBuffer } = require("@react-pdf/renderer");
 import React from "react";
 import { prisma } from "@/lib/prisma";
 import { createAdminClient } from "@/lib/supabase/server";
 import { resend, FROM_ADDRESS } from "@/lib/email/resend";
 import { AGREEMENT_VERSION } from "@/lib/agreement/content";
 import { AgreementPdf } from "@/lib/agreement/generate-pdf";
-import { agreementInviteEmail, agreementSignedConfirmationEmail } from "@/lib/email/templates";
+import { agreementSignedConfirmationEmail } from "@/lib/email/templates";
 
 const AGREEMENTS_BUCKET = "agreements";
 
@@ -42,6 +41,10 @@ export async function POST(request: NextRequest) {
     const signedAt = new Date();
     const signedAtStr = signedAt.toUTCString();
     const refNo = `AGR-${invite.lab.name.replace(/[^A-Z0-9]/gi, "").toUpperCase().slice(0, 8)}-${signedAt.getFullYear()}-${String(signedAt.getMonth() + 1).padStart(2, "0")}`;
+
+    // Dynamic import required — @react-pdf/renderer is ESM-only
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const { renderToBuffer } = await import("@react-pdf/renderer") as any;
 
     // Generate the PDF (without hash first, then compute hash of this buffer)
     const pdfBuffer = await renderToBuffer(
