@@ -4665,6 +4665,43 @@ function AdminAgreementsTab({
 }) {
   const [downloading, setDownloading] = useState<string | null>(null);
 
+  // ── Global template editor state ──
+  const [template, setTemplate] = useState<string>("");
+  const [templateLoading, setTemplateLoading] = useState(true);
+  const [templateSaving, setTemplateSaving] = useState(false);
+  const [templateDirty, setTemplateDirty] = useState(false);
+  const [templateSavedAt, setTemplateSavedAt] = useState<Date | null>(null);
+  const [templateError, setTemplateError] = useState("");
+  const [showTemplateEditor, setShowTemplateEditor] = useState(false);
+
+  useEffect(() => {
+    fetch("/api/admin/agreement-template")
+      .then((r) => r.json())
+      .then((d) => { if (d.template) setTemplate(d.template); })
+      .catch(() => {})
+      .finally(() => setTemplateLoading(false));
+  }, []);
+
+  async function saveTemplate() {
+    setTemplateSaving(true);
+    setTemplateError("");
+    try {
+      const r = await fetch("/api/admin/agreement-template", {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ template }),
+      });
+      const d = await r.json();
+      if (!d.success) throw new Error(d.error ?? "Save failed");
+      setTemplateDirty(false);
+      setTemplateSavedAt(new Date());
+    } catch (e: unknown) {
+      setTemplateError(e instanceof Error ? e.message : "Failed to save");
+    } finally {
+      setTemplateSaving(false);
+    }
+  }
+
   useEffect(() => { onLoad(); }, []);
 
   async function handleDownload(id: string, labName: string) {
@@ -4682,7 +4719,82 @@ function AdminAgreementsTab({
   }
 
   return (
-    <div>
+    <div className="space-y-8">
+
+      {/* ── Global Agreement Template ── */}
+      <div className="bg-white/5 border border-white/10 rounded-2xl overflow-hidden">
+        <button
+          onClick={() => setShowTemplateEditor((v) => !v)}
+          className="w-full flex items-center justify-between px-5 py-4 hover:bg-white/5 transition-colors"
+        >
+          <div className="flex items-center gap-3">
+            <div className="w-8 h-8 rounded-lg bg-violet-500/15 flex items-center justify-center">
+              <FileText className="w-4 h-4 text-violet-400" />
+            </div>
+            <div className="text-left">
+              <p className="text-sm font-medium text-white">Global Agreement Template</p>
+              <p className="text-xs text-slate-500 mt-0.5">
+                {templateSavedAt
+                  ? `Last saved ${templateSavedAt.toLocaleTimeString()}`
+                  : "Default template — edit to customise for all future invites"}
+              </p>
+            </div>
+          </div>
+          <div className="flex items-center gap-3">
+            {templateDirty && (
+              <span className="text-xs text-amber-400 font-medium">Unsaved changes</span>
+            )}
+            <ChevronDown className={`w-4 h-4 text-slate-500 transition-transform ${showTemplateEditor ? "rotate-180" : ""}`} />
+          </div>
+        </button>
+
+        {showTemplateEditor && (
+          <div className="border-t border-white/8 px-5 py-4 space-y-3">
+            <p className="text-xs text-slate-400">
+              This template pre-fills the agreement editor when you send an invite to any lab.
+              Use <code className="bg-white/10 px-1 rounded text-violet-300">[LAB NAME]</code> as
+              a placeholder — it will be replaced with the actual lab name when you open the send modal.
+            </p>
+            {templateLoading ? (
+              <div className="h-48 bg-white/5 rounded-xl animate-pulse" />
+            ) : (
+              <textarea
+                value={template}
+                onChange={(e) => { setTemplate(e.target.value); setTemplateDirty(true); setTemplateSavedAt(null); }}
+                rows={28}
+                className="w-full rounded-xl bg-slate-800 border border-white/8 text-slate-300 text-xs leading-relaxed px-4 py-3 resize-y focus:outline-none focus:ring-2 focus:ring-violet-500/50 font-mono"
+              />
+            )}
+            {templateError && <p className="text-xs text-red-400">{templateError}</p>}
+            <div className="flex items-center justify-end gap-3">
+              <button
+                onClick={() => {
+                  fetch("/api/admin/agreement-template").then((r) => r.json()).then((d) => {
+                    if (d.template) { setTemplate(d.template); setTemplateDirty(false); }
+                  }).catch(() => {});
+                }}
+                className="text-xs text-slate-500 hover:text-slate-300 transition-colors"
+              >
+                Discard changes
+              </button>
+              <button
+                onClick={saveTemplate}
+                disabled={templateSaving || !templateDirty}
+                className="flex items-center gap-2 px-4 py-2 rounded-xl bg-violet-600 hover:bg-violet-500 disabled:opacity-40 text-white text-xs font-medium transition-colors"
+              >
+                {templateSaving ? (
+                  <><span className="w-3 h-3 border-2 border-white/30 border-t-white rounded-full animate-spin" />Saving…</>
+                ) : (
+                  "Save Template"
+                )}
+              </button>
+            </div>
+          </div>
+        )}
+      </div>
+
+      {/* ── Signed Agreements ── */}
+      <div>
       <div className="flex items-center justify-between mb-6">
         <div>
           <h2 className="text-lg font-semibold text-white">Signed Agreements</h2>
@@ -4779,6 +4891,7 @@ function AdminAgreementsTab({
           </table>
         </div>
       )}
+      </div>
     </div>
   );
 }
@@ -4794,9 +4907,25 @@ function SendAgreementModal({
   onClose: () => void;
   onSent: (labEmail: string) => void;
 }) {
-  const [content, setContent] = useState(() => serializeAgreementToText(lab.name));
+  const [content, setContent] = useState("");
+  const [loadingTemplate, setLoadingTemplate] = useState(true);
   const [sending, setSending] = useState(false);
   const [error, setError] = useState("");
+
+  // Fetch global template on mount, replace [LAB NAME] placeholder
+  useEffect(() => {
+    fetch("/api/admin/agreement-template")
+      .then((r) => r.json())
+      .then((d) => {
+        if (d.template) {
+          setContent(d.template.replaceAll("[LAB NAME]", lab.name));
+        } else {
+          setContent(serializeAgreementToText(lab.name));
+        }
+      })
+      .catch(() => setContent(serializeAgreementToText(lab.name)))
+      .finally(() => setLoadingTemplate(false));
+  }, [lab.name]);
 
   async function handleSend() {
     setSending(true);
@@ -4847,18 +4976,26 @@ function SendAgreementModal({
               Edit the agreement text below before sending. Changes apply to this invite only.
             </p>
             <button
-              onClick={() => setContent(serializeAgreementToText(lab.name))}
+              onClick={() => {
+                fetch("/api/admin/agreement-template").then((r) => r.json()).then((d) => {
+                  if (d.template) setContent(d.template.replaceAll("[LAB NAME]", lab.name));
+                }).catch(() => setContent(serializeAgreementToText(lab.name)));
+              }}
               className="text-xs text-slate-500 hover:text-slate-300 underline-offset-2 hover:underline transition-colors"
             >
-              Reset to default
+              Reset to global template
             </button>
           </div>
-          <textarea
-            value={content}
-            onChange={(e) => setContent(e.target.value)}
-            rows={24}
-            className="w-full rounded-xl bg-slate-800 border border-white/8 text-slate-300 text-xs leading-relaxed px-4 py-3 resize-y focus:outline-none focus:ring-2 focus:ring-violet-500/50 font-mono"
-          />
+          {loadingTemplate ? (
+            <div className="h-96 bg-white/5 rounded-xl animate-pulse" />
+          ) : (
+            <textarea
+              value={content}
+              onChange={(e) => setContent(e.target.value)}
+              rows={24}
+              className="w-full rounded-xl bg-slate-800 border border-white/8 text-slate-300 text-xs leading-relaxed px-4 py-3 resize-y focus:outline-none focus:ring-2 focus:ring-violet-500/50 font-mono"
+            />
+          )}
           {error && (
             <p className="text-xs text-red-400">{error}</p>
           )}
@@ -4871,7 +5008,7 @@ function SendAgreementModal({
           </button>
           <button
             onClick={handleSend}
-            disabled={sending || !content.trim()}
+            disabled={sending || !content.trim() || loadingTemplate}
             className="flex items-center gap-2 px-5 py-2 rounded-xl bg-violet-600 hover:bg-violet-500 disabled:opacity-50 text-white text-sm font-medium transition-colors"
           >
             {sending ? (
