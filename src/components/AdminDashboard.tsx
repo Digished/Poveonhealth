@@ -8,7 +8,7 @@ import {
   Phone, Upload, Check, MapPin, Users, ChevronRight, ChevronDown, ChevronUp,
   Code2, Key, Copy, TrendingUp, Link, Sun, Moon, Star, GitBranch,
   ArrowUpRight, ArrowDownRight, ArrowDownToLine, Settings, CreditCard, MessageCircle,
-  BookOpen, Database, Sparkles, Search, Layers, UserCircle, Wallet, FileText,
+  BookOpen, Database, Sparkles, Search, Layers, UserCircle, Wallet, FileText, AlertCircle,
 } from "lucide-react";
 import { useDashTheme } from "@/hooks/useDashTheme";
 import { serializeAgreementToText } from "@/lib/agreement/content";
@@ -127,6 +127,7 @@ export function AdminDashboard() {
   const [branchModalLabId, setBranchModalLabId] = useState<string | null>(null);
   const [sendingAgreementId, setSendingAgreementId] = useState<string | null>(null);
   const [sendAgreementLab, setSendAgreementLab] = useState<Lab | null>(null);
+  const [transferEmailLab, setTransferEmailLab] = useState<Lab | null>(null);
   type AgreementRecord = { id: string; version: string; signed_at: string; signer_name: string; signer_email: string; signer_title: string | null; pdf_hash: string; lab: { id: string; name: string; email: string } };
   const [agreements, setAgreements] = useState<AgreementRecord[]>([]);
   const [agreementsLoading, setAgreementsLoading] = useState(false);
@@ -1012,6 +1013,13 @@ export function AdminDashboard() {
                           >
                             <FileText className="w-3.5 h-3.5" />
                           </button>
+                          <button
+                            onClick={() => setTransferEmailLab(lab)}
+                            title="Transfer Ownership / Change Email"
+                            className="p-2 rounded-lg hover:bg-amber-500/15 text-slate-500 hover:text-amber-400 transition-colors"
+                          >
+                            <UserCircle className="w-3.5 h-3.5" />
+                          </button>
                           <LabWalletButton labId={lab.id} />
                           <button onClick={() => handleDeleteLab(lab)} disabled={deletingId === lab.id} title="Delete" className="p-2 rounded-lg hover:bg-red-500/15 text-slate-600 hover:text-red-400 transition-colors">
                             <Trash2 className="w-3.5 h-3.5" />
@@ -1116,6 +1124,12 @@ export function AdminDashboard() {
                               className="flex items-center justify-center gap-1.5 px-3 py-2 rounded-xl bg-violet-500/10 hover:bg-violet-500/20 text-violet-400 text-xs font-medium transition-colors"
                             >
                               <FileText className="w-3.5 h-3.5" />Agreement
+                            </button>
+                            <button
+                              onClick={() => setTransferEmailLab(lab)}
+                              className="flex items-center justify-center gap-1.5 px-3 py-2 rounded-xl bg-amber-500/10 hover:bg-amber-500/20 text-amber-400 text-xs font-medium transition-colors"
+                            >
+                              <UserCircle className="w-3.5 h-3.5" />Transfer
                             </button>
                             <div><LabWalletButton labId={lab.id} /></div>
                             <button onClick={() => handleDeleteLab(lab)} disabled={deletingId === lab.id} className="flex items-center justify-center gap-1.5 px-3 py-2 rounded-xl bg-red-500/10 hover:bg-red-500/20 text-red-400 text-xs font-medium transition-colors">
@@ -1476,6 +1490,17 @@ export function AdminDashboard() {
           lab={sendAgreementLab}
           onClose={() => setSendAgreementLab(null)}
           onSent={(labEmail) => { setSendAgreementLab(null); toast.success(`Agreement invite sent to ${labEmail}`); }}
+        />
+      )}
+      {transferEmailLab && (
+        <TransferEmailModal
+          lab={transferEmailLab}
+          onClose={() => setTransferEmailLab(null)}
+          onSuccess={(newEmail) => {
+            setTransferEmailLab(null);
+            fetchLabs();
+            toast.success(`Email updated to ${newEmail}`);
+          }}
         />
       )}
 
@@ -5108,6 +5133,127 @@ function SendAgreementModal({
                 Send to Lab
               </>
             )}
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ── Transfer Email / Ownership Modal ─────────────────────────────────────────
+
+function TransferEmailModal({
+  lab,
+  onClose,
+  onSuccess,
+}: {
+  lab: Lab;
+  onClose: () => void;
+  onSuccess: (newEmail: string) => void;
+}) {
+  const [newEmail, setNewEmail] = useState("");
+  const [confirm, setConfirm] = useState("");
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState("");
+
+  async function handleSave() {
+    if (!newEmail.trim()) { setError("Enter the new email address."); return; }
+    if (newEmail.trim().toLowerCase() !== confirm.trim().toLowerCase()) {
+      setError("The two email addresses do not match."); return;
+    }
+    setSaving(true);
+    setError("");
+    try {
+      const r = await fetch(`/api/admin/labs/${lab.id}/transfer-email`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ new_email: newEmail.trim() }),
+      });
+      const d = await r.json();
+      if (d.success) { onSuccess(d.new_email); }
+      else throw new Error(d.error ?? "Failed");
+    } catch (e: unknown) {
+      setError(e instanceof Error ? e.message : "Failed to update email");
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  return (
+    <div
+      className="fixed inset-0 z-50 flex items-end sm:items-center justify-center p-4"
+      style={{ backgroundColor: "rgba(2,6,23,0.85)", backdropFilter: "blur(6px)" }}
+      onClick={onClose}
+    >
+      <div
+        className="w-full max-w-md bg-slate-900 border border-white/10 rounded-3xl shadow-2xl overflow-hidden"
+        onClick={(e) => e.stopPropagation()}
+      >
+        <div className="flex items-center justify-between px-6 pt-5 pb-4 border-b border-white/8">
+          <div>
+            <h2 className="font-semibold text-white text-sm">Transfer Ownership</h2>
+            <p className="text-xs text-slate-400 mt-0.5">{lab.name}</p>
+          </div>
+          <button onClick={onClose} className="p-2 rounded-lg hover:bg-white/8 text-slate-400 hover:text-white transition-colors">
+            <X className="w-4 h-4" />
+          </button>
+        </div>
+
+        <div className="px-6 py-5 space-y-4">
+          <div className="flex items-start gap-3 bg-amber-500/10 border border-amber-500/20 rounded-xl px-4 py-3">
+            <AlertCircle className="w-4 h-4 text-amber-400 shrink-0 mt-0.5" />
+            <p className="text-xs text-amber-300 leading-relaxed">
+              This changes both the lab contact email and the login credentials for the owner account.
+              The current owner will immediately lose access. Confirm the new address is correct before saving.
+            </p>
+          </div>
+
+          <div>
+            <p className="text-xs text-slate-500 mb-3">
+              Current email: <span className="text-slate-300 font-medium">{lab.email}</span>
+            </p>
+
+            <label className="block text-xs font-semibold text-slate-400 uppercase tracking-wide mb-1.5">
+              New email address
+            </label>
+            <input
+              type="email"
+              value={newEmail}
+              onChange={(e) => { setNewEmail(e.target.value); setError(""); }}
+              placeholder="new@labdomain.com"
+              className="w-full px-3.5 py-2.5 rounded-xl bg-slate-800 border border-white/8 text-white text-sm focus:outline-none focus:ring-2 focus:ring-amber-500/50 placeholder:text-slate-600"
+            />
+          </div>
+
+          <div>
+            <label className="block text-xs font-semibold text-slate-400 uppercase tracking-wide mb-1.5">
+              Confirm new email
+            </label>
+            <input
+              type="email"
+              value={confirm}
+              onChange={(e) => { setConfirm(e.target.value); setError(""); }}
+              placeholder="Retype to confirm"
+              className="w-full px-3.5 py-2.5 rounded-xl bg-slate-800 border border-white/8 text-white text-sm focus:outline-none focus:ring-2 focus:ring-amber-500/50 placeholder:text-slate-600"
+            />
+          </div>
+
+          {error && <p className="text-xs text-red-400">{error}</p>}
+        </div>
+
+        <div className="flex items-center justify-end gap-3 px-6 pb-5">
+          <button onClick={onClose} className="px-4 py-2 rounded-xl text-sm text-slate-400 hover:text-white hover:bg-white/8 transition-colors">
+            Cancel
+          </button>
+          <button
+            onClick={handleSave}
+            disabled={saving || !newEmail.trim() || !confirm.trim()}
+            className="flex items-center gap-2 px-5 py-2 rounded-xl bg-amber-600 hover:bg-amber-500 disabled:opacity-40 text-white text-sm font-medium transition-colors"
+          >
+            {saving
+              ? <><span className="w-3.5 h-3.5 border-2 border-white/30 border-t-white rounded-full animate-spin" />Saving…</>
+              : "Transfer Ownership"
+            }
           </button>
         </div>
       </div>
