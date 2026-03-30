@@ -2,7 +2,7 @@ import React from "react";
 import {
   Document, Page, Text, View, StyleSheet, Image, Font,
 } from "@react-pdf/renderer";
-import { buildAgreementSections, AGREEMENT_VERSION, EFFECTIVE_DATE } from "./content";
+import { buildAgreementSections, AGREEMENT_VERSION } from "./content";
 
 // Use built-in Helvetica family — no font download needed
 const styles = StyleSheet.create({
@@ -427,7 +427,7 @@ export function AgreementPdf({
 
         <View style={styles.coverFooter}>
           <Text style={styles.coverFooterText}>CONFIDENTIAL — For authorised parties only</Text>
-          <Text style={styles.coverFooterText}>Effective {EFFECTIVE_DATE}</Text>
+          <Text style={styles.coverFooterText}>Effective Date of Execution</Text>
         </View>
       </Page>
 
