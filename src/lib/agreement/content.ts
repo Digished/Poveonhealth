@@ -23,7 +23,7 @@ export function buildAgreementSections(labName: string): AgreementSection[] {
     {
       title: "2. Parties",
       clauses: [
-        `This Laboratory Partnership Agreement ("Agreement") is entered into between Poveon Ltd, a company duly incorporated under the laws of the Federal Republic of Nigeria ("Poveon"), and ${labName} ("Laboratory"), collectively referred to as the "Parties".`,
+        `This Laboratory Partnership Agreement ("Agreement") is entered into between Poveon Ltd, a company duly incorporated under the laws of the Federal Republic of Nigeria with registration number RC 8921141 ("Poveon"), and ${labName} ("Laboratory"), collectively referred to as the "Parties".`,
         `This Agreement governs the terms under which the Laboratory shall be listed and operate on the Poveon Platform.`,
       ],
     },

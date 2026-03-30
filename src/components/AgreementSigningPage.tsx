@@ -363,7 +363,7 @@ export default function AgreementSigningPage({ token }: { token: string }) {
                   <div className="mb-6 p-4 bg-slate-50 rounded-xl border border-slate-100">
                     <p className="text-xs text-slate-500 italic">
                       This Laboratory Partnership Agreement (Version {AGREEMENT_VERSION}) is entered
-                      into between Poveon Ltd and {lab.name}. By digitally signing this
+                      into between Poveon Ltd (RC 8921141) and {lab.name}. By digitally signing this
                       document, both parties agree to be legally bound by the terms set forth below
                       under the laws of the Federal Republic of Nigeria.
                     </p>

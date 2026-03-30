@@ -429,7 +429,7 @@ export function AgreementPdf({
 
         <View style={styles.coverFooter}>
           <Text style={styles.coverFooterText}>CONFIDENTIAL — For authorised parties only</Text>
-          <Text style={styles.coverFooterText}>Effective Date of Execution</Text>
+          <Text style={styles.coverFooterText}>Poveon Ltd · RC 8921141 · CAC, Nigeria</Text>
         </View>
       </Page>
 
@@ -441,7 +441,7 @@ export function AgreementPdf({
         <View style={{ marginBottom: 8 }}>
           <Text style={[styles.clause, { color: "#64748b", fontFamily: "Helvetica-Oblique", fontSize: 9 }]}>
             This Laboratory Partnership Agreement (Version {AGREEMENT_VERSION}) is entered into between
-            Poveon Ltd and {labName}. By digitally signing this document, both parties
+            Poveon Ltd (RC 8921141) and {labName}. By digitally signing this document, both parties
             agree to be legally bound by the terms set forth below under the laws of the Federal
             Republic of Nigeria.
           </Text>
