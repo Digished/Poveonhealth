@@ -15,7 +15,7 @@ const AGREEMENTS_BUCKET = "agreements";
 export async function POST(request: NextRequest) {
   try {
     const body = await request.json();
-    const { token, signer_name, signer_title, signer_email, signature_data_url } = body;
+    const { token, signer_name, signer_title, signer_email, signature_data_url, custom_content } = body;
 
     if (!token || !signer_name || !signer_email) {
       return NextResponse.json({ error: "Missing required fields" }, { status: 400 });
@@ -46,6 +46,10 @@ export async function POST(request: NextRequest) {
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const { renderToBuffer } = await import("@react-pdf/renderer") as any;
 
+    // Use custom_content from body (sent by signing page, sourced from invite) or invite record
+    const resolvedCustomContent: string | undefined =
+      (custom_content as string | undefined) || invite.custom_content || undefined;
+
     // Generate the PDF (without hash first, then compute hash of this buffer)
     const pdfBuffer = await renderToBuffer(
       React.createElement(AgreementPdf, {
@@ -60,6 +64,7 @@ export async function POST(request: NextRequest) {
         signatureDataUrl: signature_data_url || undefined,
         referenceNumber: refNo,
         pdfHash: "— hash computed after initial generation —",
+        customContent: resolvedCustomContent,
       })
     );
 
@@ -80,6 +85,7 @@ export async function POST(request: NextRequest) {
         signatureDataUrl: signature_data_url || undefined,
         referenceNumber: refNo,
         pdfHash,
+        customContent: resolvedCustomContent,
       })
     );
 

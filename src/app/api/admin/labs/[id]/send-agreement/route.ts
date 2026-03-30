@@ -17,6 +17,9 @@ export async function POST(
     const adminRecord = await prisma.adminUser.findUnique({ where: { user_id: user.id } });
     if (!adminRecord) return NextResponse.json({ error: "Forbidden" }, { status: 403 });
 
+    const body = await request.json().catch(() => ({}));
+    const customContent: string | null = body.custom_content || null;
+
     const lab = await prisma.lab.findUnique({
       where: { id: params.id },
       select: { id: true, name: true, email: true },
@@ -38,11 +41,16 @@ export async function POST(
         lab_id: lab.id,
         sent_by: user.email ?? "admin",
         expires_at: expiresAt,
+        custom_content: customContent,
       },
     });
 
+    // Derive base URL from request headers (Vercel-safe)
+    const proto = request.headers.get("x-forwarded-proto") ?? "https";
+    const host = request.headers.get("x-forwarded-host") ?? request.headers.get("host") ?? "";
     const baseUrl =
-      process.env.NEXT_PUBLIC_APP_URL?.replace(/\/$/, "") ?? "https://poveonhealth.com";
+      process.env.NEXT_PUBLIC_APP_URL?.replace(/\/$/, "") ??
+      (host ? `${proto}://${host}` : "https://poveonhealth.com");
     const signingUrl = `${baseUrl}/onboard/${invite.token}`;
 
     await resend.emails.send({

@@ -355,6 +355,7 @@ export interface AgreementPdfProps {
   signatureDataUrl?: string; // base64 PNG from canvas
   referenceNumber: string;
   pdfHash?: string; // filled after generation — placeholder on first render
+  customContent?: string; // admin-edited plain text; overrides default sections
 }
 
 export function AgreementPdf({
@@ -369,8 +370,13 @@ export function AgreementPdf({
   signatureDataUrl,
   referenceNumber,
   pdfHash = "— computed after signing —",
+  customContent,
 }: AgreementPdfProps) {
-  const sections = buildAgreementSections(labName);
+  const sections = customContent ? null : buildAgreementSections(labName);
+  // When custom content is provided, split into paragraphs on blank lines
+  const customParagraphs = customContent
+    ? customContent.split(/\n\s*\n/).map((p) => p.trim()).filter(Boolean)
+    : null;
 
   return (
     <Document
@@ -439,16 +445,26 @@ export function AgreementPdf({
           </Text>
         </View>
 
-        {sections.map((section) => (
-          <View key={section.title} wrap={false}>
-            <Text style={styles.sectionTitle}>{section.title}</Text>
-            {section.clauses.map((clause, i) => (
-              <Text key={i} style={styles.clause}>
-                {clause}
-              </Text>
+        {customParagraphs
+          ? customParagraphs.map((para, i) => {
+              // Lines starting with a digit+dot or all-caps look like headings
+              const isHeading = /^(\d+\.|\d+\s)/.test(para) && para.length < 80;
+              return isHeading ? (
+                <Text key={i} style={styles.sectionTitle}>{para}</Text>
+              ) : (
+                <Text key={i} style={styles.clause}>{para}</Text>
+              );
+            })
+          : sections!.map((section) => (
+              <View key={section.title} wrap={false}>
+                <Text style={styles.sectionTitle}>{section.title}</Text>
+                {section.clauses.map((clause, i) => (
+                  <Text key={i} style={styles.clause}>
+                    {clause}
+                  </Text>
+                ))}
+              </View>
             ))}
-          </View>
-        ))}
 
         <PageFooter labName={labName} signedAt={signedAt} />
       </Page>

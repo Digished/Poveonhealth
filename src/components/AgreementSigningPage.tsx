@@ -19,6 +19,7 @@ export default function AgreementSigningPage({ token }: { token: string }) {
   const [lab, setLab] = useState<LabInfo | null>(null);
   const [errorMsg, setErrorMsg] = useState("");
   const [alreadySigned, setAlreadySigned] = useState(false);
+  const [customContent, setCustomContent] = useState<string | null>(null);
 
   // Step: read
   const [hasScrolled, setHasScrolled] = useState(false);
@@ -52,6 +53,7 @@ export default function AgreementSigningPage({ token }: { token: string }) {
         setLab(d.lab);
         setSignerEmail(d.lab.email);
         setAlreadySigned(d.already_signed);
+        if (d.custom_content) setCustomContent(d.custom_content);
         setStep("welcome");
       })
       .catch(() => { setErrorMsg("Could not load agreement. Please try again."); setStep("error"); });
@@ -130,6 +132,7 @@ export default function AgreementSigningPage({ token }: { token: string }) {
           signer_title: signerTitle.trim() || undefined,
           signer_email: signerEmail.trim(),
           signature_data_url: signatureDataUrl,
+          custom_content: customContent || undefined,
         }),
       });
       const d = await res.json();
@@ -144,7 +147,11 @@ export default function AgreementSigningPage({ token }: { token: string }) {
     }
   }
 
-  const sections = lab ? buildAgreementSections(lab.name) : [];
+  const sections = lab && !customContent ? buildAgreementSections(lab.name) : [];
+  // When custom content is set, split into display paragraphs
+  const customParagraphs = customContent
+    ? customContent.split(/\n\s*\n/).map((p) => p.trim()).filter(Boolean)
+    : null;
 
   // ── Layout wrapper ─────────────────────────────────────────────────────────
   return (
@@ -295,16 +302,25 @@ export default function AgreementSigningPage({ token }: { token: string }) {
                     </p>
                   </div>
 
-                  {sections.map((section) => (
-                    <div key={section.title} className="mb-6">
-                      <h3 className="font-bold text-slate-900 mb-2 text-sm">{section.title}</h3>
-                      {section.clauses.map((clause, i) => (
-                        <p key={i} className="mb-3 text-slate-600 text-sm leading-relaxed">
-                          {clause}
-                        </p>
+                  {customParagraphs
+                    ? customParagraphs.map((para, i) => {
+                        const isHeading = /^(\d+\.|[A-Z][A-Z\s]{3,}:?)$/.test(para.split("\n")[0]) || (/^\d+\./.test(para) && para.length < 80);
+                        return isHeading ? (
+                          <h3 key={i} className="font-bold text-slate-900 mb-2 mt-5 text-sm">{para}</h3>
+                        ) : (
+                          <p key={i} className="mb-3 text-slate-600 text-sm leading-relaxed">{para}</p>
+                        );
+                      })
+                    : sections.map((section) => (
+                        <div key={section.title} className="mb-6">
+                          <h3 className="font-bold text-slate-900 mb-2 text-sm">{section.title}</h3>
+                          {section.clauses.map((clause, i) => (
+                            <p key={i} className="mb-3 text-slate-600 text-sm leading-relaxed">
+                              {clause}
+                            </p>
+                          ))}
+                        </div>
                       ))}
-                    </div>
-                  ))}
 
                   <div className="mt-8 p-4 bg-blue-50 rounded-xl border border-blue-100 text-xs text-blue-700 leading-relaxed">
                     <strong>You have reached the end of the agreement.</strong> Please confirm below

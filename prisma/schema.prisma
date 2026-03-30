@@ -543,7 +543,8 @@ model LabAgreementInvite {
   sent_by    String    // admin email who triggered the invite
   sent_at    DateTime  @default(now())
   expires_at DateTime
-  used       Boolean   @default(false)
+  used           Boolean   @default(false)
+  custom_content String?   // Admin-edited agreement text; null = use default
 
   lab        Lab       @relation(fields: [lab_id], references: [id], onDelete: Cascade)
 

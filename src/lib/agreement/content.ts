@@ -1,5 +1,12 @@
 export const AGREEMENT_VERSION = "v1.0-2025";
 
+/** Flatten the default agreement to a plain-text string for editing. */
+export function serializeAgreementToText(labName: string): string {
+  return buildAgreementSections(labName)
+    .map((s) => `${s.title}\n\n${s.clauses.join("\n\n")}`)
+    .join("\n\n---\n\n");
+}
+
 export const EFFECTIVE_DATE = "1st January 2025";
 
 export interface AgreementSection {

@@ -11,6 +11,7 @@ import {
   BookOpen, Database, Sparkles, Search, Layers, UserCircle, Wallet, FileText,
 } from "lucide-react";
 import { useDashTheme } from "@/hooks/useDashTheme";
+import { serializeAgreementToText } from "@/lib/agreement/content";
 import { Button } from "@/components/ui/Button";
 import { Input, Textarea } from "@/components/ui/Input";
 import { StatusBadge, Badge } from "@/components/ui/Badge";
@@ -125,6 +126,7 @@ export function AdminDashboard() {
   const [expandedLabIds, setExpandedLabIds] = useState<Set<string>>(new Set());
   const [branchModalLabId, setBranchModalLabId] = useState<string | null>(null);
   const [sendingAgreementId, setSendingAgreementId] = useState<string | null>(null);
+  const [sendAgreementLab, setSendAgreementLab] = useState<Lab | null>(null);
   type AgreementRecord = { id: string; version: string; signed_at: string; signer_name: string; signer_email: string; signer_title: string | null; pdf_hash: string; lab: { id: string; name: string; email: string } };
   const [agreements, setAgreements] = useState<AgreementRecord[]>([]);
   const [agreementsLoading, setAgreementsLoading] = useState(false);
@@ -1004,17 +1006,7 @@ export function AdminDashboard() {
                             <Code2 className="w-3.5 h-3.5" />
                           </button>
                           <button
-                            onClick={async () => {
-                              setSendingAgreementId(lab.id);
-                              try {
-                                const r = await fetch(`/api/admin/labs/${lab.id}/send-agreement`, { method: "POST" });
-                                const d = await r.json();
-                                if (d.success) { toast.success(`Agreement invite sent to ${lab.email}`); }
-                                else throw new Error(d.error);
-                              } catch { toast.error("Failed to send agreement invite"); }
-                              finally { setSendingAgreementId(null); }
-                            }}
-                            disabled={sendingAgreementId === lab.id}
+                            onClick={() => setSendAgreementLab(lab)}
                             title="Send Agreement Invite"
                             className="p-2 rounded-lg hover:bg-violet-500/15 text-slate-500 hover:text-violet-400 transition-colors"
                           >
@@ -1120,17 +1112,7 @@ export function AdminDashboard() {
                               <Code2 className="w-3.5 h-3.5" />Dev
                             </button>
                             <button
-                              onClick={async () => {
-                                setSendingAgreementId(lab.id);
-                                try {
-                                  const r = await fetch(`/api/admin/labs/${lab.id}/send-agreement`, { method: "POST" });
-                                  const d = await r.json();
-                                  if (d.success) { toast.success(`Agreement invite sent to ${lab.email}`); }
-                                  else throw new Error(d.error);
-                                } catch { toast.error("Failed to send agreement invite"); }
-                                finally { setSendingAgreementId(null); }
-                              }}
-                              disabled={sendingAgreementId === lab.id}
+                              onClick={() => setSendAgreementLab(lab)}
                               className="flex items-center justify-center gap-1.5 px-3 py-2 rounded-xl bg-violet-500/10 hover:bg-violet-500/20 text-violet-400 text-xs font-medium transition-colors"
                             >
                               <FileText className="w-3.5 h-3.5" />Agreement
@@ -1489,6 +1471,13 @@ export function AdminDashboard() {
           <LabBranchModal lab={lab} onClose={() => setBranchModalLabId(null)} allLabs={labs} />
         ) : null;
       })()}
+      {sendAgreementLab && (
+        <SendAgreementModal
+          lab={sendAgreementLab}
+          onClose={() => setSendAgreementLab(null)}
+          onSent={(labEmail) => { setSendAgreementLab(null); toast.success(`Agreement invite sent to ${labEmail}`); }}
+        />
+      )}
 
       {/* Per-lab analytics modal */}
       {labAnalyticsLabId && (
@@ -4790,6 +4779,115 @@ function AdminAgreementsTab({
           </table>
         </div>
       )}
+    </div>
+  );
+}
+
+// ── Send Agreement Modal ──────────────────────────────────────────────────────
+
+function SendAgreementModal({
+  lab,
+  onClose,
+  onSent,
+}: {
+  lab: Lab;
+  onClose: () => void;
+  onSent: (labEmail: string) => void;
+}) {
+  const [content, setContent] = useState(() => serializeAgreementToText(lab.name));
+  const [sending, setSending] = useState(false);
+  const [error, setError] = useState("");
+
+  async function handleSend() {
+    setSending(true);
+    setError("");
+    try {
+      const r = await fetch(`/api/admin/labs/${lab.id}/send-agreement`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ custom_content: content }),
+      });
+      const d = await r.json();
+      if (d.success) { onSent(lab.email); }
+      else throw new Error(d.error ?? "Failed to send");
+    } catch (e: unknown) {
+      setError(e instanceof Error ? e.message : "Failed to send agreement invite");
+    } finally {
+      setSending(false);
+    }
+  }
+
+  return (
+    <div
+      className="fixed inset-0 z-50 flex items-end sm:items-center justify-center p-4"
+      style={{ backgroundColor: "rgba(2,6,23,0.85)", backdropFilter: "blur(6px)" }}
+      onClick={onClose}
+    >
+      <div
+        className="w-full max-w-2xl bg-slate-900 border border-white/10 rounded-3xl shadow-2xl overflow-hidden flex flex-col max-h-[90vh]"
+        onClick={(e) => e.stopPropagation()}
+      >
+        {/* Header */}
+        <div className="flex items-center justify-between px-6 pt-5 pb-4 border-b border-white/8 shrink-0">
+          <div>
+            <h2 className="font-semibold text-white text-sm">Send Agreement Invite</h2>
+            <p className="text-xs text-slate-400 mt-0.5">
+              {lab.name} · <span className="text-slate-500">{lab.email}</span>
+            </p>
+          </div>
+          <button onClick={onClose} className="p-2 rounded-lg hover:bg-white/8 text-slate-400 hover:text-white transition-colors">
+            <X className="w-4 h-4" />
+          </button>
+        </div>
+
+        {/* Body */}
+        <div className="flex-1 overflow-y-auto px-6 py-4 space-y-3">
+          <div className="flex items-center justify-between">
+            <p className="text-xs text-slate-400">
+              Edit the agreement text below before sending. Changes apply to this invite only.
+            </p>
+            <button
+              onClick={() => setContent(serializeAgreementToText(lab.name))}
+              className="text-xs text-slate-500 hover:text-slate-300 underline-offset-2 hover:underline transition-colors"
+            >
+              Reset to default
+            </button>
+          </div>
+          <textarea
+            value={content}
+            onChange={(e) => setContent(e.target.value)}
+            rows={24}
+            className="w-full rounded-xl bg-slate-800 border border-white/8 text-slate-300 text-xs leading-relaxed px-4 py-3 resize-y focus:outline-none focus:ring-2 focus:ring-violet-500/50 font-mono"
+          />
+          {error && (
+            <p className="text-xs text-red-400">{error}</p>
+          )}
+        </div>
+
+        {/* Footer */}
+        <div className="flex items-center justify-end gap-3 px-6 py-4 border-t border-white/8 shrink-0">
+          <button onClick={onClose} className="px-4 py-2 rounded-xl text-sm text-slate-400 hover:text-white hover:bg-white/8 transition-colors">
+            Cancel
+          </button>
+          <button
+            onClick={handleSend}
+            disabled={sending || !content.trim()}
+            className="flex items-center gap-2 px-5 py-2 rounded-xl bg-violet-600 hover:bg-violet-500 disabled:opacity-50 text-white text-sm font-medium transition-colors"
+          >
+            {sending ? (
+              <>
+                <span className="w-3.5 h-3.5 border-2 border-white/30 border-t-white rounded-full animate-spin" />
+                Sending…
+              </>
+            ) : (
+              <>
+                <FileText className="w-3.5 h-3.5" />
+                Send to Lab
+              </>
+            )}
+          </button>
+        </div>
+      </div>
     </div>
   );
 }

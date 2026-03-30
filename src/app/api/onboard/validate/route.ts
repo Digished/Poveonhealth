@@ -50,5 +50,6 @@ export async function GET(request: NextRequest) {
       logo_url: invite.lab.logo_url,
     },
     already_signed: invite.lab.agreements.length > 0,
+    custom_content: invite.custom_content ?? null,
   });
 }
