@@ -4,7 +4,7 @@ export async function GET() {
   return NextResponse.json(
     {
       status: true,
-      message: "Welcome to the Poveon Health API.",
+      message: "Welcome to the Poveon API.",
       data: {
         service: "poveon-api",
         version: "1.0",

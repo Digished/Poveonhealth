@@ -37,6 +37,8 @@ model Lab {
   feedbacks       LabFeedback[]
   wallet            LabWallet?
   lab_offered_tests LabOfferedTest[]
+  agreement_invites LabAgreementInvite[]
+  agreements        LabAgreement[]
 
   @@map("labs")
 }
@@ -529,4 +531,44 @@ model KbTest {
   created_at     DateTime @default(now())
   updated_at     DateTime @updatedAt
   @@map("kb_tests")
+}
+
+// ── Lab Agreements ────────────────────────────────────────────────────────────
+
+// One-time invite link for a lab owner to digitally sign the partnership agreement
+model LabAgreementInvite {
+  id         String    @id @default(uuid())
+  lab_id     String
+  token      String    @unique @default(uuid())
+  sent_by    String    // admin email who triggered the invite
+  sent_at    DateTime  @default(now())
+  expires_at DateTime
+  used           Boolean   @default(false)
+  custom_content String?   // Admin-edited agreement text; null = use default
+
+  lab        Lab       @relation(fields: [lab_id], references: [id], onDelete: Cascade)
+
+  @@index([lab_id])
+  @@map("lab_agreement_invites")
+}
+
+// Signed agreement record — written once when lab owner completes the signing flow
+model LabAgreement {
+  id           String    @id @default(uuid())
+  lab_id       String
+  invite_id    String?   // which invite was used (nullable for manual imports)
+  version      String    // agreement version e.g. "v1.0-2025"
+  signed_at    DateTime  @default(now())
+  signer_name  String
+  signer_email String
+  signer_title String?
+  ip_address   String?
+  user_agent   String?
+  pdf_url      String    // Supabase Storage path (agreements bucket, private)
+  pdf_hash     String    // SHA-256 hex of the raw PDF bytes (tamper detection)
+
+  lab          Lab       @relation(fields: [lab_id], references: [id], onDelete: Restrict)
+
+  @@index([lab_id])
+  @@map("lab_agreements")
 }

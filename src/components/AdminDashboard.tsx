@@ -8,9 +8,10 @@ import {
   Phone, Upload, Check, MapPin, Users, ChevronRight, ChevronDown, ChevronUp,
   Code2, Key, Copy, TrendingUp, Link, Sun, Moon, Star, GitBranch,
   ArrowUpRight, ArrowDownRight, ArrowDownToLine, Settings, CreditCard, MessageCircle,
-  BookOpen, Database, Sparkles, Search, Layers, UserCircle, Wallet,
+  BookOpen, Database, Sparkles, Search, Layers, UserCircle, Wallet, FileText,
 } from "lucide-react";
 import { useDashTheme } from "@/hooks/useDashTheme";
+import { serializeAgreementToText } from "@/lib/agreement/content";
 import { Button } from "@/components/ui/Button";
 import { Input, Textarea } from "@/components/ui/Input";
 import { StatusBadge, Badge } from "@/components/ui/Badge";
@@ -20,7 +21,7 @@ import { format } from "date-fns";
 import { createClient } from "@/lib/supabase/client"; // still used for auth sign-out
 import { useRouter } from "next/navigation";
 
-type AdminTab = "metrics" | "requests" | "referrals" | "labs" | "analytics" | "marketers" | "settings" | "transactions" | "knowledge-base" | "users" | "hospitals";
+type AdminTab = "metrics" | "requests" | "referrals" | "labs" | "analytics" | "marketers" | "settings" | "transactions" | "knowledge-base" | "users" | "hospitals" | "agreements";
 
 interface ReferralGroup {
   key: string; // doctor_email
@@ -124,6 +125,11 @@ export function AdminDashboard() {
   const [expandedLabIntegration, setExpandedLabIntegration] = useState<string | null>(null);
   const [expandedLabIds, setExpandedLabIds] = useState<Set<string>>(new Set());
   const [branchModalLabId, setBranchModalLabId] = useState<string | null>(null);
+  const [sendingAgreementId, setSendingAgreementId] = useState<string | null>(null);
+  const [sendAgreementLab, setSendAgreementLab] = useState<Lab | null>(null);
+  type AgreementRecord = { id: string; version: string; signed_at: string; signer_name: string; signer_email: string; signer_title: string | null; pdf_hash: string; lab: { id: string; name: string; email: string } };
+  const [agreements, setAgreements] = useState<AgreementRecord[]>([]);
+  const [agreementsLoading, setAgreementsLoading] = useState(false);
   const [defaultRequestPrice, setDefaultRequestPrice] = useState<string>("500");
   const [savingSettings, setSavingSettings] = useState(false);
 
@@ -461,6 +467,7 @@ export function AdminDashboard() {
             { key: "knowledge-base" as AdminTab, label: "Knowledge Base", icon: <BookOpen className="w-4 h-4" /> },
             { key: "users" as AdminTab, label: "Users", icon: <UserCircle className="w-4 h-4" /> },
             { key: "hospitals" as AdminTab, label: "Hospitals", icon: <Building2 className="w-4 h-4" /> },
+            { key: "agreements" as AdminTab, label: "Agreements", icon: <FileText className="w-4 h-4" /> },
           ];
           const current = tabs.find((t) => t.key === activeTab) ?? tabs[0];
           return (
@@ -998,6 +1005,13 @@ export function AdminDashboard() {
                           <button onClick={() => setExpandedLabIntegration(lab.id)} title="Dev / Integration" className="p-2 rounded-lg hover:bg-blue-500/15 text-slate-500 hover:text-blue-400 transition-colors">
                             <Code2 className="w-3.5 h-3.5" />
                           </button>
+                          <button
+                            onClick={() => setSendAgreementLab(lab)}
+                            title="Send Agreement Invite"
+                            className="p-2 rounded-lg hover:bg-violet-500/15 text-slate-500 hover:text-violet-400 transition-colors"
+                          >
+                            <FileText className="w-3.5 h-3.5" />
+                          </button>
                           <LabWalletButton labId={lab.id} />
                           <button onClick={() => handleDeleteLab(lab)} disabled={deletingId === lab.id} title="Delete" className="p-2 rounded-lg hover:bg-red-500/15 text-slate-600 hover:text-red-400 transition-colors">
                             <Trash2 className="w-3.5 h-3.5" />
@@ -1096,6 +1110,12 @@ export function AdminDashboard() {
                             </button>
                             <button onClick={() => setExpandedLabIntegration(lab.id)} className="flex items-center justify-center gap-1.5 px-3 py-2 rounded-xl bg-blue-500/10 hover:bg-blue-500/20 text-blue-400 text-xs font-medium transition-colors">
                               <Code2 className="w-3.5 h-3.5" />Dev
+                            </button>
+                            <button
+                              onClick={() => setSendAgreementLab(lab)}
+                              className="flex items-center justify-center gap-1.5 px-3 py-2 rounded-xl bg-violet-500/10 hover:bg-violet-500/20 text-violet-400 text-xs font-medium transition-colors"
+                            >
+                              <FileText className="w-3.5 h-3.5" />Agreement
                             </button>
                             <div><LabWalletButton labId={lab.id} /></div>
                             <button onClick={() => handleDeleteLab(lab)} disabled={deletingId === lab.id} className="flex items-center justify-center gap-1.5 px-3 py-2 rounded-xl bg-red-500/10 hover:bg-red-500/20 text-red-400 text-xs font-medium transition-colors">
@@ -1399,6 +1419,24 @@ export function AdminDashboard() {
         {/* ── HOSPITALS ── */}
         {activeTab === "hospitals" && <AdminHospitalsTab />}
 
+        {/* ── AGREEMENTS ── */}
+        {activeTab === "agreements" && (
+          <AdminAgreementsTab
+            agreements={agreements}
+            loading={agreementsLoading}
+            onLoad={() => {
+              if (agreements.length === 0 && !agreementsLoading) {
+                setAgreementsLoading(true);
+                fetch("/api/admin/agreements")
+                  .then((r) => r.json())
+                  .then((d) => { if (d.success) setAgreements(d.agreements); })
+                  .catch(() => {})
+                  .finally(() => setAgreementsLoading(false));
+              }
+            }}
+          />
+        )}
+
       </div>
 
       {showCreateMarketer && (
@@ -1433,6 +1471,13 @@ export function AdminDashboard() {
           <LabBranchModal lab={lab} onClose={() => setBranchModalLabId(null)} allLabs={labs} />
         ) : null;
       })()}
+      {sendAgreementLab && (
+        <SendAgreementModal
+          lab={sendAgreementLab}
+          onClose={() => setSendAgreementLab(null)}
+          onSent={(labEmail) => { setSendAgreementLab(null); toast.success(`Agreement invite sent to ${labEmail}`); }}
+        />
+      )}
 
       {/* Per-lab analytics modal */}
       {labAnalyticsLabId && (
@@ -4602,5 +4647,470 @@ function LabWalletButton({ labId }: { labId: string }) {
     >
       <Wallet className="w-3 h-3" /> Wallet DVA
     </button>
+  );
+}
+
+// =============================================================================
+// Admin Agreements Tab
+// =============================================================================
+
+function AdminAgreementsTab({
+  agreements,
+  loading,
+  onLoad,
+}: {
+  agreements: { id: string; version: string; signed_at: string; signer_name: string; signer_email: string; signer_title: string | null; pdf_hash: string; lab: { id: string; name: string; email: string } }[];
+  loading: boolean;
+  onLoad: () => void;
+}) {
+  const [downloading, setDownloading] = useState<string | null>(null);
+
+  // ── Global template editor state ──
+  const [template, setTemplate] = useState<string>("");
+  const [templateLoading, setTemplateLoading] = useState(true);
+  const [templateSaving, setTemplateSaving] = useState(false);
+  const [templateDirty, setTemplateDirty] = useState(false);
+  const [templateSavedAt, setTemplateSavedAt] = useState<Date | null>(null);
+  const [templateError, setTemplateError] = useState("");
+  const [showTemplateEditor, setShowTemplateEditor] = useState(false);
+
+  useEffect(() => {
+    fetch("/api/admin/agreement-template")
+      .then((r) => r.json())
+      .then((d) => { if (d.template) setTemplate(d.template); })
+      .catch(() => {})
+      .finally(() => setTemplateLoading(false));
+  }, []);
+
+  async function saveTemplate() {
+    setTemplateSaving(true);
+    setTemplateError("");
+    try {
+      const r = await fetch("/api/admin/agreement-template", {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ template }),
+      });
+      const d = await r.json();
+      if (!d.success) throw new Error(d.error ?? "Save failed");
+      setTemplateDirty(false);
+      setTemplateSavedAt(new Date());
+    } catch (e: unknown) {
+      setTemplateError(e instanceof Error ? e.message : "Failed to save");
+    } finally {
+      setTemplateSaving(false);
+    }
+  }
+
+  useEffect(() => { onLoad(); }, []);
+
+  async function handleDownload(id: string, labName: string) {
+    setDownloading(id);
+    try {
+      const r = await fetch(`/api/admin/agreements/${id}/pdf`);
+      const d = await r.json();
+      if (!d.url) throw new Error("No URL");
+      window.open(d.url, "_blank");
+    } catch {
+      toast.error("Could not download PDF");
+    } finally {
+      setDownloading(null);
+    }
+  }
+
+  return (
+    <div className="space-y-8">
+
+      {/* ── Global Agreement Template ── */}
+      <div className="bg-white/5 border border-white/10 rounded-2xl overflow-hidden">
+        <button
+          onClick={() => setShowTemplateEditor((v) => !v)}
+          className="w-full flex items-center justify-between px-5 py-4 hover:bg-white/5 transition-colors"
+        >
+          <div className="flex items-center gap-3">
+            <div className="w-8 h-8 rounded-lg bg-violet-500/15 flex items-center justify-center">
+              <FileText className="w-4 h-4 text-violet-400" />
+            </div>
+            <div className="text-left">
+              <p className="text-sm font-medium text-white">Global Agreement Template</p>
+              <p className="text-xs text-slate-500 mt-0.5">
+                {templateSavedAt
+                  ? `Last saved ${templateSavedAt.toLocaleTimeString()}`
+                  : "Default template — edit to customise for all future invites"}
+              </p>
+            </div>
+          </div>
+          <div className="flex items-center gap-3">
+            {templateDirty && (
+              <span className="text-xs text-amber-400 font-medium">Unsaved changes</span>
+            )}
+            <ChevronDown className={`w-4 h-4 text-slate-500 transition-transform ${showTemplateEditor ? "rotate-180" : ""}`} />
+          </div>
+        </button>
+
+        {showTemplateEditor && (
+          <div className="border-t border-white/8 px-5 py-4 space-y-3">
+            <p className="text-xs text-slate-400">
+              This template pre-fills the agreement editor when you send an invite to any lab.
+              Use <code className="bg-white/10 px-1 rounded text-violet-300">[LAB NAME]</code> as
+              a placeholder — it will be replaced with the actual lab name when you open the send modal.
+            </p>
+            {templateLoading ? (
+              <div className="h-48 bg-white/5 rounded-xl animate-pulse" />
+            ) : (
+              <AgreementTextEditor
+                value={template}
+                onChange={(v) => { setTemplate(v); setTemplateDirty(true); setTemplateSavedAt(null); }}
+              />
+            )}
+            {templateError && <p className="text-xs text-red-400">{templateError}</p>}
+            <div className="flex items-center justify-end gap-3">
+              <button
+                onClick={() => {
+                  fetch("/api/admin/agreement-template").then((r) => r.json()).then((d) => {
+                    if (d.template) { setTemplate(d.template); setTemplateDirty(false); }
+                  }).catch(() => {});
+                }}
+                className="text-xs text-slate-500 hover:text-slate-300 transition-colors"
+              >
+                Discard changes
+              </button>
+              <button
+                onClick={saveTemplate}
+                disabled={templateSaving || !templateDirty}
+                className="flex items-center gap-2 px-4 py-2 rounded-xl bg-violet-600 hover:bg-violet-500 disabled:opacity-40 text-white text-xs font-medium transition-colors"
+              >
+                {templateSaving ? (
+                  <><span className="w-3 h-3 border-2 border-white/30 border-t-white rounded-full animate-spin" />Saving…</>
+                ) : (
+                  "Save Template"
+                )}
+              </button>
+            </div>
+          </div>
+        )}
+      </div>
+
+      {/* ── Signed Agreements ── */}
+      <div>
+      <div className="flex items-center justify-between mb-6">
+        <div>
+          <h2 className="text-lg font-semibold text-white">Signed Agreements</h2>
+          <p className="text-xs text-slate-500 mt-0.5">
+            Digital partnership agreements signed by lab owners
+          </p>
+        </div>
+        <button
+          onClick={() => {
+            fetch("/api/admin/agreements").then((r) => r.json()).then((d) => {
+              if (d.success) {
+                const el = document.createElement("a");
+                const rows = [
+                  ["Reference", "Lab", "Signer", "Title", "Email", "Signed At", "Version"],
+                  ...d.agreements.map((a: { id: string; lab: { name: string }; signer_name: string; signer_title: string | null; signer_email: string; signed_at: string; version: string }) => [
+                    a.id.slice(0, 8).toUpperCase(), a.lab.name, a.signer_name,
+                    a.signer_title ?? "", a.signer_email,
+                    new Date(a.signed_at).toLocaleString(), a.version,
+                  ]),
+                ];
+                const csv = rows.map((r) => r.map((c: string) => `"${c}"`).join(",")).join("\n");
+                el.href = "data:text/csv;charset=utf-8," + encodeURIComponent(csv);
+                el.download = "poveon-agreements.csv";
+                el.click();
+              }
+            }).catch(() => {});
+          }}
+          className="flex items-center gap-1.5 px-3 py-2 rounded-xl bg-white/8 hover:bg-white/12 text-slate-300 text-xs font-medium transition-colors"
+        >
+          <ArrowDownToLine className="w-3.5 h-3.5" /> Export CSV
+        </button>
+      </div>
+
+      {loading ? (
+        <div className="space-y-3">
+          {[...Array(3)].map((_, i) => (
+            <div key={i} className="h-16 bg-white/5 rounded-2xl animate-pulse" />
+          ))}
+        </div>
+      ) : agreements.length === 0 ? (
+        <div className="bg-white/5 border border-white/10 rounded-2xl p-12 text-center">
+          <FileText className="w-9 h-9 text-slate-600 mx-auto mb-3" />
+          <p className="text-sm text-slate-400">No signed agreements yet</p>
+          <p className="text-xs text-slate-600 mt-1">
+            Send agreement invites to labs from the Labs tab
+          </p>
+        </div>
+      ) : (
+        <div className="bg-white/5 border border-white/10 rounded-2xl overflow-hidden">
+          <table className="w-full text-sm">
+            <thead>
+              <tr className="border-b border-white/8">
+                <th className="text-left px-4 py-3 text-xs font-semibold text-slate-500 uppercase tracking-wider">Laboratory</th>
+                <th className="text-left px-4 py-3 text-xs font-semibold text-slate-500 uppercase tracking-wider hidden sm:table-cell">Signed By</th>
+                <th className="text-left px-4 py-3 text-xs font-semibold text-slate-500 uppercase tracking-wider hidden md:table-cell">Date</th>
+                <th className="text-left px-4 py-3 text-xs font-semibold text-slate-500 uppercase tracking-wider hidden lg:table-cell">Version</th>
+                <th className="px-4 py-3" />
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-white/5">
+              {agreements.map((a) => (
+                <tr key={a.id} className="hover:bg-white/3 transition-colors">
+                  <td className="px-4 py-3">
+                    <p className="font-medium text-white text-sm">{a.lab.name}</p>
+                    <p className="text-xs text-slate-500">{a.lab.email}</p>
+                  </td>
+                  <td className="px-4 py-3 hidden sm:table-cell">
+                    <p className="text-slate-200 text-sm">{a.signer_name}</p>
+                    {a.signer_title && <p className="text-xs text-slate-500">{a.signer_title}</p>}
+                  </td>
+                  <td className="px-4 py-3 hidden md:table-cell">
+                    <p className="text-slate-300 text-sm">{new Date(a.signed_at).toLocaleDateString()}</p>
+                    <p className="text-xs text-slate-500">{new Date(a.signed_at).toLocaleTimeString()}</p>
+                  </td>
+                  <td className="px-4 py-3 hidden lg:table-cell">
+                    <span className="px-2 py-0.5 rounded-full bg-emerald-500/15 text-emerald-400 text-xs font-medium border border-emerald-500/20">
+                      {a.version}
+                    </span>
+                  </td>
+                  <td className="px-4 py-3 text-right">
+                    <button
+                      onClick={() => handleDownload(a.id, a.lab.name)}
+                      disabled={downloading === a.id}
+                      className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-white/8 hover:bg-white/15 text-slate-300 text-xs font-medium transition-colors ml-auto"
+                    >
+                      {downloading === a.id
+                        ? <><RefreshCw className="w-3 h-3 animate-spin" /> Loading…</>
+                        : <><ArrowDownToLine className="w-3 h-3" /> PDF</>}
+                    </button>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      )}
+      </div>
+    </div>
+  );
+}
+
+// ── Agreement Text Editor (rich-ish textarea with formatting toolbar) ─────────
+
+function AgreementTextEditor({ value, onChange }: { value: string; onChange: (v: string) => void }) {
+  const ref = useRef<HTMLTextAreaElement>(null);
+
+  function applyFormat(type: "bold" | "heading" | "subheading" | "divider") {
+    const el = ref.current;
+    if (!el) return;
+    const start = el.selectionStart;
+    const end = el.selectionEnd;
+    const selected = value.slice(start, end);
+
+    let replacement = "";
+    let cursorOffset = 0;
+
+    if (type === "bold") {
+      replacement = `**${selected || "bold text"}**`;
+      cursorOffset = selected ? replacement.length : 2;
+    } else if (type === "heading") {
+      // Prefix current line
+      const lineStart = value.lastIndexOf("\n", start - 1) + 1;
+      const lineEnd = value.indexOf("\n", start);
+      const line = value.slice(lineStart, lineEnd === -1 ? undefined : lineEnd);
+      const cleaned = line.replace(/^#{1,3}\s*/, "");
+      const newLine = `## ${cleaned}`;
+      const before = value.slice(0, lineStart);
+      const after = lineEnd === -1 ? "" : value.slice(lineEnd);
+      onChange(before + newLine + after);
+      setTimeout(() => { el.selectionStart = el.selectionEnd = lineStart + newLine.length; el.focus(); }, 0);
+      return;
+    } else if (type === "subheading") {
+      const lineStart = value.lastIndexOf("\n", start - 1) + 1;
+      const lineEnd = value.indexOf("\n", start);
+      const line = value.slice(lineStart, lineEnd === -1 ? undefined : lineEnd);
+      const cleaned = line.replace(/^#{1,3}\s*/, "");
+      const newLine = `### ${cleaned}`;
+      const before = value.slice(0, lineStart);
+      const after = lineEnd === -1 ? "" : value.slice(lineEnd);
+      onChange(before + newLine + after);
+      setTimeout(() => { el.selectionStart = el.selectionEnd = lineStart + newLine.length; el.focus(); }, 0);
+      return;
+    } else if (type === "divider") {
+      replacement = `\n\n---\n\n`;
+      cursorOffset = replacement.length;
+    }
+
+    const newValue = value.slice(0, start) + replacement + value.slice(end);
+    onChange(newValue);
+    setTimeout(() => {
+      el.selectionStart = el.selectionEnd = start + cursorOffset;
+      el.focus();
+    }, 0);
+  }
+
+  const toolbarBtns: { label: string; title: string; action: "bold" | "heading" | "subheading" | "divider" }[] = [
+    { label: "B", title: "Bold (**text**)", action: "bold" },
+    { label: "H2", title: "Section heading", action: "heading" },
+    { label: "H3", title: "Sub-heading", action: "subheading" },
+    { label: "—", title: "Horizontal divider (---)", action: "divider" },
+  ];
+
+  return (
+    <div className="rounded-xl border border-white/8 overflow-hidden bg-slate-800">
+      {/* Toolbar */}
+      <div className="flex items-center gap-1 px-3 py-2 border-b border-white/8 bg-slate-900/50">
+        {toolbarBtns.map((btn) => (
+          <button
+            key={btn.action}
+            type="button"
+            title={btn.title}
+            onClick={() => applyFormat(btn.action)}
+            className={`px-2.5 py-1 rounded text-xs font-bold text-slate-400 hover:text-white hover:bg-white/10 transition-colors ${btn.label === "B" ? "italic" : ""}`}
+          >
+            {btn.label}
+          </button>
+        ))}
+        <div className="ml-auto flex items-center gap-1.5 text-[10px] text-slate-600">
+          <span className="px-1.5 py-0.5 rounded bg-white/5 font-mono">**bold**</span>
+          <span className="px-1.5 py-0.5 rounded bg-white/5 font-mono">## heading</span>
+          <span className="px-1.5 py-0.5 rounded bg-white/5 font-mono">### sub</span>
+        </div>
+      </div>
+      <textarea
+        ref={ref}
+        value={value}
+        onChange={(e) => onChange(e.target.value)}
+        rows={28}
+        className="w-full bg-transparent text-slate-300 text-xs leading-relaxed px-4 py-3 resize-y focus:outline-none font-mono"
+      />
+    </div>
+  );
+}
+
+// ── Send Agreement Modal ──────────────────────────────────────────────────────
+
+function SendAgreementModal({
+  lab,
+  onClose,
+  onSent,
+}: {
+  lab: Lab;
+  onClose: () => void;
+  onSent: (labEmail: string) => void;
+}) {
+  const [content, setContent] = useState("");
+  const [loadingTemplate, setLoadingTemplate] = useState(true);
+  const [sending, setSending] = useState(false);
+  const [error, setError] = useState("");
+
+  // Fetch global template on mount, replace [LAB NAME] placeholder
+  useEffect(() => {
+    fetch("/api/admin/agreement-template")
+      .then((r) => r.json())
+      .then((d) => {
+        if (d.template) {
+          setContent(d.template.replaceAll("[LAB NAME]", lab.name));
+        } else {
+          setContent(serializeAgreementToText(lab.name));
+        }
+      })
+      .catch(() => setContent(serializeAgreementToText(lab.name)))
+      .finally(() => setLoadingTemplate(false));
+  }, [lab.name]);
+
+  async function handleSend() {
+    setSending(true);
+    setError("");
+    try {
+      const r = await fetch(`/api/admin/labs/${lab.id}/send-agreement`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ custom_content: content }),
+      });
+      const d = await r.json();
+      if (d.success) { onSent(lab.email); }
+      else throw new Error(d.error ?? "Failed to send");
+    } catch (e: unknown) {
+      setError(e instanceof Error ? e.message : "Failed to send agreement invite");
+    } finally {
+      setSending(false);
+    }
+  }
+
+  return (
+    <div
+      className="fixed inset-0 z-50 flex items-end sm:items-center justify-center p-4"
+      style={{ backgroundColor: "rgba(2,6,23,0.85)", backdropFilter: "blur(6px)" }}
+      onClick={onClose}
+    >
+      <div
+        className="w-full max-w-2xl bg-slate-900 border border-white/10 rounded-3xl shadow-2xl overflow-hidden flex flex-col max-h-[90vh]"
+        onClick={(e) => e.stopPropagation()}
+      >
+        {/* Header */}
+        <div className="flex items-center justify-between px-6 pt-5 pb-4 border-b border-white/8 shrink-0">
+          <div>
+            <h2 className="font-semibold text-white text-sm">Send Agreement Invite</h2>
+            <p className="text-xs text-slate-400 mt-0.5">
+              {lab.name} · <span className="text-slate-500">{lab.email}</span>
+            </p>
+          </div>
+          <button onClick={onClose} className="p-2 rounded-lg hover:bg-white/8 text-slate-400 hover:text-white transition-colors">
+            <X className="w-4 h-4" />
+          </button>
+        </div>
+
+        {/* Body */}
+        <div className="flex-1 overflow-y-auto px-6 py-4 space-y-3">
+          <div className="flex items-center justify-between">
+            <p className="text-xs text-slate-400">
+              Edit the agreement text below before sending. Changes apply to this invite only.
+            </p>
+            <button
+              onClick={() => {
+                fetch("/api/admin/agreement-template").then((r) => r.json()).then((d) => {
+                  if (d.template) setContent(d.template.replaceAll("[LAB NAME]", lab.name));
+                }).catch(() => setContent(serializeAgreementToText(lab.name)));
+              }}
+              className="text-xs text-slate-500 hover:text-slate-300 underline-offset-2 hover:underline transition-colors"
+            >
+              Reset to global template
+            </button>
+          </div>
+          {loadingTemplate ? (
+            <div className="h-96 bg-white/5 rounded-xl animate-pulse" />
+          ) : (
+            <AgreementTextEditor value={content} onChange={setContent} />
+          )}
+          {error && (
+            <p className="text-xs text-red-400">{error}</p>
+          )}
+        </div>
+
+        {/* Footer */}
+        <div className="flex items-center justify-end gap-3 px-6 py-4 border-t border-white/8 shrink-0">
+          <button onClick={onClose} className="px-4 py-2 rounded-xl text-sm text-slate-400 hover:text-white hover:bg-white/8 transition-colors">
+            Cancel
+          </button>
+          <button
+            onClick={handleSend}
+            disabled={sending || !content.trim() || loadingTemplate}
+            className="flex items-center gap-2 px-5 py-2 rounded-xl bg-violet-600 hover:bg-violet-500 disabled:opacity-50 text-white text-sm font-medium transition-colors"
+          >
+            {sending ? (
+              <>
+                <span className="w-3.5 h-3.5 border-2 border-white/30 border-t-white rounded-full animate-spin" />
+                Sending…
+              </>
+            ) : (
+              <>
+                <FileText className="w-3.5 h-3.5" />
+                Send to Lab
+              </>
+            )}
+          </button>
+        </div>
+      </div>
+    </div>
   );
 }

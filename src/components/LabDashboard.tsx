@@ -9,7 +9,7 @@ import {
   Users, CreditCard, Filter, ChevronDown, AlertTriangle, Truck, ExternalLink,
   MessageCircle, ChevronLeft, FileImage, Sun, Moon, Pencil, Save, BarChart3, Lock,
   Menu, Activity, KeyRound, ArrowRight, Star, MessageSquare, Wallet2, Copy, ArrowUpRight,
-  Settings2,
+  Settings2, FileText,
 } from "lucide-react";
 import dynamic from "next/dynamic";
 
@@ -109,6 +109,8 @@ export function LabDashboard({ lab, isOwner = false, roleName = "Lab Owner", can
   const [priceListLoading, setPriceListLoading] = useState(false);
   const [priceManagerOpen, setPriceManagerOpen] = useState(false);
   const [mobileNavOpen, setMobileNavOpen] = useState(false);
+  // Agreement status — checked once on mount for owners
+  const [agreementSigned, setAgreementSigned] = useState<boolean | null>(null);
   // Eagerly loaded wallet balance for the "amount owed" banner shown on all tabs
   const [poveonBalance, setPoveonBalance] = useState<number | null>(null);
   const [mobileHeaderOpen, setMobileHeaderOpen] = useState(false);
@@ -251,6 +253,15 @@ export function LabDashboard({ lab, isOwner = false, roleName = "Lab Owner", can
     return () => clearInterval(walletInterval);
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
+
+  // Check agreement status for owners once on mount
+  useEffect(() => {
+    if (!isOwner) return;
+    fetch("/api/lab/agreement-status")
+      .then((r) => r.json())
+      .then((d) => setAgreementSigned(d.signed ?? false))
+      .catch(() => setAgreementSigned(true)); // fail silently — don't nag if API is down
+  }, [isOwner]);
 
   // Poll Poveon data every 30s when on the poveon tab (real-time updates)
   useEffect(() => {
@@ -705,6 +716,17 @@ export function LabDashboard({ lab, isOwner = false, roleName = "Lab Owner", can
             >
               View →
             </button>
+          </div>
+        )}
+
+        {/* Agreement unsigned banner — shown to owners until agreement is signed */}
+        {isOwner && agreementSigned === false && (
+          <div className="mb-5 flex items-center gap-3 bg-amber-500/15 border border-amber-500/25 rounded-2xl px-4 py-3">
+            <FileText className="w-4 h-4 text-amber-400 shrink-0" />
+            <p className="text-sm text-slate-200 flex-1">
+              Your lab has not yet signed the Poveon Partnership Agreement.{" "}
+              Check your email for the invitation link.
+            </p>
           </div>
         )}
 
