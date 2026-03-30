@@ -17,14 +17,14 @@ export function buildAgreementSections(labName: string): AgreementSection[] {
     {
       title: "1. Definitions",
       clauses: [
-        `In this Agreement, the following terms shall have the meanings set out below:\n\n"Effective Date" means the date this Agreement is signed by both Parties.\n\n"Platform" means the Poveon Health digital platform, including the laboratory dashboard and all related services.\n\n"Referral" or "Qualified Lead" means a patient test request routed to the Laboratory through the Platform together with a unique referral code.\n\n"Price List" means the complete and accurate list of tests, descriptions, and prices submitted by the Laboratory and recorded on the Platform, representing the prices at which tests are offered to patients referred through the Platform.\n\n"Platform Lead Fee" means the fee payable by the Laboratory to Poveon under Clause 5.1, at the then-current rate as notified by Poveon from time to time.\n\n"Wallet" means the Laboratory's dedicated digital wallet maintained on the Platform.`,
+        `In this Agreement, the following terms shall have the meanings set out below:\n\n"Effective Date" means the date this Agreement is signed by both Parties.\n\n"Platform" means the Poveon digital platform, including the laboratory dashboard and all related services.\n\n"Referral" or "Qualified Lead" means a patient test request routed to the Laboratory through the Platform together with a unique referral code.\n\n"Price List" means the complete and accurate list of tests, descriptions, and prices submitted by the Laboratory and recorded on the Platform, representing the prices at which tests are offered to patients referred through the Platform.\n\n"Platform Lead Fee" means the fee payable by the Laboratory to Poveon under Clause 5.1, at the then-current rate as notified by Poveon from time to time.\n\n"Wallet" means the Laboratory's dedicated digital wallet maintained on the Platform.`,
       ],
     },
     {
       title: "2. Parties",
       clauses: [
-        `This Laboratory Partnership Agreement ("Agreement") is entered into between Poveon Health Limited, a company duly incorporated under the laws of the Federal Republic of Nigeria ("Poveon"), and ${labName} ("Laboratory"), collectively referred to as the "Parties".`,
-        `This Agreement governs the terms under which the Laboratory shall be listed and operate on the Poveon Health Platform.`,
+        `This Laboratory Partnership Agreement ("Agreement") is entered into between Poveon Ltd, a company duly incorporated under the laws of the Federal Republic of Nigeria ("Poveon"), and ${labName} ("Laboratory"), collectively referred to as the "Parties".`,
+        `This Agreement governs the terms under which the Laboratory shall be listed and operate on the Poveon Platform.`,
       ],
     },
     {

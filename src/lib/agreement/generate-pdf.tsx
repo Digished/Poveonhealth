@@ -382,16 +382,16 @@ export function AgreementPdf({
 
   return (
     <Document
-      title="Poveon Health Laboratory Partnership Agreement"
-      author="Poveon Health Limited"
+      title="Poveon Laboratory Partnership Agreement"
+      author="Poveon Ltd"
       subject={`Partnership Agreement — ${labName}`}
-      creator="Poveon Health Platform"
+      creator="Poveon Platform"
     >
       {/* ── Cover Page ─────────────────────────────────────────────────────── */}
       <Page size="A4" style={styles.coverPage}>
         <View style={styles.coverAccent}>
           <Text style={styles.coverLogo}>
-            Poveon<Text style={styles.coverLogoAccent}> Health</Text>
+            Poveon<Text style={styles.coverLogoAccent}> Ltd</Text>
           </Text>
           <Text style={styles.coverTagline}>Digital Health Platform · Nigeria</Text>
         </View>
@@ -399,7 +399,7 @@ export function AgreementPdf({
         <View style={styles.coverBody}>
           <View style={styles.coverDivider} />
           <Text style={styles.coverTitle}>Laboratory{"\n"}Partnership Agreement</Text>
-          <Text style={styles.coverSubtitle}>Digitally executed via the Poveon Health Platform</Text>
+          <Text style={styles.coverSubtitle}>Digitally executed via the Poveon Platform</Text>
 
           <View style={styles.coverMetaRow}>
             <Text style={styles.coverMetaLabel}>Laboratory</Text>
@@ -441,7 +441,7 @@ export function AgreementPdf({
         <View style={{ marginBottom: 8 }}>
           <Text style={[styles.clause, { color: "#64748b", fontFamily: "Helvetica-Oblique", fontSize: 9 }]}>
             This Laboratory Partnership Agreement (Version {AGREEMENT_VERSION}) is entered into between
-            Poveon Health Limited and {labName}. By digitally signing this document, both parties
+            Poveon Ltd and {labName}. By digitally signing this document, both parties
             agree to be legally bound by the terms set forth below under the laws of the Federal
             Republic of Nigeria.
           </Text>
@@ -474,7 +474,7 @@ export function AgreementPdf({
       {/* ── Signature Certificate Page ─────────────────────────────────────── */}
       {!previewOnly && <Page size="A4" style={styles.certPage}>
         <View style={styles.certHeader}>
-          <Text style={styles.certHeaderBrand}>Poveon Health</Text>
+          <Text style={styles.certHeaderBrand}>Poveon</Text>
           <Text style={styles.certHeaderTitle}>
             {"Electronic Signature Certificate\n"}
             {referenceNumber}
@@ -557,9 +557,9 @@ export function AgreementPdf({
               <Text style={styles.sigLabel}>On Behalf Of</Text>
               <View style={{ height: 60, justifyContent: "center" }}>
                 <Text style={{ fontSize: 11, fontFamily: "Helvetica-Bold", color: "#0f172a" }}>
-                  Poveon Health
+                  Poveon
                 </Text>
-                <Text style={{ fontSize: 8, color: "#64748b", marginTop: 4 }}>Limited, Nigeria</Text>
+                <Text style={{ fontSize: 8, color: "#64748b", marginTop: 4 }}>Ltd, Nigeria</Text>
               </View>
               <Text style={styles.sigName}>Platform Authorised</Text>
               <Text style={styles.sigTitle}>Digital Processing System</Text>
@@ -575,7 +575,7 @@ export function AgreementPdf({
           <View style={styles.certDivider} />
 
           <Text style={styles.legalNote}>
-            This electronic signature was applied via the Poveon Health digital onboarding platform.
+            This electronic signature was applied via the Poveon digital onboarding platform.
             The signer affirmed their identity, confirmed they had read the full agreement, and
             provided their signature with clear intent to be legally bound. This document constitutes
             a valid electronic signature in accordance with the Nigeria Evidence Act 2011 (Sections 84

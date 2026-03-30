@@ -229,7 +229,7 @@ export default function AgreementSigningPage({ token }: { token: string }) {
         <div className="max-w-3xl mx-auto px-4 py-3 flex items-center justify-between">
           <div className="flex items-center gap-2">
             <PoveonLogo className="w-7 h-7 text-slate-900" />
-            <span className="font-bold text-slate-800 text-sm">Poveon Health</span>
+            <span className="font-bold text-slate-800 text-sm">Poveon</span>
           </div>
           {step !== "loading" && step !== "error" && (
             <div className="flex items-center gap-1.5 text-xs text-slate-500">
@@ -259,7 +259,7 @@ export default function AgreementSigningPage({ token }: { token: string }) {
               <h1 className="text-xl font-bold text-slate-800 mb-2">Link Unavailable</h1>
               <p className="text-slate-500 text-sm">{errorMsg}</p>
               <p className="text-slate-400 text-xs mt-4">
-                Please contact Poveon Health for a new invitation link.
+                Please contact Poveon for a new invitation link.
               </p>
             </div>
           )}
@@ -273,7 +273,7 @@ export default function AgreementSigningPage({ token }: { token: string }) {
                 <div className="bg-slate-900 px-8 py-8 flex items-start gap-4">
                   <PoveonLogo className="w-10 h-10 text-white shrink-0 mt-1" />
                   <div>
-                    <p className="text-slate-400 text-xs uppercase tracking-widest mb-1">Poveon Health</p>
+                    <p className="text-slate-400 text-xs uppercase tracking-widest mb-1">Poveon</p>
                     <h1 className="text-white text-2xl font-bold leading-tight mb-1">
                       Laboratory Partnership<br />Agreement
                     </h1>
@@ -302,7 +302,7 @@ export default function AgreementSigningPage({ token }: { token: string }) {
                   </div>
 
                   <p className="text-slate-600 text-sm leading-relaxed mb-6">
-                    You have been invited to review and digitally sign the Poveon Health Laboratory
+                    You have been invited to review and digitally sign the Poveon Laboratory
                     Partnership Agreement. This agreement governs the terms under which{" "}
                     <strong className="text-slate-800">{lab.name}</strong> will operate on the Poveon
                     platform.
@@ -363,7 +363,7 @@ export default function AgreementSigningPage({ token }: { token: string }) {
                   <div className="mb-6 p-4 bg-slate-50 rounded-xl border border-slate-100">
                     <p className="text-xs text-slate-500 italic">
                       This Laboratory Partnership Agreement (Version {AGREEMENT_VERSION}) is entered
-                      into between Poveon Health Limited and {lab.name}. By digitally signing this
+                      into between Poveon Ltd and {lab.name}. By digitally signing this
                       document, both parties agree to be legally bound by the terms set forth below
                       under the laws of the Federal Republic of Nigeria.
                     </p>
@@ -405,7 +405,7 @@ export default function AgreementSigningPage({ token }: { token: string }) {
                       {readConfirmed && <Check className="w-3 h-3 text-white" />}
                     </div>
                     <span className="text-sm text-slate-700">
-                      I confirm that I have read and understood the full Poveon Health Laboratory
+                      I confirm that I have read and understood the full Poveon Laboratory
                       Partnership Agreement and agree to be bound by its terms.
                     </span>
                   </label>
@@ -592,7 +592,7 @@ export default function AgreementSigningPage({ token }: { token: string }) {
                     <span className="text-sm text-slate-700 leading-relaxed">
                       I, <strong>{signerName}</strong>, acting in my capacity as{" "}
                       <strong>{signerTitle}</strong> of <strong>{lab.name}</strong>, hereby agree
-                      to be legally bound by the terms of the Poveon Health Laboratory Partnership
+                      to be legally bound by the terms of the Poveon Laboratory Partnership
                       Agreement. I confirm this electronic signature is legally equivalent to my
                       handwritten signature.
                     </span>
@@ -640,7 +640,7 @@ export default function AgreementSigningPage({ token }: { token: string }) {
                   </div>
                   <h1 className="text-white text-2xl font-bold mb-1">Agreement Signed</h1>
                   <p className="text-emerald-100 text-sm">
-                    {lab.name} is now onboarded to Poveon Health
+                    {lab.name} is now onboarded to Poveon
                   </p>
                 </div>
 
@@ -675,7 +675,7 @@ export default function AgreementSigningPage({ token }: { token: string }) {
 
                   <p className="text-xs text-slate-400 leading-relaxed">
                     This agreement is legally binding under the laws of the Federal Republic of
-                    Nigeria. The signed document is stored securely on the Poveon Health platform.
+                    Nigeria. The signed document is stored securely on the Poveon platform.
                     If you have any questions, contact{" "}
                     <a href="mailto:legal@poveonhealth.com" className="text-blue-600 underline">
                       legal@poveonhealth.com
@@ -692,7 +692,7 @@ export default function AgreementSigningPage({ token }: { token: string }) {
       {/* Footer */}
       <footer className="border-t border-slate-200 bg-white py-4 px-4 text-center">
         <p className="text-xs text-slate-400">
-          © {new Date().getFullYear()} Poveon Health Limited · Secure digital signing ·{" "}
+          © {new Date().getFullYear()} Poveon Ltd · Secure digital signing ·{" "}
           <a href="https://poveonhealth.com/privacy" className="underline hover:text-slate-600">
             Privacy Policy
           </a>

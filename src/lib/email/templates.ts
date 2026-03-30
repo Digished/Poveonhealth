@@ -772,7 +772,7 @@ export function agreementInviteEmail({
       Dear ${labName} team,
     </p>
     <p style="margin:0 0 16px;font-size:14px;color:#334155;line-height:1.6;">
-      To complete your onboarding on the Poveon Health platform, please review and digitally sign
+      To complete your onboarding on the Poveon platform, please review and digitally sign
       the <strong>Laboratory Partnership Agreement</strong>. This agreement sets out the terms under
       which your laboratory will receive patient referrals and operate on our platform.
     </p>
