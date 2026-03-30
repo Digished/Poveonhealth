@@ -4758,11 +4758,9 @@ function AdminAgreementsTab({
             {templateLoading ? (
               <div className="h-48 bg-white/5 rounded-xl animate-pulse" />
             ) : (
-              <textarea
+              <AgreementTextEditor
                 value={template}
-                onChange={(e) => { setTemplate(e.target.value); setTemplateDirty(true); setTemplateSavedAt(null); }}
-                rows={28}
-                className="w-full rounded-xl bg-slate-800 border border-white/8 text-slate-300 text-xs leading-relaxed px-4 py-3 resize-y focus:outline-none focus:ring-2 focus:ring-violet-500/50 font-mono"
+                onChange={(v) => { setTemplate(v); setTemplateDirty(true); setTemplateSavedAt(null); }}
               />
             )}
             {templateError && <p className="text-xs text-red-400">{templateError}</p>}
@@ -4896,6 +4894,99 @@ function AdminAgreementsTab({
   );
 }
 
+// ── Agreement Text Editor (rich-ish textarea with formatting toolbar) ─────────
+
+function AgreementTextEditor({ value, onChange }: { value: string; onChange: (v: string) => void }) {
+  const ref = useRef<HTMLTextAreaElement>(null);
+
+  function applyFormat(type: "bold" | "heading" | "subheading" | "divider") {
+    const el = ref.current;
+    if (!el) return;
+    const start = el.selectionStart;
+    const end = el.selectionEnd;
+    const selected = value.slice(start, end);
+
+    let replacement = "";
+    let cursorOffset = 0;
+
+    if (type === "bold") {
+      replacement = `**${selected || "bold text"}**`;
+      cursorOffset = selected ? replacement.length : 2;
+    } else if (type === "heading") {
+      // Prefix current line
+      const lineStart = value.lastIndexOf("\n", start - 1) + 1;
+      const lineEnd = value.indexOf("\n", start);
+      const line = value.slice(lineStart, lineEnd === -1 ? undefined : lineEnd);
+      const cleaned = line.replace(/^#{1,3}\s*/, "");
+      const newLine = `## ${cleaned}`;
+      const before = value.slice(0, lineStart);
+      const after = lineEnd === -1 ? "" : value.slice(lineEnd);
+      onChange(before + newLine + after);
+      setTimeout(() => { el.selectionStart = el.selectionEnd = lineStart + newLine.length; el.focus(); }, 0);
+      return;
+    } else if (type === "subheading") {
+      const lineStart = value.lastIndexOf("\n", start - 1) + 1;
+      const lineEnd = value.indexOf("\n", start);
+      const line = value.slice(lineStart, lineEnd === -1 ? undefined : lineEnd);
+      const cleaned = line.replace(/^#{1,3}\s*/, "");
+      const newLine = `### ${cleaned}`;
+      const before = value.slice(0, lineStart);
+      const after = lineEnd === -1 ? "" : value.slice(lineEnd);
+      onChange(before + newLine + after);
+      setTimeout(() => { el.selectionStart = el.selectionEnd = lineStart + newLine.length; el.focus(); }, 0);
+      return;
+    } else if (type === "divider") {
+      replacement = `\n\n---\n\n`;
+      cursorOffset = replacement.length;
+    }
+
+    const newValue = value.slice(0, start) + replacement + value.slice(end);
+    onChange(newValue);
+    setTimeout(() => {
+      el.selectionStart = el.selectionEnd = start + cursorOffset;
+      el.focus();
+    }, 0);
+  }
+
+  const toolbarBtns: { label: string; title: string; action: "bold" | "heading" | "subheading" | "divider" }[] = [
+    { label: "B", title: "Bold (**text**)", action: "bold" },
+    { label: "H2", title: "Section heading", action: "heading" },
+    { label: "H3", title: "Sub-heading", action: "subheading" },
+    { label: "—", title: "Horizontal divider (---)", action: "divider" },
+  ];
+
+  return (
+    <div className="rounded-xl border border-white/8 overflow-hidden bg-slate-800">
+      {/* Toolbar */}
+      <div className="flex items-center gap-1 px-3 py-2 border-b border-white/8 bg-slate-900/50">
+        {toolbarBtns.map((btn) => (
+          <button
+            key={btn.action}
+            type="button"
+            title={btn.title}
+            onClick={() => applyFormat(btn.action)}
+            className={`px-2.5 py-1 rounded text-xs font-bold text-slate-400 hover:text-white hover:bg-white/10 transition-colors ${btn.label === "B" ? "italic" : ""}`}
+          >
+            {btn.label}
+          </button>
+        ))}
+        <div className="ml-auto flex items-center gap-1.5 text-[10px] text-slate-600">
+          <span className="px-1.5 py-0.5 rounded bg-white/5 font-mono">**bold**</span>
+          <span className="px-1.5 py-0.5 rounded bg-white/5 font-mono">## heading</span>
+          <span className="px-1.5 py-0.5 rounded bg-white/5 font-mono">### sub</span>
+        </div>
+      </div>
+      <textarea
+        ref={ref}
+        value={value}
+        onChange={(e) => onChange(e.target.value)}
+        rows={28}
+        className="w-full bg-transparent text-slate-300 text-xs leading-relaxed px-4 py-3 resize-y focus:outline-none font-mono"
+      />
+    </div>
+  );
+}
+
 // ── Send Agreement Modal ──────────────────────────────────────────────────────
 
 function SendAgreementModal({
@@ -4989,12 +5080,7 @@ function SendAgreementModal({
           {loadingTemplate ? (
             <div className="h-96 bg-white/5 rounded-xl animate-pulse" />
           ) : (
-            <textarea
-              value={content}
-              onChange={(e) => setContent(e.target.value)}
-              rows={24}
-              className="w-full rounded-xl bg-slate-800 border border-white/8 text-slate-300 text-xs leading-relaxed px-4 py-3 resize-y focus:outline-none focus:ring-2 focus:ring-violet-500/50 font-mono"
-            />
+            <AgreementTextEditor value={content} onChange={setContent} />
           )}
           {error && (
             <p className="text-xs text-red-400">{error}</p>

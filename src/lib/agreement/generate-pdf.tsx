@@ -356,6 +356,7 @@ export interface AgreementPdfProps {
   referenceNumber: string;
   pdfHash?: string; // filled after generation — placeholder on first render
   customContent?: string; // admin-edited plain text; overrides default sections
+  previewOnly?: boolean; // when true, omit the signature certificate page
 }
 
 export function AgreementPdf({
@@ -371,6 +372,7 @@ export function AgreementPdf({
   referenceNumber,
   pdfHash = "— computed after signing —",
   customContent,
+  previewOnly = false,
 }: AgreementPdfProps) {
   const sections = customContent ? null : buildAgreementSections(labName);
   // When custom content is provided, split into paragraphs on blank lines
@@ -470,7 +472,7 @@ export function AgreementPdf({
       </Page>
 
       {/* ── Signature Certificate Page ─────────────────────────────────────── */}
-      <Page size="A4" style={styles.certPage}>
+      {!previewOnly && <Page size="A4" style={styles.certPage}>
         <View style={styles.certHeader}>
           <Text style={styles.certHeaderBrand}>Poveon Health</Text>
           <Text style={styles.certHeaderTitle}>
@@ -582,7 +584,7 @@ export function AgreementPdf({
             SHA-256 hash above.
           </Text>
         </View>
-      </Page>
+      </Page>}
     </Document>
   );
 }

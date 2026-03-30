@@ -1,8 +1,12 @@
 "use client";
 
 import { useState, useEffect, useRef, useCallback } from "react";
-import { Check, ChevronDown, Shield, FileText, PenLine, AlertCircle, Loader2, Download, CheckCircle2 } from "lucide-react";
+import {
+  Check, ChevronDown, Shield, FileText, PenLine, AlertCircle,
+  Loader2, Download, CheckCircle2, ArrowLeft,
+} from "lucide-react";
 import { buildAgreementSections, AGREEMENT_VERSION } from "@/lib/agreement/content";
+import { PoveonLogo } from "@/components/PoveonLogo";
 
 type Step = "loading" | "error" | "welcome" | "read" | "details" | "sign" | "done";
 
@@ -12,6 +16,65 @@ interface LabInfo {
   address: string;
   email: string;
   logo_url: string | null;
+}
+
+// ── Clause renderer ────────────────────────────────────────────────────────────
+// Handles:
+//  • "5.1 Platform Lead Fee\nBody text..." → bold highlighted title + body
+//  • "15.1 Either Party may..." → bold numbered label + inline text
+//  • Multi-paragraph clauses (split on \n\n)
+//  • **bold** inline markdown
+function InlineText({ text }: { text: string }) {
+  const parts = text.split(/\*\*([^*]+)\*\*/g);
+  return (
+    <>
+      {parts.map((p, i) =>
+        i % 2 === 1
+          ? <strong key={i} className="font-semibold text-slate-800">{p}</strong>
+          : <span key={i}>{p}</span>
+      )}
+    </>
+  );
+}
+
+function RenderClause({ text }: { text: string }) {
+  const paras = text.split(/\n\n+/).map((p) => p.trim()).filter(Boolean);
+  return (
+    <div>
+      {paras.map((para, i) => {
+        // "5.1 Sub-Section Title\nBody content..." — explicit title + body
+        const titleBody = para.match(/^(\d+\.\d+\s+[A-Z][^\n]{1,80})\n([\s\S]+)$/);
+        if (titleBody) {
+          return (
+            <div key={i} className="mb-4">
+              <p className="inline-block font-bold text-slate-900 text-sm bg-blue-50 border border-blue-100 px-2.5 py-1 rounded-lg mb-2">
+                {titleBody[1].trimEnd()}:
+              </p>
+              <p className="text-slate-600 text-sm leading-relaxed whitespace-pre-line">
+                <InlineText text={titleBody[2].trim()} />
+              </p>
+            </div>
+          );
+        }
+        // "15.1 Numbered label text..."
+        const numbered = para.match(/^(\d+\.\d+)\s+([\s\S]+)$/);
+        if (numbered) {
+          return (
+            <p key={i} className="mb-3 text-slate-600 text-sm leading-relaxed">
+              <strong className="font-semibold text-slate-800">{numbered[1]}</strong>{" "}
+              <InlineText text={numbered[2]} />
+            </p>
+          );
+        }
+        // Normal paragraph
+        return (
+          <p key={i} className="mb-3 text-slate-600 text-sm leading-relaxed whitespace-pre-line">
+            <InlineText text={para} />
+          </p>
+        );
+      })}
+    </div>
+  );
 }
 
 export default function AgreementSigningPage({ token }: { token: string }) {
@@ -42,7 +105,6 @@ export default function AgreementSigningPage({ token }: { token: string }) {
 
   // Done
   const [refNo, setRefNo] = useState("");
-  const [agreementId, setAgreementId] = useState("");
 
   // Validate token on mount
   useEffect(() => {
@@ -66,13 +128,21 @@ export default function AgreementSigningPage({ token }: { token: string }) {
     if (el.scrollTop + el.clientHeight >= el.scrollHeight - 40) setHasScrolled(true);
   }, []);
 
-  // Canvas drawing
+  // Canvas drawing — scale mouse/touch position to canvas coordinate space
   function getPos(e: React.MouseEvent | React.TouchEvent, canvas: HTMLCanvasElement) {
     const rect = canvas.getBoundingClientRect();
+    const scaleX = canvas.width / rect.width;
+    const scaleY = canvas.height / rect.height;
     if ("touches" in e) {
-      return { x: e.touches[0].clientX - rect.left, y: e.touches[0].clientY - rect.top };
+      return {
+        x: (e.touches[0].clientX - rect.left) * scaleX,
+        y: (e.touches[0].clientY - rect.top) * scaleY,
+      };
     }
-    return { x: e.clientX - rect.left, y: e.clientY - rect.top };
+    return {
+      x: (e.clientX - rect.left) * scaleX,
+      y: (e.clientY - rect.top) * scaleY,
+    };
   }
 
   function startDraw(e: React.MouseEvent | React.TouchEvent) {
@@ -111,7 +181,7 @@ export default function AgreementSigningPage({ token }: { token: string }) {
 
   async function handleSubmit() {
     if (!agreeChecked || !typedName.trim() || typedName.trim().toLowerCase() !== signerName.trim().toLowerCase()) {
-      setSubmitError("Please type your full name exactly as entered in Step 2 to confirm.");
+      setSubmitError("Please type your full name exactly as entered in Step 3 to confirm.");
       return;
     }
     setSubmitError("");
@@ -138,7 +208,6 @@ export default function AgreementSigningPage({ token }: { token: string }) {
       const d = await res.json();
       if (!d.success) throw new Error(d.error);
       setRefNo(d.ref_no);
-      setAgreementId(d.agreement_id);
       setStep("done");
     } catch (err: unknown) {
       setSubmitError(err instanceof Error ? err.message : "Signing failed. Please try again.");
@@ -148,7 +217,6 @@ export default function AgreementSigningPage({ token }: { token: string }) {
   }
 
   const sections = lab && !customContent ? buildAgreementSections(lab.name) : [];
-  // When custom content is set, split into display paragraphs
   const customParagraphs = customContent
     ? customContent.split(/\n\s*\n/).map((p) => p.trim()).filter(Boolean)
     : null;
@@ -160,9 +228,7 @@ export default function AgreementSigningPage({ token }: { token: string }) {
       <header className="bg-white border-b border-slate-200 sticky top-0 z-10">
         <div className="max-w-3xl mx-auto px-4 py-3 flex items-center justify-between">
           <div className="flex items-center gap-2">
-            <div className="w-7 h-7 rounded-lg bg-blue-600 flex items-center justify-center">
-              <span className="text-white font-bold text-xs">P</span>
-            </div>
+            <PoveonLogo className="w-7 h-7 text-slate-900" />
             <span className="font-bold text-slate-800 text-sm">Poveon Health</span>
           </div>
           {step !== "loading" && step !== "error" && (
@@ -201,17 +267,18 @@ export default function AgreementSigningPage({ token }: { token: string }) {
           {/* ── Welcome ── */}
           {step === "welcome" && lab && (
             <div className="space-y-6">
-              {/* Progress bar */}
               <StepIndicator current={1} />
 
               <div className="bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden">
-                {/* Dark header */}
-                <div className="bg-slate-900 px-8 py-8">
-                  <p className="text-slate-400 text-xs uppercase tracking-widest mb-3">Poveon Health</p>
-                  <h1 className="text-white text-2xl font-bold leading-tight mb-1">
-                    Laboratory Partnership<br />Agreement
-                  </h1>
-                  <p className="text-slate-400 text-sm">Version {AGREEMENT_VERSION}</p>
+                <div className="bg-slate-900 px-8 py-8 flex items-start gap-4">
+                  <PoveonLogo className="w-10 h-10 text-white shrink-0 mt-1" />
+                  <div>
+                    <p className="text-slate-400 text-xs uppercase tracking-widest mb-1">Poveon Health</p>
+                    <h1 className="text-white text-2xl font-bold leading-tight mb-1">
+                      Laboratory Partnership<br />Agreement
+                    </h1>
+                    <p className="text-slate-400 text-sm">Version {AGREEMENT_VERSION}</p>
+                  </div>
                 </div>
 
                 <div className="px-8 py-8">
@@ -243,7 +310,7 @@ export default function AgreementSigningPage({ token }: { token: string }) {
 
                   <div className="grid grid-cols-3 gap-3 mb-8">
                     {[
-                      { icon: FileText, label: "Read Agreement", desc: "15 clauses, ~5 min" },
+                      { icon: FileText, label: "Read Agreement", desc: "18 clauses, ~5 min" },
                       { icon: PenLine, label: "Sign Digitally", desc: "Draw + type name" },
                       { icon: Shield, label: "Legally Binding", desc: "Nigerian law compliant" },
                     ].map(({ icon: Icon, label, desc }) => (
@@ -269,7 +336,7 @@ export default function AgreementSigningPage({ token }: { token: string }) {
             </div>
           )}
 
-          {/* ── Read Agreement ── */}
+          {/* ── Read Agreement (Step 2) ── */}
           {step === "read" && lab && (
             <div className="space-y-6">
               <StepIndicator current={2} />
@@ -303,21 +370,16 @@ export default function AgreementSigningPage({ token }: { token: string }) {
                   </div>
 
                   {customParagraphs
-                    ? customParagraphs.map((para, i) => {
-                        const isHeading = /^(\d+\.|[A-Z][A-Z\s]{3,}:?)$/.test(para.split("\n")[0]) || (/^\d+\./.test(para) && para.length < 80);
-                        return isHeading ? (
-                          <h3 key={i} className="font-bold text-slate-900 mb-2 mt-5 text-sm">{para}</h3>
-                        ) : (
-                          <p key={i} className="mb-3 text-slate-600 text-sm leading-relaxed">{para}</p>
-                        );
-                      })
+                    ? customParagraphs.map((para, i) => (
+                        <RenderClause key={i} text={para} />
+                      ))
                     : sections.map((section) => (
                         <div key={section.title} className="mb-6">
-                          <h3 className="font-bold text-slate-900 mb-2 text-sm">{section.title}</h3>
+                          <h3 className="font-bold text-slate-900 mb-3 text-sm border-l-4 border-blue-500 pl-3 py-0.5">
+                            {section.title}
+                          </h3>
                           {section.clauses.map((clause, i) => (
-                            <p key={i} className="mb-3 text-slate-600 text-sm leading-relaxed">
-                              {clause}
-                            </p>
+                            <RenderClause key={i} text={clause} />
                           ))}
                         </div>
                       ))}
@@ -347,19 +409,27 @@ export default function AgreementSigningPage({ token }: { token: string }) {
                       Partnership Agreement and agree to be bound by its terms.
                     </span>
                   </label>
-                  <button
-                    onClick={() => setStep("details")}
-                    disabled={!readConfirmed}
-                    className="w-full py-3.5 rounded-xl bg-blue-600 hover:bg-blue-700 disabled:bg-slate-200 disabled:text-slate-400 text-white font-semibold text-sm transition-colors"
-                  >
-                    Proceed to Sign →
-                  </button>
+                  <div className="flex gap-3">
+                    <button
+                      onClick={() => setStep("welcome")}
+                      className="flex items-center gap-1.5 px-4 py-3 rounded-xl border border-slate-200 text-slate-600 hover:bg-slate-50 text-sm font-medium transition-colors"
+                    >
+                      <ArrowLeft className="w-4 h-4" /> Back
+                    </button>
+                    <button
+                      onClick={() => setStep("details")}
+                      disabled={!readConfirmed}
+                      className="flex-1 py-3 rounded-xl bg-blue-600 hover:bg-blue-700 disabled:bg-slate-200 disabled:text-slate-400 text-white font-semibold text-sm transition-colors"
+                    >
+                      Proceed to Sign →
+                    </button>
+                  </div>
                 </div>
               </div>
             </div>
           )}
 
-          {/* ── Your Details ── */}
+          {/* ── Your Details (Step 3) ── */}
           {step === "details" && lab && (
             <div className="space-y-6">
               <StepIndicator current={3} />
@@ -412,19 +482,38 @@ export default function AgreementSigningPage({ token }: { token: string }) {
                     </p>
                   </div>
 
-                  <button
-                    onClick={() => setStep("sign")}
-                    disabled={!signerName.trim() || !signerTitle.trim() || !signerEmail.trim()}
-                    className="w-full py-3.5 rounded-xl bg-blue-600 hover:bg-blue-700 disabled:bg-slate-200 disabled:text-slate-400 text-white font-semibold text-sm transition-colors mt-2"
+                  {/* Preview download */}
+                  <a
+                    href={`/api/onboard/preview-pdf?token=${token}`}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="flex items-center gap-2 w-full py-2.5 px-4 rounded-xl border border-slate-200 hover:bg-slate-50 text-slate-600 hover:text-slate-800 text-sm font-medium transition-colors"
                   >
-                    Continue to Signature →
-                  </button>
+                    <Download className="w-4 h-4 text-slate-400" />
+                    Download Agreement Preview (PDF)
+                  </a>
+
+                  <div className="flex gap-3 pt-1">
+                    <button
+                      onClick={() => setStep("read")}
+                      className="flex items-center gap-1.5 px-4 py-3 rounded-xl border border-slate-200 text-slate-600 hover:bg-slate-50 text-sm font-medium transition-colors"
+                    >
+                      <ArrowLeft className="w-4 h-4" /> Back
+                    </button>
+                    <button
+                      onClick={() => setStep("sign")}
+                      disabled={!signerName.trim() || !signerTitle.trim() || !signerEmail.trim()}
+                      className="flex-1 py-3 rounded-xl bg-blue-600 hover:bg-blue-700 disabled:bg-slate-200 disabled:text-slate-400 text-white font-semibold text-sm transition-colors"
+                    >
+                      Continue to Signature →
+                    </button>
+                  </div>
                 </div>
               </div>
             </div>
           )}
 
-          {/* ── Sign ── */}
+          {/* ── Sign (Step 4) ── */}
           {step === "sign" && lab && (
             <div className="space-y-6">
               <StepIndicator current={4} />
@@ -453,8 +542,9 @@ export default function AgreementSigningPage({ token }: { token: string }) {
                       <canvas
                         ref={canvasRef}
                         width={560}
-                        height={140}
-                        className="w-full touch-none cursor-crosshair"
+                        height={160}
+                        className="w-full touch-none cursor-crosshair block"
+                        style={{ touchAction: "none" }}
                         onMouseDown={startDraw}
                         onMouseMove={draw}
                         onMouseUp={endDraw}
@@ -468,10 +558,6 @@ export default function AgreementSigningPage({ token }: { token: string }) {
                           <p className="text-slate-300 text-sm">Sign here</p>
                         </div>
                       )}
-                    </div>
-                    {/* Baseline */}
-                    <div className="relative -mt-1 mx-6">
-                      <div className="border-b border-slate-300" />
                     </div>
                     <p className="text-[10px] text-slate-400 mt-2">
                       Use your mouse or finger to draw your signature above.
@@ -519,17 +605,26 @@ export default function AgreementSigningPage({ token }: { token: string }) {
                     </div>
                   )}
 
-                  <button
-                    onClick={handleSubmit}
-                    disabled={submitting || !agreeChecked || !typedName.trim()}
-                    className="w-full py-3.5 rounded-xl bg-blue-600 hover:bg-blue-700 disabled:bg-slate-200 disabled:text-slate-400 text-white font-bold text-sm transition-colors flex items-center justify-center gap-2"
-                  >
-                    {submitting ? (
-                      <><Loader2 className="w-4 h-4 animate-spin" /> Generating signed agreement…</>
-                    ) : (
-                      <><PenLine className="w-4 h-4" /> Sign &amp; Submit Agreement</>
-                    )}
-                  </button>
+                  <div className="flex gap-3">
+                    <button
+                      onClick={() => setStep("details")}
+                      disabled={submitting}
+                      className="flex items-center gap-1.5 px-4 py-3 rounded-xl border border-slate-200 text-slate-600 hover:bg-slate-50 text-sm font-medium transition-colors disabled:opacity-40"
+                    >
+                      <ArrowLeft className="w-4 h-4" /> Back
+                    </button>
+                    <button
+                      onClick={handleSubmit}
+                      disabled={submitting || !agreeChecked || !typedName.trim()}
+                      className="flex-1 py-3 rounded-xl bg-blue-600 hover:bg-blue-700 disabled:bg-slate-200 disabled:text-slate-400 text-white font-bold text-sm transition-colors flex items-center justify-center gap-2"
+                    >
+                      {submitting ? (
+                        <><Loader2 className="w-4 h-4 animate-spin" /> Generating signed agreement…</>
+                      ) : (
+                        <><PenLine className="w-4 h-4" /> Sign &amp; Submit Agreement</>
+                      )}
+                    </button>
+                  </div>
                 </div>
               </div>
             </div>
@@ -607,7 +702,7 @@ export default function AgreementSigningPage({ token }: { token: string }) {
   );
 }
 
-// Step indicator component
+// ── Step indicator ─────────────────────────────────────────────────────────────
 function StepIndicator({ current }: { current: number }) {
   const steps = [
     { n: 1, label: "Welcome" },
@@ -640,11 +735,7 @@ function StepIndicator({ current }: { current: number }) {
             </span>
           </div>
           {i < steps.length - 1 && (
-            <div
-              className={`w-12 sm:w-20 h-0.5 mx-1 mb-4 transition-colors ${
-                s.n < current ? "bg-emerald-400" : "bg-slate-200"
-              }`}
-            />
+            <div className={`w-12 h-0.5 mb-4 mx-1 transition-colors ${s.n < current ? "bg-emerald-400" : "bg-slate-200"}`} />
           )}
         </div>
       ))}
