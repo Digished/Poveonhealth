@@ -3,6 +3,7 @@
 import { useEffect, useState, useCallback, useRef } from "react";
 import { useRouter } from "next/navigation";
 import { PoveonLogo } from "@/components/PoveonLogo";
+import { parsePhones } from "@/lib/phones";
 import { DobInput } from "@/components/DobInput";
 import { PhoneInput } from "@/components/PhoneInput";
 import {
@@ -79,13 +80,7 @@ function formatDob(dob: string | null): string {
   } catch { return dob; }
 }
 
-function parsePhones(phones: unknown): string[] {
-  if (Array.isArray(phones)) return phones as string[];
-  if (typeof phones === "string") {
-    try { const p = JSON.parse(phones); return Array.isArray(p) ? p : [phones]; } catch { return [phones]; }
-  }
-  return [];
-}
+// parsePhones is imported from @/lib/phones
 
 function parseWhatsApp(wa: string | null | undefined): string[] {
   if (!wa) return [];
@@ -350,9 +345,10 @@ function RequestCard({ req }: { req: LabRequest }) {
           {(phones.length > 0 || whatsapps.length > 0) && (
             <div className="pt-2 border-t border-slate-50 flex flex-wrap gap-2">
               {phones.map((phone, i) => (
-                <a key={i} href={`tel:${phone}`}
+                <a key={i} href={`tel:${phone.number}`}
                   className="inline-flex items-center gap-1.5 text-xs font-semibold text-slate-600 bg-slate-100 hover:bg-slate-200 transition px-3 py-1.5 rounded-full">
-                  <Phone className="w-3 h-3" />{phone}
+                  <Phone className="w-3 h-3" />
+                  {phone.label ? `${phone.label}: ` : ""}{phone.number}
                 </a>
               ))}
               {whatsapps.map((wa, i) => (

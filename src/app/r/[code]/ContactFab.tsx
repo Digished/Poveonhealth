@@ -1,6 +1,7 @@
 "use client";
 
 import { useState } from "react";
+import type { PhoneEntry } from "@/lib/phones";
 
 const WA_ICON = (
   <svg className="w-7 h-7 text-white" viewBox="0 0 24 24" fill="currentColor">
@@ -15,7 +16,7 @@ const PHONE_ICON = (
 );
 
 interface ContactFabProps {
-  phones: string[];
+  phones: PhoneEntry[];
   whatsapps: string[];
 }
 
@@ -47,9 +48,9 @@ export default function ContactFab({ phones, whatsapps }: ContactFabProps) {
     return (
       <div className="fixed bottom-6 right-4 z-50">
         <a
-          href={`tel:${phones[0]}`}
+          href={`tel:${phones[0].number}`}
           className="w-14 h-14 rounded-full bg-white border border-slate-200 shadow-xl flex items-center justify-center text-slate-600 hover:bg-slate-50 transition active:scale-95"
-          title={`Call ${phones[0]}`}
+          title={`Call ${phones[0].number}`}
         >
           {PHONE_ICON}
         </a>
@@ -80,15 +81,15 @@ export default function ContactFab({ phones, whatsapps }: ContactFabProps) {
             {phones.map((p, i) => (
               <a
                 key={i}
-                href={`tel:${p}`}
+                href={`tel:${p.number}`}
                 className="flex items-center gap-4 p-4 rounded-2xl border border-slate-100 bg-slate-50 hover:bg-slate-100 transition active:scale-98"
               >
                 <div className="w-10 h-10 rounded-full bg-slate-200 flex items-center justify-center text-slate-600 shrink-0">
                   {PHONE_ICON}
                 </div>
                 <div>
-                  <p className="text-xs text-slate-400 font-medium">Call</p>
-                  <p className="text-sm font-semibold text-slate-800">{p}</p>
+                  <p className="text-xs text-slate-400 font-medium">{p.label || "Call"}</p>
+                  <p className="text-sm font-semibold text-slate-800">{p.number}</p>
                 </div>
               </a>
             ))}

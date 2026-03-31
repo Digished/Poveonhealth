@@ -15,7 +15,8 @@ import { serializeAgreementToText } from "@/lib/agreement/content";
 import { Button } from "@/components/ui/Button";
 import { Input, Textarea } from "@/components/ui/Input";
 import { StatusBadge, Badge } from "@/components/ui/Badge";
-import type { Lab, LabRequest, AdminMetrics, ApiLog, ApiLogSummary, LabApiKey, LabRole, LabMember } from "@/lib/types";
+import type { Lab, LabRequest, AdminMetrics, ApiLog, ApiLogSummary, LabApiKey, LabRole, LabMember, PhoneEntry } from "@/lib/types";
+import { parsePhones } from "@/lib/phones";
 import { SERVICE_CATEGORIES, LAB_CERTIFICATIONS } from "@/lib/constants";
 import { format } from "date-fns";
 import { createClient } from "@/lib/supabase/client"; // still used for auth sign-out
@@ -90,6 +91,48 @@ function WhatsAppNumberInput({
         className={`flex-1 min-w-0 rounded-xl border px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-medical-500 ${inputClass}`}
         type="tel"
       />
+    </div>
+  );
+}
+
+function PhoneNumberInput({
+  entry,
+  onChange,
+  onRemove,
+  showRemove,
+  inputClass,
+}: {
+  entry: PhoneEntry;
+  onChange: (v: PhoneEntry) => void;
+  onRemove: () => void;
+  showRemove: boolean;
+  inputClass: string;
+}) {
+  return (
+    <div className="flex gap-2 items-start">
+      <div className="flex flex-col gap-1.5 flex-1 min-w-0">
+        <input
+          type="tel"
+          value={entry.number}
+          onChange={(e) => onChange({ ...entry, number: e.target.value })}
+          placeholder="+234 800 000 0000"
+          className={`w-full rounded-xl border px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-medical-500 ${inputClass}`}
+        />
+        <input
+          type="text"
+          value={entry.label}
+          onChange={(e) => onChange({ ...entry, label: e.target.value })}
+          placeholder="Label (optional) — e.g. Front Desk"
+          className={`w-full rounded-xl border px-3 py-2 text-xs focus:outline-none focus:ring-2 focus:ring-medical-500 ${inputClass}`}
+        />
+      </div>
+      {showRemove && (
+        <button
+          type="button"
+          onClick={onRemove}
+          className="mt-0.5 px-3 py-2.5 rounded-xl bg-red-900/30 text-red-400 hover:bg-red-900/50 transition-colors text-sm shrink-0"
+        >✕</button>
+      )}
     </div>
   );
 }
@@ -927,7 +970,7 @@ export function AdminDashboard() {
               <div className="border border-white/10 rounded-2xl overflow-hidden divide-y divide-white/5">
                 {labs.map((lab) => {
                   const isExpanded = expandedLabIds.has(lab.id);
-                  const phones     = lab.phones as string[];
+                  const phones     = parsePhones(lab.phones);
                   const services   = lab.service_categories as string[];
                   const certs      = lab.certifications as string[];
                   const outstanding = lab.poveon_outstanding ?? 0;
@@ -1078,7 +1121,11 @@ export function AdminDashboard() {
                               <div>
                                 <p className="text-slate-500 mb-0.5">Phone{phones.length > 1 ? "s" : ""}</p>
                                 {phones.map((ph, i) => (
-                                  <p key={i} className="text-slate-300 flex items-center gap-1"><Phone className="w-3 h-3 text-slate-600 shrink-0" />{ph}</p>
+                                  <p key={i} className="text-slate-300 flex items-center gap-1">
+                                    <Phone className="w-3 h-3 text-slate-600 shrink-0" />
+                                    {ph.label && <span className="text-slate-500">{ph.label}:</span>}
+                                    {ph.number}
+                                  </p>
                                 ))}
                               </div>
                             )}
@@ -1372,9 +1419,9 @@ export function AdminDashboard() {
                     <div className="min-w-0">
                       <p className="text-sm font-medium text-white truncate">{lab.name}</p>
                       <p className="text-xs text-slate-400 truncate">{lab.email}</p>
-                      {(lab.phones as string[]).length > 0 && (
+                      {parsePhones(lab.phones).length > 0 && (
                         <p className="text-xs text-slate-500 flex items-center gap-1 mt-0.5">
-                          <Phone className="w-3 h-3 shrink-0" />{(lab.phones as string[])[0]}
+                          <Phone className="w-3 h-3 shrink-0" />{parsePhones(lab.phones)[0].number}
                         </p>
                       )}
                     </div>
@@ -1800,7 +1847,7 @@ function CreateLabModal({ onClose, onSuccess }: { onClose: () => void; onSuccess
   const [email, setEmail] = useState("");
   const [address, setAddress] = useState("");
   const [description, setDescription] = useState("");
-  const [phones, setPhones] = useState("");
+  const [phones, setPhones] = useState<PhoneEntry[]>([{ number: "", label: "" }]);
   const [notificationEmail, setNotificationEmail] = useState("");
   const [slug, setSlug] = useState("");
   const [slugError, setSlugError] = useState("");
@@ -1833,7 +1880,7 @@ function CreateLabModal({ onClose, onSuccess }: { onClose: () => void; onSuccess
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
-    const phoneList = phones.split("\n").map((p) => p.trim()).filter(Boolean);
+    const phoneList = phones.map(p => ({ number: p.number.trim(), label: p.label.trim() })).filter(p => p.number);
     if (!name.trim() || !email.trim() || !address.trim()) {
       toast.error("Name, email and address are required");
       return;
@@ -1927,8 +1974,20 @@ function CreateLabModal({ onClose, onSuccess }: { onClose: () => void; onSuccess
             </div>
             <div>
               <label className="text-sm font-medium text-slate-300 block mb-1">Contact Phone Numbers <span className="text-xs text-slate-500">(optional)</span></label>
-              <textarea rows={2} className={`w-full rounded-xl border px-4 py-2.5 text-sm resize-none focus:outline-none focus:ring-2 focus:ring-medical-500 ${whiteInput}`} placeholder={"+234 800 000 0000\n+234 801 000 0001"} value={phones} onChange={(e) => setPhones(e.target.value)} />
-              <p className="text-xs text-slate-500 mt-1">One per line</p>
+              <div className="space-y-2">
+                {phones.map((entry, i) => (
+                  <PhoneNumberInput
+                    key={i}
+                    entry={entry}
+                    onChange={(v) => { const next = [...phones]; next[i] = v; setPhones(next); }}
+                    onRemove={() => setPhones(phones.filter((_, j) => j !== i))}
+                    showRemove={phones.length > 1}
+                    inputClass={whiteInput}
+                  />
+                ))}
+                <button type="button" onClick={() => setPhones([...phones, { number: "", label: "" }])}
+                  className="text-xs text-medical-400 hover:text-medical-300 transition-colors">+ Add phone number</button>
+              </div>
             </div>
             <div>
               <label className="text-sm font-medium text-slate-300 block mb-1">
@@ -2017,7 +2076,10 @@ function EditLabModal({ lab, onClose, onSuccess }: { lab: Lab; onClose: () => vo
   const [name, setName] = useState(lab.name);
   const [address, setAddress] = useState(lab.address);
   const [description, setDescription] = useState(lab.description ?? "");
-  const [phones, setPhones] = useState((lab.phones as string[]).join("\n"));
+  const [phones, setPhones] = useState<PhoneEntry[]>(() => {
+    const parsed = parsePhones(lab.phones);
+    return parsed.length > 0 ? parsed : [{ number: "", label: "" }];
+  });
   const [notificationEmail, setNotificationEmail] = useState(lab.notification_email ?? "");
   const [slug, setSlug] = useState(lab.slug ?? "");
   const [slugError, setSlugError] = useState("");
@@ -2059,7 +2121,7 @@ function EditLabModal({ lab, onClose, onSuccess }: { lab: Lab; onClose: () => vo
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
-    const phoneList = phones.split("\n").map((p) => p.trim()).filter(Boolean);
+    const phoneList = phones.map(p => ({ number: p.number.trim(), label: p.label.trim() })).filter(p => p.number);
     if (!name.trim() || !address.trim()) {
       toast.error("Name and address are required");
       return;
@@ -2110,8 +2172,21 @@ function EditLabModal({ lab, onClose, onSuccess }: { lab: Lab; onClose: () => vo
             <textarea rows={2} className={`w-full rounded-xl border px-4 py-2.5 text-sm resize-none focus:outline-none focus:ring-2 focus:ring-medical-500 ${whiteInput}`} placeholder="e.g. Specialist diagnostic lab offering 200+ tests" value={description} onChange={(e) => setDescription(e.target.value)} />
           </div>
           <div>
-            <label className="text-sm font-medium text-slate-300 block mb-1">Contact Phone Numbers <span className="text-xs text-slate-500">(optional, one per line)</span></label>
-            <textarea rows={2} className={`w-full rounded-xl border px-4 py-2.5 text-sm resize-none focus:outline-none focus:ring-2 focus:ring-medical-500 ${whiteInput}`} value={phones} onChange={(e) => setPhones(e.target.value)} />
+            <label className="text-sm font-medium text-slate-300 block mb-1">Contact Phone Numbers <span className="text-xs text-slate-500">(optional)</span></label>
+            <div className="space-y-2">
+              {phones.map((entry, i) => (
+                <PhoneNumberInput
+                  key={i}
+                  entry={entry}
+                  onChange={(v) => { const next = [...phones]; next[i] = v; setPhones(next); }}
+                  onRemove={() => setPhones(phones.filter((_, j) => j !== i))}
+                  showRemove={phones.length > 1}
+                  inputClass={whiteInput}
+                />
+              ))}
+              <button type="button" onClick={() => setPhones([...phones, { number: "", label: "" }])}
+                className="text-xs text-medical-400 hover:text-medical-300 transition-colors">+ Add phone number</button>
+            </div>
           </div>
           <div>
             <label className="text-sm font-medium text-slate-300 block mb-1">
@@ -2490,7 +2565,7 @@ function LabBranchModal({ lab, onClose, allLabs }: { lab: Lab; onClose: () => vo
           ) : (
             <div className="space-y-2">
               {branches.map((b) => {
-                const phones = b.branch_lab.phones as string[];
+                const branchPhones = parsePhones(b.branch_lab.phones);
                 return (
                   <div key={b.id} className="bg-white/5 border border-white/10 rounded-xl px-4 py-3">
                     <div className="flex items-start justify-between gap-2">
@@ -2500,7 +2575,7 @@ function LabBranchModal({ lab, onClose, allLabs }: { lab: Lab; onClose: () => vo
                           {b.is_main && <span className="text-xs bg-medical-600/30 text-medical-300 border border-medical-600/30 px-2 py-0.5 rounded-full font-medium shrink-0">Main</span>}
                         </div>
                         {b.branch_lab.address && <p className="text-xs text-slate-400 flex items-center gap-1"><MapPin className="w-3 h-3 shrink-0" />{b.branch_lab.address}</p>}
-                        {phones.slice(0, 2).map((ph, i) => <p key={i} className="text-xs text-slate-500 flex items-center gap-1"><Phone className="w-3 h-3 shrink-0" />{ph}</p>)}
+                        {branchPhones.slice(0, 2).map((ph, i) => <p key={i} className="text-xs text-slate-500 flex items-center gap-1"><Phone className="w-3 h-3 shrink-0" />{ph.label && <span className="text-slate-600">{ph.label}:</span>}{ph.number}</p>)}
                         {b.branch_lab.whatsapp && (() => {
                           let waNumbers: string[] = [];
                           try { const p = JSON.parse(b.branch_lab.whatsapp!); waNumbers = Array.isArray(p) ? p.filter(Boolean) : [b.branch_lab.whatsapp!]; } catch { waNumbers = [b.branch_lab.whatsapp!]; }

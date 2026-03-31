@@ -5,17 +5,11 @@ import { LabSplash } from "@/components/LabSplash";
 import Link from "next/link";
 import LabContactSection from "./LabContactSection";
 import { testsToCategories } from "@/lib/test-categories";
+import { parsePhones } from "@/lib/phones";
+import type { PhoneEntry } from "@/lib/phones";
 
 interface Props {
   params: { code: string };
-}
-
-function parsePhones(phones: unknown): string[] {
-  if (Array.isArray(phones)) return phones as string[];
-  if (typeof phones === "string") {
-    try { const p = JSON.parse(phones); return Array.isArray(p) ? p : [phones]; } catch { return [phones]; }
-  }
-  return [];
 }
 
 function parseWhatsApp(wa: string | null | undefined): string[] {

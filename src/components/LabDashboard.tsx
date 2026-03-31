@@ -19,6 +19,7 @@ import { Button } from "@/components/ui/Button";
 import { Input } from "@/components/ui/Input";
 import { StatusBadge } from "@/components/ui/Badge";
 import type { LabRequest, RequestStatus, Sex } from "@/lib/types";
+import { parsePhones } from "@/lib/phones";
 import { SERVICE_CATEGORIES } from "@/lib/constants";
 import { format, differenceInYears } from "date-fns";
 import { createClient } from "@/lib/supabase/client";
@@ -48,7 +49,7 @@ interface LabDashboardProps {
     logo_url: string | null;
     address: string;
     description: string;
-    phones: string[];
+    phones: unknown; // PhoneEntry[] — parsed via parsePhones()
     whatsapp?: string | null;
     service_categories: string[];
     certifications: string[];
@@ -2470,7 +2471,7 @@ export function LabDashboard({ lab, isOwner = false, roleName = "Lab Owner", can
                   const waNumbers: string[] = lab.whatsapp
                     ? (() => { try { const p = JSON.parse(lab.whatsapp); return Array.isArray(p) ? p : [lab.whatsapp]; } catch { return [lab.whatsapp]; } })()
                     : [];
-                  const hasContact = lab.address || lab.phones.length > 0 || waNumbers.filter(Boolean).length > 0;
+                  const hasContact = lab.address || parsePhones(lab.phones).length > 0 || waNumbers.filter(Boolean).length > 0;
                   return hasContact ? (
                     <div className="bg-white/5 border border-white/8 rounded-xl p-4 space-y-2">
                       <p className="text-xs text-slate-500 font-semibold uppercase tracking-wider mb-3">Contact</p>
@@ -2480,10 +2481,12 @@ export function LabDashboard({ lab, isOwner = false, roleName = "Lab Owner", can
                           <span>{lab.address}</span>
                         </div>
                       )}
-                      {lab.phones.map((ph, i) => (
+                      {parsePhones(lab.phones).map((ph, i) => (
                         <div key={i} className="flex items-center gap-2 text-sm">
                           <Phone className="w-4 h-4 text-slate-500 shrink-0" />
-                          <a href={`tel:${ph}`} className="text-blue-400 hover:underline">{ph}</a>
+                          <a href={`tel:${ph.number}`} className="text-blue-400 hover:underline">
+                            {ph.label && <span className="text-slate-500 text-xs mr-1">{ph.label}:</span>}{ph.number}
+                          </a>
                         </div>
                       ))}
                       {waNumbers.filter(Boolean).map((num, i) => (
@@ -2540,7 +2543,7 @@ export function LabDashboard({ lab, isOwner = false, roleName = "Lab Owner", can
                   </div>
                 )}
 
-                {lab.service_categories.length === 0 && lab.certifications.length === 0 && !lab.address && lab.phones.length === 0 && !isOwner && (
+                {lab.service_categories.length === 0 && lab.certifications.length === 0 && !lab.address && parsePhones(lab.phones).length === 0 && !isOwner && (
                   <p className="text-center text-slate-500 text-sm py-6">No additional profile information yet.</p>
                 )}
 

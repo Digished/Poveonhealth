@@ -12,7 +12,7 @@ const CreateLabSchema = z.object({
   email: z.string().email(),
   address: z.string().min(3).max(500),
   description: z.string().max(1000).optional(),
-  phones: z.array(z.string().min(1)).optional(),
+  phones: z.array(z.object({ number: z.string().min(1), label: z.string() })).optional(),
   notification_email: z.string().email().optional(),
   tempPassword: z.string().min(8).max(100).optional(),
 });

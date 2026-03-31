@@ -3,6 +3,8 @@
 import { useState, useEffect, useRef, useCallback } from "react";
 import { createPortal } from "react-dom";
 import { toast } from "react-hot-toast";
+import { parsePhones } from "@/lib/phones";
+import type { PhoneEntry } from "@/lib/phones";
 import {
   FlaskConical, User, MapPin, Phone, Stethoscope,
   TestTube2, ChevronRight, ChevronLeft, Building2, Check,
@@ -455,7 +457,7 @@ function LabDetailsModal({ lab, onClose }: { lab: Lab; onClose: () => void }) {
 
           {/* Contact */}
           {(() => {
-            const phones = (lab.phones as string[] | null) ?? [];
+            const phones = parsePhones(lab.phones);
             const waNumbers: string[] = lab.whatsapp
               ? (() => { try { const p = JSON.parse(lab.whatsapp); return Array.isArray(p) ? p : [lab.whatsapp]; } catch { return [lab.whatsapp]; } })()
               : [];
@@ -465,12 +467,15 @@ function LabDetailsModal({ lab, onClose }: { lab: Lab; onClose: () => void }) {
                 <p className="text-xs font-semibold text-slate-400 uppercase tracking-wider mb-2.5">Contact</p>
                 <div className="flex flex-col gap-2">
                   {phones.map((ph, i) => (
-                    <a key={i} href={`tel:${ph}`}
+                    <a key={i} href={`tel:${ph.number}`}
                       className="flex items-center gap-2 text-sm text-medical-700 font-medium hover:text-medical-900 transition-colors">
                       <div className="w-7 h-7 rounded-lg bg-medical-50 flex items-center justify-center shrink-0">
                         <Phone className="w-3.5 h-3.5 text-medical-500" />
                       </div>
-                      {ph}
+                      <div>
+                        {ph.label && <p className="text-xs text-slate-400 leading-none mb-0.5">{ph.label}</p>}
+                        <span>{ph.number}</span>
+                      </div>
                     </a>
                   ))}
                   {waNumbers.filter(Boolean).map((num, i) => (
@@ -563,7 +568,7 @@ interface Location {
   lab_branch_id: string | null; // LabBranch record id (provenance tracking, not used for routing)
   name: string;
   address: string;
-  phones: string[];
+  phones: PhoneEntry[];
   whatsapp?: string | null;
   logo_url?: string | null;
   is_main: boolean;    // true = this branch is the highlighted/default one
@@ -683,7 +688,7 @@ function BranchSearchDropdown({
                       {loc.phones.length > 0 && (
                         <p className="text-xs text-slate-400 flex items-center gap-1 mt-0.5">
                           <Phone className="w-3 h-3 shrink-0" />
-                          {loc.phones[0]}{loc.phones.length > 1 ? ` +${loc.phones.length - 1}` : ""}
+                          {loc.phones[0].label ? `${loc.phones[0].label}: ` : ""}{loc.phones[0].number}{loc.phones.length > 1 ? ` +${loc.phones.length - 1}` : ""}
                         </p>
                       )}
                     </div>
@@ -1230,7 +1235,7 @@ export function DoctorRequestForm({
     id: selectedLocation.lab_id,
     name: selectedLocation.name,
     address: selectedLocation.address,
-    phones: selectedLocation.phones as unknown as string[],
+    phones: selectedLocation.phones,
     whatsapp: selectedLocation.whatsapp ?? null,
     logo_url: selectedLocation.logo_url ?? null,
     description: "",
@@ -1291,7 +1296,7 @@ export function DoctorRequestForm({
         {/* Lab info / branding */}
         <div className="mb-3">
             {displayLab ? (() => {
-              const phones = (displayLab.phones as string[] | null) ?? [];
+              const phones = parsePhones(displayLab.phones);
               const waNumbers: string[] = displayLab.whatsapp
                 ? (() => { try { const p = JSON.parse(displayLab.whatsapp!); return Array.isArray(p) ? p : [displayLab.whatsapp!]; } catch { return [displayLab.whatsapp!]; } })()
                 : [];
@@ -1352,7 +1357,7 @@ export function DoctorRequestForm({
                           </button>
                         ) : phones.length === 1 ? (
                           <a
-                            href={`tel:${phones[0]}`}
+                            href={`tel:${phones[0].number}`}
                             className="w-9 h-9 rounded-xl bg-medical-600 hover:bg-medical-700 text-white flex items-center justify-center shadow-sm transition-colors"
                             title={`Call ${displayLab.name}`}
                           >
@@ -2316,7 +2321,7 @@ export function DoctorRequestForm({
                 const waNumbers: string[] = displayLab.whatsapp
                   ? (() => { try { const p = JSON.parse(displayLab.whatsapp); return Array.isArray(p) ? p : [displayLab.whatsapp]; } catch { return [displayLab.whatsapp]; } })()
                   : [];
-                const phones = (displayLab.phones as string[] | null) ?? [];
+                const phones = parsePhones(displayLab.phones);
                 return (
                   <>
                     {waNumbers.filter(Boolean).map((num, i) => (
@@ -2338,14 +2343,17 @@ export function DoctorRequestForm({
                     {phones.map((ph, i) => (
                       <a
                         key={i}
-                        href={`tel:${ph}`}
+                        href={`tel:${ph.number}`}
                         onClick={() => setCallOpen(false)}
                         className="flex items-center gap-3 w-full px-4 py-3.5 rounded-2xl bg-medical-50 hover:bg-medical-100 border border-medical-100 hover:border-medical-200 text-medical-800 font-semibold text-sm transition-all group"
                       >
                         <div className="w-8 h-8 rounded-xl bg-medical-600 group-hover:bg-medical-700 flex items-center justify-center shrink-0 transition-colors">
                           <Phone className="w-4 h-4 text-white" />
                         </div>
-                        <span className="flex-1">{ph}</span>
+                        <div className="flex-1">
+                          {ph.label && <p className="text-xs text-medical-500 leading-none mb-0.5">{ph.label}</p>}
+                          <span>{ph.number}</span>
+                        </div>
                         <PhoneCall className="w-4 h-4 text-medical-400 group-hover:text-medical-600 transition-colors" />
                       </a>
                     ))}

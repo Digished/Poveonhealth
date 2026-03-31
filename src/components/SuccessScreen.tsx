@@ -2,13 +2,15 @@
 
 import { useState, useEffect } from "react";
 import { CheckCircle, Copy, Check, MapPin, Phone, RotateCcw } from "lucide-react";
+import { parsePhones } from "@/lib/phones";
+import type { PhoneEntry } from "@/lib/phones";
 
 interface SuccessScreenProps {
   code: string;
   requestId?: string;
   labName: string;
   labAddress: string;
-  labPhones?: string[];
+  labPhones?: PhoneEntry[];
   onReset: () => void;
 }
 
@@ -86,9 +88,11 @@ export function SuccessScreen({
           )}
           {labPhones.length > 0 && (
             <div className="flex flex-wrap gap-2 pt-1">
-              {labPhones.map((ph, i) => (
-                <a key={i} href={`tel:${ph}`} className="flex items-center gap-1 text-xs font-medium text-medical-600 hover:underline">
-                  <Phone className="w-3 h-3 shrink-0" />{ph}
+              {parsePhones(labPhones).map((ph, i) => (
+                <a key={i} href={`tel:${ph.number}`} className="flex items-center gap-1.5 text-xs font-medium text-medical-600 hover:underline">
+                  <Phone className="w-3 h-3 shrink-0" />
+                  {ph.label && <span className="text-slate-400">{ph.label}:</span>}
+                  {ph.number}
                 </a>
               ))}
             </div>

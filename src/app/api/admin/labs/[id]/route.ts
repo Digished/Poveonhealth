@@ -17,7 +17,7 @@ const PatchSchema = z.object({
   name: z.string().min(2).max(200).optional(),
   address: z.string().min(1).max(500).optional(),
   description: z.string().max(1000).optional(),
-  phones: z.array(z.string().min(1)).optional(),
+  phones: z.array(z.object({ number: z.string().min(1), label: z.string() })).optional(),
   notification_email: z.string().email().nullable().optional(),
   hidden: z.boolean().optional(),
   search_hidden: z.boolean().optional(),
