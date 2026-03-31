@@ -24,6 +24,7 @@ model Lab {
   request_email      String? // Dedicated address for incoming new-request alerts
   hidden             Boolean  @default(false)
   search_hidden      Boolean  @default(false) // hides from search/directory but unique page still works
+  staff_contacts     Json     @default("[]") // [{title: "MD", email: "..."}, ...]
   service_categories Json     @default("[]")
   certifications     Json     @default("[]")
   created_at         DateTime @default(now())

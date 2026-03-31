@@ -8,7 +8,7 @@ import {
   Phone, Upload, Check, MapPin, Users, ChevronRight, ChevronDown, ChevronUp,
   Code2, Key, Copy, TrendingUp, Link, Sun, Moon, Star, GitBranch,
   ArrowUpRight, ArrowDownRight, ArrowDownToLine, Settings, CreditCard, MessageCircle,
-  BookOpen, Database, Sparkles, Search, Layers, UserCircle, Wallet, FileText, AlertCircle,
+  BookOpen, Database, Sparkles, Search, Layers, UserCircle, Wallet, FileText, AlertCircle, Mail,
 } from "lucide-react";
 import { useDashTheme } from "@/hooks/useDashTheme";
 import { serializeAgreementToText } from "@/lib/agreement/content";
@@ -1179,6 +1179,29 @@ export function AdminDashboard() {
                             </div>
                           )}
 
+                          {/* Staff contacts */}
+                          {(() => {
+                            const contacts = (lab.staff_contacts as Array<{ title: string; email: string }> | undefined) ?? [];
+                            return contacts.length > 0 ? (
+                              <div>
+                                <p className="text-[10px] text-slate-500 uppercase tracking-wider mb-1.5">Staff Contacts</p>
+                                <div className="flex flex-wrap gap-2">
+                                  {contacts.map((c, i) => (
+                                    <a
+                                      key={i}
+                                      href={`mailto:${c.email}`}
+                                      className="flex items-center gap-1.5 text-xs bg-sky-900/30 text-sky-300 border border-sky-800/30 px-2.5 py-1 rounded-lg hover:bg-sky-900/50 transition-colors"
+                                    >
+                                      <Mail className="w-3 h-3 shrink-0" />
+                                      <span className="font-semibold">{c.title}:</span>
+                                      <span className="break-all">{c.email}</span>
+                                    </a>
+                                  ))}
+                                </div>
+                              </div>
+                            ) : null;
+                          })()}
+
                           {/* Action buttons — mobile & tablet (< lg) */}
                           <div className="lg:hidden grid grid-cols-2 sm:grid-cols-4 gap-2 pt-1">
                             <button onClick={() => setEditLab(lab)} className="flex items-center justify-center gap-1.5 px-3 py-2 rounded-xl bg-white/5 hover:bg-white/10 text-slate-300 text-xs font-medium transition-colors">
@@ -1840,6 +1863,60 @@ export function AdminDashboard() {
 
 
 // =============================================================================
+// =============================================================================
+// Staff Contacts Input — reused in Create & Edit Lab modals
+// =============================================================================
+function StaffContactsInput({
+  contacts,
+  onChange,
+  inputClass,
+}: {
+  contacts: { title: string; email: string }[];
+  onChange: (v: { title: string; email: string }[]) => void;
+  inputClass: string;
+}) {
+  return (
+    <div className="space-y-2">
+      {contacts.map((entry, i) => (
+        <div key={i} className="flex gap-2">
+          <input
+            value={entry.title}
+            onChange={(e) => {
+              const next = [...contacts];
+              next[i] = { ...next[i], title: e.target.value };
+              onChange(next);
+            }}
+            placeholder="MD, COO…"
+            className={`w-24 sm:w-28 shrink-0 rounded-xl border px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-medical-500 ${inputClass}`}
+          />
+          <input
+            type="email"
+            value={entry.email}
+            onChange={(e) => {
+              const next = [...contacts];
+              next[i] = { ...next[i], email: e.target.value };
+              onChange(next);
+            }}
+            placeholder="contact@lab.com"
+            className={`flex-1 min-w-0 rounded-xl border px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-medical-500 ${inputClass}`}
+          />
+          <button
+            type="button"
+            onClick={() => onChange(contacts.filter((_, j) => j !== i))}
+            className="px-2.5 py-2 rounded-xl bg-red-900/30 text-red-400 hover:bg-red-900/50 transition-colors text-xs font-bold shrink-0"
+          >✕</button>
+        </div>
+      ))}
+      <button
+        type="button"
+        onClick={() => onChange([...contacts, { title: "", email: "" }])}
+        className="text-xs text-medical-400 hover:text-medical-300 font-medium transition-colors"
+      >+ Add staff contact</button>
+    </div>
+  );
+}
+
+// =============================================================================
 // Create Lab Modal
 // =============================================================================
 function CreateLabModal({ onClose, onSuccess }: { onClose: () => void; onSuccess: () => void }) {
@@ -1853,6 +1930,7 @@ function CreateLabModal({ onClose, onSuccess }: { onClose: () => void; onSuccess
   const [slugError, setSlugError] = useState("");
   const [whatsappNumbers, setWhatsappNumbers] = useState<string[]>([""]);
   const [requestEmail, setRequestEmail] = useState("");
+  const [staffContacts, setStaffContacts] = useState<{ title: string; email: string }[]>([]);
   const [tempPassword, setTempPassword] = useState("");
   const [showPassword, setShowPassword] = useState(false);
   const [loading, setLoading] = useState(false);
@@ -1904,6 +1982,7 @@ function CreateLabModal({ onClose, onSuccess }: { onClose: () => void; onSuccess
           slug: slug.trim() || undefined,
           whatsapp: JSON.stringify(whatsappNumbers.map((n) => n.trim()).filter(Boolean)) || undefined,
           request_email: requestEmail.trim() || undefined,
+          staff_contacts: staffContacts.filter(sc => sc.title.trim() && sc.email.trim()),
           tempPassword: tempPassword.trim() || undefined,
         }),
       });
@@ -2050,6 +2129,13 @@ function CreateLabModal({ onClose, onSuccess }: { onClose: () => void; onSuccess
               />
               <p className="text-xs text-slate-500 mt-1">New test requests will be emailed to this address.</p>
             </div>
+            <div>
+              <label className="text-sm font-medium text-slate-300 block mb-1">
+                Staff Contact Emails <span className="text-xs text-slate-500">(optional)</span>
+              </label>
+              <StaffContactsInput contacts={staffContacts} onChange={setStaffContacts} inputClass={whiteInput} />
+              <p className="text-xs text-slate-500 mt-1">e.g. MD, COO, Lab Manager — shown publicly on the lab&apos;s profile for patient/doctor contact.</p>
+            </div>
             <div className="relative">
               <label className="text-sm font-medium text-slate-300 block mb-1">Temporary Password <span className="text-xs text-slate-500">(optional)</span></label>
               <input type={showPassword ? "text" : "password"} className={`w-full rounded-xl border px-4 py-2.5 pr-10 text-sm focus:outline-none focus:ring-2 focus:ring-medical-500 ${whiteInput}`} placeholder="Leave blank to auto-generate" value={tempPassword} onChange={(e) => setTempPassword(e.target.value)} />
@@ -2092,6 +2178,10 @@ function EditLabModal({ lab, onClose, onSuccess }: { lab: Lab; onClose: () => vo
     }
   });
   const [requestEmail, setRequestEmail] = useState(lab.request_email ?? "");
+  const [staffContacts, setStaffContacts] = useState<{ title: string; email: string }[]>(() => {
+    const c = lab.staff_contacts as Array<{ title: string; email: string }> | undefined;
+    return Array.isArray(c) ? c : [];
+  });
   const [selectedCategories, setSelectedCategories] = useState<string[]>((lab.service_categories as string[]) ?? []);
   const [selectedCerts, setSelectedCerts] = useState<string[]>((lab.certifications as string[]) ?? []);
   const [loading, setLoading] = useState(false);
@@ -2135,7 +2225,7 @@ function EditLabModal({ lab, onClose, onSuccess }: { lab: Lab; onClose: () => vo
       const res = await fetch(`/api/admin/labs/${lab.id}`, {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ name: name.trim(), address: address.trim(), description: description.trim(), phones: phoneList, notification_email: notificationEmail.trim() || null, service_categories: selectedCategories, certifications: selectedCerts, slug: slug.trim() || null, whatsapp: JSON.stringify(whatsappNumbers.map(n => n.trim()).filter(Boolean)) || null, request_email: requestEmail.trim() || null }),
+        body: JSON.stringify({ name: name.trim(), address: address.trim(), description: description.trim(), phones: phoneList, notification_email: notificationEmail.trim() || null, service_categories: selectedCategories, certifications: selectedCerts, slug: slug.trim() || null, whatsapp: JSON.stringify(whatsappNumbers.map(n => n.trim()).filter(Boolean)) || null, request_email: requestEmail.trim() || null, staff_contacts: staffContacts.filter(sc => sc.title.trim() && sc.email.trim()) }),
       });
       const data = await res.json();
       if (data.success) {
@@ -2248,6 +2338,13 @@ function EditLabModal({ lab, onClose, onSuccess }: { lab: Lab; onClose: () => vo
               onChange={(e) => setRequestEmail(e.target.value)}
             />
             <p className="text-xs text-slate-500 mt-1">New test requests will be emailed to this address.</p>
+          </div>
+          <div>
+            <label className="text-sm font-medium text-slate-300 block mb-1">
+              Staff Contact Emails <span className="text-xs text-slate-500">(optional)</span>
+            </label>
+            <StaffContactsInput contacts={staffContacts} onChange={setStaffContacts} inputClass={whiteInput} />
+            <p className="text-xs text-slate-500 mt-1">e.g. MD, COO, Lab Manager — shown publicly on the lab&apos;s profile for patient/doctor contact.</p>
           </div>
 
           <SearchableCheckboxGroup
@@ -4638,7 +4735,7 @@ function AdminHospitalsTab() {
 // LabWalletButton — provision DVA or show existing account details, per lab card
 // ─────────────────────────────────────────────────────────────────────────────
 function LabWalletButton({ labId }: { labId: string }) {
-  const [state, setState] = useState<"loading" | "idle" | "form" | "done" | "credit-form">("loading");
+  const [state, setState] = useState<"loading" | "idle" | "form" | "done" | "credit-form" | "recreate-confirm">("loading");
   const [phone, setPhone] = useState("");
   const [dva, setDva] = useState<{ bank_name: string | null; account_number: string; account_name: string | null } | null>(null);
   const [balance, setBalance] = useState<number | null>(null);
@@ -4701,6 +4798,18 @@ function LabWalletButton({ labId }: { labId: string }) {
     finally { setCrediting(false); }
   }
 
+  async function deprovision() {
+    setState("loading");
+    try {
+      const res = await fetch(`/api/admin/wallet/deprovision/${labId}`, { method: "POST" });
+      if (!res.ok) { toast.error("Failed to clear DVA"); setState("done"); return; }
+      setDva(null);
+      setBalance(null);
+      setState("form");
+      toast.success("DVA cleared — enter a new phone to create a fresh one");
+    } catch { toast.error("Network error"); setState("done"); }
+  }
+
   function copyAcc() {
     if (!dva?.account_number) return;
     navigator.clipboard.writeText(dva.account_number).then(() => { setCopied(true); setTimeout(() => setCopied(false), 2000); });
@@ -4734,8 +4843,36 @@ function LabWalletButton({ labId }: { labId: string }) {
             >
               + Manual credit (missed payment)
             </button>
+            <button
+              onClick={() => setState("recreate-confirm")}
+              className="w-full flex items-center justify-center gap-1 px-2 py-1 rounded-lg bg-red-500/10 hover:bg-red-500/20 text-red-400 text-[11px] transition-colors"
+            >
+              ↺ Recreate DVA
+            </button>
           </div>
         )}
+      </div>
+    );
+  }
+
+  if (state === "recreate-confirm") {
+    return (
+      <div className="col-span-2 space-y-1.5">
+        <p className="text-[10px] text-red-400 font-medium leading-snug">Clear this DVA and create a new one? Balance &amp; credit history are kept.</p>
+        <div className="flex gap-1.5">
+          <button
+            onClick={deprovision}
+            className="flex-1 px-2.5 py-1.5 rounded-lg bg-red-500/20 hover:bg-red-500/30 text-red-300 text-xs transition-colors"
+          >
+            Yes, Recreate
+          </button>
+          <button
+            onClick={() => setState("done")}
+            className="px-2.5 py-1.5 rounded-lg bg-white/5 hover:bg-white/10 text-slate-400 text-xs transition-colors"
+          >
+            Cancel
+          </button>
+        </div>
       </div>
     );
   }

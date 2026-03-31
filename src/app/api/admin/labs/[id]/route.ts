@@ -26,6 +26,7 @@ const PatchSchema = z.object({
   slug: z.string().regex(/^[a-z0-9-]+$/).max(80).nullable().optional(),
   whatsapp: z.string().max(500).nullable().optional(),
   request_email: z.string().email().nullable().optional(),
+  staff_contacts: z.array(z.object({ title: z.string().min(1).max(50), email: z.string().email() })).optional(),
 });
 
 export async function PATCH(

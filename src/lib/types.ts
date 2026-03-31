@@ -23,6 +23,7 @@ export interface Lab {
   request_email: string | null;
   hidden: boolean;
   search_hidden: boolean;
+  staff_contacts: Array<{ title: string; email: string }>;
   service_categories: string[];
   certifications: string[];
   created_at: string;
