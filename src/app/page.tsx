@@ -5,6 +5,8 @@ import { Navbar } from "@/components/Navbar";
 import { HeroSection } from "@/components/HeroSection";
 import { prisma } from "@/lib/prisma";
 
+export const dynamic = 'force-dynamic';
+
 export default async function HomePage() {
   // Fetch labs at SSR time — data arrives with the HTML, search modal is instant
   const labsData = await prisma.lab.findMany({

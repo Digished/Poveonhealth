@@ -6,9 +6,9 @@ const nextConfig = {
   },
   experimental: {
     instrumentationHook: true,
+    // @react-pdf/renderer is ESM-only — keep it out of webpack bundling
+    serverComponentsExternalPackages: ["@react-pdf/renderer"],
   },
-  // @react-pdf/renderer is ESM-only — keep it out of webpack bundling
-  serverExternalPackages: ["@react-pdf/renderer"],
 };
 
 module.exports = nextConfig;
