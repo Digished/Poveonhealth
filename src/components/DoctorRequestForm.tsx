@@ -493,6 +493,35 @@ function LabDetailsModal({ lab, onClose }: { lab: Lab; onClose: () => void }) {
             ) : null;
           })()}
 
+          {/* Staff contacts */}
+          {(() => {
+            const contacts = (lab.staff_contacts as Array<{ title: string; email: string }> | null) ?? [];
+            return contacts.length > 0 ? (
+              <div>
+                <p className="text-xs font-semibold text-slate-400 uppercase tracking-wider mb-2.5 flex items-center gap-1.5">
+                  <Mail className="w-3.5 h-3.5" /> Staff Contacts
+                </p>
+                <div className="flex flex-col gap-2">
+                  {contacts.map((c, i) => (
+                    <a
+                      key={i}
+                      href={`mailto:${c.email}`}
+                      className="flex items-center gap-2 text-sm text-sky-700 font-medium hover:text-sky-900 transition-colors"
+                    >
+                      <div className="w-7 h-7 rounded-lg bg-sky-50 flex items-center justify-center shrink-0">
+                        <Mail className="w-3.5 h-3.5 text-sky-500" />
+                      </div>
+                      <div>
+                        <p className="text-xs text-slate-400 leading-none mb-0.5">{c.title}</p>
+                        <span className="break-all">{c.email}</span>
+                      </div>
+                    </a>
+                  ))}
+                </div>
+              </div>
+            ) : null;
+          })()}
+
           {/* Services */}
           {services.length > 0 && (
             <div>
@@ -571,6 +600,10 @@ interface Location {
   phones: PhoneEntry[];
   whatsapp?: string | null;
   logo_url?: string | null;
+  description?: string | null;
+  service_categories?: string[];
+  certifications?: string[];
+  staff_contacts?: Array<{ title: string; email: string }>;
   is_main: boolean;    // true = this branch is the highlighted/default one
   is_parent: boolean;  // true = this entry is the root/parent lab
 }
@@ -1238,15 +1271,15 @@ export function DoctorRequestForm({
     phones: selectedLocation.phones,
     whatsapp: selectedLocation.whatsapp ?? null,
     logo_url: selectedLocation.logo_url ?? null,
-    description: "",
-    service_categories: [],
-    certifications: [],
+    description: selectedLocation.description ?? "",
+    service_categories: selectedLocation.service_categories ?? [],
+    certifications: selectedLocation.certifications ?? [],
+    staff_contacts: selectedLocation.staff_contacts ?? [],
     email: "",
     prefix: "",
     slug: null,
     hidden: false,
     search_hidden: false,
-    staff_contacts: [],
     notification_email: null,
     request_email: null,
     created_at: "",

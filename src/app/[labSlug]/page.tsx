@@ -19,6 +19,10 @@ export default async function LabSlugPage({ params }: LabSlugPageProps) {
       address: true, phones: true, whatsapp: true,
       email: true, request_email: true,
       logo_url: true,
+      description: true,
+      service_categories: true,
+      certifications: true,
+      staff_contacts: true,
     },
   });
 
@@ -31,7 +35,7 @@ export default async function LabSlugPage({ params }: LabSlugPageProps) {
     where: { lab_id: lab.id, branch_lab_id: { not: null } },
     include: {
       branch_lab: {
-        select: { id: true, name: true, address: true, phones: true, whatsapp: true, logo_url: true },
+        select: { id: true, name: true, address: true, phones: true, whatsapp: true, logo_url: true, description: true, service_categories: true, certifications: true, staff_contacts: true },
       },
     },
     orderBy: [{ is_main: "desc" }],
@@ -45,6 +49,10 @@ export default async function LabSlugPage({ params }: LabSlugPageProps) {
     phones: (lab.phones ?? []) as unknown as import("@/lib/phones").PhoneEntry[],
     whatsapp: lab.whatsapp ?? null,
     logo_url: lab.logo_url ?? null,
+    description: lab.description ?? "",
+    service_categories: (lab.service_categories as string[]) ?? [],
+    certifications: (lab.certifications as string[]) ?? [],
+    staff_contacts: (lab.staff_contacts as Array<{ title: string; email: string }>) ?? [],
     is_main: false,
     is_parent: true,
   };
@@ -59,6 +67,10 @@ export default async function LabSlugPage({ params }: LabSlugPageProps) {
       phones: (b.branch_lab!.phones ?? []) as unknown as import("@/lib/phones").PhoneEntry[],
       whatsapp: b.branch_lab!.whatsapp ?? null,
       logo_url: b.branch_lab!.logo_url ?? null,
+      description: (b.branch_lab! as { description?: string | null }).description ?? "",
+      service_categories: ((b.branch_lab! as { service_categories?: string[] }).service_categories) ?? [],
+      certifications: ((b.branch_lab! as { certifications?: string[] }).certifications) ?? [],
+      staff_contacts: ((b.branch_lab! as { staff_contacts?: Array<{ title: string; email: string }> }).staff_contacts) ?? [],
       is_main: b.is_main,
       is_parent: false,
     }));

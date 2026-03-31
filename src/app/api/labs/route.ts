@@ -28,6 +28,10 @@ export async function GET() {
         logo_url: true,
         phones: true,
         whatsapp: true,
+        description: true,
+        service_categories: true,
+        certifications: true,
+        staff_contacts: true,
       },
       orderBy: { name: "asc" },
     });
