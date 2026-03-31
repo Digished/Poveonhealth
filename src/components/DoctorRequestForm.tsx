@@ -1240,6 +1240,7 @@ export function DoctorRequestForm({
     prefix: "",
     slug: null,
     hidden: false,
+    search_hidden: false,
     notification_email: null,
     request_email: null,
     created_at: "",

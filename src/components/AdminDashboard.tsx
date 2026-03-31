@@ -118,6 +118,9 @@ export function AdminDashboard() {
   const [editLab, setEditLab] = useState<Lab | null>(null);
   const [deletingId, setDeletingId] = useState<string | null>(null);
   const [togglingId, setTogglingId] = useState<string | null>(null);
+  const [togglingSearchHiddenId, setTogglingSearchHiddenId] = useState<string | null>(null);
+  const [deleteConfirmLab, setDeleteConfirmLab] = useState<Lab | null>(null);
+  const [deleteConfirmMarketer, setDeleteConfirmMarketer] = useState<typeof marketers[number] | null>(null);
   const [deletingRequestId, setDeletingRequestId] = useState<string | null>(null);
   const [selectedReferralGroup, setSelectedReferralGroup] = useState<ReferralGroup | null>(null);
   const [apiLogs, setApiLogs] = useState<ApiLog[]>([]);
@@ -356,7 +359,6 @@ export function AdminDashboard() {
   }
 
   async function handleDeleteMarketer(m: typeof marketers[number]) {
-    if (!confirm(`Delete marketer "${m.name}"? This removes all their referral links. Cannot be undone.`)) return;
     setDeletingMarketerId(m.id);
     try {
       const res = await fetch(`/api/admin/marketers/${m.id}`, { method: "DELETE" });
@@ -402,8 +404,29 @@ export function AdminDashboard() {
     }
   }
 
+  async function handleToggleSearchHidden(lab: Lab) {
+    setTogglingSearchHiddenId(lab.id);
+    try {
+      const res = await fetch(`/api/admin/labs/${lab.id}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ search_hidden: !lab.search_hidden }),
+      });
+      const data = await res.json();
+      if (data.success) {
+        toast.success(lab.search_hidden ? "Lab restored to search" : "Lab hidden from search");
+        await fetchLabs();
+      } else {
+        toast.error(data.error ?? "Failed to update");
+      }
+    } catch {
+      toast.error("Network error");
+    } finally {
+      setTogglingSearchHiddenId(null);
+    }
+  }
+
   async function handleDeleteLab(lab: Lab) {
-    if (!confirm(`Delete "${lab.name}"? This removes all associated data and the lab login. Cannot be undone.`)) return;
     setDeletingId(lab.id);
     try {
       const res = await fetch(`/api/admin/labs/${lab.id}`, { method: "DELETE" });
@@ -997,8 +1020,16 @@ export function AdminDashboard() {
                           <button onClick={() => setBranchModalLabId(lab.id)} title="Branches" className="p-2 rounded-lg hover:bg-white/8 text-slate-500 hover:text-white transition-colors">
                             <GitBranch className="w-3.5 h-3.5" />
                           </button>
-                          <button onClick={() => handleToggleHidden(lab)} disabled={togglingId === lab.id} title={lab.hidden ? "Show" : "Hide"} className="p-2 rounded-lg hover:bg-white/8 text-slate-500 hover:text-white transition-colors">
+                          <button onClick={() => handleToggleHidden(lab)} disabled={togglingId === lab.id} title={lab.hidden ? "Restore (fully hidden)" : "Hide completely"} className="p-2 rounded-lg hover:bg-white/8 text-slate-500 hover:text-white transition-colors">
                             {lab.hidden ? <Eye className="w-3.5 h-3.5" /> : <EyeOff className="w-3.5 h-3.5" />}
+                          </button>
+                          <button
+                            onClick={() => handleToggleSearchHidden(lab)}
+                            disabled={togglingSearchHiddenId === lab.id}
+                            title={lab.search_hidden ? "Restore to search" : "Hide from search only"}
+                            className={`p-2 rounded-lg transition-colors ${lab.search_hidden ? "text-orange-400 hover:bg-orange-500/15" : "text-slate-500 hover:bg-orange-500/10 hover:text-orange-400"}`}
+                          >
+                            <Search className="w-3.5 h-3.5" />
                           </button>
                           <button onClick={openStats} title="Stats" className="p-2 rounded-lg hover:bg-emerald-500/15 text-slate-500 hover:text-emerald-400 transition-colors">
                             <BarChart3 className="w-3.5 h-3.5" />
@@ -1021,7 +1052,7 @@ export function AdminDashboard() {
                             <UserCircle className="w-3.5 h-3.5" />
                           </button>
                           <LabWalletButton labId={lab.id} />
-                          <button onClick={() => handleDeleteLab(lab)} disabled={deletingId === lab.id} title="Delete" className="p-2 rounded-lg hover:bg-red-500/15 text-slate-600 hover:text-red-400 transition-colors">
+                          <button onClick={() => setDeleteConfirmLab(lab)} disabled={deletingId === lab.id} title="Delete" className="p-2 rounded-lg hover:bg-red-500/15 text-slate-600 hover:text-red-400 transition-colors">
                             <Trash2 className="w-3.5 h-3.5" />
                           </button>
                         </div>
@@ -1131,8 +1162,15 @@ export function AdminDashboard() {
                             >
                               <UserCircle className="w-3.5 h-3.5" />Transfer
                             </button>
+                            <button
+                              onClick={() => handleToggleSearchHidden(lab)}
+                              disabled={togglingSearchHiddenId === lab.id}
+                              className={`flex items-center justify-center gap-1.5 px-3 py-2 rounded-xl text-xs font-medium transition-colors ${lab.search_hidden ? "bg-orange-500/20 text-orange-400 hover:bg-orange-500/30" : "bg-white/5 hover:bg-orange-500/10 text-slate-300 hover:text-orange-400"}`}
+                            >
+                              <Search className="w-3.5 h-3.5" />{lab.search_hidden ? "In Search" : "Hide Search"}
+                            </button>
                             <div><LabWalletButton labId={lab.id} /></div>
-                            <button onClick={() => handleDeleteLab(lab)} disabled={deletingId === lab.id} className="flex items-center justify-center gap-1.5 px-3 py-2 rounded-xl bg-red-500/10 hover:bg-red-500/20 text-red-400 text-xs font-medium transition-colors">
+                            <button onClick={() => setDeleteConfirmLab(lab)} disabled={deletingId === lab.id} className="flex items-center justify-center gap-1.5 px-3 py-2 rounded-xl bg-red-500/10 hover:bg-red-500/20 text-red-400 text-xs font-medium transition-colors">
                               <Trash2 className="w-3.5 h-3.5" />Delete
                             </button>
                           </div>
@@ -1406,7 +1444,7 @@ export function AdminDashboard() {
                       </button>
                       <button
                         type="button"
-                        onClick={() => handleDeleteMarketer(m)}
+                        onClick={() => setDeleteConfirmMarketer(m)}
                         disabled={deletingMarketerId === m.id}
                         title="Delete marketer"
                         className="p-1.5 rounded-lg hover:bg-red-500/15 text-slate-500 hover:text-red-400 transition-colors disabled:opacity-40"
@@ -1501,6 +1539,22 @@ export function AdminDashboard() {
             fetchLabs();
             toast.success(`Email updated to ${newEmail}`);
           }}
+        />
+      )}
+      {deleteConfirmLab && (
+        <DeleteConfirmModal
+          name={deleteConfirmLab.name}
+          label="lab"
+          onClose={() => setDeleteConfirmLab(null)}
+          onConfirm={() => { setDeleteConfirmLab(null); handleDeleteLab(deleteConfirmLab); }}
+        />
+      )}
+      {deleteConfirmMarketer && (
+        <DeleteConfirmModal
+          name={deleteConfirmMarketer.name}
+          label="marketer"
+          onClose={() => setDeleteConfirmMarketer(null)}
+          onConfirm={() => { setDeleteConfirmMarketer(null); handleDeleteMarketer(deleteConfirmMarketer); }}
         />
       )}
 
@@ -5254,6 +5308,82 @@ function TransferEmailModal({
               ? <><span className="w-3.5 h-3.5 border-2 border-white/30 border-t-white rounded-full animate-spin" />Saving…</>
               : "Transfer Ownership"
             }
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ── Delete Confirm Modal ──────────────────────────────────────────────────────
+
+function DeleteConfirmModal({
+  name,
+  label,
+  onClose,
+  onConfirm,
+}: {
+  name: string;
+  label: string;
+  onClose: () => void;
+  onConfirm: () => void;
+}) {
+  const [typed, setTyped] = useState("");
+  const match = typed.trim() === name.trim();
+
+  return (
+    <div
+      className="fixed inset-0 z-50 flex items-end sm:items-center justify-center p-4"
+      style={{ backgroundColor: "rgba(2,6,23,0.85)", backdropFilter: "blur(6px)" }}
+      onClick={onClose}
+    >
+      <div
+        className="w-full max-w-md bg-slate-900 border border-white/10 rounded-3xl shadow-2xl overflow-hidden"
+        onClick={(e) => e.stopPropagation()}
+      >
+        <div className="flex items-center justify-between px-6 pt-5 pb-4 border-b border-white/8">
+          <div>
+            <h2 className="font-semibold text-white text-sm">Delete {label}</h2>
+            <p className="text-xs text-slate-400 mt-0.5">This action is permanent and cannot be undone.</p>
+          </div>
+          <button onClick={onClose} className="p-2 rounded-lg hover:bg-white/8 text-slate-400 hover:text-white transition-colors">
+            <X className="w-4 h-4" />
+          </button>
+        </div>
+
+        <div className="px-6 py-5 space-y-4">
+          <div className="flex items-start gap-3 p-3.5 rounded-xl bg-red-500/10 border border-red-500/20">
+            <AlertCircle className="w-4 h-4 text-red-400 mt-0.5 shrink-0" />
+            <p className="text-xs text-red-300 leading-relaxed">
+              You are about to permanently delete <span className="font-semibold text-white">{name}</span>. All associated data will be removed. Type the name below to confirm.
+            </p>
+          </div>
+
+          <div>
+            <label className="block text-xs font-semibold text-slate-400 uppercase tracking-wide mb-1.5">
+              Type &ldquo;{name}&rdquo; to confirm
+            </label>
+            <input
+              type="text"
+              value={typed}
+              onChange={(e) => setTyped(e.target.value)}
+              placeholder={name}
+              className="w-full px-3.5 py-2.5 rounded-xl bg-slate-800 border border-white/8 text-white text-sm focus:outline-none focus:ring-2 focus:ring-red-500/50 placeholder:text-slate-600"
+            />
+          </div>
+        </div>
+
+        <div className="flex items-center justify-end gap-3 px-6 pb-5">
+          <button onClick={onClose} className="px-4 py-2 rounded-xl text-sm text-slate-400 hover:text-white hover:bg-white/8 transition-colors">
+            Cancel
+          </button>
+          <button
+            onClick={onConfirm}
+            disabled={!match}
+            className="flex items-center gap-2 px-5 py-2 rounded-xl bg-red-600 hover:bg-red-500 disabled:opacity-40 text-white text-sm font-medium transition-colors"
+          >
+            <Trash2 className="w-3.5 h-3.5" />
+            Delete {label}
           </button>
         </div>
       </div>
