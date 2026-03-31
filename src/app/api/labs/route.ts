@@ -19,7 +19,7 @@ export async function OPTIONS() {
 export async function GET() {
   try {
     const labs = await prisma.lab.findMany({
-      where: { hidden: false },
+      where: { hidden: false, search_hidden: false },
       select: {
         id: true,
         name: true,

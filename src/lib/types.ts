@@ -19,6 +19,7 @@ export interface Lab {
   whatsapp: string | null;
   request_email: string | null;
   hidden: boolean;
+  search_hidden: boolean;
   service_categories: string[];
   certifications: string[];
   created_at: string;

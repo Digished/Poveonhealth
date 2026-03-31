@@ -23,6 +23,7 @@ model Lab {
   notification_email String? // Branded "from" address for result/notification emails
   request_email      String? // Dedicated address for incoming new-request alerts
   hidden             Boolean  @default(false)
+  search_hidden      Boolean  @default(false) // hides from search/directory but unique page still works
   service_categories Json     @default("[]")
   certifications     Json     @default("[]")
   created_at         DateTime @default(now())

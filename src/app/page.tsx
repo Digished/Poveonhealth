@@ -8,7 +8,7 @@ import { prisma } from "@/lib/prisma";
 export default async function HomePage() {
   // Fetch labs at SSR time — data arrives with the HTML, search modal is instant
   const labsData = await prisma.lab.findMany({
-    where: { hidden: false },
+    where: { hidden: false, search_hidden: false },
     select: { id: true, name: true, slug: true, prefix: true, address: true, logo_url: true, phones: true, whatsapp: true },
     orderBy: { name: "asc" },
   });
