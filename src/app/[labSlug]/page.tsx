@@ -50,30 +50,33 @@ export default async function LabSlugPage({ params }: LabSlugPageProps) {
     whatsapp: lab.whatsapp ?? null,
     logo_url: lab.logo_url ?? null,
     description: lab.description ?? "",
-    service_categories: (lab.service_categories as string[]) ?? [],
-    certifications: (lab.certifications as string[]) ?? [],
-    staff_contacts: (lab.staff_contacts as Array<{ title: string; email: string }>) ?? [],
+    service_categories: (lab.service_categories as unknown as string[]) ?? [],
+    certifications: (lab.certifications as unknown as string[]) ?? [],
+    staff_contacts: (lab.staff_contacts as unknown as Array<{ title: string; email: string }>) ?? [],
     is_main: false,
     is_parent: true,
   };
 
   const branchLocations = branchLinks
     .filter((b) => b.branch_lab !== null)
-    .map((b) => ({
-      lab_id: b.branch_lab!.id,
-      lab_branch_id: b.id,
-      name: b.branch_lab!.name,
-      address: b.branch_lab!.address ?? "",
-      phones: (b.branch_lab!.phones ?? []) as unknown as import("@/lib/phones").PhoneEntry[],
-      whatsapp: b.branch_lab!.whatsapp ?? null,
-      logo_url: b.branch_lab!.logo_url ?? null,
-      description: (b.branch_lab! as { description?: string | null }).description ?? "",
-      service_categories: ((b.branch_lab! as { service_categories?: string[] }).service_categories) ?? [],
-      certifications: ((b.branch_lab! as { certifications?: string[] }).certifications) ?? [],
-      staff_contacts: ((b.branch_lab! as { staff_contacts?: Array<{ title: string; email: string }> }).staff_contacts) ?? [],
-      is_main: b.is_main,
-      is_parent: false,
-    }));
+    .map((b) => {
+      const bl = b.branch_lab!;
+      return {
+        lab_id: bl.id,
+        lab_branch_id: b.id,
+        name: bl.name,
+        address: bl.address ?? "",
+        phones: (bl.phones ?? []) as unknown as import("@/lib/phones").PhoneEntry[],
+        whatsapp: bl.whatsapp ?? null,
+        logo_url: bl.logo_url ?? null,
+        description: bl.description ?? "",
+        service_categories: (bl.service_categories as unknown as string[]) ?? [],
+        certifications: (bl.certifications as unknown as string[]) ?? [],
+        staff_contacts: (bl.staff_contacts as unknown as Array<{ title: string; email: string }>) ?? [],
+        is_main: b.is_main,
+        is_parent: false,
+      };
+    });
 
   const locations = [parentLocation, ...branchLocations];
   const logoUrl = lab.logo_url ?? null;
