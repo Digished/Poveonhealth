@@ -1,8 +1,7 @@
 import { NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 
-// Revalidate every 60 s — new labs appear within a minute, no DB hit on every request
-export const revalidate = 60;
+export const dynamic = 'force-dynamic';
 
 const CORS_HEADERS = {
   "Access-Control-Allow-Origin": "*",
