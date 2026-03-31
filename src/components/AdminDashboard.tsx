@@ -2712,7 +2712,7 @@ function LabBranchModal({ lab, onClose, allLabs }: { lab: Lab; onClose: () => vo
 
 // ─────────────────────────────────────────────────────────────────────────────
 
-type IntegrationTab = "developer" | "catalog" | "team";
+type IntegrationTab = "developer" | "team";
 
 function LabIntegrationModal({ lab, onClose }: { lab: Lab; onClose: () => void }) {
   const [activeTab, setActiveTab] = useState<IntegrationTab>("developer");
@@ -2738,7 +2738,6 @@ function LabIntegrationModal({ lab, onClose }: { lab: Lab; onClose: () => void }
         <div className="flex gap-1 bg-white/5 rounded-lg p-0.5 mx-5 mt-4 shrink-0 w-fit">
           {([
             { key: "developer" as IntegrationTab, label: "Developer", icon: <Code2 className="w-3 h-3" /> },
-            { key: "catalog" as IntegrationTab, label: "Price List", icon: <FileText className="w-3 h-3" /> },
             { key: "team" as IntegrationTab, label: "Team & Roles", icon: <Users className="w-3 h-3" /> },
           ]).map((t) => (
             <button
@@ -2756,7 +2755,6 @@ function LabIntegrationModal({ lab, onClose }: { lab: Lab; onClose: () => void }
         {/* Scrollable content */}
         <div className="overflow-y-auto flex-1 px-5 py-4">
           {activeTab === "developer" && <LabDeveloperTab lab={lab} />}
-          {activeTab === "catalog" && <LabCatalogTab lab={lab} />}
           {activeTab === "team" && <LabTeamTab lab={lab} />}
         </div>
       </div>
@@ -2966,106 +2964,6 @@ type DraftRole = {
 
 function blankRole(): DraftRole {
   return { name: "", can_view_requests: true, can_mark_seen: false, can_mark_done: false, can_send_results: false, can_manage_team: false, can_manage_api_keys: false, can_view_referrals: false, can_view_clients: false, can_view_analytics: false, can_view_activity: false, can_view_feedback: false, can_view_wallet: false };
-}
-
-// ── Catalog / Price List Tab ────────────────────────────────────────────────
-function LabCatalogTab({ lab }: { lab: Lab }) {
-  const fileRef = useRef<HTMLInputElement>(null);
-  const [uploading, setUploading] = useState(false);
-  const [result, setResult] = useState<{ upserted: number; skipped: number } | null>(null);
-  const [error, setError] = useState<string | null>(null);
-
-  async function handleFile(file: File) {
-    setUploading(true);
-    setResult(null);
-    setError(null);
-    try {
-      const fd = new FormData();
-      fd.append("file", file);
-      const res = await fetch(`/api/admin/labs/${lab.id}/catalog/upload`, { method: "POST", body: fd });
-      const data = await res.json();
-      if (data.success) {
-        setResult({ upserted: data.upserted ?? 0, skipped: data.skipped ?? 0 });
-        toast.success(`Uploaded! ${data.upserted} tests saved.`);
-      } else {
-        setError(data.error ?? "Upload failed");
-        toast.error(data.error ?? "Upload failed");
-      }
-    } catch {
-      setError("Network error");
-      toast.error("Network error");
-    } finally {
-      setUploading(false);
-    }
-  }
-
-  return (
-    <div className="space-y-5">
-      {/* Instructions */}
-      <div className="bg-blue-500/10 border border-blue-500/20 rounded-xl p-4 space-y-2">
-        <p className="text-xs font-semibold text-blue-300 flex items-center gap-1.5">
-          <FileText className="w-3.5 h-3.5" /> Upload a CSV or Excel file
-        </p>
-        <p className="text-xs text-slate-400">
-          Required columns: <code className="bg-white/10 px-1 rounded">test_name</code> and <code className="bg-white/10 px-1 rounded">price</code>
-        </p>
-        <p className="text-xs text-slate-500">
-          Optional: <code className="bg-white/10 px-1 rounded">category</code>, <code className="bg-white/10 px-1 rounded">commission_pct</code>, <code className="bg-white/10 px-1 rounded">is_active</code>
-        </p>
-        <p className="text-xs text-slate-500">Existing tests are updated; new ones are added.</p>
-      </div>
-
-      {/* Drop / upload area */}
-      <div
-        className={`border-2 border-dashed rounded-xl p-6 text-center transition-colors cursor-pointer ${
-          uploading ? "border-blue-500/40 bg-blue-500/5" : "border-white/15 hover:border-blue-500/40 hover:bg-blue-500/5"
-        }`}
-        onClick={() => !uploading && fileRef.current?.click()}
-        onDragOver={(e) => e.preventDefault()}
-        onDrop={(e) => {
-          e.preventDefault();
-          const file = e.dataTransfer.files?.[0];
-          if (file) handleFile(file);
-        }}
-      >
-        <input
-          ref={fileRef}
-          type="file"
-          accept=".csv,.xlsx,.xls"
-          className="hidden"
-          onChange={(e) => { const f = e.target.files?.[0]; if (f) handleFile(f); e.target.value = ""; }}
-        />
-        {uploading ? (
-          <div className="flex flex-col items-center gap-2">
-            <RefreshCw className="w-6 h-6 text-blue-400 animate-spin" />
-            <p className="text-sm text-slate-400">Uploading…</p>
-          </div>
-        ) : (
-          <div className="flex flex-col items-center gap-2">
-            <Upload className="w-6 h-6 text-slate-500" />
-            <p className="text-sm text-slate-400">Click or drag a CSV / Excel file here</p>
-          </div>
-        )}
-      </div>
-
-      {/* Result */}
-      {result && (
-        <div className="bg-emerald-500/10 border border-emerald-500/20 rounded-xl p-3 flex items-center gap-2">
-          <Check className="w-4 h-4 text-emerald-400 shrink-0" />
-          <p className="text-xs text-emerald-300">
-            <span className="font-semibold">{result.upserted}</span> tests saved
-            {result.skipped > 0 && <>, <span className="font-semibold">{result.skipped}</span> skipped (missing name/price)</>}.
-          </p>
-        </div>
-      )}
-      {error && (
-        <div className="bg-red-500/10 border border-red-500/20 rounded-xl p-3 flex items-center gap-2">
-          <AlertCircle className="w-4 h-4 text-red-400 shrink-0" />
-          <p className="text-xs text-red-300">{error}</p>
-        </div>
-      )}
-    </div>
-  );
 }
 
 function LabTeamTab({ lab }: { lab: Lab }) {
