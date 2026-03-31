@@ -1246,6 +1246,7 @@ export function DoctorRequestForm({
     slug: null,
     hidden: false,
     search_hidden: false,
+    staff_contacts: [],
     notification_email: null,
     request_email: null,
     created_at: "",
