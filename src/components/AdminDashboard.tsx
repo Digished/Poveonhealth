@@ -4638,19 +4638,22 @@ function AdminHospitalsTab() {
 // LabWalletButton — provision DVA or show existing account details, per lab card
 // ─────────────────────────────────────────────────────────────────────────────
 function LabWalletButton({ labId }: { labId: string }) {
-  const [state, setState] = useState<"loading" | "idle" | "form" | "done" | "credit-form">("loading");
+  const [state, setState] = useState<"loading" | "idle" | "form" | "done" | "credit-form" | "regen-form">("loading");
   const [phone, setPhone] = useState("");
+  const [regenPhone, setRegenPhone] = useState("");
   const [dva, setDva] = useState<{ bank_name: string | null; account_number: string; account_name: string | null } | null>(null);
   const [balance, setBalance] = useState<number | null>(null);
   const [showDetails, setShowDetails] = useState(false);
   const [copied, setCopied] = useState(false);
   const [creditRef, setCreditRef] = useState("");
+  const [hasCustomer, setHasCustomer] = useState(false);
 
   // Load existing wallet state on mount
   useEffect(() => {
     fetch(`/api/admin/wallet/${labId}`)
       .then((r) => r.json())
       .then((d) => {
+        if (d.paystack_customer_id) setHasCustomer(true);
         if (d.dva_account_number) {
           setDva({ bank_name: d.dva_bank_name, account_number: d.dva_account_number, account_name: d.dva_account_name });
           setBalance(d.balance ?? 0);
@@ -4662,6 +4665,27 @@ function LabWalletButton({ labId }: { labId: string }) {
       .catch(() => setState("idle"));
   }, [labId]);
   const [crediting, setCrediting] = useState(false);
+  const [regenerating, setRegenerating] = useState(false);
+
+  async function regenerate() {
+    setRegenerating(true);
+    try {
+      const res = await fetch(`/api/admin/wallet/regenerate/${labId}`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ phone: regenPhone.trim() || undefined }),
+      });
+      const d = await res.json();
+      if (!res.ok) { toast.error(d.error ?? "Regeneration failed"); return; }
+      setDva({ bank_name: d.dva_bank_name, account_number: d.dva_account_number, account_name: d.dva_account_name });
+      setBalance(d.balance ?? balance);
+      setHasCustomer(true);
+      setState("done");
+      setShowDetails(true);
+      toast.success("DVA regenerated successfully");
+    } catch { toast.error("Network error"); }
+    finally { setRegenerating(false); }
+  }
 
   async function provision() {
     if (!phone.trim()) return;
@@ -4728,14 +4752,58 @@ function LabWalletButton({ labId }: { labId: string }) {
               </div>
               <p className="text-[10px] text-slate-500 mt-0.5">{dva.account_name}</p>
             </div>
-            <button
-              onClick={() => setState("credit-form")}
-              className="w-full flex items-center justify-center gap-1 px-2 py-1 rounded-lg bg-sky-500/10 hover:bg-sky-500/20 text-sky-400 text-[11px] transition-colors"
-            >
-              + Manual credit (missed payment)
-            </button>
+            <div className="flex gap-1.5">
+              <button
+                onClick={() => setState("credit-form")}
+                className="flex-1 flex items-center justify-center gap-1 px-2 py-1 rounded-lg bg-sky-500/10 hover:bg-sky-500/20 text-sky-400 text-[11px] transition-colors"
+              >
+                + Manual credit
+              </button>
+              <button
+                onClick={() => { setRegenPhone(""); setState("regen-form"); }}
+                className="flex-1 flex items-center justify-center gap-1 px-2 py-1 rounded-lg bg-orange-500/10 hover:bg-orange-500/20 text-orange-400 text-[11px] transition-colors"
+                title="Regenerate the dedicated virtual account"
+              >
+                <RefreshCw className="w-2.5 h-2.5" /> Regen DVA
+              </button>
+            </div>
           </div>
         )}
+      </div>
+    );
+  }
+
+  if (state === "regen-form") {
+    return (
+      <div className="col-span-2 space-y-1.5">
+        <p className="text-[10px] text-orange-400 font-semibold">Regenerate DVA</p>
+        {!hasCustomer && (
+          <p className="text-[10px] text-slate-400">No Paystack customer yet — phone required:</p>
+        )}
+        {hasCustomer && (
+          <p className="text-[10px] text-slate-400">Customer exists. Phone optional (updates profile):</p>
+        )}
+        <div className="flex gap-1.5 items-center">
+          <input
+            type="tel"
+            value={regenPhone}
+            onChange={(e) => setRegenPhone(e.target.value)}
+            onKeyDown={(e) => e.key === "Enter" && (hasCustomer || regenPhone.trim()) && regenerate()}
+            placeholder={hasCustomer ? "08012345678 (optional)" : "08012345678 *required"}
+            autoFocus
+            className="flex-1 px-2.5 py-1.5 rounded-lg bg-white/8 border border-white/15 text-white text-xs placeholder-slate-500 focus:outline-none focus:ring-1 focus:ring-orange-400 font-mono"
+          />
+          <button
+            onClick={regenerate}
+            disabled={(!hasCustomer && !regenPhone.trim()) || regenerating}
+            className="px-2.5 py-1.5 rounded-lg bg-orange-500/20 hover:bg-orange-500/30 text-orange-300 text-xs transition-colors disabled:opacity-40 shrink-0"
+          >
+            {regenerating ? <RefreshCw className="w-3 h-3 animate-spin" /> : "Regen"}
+          </button>
+          <button onClick={() => setState(dva ? "done" : "idle")} className="p-1.5 rounded-lg text-slate-500 hover:text-white transition-colors">
+            <X className="w-3 h-3" />
+          </button>
+        </div>
       </div>
     );
   }
