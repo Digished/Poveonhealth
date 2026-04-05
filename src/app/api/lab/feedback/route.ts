@@ -2,6 +2,8 @@ import { NextRequest, NextResponse } from "next/server";
 import { getLabAuth } from "@/lib/lab-auth";
 import { prisma } from "@/lib/prisma";
 
+export const dynamic = "force-dynamic";
+
 const avg = (field: (f: { rating_overall: number; rating_accuracy: number | null; rating_speed: number | null; rating_staff: number | null; rating_environment: number | null }) => number | null | undefined, all: { rating_overall: number; rating_accuracy: number | null; rating_speed: number | null; rating_staff: number | null; rating_environment: number | null }[]) => {
   const vals = all.map(field).filter((v): v is number => v != null);
   return vals.length ? Math.round((vals.reduce((a, b) => a + b, 0) / vals.length) * 10) / 10 : null;
