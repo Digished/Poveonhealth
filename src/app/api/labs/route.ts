@@ -1,8 +1,6 @@
+export const dynamic = "force-dynamic";
 import { NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
-
-// Revalidate every 60 s — new labs appear within a minute, no DB hit on every request
-export const revalidate = 60;
 
 const CORS_HEADERS = {
   "Access-Control-Allow-Origin": "*",
@@ -15,11 +13,11 @@ export async function OPTIONS() {
 }
 
 // Public endpoint — returns visible labs for the doctor form dropdown.
-// Only fields needed for the search list + post-selection card are fetched.
+// force-dynamic so admin changes (add/hide/delete) are reflected immediately.
 export async function GET() {
   try {
     const labs = await prisma.lab.findMany({
-      where: { hidden: false },
+      where: { hidden: false, search_hidden: false },
       select: {
         id: true,
         name: true,
@@ -37,7 +35,7 @@ export async function GET() {
       {
         headers: {
           ...CORS_HEADERS,
-          "Cache-Control": "public, s-maxage=60, stale-while-revalidate=300",
+          "Cache-Control": "no-store",
         },
       }
     );

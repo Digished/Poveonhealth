@@ -8,14 +8,15 @@ import {
   Phone, Upload, Check, MapPin, Users, ChevronRight, ChevronDown, ChevronUp,
   Code2, Key, Copy, TrendingUp, Link, Sun, Moon, Star, GitBranch,
   ArrowUpRight, ArrowDownRight, ArrowDownToLine, Settings, CreditCard, MessageCircle,
-  BookOpen, Database, Sparkles, Search, Layers, UserCircle, Wallet, FileText,
+  BookOpen, Database, Sparkles, Search, Layers, UserCircle, Wallet, FileText, AlertCircle,
 } from "lucide-react";
 import { useDashTheme } from "@/hooks/useDashTheme";
 import { serializeAgreementToText } from "@/lib/agreement/content";
 import { Button } from "@/components/ui/Button";
 import { Input, Textarea } from "@/components/ui/Input";
 import { StatusBadge, Badge } from "@/components/ui/Badge";
-import type { Lab, LabRequest, AdminMetrics, ApiLog, ApiLogSummary, LabApiKey, LabRole, LabMember } from "@/lib/types";
+import type { Lab, LabRequest, AdminMetrics, ApiLog, ApiLogSummary, LabApiKey, LabRole, LabMember, PhoneEntry } from "@/lib/types";
+import { parsePhones } from "@/lib/phones";
 import { SERVICE_CATEGORIES, LAB_CERTIFICATIONS } from "@/lib/constants";
 import { format } from "date-fns";
 import { createClient } from "@/lib/supabase/client"; // still used for auth sign-out
@@ -94,6 +95,48 @@ function WhatsAppNumberInput({
   );
 }
 
+function PhoneNumberInput({
+  entry,
+  onChange,
+  onRemove,
+  showRemove,
+  inputClass,
+}: {
+  entry: PhoneEntry;
+  onChange: (v: PhoneEntry) => void;
+  onRemove: () => void;
+  showRemove: boolean;
+  inputClass: string;
+}) {
+  return (
+    <div className="flex gap-2 items-start">
+      <div className="flex flex-col gap-1.5 flex-1 min-w-0">
+        <input
+          type="tel"
+          value={entry.number}
+          onChange={(e) => onChange({ ...entry, number: e.target.value })}
+          placeholder="+234 800 000 0000"
+          className={`w-full rounded-xl border px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-medical-500 ${inputClass}`}
+        />
+        <input
+          type="text"
+          value={entry.label}
+          onChange={(e) => onChange({ ...entry, label: e.target.value })}
+          placeholder="Label (optional) — e.g. Front Desk"
+          className={`w-full rounded-xl border px-3 py-2 text-xs focus:outline-none focus:ring-2 focus:ring-medical-500 ${inputClass}`}
+        />
+      </div>
+      {showRemove && (
+        <button
+          type="button"
+          onClick={onRemove}
+          className="mt-0.5 px-3 py-2.5 rounded-xl bg-red-900/30 text-red-400 hover:bg-red-900/50 transition-colors text-sm shrink-0"
+        >✕</button>
+      )}
+    </div>
+  );
+}
+
 function refLink(code: string) {
   const origin = typeof window !== "undefined" ? window.location.origin : "";
   return `${origin}/?ref=${code}`;
@@ -118,6 +161,9 @@ export function AdminDashboard() {
   const [editLab, setEditLab] = useState<Lab | null>(null);
   const [deletingId, setDeletingId] = useState<string | null>(null);
   const [togglingId, setTogglingId] = useState<string | null>(null);
+  const [togglingSearchHiddenId, setTogglingSearchHiddenId] = useState<string | null>(null);
+  const [deleteConfirmLab, setDeleteConfirmLab] = useState<Lab | null>(null);
+  const [deleteConfirmMarketer, setDeleteConfirmMarketer] = useState<typeof marketers[number] | null>(null);
   const [deletingRequestId, setDeletingRequestId] = useState<string | null>(null);
   const [selectedReferralGroup, setSelectedReferralGroup] = useState<ReferralGroup | null>(null);
   const [apiLogs, setApiLogs] = useState<ApiLog[]>([]);
@@ -127,6 +173,8 @@ export function AdminDashboard() {
   const [branchModalLabId, setBranchModalLabId] = useState<string | null>(null);
   const [sendingAgreementId, setSendingAgreementId] = useState<string | null>(null);
   const [sendAgreementLab, setSendAgreementLab] = useState<Lab | null>(null);
+  const [transferEmailLab, setTransferEmailLab] = useState<Lab | null>(null);
+  const [catalogLab, setCatalogLab] = useState<Lab | null>(null);
   type AgreementRecord = { id: string; version: string; signed_at: string; signer_name: string; signer_email: string; signer_title: string | null; pdf_hash: string; lab: { id: string; name: string; email: string } };
   const [agreements, setAgreements] = useState<AgreementRecord[]>([]);
   const [agreementsLoading, setAgreementsLoading] = useState(false);
@@ -355,7 +403,6 @@ export function AdminDashboard() {
   }
 
   async function handleDeleteMarketer(m: typeof marketers[number]) {
-    if (!confirm(`Delete marketer "${m.name}"? This removes all their referral links. Cannot be undone.`)) return;
     setDeletingMarketerId(m.id);
     try {
       const res = await fetch(`/api/admin/marketers/${m.id}`, { method: "DELETE" });
@@ -401,8 +448,29 @@ export function AdminDashboard() {
     }
   }
 
+  async function handleToggleSearchHidden(lab: Lab) {
+    setTogglingSearchHiddenId(lab.id);
+    try {
+      const res = await fetch(`/api/admin/labs/${lab.id}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ search_hidden: !lab.search_hidden }),
+      });
+      const data = await res.json();
+      if (data.success) {
+        toast.success(lab.search_hidden ? "Lab restored to search" : "Lab hidden from search");
+        await fetchLabs();
+      } else {
+        toast.error(data.error ?? "Failed to update");
+      }
+    } catch {
+      toast.error("Network error");
+    } finally {
+      setTogglingSearchHiddenId(null);
+    }
+  }
+
   async function handleDeleteLab(lab: Lab) {
-    if (!confirm(`Delete "${lab.name}"? This removes all associated data and the lab login. Cannot be undone.`)) return;
     setDeletingId(lab.id);
     try {
       const res = await fetch(`/api/admin/labs/${lab.id}`, { method: "DELETE" });
@@ -903,7 +971,7 @@ export function AdminDashboard() {
               <div className="border border-white/10 rounded-2xl overflow-hidden divide-y divide-white/5">
                 {labs.map((lab) => {
                   const isExpanded = expandedLabIds.has(lab.id);
-                  const phones     = lab.phones as string[];
+                  const phones     = parsePhones(lab.phones);
                   const services   = lab.service_categories as string[];
                   const certs      = lab.certifications as string[];
                   const outstanding = lab.poveon_outstanding ?? 0;
@@ -996,11 +1064,22 @@ export function AdminDashboard() {
                           <button onClick={() => setBranchModalLabId(lab.id)} title="Branches" className="p-2 rounded-lg hover:bg-white/8 text-slate-500 hover:text-white transition-colors">
                             <GitBranch className="w-3.5 h-3.5" />
                           </button>
-                          <button onClick={() => handleToggleHidden(lab)} disabled={togglingId === lab.id} title={lab.hidden ? "Show" : "Hide"} className="p-2 rounded-lg hover:bg-white/8 text-slate-500 hover:text-white transition-colors">
+                          <button onClick={() => handleToggleHidden(lab)} disabled={togglingId === lab.id} title={lab.hidden ? "Restore (fully hidden)" : "Hide completely"} className="p-2 rounded-lg hover:bg-white/8 text-slate-500 hover:text-white transition-colors">
                             {lab.hidden ? <Eye className="w-3.5 h-3.5" /> : <EyeOff className="w-3.5 h-3.5" />}
+                          </button>
+                          <button
+                            onClick={() => handleToggleSearchHidden(lab)}
+                            disabled={togglingSearchHiddenId === lab.id}
+                            title={lab.search_hidden ? "Restore to search" : "Hide from search only"}
+                            className={`p-2 rounded-lg transition-colors ${lab.search_hidden ? "text-orange-400 hover:bg-orange-500/15" : "text-slate-500 hover:bg-orange-500/10 hover:text-orange-400"}`}
+                          >
+                            <Search className="w-3.5 h-3.5" />
                           </button>
                           <button onClick={openStats} title="Stats" className="p-2 rounded-lg hover:bg-emerald-500/15 text-slate-500 hover:text-emerald-400 transition-colors">
                             <BarChart3 className="w-3.5 h-3.5" />
+                          </button>
+                          <button onClick={() => setCatalogLab(lab)} title="Test Catalog" className="p-2 rounded-lg hover:bg-teal-500/15 text-slate-500 hover:text-teal-400 transition-colors">
+                            <FlaskConical className="w-3.5 h-3.5" />
                           </button>
                           <button onClick={() => setExpandedLabIntegration(lab.id)} title="Dev / Integration" className="p-2 rounded-lg hover:bg-blue-500/15 text-slate-500 hover:text-blue-400 transition-colors">
                             <Code2 className="w-3.5 h-3.5" />
@@ -1012,8 +1091,15 @@ export function AdminDashboard() {
                           >
                             <FileText className="w-3.5 h-3.5" />
                           </button>
+                          <button
+                            onClick={() => setTransferEmailLab(lab)}
+                            title="Transfer Ownership / Change Email"
+                            className="p-2 rounded-lg hover:bg-amber-500/15 text-slate-500 hover:text-amber-400 transition-colors"
+                          >
+                            <UserCircle className="w-3.5 h-3.5" />
+                          </button>
                           <LabWalletButton labId={lab.id} />
-                          <button onClick={() => handleDeleteLab(lab)} disabled={deletingId === lab.id} title="Delete" className="p-2 rounded-lg hover:bg-red-500/15 text-slate-600 hover:text-red-400 transition-colors">
+                          <button onClick={() => setDeleteConfirmLab(lab)} disabled={deletingId === lab.id} title="Delete" className="p-2 rounded-lg hover:bg-red-500/15 text-slate-600 hover:text-red-400 transition-colors">
                             <Trash2 className="w-3.5 h-3.5" />
                           </button>
                         </div>
@@ -1039,7 +1125,11 @@ export function AdminDashboard() {
                               <div>
                                 <p className="text-slate-500 mb-0.5">Phone{phones.length > 1 ? "s" : ""}</p>
                                 {phones.map((ph, i) => (
-                                  <p key={i} className="text-slate-300 flex items-center gap-1"><Phone className="w-3 h-3 text-slate-600 shrink-0" />{ph}</p>
+                                  <p key={i} className="text-slate-300 flex items-center gap-1">
+                                    <Phone className="w-3 h-3 text-slate-600 shrink-0" />
+                                    {ph.label && <span className="text-slate-500">{ph.label}:</span>}
+                                    {ph.number}
+                                  </p>
                                 ))}
                               </div>
                             )}
@@ -1108,6 +1198,9 @@ export function AdminDashboard() {
                             <button onClick={openStats} className="flex items-center justify-center gap-1.5 px-3 py-2 rounded-xl bg-emerald-500/10 hover:bg-emerald-500/20 text-emerald-400 text-xs font-medium transition-colors">
                               <BarChart3 className="w-3.5 h-3.5" />Stats
                             </button>
+                            <button onClick={() => setCatalogLab(lab)} className="flex items-center justify-center gap-1.5 px-3 py-2 rounded-xl bg-teal-500/10 hover:bg-teal-500/20 text-teal-400 text-xs font-medium transition-colors">
+                              <FlaskConical className="w-3.5 h-3.5" />Catalog
+                            </button>
                             <button onClick={() => setExpandedLabIntegration(lab.id)} className="flex items-center justify-center gap-1.5 px-3 py-2 rounded-xl bg-blue-500/10 hover:bg-blue-500/20 text-blue-400 text-xs font-medium transition-colors">
                               <Code2 className="w-3.5 h-3.5" />Dev
                             </button>
@@ -1117,8 +1210,21 @@ export function AdminDashboard() {
                             >
                               <FileText className="w-3.5 h-3.5" />Agreement
                             </button>
+                            <button
+                              onClick={() => setTransferEmailLab(lab)}
+                              className="flex items-center justify-center gap-1.5 px-3 py-2 rounded-xl bg-amber-500/10 hover:bg-amber-500/20 text-amber-400 text-xs font-medium transition-colors"
+                            >
+                              <UserCircle className="w-3.5 h-3.5" />Transfer
+                            </button>
+                            <button
+                              onClick={() => handleToggleSearchHidden(lab)}
+                              disabled={togglingSearchHiddenId === lab.id}
+                              className={`flex items-center justify-center gap-1.5 px-3 py-2 rounded-xl text-xs font-medium transition-colors ${lab.search_hidden ? "bg-orange-500/20 text-orange-400 hover:bg-orange-500/30" : "bg-white/5 hover:bg-orange-500/10 text-slate-300 hover:text-orange-400"}`}
+                            >
+                              <Search className="w-3.5 h-3.5" />{lab.search_hidden ? "In Search" : "Hide Search"}
+                            </button>
                             <div><LabWalletButton labId={lab.id} /></div>
-                            <button onClick={() => handleDeleteLab(lab)} disabled={deletingId === lab.id} className="flex items-center justify-center gap-1.5 px-3 py-2 rounded-xl bg-red-500/10 hover:bg-red-500/20 text-red-400 text-xs font-medium transition-colors">
+                            <button onClick={() => setDeleteConfirmLab(lab)} disabled={deletingId === lab.id} className="flex items-center justify-center gap-1.5 px-3 py-2 rounded-xl bg-red-500/10 hover:bg-red-500/20 text-red-400 text-xs font-medium transition-colors">
                               <Trash2 className="w-3.5 h-3.5" />Delete
                             </button>
                           </div>
@@ -1320,9 +1426,9 @@ export function AdminDashboard() {
                     <div className="min-w-0">
                       <p className="text-sm font-medium text-white truncate">{lab.name}</p>
                       <p className="text-xs text-slate-400 truncate">{lab.email}</p>
-                      {(lab.phones as string[]).length > 0 && (
+                      {parsePhones(lab.phones).length > 0 && (
                         <p className="text-xs text-slate-500 flex items-center gap-1 mt-0.5">
-                          <Phone className="w-3 h-3 shrink-0" />{(lab.phones as string[])[0]}
+                          <Phone className="w-3 h-3 shrink-0" />{parsePhones(lab.phones)[0].number}
                         </p>
                       )}
                     </div>
@@ -1392,7 +1498,7 @@ export function AdminDashboard() {
                       </button>
                       <button
                         type="button"
-                        onClick={() => handleDeleteMarketer(m)}
+                        onClick={() => setDeleteConfirmMarketer(m)}
                         disabled={deletingMarketerId === m.id}
                         title="Delete marketer"
                         className="p-1.5 rounded-lg hover:bg-red-500/15 text-slate-500 hover:text-red-400 transition-colors disabled:opacity-40"
@@ -1456,6 +1562,9 @@ export function AdminDashboard() {
       {editLab && (
         <EditLabModal lab={editLab} onClose={() => setEditLab(null)} onSuccess={() => { setEditLab(null); fetchLabs(); }} />
       )}
+      {catalogLab && (
+        <AdminLabCatalogModal lab={catalogLab} onClose={() => setCatalogLab(null)} />
+      )}
       {selectedReferralGroup && (
         <ReferralDetailModal group={selectedReferralGroup} onClose={() => setSelectedReferralGroup(null)} />
       )}
@@ -1476,6 +1585,33 @@ export function AdminDashboard() {
           lab={sendAgreementLab}
           onClose={() => setSendAgreementLab(null)}
           onSent={(labEmail) => { setSendAgreementLab(null); toast.success(`Agreement invite sent to ${labEmail}`); }}
+        />
+      )}
+      {transferEmailLab && (
+        <TransferEmailModal
+          lab={transferEmailLab}
+          onClose={() => setTransferEmailLab(null)}
+          onSuccess={(newEmail) => {
+            setTransferEmailLab(null);
+            fetchLabs();
+            toast.success(`Email updated to ${newEmail}`);
+          }}
+        />
+      )}
+      {deleteConfirmLab && (
+        <DeleteConfirmModal
+          name={deleteConfirmLab.name}
+          label="lab"
+          onClose={() => setDeleteConfirmLab(null)}
+          onConfirm={() => { setDeleteConfirmLab(null); handleDeleteLab(deleteConfirmLab); }}
+        />
+      )}
+      {deleteConfirmMarketer && (
+        <DeleteConfirmModal
+          name={deleteConfirmMarketer.name}
+          label="marketer"
+          onClose={() => setDeleteConfirmMarketer(null)}
+          onConfirm={() => { setDeleteConfirmMarketer(null); handleDeleteMarketer(deleteConfirmMarketer); }}
         />
       )}
 
@@ -1721,7 +1857,7 @@ function CreateLabModal({ onClose, onSuccess }: { onClose: () => void; onSuccess
   const [email, setEmail] = useState("");
   const [address, setAddress] = useState("");
   const [description, setDescription] = useState("");
-  const [phones, setPhones] = useState("");
+  const [phones, setPhones] = useState<PhoneEntry[]>([{ number: "", label: "" }]);
   const [notificationEmail, setNotificationEmail] = useState("");
   const [slug, setSlug] = useState("");
   const [slugError, setSlugError] = useState("");
@@ -1754,7 +1890,7 @@ function CreateLabModal({ onClose, onSuccess }: { onClose: () => void; onSuccess
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
-    const phoneList = phones.split("\n").map((p) => p.trim()).filter(Boolean);
+    const phoneList = phones.map(p => ({ number: p.number.trim(), label: p.label.trim() })).filter(p => p.number);
     if (!name.trim() || !email.trim() || !address.trim()) {
       toast.error("Name, email and address are required");
       return;
@@ -1848,8 +1984,20 @@ function CreateLabModal({ onClose, onSuccess }: { onClose: () => void; onSuccess
             </div>
             <div>
               <label className="text-sm font-medium text-slate-300 block mb-1">Contact Phone Numbers <span className="text-xs text-slate-500">(optional)</span></label>
-              <textarea rows={2} className={`w-full rounded-xl border px-4 py-2.5 text-sm resize-none focus:outline-none focus:ring-2 focus:ring-medical-500 ${whiteInput}`} placeholder={"+234 800 000 0000\n+234 801 000 0001"} value={phones} onChange={(e) => setPhones(e.target.value)} />
-              <p className="text-xs text-slate-500 mt-1">One per line</p>
+              <div className="space-y-2">
+                {phones.map((entry, i) => (
+                  <PhoneNumberInput
+                    key={i}
+                    entry={entry}
+                    onChange={(v) => { const next = [...phones]; next[i] = v; setPhones(next); }}
+                    onRemove={() => setPhones(phones.filter((_, j) => j !== i))}
+                    showRemove={phones.length > 1}
+                    inputClass={whiteInput}
+                  />
+                ))}
+                <button type="button" onClick={() => setPhones([...phones, { number: "", label: "" }])}
+                  className="text-xs text-medical-400 hover:text-medical-300 transition-colors">+ Add phone number</button>
+              </div>
             </div>
             <div>
               <label className="text-sm font-medium text-slate-300 block mb-1">
@@ -1938,7 +2086,10 @@ function EditLabModal({ lab, onClose, onSuccess }: { lab: Lab; onClose: () => vo
   const [name, setName] = useState(lab.name);
   const [address, setAddress] = useState(lab.address);
   const [description, setDescription] = useState(lab.description ?? "");
-  const [phones, setPhones] = useState((lab.phones as string[]).join("\n"));
+  const [phones, setPhones] = useState<PhoneEntry[]>(() => {
+    const parsed = parsePhones(lab.phones);
+    return parsed.length > 0 ? parsed : [{ number: "", label: "" }];
+  });
   const [notificationEmail, setNotificationEmail] = useState(lab.notification_email ?? "");
   const [slug, setSlug] = useState(lab.slug ?? "");
   const [slugError, setSlugError] = useState("");
@@ -1980,7 +2131,7 @@ function EditLabModal({ lab, onClose, onSuccess }: { lab: Lab; onClose: () => vo
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
-    const phoneList = phones.split("\n").map((p) => p.trim()).filter(Boolean);
+    const phoneList = phones.map(p => ({ number: p.number.trim(), label: p.label.trim() })).filter(p => p.number);
     if (!name.trim() || !address.trim()) {
       toast.error("Name and address are required");
       return;
@@ -2031,8 +2182,21 @@ function EditLabModal({ lab, onClose, onSuccess }: { lab: Lab; onClose: () => vo
             <textarea rows={2} className={`w-full rounded-xl border px-4 py-2.5 text-sm resize-none focus:outline-none focus:ring-2 focus:ring-medical-500 ${whiteInput}`} placeholder="e.g. Specialist diagnostic lab offering 200+ tests" value={description} onChange={(e) => setDescription(e.target.value)} />
           </div>
           <div>
-            <label className="text-sm font-medium text-slate-300 block mb-1">Contact Phone Numbers <span className="text-xs text-slate-500">(optional, one per line)</span></label>
-            <textarea rows={2} className={`w-full rounded-xl border px-4 py-2.5 text-sm resize-none focus:outline-none focus:ring-2 focus:ring-medical-500 ${whiteInput}`} value={phones} onChange={(e) => setPhones(e.target.value)} />
+            <label className="text-sm font-medium text-slate-300 block mb-1">Contact Phone Numbers <span className="text-xs text-slate-500">(optional)</span></label>
+            <div className="space-y-2">
+              {phones.map((entry, i) => (
+                <PhoneNumberInput
+                  key={i}
+                  entry={entry}
+                  onChange={(v) => { const next = [...phones]; next[i] = v; setPhones(next); }}
+                  onRemove={() => setPhones(phones.filter((_, j) => j !== i))}
+                  showRemove={phones.length > 1}
+                  inputClass={whiteInput}
+                />
+              ))}
+              <button type="button" onClick={() => setPhones([...phones, { number: "", label: "" }])}
+                className="text-xs text-medical-400 hover:text-medical-300 transition-colors">+ Add phone number</button>
+            </div>
           </div>
           <div>
             <label className="text-sm font-medium text-slate-300 block mb-1">
@@ -2411,7 +2575,7 @@ function LabBranchModal({ lab, onClose, allLabs }: { lab: Lab; onClose: () => vo
           ) : (
             <div className="space-y-2">
               {branches.map((b) => {
-                const phones = b.branch_lab.phones as string[];
+                const branchPhones = parsePhones(b.branch_lab.phones);
                 return (
                   <div key={b.id} className="bg-white/5 border border-white/10 rounded-xl px-4 py-3">
                     <div className="flex items-start justify-between gap-2">
@@ -2421,7 +2585,7 @@ function LabBranchModal({ lab, onClose, allLabs }: { lab: Lab; onClose: () => vo
                           {b.is_main && <span className="text-xs bg-medical-600/30 text-medical-300 border border-medical-600/30 px-2 py-0.5 rounded-full font-medium shrink-0">Main</span>}
                         </div>
                         {b.branch_lab.address && <p className="text-xs text-slate-400 flex items-center gap-1"><MapPin className="w-3 h-3 shrink-0" />{b.branch_lab.address}</p>}
-                        {phones.slice(0, 2).map((ph, i) => <p key={i} className="text-xs text-slate-500 flex items-center gap-1"><Phone className="w-3 h-3 shrink-0" />{ph}</p>)}
+                        {branchPhones.slice(0, 2).map((ph, i) => <p key={i} className="text-xs text-slate-500 flex items-center gap-1"><Phone className="w-3 h-3 shrink-0" />{ph.label && <span className="text-slate-600">{ph.label}:</span>}{ph.number}</p>)}
                         {b.branch_lab.whatsapp && (() => {
                           let waNumbers: string[] = [];
                           try { const p = JSON.parse(b.branch_lab.whatsapp!); waNumbers = Array.isArray(p) ? p.filter(Boolean) : [b.branch_lab.whatsapp!]; } catch { waNumbers = [b.branch_lab.whatsapp!]; }
@@ -4484,19 +4648,22 @@ function AdminHospitalsTab() {
 // LabWalletButton — provision DVA or show existing account details, per lab card
 // ─────────────────────────────────────────────────────────────────────────────
 function LabWalletButton({ labId }: { labId: string }) {
-  const [state, setState] = useState<"loading" | "idle" | "form" | "done" | "credit-form">("loading");
+  const [state, setState] = useState<"loading" | "idle" | "form" | "done" | "credit-form" | "regen-form">("loading");
   const [phone, setPhone] = useState("");
+  const [regenPhone, setRegenPhone] = useState("");
   const [dva, setDva] = useState<{ bank_name: string | null; account_number: string; account_name: string | null } | null>(null);
   const [balance, setBalance] = useState<number | null>(null);
   const [showDetails, setShowDetails] = useState(false);
   const [copied, setCopied] = useState(false);
   const [creditRef, setCreditRef] = useState("");
+  const [hasCustomer, setHasCustomer] = useState(false);
 
   // Load existing wallet state on mount
   useEffect(() => {
     fetch(`/api/admin/wallet/${labId}`)
       .then((r) => r.json())
       .then((d) => {
+        if (d.paystack_customer_id) setHasCustomer(true);
         if (d.dva_account_number) {
           setDva({ bank_name: d.dva_bank_name, account_number: d.dva_account_number, account_name: d.dva_account_name });
           setBalance(d.balance ?? 0);
@@ -4508,6 +4675,27 @@ function LabWalletButton({ labId }: { labId: string }) {
       .catch(() => setState("idle"));
   }, [labId]);
   const [crediting, setCrediting] = useState(false);
+  const [regenerating, setRegenerating] = useState(false);
+
+  async function regenerate() {
+    setRegenerating(true);
+    try {
+      const res = await fetch(`/api/admin/wallet/regenerate/${labId}`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ phone: regenPhone.trim() || undefined }),
+      });
+      const d = await res.json();
+      if (!res.ok) { toast.error(d.error ?? "Regeneration failed"); return; }
+      setDva({ bank_name: d.dva_bank_name, account_number: d.dva_account_number, account_name: d.dva_account_name });
+      setBalance(d.balance ?? balance);
+      setHasCustomer(true);
+      setState("done");
+      setShowDetails(true);
+      toast.success("DVA regenerated successfully");
+    } catch { toast.error("Network error"); }
+    finally { setRegenerating(false); }
+  }
 
   async function provision() {
     if (!phone.trim()) return;
@@ -4574,14 +4762,58 @@ function LabWalletButton({ labId }: { labId: string }) {
               </div>
               <p className="text-[10px] text-slate-500 mt-0.5">{dva.account_name}</p>
             </div>
-            <button
-              onClick={() => setState("credit-form")}
-              className="w-full flex items-center justify-center gap-1 px-2 py-1 rounded-lg bg-sky-500/10 hover:bg-sky-500/20 text-sky-400 text-[11px] transition-colors"
-            >
-              + Manual credit (missed payment)
-            </button>
+            <div className="flex gap-1.5">
+              <button
+                onClick={() => setState("credit-form")}
+                className="flex-1 flex items-center justify-center gap-1 px-2 py-1 rounded-lg bg-sky-500/10 hover:bg-sky-500/20 text-sky-400 text-[11px] transition-colors"
+              >
+                + Manual credit
+              </button>
+              <button
+                onClick={() => { setRegenPhone(""); setState("regen-form"); }}
+                className="flex-1 flex items-center justify-center gap-1 px-2 py-1 rounded-lg bg-orange-500/10 hover:bg-orange-500/20 text-orange-400 text-[11px] transition-colors"
+                title="Regenerate the dedicated virtual account"
+              >
+                <RefreshCw className="w-2.5 h-2.5" /> Regen DVA
+              </button>
+            </div>
           </div>
         )}
+      </div>
+    );
+  }
+
+  if (state === "regen-form") {
+    return (
+      <div className="col-span-2 space-y-1.5">
+        <p className="text-[10px] text-orange-400 font-semibold">Regenerate DVA</p>
+        {!hasCustomer && (
+          <p className="text-[10px] text-slate-400">No Paystack customer yet — phone required:</p>
+        )}
+        {hasCustomer && (
+          <p className="text-[10px] text-slate-400">Customer exists. Phone optional (updates profile):</p>
+        )}
+        <div className="flex gap-1.5 items-center">
+          <input
+            type="tel"
+            value={regenPhone}
+            onChange={(e) => setRegenPhone(e.target.value)}
+            onKeyDown={(e) => e.key === "Enter" && (hasCustomer || regenPhone.trim()) && regenerate()}
+            placeholder={hasCustomer ? "08012345678 (optional)" : "08012345678 *required"}
+            autoFocus
+            className="flex-1 px-2.5 py-1.5 rounded-lg bg-white/8 border border-white/15 text-white text-xs placeholder-slate-500 focus:outline-none focus:ring-1 focus:ring-orange-400 font-mono"
+          />
+          <button
+            onClick={regenerate}
+            disabled={(!hasCustomer && !regenPhone.trim()) || regenerating}
+            className="px-2.5 py-1.5 rounded-lg bg-orange-500/20 hover:bg-orange-500/30 text-orange-300 text-xs transition-colors disabled:opacity-40 shrink-0"
+          >
+            {regenerating ? <RefreshCw className="w-3 h-3 animate-spin" /> : "Regen"}
+          </button>
+          <button onClick={() => setState(dva ? "done" : "idle")} className="p-1.5 rounded-lg text-slate-500 hover:text-white transition-colors">
+            <X className="w-3 h-3" />
+          </button>
+        </div>
       </div>
     );
   }
@@ -5108,6 +5340,613 @@ function SendAgreementModal({
                 Send to Lab
               </>
             )}
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ── Transfer Email / Ownership Modal ─────────────────────────────────────────
+
+function TransferEmailModal({
+  lab,
+  onClose,
+  onSuccess,
+}: {
+  lab: Lab;
+  onClose: () => void;
+  onSuccess: (newEmail: string) => void;
+}) {
+  const [newEmail, setNewEmail] = useState("");
+  const [confirm, setConfirm] = useState("");
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState("");
+
+  async function handleSave() {
+    if (!newEmail.trim()) { setError("Enter the new email address."); return; }
+    if (newEmail.trim().toLowerCase() !== confirm.trim().toLowerCase()) {
+      setError("The two email addresses do not match."); return;
+    }
+    setSaving(true);
+    setError("");
+    try {
+      const r = await fetch(`/api/admin/labs/${lab.id}/transfer-email`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ new_email: newEmail.trim() }),
+      });
+      const d = await r.json();
+      if (d.success) { onSuccess(d.new_email); }
+      else throw new Error(d.error ?? "Failed");
+    } catch (e: unknown) {
+      setError(e instanceof Error ? e.message : "Failed to update email");
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  return (
+    <div
+      className="fixed inset-0 z-50 flex items-end sm:items-center justify-center p-4"
+      style={{ backgroundColor: "rgba(2,6,23,0.85)", backdropFilter: "blur(6px)" }}
+      onClick={onClose}
+    >
+      <div
+        className="w-full max-w-md bg-slate-900 border border-white/10 rounded-3xl shadow-2xl overflow-hidden"
+        onClick={(e) => e.stopPropagation()}
+      >
+        <div className="flex items-center justify-between px-6 pt-5 pb-4 border-b border-white/8">
+          <div>
+            <h2 className="font-semibold text-white text-sm">Transfer Ownership</h2>
+            <p className="text-xs text-slate-400 mt-0.5">{lab.name}</p>
+          </div>
+          <button onClick={onClose} className="p-2 rounded-lg hover:bg-white/8 text-slate-400 hover:text-white transition-colors">
+            <X className="w-4 h-4" />
+          </button>
+        </div>
+
+        <div className="px-6 py-5 space-y-4">
+          <div className="flex items-start gap-3 bg-amber-500/10 border border-amber-500/20 rounded-xl px-4 py-3">
+            <AlertCircle className="w-4 h-4 text-amber-400 shrink-0 mt-0.5" />
+            <p className="text-xs text-amber-300 leading-relaxed">
+              This changes both the lab contact email and the login credentials for the owner account.
+              The current owner will immediately lose access. Confirm the new address is correct before saving.
+            </p>
+          </div>
+
+          <div>
+            <p className="text-xs text-slate-500 mb-3">
+              Current email: <span className="text-slate-300 font-medium">{lab.email}</span>
+            </p>
+
+            <label className="block text-xs font-semibold text-slate-400 uppercase tracking-wide mb-1.5">
+              New email address
+            </label>
+            <input
+              type="email"
+              value={newEmail}
+              onChange={(e) => { setNewEmail(e.target.value); setError(""); }}
+              placeholder="new@labdomain.com"
+              className="w-full px-3.5 py-2.5 rounded-xl bg-slate-800 border border-white/8 text-white text-sm focus:outline-none focus:ring-2 focus:ring-amber-500/50 placeholder:text-slate-600"
+            />
+          </div>
+
+          <div>
+            <label className="block text-xs font-semibold text-slate-400 uppercase tracking-wide mb-1.5">
+              Confirm new email
+            </label>
+            <input
+              type="email"
+              value={confirm}
+              onChange={(e) => { setConfirm(e.target.value); setError(""); }}
+              placeholder="Retype to confirm"
+              className="w-full px-3.5 py-2.5 rounded-xl bg-slate-800 border border-white/8 text-white text-sm focus:outline-none focus:ring-2 focus:ring-amber-500/50 placeholder:text-slate-600"
+            />
+          </div>
+
+          {error && <p className="text-xs text-red-400">{error}</p>}
+        </div>
+
+        <div className="flex items-center justify-end gap-3 px-6 pb-5">
+          <button onClick={onClose} className="px-4 py-2 rounded-xl text-sm text-slate-400 hover:text-white hover:bg-white/8 transition-colors">
+            Cancel
+          </button>
+          <button
+            onClick={handleSave}
+            disabled={saving || !newEmail.trim() || !confirm.trim()}
+            className="flex items-center gap-2 px-5 py-2 rounded-xl bg-amber-600 hover:bg-amber-500 disabled:opacity-40 text-white text-sm font-medium transition-colors"
+          >
+            {saving
+              ? <><span className="w-3.5 h-3.5 border-2 border-white/30 border-t-white rounded-full animate-spin" />Saving…</>
+              : "Transfer Ownership"
+            }
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ── Admin Lab Catalog Modal ───────────────────────────────────────────────────
+
+type CatalogTest = {
+  id: string;
+  raw_name: string;
+  category_label: string | null;
+  lab_price: number;
+  commission_pct: number | null;
+  poveon_fee: number | null;
+  is_active: boolean;
+  synonyms: string[];
+};
+
+function AdminLabCatalogModal({ lab, onClose }: { lab: Lab; onClose: () => void }) {
+  const [tests, setTests] = useState<CatalogTest[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [search, setSearch] = useState("");
+  const [selected, setSelected] = useState<Set<string>>(new Set());
+  const [uploading, setUploading] = useState(false);
+  const [addingRow, setAddingRow] = useState(false);
+  const [bulkComm, setBulkComm] = useState("");
+  const [showBulkComm, setShowBulkComm] = useState(false);
+  const [editingId, setEditingId] = useState<string | null>(null);
+  const [editVals, setEditVals] = useState<{ raw_name: string; lab_price: string; commission_pct: string; category_label: string }>({ raw_name: "", lab_price: "", commission_pct: "", category_label: "" });
+  const [newRow, setNewRow] = useState({ raw_name: "", lab_price: "", commission_pct: "", category_label: "" });
+  const fileRef = useRef<HTMLInputElement>(null);
+
+  const load = useCallback(async () => {
+    setLoading(true);
+    try {
+      const res = await fetch(`/api/admin/labs/${lab.id}/catalog`);
+      const d = await res.json();
+      if (d.success) setTests(d.tests ?? []);
+    } catch { toast.error("Failed to load catalog"); }
+    finally { setLoading(false); }
+  }, [lab.id]);
+
+  useEffect(() => { load(); }, [load]);
+
+  const visible = useMemo(() => {
+    const q = search.toLowerCase();
+    if (!q) return tests;
+    return tests.filter((t) =>
+      t.raw_name.toLowerCase().includes(q) ||
+      (t.category_label ?? "").toLowerCase().includes(q)
+    );
+  }, [tests, search]);
+
+  function toggleSelect(id: string) {
+    setSelected((prev) => {
+      const next = new Set(prev);
+      next.has(id) ? next.delete(id) : next.add(id);
+      return next;
+    });
+  }
+
+  function toggleAll() {
+    if (selected.size === visible.length) {
+      setSelected(new Set());
+    } else {
+      setSelected(new Set(visible.map((t) => t.id)));
+    }
+  }
+
+  async function handleUpload(file: File) {
+    setUploading(true);
+    try {
+      const fd = new FormData();
+      fd.append("file", file);
+      const res = await fetch(`/api/admin/labs/${lab.id}/catalog/upload`, { method: "POST", body: fd });
+      const d = await res.json();
+      if (!res.ok) { toast.error(d.error ?? "Upload failed"); return; }
+      toast.success(`Imported: ${d.results.created} new, ${d.results.updated} updated${d.results.errors ? `, ${d.results.errors} errors` : ""}`);
+      await load();
+    } catch { toast.error("Network error"); }
+    finally { setUploading(false); }
+  }
+
+  async function handleAddRow() {
+    if (!newRow.raw_name.trim() || !newRow.lab_price.trim()) return;
+    try {
+      const res = await fetch(`/api/admin/labs/${lab.id}/catalog`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          raw_name: newRow.raw_name.trim(),
+          lab_price: parseFloat(newRow.lab_price),
+          commission_pct: newRow.commission_pct ? parseFloat(newRow.commission_pct) : undefined,
+          category_label: newRow.category_label.trim() || undefined,
+        }),
+      });
+      const d = await res.json();
+      if (!res.ok) { toast.error(d.error ?? "Failed"); return; }
+      toast.success("Test added");
+      setNewRow({ raw_name: "", lab_price: "", commission_pct: "", category_label: "" });
+      setAddingRow(false);
+      await load();
+    } catch { toast.error("Network error"); }
+  }
+
+  async function handleSaveEdit(id: string) {
+    try {
+      const res = await fetch(`/api/admin/labs/${lab.id}/catalog/${id}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          raw_name: editVals.raw_name.trim() || undefined,
+          lab_price: editVals.lab_price ? parseFloat(editVals.lab_price) : undefined,
+          commission_pct: editVals.commission_pct ? parseFloat(editVals.commission_pct) : undefined,
+          category_label: editVals.category_label.trim() || null,
+        }),
+      });
+      const d = await res.json();
+      if (!res.ok) { toast.error(d.error ?? "Failed"); return; }
+      setEditingId(null);
+      setTests((prev) => prev.map((t) => t.id === id ? { ...d.test } : t));
+    } catch { toast.error("Network error"); }
+  }
+
+  async function handleToggleActive(t: CatalogTest) {
+    try {
+      const res = await fetch(`/api/admin/labs/${lab.id}/catalog/${t.id}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ is_active: !t.is_active }),
+      });
+      const d = await res.json();
+      if (d.success) setTests((prev) => prev.map((x) => x.id === t.id ? { ...x, is_active: !t.is_active } : x));
+    } catch { toast.error("Network error"); }
+  }
+
+  async function handleDelete(id: string) {
+    try {
+      const res = await fetch(`/api/admin/labs/${lab.id}/catalog/${id}`, { method: "DELETE" });
+      if (!res.ok) { toast.error("Delete failed"); return; }
+      setTests((prev) => prev.filter((t) => t.id !== id));
+      setSelected((prev) => { const n = new Set(prev); n.delete(id); return n; });
+      toast.success("Test removed");
+    } catch { toast.error("Network error"); }
+  }
+
+  async function handleBulkDelete() {
+    if (!selected.size) return;
+    const ids = Array.from(selected);
+    try {
+      const res = await fetch(`/api/admin/labs/${lab.id}/catalog/bulk`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ action: "delete", ids }),
+      });
+      const d = await res.json();
+      if (!res.ok) { toast.error(d.error ?? "Failed"); return; }
+      toast.success(`Deleted ${d.deleted} tests`);
+      setTests((prev) => prev.filter((t) => !ids.includes(t.id)));
+      setSelected(new Set());
+    } catch { toast.error("Network error"); }
+  }
+
+  async function handleBulkCommission() {
+    const pct = parseFloat(bulkComm);
+    if (isNaN(pct) || pct < 0 || pct > 100) { toast.error("Enter a valid commission %"); return; }
+    const ids = Array.from(selected);
+    try {
+      const res = await fetch(`/api/admin/labs/${lab.id}/catalog/bulk`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ action: "set_commission", ids, commission_pct: pct }),
+      });
+      const d = await res.json();
+      if (!res.ok) { toast.error(d.error ?? "Failed"); return; }
+      toast.success(`Updated ${d.updated} tests`);
+      setBulkComm(""); setShowBulkComm(false);
+      await load();
+    } catch { toast.error("Network error"); }
+  }
+
+  return (
+    <div
+      className="fixed inset-0 z-50 flex items-center justify-center p-4"
+      style={{ backgroundColor: "rgba(2,6,23,0.85)", backdropFilter: "blur(6px)" }}
+      onClick={onClose}
+    >
+      <div
+        className="w-full max-w-4xl bg-slate-900 border border-white/10 rounded-3xl shadow-2xl overflow-hidden flex flex-col"
+        style={{ maxHeight: "90vh" }}
+        onClick={(e) => e.stopPropagation()}
+      >
+        {/* Header */}
+        <div className="flex items-center justify-between px-6 pt-5 pb-4 border-b border-white/8 shrink-0">
+          <div>
+            <h2 className="font-semibold text-white text-sm flex items-center gap-2">
+              <FlaskConical className="w-4 h-4 text-teal-400" />
+              Test Catalog — {lab.name}
+            </h2>
+            <p className="text-xs text-slate-400 mt-0.5">{tests.length} test{tests.length !== 1 ? "s" : ""} · {tests.filter((t) => t.is_active).length} active</p>
+          </div>
+          <div className="flex items-center gap-2">
+            <a
+              href={`/api/admin/labs/${lab.id}/catalog/export`}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs text-slate-400 hover:text-white hover:bg-white/8 transition-colors"
+              title="Export as CSV"
+            >
+              <ArrowDownToLine className="w-3.5 h-3.5" />Export CSV
+            </a>
+            <input
+              ref={fileRef}
+              type="file"
+              accept=".csv,.xlsx,.xls"
+              className="hidden"
+              onChange={(e) => { const f = e.target.files?.[0]; if (f) { handleUpload(f); e.target.value = ""; } }}
+            />
+            <button
+              onClick={() => fileRef.current?.click()}
+              disabled={uploading}
+              className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-teal-600/20 hover:bg-teal-600/30 text-teal-300 text-xs font-medium transition-colors disabled:opacity-50"
+            >
+              {uploading ? <RefreshCw className="w-3.5 h-3.5 animate-spin" /> : <Upload className="w-3.5 h-3.5" />}
+              {uploading ? "Importing…" : "Upload CSV / Excel"}
+            </button>
+            <button onClick={onClose} className="p-2 rounded-lg hover:bg-white/8 text-slate-400 hover:text-white transition-colors">
+              <X className="w-4 h-4" />
+            </button>
+          </div>
+        </div>
+
+        {/* Toolbar */}
+        <div className="flex items-center gap-3 px-6 py-3 border-b border-white/5 shrink-0">
+          <div className="relative flex-1">
+            <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-slate-500" />
+            <input
+              value={search}
+              onChange={(e) => setSearch(e.target.value)}
+              placeholder="Search tests…"
+              className="w-full pl-9 pr-4 py-2 rounded-xl bg-white/5 border border-white/8 text-white text-sm placeholder-slate-500 focus:outline-none focus:ring-2 focus:ring-teal-500/40"
+            />
+          </div>
+          <button
+            onClick={() => { setAddingRow((v) => !v); }}
+            className="flex items-center gap-1.5 px-3 py-2 rounded-xl bg-teal-600/20 hover:bg-teal-600/30 text-teal-300 text-xs font-medium transition-colors shrink-0"
+          >
+            <Plus className="w-3.5 h-3.5" />Add test
+          </button>
+          {selected.size > 0 && (
+            <div className="flex items-center gap-2 shrink-0">
+              <span className="text-xs text-slate-400">{selected.size} selected</span>
+              <button
+                onClick={() => setShowBulkComm((v) => !v)}
+                className="px-2.5 py-1.5 rounded-lg bg-sky-500/10 hover:bg-sky-500/20 text-sky-400 text-xs transition-colors"
+              >Set commission</button>
+              <button
+                onClick={handleBulkDelete}
+                className="px-2.5 py-1.5 rounded-lg bg-red-500/10 hover:bg-red-500/20 text-red-400 text-xs transition-colors"
+              >Delete</button>
+            </div>
+          )}
+        </div>
+
+        {/* Bulk commission bar */}
+        {showBulkComm && selected.size > 0 && (
+          <div className="flex items-center gap-2 px-6 py-2 bg-sky-500/5 border-b border-white/5 shrink-0">
+            <span className="text-xs text-sky-300">Set commission % for {selected.size} selected:</span>
+            <input
+              type="number"
+              value={bulkComm}
+              onChange={(e) => setBulkComm(e.target.value)}
+              onKeyDown={(e) => e.key === "Enter" && handleBulkCommission()}
+              placeholder="e.g. 15"
+              className="w-24 px-2.5 py-1 rounded-lg bg-white/8 border border-white/15 text-white text-xs focus:outline-none focus:ring-1 focus:ring-sky-400 font-mono"
+            />
+            <button onClick={handleBulkCommission} className="px-2.5 py-1 rounded-lg bg-sky-500/20 hover:bg-sky-500/30 text-sky-300 text-xs transition-colors">Apply</button>
+            <button onClick={() => setShowBulkComm(false)} className="text-slate-500 hover:text-white text-xs transition-colors">Cancel</button>
+          </div>
+        )}
+
+        {/* Table */}
+        <div className="flex-1 overflow-y-auto">
+          <table className="w-full text-xs">
+            <thead className="sticky top-0 bg-slate-900/95 backdrop-blur-sm border-b border-white/8 z-10">
+              <tr>
+                <th className="w-8 px-3 py-3">
+                  <input type="checkbox" checked={visible.length > 0 && selected.size === visible.length} onChange={toggleAll}
+                    className="rounded border-white/20 bg-white/5 text-teal-500 cursor-pointer" />
+                </th>
+                <th className="px-3 py-3 text-left text-slate-400 font-semibold uppercase tracking-wider">Test Name</th>
+                <th className="px-3 py-3 text-left text-slate-400 font-semibold uppercase tracking-wider">Category</th>
+                <th className="px-3 py-3 text-right text-slate-400 font-semibold uppercase tracking-wider">Price (₦)</th>
+                <th className="px-3 py-3 text-right text-slate-400 font-semibold uppercase tracking-wider">Comm%</th>
+                <th className="px-3 py-3 text-right text-slate-400 font-semibold uppercase tracking-wider">Fee (₦)</th>
+                <th className="px-3 py-3 text-center text-slate-400 font-semibold uppercase tracking-wider">Active</th>
+                <th className="px-3 py-3 w-16" />
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-white/5">
+              {/* Add row */}
+              {addingRow && (
+                <tr className="bg-teal-500/5">
+                  <td className="px-3 py-2" />
+                  <td className="px-3 py-2">
+                    <input autoFocus value={newRow.raw_name} onChange={(e) => setNewRow((p) => ({ ...p, raw_name: e.target.value }))}
+                      placeholder="Test name *" className="w-full bg-white/8 border border-teal-500/40 rounded-lg px-2.5 py-1.5 text-white text-xs focus:outline-none focus:ring-1 focus:ring-teal-400" />
+                  </td>
+                  <td className="px-3 py-2">
+                    <input value={newRow.category_label} onChange={(e) => setNewRow((p) => ({ ...p, category_label: e.target.value }))}
+                      placeholder="Category" className="w-full bg-white/8 border border-white/10 rounded-lg px-2.5 py-1.5 text-white text-xs focus:outline-none" />
+                  </td>
+                  <td className="px-3 py-2">
+                    <input value={newRow.lab_price} onChange={(e) => setNewRow((p) => ({ ...p, lab_price: e.target.value }))} type="number"
+                      placeholder="Price *" className="w-full bg-white/8 border border-teal-500/40 rounded-lg px-2.5 py-1.5 text-white text-xs focus:outline-none text-right font-mono" />
+                  </td>
+                  <td className="px-3 py-2">
+                    <input value={newRow.commission_pct} onChange={(e) => setNewRow((p) => ({ ...p, commission_pct: e.target.value }))} type="number"
+                      placeholder="%" className="w-full bg-white/8 border border-white/10 rounded-lg px-2.5 py-1.5 text-white text-xs focus:outline-none text-right font-mono" />
+                  </td>
+                  <td className="px-3 py-2 text-slate-500 text-right text-xs">auto</td>
+                  <td className="px-3 py-2" />
+                  <td className="px-3 py-2">
+                    <div className="flex items-center gap-1">
+                      <button onClick={handleAddRow} disabled={!newRow.raw_name.trim() || !newRow.lab_price.trim()}
+                        className="p-1 rounded-lg bg-teal-500/20 hover:bg-teal-500/30 text-teal-300 disabled:opacity-40 transition-colors"><Check className="w-3.5 h-3.5" /></button>
+                      <button onClick={() => setAddingRow(false)} className="p-1 rounded-lg text-slate-500 hover:text-white transition-colors"><X className="w-3.5 h-3.5" /></button>
+                    </div>
+                  </td>
+                </tr>
+              )}
+
+              {loading ? (
+                <tr><td colSpan={8} className="text-center py-16 text-slate-500"><RefreshCw className="w-5 h-5 animate-spin inline" /></td></tr>
+              ) : visible.length === 0 ? (
+                <tr><td colSpan={8} className="text-center py-16 text-slate-500">
+                  {search ? "No tests match your search." : "No tests yet. Upload a CSV/Excel or add manually."}
+                </td></tr>
+              ) : visible.map((t) => {
+                const isEditing = editingId === t.id;
+                return (
+                  <tr key={t.id} className={`hover:bg-white/3 transition-colors ${selected.has(t.id) ? "bg-teal-500/5" : ""}`}>
+                    <td className="px-3 py-2.5">
+                      <input type="checkbox" checked={selected.has(t.id)} onChange={() => toggleSelect(t.id)}
+                        className="rounded border-white/20 bg-white/5 text-teal-500 cursor-pointer" />
+                    </td>
+                    {isEditing ? (
+                      <>
+                        <td className="px-3 py-2">
+                          <input value={editVals.raw_name} onChange={(e) => setEditVals((p) => ({ ...p, raw_name: e.target.value }))} autoFocus
+                            className="w-full bg-white/8 border border-teal-500/40 rounded-lg px-2.5 py-1 text-white text-xs focus:outline-none focus:ring-1 focus:ring-teal-400" />
+                        </td>
+                        <td className="px-3 py-2">
+                          <input value={editVals.category_label} onChange={(e) => setEditVals((p) => ({ ...p, category_label: e.target.value }))}
+                            className="w-full bg-white/8 border border-white/10 rounded-lg px-2.5 py-1 text-white text-xs focus:outline-none" />
+                        </td>
+                        <td className="px-3 py-2">
+                          <input value={editVals.lab_price} onChange={(e) => setEditVals((p) => ({ ...p, lab_price: e.target.value }))} type="number"
+                            className="w-full bg-white/8 border border-teal-500/40 rounded-lg px-2.5 py-1 text-white text-xs focus:outline-none text-right font-mono" />
+                        </td>
+                        <td className="px-3 py-2">
+                          <input value={editVals.commission_pct} onChange={(e) => setEditVals((p) => ({ ...p, commission_pct: e.target.value }))} type="number"
+                            className="w-full bg-white/8 border border-white/10 rounded-lg px-2.5 py-1 text-white text-xs focus:outline-none text-right font-mono" />
+                        </td>
+                        <td className="px-3 py-2 text-slate-500 text-right text-xs">recalc</td>
+                        <td />
+                        <td className="px-3 py-2">
+                          <div className="flex items-center gap-1">
+                            <button onClick={() => handleSaveEdit(t.id)} className="p-1 rounded-lg bg-teal-500/20 hover:bg-teal-500/30 text-teal-300 transition-colors"><Check className="w-3.5 h-3.5" /></button>
+                            <button onClick={() => setEditingId(null)} className="p-1 rounded-lg text-slate-500 hover:text-white transition-colors"><X className="w-3.5 h-3.5" /></button>
+                          </div>
+                        </td>
+                      </>
+                    ) : (
+                      <>
+                        <td className="px-3 py-2.5 text-white font-medium max-w-[200px] truncate" title={t.raw_name}>{t.raw_name}</td>
+                        <td className="px-3 py-2.5 text-slate-400 max-w-[120px] truncate">{t.category_label || <span className="text-slate-600">—</span>}</td>
+                        <td className="px-3 py-2.5 text-right font-mono text-slate-200">{Number(t.lab_price).toLocaleString()}</td>
+                        <td className="px-3 py-2.5 text-right font-mono text-slate-400">{t.commission_pct != null ? `${Number(t.commission_pct)}%` : <span className="text-slate-600">—</span>}</td>
+                        <td className="px-3 py-2.5 text-right font-mono text-slate-400">{t.poveon_fee != null ? Number(t.poveon_fee).toLocaleString() : <span className="text-slate-600">—</span>}</td>
+                        <td className="px-3 py-2.5 text-center">
+                          <button onClick={() => handleToggleActive(t)}
+                            className={`w-8 h-4 rounded-full transition-colors relative inline-flex items-center ${t.is_active ? "bg-teal-500" : "bg-white/10"}`}>
+                            <span className={`w-3 h-3 rounded-full bg-white shadow transition-transform absolute ${t.is_active ? "translate-x-4" : "translate-x-0.5"}`} />
+                          </button>
+                        </td>
+                        <td className="px-3 py-2.5">
+                          <div className="flex items-center gap-1">
+                            <button
+                              onClick={() => { setEditingId(t.id); setEditVals({ raw_name: t.raw_name, lab_price: String(t.lab_price), commission_pct: t.commission_pct != null ? String(t.commission_pct) : "", category_label: t.category_label ?? "" }); }}
+                              className="p-1 rounded-lg text-slate-500 hover:text-white hover:bg-white/8 transition-colors"
+                            ><Pencil className="w-3 h-3" /></button>
+                            <button onClick={() => handleDelete(t.id)} className="p-1 rounded-lg text-slate-500 hover:text-red-400 hover:bg-red-500/10 transition-colors"><Trash2 className="w-3 h-3" /></button>
+                          </div>
+                        </td>
+                      </>
+                    )}
+                  </tr>
+                );
+              })}
+            </tbody>
+          </table>
+        </div>
+
+        {/* Footer hint */}
+        <div className="px-6 py-3 border-t border-white/5 shrink-0">
+          <p className="text-[10px] text-slate-600">
+            CSV/Excel columns: <span className="font-mono text-slate-500">test_name</span>, <span className="font-mono text-slate-500">price</span> (required) · optional: <span className="font-mono text-slate-500">category</span>, <span className="font-mono text-slate-500">commission_pct</span>, <span className="font-mono text-slate-500">is_active</span>
+          </p>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ── Delete Confirm Modal ──────────────────────────────────────────────────────
+
+function DeleteConfirmModal({
+  name,
+  label,
+  onClose,
+  onConfirm,
+}: {
+  name: string;
+  label: string;
+  onClose: () => void;
+  onConfirm: () => void;
+}) {
+  const [typed, setTyped] = useState("");
+  const match = typed.trim() === name.trim();
+
+  return (
+    <div
+      className="fixed inset-0 z-50 flex items-end sm:items-center justify-center p-4"
+      style={{ backgroundColor: "rgba(2,6,23,0.85)", backdropFilter: "blur(6px)" }}
+      onClick={onClose}
+    >
+      <div
+        className="w-full max-w-md bg-slate-900 border border-white/10 rounded-3xl shadow-2xl overflow-hidden"
+        onClick={(e) => e.stopPropagation()}
+      >
+        <div className="flex items-center justify-between px-6 pt-5 pb-4 border-b border-white/8">
+          <div>
+            <h2 className="font-semibold text-white text-sm">Delete {label}</h2>
+            <p className="text-xs text-slate-400 mt-0.5">This action is permanent and cannot be undone.</p>
+          </div>
+          <button onClick={onClose} className="p-2 rounded-lg hover:bg-white/8 text-slate-400 hover:text-white transition-colors">
+            <X className="w-4 h-4" />
+          </button>
+        </div>
+
+        <div className="px-6 py-5 space-y-4">
+          <div className="flex items-start gap-3 p-3.5 rounded-xl bg-red-500/10 border border-red-500/20">
+            <AlertCircle className="w-4 h-4 text-red-400 mt-0.5 shrink-0" />
+            <p className="text-xs text-red-300 leading-relaxed">
+              You are about to permanently delete <span className="font-semibold text-white">{name}</span>. All associated data will be removed. Type the name below to confirm.
+            </p>
+          </div>
+
+          <div>
+            <label className="block text-xs font-semibold text-slate-400 uppercase tracking-wide mb-1.5">
+              Type &ldquo;{name}&rdquo; to confirm
+            </label>
+            <input
+              type="text"
+              value={typed}
+              onChange={(e) => setTyped(e.target.value)}
+              placeholder={name}
+              className="w-full px-3.5 py-2.5 rounded-xl bg-slate-800 border border-white/8 text-white text-sm focus:outline-none focus:ring-2 focus:ring-red-500/50 placeholder:text-slate-600"
+            />
+          </div>
+        </div>
+
+        <div className="flex items-center justify-end gap-3 px-6 pb-5">
+          <button onClick={onClose} className="px-4 py-2 rounded-xl text-sm text-slate-400 hover:text-white hover:bg-white/8 transition-colors">
+            Cancel
+          </button>
+          <button
+            onClick={onConfirm}
+            disabled={!match}
+            className="flex items-center gap-2 px-5 py-2 rounded-xl bg-red-600 hover:bg-red-500 disabled:opacity-40 text-white text-sm font-medium transition-colors"
+          >
+            <Trash2 className="w-3.5 h-3.5" />
+            Delete {label}
           </button>
         </div>
       </div>

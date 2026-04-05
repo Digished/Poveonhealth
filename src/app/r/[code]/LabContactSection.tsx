@@ -1,6 +1,7 @@
 "use client";
 
 import { useState } from "react";
+import type { PhoneEntry } from "@/lib/phones";
 
 const PHONE_ICON = (
   <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
@@ -21,7 +22,7 @@ const WA_LARGE = (
 );
 
 interface Props {
-  phones: string[];
+  phones: PhoneEntry[];
   whatsapps: string[];
 }
 
@@ -52,18 +53,18 @@ export default function LabContactSection({ phones, whatsapps }: Props) {
               <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 5a2 2 0 012-2h3.28a1 1 0 01.948.684l1.498 4.493a1 1 0 01-.502 1.21l-2.257 1.13a11.042 11.042 0 005.516 5.516l1.13-2.257a1 1 0 011.21-.502l4.493 1.498a1 1 0 01.684.948V19a2 2 0 01-2 2h-1C9.716 21 3 14.284 3 7V5z" />
               </svg>
-              {p}
+              {p.label ? `${p.label}: ${p.number}` : p.number}
             </button>
           ) : (
             <a
               key={i}
-              href={`tel:${p}`}
+              href={`tel:${p.number}`}
               className="inline-flex items-center gap-1.5 text-xs font-medium text-slate-600 bg-slate-50 hover:bg-slate-100 border border-slate-200 px-3 py-1.5 rounded-full transition"
             >
               <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 5a2 2 0 012-2h3.28a1 1 0 01.948.684l1.498 4.493a1 1 0 01-.502 1.21l-2.257 1.13a11.042 11.042 0 005.516 5.516l1.13-2.257a1 1 0 011.21-.502l4.493 1.498a1 1 0 01.684.948V19a2 2 0 01-2 2h-1C9.716 21 3 14.284 3 7V5z" />
               </svg>
-              {p}
+              {p.label ? `${p.label}: ${p.number}` : p.number}
             </a>
           )
         )}
@@ -105,15 +106,15 @@ export default function LabContactSection({ phones, whatsapps }: Props) {
             <p className="text-xs font-semibold text-slate-400 uppercase tracking-wider mb-4">Contact Lab</p>
             <div className="space-y-3">
               {phones.map((p, i) => (
-                <a key={i} href={`tel:${p}`}
+                <a key={i} href={`tel:${p.number}`}
                   className="flex items-center gap-4 p-4 rounded-2xl border border-slate-100 bg-slate-50 hover:bg-slate-100 transition"
                 >
                   <div className="w-10 h-10 rounded-full bg-slate-200 flex items-center justify-center text-slate-600 shrink-0">
                     {PHONE_ICON}
                   </div>
                   <div>
-                    <p className="text-xs text-slate-400 font-medium">Call</p>
-                    <p className="text-sm font-semibold text-slate-800">{p}</p>
+                    <p className="text-xs text-slate-400 font-medium">{p.label || "Call"}</p>
+                    <p className="text-sm font-semibold text-slate-800">{p.number}</p>
                   </div>
                 </a>
               ))}
@@ -151,9 +152,9 @@ export default function LabContactSection({ phones, whatsapps }: Props) {
           </a>
         ) : phones.length === 1 && whatsapps.length === 0 ? (
           <a
-            href={`tel:${phones[0]}`}
+            href={`tel:${phones[0].number}`}
             className="w-14 h-14 rounded-full bg-white border border-slate-200 shadow-xl flex items-center justify-center text-slate-600 hover:bg-slate-50 transition active:scale-95"
-            title={`Call ${phones[0]}`}
+            title={`Call ${phones[0].number}`}
           >
             {PHONE_ICON}
           </a>

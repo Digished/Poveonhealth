@@ -2,6 +2,9 @@
 // POVEON HEALTH - SHARED TYPESCRIPT TYPES
 // =============================================================================
 
+import type { PhoneEntry } from "./phones";
+export type { PhoneEntry };
+
 export type RequestStatus = "incoming" | "seen" | "done";
 export type Sex = "male" | "female";
 
@@ -12,13 +15,14 @@ export interface Lab {
   slug: string | null;
   address: string;
   description: string;
-  phones: string[];
+  phones: PhoneEntry[];
   email: string;
   notification_email: string | null;
   logo_url: string | null;
   whatsapp: string | null;
   request_email: string | null;
   hidden: boolean;
+  search_hidden: boolean;
   service_categories: string[];
   certifications: string[];
   created_at: string;
@@ -214,7 +218,7 @@ export interface CreateLabPayload {
   name: string;
   email: string;
   address: string;
-  phones: string[];
+  phones: PhoneEntry[];
   tempPassword: string;
 }
 

@@ -74,16 +74,16 @@ export function LabPageNav({ labName, logoUrl }: LabPageNavProps) {
     /* Always-present 52px nav bar — lab logo left, session actions right.
        Sits above <main> in the flex column so it can never overlap the
        form's sticky top-0 header inside main. */
-    <div className="relative z-50 shrink-0 h-[52px] bg-white/90 backdrop-blur-md border-b border-slate-200/60 shadow-sm">
+    <div className="relative z-50 shrink-0 h-[60px] bg-white/90 backdrop-blur-md border-b border-slate-200/60 shadow-sm">
       <div className="max-w-2xl mx-auto w-full px-4 h-full flex items-center justify-between">
 
         {/* Lab logo */}
         <div className="flex items-center shrink-0">
           {logoUrl ? (
             <img src={logoUrl} alt={labName}
-              className="w-8 h-8 rounded-xl object-cover ring-2 ring-white/70 shadow-sm" />
+              className="w-12 h-12 rounded-2xl object-cover ring-2 ring-white/70 shadow-sm" />
           ) : (
-            <PoveonLogo className="w-7 h-7 text-slate-800" />
+            <PoveonLogo className="w-9 h-9 text-slate-800" />
           )}
         </div>
 

@@ -86,7 +86,7 @@ export default async function LabDashboardPage() {
         logo_url: lab.logo_url,
         address: lab.address,
         description: lab.description,
-        phones: lab.phones as string[],
+        phones: lab.phones,
         whatsapp: lab.whatsapp,
         service_categories: lab.service_categories as string[],
         certifications: lab.certifications as string[],

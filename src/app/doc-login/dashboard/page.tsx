@@ -13,6 +13,7 @@ import { PhoneInput } from "@/components/PhoneInput";
 import { HospitalTagInput } from "@/components/ui/HospitalTagInput";
 import { BankAccountInput } from "@/components/BankAccountInput";
 import { PrefixSelect } from "@/components/PrefixSelect";
+import { parsePhones } from "@/lib/phones";
 
 interface Lab {
   id: string;
@@ -100,7 +101,7 @@ function toDateInputValue(iso: string | null) {
 function RequestCard({ req }: { req: Request }) {
   const [expanded, setExpanded] = useState(false);
   const status = STATUS_CONFIG[req.status] ?? STATUS_CONFIG.incoming;
-  const phones = Array.isArray(req.lab.phones) ? req.lab.phones : [];
+  const phones = parsePhones(req.lab.phones);
   const whatsapps: string[] = req.lab.whatsapp
     ? (() => { try { const p = JSON.parse(req.lab.whatsapp!); return Array.isArray(p) ? p.filter(Boolean) : [req.lab.whatsapp!]; } catch { return [req.lab.whatsapp!]; } })()
     : [];
@@ -220,7 +221,9 @@ function RequestCard({ req }: { req: Request }) {
               <div className="flex flex-wrap items-center gap-1.5 text-xs text-slate-500">
                 <Phone className="w-3 h-3 shrink-0" />
                 {phones.map((p, i) => (
-                  <a key={i} href={`tel:${p}`} className="text-medical-600 font-medium">{p}</a>
+                  <a key={i} href={`tel:${p.number}`} className="text-medical-600 font-medium">
+                    {p.label ? `${p.label}: ` : ""}{p.number}
+                  </a>
                 ))}
               </div>
             )}

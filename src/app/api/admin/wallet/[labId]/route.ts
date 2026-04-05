@@ -37,6 +37,7 @@ export async function GET(
     dva_bank_name:       wallet?.dva_bank_name      ?? null,
     dva_account_number:  wallet?.dva_account_number ?? null,
     dva_account_name:    wallet?.dva_account_name   ?? null,
+    paystack_customer_id: wallet?.paystack_customer_id ?? null,
     commission_accrued:  commissionAccrued,
     total_deposited:     totalDeposited,
     credits: (wallet?.credits ?? []).map((c: { id: string; amount: unknown; reference: string; channel: string; sender_name: string | null; sender_bank: string | null; created_at: Date }) => ({

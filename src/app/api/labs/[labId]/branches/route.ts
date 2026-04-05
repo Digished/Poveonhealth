@@ -27,7 +27,7 @@ export async function GET(
         branch_lab_id: b.branch_lab_id,
         name: b.branch_lab!.name,
         address: b.branch_lab!.address,
-        phones: b.branch_lab!.phones as string[],
+        phones: b.branch_lab!.phones,
         whatsapp: b.branch_lab!.whatsapp,
         is_main: b.is_main,
       }));

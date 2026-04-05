@@ -182,7 +182,7 @@ export async function POST(request: NextRequest) {
     }
 
     const labAddress = lab.address ?? "";
-    const labPhones = (lab.phones as string[]) ?? [];
+    const labPhones = (lab.phones as { number: string; label: string }[]) ?? [];
     const brand = lab.notification_email ? { name: lab.name } : undefined;
 
     // Send emails — failures are logged but never block the request response

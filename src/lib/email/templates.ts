@@ -89,12 +89,12 @@ export function doctorRequestConfirmation({
   code: string;
   labName: string;
   labAddress: string;
-  labPhones: string[];
+  labPhones: { number: string; label: string }[];
   tests: string;
   brand?: { name: string };
 }) {
   const phoneLines = labPhones.length
-    ? labPhones.map((p) => `<p style="margin:2px 0;color:#1e3a5f;font-size:15px;font-weight:500;">📞 ${p}</p>`).join("")
+    ? labPhones.map((p) => `<p style="margin:2px 0;color:#1e3a5f;font-size:15px;font-weight:500;">📞 ${p.label ? `${p.label}: ` : ""}${p.number}</p>`).join("")
     : "";
   return base(`
     <h2 style="margin:0 0 8px;color:#0259a0;font-size:20px;font-weight:700;">Lab Request Submitted</h2>
@@ -154,13 +154,13 @@ export function patientRequestCode({
   code: string;
   labName: string;
   labAddress: string;
-  labPhones: string[];
+  labPhones: { number: string; label: string }[];
   testCategories?: string[];
   brand?: { name: string };
   requestPageUrl?: string;
 }) {
   const phoneLines = labPhones.length
-    ? labPhones.map((p) => `<p style="margin:2px 0;color:#1e3a5f;font-size:14px;">📞 ${p}</p>`).join("")
+    ? labPhones.map((p) => `<p style="margin:2px 0;color:#1e3a5f;font-size:14px;">📞 ${p.label ? `${p.label}: ` : ""}${p.number}</p>`).join("")
     : "";
   const greeting = patientName ? `Dear ${patientName},<br><br>` : "";
   const viewRequestButton = requestPageUrl
