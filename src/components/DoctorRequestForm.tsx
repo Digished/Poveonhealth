@@ -718,8 +718,9 @@ export function DoctorRequestForm({
   locations?: Location[];
   initialLabs?: Lab[];
 } = {}) {
-  // Seed module-level cache from SSR-provided data so first open is instant
-  if (initialLabs && !_labsCache) { _labsCache = initialLabs; }
+  // Seed module-level cache from SSR-provided data so first open is instant.
+  // Always refresh cache on page load so admin changes appear immediately.
+  if (initialLabs) { _labsCache = initialLabs; }
   const labPreselected = !!preselectedLabId;
   // hasLocations = true when there are multiple locations to choose from (parent + at least 1 branch)
   const hasLocations = locations.length > 1;
@@ -908,11 +909,12 @@ export function DoctorRequestForm({
     return () => { clearTimeout(timer); controller.abort(); };
   }, [form.doctor_email]); // eslint-disable-line react-hooks/exhaustive-deps
 
-  const fetchLabs = useCallback(() => {
+  const fetchLabs = useCallback((forceRefresh = false) => {
     // Lab-specific pages never show the search — skip entirely
     if (labPreselected) return;
-    // Return cached data instantly if already fetched this session
-    if (_labsCache) { setLabs(_labsCache); setLabsLoading(false); return; }
+    // Return cached data instantly if already fetched this session (unless forced)
+    if (_labsCache && !forceRefresh) { setLabs(_labsCache); setLabsLoading(false); return; }
+    if (forceRefresh) _labsCache = null;
     setLabsLoading(true);
     fetch("/api/labs")
       .then((r) => r.json())
@@ -1449,8 +1451,8 @@ export function DoctorRequestForm({
                   value={form.lab_id}
                   onChange={(id) => set("lab_id", id)}
                   error={errors.lab_id}
-                  onOpen={fetchLabs}
-                  onRefresh={fetchLabs}
+                  onOpen={() => fetchLabs(false)}
+                  onRefresh={() => fetchLabs(true)}
                 />
                 {selectedLab && (
                   <div className="rounded-2xl border border-medical-100 overflow-hidden">
