@@ -458,10 +458,10 @@ function LabDetailsModal({ lab, onClose }: { lab: Lab; onClose: () => void }) {
           {/* Contact */}
           {(() => {
             const phones = parsePhones(lab.phones);
-            const waNumbers: string[] = lab.whatsapp
+            const waNumbers: string[] = (lab.whatsapp
               ? (() => { try { const p = JSON.parse(lab.whatsapp); return Array.isArray(p) ? p : [lab.whatsapp]; } catch { return [lab.whatsapp]; } })()
-              : [];
-            const hasContact = phones.length > 0 || waNumbers.filter(Boolean).length > 0;
+              : []).filter((wa: string) => wa.replace(/\D/g, "").length >= 7);
+            const hasContact = phones.length > 0 || waNumbers.length > 0;
             return hasContact ? (
               <div>
                 <p className="text-xs font-semibold text-slate-400 uppercase tracking-wider mb-2.5">Contact</p>
@@ -1299,10 +1299,10 @@ export function DoctorRequestForm({
         <div className="mb-3">
             {displayLab ? (() => {
               const phones = parsePhones(displayLab.phones);
-              const waNumbers: string[] = displayLab.whatsapp
+              const waNumbers: string[] = (displayLab.whatsapp
                 ? (() => { try { const p = JSON.parse(displayLab.whatsapp!); return Array.isArray(p) ? p : [displayLab.whatsapp!]; } catch { return [displayLab.whatsapp!]; } })()
-                : [];
-              const hasWa = waNumbers.filter(Boolean).length > 0;
+                : []).filter((wa: string) => wa.replace(/\D/g, "").length >= 7);
+              const hasWa = waNumbers.length > 0;
               return (
                 <div className="relative overflow-hidden rounded-2xl border border-medical-100 bg-gradient-to-r from-medical-50 via-white to-sky-50 shadow-sm animate-fade-in-up">
                   <div className="absolute -top-6 -right-6 w-28 h-28 bg-medical-100/40 rounded-full blur-2xl pointer-events-none" />
@@ -2295,10 +2295,10 @@ export function DoctorRequestForm({
           >
             {/* Header */}
             {(() => {
-              const _waCheck: string[] = displayLab.whatsapp
+              const _waCheck: string[] = (displayLab.whatsapp
                 ? (() => { try { const p = JSON.parse(displayLab.whatsapp); return Array.isArray(p) ? p : [displayLab.whatsapp]; } catch { return [displayLab.whatsapp]; } })()
-                : [];
-              const _hasWa = _waCheck.filter(Boolean).length > 0;
+                : []).filter((wa: string) => wa.replace(/\D/g, "").length >= 7);
+              const _hasWa = _waCheck.length > 0;
               return (
                 <div className={`bg-gradient-to-br px-5 pt-5 pb-4 flex items-center gap-3 ${_hasWa ? "from-emerald-50 via-white to-sky-50" : "from-medical-50 via-white to-sky-50"}`}>
                   <div className={`w-10 h-10 rounded-2xl flex items-center justify-center shrink-0 shadow-sm ${_hasWa ? "bg-emerald-600" : "bg-medical-600"}`}>
@@ -2320,13 +2320,13 @@ export function DoctorRequestForm({
             {/* Contact list — WhatsApp first, then phones */}
             <div className="px-4 py-3 space-y-2 pb-5">
               {(() => {
-                const waNumbers: string[] = displayLab.whatsapp
+                const waNumbers: string[] = (displayLab.whatsapp
                   ? (() => { try { const p = JSON.parse(displayLab.whatsapp); return Array.isArray(p) ? p : [displayLab.whatsapp]; } catch { return [displayLab.whatsapp]; } })()
-                  : [];
+                  : []).filter((wa: string) => wa.replace(/\D/g, "").length >= 7);
                 const phones = parsePhones(displayLab.phones);
                 return (
                   <>
-                    {waNumbers.filter(Boolean).map((num, i) => (
+                    {waNumbers.map((num, i) => (
                       <a
                         key={`wa-${i}`}
                         href={`https://wa.me/${num.replace(/\D/g, "")}`}

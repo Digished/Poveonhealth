@@ -39,17 +39,15 @@ export function LabHeroSection({ labName, logoUrl }: LabHeroSectionProps) {
     if (!main) return;
     const sections = main.children;
     if (sections.length >= 2) {
-      // Use scrollTop directly so the hero section is fully out of main's viewport,
-      // which allows the sticky header's logo to appear immediately on desktop.
       const target = sections[1] as HTMLElement;
       main.scrollTo({ top: target.offsetTop, behavior: "smooth" });
     }
   }
 
   return (
-    <div id="lab-hero" className="relative overflow-hidden pt-8 pb-7 px-4">
+    <div id="lab-hero" className="relative overflow-hidden pt-10 pb-8 px-4">
 
-      {/* ── Background layer: blurred logo palette wash ── */}
+      {/* Background layer: blurred logo palette wash */}
       {logoUrl ? (
         <div
           className="absolute inset-0 pointer-events-none"
@@ -71,7 +69,7 @@ export function LabHeroSection({ labName, logoUrl }: LabHeroSectionProps) {
         </div>
       )}
 
-      {/* ── White veil ── */}
+      {/* White veil */}
       <div
         className="absolute inset-0 pointer-events-none"
         aria-hidden="true"
@@ -81,7 +79,7 @@ export function LabHeroSection({ labName, logoUrl }: LabHeroSectionProps) {
         }}
       />
 
-      {/* ── Subtle dot-grid texture ── */}
+      {/* Dot-grid texture */}
       <div
         className="absolute inset-0 pointer-events-none"
         aria-hidden="true"
@@ -92,42 +90,45 @@ export function LabHeroSection({ labName, logoUrl }: LabHeroSectionProps) {
         }}
       />
 
-      {/* ── Content ── */}
+      {/* Content */}
       <div
-        className={`relative z-10 flex flex-col items-center text-center gap-4 max-w-xs sm:max-w-sm mx-auto transition-[opacity,transform] duration-700 ${
+        className={`relative z-10 flex flex-col items-center text-center gap-5 max-w-xs sm:max-w-sm mx-auto transition-[opacity,transform] duration-700 ${
           mounted ? "opacity-100 translate-y-0" : "opacity-0 translate-y-3"
         }`}
       >
         {/* Logo */}
         <div className="relative flex items-center justify-center" style={{ animation: "lab-hero-float 5s ease-in-out infinite" }}>
-          <div className="absolute w-22 h-22 rounded-[28px] bg-sky-100/80 pointer-events-none" aria-hidden="true" style={{ width: 88, height: 88 }} />
-          <div className="absolute rounded-[28px] bg-white/50 backdrop-blur-sm pointer-events-none" aria-hidden="true" style={{ width: 84, height: 84 }} />
+          <div className="absolute rounded-[36px] bg-sky-100/80 pointer-events-none" aria-hidden="true" style={{ width: 128, height: 128 }} />
+          <div className="absolute rounded-[34px] bg-white/50 backdrop-blur-sm pointer-events-none" aria-hidden="true" style={{ width: 122, height: 122 }} />
           {logoUrl ? (
             <img
               src={logoUrl}
               alt={labName}
-              width={76}
-              height={76}
-              className="relative rounded-[22px] object-contain shadow-2xl ring-[3px] ring-white/90"
-              style={{ width: 76, height: 76 }}
+              width={110}
+              height={110}
+              className="relative rounded-[28px] object-contain shadow-2xl ring-[3px] ring-white/90"
+              style={{ width: 110, height: 110 }}
             />
           ) : (
-            <div className="relative rounded-[22px] bg-gradient-to-br from-medical-500 to-sky-400 shadow-2xl flex items-center justify-center ring-[3px] ring-white/80" style={{ width: 76, height: 76 }}>
-              <PoveonLogo className="w-10 h-10 text-white" />
+            <div className="relative rounded-[28px] bg-gradient-to-br from-medical-500 to-sky-400 shadow-2xl flex items-center justify-center ring-[3px] ring-white/80" style={{ width: 110, height: 110 }}>
+              <PoveonLogo className="w-14 h-14 text-white" />
             </div>
           )}
         </div>
 
         {/* Text block */}
-        <div className="space-y-1">
+        <div className="space-y-1.5">
           <p className="text-[10px] font-bold text-slate-400 uppercase tracking-[0.24em]">
-            {GREETING[tod]}
+            Welcome to
           </p>
           <h1 className="text-[26px] sm:text-3xl font-black text-slate-900 tracking-tight leading-[1.1]">
             {labName}
           </h1>
+          <p className="text-sm font-semibold text-slate-600">
+            {GREETING[tod]}
+          </p>
           <p className="text-[13px] text-slate-500 leading-relaxed">
-            What test does your patient need today?
+            What test does your patient need?
           </p>
         </div>
 

@@ -14,7 +14,8 @@ interface Props {
 
 function parseWhatsApp(wa: string | null | undefined): string[] {
   if (!wa) return [];
-  try { const p = JSON.parse(wa); return Array.isArray(p) ? p.filter(Boolean) : [wa]; } catch { return [wa]; }
+  const raw: string[] = (() => { try { const p = JSON.parse(wa); return Array.isArray(p) ? p : [wa]; } catch { return [wa]; } })();
+  return raw.filter((n) => n && n.replace(/\D/g, "").length >= 7);
 }
 
 const STATUS_MAP: Record<string, { label: string; color: string; dot: string }> = {
