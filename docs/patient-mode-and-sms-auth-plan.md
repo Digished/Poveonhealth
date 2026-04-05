@@ -10,8 +10,8 @@
 
 Two interconnected features:
 
-1. **Patient Mode Toggle** — Lab request pages gain a toggle so users can submit as a *Medical Professional* (existing flow) or as a *Patient* (new self-service flow with an AI-powered Health Assistant and category browsing).
-2. **Phone-First SMS Auth** — Patients authenticate with their phone number + SMS OTP (via Termii) when filling the form. They also receive an SMS confirmation with their request code after submission.
+1. **Patient Mode Toggle** — Lab request pages gain a toggle so users can submit as a *Medical Professional* (existing flow) or as a *Patient* (new self-service flow with a Health Assistant and category browsing). No OTP or account needed for self-service — just name, phone, and tests.
+2. **SMS Confirmation** — Patients receive an SMS with their unique request code after submission (via Termii). No auth OTP required for self-service.
 
 ---
 
@@ -37,6 +37,7 @@ A clearly styled toggle/tab strip appears above the form on both the home page a
 - Defaults to **Medical Professionals** (preserves existing UX for the primary user base).
 - Switching to *Patient* unmounts the professional form and mounts `PatientRequestForm`.
 - The selected mode persists in local state only (no URL param needed).
+- UI must be visually consistent with the existing form design (same card style, spacing, typography, colours).
 
 ---
 
@@ -48,7 +49,9 @@ A clearly styled toggle/tab strip appears above the form on both the home page a
 
 ### 1.3 Patient Mode — `PatientRequestForm`
 
-A new, simplified form component designed for patients submitting on their own behalf. No doctor fields. The patient chooses how to identify the tests they need via one of two paths:
+A new, simplified form component designed for patients submitting on their own behalf. **No doctor fields. No OTP. No account creation.** Maximum 3 steps.
+
+The patient chooses how to identify the tests they need via one of two paths:
 
 #### Path A: Health Assistant Chat
 
@@ -90,37 +93,43 @@ Default categories (seeded for all labs, can be customised per lab):
 - Biopsy
 - Others
 
-Patient can also type additional free-text requests in an "Additional Requests" textarea before submitting.
+If a lab has no categories configured yet, the category browser shows a clear message:
+> *"Service categories have not been set up for this lab yet. Please contact the lab directly or use the Health Assistant above."*
 
-Both paths feed into the same final review step.
+Patient can also type additional free-text requests in an "Additional Requests" textarea before proceeding.
+
+Both paths feed into the same patient details step.
 
 ---
 
 ### 1.4 Patient Form Steps
 
+Simple, 3-step flow:
+
 | Step | Content |
 |------|---------|
-| 1 | **Lab Selection** — same as professional Step 1 (pre-filled if on a lab-specific page). Branch selection included. |
-| 2 | **Test Selection** — toggle between *Health Assistant Chat* and *Browse Categories*. Finalise test list. Additional notes textarea. |
-| 3 | **Patient Details** — phone number (primary, with SMS OTP verification), name, DOB, sex. Email optional. |
-| 4 | **Review & Submit** |
+| 1 | **Lab & Test Selection** — Lab selection (pre-filled on lab-specific page) + branch. Then choose tests via *Health Assistant* or *Browse Categories*. Additional notes textarea at the bottom. |
+| 2 | **Your Details** — Phone number (required), full name (required), age (optional). No OTP. No account. No PIN. |
+| 3 | **Review & Submit** — Summary of lab, tests, and patient details. Single "Submit Request" button. |
+
+**Step 1 is skipped** (lab pre-filled) on the unique lab page, so the patient lands directly on test selection.
 
 ---
 
 ### 1.5 Request Creation — Doctor Fields for Self-Service
 
-When a patient submits via the patient form, the following doctor-related fields are populated with placeholder values so the existing `Request` schema is satisfied without a breaking change:
+When a patient submits via the patient form, doctor-related fields are left null/blank so the existing `Request` schema is satisfied without a breaking change:
 
 | Field | Value |
 |-------|-------|
 | `doctor_name` | `"Self Service"` |
-| `doctor_prefix` | `""` (empty) |
-| `doctor_email` | `"self-service@poveonhealth.com"` *(or a platform constant)* |
-| `doctor_hospital` | `""` |
+| `doctor_prefix` | `""` (empty string) |
+| `doctor_email` | `null` |
+| `doctor_hospital` | `null` |
 | `doctor_bank_name` | `null` |
 | `doctor_account_number` | `null` |
 
-The lab dashboard and admin panel can filter or label these requests as **"Self-Service"** in the UI for clarity.
+The lab dashboard and admin panel display these requests with a **"Self-Service"** badge for clarity.
 
 ---
 
@@ -163,13 +172,17 @@ This allows each lab to offer only the service types relevant to them (e.g. a bl
 
 ---
 
-## Feature 2: Phone-First SMS Authentication
+## Feature 2: SMS Confirmation on Request Creation
 
 ### 2.1 Scope
 
+No OTP or phone verification for self-service patients. The phone number is collected purely to:
+1. Send the patient their request code via SMS after submission.
+2. Allow the lab to contact the patient.
+
 | Context | Auth Method |
 |---------|------------|
-| Patient filling form (both home + lab page) | Phone number + SMS OTP (new) |
+| Self-service patient (patient form) | No auth — just name + phone, submit |
 | Doctor filling form (Step 4 patient lookup) | Email lookup — **unchanged** |
 | Doctor portal login | Email OTP — **unchanged** |
 | Lab dashboard login | Supabase Auth — **unchanged** |
@@ -181,97 +194,37 @@ This allows each lab to offer only the service types relevant to them (e.g. a bl
 
 **Why Termii:**
 - Nigerian company; best local delivery rates for NGN mobile numbers (MTN, Airtel, Glo, 9mobile).
-- OTP-specific API with telco-approved message templates (reduces blocking).
 - Simple REST API, no SDK required.
 - Cost-effective at scale vs Twilio for Nigerian traffic.
 
 **Configuration (environment variables to add):**
 ```env
 TERMII_API_KEY=your_api_key_here
-TERMII_SENDER_ID=YourSenderName   # Approved alphanumeric sender ID
+TERMII_SENDER_ID=Poveon
 TERMII_BASE_URL=https://v3.api.termii.com
 ```
 
 **Utility file:** `src/lib/sms/termii.ts`
-- `sendOtp(phone: string, code: string): Promise<void>`
+- `sendSms(phone: string, message: string): Promise<void>`
 - `formatPhone(phone: string): string` — ensures E.164 format for Nigerian numbers
 
 ---
 
-### 2.3 Phone OTP Flow (Patient Form Step 3)
+### 2.3 SMS Confirmation on Request Creation
 
-```
-Patient enters phone number
-        │
-        ▼
-POST /api/patient/send-phone-otp
-  - Validates phone format (E.164)
-  - Generates 6-digit OTP
-  - Hashes & stores in PatientPhoneOtp (10-min TTL, max 3 pending per phone)
-  - Sends SMS via Termii: "Your Poveon Health verification code is: XXXXXX"
-        │
-        ▼
-Patient enters 6-digit code
-        │
-        ▼
-POST /api/patient/verify-phone-otp
-  - Validates code against hash
-  - Marks OTP used
-  - Looks up PatientProfile by phone (if exists, pre-fills name/DOB/sex)
-  - Creates/refreshes PatientSession (7-day, httpOnly cookie)
-  - Returns { verified: true, profile?: PatientProfile }
-        │
-        ▼
-Patient completes remaining details → Review → Submit
-```
-
----
-
-### 2.4 New Database Models
-
-```prisma
-model PatientPhoneOtp {
-  id         String   @id @default(uuid())
-  phone      String
-  code_hash  String
-  expires_at DateTime
-  used       Boolean  @default(false)
-  created_at DateTime @default(now())
-}
-```
-
-**`PatientProfile` changes:**
-- Add `phone` as a unique, indexed field (currently stored but not unique).
-- Keep `email` as-is (not removed — still used in professional form for patient lookup).
-- `PatientSession` gains an optional `patient_phone` field so sessions can be keyed by phone when email is absent.
-
-```prisma
-// PatientProfile — add field:
-phone String? @unique
-
-// PatientSession — add field:
-patient_phone String?
-```
-
-> **Migration note:** Existing profiles may have duplicate phone values (phone wasn't unique before). The migration script must deduplicate (keep most recently updated profile) before adding the unique constraint.
-
----
-
-### 2.5 SMS Confirmation on Request Creation
-
-When a request is successfully created via `POST /api/requests/create`, in addition to the existing emails, an SMS is sent to the patient:
+When a request is successfully created via `POST /api/requests/create`, an SMS is sent to the patient's phone number:
 
 **Message template:**
 ```
-Your lab request at [Lab Name] has been submitted.
+Hi [Name], your lab request at [Lab Name] has been submitted.
 Request Code: [CODE]
 Keep this code to track your request.
 - Poveon Health
 ```
 
-This is non-blocking (same pattern as existing email sends — failures are logged but don't affect the API response).
+This is **non-blocking** (same pattern as existing email sends — failures are logged but never block the API response).
 
-**Implementation location:** `src/app/api/requests/create/route.ts` — add SMS call alongside existing `sendPatientRequestCode()` email call.
+**Implementation location:** `src/app/api/requests/create/route.ts` — add SMS call alongside the existing `sendPatientRequestCode()` email call.
 
 ---
 
@@ -279,28 +232,29 @@ This is non-blocking (same pattern as existing email sends — failures are logg
 
 | # | Task | Touches |
 |---|------|---------|
-| 1 | Add Termii utility (`src/lib/sms/termii.ts`) | New file |
-| 2 | Add `PatientPhoneOtp` model + migrate `PatientProfile.phone` to unique | `prisma/schema.prisma` |
-| 3 | Build `POST /api/patient/send-phone-otp` and `verify-phone-otp` APIs | New API routes |
-| 4 | Add SMS notification in `requests/create` route | `src/app/api/requests/create/route.ts` |
-| 5 | Add `LabServiceCategory` model + seeding script | `prisma/schema.prisma` + seed |
-| 6 | Build category management APIs (`/api/admin/labs/[id]/categories`) | New API routes |
-| 7 | Add category management UI in admin lab panel | `src/components/AdminDashboard.tsx` |
-| 8 | Build `PatientRequestForm` component (phone OTP step + category browser) | New component |
-| 9 | Build `AssistantChat` component (OpenAI streaming, lab catalog context) | New component |
-| 10 | Build `POST /api/labs/[labId]/assistant` endpoint | New API route |
-| 11 | Add mode toggle to home page and unique lab page | `src/app/page.tsx`, `src/app/[labSlug]/page.tsx` |
-| 12 | Label "Self Service" requests in lab dashboard UI | `src/components/LabDashboard.tsx` |
+| 1 | Add Termii SMS utility (`src/lib/sms/termii.ts`) | New file |
+| 2 | Add SMS confirmation in `requests/create` route | `src/app/api/requests/create/route.ts` |
+| 3 | Add `LabServiceCategory` model + migration + seeding script | `prisma/schema.prisma` + seed |
+| 4 | Build category management APIs (`/api/admin/labs/[id]/categories`) | New API routes |
+| 5 | Add category management UI in admin lab panel | `src/components/AdminDashboard.tsx` |
+| 6 | Build `POST /api/labs/[labId]/assistant` endpoint (OpenAI streaming, lab catalog context) | New API route |
+| 7 | Build `PatientRequestForm` component (3 steps: test selection + details + review) | New component |
+| 8 | Build `AssistantChat` sub-component (chat UI, streaming, disclaimer, selectable suggestions) | New component |
+| 9 | Build `TestCategoryBrowser` sub-component (category grid, test selection, additional notes) | New component |
+| 10 | Add mode toggle to home page and unique lab page | `src/app/page.tsx`, `src/app/[labSlug]/page.tsx` |
+| 11 | Label "Self Service" requests in lab dashboard UI | `src/components/LabDashboard.tsx` |
 
 ---
 
-## Open Questions / Decisions Needed
+## Resolved Decisions
 
-- [ ] **SMS sender ID**: What name should appear as the SMS sender? (e.g. "PoveonHealth", "PoveonHlth" — max 11 chars for alphanumeric). Must be pre-approved with Termii.
-- [ ] **Self-service email constant**: Confirm the placeholder email for self-service requests (e.g. `self-service@poveonhealth.com`) — this address should not receive emails.
-- [ ] **Patient PIN on self-service**: Currently patients set a 4-digit PIN after first login. Should self-service patients also be prompted to set a PIN, or skip that step?
-- [ ] **Duplicate phone migration**: If two `PatientProfile` rows share the same phone number, which one wins? (Suggested: keep the one with the most complete profile / most recent `updated_at`.)
-- [ ] **Lab page category fallback**: If a lab has no categories configured yet, should the patient form show all 11 defaults or prompt admin to configure first?
+| Question | Decision |
+|----------|----------|
+| SMS sender ID | `Poveon` (pre-approve with Termii) |
+| Doctor email for self-service | `null` (blank) |
+| Patient OTP / PIN for self-service | None — no auth required for self-service |
+| Duplicate phone migration | Keep most recently updated `PatientProfile` |
+| Category fallback (unconfigured lab) | Show message prompting admin to configure categories |
 
 ---
 
@@ -308,6 +262,7 @@ This is non-blocking (same pattern as existing email sends — failures are logg
 
 - Patient-facing request tracking portal (view request status by code)
 - Lab-to-patient SMS updates (e.g. when results are ready)
-- Professional form phone-first auth
+- Professional form phone auth changes
 - Health Assistant in professional mode
 - WhatsApp OTP as alternative channel
+- Patient account creation or login from the self-service form
