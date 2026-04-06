@@ -37,87 +37,121 @@ export function LabHeroSection({ labName, logoUrl, heroImageUrl, mode = "profess
   }, []);
 
   function scrollToForm() {
+    const target = document.getElementById("form-toggle") as HTMLElement | null;
     const main = document.querySelector("main");
-    if (!main) return;
-    const sections = main.children;
-    if (sections.length >= 2) {
-      const target = sections[1] as HTMLElement;
-      main.scrollTo({ top: target.offsetTop, behavior: "smooth" });
-    }
+    if (!target || !main) return;
+    main.scrollTo({ top: target.offsetTop, behavior: "smooth" });
   }
 
   // ── Hero image variant ────────────────────────────────────────────────────────
   if (heroImageUrl) {
     return (
-      <div id="lab-hero" className="relative overflow-hidden h-dvh flex flex-col">
-        {/* Hero image fills the section */}
-        <img
-          src={heroImageUrl}
-          alt=""
-          aria-hidden="true"
-          className="absolute inset-0 w-full h-full object-cover pointer-events-none"
-        />
+      <div id="lab-hero" className="relative h-dvh overflow-hidden md:flex">
 
-        {/* White gradient overlay — bottom to top */}
-        <div
-          className="absolute inset-0 pointer-events-none"
-          aria-hidden="true"
-          style={{
-            background: "linear-gradient(to top, rgba(255,255,255,0.80) 0%, rgba(255,255,255,0) 100%)",
-          }}
-        />
+        {/* Image — absolute bg on mobile, left half on desktop */}
+        <div className="absolute inset-0 md:static md:inset-auto md:w-1/2 md:flex-shrink-0 md:relative">
+          <img
+            src={heroImageUrl}
+            alt=""
+            aria-hidden="true"
+            className="w-full h-full object-cover pointer-events-none"
+          />
+          {/* Mobile: bottom-to-top white gradient */}
+          <div
+            className="md:hidden absolute inset-0 pointer-events-none"
+            aria-hidden="true"
+            style={{ background: "linear-gradient(to top, rgba(255,255,255,1) 28%, rgba(255,255,255,0) 72%)" }}
+          />
+          {/* Desktop: right-edge fade into white panel */}
+          <div
+            className="hidden md:block absolute inset-y-0 right-0 w-24 pointer-events-none"
+            aria-hidden="true"
+            style={{ background: "linear-gradient(to right, transparent, white)" }}
+          />
+        </div>
 
-        {/* Content over the image — centred in the full-height section */}
+        {/* Content — bottom overlay on mobile, right half on desktop */}
         <div
-          className={`relative z-10 flex flex-col items-center justify-center text-center gap-5 flex-1 px-6 pb-10 pt-16 transition-[opacity,transform] duration-700 ${
+          className={`relative z-10 flex flex-col justify-end md:justify-center md:flex-1 md:bg-white transition-[opacity,transform] duration-700 ${
             mounted ? "opacity-100 translate-y-0" : "opacity-0 translate-y-3"
           }`}
         >
-          {/* Logo — solid white backing, large */}
-          {logoUrl && (
-            <div
-              className="bg-white rounded-[40px] p-3 shadow-2xl"
-              style={{ animation: "lab-hero-float 5s ease-in-out infinite" }}
-            >
-              <img
-                src={logoUrl}
-                alt={labName}
-                width={180}
-                height={180}
-                className="rounded-[30px] object-contain"
-                style={{ width: 180, height: 180 }}
-              />
+          {/* ── Mobile layout ── */}
+          <div className="md:hidden px-5 pb-12">
+            <div className="relative bg-white/95 backdrop-blur-sm rounded-3xl shadow-xl px-5 pt-14 pb-6">
+              {/* Logo: small, pinned to top-left corner of the card, floating */}
+              {logoUrl && (
+                <div
+                  className="absolute -top-9 left-5 bg-white rounded-[18px] p-1.5 shadow-xl"
+                  style={{ animation: "lab-hero-float 5s ease-in-out infinite" }}
+                >
+                  <img
+                    src={logoUrl}
+                    alt={labName}
+                    width={62}
+                    height={62}
+                    className="rounded-[12px] object-contain"
+                    style={{ width: 62, height: 62 }}
+                  />
+                </div>
+              )}
+              <p className="text-[10px] font-extrabold text-slate-400 uppercase tracking-[0.24em]">
+                Welcome to
+              </p>
+              <h1 className="text-3xl font-black text-slate-900 tracking-tight leading-[1.05] mt-1">
+                {labName}
+              </h1>
+              <p className="text-base font-bold text-slate-700 mt-1.5">{GREETING[tod]}</p>
+              <p className="text-sm font-semibold text-slate-500 mt-0.5">Book a lab test today.</p>
             </div>
-          )}
-
-          {/* Text — white backing card */}
-          <div className="bg-white/90 backdrop-blur-sm rounded-2xl px-5 py-3.5 shadow-md space-y-0.5">
-            <p className="text-[10px] font-bold text-slate-400 uppercase tracking-[0.24em]">
-              Welcome to
-            </p>
-            <h1 className="text-[26px] sm:text-3xl font-black text-slate-900 tracking-tight leading-[1.1]">
-              {labName}
-            </h1>
-            <p className="text-sm font-semibold text-slate-600">
-              {GREETING[tod]}
-            </p>
-            <p className="text-[13px] text-slate-500 leading-relaxed">
-              {mode === "patient"
-                ? "What test do you need today?"
-                : "What test does your patient need today?"}
-            </p>
+            <button
+              type="button"
+              onClick={scrollToForm}
+              className="mt-4 w-full flex items-center justify-center gap-2 px-6 py-3.5 bg-slate-900 hover:bg-slate-700 active:scale-95 text-white text-sm font-bold rounded-2xl shadow-lg transition-all"
+            >
+              <FlaskConical className="w-4 h-4" />
+              Create a Lab Request
+              <ChevronDown className="w-4 h-4" />
+            </button>
           </div>
 
-          {/* CTA */}
-          <button
-            type="button"
-            onClick={scrollToForm}
-            className="inline-flex items-center gap-2 px-6 py-3 bg-slate-900 hover:bg-slate-700 active:scale-95 text-white text-sm font-bold rounded-2xl shadow-lg transition-all"
-          >
-            <FlaskConical className="w-4 h-4" />
-            Create a Lab Request
-            <ChevronDown className="w-4 h-4" />
-          </button>
+          {/* ── Desktop layout ── */}
+          <div className="hidden md:flex flex-col gap-6 px-12 max-w-lg">
+            {logoUrl && (
+              <div
+                className="bg-white rounded-[28px] p-2.5 shadow-xl self-start border border-slate-100"
+                style={{ animation: "lab-hero-float 5s ease-in-out infinite" }}
+              >
+                <img
+                  src={logoUrl}
+                  alt={labName}
+                  width={100}
+                  height={100}
+                  className="rounded-[22px] object-contain"
+                  style={{ width: 100, height: 100 }}
+                />
+              </div>
+            )}
+            <div className="space-y-1.5">
+              <p className="text-[10px] font-bold text-slate-400 uppercase tracking-[0.24em]">
+                Welcome to
+              </p>
+              <h1 className="text-4xl font-black text-slate-900 tracking-tight leading-[1.05]">
+                {labName}
+              </h1>
+              <p className="text-base font-semibold text-slate-600">{GREETING[tod]}</p>
+              <p className="text-sm text-slate-500">Book a lab test today.</p>
+            </div>
+            <button
+              type="button"
+              onClick={scrollToForm}
+              className="self-start inline-flex items-center gap-2 px-6 py-3 bg-slate-900 hover:bg-slate-700 active:scale-95 text-white text-sm font-bold rounded-2xl shadow-lg transition-all"
+            >
+              <FlaskConical className="w-4 h-4" />
+              Create a Lab Request
+              <ChevronDown className="w-4 h-4" />
+            </button>
+          </div>
         </div>
       </div>
     );

@@ -46,7 +46,7 @@ export function LabPageContent({
         <LabHeroSection labName={labName} logoUrl={logoUrl} heroImageUrl={heroImageUrl} mode={mode} />
       </div>
 
-      <div className="max-w-2xl mx-auto px-4 pb-2 snap-start snap-always">
+      <div id="form-toggle" className="max-w-2xl mx-auto px-4 pb-2 snap-start snap-always">
         <RequestFormToggle
           preselectedLabId={labId}
           preselectedLabName={labName}
