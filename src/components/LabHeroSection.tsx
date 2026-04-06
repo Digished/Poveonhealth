@@ -49,7 +49,7 @@ export function LabHeroSection({ labName, logoUrl, heroImageUrl, mode = "profess
   // ── Hero image variant ────────────────────────────────────────────────────────
   if (heroImageUrl) {
     return (
-      <div id="lab-hero" className="relative overflow-hidden" style={{ minHeight: 260 }}>
+      <div id="lab-hero" className="relative overflow-hidden h-dvh flex flex-col">
         {/* Hero image fills the section */}
         <img
           src={heroImageUrl}
@@ -67,25 +67,25 @@ export function LabHeroSection({ labName, logoUrl, heroImageUrl, mode = "profess
           }}
         />
 
-        {/* Content over the image */}
+        {/* Content over the image — centred in the full-height section */}
         <div
-          className={`relative z-10 flex flex-col items-center text-center gap-4 max-w-xs sm:max-w-sm mx-auto pt-10 pb-8 px-4 transition-[opacity,transform] duration-700 ${
+          className={`relative z-10 flex flex-col items-center justify-center text-center gap-5 flex-1 px-6 pb-10 pt-16 transition-[opacity,transform] duration-700 ${
             mounted ? "opacity-100 translate-y-0" : "opacity-0 translate-y-3"
           }`}
         >
-          {/* Logo — solid white backing */}
+          {/* Logo — solid white backing, large */}
           {logoUrl && (
             <div
-              className="bg-white rounded-[28px] p-2 shadow-xl"
+              className="bg-white rounded-[40px] p-3 shadow-2xl"
               style={{ animation: "lab-hero-float 5s ease-in-out infinite" }}
             >
               <img
                 src={logoUrl}
                 alt={labName}
-                width={88}
-                height={88}
-                className="rounded-[20px] object-contain"
-                style={{ width: 88, height: 88 }}
+                width={180}
+                height={180}
+                className="rounded-[30px] object-contain"
+                style={{ width: 180, height: 180 }}
               />
             </div>
           )}
