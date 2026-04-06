@@ -128,7 +128,7 @@ export function LabHeroSection({ labName, logoUrl }: LabHeroSectionProps) {
             {GREETING[tod]}
           </p>
           <p className="text-[13px] text-slate-500 leading-relaxed">
-            What test does your patient need?
+            What test do you need today?
           </p>
         </div>
 

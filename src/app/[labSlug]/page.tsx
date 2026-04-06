@@ -81,7 +81,7 @@ export default async function LabSlugPage({ params }: LabSlugPageProps) {
               backgroundPosition: "center",
             }}
           />
-          <div className="absolute inset-0 -z-10 bg-white/50 pointer-events-none" aria-hidden="true" />
+          <div className="absolute inset-0 -z-10 bg-white/20 pointer-events-none" aria-hidden="true" />
         </>
       ) : logoUrl ? (
         <div

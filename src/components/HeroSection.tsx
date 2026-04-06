@@ -186,7 +186,7 @@ export function HeroSection() {
             {GREETING[tod]}
           </h1>
           <p className="text-sm text-slate-500 leading-relaxed max-w-xs">
-            What test does your patient need today?{" "}
+            What test do you need today?{" "}
             <button
               type="button"
               onClick={() => setAboutOpen(true)}

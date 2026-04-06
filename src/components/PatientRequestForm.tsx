@@ -6,8 +6,9 @@ import { toast } from "react-hot-toast";
 import {
   FlaskConical, User, Check, Search, X, ChevronRight, ChevronLeft,
   Building2, MapPin, Loader2, MessageCircle, RefreshCw, Send,
-  ShieldAlert, Sparkles, Grid3X3,
+  ShieldAlert, Sparkles, Grid3X3, Phone,
 } from "lucide-react";
+import { parsePhones } from "@/lib/phones";
 import { Button } from "@/components/ui/Button";
 import { Input, Textarea } from "@/components/ui/Input";
 import { PhoneInput } from "@/components/PhoneInput";
@@ -166,6 +167,7 @@ export function PatientRequestForm(props: PatientRequestFormProps) {
   const [patientPhone, setPatientPhone] = useState("");
   const [patientName, setPatientName] = useState("");
   const [patientAge, setPatientAge] = useState("");
+  const [patientEmail, setPatientEmail] = useState("");
 
   // ── Submission ───────────────────────────────────────────────────────────────
   const [submitting, setSubmitting] = useState(false);
@@ -173,6 +175,7 @@ export function PatientRequestForm(props: PatientRequestFormProps) {
     code: string;
     labName: string;
     labAddress: string;
+    labPhones: { number: string; label: string }[];
   } | null>(null);
 
   // ── Lab loading ──────────────────────────────────────────────────────────────
@@ -276,6 +279,7 @@ export function PatientRequestForm(props: PatientRequestFormProps) {
           branch_id: selectedLocationId || undefined,
           patient_name: patientName,
           patient_phone: patientPhone,
+          patient_email: patientEmail || undefined,
           patient_age: patientAge ? parseInt(patientAge) : undefined,
           tests: selectedTests.join(", "),
           additional_notes: additionalNotes,
@@ -283,7 +287,12 @@ export function PatientRequestForm(props: PatientRequestFormProps) {
       });
       const data = await res.json();
       if (!data.success) { toast.error(data.error || "Failed to submit"); return; }
-      setSuccessData({ code: data.code, labName: data.lab.name, labAddress: data.lab.address });
+      setSuccessData({
+        code: data.code,
+        labName: data.lab.name,
+        labAddress: data.lab.address,
+        labPhones: parsePhones(props.preselectedLabPhones),
+      });
     } catch {
       toast.error("Network error — please try again");
     } finally {
@@ -320,6 +329,24 @@ export function PatientRequestForm(props: PatientRequestFormProps) {
             <p className="text-xs text-slate-500 flex items-start gap-1.5 mt-0.5">
               <MapPin className="w-3 h-3 mt-0.5 shrink-0 text-medical-400" />{successData.labAddress}
             </p>
+          )}
+          {successData.labPhones.length > 0 && (
+            <div className="mt-3 pt-3 border-t border-slate-100">
+              <p className="text-xs font-bold text-slate-400 uppercase tracking-wide mb-2">Contact the Lab</p>
+              <div className="space-y-1.5">
+                {successData.labPhones.map((p, i) => (
+                  <a
+                    key={i}
+                    href={`tel:${p.number}`}
+                    className="flex items-center gap-2 text-sm font-medium text-medical-700 hover:text-medical-900 transition-colors"
+                  >
+                    <Phone className="w-3.5 h-3.5 shrink-0 text-medical-400" />
+                    {p.label ? <><span className="text-slate-500 text-xs">{p.label}:</span> {p.number}</> : p.number}
+                  </a>
+                ))}
+              </div>
+              <p className="text-xs text-slate-400 mt-2">You can also call these numbers if you have any questions.</p>
+            </div>
           )}
         </div>
 
@@ -727,8 +754,9 @@ export function PatientRequestForm(props: PatientRequestFormProps) {
                     }`}>
                       {patientAge.trim() ? <Check className="w-3.5 h-3.5" /> : "3"}
                     </div>
+                    <div className="w-0.5 flex-1 min-h-4 bg-slate-200 mt-1" />
                   </div>
-                  <div className="flex-1 pb-2 min-w-0">
+                  <div className="flex-1 pb-4 min-w-0">
                     <Input
                       label="Age (optional)"
                       type="number"
@@ -738,6 +766,31 @@ export function PatientRequestForm(props: PatientRequestFormProps) {
                       value={patientAge}
                       onChange={(e) => setPatientAge(e.target.value)}
                     />
+                  </div>
+                </div>
+              )}
+
+              {/* Substep 4: Email — reveals after name */}
+              {patientPhone.trim() && patientName.trim() && (
+                <div className="relative flex gap-3 animate-fade-in-up">
+                  <div className="flex flex-col items-center shrink-0 pt-1">
+                    <div className={`w-7 h-7 rounded-full flex items-center justify-center text-xs font-bold border-2 transition-all shrink-0 ${
+                      patientEmail.trim()
+                        ? "bg-emerald-500 border-emerald-500 text-white"
+                        : "bg-white border-slate-300 text-slate-400"
+                    }`}>
+                      {patientEmail.trim() ? <Check className="w-3.5 h-3.5" /> : "4"}
+                    </div>
+                  </div>
+                  <div className="flex-1 pb-2 min-w-0">
+                    <Input
+                      label="Email (optional)"
+                      type="email"
+                      placeholder="your@email.com"
+                      value={patientEmail}
+                      onChange={(e) => setPatientEmail(e.target.value)}
+                    />
+                    <p className="text-xs text-slate-400 mt-1.5">For email confirmations if desired.</p>
                   </div>
                 </div>
               )}
@@ -780,6 +833,7 @@ export function PatientRequestForm(props: PatientRequestFormProps) {
                   <p className="text-sm font-semibold text-slate-800">{patientName}</p>
                   <p className="text-xs text-slate-500 font-mono mt-0.5">{patientPhone}</p>
                   {patientAge && <p className="text-xs text-slate-400 mt-0.5">Age: {patientAge}</p>}
+                  {patientEmail && <p className="text-xs text-slate-400 mt-0.5">{patientEmail}</p>}
                 </div>
               </div>
             </div>

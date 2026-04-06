@@ -53,7 +53,8 @@ export function RequestFormToggle({
           }`}
         >
           <Stethoscope className="w-4 h-4" />
-          Medical Professional
+          <span className="sm:hidden">Doctor</span>
+          <span className="hidden sm:inline">Medical Professional</span>
         </button>
         <button
           onClick={() => setMode("patient")}
