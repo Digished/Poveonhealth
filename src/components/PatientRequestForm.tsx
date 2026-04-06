@@ -484,21 +484,28 @@ export function PatientRequestForm(props: PatientRequestFormProps) {
                   </div>
 
                   {testMode === "categories" && (
-                    <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
-                      {labServiceCategories.map((cat) => (
-                        <button
-                          key={cat}
-                          onClick={() => addTest(cat)}
-                          className={`p-3 rounded-lg text-center text-sm font-medium transition-all ${
-                            selectedTests.includes(cat)
-                              ? "bg-medical-600 text-white border-2 border-medical-700"
-                              : "bg-slate-100 text-slate-700 border-2 border-transparent hover:bg-slate-200"
-                          }`}
-                        >
-                          {cat}
-                        </button>
-                      ))}
-                    </div>
+                    labServiceCategories.length === 0 ? (
+                      <div className="rounded-xl border border-amber-200 bg-amber-50 px-4 py-5 text-center">
+                        <p className="text-sm font-medium text-amber-800">No service categories configured</p>
+                        <p className="text-xs text-amber-600 mt-1">Please use the Health Assistant or contact the lab directly. Admins can configure categories in the dashboard.</p>
+                      </div>
+                    ) : (
+                      <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
+                        {labServiceCategories.map((cat) => (
+                          <button
+                            key={cat}
+                            onClick={() => addTest(cat)}
+                            className={`p-3 rounded-lg text-center text-sm font-medium transition-all ${
+                              selectedTests.includes(cat)
+                                ? "bg-medical-600 text-white border-2 border-medical-700"
+                                : "bg-slate-100 text-slate-700 border-2 border-transparent hover:bg-slate-200"
+                            }`}
+                          >
+                            {cat}
+                          </button>
+                        ))}
+                      </div>
+                    )
                   )}
 
                   {testMode === "assistant" && (

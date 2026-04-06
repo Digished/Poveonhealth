@@ -19,6 +19,10 @@ const migrations = [
     desc: "labs.search_hidden column",
     sql: `ALTER TABLE labs ADD COLUMN IF NOT EXISTS search_hidden BOOLEAN NOT NULL DEFAULT false`,
   },
+  {
+    desc: "requests.doctor_email nullable (self-service patient requests)",
+    sql: `ALTER TABLE requests ALTER COLUMN doctor_email DROP NOT NULL`,
+  },
 ];
 
 let failed = false;
