@@ -159,7 +159,7 @@ function AboutModal({ onClose }: { onClose: () => void }) {
   );
 }
 
-export function HeroSection() {
+export function HeroSection({ mode = "professional" }: { mode?: "professional" | "patient" }) {
   const [tod, setTod] = useState<TimeOfDay>("morning");
   const [aboutOpen, setAboutOpen] = useState(false);
 
@@ -186,7 +186,9 @@ export function HeroSection() {
             {GREETING[tod]}
           </h1>
           <p className="text-sm text-slate-500 leading-relaxed max-w-xs">
-            What test do you need today?{" "}
+            {mode === "patient"
+              ? "What test do you need today?"
+              : "What test does your patient need today?"}{" "}
             <button
               type="button"
               onClick={() => setAboutOpen(true)}

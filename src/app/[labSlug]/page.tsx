@@ -1,11 +1,10 @@
 import { notFound } from "next/navigation";
 import { prisma } from "@/lib/prisma";
-import { RequestFormToggle } from "@/components/RequestFormToggle";
 import { TrustIndicators } from "@/components/TrustIndicators";
 import { PoveonLogo } from "@/components/PoveonLogo";
 import { LabSplash } from "@/components/LabSplash";
 import { LabPageNav } from "@/components/LabPageNav";
-import { LabHeroSection } from "@/components/LabHeroSection";
+import { LabPageContent } from "@/components/LabPageContent";
 
 interface LabSlugPageProps {
   params: { labSlug: string };
@@ -68,7 +67,7 @@ export default async function LabSlugPage({ params }: LabSlugPageProps) {
   const heroImageUrl = lab.hero_image_url ?? null;
 
   return (
-    <div className="relative h-dvh flex flex-col bg-slate-50 overflow-hidden">
+    <div className={`relative h-dvh flex flex-col overflow-hidden ${heroImageUrl ? "bg-black" : "bg-slate-50"}`}>
       {/* Branded background — hero image takes priority, then logo blur, then gradient */}
       {heroImageUrl ? (
         <>
@@ -125,20 +124,15 @@ export default async function LabSlugPage({ params }: LabSlugPageProps) {
 
       {/* Scrollable content area */}
       <main className="flex-1 overflow-y-auto overflow-x-hidden snap-y snap-mandatory">
-        <div className="w-full snap-start snap-always">
-          <LabHeroSection labName={lab.name} logoUrl={logoUrl} />
-        </div>
-
-        <div className="max-w-2xl mx-auto px-4 pb-2 snap-start snap-always">
-          <RequestFormToggle
-            preselectedLabId={lab.id}
-            preselectedLabName={lab.name}
-            preselectedLabAddress={lab.address}
-            preselectedServiceCategories={(lab.service_categories as string[]) ?? []}
-            preselectedLabPhones={lab.phones}
-            locations={locations}
-          />
-        </div>
+        <LabPageContent
+          labId={lab.id}
+          labName={lab.name}
+          labAddress={lab.address}
+          labServiceCategories={(lab.service_categories as string[]) ?? []}
+          labPhones={lab.phones}
+          logoUrl={logoUrl}
+          locations={locations}
+        />
 
         <div className="w-full border-t border-white/60 bg-white/30 backdrop-blur-sm mt-4">
           <div className="max-w-2xl mx-auto px-4 py-4">

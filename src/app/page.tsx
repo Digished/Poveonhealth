@@ -1,8 +1,7 @@
-import { RequestFormToggle } from "@/components/RequestFormToggle";
 import { TrustIndicators } from "@/components/TrustIndicators";
 import { PoveonLogo } from "@/components/PoveonLogo";
 import { Navbar } from "@/components/Navbar";
-import { HeroSection } from "@/components/HeroSection";
+import { HomePageContent } from "@/components/HomePageContent";
 import { prisma } from "@/lib/prisma";
 
 export default async function HomePage() {
@@ -30,14 +29,7 @@ export default async function HomePage() {
 
       {/* Scrollable content area */}
       <main className="flex-1 overflow-y-auto overflow-x-hidden snap-y snap-mandatory">
-        <div className="w-full snap-start snap-always">
-          <HeroSection />
-        </div>
-
-        <div className="max-w-2xl mx-auto px-4 pb-2 snap-start snap-always">
-          {/* eslint-disable-next-line @typescript-eslint/no-explicit-any */}
-          <RequestFormToggle initialLabs={labsData as any} />
-        </div>
+        <HomePageContent initialLabs={labsData as any} />
 
         {/* Trust indicators strip */}
         <div className="w-full border-t border-sky-100/60 bg-sky-50/40 mt-4">

@@ -16,6 +16,7 @@ interface RequestFormToggleProps {
   preselectedLabAddress?: string;
   preselectedServiceCategories?: string[];
   preselectedLabPhones?: unknown;
+  onModeChange?: (mode: "professional" | "patient") => void;
   locations?: Array<{
     lab_id: string;
     lab_branch_id: string | null;
@@ -36,16 +37,22 @@ export function RequestFormToggle({
   preselectedLabAddress,
   preselectedServiceCategories,
   preselectedLabPhones,
+  onModeChange,
   locations,
 }: RequestFormToggleProps) {
   const [mode, setMode] = useState<Mode>("professional");
+
+  const handleModeChange = (next: Mode) => {
+    setMode(next);
+    onModeChange?.(next);
+  };
 
   return (
     <div className="space-y-3">
       {/* Mode toggle */}
       <div className="flex gap-2 bg-white/60 backdrop-blur-sm border border-slate-200 rounded-2xl p-1">
         <button
-          onClick={() => setMode("professional")}
+          onClick={() => handleModeChange("professional")}
           className={`flex-1 flex items-center justify-center gap-2 py-2.5 rounded-xl text-sm font-semibold transition-all ${
             mode === "professional"
               ? "bg-slate-800 text-white shadow-sm"
@@ -57,7 +64,7 @@ export function RequestFormToggle({
           <span className="hidden sm:inline">Medical Professional</span>
         </button>
         <button
-          onClick={() => setMode("patient")}
+          onClick={() => handleModeChange("patient")}
           className={`flex-1 flex items-center justify-center gap-2 py-2.5 rounded-xl text-sm font-semibold transition-all ${
             mode === "patient"
               ? "bg-medical-600 text-white shadow-sm"

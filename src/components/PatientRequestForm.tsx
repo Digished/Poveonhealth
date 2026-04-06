@@ -291,7 +291,7 @@ export function PatientRequestForm(props: PatientRequestFormProps) {
         code: data.code,
         labName: data.lab.name,
         labAddress: data.lab.address,
-        labPhones: parsePhones(props.preselectedLabPhones),
+        labPhones: parsePhones(data.lab.phones),
       });
     } catch {
       toast.error("Network error — please try again");

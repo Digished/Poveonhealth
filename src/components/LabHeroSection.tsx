@@ -23,9 +23,10 @@ const GREETING: Record<TimeOfDay, string> = {
 interface LabHeroSectionProps {
   labName: string;
   logoUrl?: string | null;
+  mode?: "professional" | "patient";
 }
 
-export function LabHeroSection({ labName, logoUrl }: LabHeroSectionProps) {
+export function LabHeroSection({ labName, logoUrl, mode = "professional" }: LabHeroSectionProps) {
   const [tod, setTod] = useState<TimeOfDay>("morning");
   const [mounted, setMounted] = useState(false);
 
@@ -128,7 +129,9 @@ export function LabHeroSection({ labName, logoUrl }: LabHeroSectionProps) {
             {GREETING[tod]}
           </p>
           <p className="text-[13px] text-slate-500 leading-relaxed">
-            What test do you need today?
+            {mode === "patient"
+              ? "What test do you need today?"
+              : "What test does your patient need today?"}
           </p>
         </div>
 
