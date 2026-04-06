@@ -73,22 +73,25 @@ export function LabHeroSection({ labName, logoUrl, heroImageUrl, mode = "profess
             mounted ? "opacity-100 translate-y-0" : "opacity-0 translate-y-3"
           }`}
         >
-          {/* Logo */}
+          {/* Logo — solid white backing */}
           {logoUrl && (
-            <div style={{ animation: "lab-hero-float 5s ease-in-out infinite" }}>
+            <div
+              className="bg-white rounded-[28px] p-2 shadow-xl"
+              style={{ animation: "lab-hero-float 5s ease-in-out infinite" }}
+            >
               <img
                 src={logoUrl}
                 alt={labName}
-                width={96}
-                height={96}
-                className="rounded-[24px] object-contain shadow-2xl ring-[3px] ring-white"
-                style={{ width: 96, height: 96 }}
+                width={88}
+                height={88}
+                className="rounded-[20px] object-contain"
+                style={{ width: 88, height: 88 }}
               />
             </div>
           )}
 
-          {/* Text */}
-          <div className="space-y-1">
+          {/* Text — white backing card */}
+          <div className="bg-white/90 backdrop-blur-sm rounded-2xl px-5 py-3.5 shadow-md space-y-0.5">
             <p className="text-[10px] font-bold text-slate-400 uppercase tracking-[0.24em]">
               Welcome to
             </p>
