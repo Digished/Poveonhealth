@@ -110,7 +110,7 @@ export async function POST(request: NextRequest) {
     } catch { /* non-critical */ }
 
     // Email doctor when done
-    if (status === "done") {
+    if (status === "done" && req.doctor_email) {
       const brand = req.lab.notification_email ? { name: req.lab.name } : undefined;
       resend.emails.send({
         from:    labSender(req.lab),

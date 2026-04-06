@@ -58,9 +58,10 @@ export async function GET(
         })
       : [];
 
-    // Group by doctor email
+    // Group by doctor email (skip self-service requests with no doctor email)
     const byDoctor = new Map<string, typeof requests>();
     for (const r of requests) {
+      if (!r.doctor_email) continue;
       if (!byDoctor.has(r.doctor_email)) byDoctor.set(r.doctor_email, []);
       byDoctor.get(r.doctor_email)!.push(r);
     }

@@ -81,6 +81,7 @@ export async function GET(req: NextRequest) {
     type ReqRow = typeof requests[number];
     const byDoctor = new Map<string, { doctor_name: string; doctor_phone: string | null; doctor_hospital: string | null; requests: ReqRow[] }>();
     for (const r of requests) {
+      if (!r.doctor_email) continue; // skip self-service patient requests
       if (!byDoctor.has(r.doctor_email)) {
         byDoctor.set(r.doctor_email, { doctor_name: r.doctor_name, doctor_phone: r.doctor_phone, doctor_hospital: r.doctor_hospital, requests: [] });
       }

@@ -57,7 +57,7 @@ export async function GET(request: NextRequest) {
       .sort((a, b) => b.total - a.total);
 
     // Enrich requests with live DoctorProfile data
-    const doctorEmails = Array.from(new Set(requests.map((r) => r.doctor_email)));
+    const doctorEmails = Array.from(new Set(requests.map((r) => r.doctor_email).filter((e): e is string => !!e)));
     const doctorProfiles = await prisma.doctorProfile.findMany({
       where: { email: { in: doctorEmails } },
       select: { email: true, prefix: true, full_name: true, phone: true, hospitals: true, bank_name: true, account_number: true, account_name: true },
@@ -65,7 +65,7 @@ export async function GET(request: NextRequest) {
     const profileByEmail = new Map(doctorProfiles.map((p) => [p.email, p]));
 
     const enrichedRequests = requests.map((r) => {
-      const lp = profileByEmail.get(r.doctor_email);
+      const lp = r.doctor_email ? profileByEmail.get(r.doctor_email) : undefined;
       if (!lp) return r;
       return {
         ...r,
