@@ -1955,7 +1955,11 @@ export function LabDashboard({ lab, isOwner = false, roleName = "Lab Owner", can
                             <div className="flex flex-wrap items-center gap-x-4 gap-y-1 text-xs text-slate-400">
                               <span className="flex items-center gap-1">
                                 <Stethoscope className="w-3 h-3" />
-                                {[req.doctor_prefix, req.doctor_name].filter(Boolean).join(" ")}
+                                {req.doctor_name === "Self Service" ? (
+                                  <span className="text-emerald-400 font-semibold">Self-Service Patient</span>
+                                ) : (
+                                  [req.doctor_prefix, req.doctor_name].filter(Boolean).join(" ")
+                                )}
                               </span>
                               <span className="flex items-center gap-1">
                                 <Calendar className="w-3 h-3" />

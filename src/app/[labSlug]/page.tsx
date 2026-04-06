@@ -1,6 +1,6 @@
 import { notFound } from "next/navigation";
 import { prisma } from "@/lib/prisma";
-import { DoctorRequestForm } from "@/components/DoctorRequestForm";
+import { RequestFormToggle } from "@/components/RequestFormToggle";
 import { TrustIndicators } from "@/components/TrustIndicators";
 import { PoveonLogo } from "@/components/PoveonLogo";
 import { LabSplash } from "@/components/LabSplash";
@@ -18,7 +18,7 @@ export default async function LabSlugPage({ params }: LabSlugPageProps) {
       id: true, name: true, hidden: true,
       address: true, phones: true, whatsapp: true,
       email: true, request_email: true,
-      logo_url: true,
+      logo_url: true, service_categories: true,
     },
   });
 
@@ -116,9 +116,12 @@ export default async function LabSlugPage({ params }: LabSlugPageProps) {
         </div>
 
         <div className="max-w-2xl mx-auto px-4 pb-2 snap-start snap-always">
-          <DoctorRequestForm
+          <RequestFormToggle
             preselectedLabId={lab.id}
             preselectedLabName={lab.name}
+            preselectedLabAddress={lab.address}
+            preselectedServiceCategories={(lab.service_categories as string[]) ?? []}
+            preselectedLabPhones={lab.phones}
             locations={locations}
           />
         </div>
