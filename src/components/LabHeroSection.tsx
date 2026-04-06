@@ -40,13 +40,15 @@ export function LabHeroSection({ labName, logoUrl, heroImageUrl, mode = "profess
     const target = document.getElementById("form-toggle") as HTMLElement | null;
     const main = document.querySelector("main");
     if (!target || !main) return;
-    main.scrollTo({ top: target.offsetTop, behavior: "smooth" });
+    const mainRect = main.getBoundingClientRect();
+    const targetRect = target.getBoundingClientRect();
+    main.scrollTo({ top: main.scrollTop + (targetRect.top - mainRect.top), behavior: "smooth" });
   }
 
   // ── Hero image variant ────────────────────────────────────────────────────────
   if (heroImageUrl) {
     return (
-      <div id="lab-hero" className="relative h-dvh overflow-hidden md:flex">
+      <div id="lab-hero" className="relative h-dvh overflow-hidden flex flex-col md:flex-row">
 
         {/* Image — absolute bg on mobile, left half on desktop */}
         <div className="absolute inset-0 md:static md:inset-auto md:w-1/2 md:flex-shrink-0 md:relative">
@@ -72,7 +74,7 @@ export function LabHeroSection({ labName, logoUrl, heroImageUrl, mode = "profess
 
         {/* Content — bottom overlay on mobile, right half on desktop */}
         <div
-          className={`relative z-10 flex flex-col justify-end md:justify-center md:flex-1 md:bg-white transition-[opacity,transform] duration-700 ${
+          className={`relative z-10 flex flex-col flex-1 justify-end md:justify-center md:bg-white transition-[opacity,transform] duration-700 ${
             mounted ? "opacity-100 translate-y-0" : "opacity-0 translate-y-3"
           }`}
         >
