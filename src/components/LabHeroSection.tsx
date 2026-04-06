@@ -23,10 +23,11 @@ const GREETING: Record<TimeOfDay, string> = {
 interface LabHeroSectionProps {
   labName: string;
   logoUrl?: string | null;
+  heroImageUrl?: string | null;
   mode?: "professional" | "patient";
 }
 
-export function LabHeroSection({ labName, logoUrl, mode = "professional" }: LabHeroSectionProps) {
+export function LabHeroSection({ labName, logoUrl, heroImageUrl, mode = "professional" }: LabHeroSectionProps) {
   const [tod, setTod] = useState<TimeOfDay>("morning");
   const [mounted, setMounted] = useState(false);
 
@@ -45,6 +46,72 @@ export function LabHeroSection({ labName, logoUrl, mode = "professional" }: LabH
     }
   }
 
+  // ── Hero image variant ────────────────────────────────────────────────────────
+  if (heroImageUrl) {
+    return (
+      <div id="lab-hero" className="relative overflow-hidden" style={{ minHeight: 260 }}>
+        {/* Hero image fills the section */}
+        <img
+          src={heroImageUrl}
+          alt=""
+          aria-hidden="true"
+          className="absolute inset-0 w-full h-full object-cover pointer-events-none"
+        />
+
+        {/* Content over the image */}
+        <div
+          className={`relative z-10 flex flex-col items-center text-center gap-4 max-w-xs sm:max-w-sm mx-auto pt-10 pb-8 px-4 transition-[opacity,transform] duration-700 ${
+            mounted ? "opacity-100 translate-y-0" : "opacity-0 translate-y-3"
+          }`}
+        >
+          {/* Logo */}
+          {logoUrl && (
+            <div style={{ animation: "lab-hero-float 5s ease-in-out infinite" }}>
+              <img
+                src={logoUrl}
+                alt={labName}
+                width={96}
+                height={96}
+                className="rounded-[24px] object-contain shadow-2xl ring-[3px] ring-white"
+                style={{ width: 96, height: 96 }}
+              />
+            </div>
+          )}
+
+          {/* Text */}
+          <div className="space-y-1">
+            <p className="text-[10px] font-bold text-white/70 uppercase tracking-[0.24em] drop-shadow">
+              Welcome to
+            </p>
+            <h1 className="text-[26px] sm:text-3xl font-black text-white tracking-tight leading-[1.1] drop-shadow-lg">
+              {labName}
+            </h1>
+            <p className="text-sm font-semibold text-white/90 drop-shadow">
+              {GREETING[tod]}
+            </p>
+            <p className="text-[13px] text-white/80 leading-relaxed drop-shadow">
+              {mode === "patient"
+                ? "What test do you need today?"
+                : "What test does your patient need today?"}
+            </p>
+          </div>
+
+          {/* CTA */}
+          <button
+            type="button"
+            onClick={scrollToForm}
+            className="inline-flex items-center gap-2 px-6 py-3 bg-white hover:bg-slate-50 active:scale-95 text-slate-900 text-sm font-bold rounded-2xl shadow-lg transition-all"
+          >
+            <FlaskConical className="w-4 h-4" />
+            Create a Lab Request
+            <ChevronDown className="w-4 h-4" />
+          </button>
+        </div>
+      </div>
+    );
+  }
+
+  // ── Default variant (logo blur / gradient background) ─────────────────────
   return (
     <div id="lab-hero" className="relative overflow-hidden pt-10 pb-8 px-4">
 

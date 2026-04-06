@@ -67,22 +67,9 @@ export default async function LabSlugPage({ params }: LabSlugPageProps) {
   const heroImageUrl = lab.hero_image_url ?? null;
 
   return (
-    <div className={`relative h-dvh flex flex-col overflow-hidden ${heroImageUrl ? "bg-black" : "bg-slate-50"}`}>
-      {/* Branded background — hero image takes priority, then logo blur, then gradient */}
-      {heroImageUrl ? (
-        <>
-          <div
-            className="absolute inset-0 -z-10 pointer-events-none"
-            aria-hidden="true"
-            style={{
-              backgroundImage: `url(${heroImageUrl})`,
-              backgroundSize: "cover",
-              backgroundPosition: "center",
-            }}
-          />
-          <div className="absolute inset-0 -z-10 bg-white/20 pointer-events-none" aria-hidden="true" />
-        </>
-      ) : logoUrl ? (
+    <div className="relative h-dvh flex flex-col bg-slate-50 overflow-hidden">
+      {/* Branded background — logo blur wash or soft gradient (no hero image at page level) */}
+      {logoUrl ? (
         <div
           className="absolute inset-0 -z-10 pointer-events-none"
           aria-hidden="true"
@@ -107,8 +94,7 @@ export default async function LabSlugPage({ params }: LabSlugPageProps) {
           }}
         />
       )}
-      {/* Lighter veil so brand colours actually show through (only when no hero image) */}
-      {!heroImageUrl && <div className="absolute inset-0 -z-10 bg-white/30 pointer-events-none" aria-hidden="true" />}
+      <div className="absolute inset-0 -z-10 bg-white/30 pointer-events-none" aria-hidden="true" />
 
       {/* Branded splash */}
       <LabSplash logoUrl={logoUrl} labName={lab.name} />
@@ -131,6 +117,7 @@ export default async function LabSlugPage({ params }: LabSlugPageProps) {
           labServiceCategories={(lab.service_categories as string[]) ?? []}
           labPhones={lab.phones}
           logoUrl={logoUrl}
+          heroImageUrl={heroImageUrl}
           locations={locations}
         />
 

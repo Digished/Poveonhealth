@@ -14,6 +14,7 @@ interface LabPageContentProps {
   labServiceCategories: string[];
   labPhones: unknown;
   logoUrl?: string | null;
+  heroImageUrl?: string | null;
   locations: Array<{
     lab_id: string;
     lab_branch_id: string | null;
@@ -34,6 +35,7 @@ export function LabPageContent({
   labServiceCategories,
   labPhones,
   logoUrl,
+  heroImageUrl,
   locations,
 }: LabPageContentProps) {
   const [mode, setMode] = useState<Mode>("professional");
@@ -41,7 +43,7 @@ export function LabPageContent({
   return (
     <>
       <div className="w-full snap-start snap-always">
-        <LabHeroSection labName={labName} logoUrl={logoUrl} mode={mode} />
+        <LabHeroSection labName={labName} logoUrl={logoUrl} heroImageUrl={heroImageUrl} mode={mode} />
       </div>
 
       <div className="max-w-2xl mx-auto px-4 pb-2 snap-start snap-always">
