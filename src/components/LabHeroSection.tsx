@@ -58,6 +58,15 @@ export function LabHeroSection({ labName, logoUrl, heroImageUrl, mode = "profess
           className="absolute inset-0 w-full h-full object-cover pointer-events-none"
         />
 
+        {/* White gradient overlay — bottom to top */}
+        <div
+          className="absolute inset-0 pointer-events-none"
+          aria-hidden="true"
+          style={{
+            background: "linear-gradient(to top, rgba(255,255,255,0.80) 0%, rgba(255,255,255,0) 100%)",
+          }}
+        />
+
         {/* Content over the image */}
         <div
           className={`relative z-10 flex flex-col items-center text-center gap-4 max-w-xs sm:max-w-sm mx-auto pt-10 pb-8 px-4 transition-[opacity,transform] duration-700 ${
@@ -80,16 +89,16 @@ export function LabHeroSection({ labName, logoUrl, heroImageUrl, mode = "profess
 
           {/* Text */}
           <div className="space-y-1">
-            <p className="text-[10px] font-bold text-white/70 uppercase tracking-[0.24em] drop-shadow">
+            <p className="text-[10px] font-bold text-slate-400 uppercase tracking-[0.24em]">
               Welcome to
             </p>
-            <h1 className="text-[26px] sm:text-3xl font-black text-white tracking-tight leading-[1.1] drop-shadow-lg">
+            <h1 className="text-[26px] sm:text-3xl font-black text-slate-900 tracking-tight leading-[1.1]">
               {labName}
             </h1>
-            <p className="text-sm font-semibold text-white/90 drop-shadow">
+            <p className="text-sm font-semibold text-slate-600">
               {GREETING[tod]}
             </p>
-            <p className="text-[13px] text-white/80 leading-relaxed drop-shadow">
+            <p className="text-[13px] text-slate-500 leading-relaxed">
               {mode === "patient"
                 ? "What test do you need today?"
                 : "What test does your patient need today?"}
@@ -100,7 +109,7 @@ export function LabHeroSection({ labName, logoUrl, heroImageUrl, mode = "profess
           <button
             type="button"
             onClick={scrollToForm}
-            className="inline-flex items-center gap-2 px-6 py-3 bg-white hover:bg-slate-50 active:scale-95 text-slate-900 text-sm font-bold rounded-2xl shadow-lg transition-all"
+            className="inline-flex items-center gap-2 px-6 py-3 bg-slate-900 hover:bg-slate-700 active:scale-95 text-white text-sm font-bold rounded-2xl shadow-lg transition-all"
           >
             <FlaskConical className="w-4 h-4" />
             Create a Lab Request
