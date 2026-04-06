@@ -5,7 +5,8 @@ import { createPortal } from "react-dom";
 import { toast } from "react-hot-toast";
 import {
   FlaskConical, User, Check, Search, X, ChevronRight, ChevronLeft,
-  Building2, MapPin, Phone, Loader2, MessageCircle, RefreshCw,
+  Building2, MapPin, Loader2, MessageCircle, RefreshCw, Send,
+  ShieldAlert, Sparkles, Grid3X3,
 } from "lucide-react";
 import { Button } from "@/components/ui/Button";
 import { Input, Textarea } from "@/components/ui/Input";
@@ -17,6 +18,7 @@ interface PatientRequestFormProps {
   preselectedLabId?: string;
   preselectedLabName?: string;
   preselectedLabAddress?: string;
+  preselectedLabLogoUrl?: string;
   preselectedServiceCategories?: string[];
   preselectedLabPhones?: unknown;
   locations?: Array<{
@@ -39,7 +41,7 @@ const STEPS = [
   { title: "Review", icon: Check },
 ];
 
-/** Simple lab search modal for home page patient form */
+/** Lab search modal */
 function LabSearchModal({
   labs,
   onSelect,
@@ -57,38 +59,28 @@ function LabSearchModal({
     return () => { document.body.style.overflow = "auto"; };
   }, []);
 
-  useEffect(() => {
-    setTimeout(() => searchRef.current?.focus(), 80);
-  }, []);
+  useEffect(() => { setTimeout(() => searchRef.current?.focus(), 80); }, []);
 
   const q = query.trim().toLowerCase();
   const filtered = q
-    ? labs.filter(
-        (l) =>
-          l.name.toLowerCase().includes(q) ||
-          l.address?.toLowerCase().includes(q)
-      )
+    ? labs.filter((l) => l.name.toLowerCase().includes(q) || l.address?.toLowerCase().includes(q))
     : labs;
 
-  const modal = (
+  return createPortal(
     <div
-      className="fixed inset-0 z-[9999] flex items-center justify-center sm:justify-center bg-black/40 backdrop-blur-[2px]"
+      className="fixed inset-0 z-[9999] flex items-end sm:items-center justify-center bg-black/40 backdrop-blur-[2px]"
       role="dialog"
       aria-modal="true"
     >
       <div className="relative w-full sm:w-[480px] sm:mx-4 bg-white sm:rounded-2xl rounded-t-2xl shadow-2xl flex flex-col max-h-[85vh] sm:max-h-[620px] animate-in slide-in-from-bottom-4 sm:zoom-in-95 duration-200">
         <div className="flex items-center justify-between px-5 py-4 border-b border-slate-100">
           <h2 className="text-base font-semibold text-slate-800">Select Laboratory</h2>
-          <button
-            onClick={onClose}
-            className="p-1.5 rounded-lg hover:bg-slate-100 text-slate-500 transition-colors"
-          >
+          <button onClick={onClose} className="p-1.5 rounded-lg hover:bg-slate-100 text-slate-500 transition-colors">
             <X className="w-5 h-5" />
           </button>
         </div>
-
-        <div className="px-4 py-3 border-b border-slate-100">
-          <Search className="absolute left-8 top-14 w-4 h-4 text-slate-400 pointer-events-none" />
+        <div className="px-4 py-3 border-b border-slate-100 relative">
+          <Search className="absolute left-7 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400 pointer-events-none" />
           <input
             ref={searchRef}
             type="text"
@@ -98,7 +90,6 @@ function LabSearchModal({
             className="w-full rounded-xl border border-slate-200 bg-slate-50 pl-9 pr-4 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-medical-500 focus:border-medical-400"
           />
         </div>
-
         <ul className="flex-1 overflow-y-auto">
           {filtered.length === 0 ? (
             <li className="px-5 py-8 text-sm text-slate-400 text-center">No laboratories found</li>
@@ -106,16 +97,13 @@ function LabSearchModal({
             filtered.map((lab) => (
               <li key={lab.id}>
                 <button
-                  onClick={() => {
-                    onSelect(lab);
-                    onClose();
-                  }}
+                  onClick={() => { onSelect(lab); onClose(); }}
                   className="w-full flex items-center gap-3 px-5 py-3.5 hover:bg-slate-50 transition-colors text-left"
                 >
                   {lab.logo_url ? (
-                    <img src={lab.logo_url} alt={lab.name} className="w-10 h-10 rounded-xl object-cover" />
+                    <img src={lab.logo_url} alt={lab.name} className="w-10 h-10 rounded-xl object-cover shrink-0" />
                   ) : (
-                    <div className="w-10 h-10 rounded-xl bg-medical-100 flex items-center justify-center">
+                    <div className="w-10 h-10 rounded-xl bg-medical-100 flex items-center justify-center shrink-0">
                       <Building2 className="w-5 h-5 text-medical-600" />
                     </div>
                   )}
@@ -133,10 +121,9 @@ function LabSearchModal({
           )}
         </ul>
       </div>
-    </div>
+    </div>,
+    document.body
   );
-
-  return createPortal(modal, document.body);
 }
 
 export function PatientRequestForm(props: PatientRequestFormProps) {
@@ -145,36 +132,42 @@ export function PatientRequestForm(props: PatientRequestFormProps) {
     preselectedLabId,
     preselectedLabName,
     preselectedLabAddress,
+    preselectedLabLogoUrl,
     preselectedServiceCategories = [],
     locations = [],
   } = props;
 
-  // Step & form state
+  // ── Step & nav ──────────────────────────────────────────────────────────────
   const [step, setStep] = useState(1);
+  const [maxStep, setMaxStep] = useState(1);
+
+  // ── Lab selection ────────────────────────────────────────────────────────────
   const [labId, setLabId] = useState(preselectedLabId || "");
   const [labName, setLabName] = useState(preselectedLabName || "");
   const [labAddress, setLabAddress] = useState(preselectedLabAddress || "");
+  const [labLogoUrl, setLabLogoUrl] = useState(preselectedLabLogoUrl || "");
   const [labServiceCategories, setLabServiceCategories] = useState(preselectedServiceCategories);
   const [selectedLocationId, setSelectedLocationId] = useState<string | null>(
     locations[0]?.lab_branch_id ?? null
   );
 
-  // Test selection
+  // ── Test selection ───────────────────────────────────────────────────────────
   const [selectedTests, setSelectedTests] = useState<string[]>([]);
   const [testMode, setTestMode] = useState<"assistant" | "categories">("categories");
   const [additionalNotes, setAdditionalNotes] = useState("");
 
-  // Assistant chat
+  // ── Health Assistant chat ────────────────────────────────────────────────────
   const [chatMessages, setChatMessages] = useState<ChatMessage[]>([]);
   const [chatInput, setChatInput] = useState("");
   const [chatLoading, setChatLoading] = useState(false);
+  const chatEndRef = useRef<HTMLDivElement>(null);
 
-  // Patient details
-  const [patientName, setPatientName] = useState("");
+  // ── Patient details ──────────────────────────────────────────────────────────
   const [patientPhone, setPatientPhone] = useState("");
+  const [patientName, setPatientName] = useState("");
   const [patientAge, setPatientAge] = useState("");
 
-  // Submission
+  // ── Submission ───────────────────────────────────────────────────────────────
   const [submitting, setSubmitting] = useState(false);
   const [successData, setSuccessData] = useState<{
     code: string;
@@ -182,14 +175,25 @@ export function PatientRequestForm(props: PatientRequestFormProps) {
     labAddress: string;
   } | null>(null);
 
-  // Lab selection
+  // ── Lab loading ──────────────────────────────────────────────────────────────
   const [showLabModal, setShowLabModal] = useState(false);
   const [labsLoading, setLabsLoading] = useState(false);
   const [labs, setLabs] = useState(initialLabs);
 
-  const selectedLab = labs.find((l) => l.id === labId);
+  // ── Sticky header scroll ─────────────────────────────────────────────────────
+  const [scrolled, setScrolled] = useState(false);
+  useEffect(() => {
+    const onScroll = () => setScrolled(window.scrollY > 20);
+    window.addEventListener("scroll", onScroll, { passive: true });
+    return () => window.removeEventListener("scroll", onScroll);
+  }, []);
 
-  // Fetch labs if needed
+  // ── Scroll chat to bottom ────────────────────────────────────────────────────
+  useEffect(() => {
+    chatEndRef.current?.scrollIntoView({ behavior: "smooth" });
+  }, [chatMessages]);
+
+  // ── Fetch labs on demand ─────────────────────────────────────────────────────
   const fetchLabs = useCallback(async () => {
     if (labs.length > 0) return;
     setLabsLoading(true);
@@ -204,71 +208,63 @@ export function PatientRequestForm(props: PatientRequestFormProps) {
     }
   }, [labs.length]);
 
-  // Select lab
   const handleLabSelect = (lab: Lab) => {
     setLabId(lab.id);
     setLabName(lab.name);
-    setLabAddress(lab.address);
+    setLabAddress(lab.address ?? "");
+    setLabLogoUrl(lab.logo_url ?? "");
     setLabServiceCategories((lab.service_categories as string[]) ?? []);
+    setSelectedTests([]);
   };
 
-  // Chat: send message
-  const handleChatSend = useCallback(async () => {
-    if (!chatInput.trim() || !labId || chatLoading) return;
-
-    const userMsg: ChatMessage = { role: "user", content: chatInput.trim() };
-    setChatMessages((prev) => [...prev, userMsg]);
-    setChatInput("");
-    setChatLoading(true);
-
-    try {
-      const res = await fetch(`/api/labs/${labId}/assistant`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          messages: [...chatMessages, userMsg].map((m) => ({
-            role: m.role,
-            content: m.content,
-          })),
-        }),
-      });
-
-      if (!res.ok) throw new Error("Assistant error");
-      const data = await res.json();
-
-      const assistantMsg: ChatMessage = {
-        role: "assistant",
-        content: data.message,
-        suggestions: data.suggestions,
-      };
-      setChatMessages((prev) => [...prev, assistantMsg]);
-    } catch (e) {
-      toast.error("Assistant unavailable");
-    } finally {
-      setChatLoading(false);
-    }
-  }, [chatInput, labId, chatLoading, chatMessages]);
-
-  // Add test from suggestions
-  const addTest = (test: string) => {
-    setSelectedTests((prev) =>
-      prev.includes(test) ? prev.filter((t) => t !== test) : [...prev, test]
-    );
-  };
-
-  // Can advance step?
-  const canAdvance = (() => {
+  // ── stepValid ────────────────────────────────────────────────────────────────
+  const stepValid = (() => {
     if (step === 1) {
       if (!preselectedLabId && !labId) return false;
       return selectedTests.length > 0;
     }
     if (step === 2) {
-      return patientName.trim().length > 0 && patientPhone.trim().length > 0;
+      return patientPhone.trim().length > 0 && patientName.trim().length > 0;
     }
     return true;
   })();
 
-  // Submit request
+  const handleNext = () => {
+    const next = step + 1;
+    setStep(next);
+    setMaxStep((m) => Math.max(m, next));
+  };
+
+  // ── Chat ─────────────────────────────────────────────────────────────────────
+  const handleChatSend = useCallback(async () => {
+    if (!chatInput.trim() || !labId || chatLoading) return;
+    const userMsg: ChatMessage = { role: "user", content: chatInput.trim() };
+    setChatMessages((prev) => [...prev, userMsg]);
+    setChatInput("");
+    setChatLoading(true);
+    try {
+      const res = await fetch(`/api/labs/${labId}/assistant`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          messages: [...chatMessages, userMsg].map((m) => ({ role: m.role, content: m.content })),
+        }),
+      });
+      if (!res.ok) throw new Error();
+      const data = await res.json();
+      setChatMessages((prev) => [...prev, { role: "assistant", content: data.message, suggestions: data.suggestions }]);
+    } catch {
+      toast.error("Assistant unavailable — please try again");
+    } finally {
+      setChatLoading(false);
+    }
+  }, [chatInput, labId, chatLoading, chatMessages]);
+
+  const toggleTest = (test: string) => {
+    setSelectedTests((prev) => prev.includes(test) ? prev.filter((t) => t !== test) : [...prev, test]);
+  };
+
+  // ── Submit ────────────────────────────────────────────────────────────────────
   const handleSubmit = async () => {
     setSubmitting(true);
     try {
@@ -285,59 +281,50 @@ export function PatientRequestForm(props: PatientRequestFormProps) {
           additional_notes: additionalNotes,
         }),
       });
-
       const data = await res.json();
-      if (!data.success) {
-        toast.error(data.error || "Failed to submit");
-        return;
-      }
-
-      setSuccessData({
-        code: data.code,
-        labName: data.lab.name,
-        labAddress: data.lab.address,
-      });
+      if (!data.success) { toast.error(data.error || "Failed to submit"); return; }
+      setSuccessData({ code: data.code, labName: data.lab.name, labAddress: data.lab.address });
     } catch {
-      toast.error("Network error");
+      toast.error("Network error — please try again");
     } finally {
       setSubmitting(false);
     }
   };
 
-  // Success screen
+  // ── Success screen ────────────────────────────────────────────────────────────
   if (successData) {
     return (
-      <div className="animate-slide-up space-y-4 pt-6">
-        <div className="text-center">
-          <div className="w-14 h-14 bg-emerald-100 rounded-2xl flex items-center justify-center mx-auto mb-3">
-            <Check className="w-7 h-7 text-emerald-600" />
+      <div className="animate-slide-up space-y-4 pt-4">
+        <div className="text-center py-2">
+          <div className="w-16 h-16 bg-emerald-100 rounded-3xl flex items-center justify-center mx-auto mb-4 shadow-sm">
+            <Check className="w-8 h-8 text-emerald-600" />
           </div>
-          <h2 className="text-xl font-bold text-slate-800">Request Submitted</h2>
-          <p className="text-sm text-slate-500 mt-1">You'll receive an SMS confirmation shortly.</p>
+          <h2 className="text-xl font-bold text-slate-800">Request Submitted!</h2>
+          <p className="text-sm text-slate-500 mt-1.5">An SMS confirmation will be sent to your phone shortly.</p>
         </div>
 
-        <div className="bg-medical-50 border border-medical-200 rounded-2xl px-5 py-4">
+        <div className="glass-card p-5">
           <p className="text-[10px] font-bold text-medical-500 uppercase tracking-widest text-center mb-2">
-            Request Code
+            Your Request Code
           </p>
-          <p className="text-3xl font-black text-medical-700 text-center font-mono tracking-[0.2em]">
+          <p className="text-4xl font-black text-medical-700 text-center font-mono tracking-[0.25em] py-1">
             {successData.code}
           </p>
-          <p className="text-xs text-center text-medical-600 mt-2">Show this code at the lab</p>
+          <p className="text-xs text-center text-medical-600 mt-2 font-medium">Show this code at the lab reception</p>
         </div>
 
-        <div className="bg-white border border-slate-100 rounded-2xl px-4 py-3.5 space-y-2">
-          <p className="text-xs font-semibold text-slate-400 uppercase">Laboratory</p>
+        <div className="glass-card px-4 py-3.5 space-y-1">
+          <p className="text-xs font-bold text-slate-400 uppercase tracking-wide">Laboratory</p>
           <p className="text-sm font-bold text-slate-800">{successData.labName}</p>
           {successData.labAddress && (
-            <p className="text-xs text-slate-500 flex items-start gap-1">
-              <MapPin className="w-3 h-3 mt-0.5 shrink-0" />{successData.labAddress}
+            <p className="text-xs text-slate-500 flex items-start gap-1.5 mt-0.5">
+              <MapPin className="w-3 h-3 mt-0.5 shrink-0 text-medical-400" />{successData.labAddress}
             </p>
           )}
         </div>
 
         <button
-          onClick={() => window.location.href = "/"}
+          onClick={() => window.location.reload()}
           className="w-full text-sm font-semibold text-medical-600 hover:text-medical-700 py-2.5 rounded-xl hover:bg-medical-50 transition-colors"
         >
           Submit another request
@@ -346,40 +333,53 @@ export function PatientRequestForm(props: PatientRequestFormProps) {
     );
   }
 
+  // ── Main form ─────────────────────────────────────────────────────────────────
   return (
-    <div className="animate-fade-in">
-      {/* Sticky header with step indicator */}
-      <div className="sticky top-0 z-10 -mx-4 px-4 py-3 bg-white/80 backdrop-blur-md border-b border-slate-100">
-        <div className="flex items-center gap-1">
+    <div className="animate-fade-in pb-24">
+      {/* ── Sticky step header ── */}
+      <div className={`sticky top-0 z-10 -mx-4 px-4 pt-3 pb-3 transition-all duration-200 ${
+        scrolled
+          ? "bg-white/95 backdrop-blur-md border-b border-slate-200 shadow-sm"
+          : "bg-white/80 backdrop-blur-sm border-b border-slate-100"
+      }`}>
+        {/* Lab name when scrolled */}
+        {scrolled && (labName || preselectedLabName) && (
+          <p className="text-xs font-semibold text-medical-600 truncate mb-2 -mt-0.5">
+            {labName || preselectedLabName}
+          </p>
+        )}
+        <div className="flex items-center">
           {STEPS.map((s, i) => {
             const num = i + 1;
             const done = num < step;
             const active = num === step;
+            const visited = num <= maxStep;
             const Icon = s.icon;
             return (
-              <div key={i} className="flex items-center flex-1">
+              <div key={s.title} className="flex items-center flex-1">
                 <div className="flex flex-col items-center">
-                  <div
-                    className={`w-6 h-6 rounded-full flex items-center justify-center border-2 transition-all ${
+                  <button
+                    type="button"
+                    onClick={() => visited && num < step && setStep(num)}
+                    disabled={!visited || num >= step}
+                    className={`rounded-full flex items-center justify-center transition-all border-2 focus:outline-none ${
                       done
-                        ? "bg-slate-700 border-slate-700 text-white"
+                        ? "w-6 h-6 bg-slate-700 text-white border-slate-700 cursor-pointer hover:bg-medical-600 hover:border-medical-600"
                         : active
-                        ? "bg-slate-900 border-slate-800 text-white w-7 h-7"
-                        : "bg-slate-100 border-slate-300 text-slate-500"
+                        ? "w-7 h-7 bg-slate-900 text-white border-slate-800 ring-2 ring-slate-900/10 cursor-default"
+                        : "w-6 h-6 bg-white text-slate-300 border-slate-200 cursor-default"
                     }`}
                   >
-                    {done ? <Check className="w-2.5 h-2.5" /> : <Icon className="w-3 h-3" />}
-                  </div>
-                  <p className={`text-xs mt-1 font-medium hidden sm:block ${
-                    active ? "text-slate-800" : done ? "text-slate-500" : "text-slate-400"
-                  }`}>
+                    {done ? <Check className="w-2.5 h-2.5" /> : <Icon className={active ? "w-3 h-3" : "w-2.5 h-2.5"} />}
+                  </button>
+                  <p className={`text-xs whitespace-nowrap transition-all duration-200 hidden sm:block mt-1 ${
+                    scrolled ? "max-h-0 opacity-0 overflow-hidden" : "max-h-5 opacity-100"
+                  } ${active ? "font-semibold text-slate-800" : done ? "font-medium text-slate-500" : "font-medium text-slate-400"}`}>
                     {s.title}
                   </p>
                 </div>
                 {i < STEPS.length - 1 && (
-                  <div className={`flex-1 h-0.5 mx-1.5 mb-3 rounded ${
-                    done ? "bg-slate-400" : "bg-slate-200"
-                  }`} />
+                  <div className={`flex-1 h-0.5 mx-1.5 mb-3 rounded transition-colors ${done ? "bg-slate-500" : "bg-slate-200"}`} />
                 )}
               </div>
             );
@@ -387,311 +387,452 @@ export function PatientRequestForm(props: PatientRequestFormProps) {
         </div>
       </div>
 
-      {/* Step content */}
-      <div className="glass-card p-4 mt-3 mb-2 space-y-4">
-        {/* Step 1: Tests */}
-        {step === 1 && (
-          <div className="space-y-4">
-            {/* Lab selection (home page only) */}
-            {!preselectedLabId && (
-              <>
-                <div>
-                  <p className="text-sm font-semibold text-slate-700 mb-2">Select Laboratory</p>
-                  {!labId ? (
-                    <button
-                      onClick={() => {
-                        fetchLabs();
-                        setShowLabModal(true);
-                      }}
-                      className="w-full flex items-center gap-2 px-4 py-2.5 rounded-xl border border-medical-200 bg-medical-50 text-medical-700 font-medium hover:bg-medical-100 transition-colors"
-                    >
-                      <Search className="w-4 h-4" />
-                      Choose a laboratory
-                    </button>
+      {/* ── Step 1: Services ── */}
+      {step === 1 && (
+        <div className="mt-4 space-y-4">
+          {/* Lab selection card (home page) */}
+          {!preselectedLabId && (
+            <div className="glass-card p-4">
+              <p className="text-xs font-bold text-slate-500 uppercase tracking-wide mb-3">Laboratory</p>
+              {!labId ? (
+                <button
+                  onClick={() => { fetchLabs(); setShowLabModal(true); }}
+                  className="w-full flex items-center gap-3 px-4 py-3 rounded-xl border-2 border-dashed border-medical-300 bg-medical-50/60 text-medical-700 font-medium hover:bg-medical-100 hover:border-medical-400 transition-all"
+                >
+                  {labsLoading
+                    ? <Loader2 className="w-4 h-4 animate-spin shrink-0" />
+                    : <Search className="w-4 h-4 shrink-0" />}
+                  <span className="text-sm">{labsLoading ? "Loading laboratories…" : "Choose a laboratory"}</span>
+                </button>
+              ) : (
+                <div className="flex items-center gap-3 p-3 rounded-xl border border-medical-200 bg-medical-50">
+                  {labLogoUrl ? (
+                    <img src={labLogoUrl} alt={labName} className="w-10 h-10 rounded-xl object-cover shrink-0" />
                   ) : (
-                    <div className="p-3 rounded-xl border border-medical-200 bg-medical-50 flex items-center gap-3">
-                      <Building2 className="w-5 h-5 text-medical-600 shrink-0" />
-                      <div className="min-w-0 flex-1">
-                        <p className="font-semibold text-medical-900">{labName}</p>
-                        {labAddress && <p className="text-xs text-medical-700">{labAddress}</p>}
-                      </div>
-                      <button
-                        onClick={() => {
-                          setLabId("");
-                          setSelectedTests([]);
-                        }}
-                        className="text-medical-600 hover:text-medical-700"
-                      >
-                        <X className="w-4 h-4" />
-                      </button>
+                    <div className="w-10 h-10 rounded-xl bg-medical-100 flex items-center justify-center shrink-0">
+                      <Building2 className="w-5 h-5 text-medical-600" />
                     </div>
                   )}
+                  <div className="min-w-0 flex-1">
+                    <p className="font-bold text-medical-900 text-sm truncate">{labName}</p>
+                    {labAddress && (
+                      <p className="text-xs text-medical-600 flex items-center gap-1 mt-0.5 truncate">
+                        <MapPin className="w-3 h-3 shrink-0" />{labAddress}
+                      </p>
+                    )}
+                  </div>
+                  <button onClick={() => { setLabId(""); setSelectedTests([]); }} className="p-1.5 rounded-lg text-medical-500 hover:text-medical-700 hover:bg-medical-100 transition-colors shrink-0">
+                    <X className="w-4 h-4" />
+                  </button>
                 </div>
+              )}
 
-                {showLabModal && (
-                  <LabSearchModal
-                    labs={labs}
-                    onSelect={handleLabSelect}
-                    onClose={() => setShowLabModal(false)}
-                  />
-                )}
-              </>
-            )}
+              {showLabModal && (
+                <LabSearchModal labs={labs} onSelect={handleLabSelect} onClose={() => setShowLabModal(false)} />
+              )}
+            </div>
+          )}
 
-            {/* Location selector (lab page) */}
-            {preselectedLabId && locations.length > 0 && (
-              <div>
-                <label className="text-sm font-semibold text-slate-700 block mb-2">Location</label>
-                <select
-                  value={selectedLocationId || ""}
-                  onChange={(e) => setSelectedLocationId(e.target.value || null)}
-                  className="w-full rounded-xl border border-slate-200 bg-white px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-medical-500"
+          {/* Location selector (lab page with multiple branches) */}
+          {preselectedLabId && locations.length > 1 && (
+            <div className="glass-card p-4">
+              <label className="text-xs font-bold text-slate-500 uppercase tracking-wide block mb-2">Branch / Location</label>
+              <select
+                value={selectedLocationId || ""}
+                onChange={(e) => setSelectedLocationId(e.target.value || null)}
+                className="w-full rounded-xl border border-slate-200 bg-white px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-medical-500"
+              >
+                {locations.map((loc) => (
+                  <option key={loc.lab_id} value={loc.lab_branch_id || ""}>
+                    {loc.name}
+                  </option>
+                ))}
+              </select>
+            </div>
+          )}
+
+          {/* Test selection — only when lab is chosen */}
+          {labId && (
+            <div className="glass-card p-4 space-y-4">
+              {/* Mode toggle */}
+              <div className="flex gap-2 p-1 bg-slate-100 rounded-xl">
+                <button
+                  onClick={() => setTestMode("categories")}
+                  className={`flex-1 flex items-center justify-center gap-2 py-2 px-3 rounded-lg text-sm font-semibold transition-all ${
+                    testMode === "categories"
+                      ? "bg-white text-slate-800 shadow-sm"
+                      : "text-slate-500 hover:text-slate-700"
+                  }`}
                 >
-                  {locations.map((loc) => (
-                    <option key={loc.lab_id} value={loc.lab_branch_id || ""}>
-                      {loc.name}
-                    </option>
-                  ))}
-                </select>
+                  <Grid3X3 className="w-3.5 h-3.5" />
+                  Browse Services
+                </button>
+                <button
+                  onClick={() => setTestMode("assistant")}
+                  className={`flex-1 flex items-center justify-center gap-2 py-2 px-3 rounded-lg text-sm font-semibold transition-all ${
+                    testMode === "assistant"
+                      ? "bg-white text-slate-800 shadow-sm"
+                      : "text-slate-500 hover:text-slate-700"
+                  }`}
+                >
+                  <Sparkles className="w-3.5 h-3.5" />
+                  Health Assistant
+                </button>
               </div>
-            )}
 
-            {/* Test selection (only if lab selected) */}
-            {labId && (
-              <>
-                <div>
-                  <div className="flex gap-2 mb-3">
-                    <button
-                      onClick={() => setTestMode("categories")}
-                      className={`flex-1 py-2 px-3 rounded-lg text-sm font-medium transition-colors ${
-                        testMode === "categories"
-                          ? "bg-medical-600 text-white"
-                          : "bg-slate-100 text-slate-700 hover:bg-slate-200"
-                      }`}
-                    >
-                      Browse Services
-                    </button>
-                    <button
-                      onClick={() => setTestMode("assistant")}
-                      className={`flex-1 py-2 px-3 rounded-lg text-sm font-medium transition-colors ${
-                        testMode === "assistant"
-                          ? "bg-medical-600 text-white"
-                          : "bg-slate-100 text-slate-700 hover:bg-slate-200"
-                      }`}
-                    >
-                      Ask Assistant
-                    </button>
+              {/* Categories grid */}
+              {testMode === "categories" && (
+                labServiceCategories.length === 0 ? (
+                  <div className="rounded-xl border border-amber-200 bg-amber-50 px-4 py-5 text-center">
+                    <p className="text-sm font-semibold text-amber-800">No service categories configured</p>
+                    <p className="text-xs text-amber-600 mt-1">Use the Health Assistant tab or contact the lab directly.</p>
+                  </div>
+                ) : (
+                  <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
+                    {labServiceCategories.map((cat) => {
+                      const selected = selectedTests.includes(cat);
+                      return (
+                        <button
+                          key={cat}
+                          onClick={() => toggleTest(cat)}
+                          className={`relative p-3 rounded-xl text-center text-sm font-semibold transition-all border-2 ${
+                            selected
+                              ? "bg-medical-600 text-white border-medical-600 shadow-md shadow-medical-600/20"
+                              : "bg-white/70 text-slate-700 border-slate-200 hover:border-medical-300 hover:bg-medical-50"
+                          }`}
+                        >
+                          {selected && (
+                            <span className="absolute top-1.5 right-1.5 w-4 h-4 bg-white/30 rounded-full flex items-center justify-center">
+                              <Check className="w-2.5 h-2.5 text-white" />
+                            </span>
+                          )}
+                          {cat}
+                        </button>
+                      );
+                    })}
+                  </div>
+                )
+              )}
+
+              {/* Health Assistant chat */}
+              {testMode === "assistant" && (
+                <div className="space-y-3">
+                  {/* Disclaimer */}
+                  <div className="flex items-start gap-2.5 px-3 py-2.5 rounded-xl bg-amber-50 border border-amber-200">
+                    <ShieldAlert className="w-4 h-4 text-amber-500 shrink-0 mt-0.5" />
+                    <p className="text-xs text-amber-700 leading-relaxed">
+                      This Health Assistant provides general guidance only and is not a substitute for medical advice. Always consult a qualified healthcare professional.
+                    </p>
                   </div>
 
-                  {testMode === "categories" && (
-                    labServiceCategories.length === 0 ? (
-                      <div className="rounded-xl border border-amber-200 bg-amber-50 px-4 py-5 text-center">
-                        <p className="text-sm font-medium text-amber-800">No service categories configured</p>
-                        <p className="text-xs text-amber-600 mt-1">Please use the Health Assistant or contact the lab directly. Admins can configure categories in the dashboard.</p>
-                      </div>
-                    ) : (
-                      <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
-                        {labServiceCategories.map((cat) => (
-                          <button
-                            key={cat}
-                            onClick={() => addTest(cat)}
-                            className={`p-3 rounded-lg text-center text-sm font-medium transition-all ${
-                              selectedTests.includes(cat)
-                                ? "bg-medical-600 text-white border-2 border-medical-700"
-                                : "bg-slate-100 text-slate-700 border-2 border-transparent hover:bg-slate-200"
-                            }`}
-                          >
-                            {cat}
-                          </button>
-                        ))}
-                      </div>
-                    )
-                  )}
+                  {/* Chat window */}
+                  <div className="rounded-xl border border-slate-200 bg-slate-50 overflow-hidden">
+                    <div className="flex items-center gap-2 px-3 py-2 border-b border-slate-200 bg-white/80">
+                      <div className="w-2 h-2 rounded-full bg-emerald-400" />
+                      <p className="text-xs font-semibold text-slate-600">Poveon Health Assistant</p>
+                    </div>
 
-                  {testMode === "assistant" && (
-                    <div className="bg-slate-50 rounded-lg p-4 space-y-3 max-h-64 overflow-y-auto">
-                      {chatMessages.length === 0 && (
-                        <p className="text-xs text-slate-500 italic text-center py-8">
-                          Describe your health concern and the Health Assistant will suggest relevant tests.
-                        </p>
-                      )}
-
-                      {chatMessages.map((msg, i) => (
-                        <div key={i} className={`flex ${msg.role === "user" ? "justify-end" : "justify-start"}`}>
-                          <div
-                            className={`max-w-xs px-3 py-2 rounded-lg text-sm ${
-                              msg.role === "user"
-                                ? "bg-medical-600 text-white"
-                                : "bg-white border border-slate-200 text-slate-700"
-                            }`}
-                          >
-                            {msg.content}
-                            {msg.suggestions && msg.suggestions.length > 0 && (
-                              <div className="mt-2 flex flex-wrap gap-1">
-                                {msg.suggestions.map((sugg) => (
-                                  <button
-                                    key={sugg}
-                                    onClick={() => addTest(sugg)}
-                                    className={`px-2 py-1 text-xs rounded transition-colors ${
-                                      selectedTests.includes(sugg)
-                                        ? "bg-emerald-600 text-white"
-                                        : "bg-slate-200 text-slate-700 hover:bg-slate-300"
-                                    }`}
-                                  >
-                                    {sugg}
-                                  </button>
-                                ))}
-                              </div>
-                            )}
+                    <div className="min-h-[200px] max-h-[280px] overflow-y-auto p-3 space-y-3">
+                      {chatMessages.length === 0 ? (
+                        <div className="flex flex-col items-center justify-center h-36 text-center gap-2">
+                          <div className="w-10 h-10 rounded-2xl bg-medical-100 flex items-center justify-center">
+                            <MessageCircle className="w-5 h-5 text-medical-500" />
+                          </div>
+                          <div>
+                            <p className="text-sm font-semibold text-slate-600">How can I help you today?</p>
+                            <p className="text-xs text-slate-400 mt-0.5 max-w-[220px]">Describe your health concern and I'll suggest relevant tests.</p>
                           </div>
                         </div>
-                      ))}
+                      ) : (
+                        chatMessages.map((msg, i) => (
+                          <div key={i} className={`flex gap-2 ${msg.role === "user" ? "justify-end" : "justify-start"}`}>
+                            {msg.role === "assistant" && (
+                              <div className="w-6 h-6 rounded-full bg-medical-100 flex items-center justify-center shrink-0 mt-0.5">
+                                <Sparkles className="w-3 h-3 text-medical-600" />
+                              </div>
+                            )}
+                            <div className={`max-w-[80%] space-y-1.5 ${msg.role === "user" ? "items-end flex flex-col" : ""}`}>
+                              <div className={`px-3.5 py-2.5 rounded-2xl text-sm leading-relaxed ${
+                                msg.role === "user"
+                                  ? "bg-medical-600 text-white rounded-tr-sm"
+                                  : "bg-white border border-slate-200 text-slate-700 rounded-tl-sm shadow-sm"
+                              }`}>
+                                {msg.content}
+                              </div>
+                              {msg.suggestions && msg.suggestions.length > 0 && (
+                                <div className="flex flex-wrap gap-1.5 px-1">
+                                  {msg.suggestions.map((sugg) => {
+                                    const sel = selectedTests.includes(sugg);
+                                    return (
+                                      <button
+                                        key={sugg}
+                                        onClick={() => toggleTest(sugg)}
+                                        className={`px-2.5 py-1 text-xs font-semibold rounded-full border transition-all ${
+                                          sel
+                                            ? "bg-emerald-600 text-white border-emerald-600"
+                                            : "bg-white text-medical-700 border-medical-300 hover:bg-medical-50"
+                                        }`}
+                                      >
+                                        {sel ? <><Check className="w-3 h-3 inline mr-1" />{sugg}</> : `+ ${sugg}`}
+                                      </button>
+                                    );
+                                  })}
+                                </div>
+                              )}
+                            </div>
+                          </div>
+                        ))
+                      )}
+                      {chatLoading && (
+                        <div className="flex gap-2 justify-start">
+                          <div className="w-6 h-6 rounded-full bg-medical-100 flex items-center justify-center shrink-0 mt-0.5">
+                            <Sparkles className="w-3 h-3 text-medical-600" />
+                          </div>
+                          <div className="bg-white border border-slate-200 rounded-2xl rounded-tl-sm px-3.5 py-2.5 shadow-sm">
+                            <div className="flex gap-1 items-center h-4">
+                              <span className="w-1.5 h-1.5 rounded-full bg-slate-400 animate-bounce [animation-delay:-0.3s]" />
+                              <span className="w-1.5 h-1.5 rounded-full bg-slate-400 animate-bounce [animation-delay:-0.15s]" />
+                              <span className="w-1.5 h-1.5 rounded-full bg-slate-400 animate-bounce" />
+                            </div>
+                          </div>
+                        </div>
+                      )}
+                      <div ref={chatEndRef} />
                     </div>
-                  )}
 
-                  {testMode === "assistant" && (
-                    <div className="flex gap-2 mt-3">
+                    {/* Chat input */}
+                    <div className="p-3 border-t border-slate-200 bg-white/80 flex gap-2">
                       <input
                         type="text"
-                        placeholder="Describe your concern…"
+                        placeholder="Describe your health concern…"
                         value={chatInput}
                         onChange={(e) => setChatInput(e.target.value)}
-                        onKeyDown={(e) => e.key === "Enter" && handleChatSend()}
+                        onKeyDown={(e) => e.key === "Enter" && !e.shiftKey && handleChatSend()}
                         disabled={chatLoading}
-                        className="flex-1 rounded-lg border border-slate-200 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-medical-500"
+                        className="flex-1 rounded-xl border border-slate-200 bg-slate-50 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-medical-400 focus:border-medical-400 disabled:opacity-60"
                       />
                       <button
                         onClick={handleChatSend}
                         disabled={chatLoading || !chatInput.trim()}
-                        className="px-3 py-2 rounded-lg bg-medical-600 text-white hover:bg-medical-700 disabled:opacity-50"
+                        className="w-9 h-9 rounded-xl bg-medical-600 text-white flex items-center justify-center hover:bg-medical-700 disabled:opacity-40 transition-all shrink-0"
                       >
-                        {chatLoading ? <Loader2 className="w-4 h-4 animate-spin" /> : <MessageCircle className="w-4 h-4" />}
+                        <Send className="w-4 h-4" />
                       </button>
                     </div>
-                  )}
+                  </div>
                 </div>
+              )}
 
-                {/* Selected tests */}
-                {selectedTests.length > 0 && (
-                  <div>
-                    <p className="text-sm font-semibold text-slate-700 mb-2">Selected Tests</p>
-                    <div className="flex flex-wrap gap-2">
-                      {selectedTests.map((test) => (
-                        <div
-                          key={test}
-                          className="flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-medical-100 text-medical-700 text-sm font-medium"
-                        >
-                          {test}
-                          <button onClick={() => addTest(test)} className="text-medical-600 hover:text-medical-800">
-                            <X className="w-3 h-3" />
-                          </button>
-                        </div>
-                      ))}
+              {/* Selected tests summary */}
+              {selectedTests.length > 0 && (
+                <div>
+                  <p className="text-xs font-bold text-slate-500 uppercase tracking-wide mb-2">Selected</p>
+                  <div className="flex flex-wrap gap-2">
+                    {selectedTests.map((test) => (
+                      <span
+                        key={test}
+                        className="flex items-center gap-1.5 pl-3 pr-2 py-1.5 rounded-full bg-medical-100 text-medical-700 text-sm font-semibold border border-medical-200"
+                      >
+                        {test}
+                        <button onClick={() => toggleTest(test)} className="w-4 h-4 rounded-full bg-medical-200 flex items-center justify-center hover:bg-medical-300 transition-colors">
+                          <X className="w-2.5 h-2.5 text-medical-700" />
+                        </button>
+                      </span>
+                    ))}
+                  </div>
+                </div>
+              )}
+
+              {/* Additional notes */}
+              <Textarea
+                label="Additional Notes (optional)"
+                placeholder="Any specific concerns or instructions…"
+                rows={2}
+                value={additionalNotes}
+                onChange={(e) => setAdditionalNotes(e.target.value)}
+              />
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* ── Step 2: Your Details ── */}
+      {step === 2 && (
+        <div className="mt-4 space-y-4">
+          <div className="glass-card p-4">
+            <h2 className="flex items-center gap-3 text-base font-bold text-slate-800 pb-4 border-b border-slate-100 mb-1">
+              <div className="w-8 h-8 rounded-xl bg-medical-50 flex items-center justify-center shrink-0">
+                <User className="w-4 h-4 text-medical-600" />
+              </div>
+              Your Details
+            </h2>
+
+            <div className="relative pt-2">
+              {/* Substep 1: Phone */}
+              <div className="relative flex gap-3">
+                <div className="flex flex-col items-center shrink-0 pt-1">
+                  <div className={`w-7 h-7 rounded-full flex items-center justify-center text-xs font-bold border-2 transition-all shrink-0 ${
+                    patientPhone.trim()
+                      ? "bg-emerald-500 border-emerald-500 text-white"
+                      : "bg-white border-medical-400 text-medical-600"
+                  }`}>
+                    {patientPhone.trim() ? <Check className="w-3.5 h-3.5" /> : "1"}
+                  </div>
+                  {patientPhone.trim() && <div className="w-0.5 flex-1 min-h-4 bg-slate-200 mt-1" />}
+                </div>
+                <div className="flex-1 pb-4 min-w-0">
+                  <PhoneInput
+                    label="Phone Number"
+                    required
+                    value={patientPhone}
+                    onChange={setPatientPhone}
+                  />
+                  <p className="text-xs text-slate-400 mt-1.5">We'll send your request code to this number.</p>
+                </div>
+              </div>
+
+              {/* Substep 2: Name — reveals after phone */}
+              {patientPhone.trim() && (
+                <div className="relative flex gap-3 animate-fade-in-up">
+                  <div className="flex flex-col items-center shrink-0 pt-1">
+                    <div className={`w-7 h-7 rounded-full flex items-center justify-center text-xs font-bold border-2 transition-all shrink-0 ${
+                      patientName.trim()
+                        ? "bg-emerald-500 border-emerald-500 text-white"
+                        : "bg-white border-medical-400 text-medical-600"
+                    }`}>
+                      {patientName.trim() ? <Check className="w-3.5 h-3.5" /> : "2"}
+                    </div>
+                    {patientName.trim() && <div className="w-0.5 flex-1 min-h-4 bg-slate-200 mt-1" />}
+                  </div>
+                  <div className="flex-1 pb-4 min-w-0">
+                    <Input
+                      label="Full Name"
+                      placeholder="Your full name"
+                      value={patientName}
+                      onChange={(e) => setPatientName(e.target.value)}
+                      required
+                    />
+                  </div>
+                </div>
+              )}
+
+              {/* Substep 3: Age — reveals after name */}
+              {patientPhone.trim() && patientName.trim() && (
+                <div className="relative flex gap-3 animate-fade-in-up">
+                  <div className="flex flex-col items-center shrink-0 pt-1">
+                    <div className={`w-7 h-7 rounded-full flex items-center justify-center text-xs font-bold border-2 transition-all shrink-0 ${
+                      patientAge.trim()
+                        ? "bg-emerald-500 border-emerald-500 text-white"
+                        : "bg-white border-slate-300 text-slate-400"
+                    }`}>
+                      {patientAge.trim() ? <Check className="w-3.5 h-3.5" /> : "3"}
                     </div>
                   </div>
-                )}
-
-                {/* Additional notes */}
-                <Textarea
-                  label="Additional Notes (optional)"
-                  placeholder="Any specific concerns or instructions…"
-                  rows={2}
-                  value={additionalNotes}
-                  onChange={(e) => setAdditionalNotes(e.target.value)}
-                />
-              </>
-            )}
+                  <div className="flex-1 pb-2 min-w-0">
+                    <Input
+                      label="Age (optional)"
+                      type="number"
+                      min="0"
+                      max="150"
+                      placeholder="e.g. 35"
+                      value={patientAge}
+                      onChange={(e) => setPatientAge(e.target.value)}
+                    />
+                  </div>
+                </div>
+              )}
+            </div>
           </div>
-        )}
+        </div>
+      )}
 
-        {/* Step 2: Your Details */}
-        {step === 2 && (
-          <div className="space-y-4">
-            <Input
-              label="Full Name"
-              placeholder="Your full name"
-              value={patientName}
-              onChange={(e) => setPatientName(e.target.value)}
-              required
-            />
-            <PhoneInput
-              label="Phone Number"
-              required
-              value={patientPhone}
-              onChange={setPatientPhone}
-            />
-            <Input
-              label="Age (optional)"
-              type="number"
-              min="0"
-              max="150"
-              placeholder="e.g. 35"
-              value={patientAge}
-              onChange={(e) => setPatientAge(e.target.value)}
-            />
-          </div>
-        )}
-
-        {/* Step 3: Review & Submit */}
-        {step === 3 && (
-          <div className="space-y-4">
-            <div className="bg-slate-50 rounded-lg p-4 space-y-3 text-sm">
-              <div>
-                <p className="text-xs font-semibold text-slate-500 uppercase">Laboratory</p>
-                <p className="font-medium text-slate-800">{labName}</p>
-                {labAddress && <p className="text-xs text-slate-600">{labAddress}</p>}
+      {/* ── Step 3: Review & Submit ── */}
+      {step === 3 && (
+        <div className="mt-4 space-y-4">
+          <div className="rounded-2xl border border-slate-200/80 overflow-hidden shadow-sm">
+            <div className="px-4 py-3 bg-gradient-to-r from-slate-50 to-slate-50/60 border-b border-slate-100 flex items-center gap-2">
+              <div className="w-1.5 h-1.5 rounded-full bg-medical-400" />
+              <p className="text-xs font-bold text-slate-600 tracking-wide">Review before submitting</p>
+            </div>
+            <div className="divide-y divide-slate-100/80">
+              {/* Lab */}
+              <div className="px-4 py-3.5 flex items-start justify-between gap-4">
+                <p className="text-[11px] font-semibold text-slate-400 uppercase tracking-wide shrink-0 w-20 pt-px">Lab</p>
+                <div className="text-right min-w-0">
+                  <p className="text-sm font-semibold text-slate-800 truncate">{labName || preselectedLabName}</p>
+                  {(labAddress || preselectedLabAddress) && (
+                    <p className="text-xs text-slate-400 mt-0.5 truncate">{labAddress || preselectedLabAddress}</p>
+                  )}
+                </div>
               </div>
-              <div>
-                <p className="text-xs font-semibold text-slate-500 uppercase">Tests</p>
-                <p className="text-slate-800">{selectedTests.join(", ")}</p>
-                {additionalNotes && <p className="text-xs text-slate-600 mt-1">{additionalNotes}</p>}
+              {/* Tests */}
+              <div className="px-4 py-3.5 flex items-start justify-between gap-4">
+                <p className="text-[11px] font-semibold text-slate-400 uppercase tracking-wide shrink-0 w-20 pt-px">Services</p>
+                <div className="text-right min-w-0">
+                  <p className="text-sm font-semibold text-slate-800">{selectedTests.join(", ")}</p>
+                  {additionalNotes && <p className="text-xs text-slate-400 mt-0.5 truncate">{additionalNotes}</p>}
+                </div>
               </div>
-              <div>
-                <p className="text-xs font-semibold text-slate-500 uppercase">Your Details</p>
-                <p className="text-slate-800">{patientName}</p>
-                <p className="text-xs text-slate-600">{patientPhone}</p>
-                {patientAge && <p className="text-xs text-slate-600">Age: {patientAge}</p>}
+              {/* Patient */}
+              <div className="px-4 py-3.5 flex items-start justify-between gap-4">
+                <p className="text-[11px] font-semibold text-slate-400 uppercase tracking-wide shrink-0 w-20 pt-px">You</p>
+                <div className="text-right min-w-0">
+                  <p className="text-sm font-semibold text-slate-800">{patientName}</p>
+                  <p className="text-xs text-slate-500 font-mono mt-0.5">{patientPhone}</p>
+                  {patientAge && <p className="text-xs text-slate-400 mt-0.5">Age: {patientAge}</p>}
+                </div>
               </div>
             </div>
-
-            <p className="text-xs text-slate-500 italic">
-              An SMS confirmation will be sent to your phone number.
-            </p>
-
-            <Button
-              onClick={handleSubmit}
-              disabled={submitting}
-              loading={submitting}
-              fullWidth
-            >
-              {submitting ? "Submitting…" : "Submit Request"}
-            </Button>
           </div>
-        )}
-      </div>
 
-      {/* Navigation buttons */}
-      <div className="flex gap-2 mt-4">
-        {step > 1 && (
+          <p className="text-xs text-slate-400 text-center leading-relaxed px-4">
+            By submitting you agree to the{" "}
+            <a href="/terms" className="underline hover:text-slate-600">Terms</a>
+            {" "}&amp;{" "}
+            <a href="/privacy" className="underline hover:text-slate-600">Privacy Policy</a>.
+          </p>
+        </div>
+      )}
+
+      {/* ── Back button ── */}
+      {step > 1 && (
+        <div className="mt-5">
           <button
             onClick={() => setStep(step - 1)}
-            className="flex items-center gap-2 px-4 py-2.5 rounded-xl border border-slate-200 text-slate-700 hover:bg-slate-50 transition-colors"
+            className="flex items-center gap-2 px-4 py-2.5 rounded-xl border border-slate-200 text-slate-600 hover:bg-slate-50 text-sm font-medium transition-colors"
           >
             <ChevronLeft className="w-4 h-4" />
             Back
           </button>
-        )}
-        {step < 3 && (
-          <button
-            onClick={() => setStep(step + 1)}
-            disabled={!canAdvance}
-            className="ml-auto flex items-center gap-2 px-4 py-2.5 rounded-xl bg-medical-600 text-white hover:bg-medical-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
-          >
-            Continue
-            <ChevronRight className="w-4 h-4" />
-          </button>
-        )}
-      </div>
+        </div>
+      )}
+
+      {/* ── FAB: Continue / Submit ── */}
+      {(stepValid || step === 3) && (
+        <div className="fixed bottom-6 right-5 z-50">
+          {step < 3 ? (
+            <button
+              type="button"
+              onClick={handleNext}
+              disabled={!stepValid}
+              className="flex items-center gap-2.5 px-6 py-3.5 rounded-2xl bg-medical-600 hover:bg-medical-700 active:scale-95 disabled:opacity-50 text-white font-bold text-sm shadow-2xl shadow-medical-600/40 transition-all"
+            >
+              Continue
+              <ChevronRight className="w-5 h-5" />
+            </button>
+          ) : (
+            <button
+              type="button"
+              onClick={handleSubmit}
+              disabled={submitting}
+              className="flex items-center gap-2.5 px-6 py-3.5 rounded-2xl bg-medical-600 hover:bg-medical-700 active:scale-95 disabled:opacity-70 text-white font-bold text-sm shadow-2xl shadow-medical-600/40 transition-all"
+            >
+              {submitting ? <RefreshCw className="w-5 h-5 animate-spin" /> : <Check className="w-5 h-5" />}
+              {submitting ? "Submitting…" : "Submit Request"}
+            </button>
+          )}
+        </div>
+      )}
     </div>
   );
 }
