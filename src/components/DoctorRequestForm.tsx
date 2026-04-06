@@ -1237,6 +1237,7 @@ export function DoctorRequestForm({
     phones: selectedLocation.phones,
     whatsapp: selectedLocation.whatsapp ?? null,
     logo_url: selectedLocation.logo_url ?? null,
+    hero_image_url: null,
     description: "",
     service_categories: [],
     certifications: [],
