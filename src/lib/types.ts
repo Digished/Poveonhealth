@@ -19,6 +19,7 @@ export interface Lab {
   email: string;
   notification_email: string | null;
   logo_url: string | null;
+  hero_image_url: string | null;
   whatsapp: string | null;
   request_email: string | null;
   hidden: boolean;

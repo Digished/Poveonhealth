@@ -19,6 +19,7 @@ model Lab {
   email              String   @unique
   description        String   @default("")
   logo_url           String?
+  hero_image_url     String? // Custom background image for the lab's unique page
   whatsapp           String? // WhatsApp number for FAB contact buttons
   notification_email String? // Branded "from" address for result/notification emails
   request_email      String? // Dedicated address for incoming new-request alerts

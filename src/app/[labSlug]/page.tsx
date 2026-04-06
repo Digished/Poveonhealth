@@ -18,7 +18,7 @@ export default async function LabSlugPage({ params }: LabSlugPageProps) {
       id: true, name: true, hidden: true,
       address: true, phones: true, whatsapp: true,
       email: true, request_email: true,
-      logo_url: true, service_categories: true,
+      logo_url: true, hero_image_url: true, service_categories: true,
     },
   });
 
@@ -65,11 +65,25 @@ export default async function LabSlugPage({ params }: LabSlugPageProps) {
 
   const locations = [parentLocation, ...branchLocations];
   const logoUrl = lab.logo_url ?? null;
+  const heroImageUrl = lab.hero_image_url ?? null;
 
   return (
     <div className="relative h-dvh flex flex-col bg-slate-50 overflow-hidden">
-      {/* Branded background — logo colors or fallback gradient */}
-      {logoUrl ? (
+      {/* Branded background — hero image takes priority, then logo blur, then gradient */}
+      {heroImageUrl ? (
+        <>
+          <div
+            className="absolute inset-0 -z-10 pointer-events-none"
+            aria-hidden="true"
+            style={{
+              backgroundImage: `url(${heroImageUrl})`,
+              backgroundSize: "cover",
+              backgroundPosition: "center",
+            }}
+          />
+          <div className="absolute inset-0 -z-10 bg-white/50 pointer-events-none" aria-hidden="true" />
+        </>
+      ) : logoUrl ? (
         <div
           className="absolute inset-0 -z-10 pointer-events-none"
           aria-hidden="true"
@@ -94,8 +108,8 @@ export default async function LabSlugPage({ params }: LabSlugPageProps) {
           }}
         />
       )}
-      {/* Lighter veil so brand colours actually show through */}
-      <div className="absolute inset-0 -z-10 bg-white/30 pointer-events-none" aria-hidden="true" />
+      {/* Lighter veil so brand colours actually show through (only when no hero image) */}
+      {!heroImageUrl && <div className="absolute inset-0 -z-10 bg-white/30 pointer-events-none" aria-hidden="true" />}
 
       {/* Branded splash */}
       <LabSplash logoUrl={logoUrl} labName={lab.name} />

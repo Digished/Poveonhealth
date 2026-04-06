@@ -23,6 +23,10 @@ const migrations = [
     desc: "requests.doctor_email nullable (self-service patient requests)",
     sql: `ALTER TABLE requests ALTER COLUMN doctor_email DROP NOT NULL`,
   },
+  {
+    desc: "labs.hero_image_url column for custom page background",
+    sql: `ALTER TABLE labs ADD COLUMN IF NOT EXISTS hero_image_url TEXT`,
+  },
 ];
 
 let failed = false;
