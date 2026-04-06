@@ -2,8 +2,7 @@
  * POST /api/requests/patient-create
  *
  * Self-service patient request — no doctor fields required.
- * doctor_name is stored as "Self Service" and doctor_email as
- * the platform constant so the Request schema is satisfied without migration.
+ * doctor_name is stored as "Self Service" and doctor_email as null.
  */
 
 import { NextRequest, NextResponse } from "next/server";
@@ -16,8 +15,7 @@ import { resolveTests, totalFromBreakdown } from "@/lib/resolve-tests";
 import { logApiCall } from "@/lib/api-logger";
 import { sendSms, buildPatientRequestSms } from "@/lib/sms/termii";
 
-export const SELF_SERVICE_EMAIL = "self-service@poveon.health";
-export const SELF_SERVICE_NAME = "Self Service";
+const SELF_SERVICE_NAME = "Self Service";
 
 const Schema = z.object({
   lab_id: z.string().uuid(),
@@ -66,7 +64,7 @@ export async function POST(request: NextRequest) {
     const recentCount = await prisma.request.count({
       where: {
         patient_phone: data.patient_phone,
-        doctor_email: SELF_SERVICE_EMAIL,
+        doctor_email: null,
         created_at: { gt: new Date(Date.now() - 60 * 60 * 1000) },
       },
     });
@@ -115,7 +113,7 @@ export async function POST(request: NextRequest) {
         address: null,
         patient_email: null,
         doctor_name: SELF_SERVICE_NAME,
-        doctor_email: SELF_SERVICE_EMAIL,
+        doctor_email: null,
         doctor_prefix: null,
         doctor_phone: null,
         doctor_hospital: null,

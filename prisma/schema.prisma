@@ -157,7 +157,7 @@ model Request {
   patient_phone         String?
   doctor_prefix         String?
   doctor_name           String    @default("")
-  doctor_email          String
+  doctor_email          String? // null for self-service patient requests
   doctor_phone          String?
   doctor_hospital       String?
   doctor_bank_name      String?
