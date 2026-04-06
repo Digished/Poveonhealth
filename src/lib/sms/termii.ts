@@ -48,7 +48,7 @@ export async function sendSms(to: string, message: string): Promise<void> {
       from: SENDER_ID,
       sms: message,
       type: "plain",
-      channel: "generic",
+      channel: "dnd", // DND channel works without an approved sender ID
     }),
   });
 
