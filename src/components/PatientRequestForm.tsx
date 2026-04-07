@@ -299,12 +299,31 @@ export function PatientRequestForm(props: PatientRequestFormProps) {
   const [labsLoading, setLabsLoading] = useState(false);
   const [labs, setLabs] = useState(initialLabs);
 
-  // ── Sticky header scroll ─────────────────────────────────────────────────────
+  // ── Portal / visibility ──────────────────────────────────────────────────────
+  const [mounted, setMounted] = useState(false);
+  const formRef = useRef<HTMLDivElement>(null);
+  const [formInView, setFormInView] = useState(true);
   const [scrolled, setScrolled] = useState(false);
+
   useEffect(() => {
-    const onScroll = () => setScrolled(window.scrollY > 20);
-    window.addEventListener("scroll", onScroll, { passive: true });
-    return () => window.removeEventListener("scroll", onScroll);
+    setMounted(true);
+    const el = formRef.current;
+    if (!el) return;
+    const obs = new IntersectionObserver(
+      ([entry]) => setFormInView(entry.isIntersecting),
+      { threshold: 0.05 }
+    );
+    obs.observe(el);
+    // Scroll detection: walk up to find the actual scroll container
+    let parent: HTMLElement | null = el.parentElement;
+    while (parent && getComputedStyle(parent).overflowY === "visible") parent = parent.parentElement;
+    const scroller = parent ?? window as unknown as HTMLElement;
+    const onScroll = () => setScrolled((scroller instanceof Window ? scroller.scrollY : scroller.scrollTop) > 20);
+    scroller.addEventListener("scroll", onScroll, { passive: true });
+    return () => {
+      obs.disconnect();
+      scroller.removeEventListener("scroll", onScroll);
+    };
   }, []);
 
   // ── Scroll chat to bottom ────────────────────────────────────────────────────
@@ -433,7 +452,7 @@ export function PatientRequestForm(props: PatientRequestFormProps) {
 
   // ── Main form ─────────────────────────────────────────────────────────────────
   return (
-    <div className="animate-fade-in">
+    <div ref={formRef} className={`animate-fade-in transition-[padding] duration-300 ${(stepValid || step === 3) ? "pb-28" : "pb-6"}`}>
       {/* ── Sticky step header ── */}
       <div className={`sticky top-0 z-10 -mx-4 px-4 pt-3 pb-3 transition-all duration-200 ${
         scrolled
@@ -624,21 +643,29 @@ export function PatientRequestForm(props: PatientRequestFormProps) {
                   </div>
 
                   {/* Chat window */}
-                  <div className="rounded-xl border border-slate-200 bg-slate-50 overflow-hidden">
-                    <div className="flex items-center gap-2 px-3 py-2 border-b border-slate-200 bg-white/80">
-                      <div className="w-2 h-2 rounded-full bg-emerald-400" />
-                      <p className="text-xs font-semibold text-slate-600">{labName ? `${labName} Assistant` : "Health Assistant"}</p>
+                  <div className="rounded-2xl border border-slate-200 bg-slate-50 shadow-sm">
+                    <div className="flex items-center gap-2 px-3.5 py-2.5 border-b border-slate-200 bg-white rounded-t-2xl">
+                      <div className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse" />
+                      <p className="text-xs font-bold text-slate-700">{labName ? `${labName} Assistant` : "Health Assistant"}</p>
                     </div>
 
-                    <div className="min-h-[200px] max-h-[280px] overflow-y-auto p-3 space-y-3">
+                    <div className="max-h-[50vh] overflow-y-auto p-3.5 space-y-3 overscroll-contain">
                       {chatMessages.length === 0 ? (
-                        <div className="flex flex-col items-center justify-center h-36 text-center gap-2">
-                          <div className="w-10 h-10 rounded-2xl bg-medical-100 flex items-center justify-center">
-                            <MessageCircle className="w-5 h-5 text-medical-500" />
+                        <div className="flex flex-col items-center justify-center py-10 text-center gap-3">
+                          <div className="w-12 h-12 rounded-2xl bg-gradient-to-br from-medical-100 to-medical-200 flex items-center justify-center shadow-sm">
+                            <Sparkles className="w-6 h-6 text-medical-600" />
                           </div>
                           <div>
-                            <p className="text-sm font-semibold text-slate-600">How can I help you today?</p>
-                            <p className="text-xs text-slate-400 mt-0.5 max-w-[220px]">Describe your concern and tests will be automatically added to your request.</p>
+                            <p className="text-sm font-bold text-slate-700">How can I help you today?</p>
+                            <p className="text-xs text-slate-400 mt-1 max-w-[230px] leading-relaxed">Tell me your symptoms or health concerns and I'll recommend the right tests — automatically added for you.</p>
+                          </div>
+                          <div className="flex flex-wrap gap-1.5 justify-center max-w-[260px]">
+                            {["I have a cough", "Feeling tired", "Routine checkup", "Chest pain"].map(hint => (
+                              <button key={hint} type="button" onClick={() => { setChatInput(hint); }}
+                                className="text-[11px] px-2.5 py-1 rounded-full bg-white border border-slate-200 text-slate-500 hover:border-medical-300 hover:text-medical-600 hover:bg-medical-50 transition-all">
+                                {hint}
+                              </button>
+                            ))}
                           </div>
                         </div>
                       ) : (
@@ -703,22 +730,22 @@ export function PatientRequestForm(props: PatientRequestFormProps) {
                     </div>
 
                     {/* Chat input */}
-                    <div className="p-3 border-t border-slate-200 bg-white/80 flex gap-2">
+                    <div className="p-3 border-t border-slate-200 bg-white rounded-b-2xl flex gap-2 items-center">
                       <input
                         type="text"
-                        placeholder="Describe your health concern…"
+                        placeholder="Describe your symptoms or concern…"
                         value={chatInput}
                         onChange={(e) => setChatInput(e.target.value)}
                         onKeyDown={(e) => e.key === "Enter" && !e.shiftKey && handleChatSend()}
                         disabled={chatLoading}
-                        className="flex-1 rounded-xl border border-slate-200 bg-slate-50 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-medical-400 focus:border-medical-400 disabled:opacity-60"
+                        className="flex-1 rounded-xl border border-slate-200 bg-slate-50 px-3.5 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-medical-400 focus:border-medical-400 disabled:opacity-60 placeholder:text-slate-400"
                       />
                       <button
                         onClick={handleChatSend}
                         disabled={chatLoading || !chatInput.trim()}
-                        className="w-9 h-9 rounded-xl bg-medical-600 text-white flex items-center justify-center hover:bg-medical-700 disabled:opacity-40 transition-all shrink-0"
+                        className="w-10 h-10 rounded-xl bg-medical-600 text-white flex items-center justify-center hover:bg-medical-700 disabled:opacity-40 active:scale-95 transition-all shrink-0 shadow-sm shadow-medical-600/30"
                       >
-                        <Send className="w-4 h-4" />
+                        {chatLoading ? <Loader2 className="w-4 h-4 animate-spin" /> : <Send className="w-4 h-4" />}
                       </button>
                     </div>
                   </div>
@@ -1003,43 +1030,44 @@ export function PatientRequestForm(props: PatientRequestFormProps) {
       )}
 
       {/* ── Back button ── */}
-      {step > 1 && (
-        <div className="mt-5">
-          <button
-            onClick={() => setStep(step - 1)}
-            className="flex items-center gap-2 px-4 py-2.5 rounded-xl border border-slate-200 text-slate-600 hover:bg-slate-50 text-sm font-medium transition-colors"
-          >
-            <ChevronLeft className="w-4 h-4" />
-            Back
-          </button>
-        </div>
-      )}
-
-      {/* ── Continue / Submit button ── */}
-      {(stepValid || step === 3) && (
-        <div className="mt-5">
-          {step < 3 ? (
-            <button
-              type="button"
-              onClick={handleNext}
-              disabled={!stepValid}
-              className="w-full flex items-center justify-center gap-2 py-3.5 rounded-2xl bg-medical-600 hover:bg-medical-700 active:scale-[0.98] disabled:opacity-50 text-white font-bold text-sm shadow-lg shadow-medical-600/30 transition-all"
-            >
-              Continue
-              <ChevronRight className="w-5 h-5" />
-            </button>
-          ) : (
-            <button
-              type="button"
-              onClick={handleSubmit}
-              disabled={submitting}
-              className="w-full flex items-center justify-center gap-2 py-3.5 rounded-2xl bg-medical-600 hover:bg-medical-700 active:scale-[0.98] disabled:opacity-70 text-white font-bold text-sm shadow-lg shadow-medical-600/30 transition-all"
-            >
-              {submitting ? <RefreshCw className="w-5 h-5 animate-spin" /> : <Check className="w-5 h-5" />}
-              {submitting ? "Submitting…" : "Submit Request"}
-            </button>
-          )}
-        </div>
+      {/* ── Floating action bar — portal, only when form is in viewport ── */}
+      {mounted && (stepValid || step === 3) && formInView && createPortal(
+        <div className="fixed bottom-0 inset-x-0 z-[200] px-4 pb-6 pt-3 pointer-events-none">
+          <div className="max-w-lg mx-auto flex items-center gap-3 pointer-events-auto">
+            {step > 1 && (
+              <button
+                type="button"
+                onClick={() => setStep(step - 1)}
+                className="flex items-center gap-1.5 px-4 py-3.5 rounded-2xl bg-white border border-slate-200 text-slate-600 hover:bg-slate-50 text-sm font-semibold transition-all shadow-lg shadow-slate-900/5 shrink-0"
+              >
+                <ChevronLeft className="w-4 h-4" />
+                Back
+              </button>
+            )}
+            {step < 3 ? (
+              <button
+                type="button"
+                onClick={handleNext}
+                disabled={!stepValid}
+                className="flex-1 flex items-center justify-center gap-2 py-3.5 rounded-2xl bg-medical-600 hover:bg-medical-700 active:scale-[0.98] disabled:opacity-50 text-white font-bold text-sm shadow-xl shadow-medical-600/35 transition-all"
+              >
+                Continue
+                <ChevronRight className="w-5 h-5" />
+              </button>
+            ) : (
+              <button
+                type="button"
+                onClick={handleSubmit}
+                disabled={submitting}
+                className="flex-1 flex items-center justify-center gap-2 py-3.5 rounded-2xl bg-medical-600 hover:bg-medical-700 active:scale-[0.98] disabled:opacity-70 text-white font-bold text-sm shadow-xl shadow-medical-600/35 transition-all"
+              >
+                {submitting ? <RefreshCw className="w-5 h-5 animate-spin" /> : <Check className="w-5 h-5" />}
+                {submitting ? "Submitting…" : "Submit Request"}
+              </button>
+            )}
+          </div>
+        </div>,
+        document.body
       )}
     </div>
   );
