@@ -917,13 +917,13 @@ export function PatientRequestForm(props: PatientRequestFormProps) {
 
       {/* ── Sticky bottom action bar ── */}
       {(stepValid || step === 3) && (
-        <div className="sticky bottom-0 -mx-4 px-4 pt-3 pb-4 mt-6 bg-white/90 backdrop-blur-sm border-t border-slate-100">
+        <div className="sticky bottom-0 -mx-4 px-4 pt-2 pb-4 mt-6 pointer-events-none">
           {step < 3 ? (
             <button
               type="button"
               onClick={handleNext}
               disabled={!stepValid}
-              className="w-full flex items-center justify-center gap-2 py-3.5 rounded-2xl bg-medical-600 hover:bg-medical-700 active:scale-[0.98] disabled:opacity-50 text-white font-bold text-sm transition-all"
+              className="pointer-events-auto w-full flex items-center justify-center gap-2 py-3.5 rounded-2xl bg-medical-600 hover:bg-medical-700 active:scale-[0.98] disabled:opacity-50 text-white font-bold text-sm shadow-lg shadow-medical-600/30 transition-all"
             >
               Continue
               <ChevronRight className="w-5 h-5" />
@@ -933,7 +933,7 @@ export function PatientRequestForm(props: PatientRequestFormProps) {
               type="button"
               onClick={handleSubmit}
               disabled={submitting}
-              className="w-full flex items-center justify-center gap-2 py-3.5 rounded-2xl bg-medical-600 hover:bg-medical-700 active:scale-[0.98] disabled:opacity-70 text-white font-bold text-sm transition-all"
+              className="pointer-events-auto w-full flex items-center justify-center gap-2 py-3.5 rounded-2xl bg-medical-600 hover:bg-medical-700 active:scale-[0.98] disabled:opacity-70 text-white font-bold text-sm shadow-lg shadow-medical-600/30 transition-all"
             >
               {submitting ? <RefreshCw className="w-5 h-5 animate-spin" /> : <Check className="w-5 h-5" />}
               {submitting ? "Submitting…" : "Submit Request"}
