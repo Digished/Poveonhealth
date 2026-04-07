@@ -6,7 +6,7 @@ import { toast } from "react-hot-toast";
 import {
   FlaskConical, User, Check, Search, X, ChevronRight, ChevronLeft,
   Building2, MapPin, Loader2, MessageCircle, RefreshCw, Send,
-  ShieldAlert, Sparkles, Grid3X3, Phone,
+  ShieldAlert, Sparkles, Grid3X3, Phone, Copy, Link2,
 } from "lucide-react";
 import { parsePhones } from "@/lib/phones";
 import { Button } from "@/components/ui/Button";
@@ -124,6 +124,104 @@ function LabSearchModal({
       </div>
     </div>,
     document.body
+  );
+}
+
+function PatientSuccessScreen({
+  data,
+  onReset,
+}: {
+  data: { code: string; labName: string; labAddress: string; labPhones: { number: string; label: string }[] };
+  onReset: () => void;
+}) {
+  const [codeCopied, setCodeCopied] = useState(false);
+  const [linkCopied, setLinkCopied] = useState(false);
+
+  async function copyCode() {
+    try { await navigator.clipboard.writeText(data.code); } catch { /* ignore */ }
+    setCodeCopied(true);
+    setTimeout(() => setCodeCopied(false), 3000);
+  }
+  async function copyLink() {
+    const url = `${window.location.origin}/r/${data.code}`;
+    try { await navigator.clipboard.writeText(url); } catch { /* ignore */ }
+    setLinkCopied(true);
+    setTimeout(() => setLinkCopied(false), 3000);
+  }
+
+  return (
+    <div className="animate-slide-up space-y-4 pt-4">
+      <div className="text-center py-2">
+        <div className="w-16 h-16 bg-emerald-100 rounded-3xl flex items-center justify-center mx-auto mb-4 shadow-sm">
+          <Check className="w-8 h-8 text-emerald-600" />
+        </div>
+        <h2 className="text-xl font-bold text-slate-800">Request Submitted!</h2>
+        <p className="text-sm text-slate-500 mt-1.5">An SMS confirmation will be sent to your phone shortly.</p>
+      </div>
+
+      <div className="glass-card p-5">
+        <p className="text-[10px] font-bold text-medical-500 uppercase tracking-widest text-center mb-2">
+          Your Request Code
+        </p>
+        <div className="flex items-center justify-center gap-3">
+          <p className="text-4xl font-black text-medical-700 font-mono tracking-[0.25em] py-1">
+            {data.code}
+          </p>
+          <button
+            onClick={copyCode}
+            className="p-2 rounded-xl bg-medical-50 border border-medical-200 hover:bg-medical-100 transition-colors"
+            title={codeCopied ? "Copied!" : "Copy code"}
+          >
+            {codeCopied ? <Check className="w-4 h-4 text-emerald-600" /> : <Copy className="w-4 h-4 text-medical-600" />}
+          </button>
+        </div>
+        <p className="text-xs text-center text-medical-600 mt-2 font-medium">Show this code at the lab reception</p>
+        <button
+          onClick={copyLink}
+          className="mt-3 w-full flex items-center justify-center gap-2 py-2 px-4 rounded-xl border border-medical-200 bg-white hover:bg-medical-50 text-xs font-semibold text-medical-700 transition-colors"
+        >
+          {linkCopied ? <Check className="w-3.5 h-3.5 text-emerald-600" /> : <Link2 className="w-3.5 h-3.5" />}
+          {linkCopied ? "Link copied!" : "Copy shareable link"}
+        </button>
+      </div>
+
+      <div className="glass-card px-4 py-3.5 space-y-1">
+        <p className="text-xs font-bold text-slate-400 uppercase tracking-wide">Laboratory</p>
+        <p className="text-sm font-bold text-slate-800">{data.labName}</p>
+        {data.labAddress && (
+          <a
+            href={`https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(data.labName + " " + data.labAddress)}`}
+            target="_blank"
+            rel="noopener noreferrer"
+            className="flex items-start gap-1.5 mt-0.5 group"
+          >
+            <MapPin className="w-3 h-3 mt-0.5 shrink-0 text-medical-400" />
+            <span className="text-xs text-medical-600 group-hover:underline">{data.labAddress}</span>
+          </a>
+        )}
+        {data.labPhones.length > 0 && (
+          <div className="mt-3 pt-3 border-t border-slate-100">
+            <p className="text-xs font-bold text-slate-400 uppercase tracking-wide mb-2">Contact the Lab</p>
+            <div className="space-y-1.5">
+              {data.labPhones.map((p, i) => (
+                <a key={i} href={`tel:${p.number}`} className="flex items-center gap-2 text-sm font-medium text-medical-700 hover:text-medical-900 transition-colors">
+                  <Phone className="w-3.5 h-3.5 shrink-0 text-medical-400" />
+                  {p.label ? <><span className="text-slate-500 text-xs">{p.label}:</span> {p.number}</> : p.number}
+                </a>
+              ))}
+            </div>
+            <p className="text-xs text-slate-400 mt-2">You can also call these numbers if you have any questions.</p>
+          </div>
+        )}
+      </div>
+
+      <button
+        onClick={onReset}
+        className="w-full text-sm font-semibold text-medical-600 hover:text-medical-700 py-2.5 rounded-xl hover:bg-medical-50 transition-colors"
+      >
+        Submit another request
+      </button>
+    </div>
   );
 }
 
@@ -302,68 +400,7 @@ export function PatientRequestForm(props: PatientRequestFormProps) {
 
   // ── Success screen ────────────────────────────────────────────────────────────
   if (successData) {
-    return (
-      <div className="animate-slide-up space-y-4 pt-4">
-        <div className="text-center py-2">
-          <div className="w-16 h-16 bg-emerald-100 rounded-3xl flex items-center justify-center mx-auto mb-4 shadow-sm">
-            <Check className="w-8 h-8 text-emerald-600" />
-          </div>
-          <h2 className="text-xl font-bold text-slate-800">Request Submitted!</h2>
-          <p className="text-sm text-slate-500 mt-1.5">An SMS confirmation will be sent to your phone shortly.</p>
-        </div>
-
-        <div className="glass-card p-5">
-          <p className="text-[10px] font-bold text-medical-500 uppercase tracking-widest text-center mb-2">
-            Your Request Code
-          </p>
-          <p className="text-4xl font-black text-medical-700 text-center font-mono tracking-[0.25em] py-1">
-            {successData.code}
-          </p>
-          <p className="text-xs text-center text-medical-600 mt-2 font-medium">Show this code at the lab reception</p>
-        </div>
-
-        <div className="glass-card px-4 py-3.5 space-y-1">
-          <p className="text-xs font-bold text-slate-400 uppercase tracking-wide">Laboratory</p>
-          <p className="text-sm font-bold text-slate-800">{successData.labName}</p>
-          {successData.labAddress && (
-            <a
-              href={`https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(successData.labName + " " + successData.labAddress)}`}
-              target="_blank"
-              rel="noopener noreferrer"
-              className="flex items-start gap-1.5 mt-0.5 group"
-            >
-              <MapPin className="w-3 h-3 mt-0.5 shrink-0 text-medical-400" />
-              <span className="text-xs text-medical-600 group-hover:underline">{successData.labAddress}</span>
-            </a>
-          )}
-          {successData.labPhones.length > 0 && (
-            <div className="mt-3 pt-3 border-t border-slate-100">
-              <p className="text-xs font-bold text-slate-400 uppercase tracking-wide mb-2">Contact the Lab</p>
-              <div className="space-y-1.5">
-                {successData.labPhones.map((p, i) => (
-                  <a
-                    key={i}
-                    href={`tel:${p.number}`}
-                    className="flex items-center gap-2 text-sm font-medium text-medical-700 hover:text-medical-900 transition-colors"
-                  >
-                    <Phone className="w-3.5 h-3.5 shrink-0 text-medical-400" />
-                    {p.label ? <><span className="text-slate-500 text-xs">{p.label}:</span> {p.number}</> : p.number}
-                  </a>
-                ))}
-              </div>
-              <p className="text-xs text-slate-400 mt-2">You can also call these numbers if you have any questions.</p>
-            </div>
-          )}
-        </div>
-
-        <button
-          onClick={() => window.location.reload()}
-          className="w-full text-sm font-semibold text-medical-600 hover:text-medical-700 py-2.5 rounded-xl hover:bg-medical-50 transition-colors"
-        >
-          Submit another request
-        </button>
-      </div>
-    );
+    return <PatientSuccessScreen data={successData} onReset={() => window.location.reload()} />;
   }
 
   // ── Main form ─────────────────────────────────────────────────────────────────

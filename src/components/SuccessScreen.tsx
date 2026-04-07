@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useEffect } from "react";
-import { CheckCircle, Copy, Check, MapPin, Phone, RotateCcw } from "lucide-react";
+import { CheckCircle, Copy, Check, MapPin, Phone, RotateCcw, Link2 } from "lucide-react";
 import { parsePhones } from "@/lib/phones";
 import type { PhoneEntry } from "@/lib/phones";
 
@@ -35,6 +35,7 @@ export function SuccessScreen({
 }: SuccessScreenProps) {
   const waNumbers = parseWhatsapp(labWhatsapp);
   const [copied, setCopied] = useState(false);
+  const [linkCopied, setLinkCopied] = useState(false);
 
   useEffect(() => {
     window.scrollTo({ top: 0, behavior: "smooth" });
@@ -53,6 +54,16 @@ export function SuccessScreen({
     }
     setCopied(true);
     setTimeout(() => setCopied(false), 3000);
+  }
+
+  const phones = parsePhones(labPhones as unknown);
+  const wa = parseWhatsapp(labWhatsapp);
+
+  async function copyLink() {
+    const url = `${window.location.origin}/r/${code}`;
+    try { await navigator.clipboard.writeText(url); } catch { /* ignore */ }
+    setLinkCopied(true);
+    setTimeout(() => setLinkCopied(false), 3000);
   }
 
   return (
@@ -86,6 +97,14 @@ export function SuccessScreen({
           </button>
         </div>
         {copied && <p className="text-center text-xs text-emerald-600 font-medium mt-1.5">Copied!</p>}
+        {/* Shareable link */}
+        <button
+          onClick={copyLink}
+          className="mt-3 w-full flex items-center justify-center gap-2 py-2 px-4 rounded-xl border border-medical-200 bg-white hover:bg-medical-50 text-xs font-semibold text-medical-700 transition-colors"
+        >
+          {linkCopied ? <Check className="w-3.5 h-3.5 text-emerald-600" /> : <Link2 className="w-3.5 h-3.5" />}
+          {linkCopied ? "Link copied!" : "Copy shareable link"}
+        </button>
       </div>
 
       {/* Lab info */}
@@ -104,16 +123,16 @@ export function SuccessScreen({
               <p className="text-xs text-medical-600 group-hover:underline">{labAddress}</p>
             </a>
           )}
-          {(labPhones.length > 0 || waNumbers.length > 0) && (
-            <div className="flex flex-col gap-1.5 pt-1 border-t border-slate-100 mt-1">
-              {parsePhones(labPhones).map((ph, i) => (
+          {(phones.length > 0 || wa.length > 0) && (
+            <div className="flex flex-col gap-1.5 pt-1.5 border-t border-slate-100 mt-1">
+              {phones.map((ph, i) => (
                 <a key={i} href={`tel:${ph.number}`} className="flex items-center gap-1.5 text-xs font-medium text-medical-600 hover:underline">
                   <Phone className="w-3 h-3 shrink-0" />
                   {ph.label && <span className="text-slate-400">{ph.label}:</span>}
                   {ph.number}
                 </a>
               ))}
-              {waNumbers.map((num, i) => (
+              {wa.map((num, i) => (
                 <a
                   key={i}
                   href={`https://wa.me/${num.replace(/\D/g, "")}`}

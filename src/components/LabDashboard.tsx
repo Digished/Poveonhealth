@@ -114,6 +114,9 @@ export function LabDashboard({ lab, isOwner = false, roleName = "Lab Owner", can
   const [agreementSigned, setAgreementSigned] = useState<boolean | null>(null);
   // Eagerly loaded wallet balance for the "amount owed" banner shown on all tabs
   const [poveonBalance, setPoveonBalance] = useState<number | null>(null);
+  // Banner dismissal — persisted per-lab in localStorage
+  const [balanceBannerDismissed, setBalanceBannerDismissed] = useState(false);
+  const [agreementBannerDismissed, setAgreementBannerDismissed] = useState(false);
   const [mobileHeaderOpen, setMobileHeaderOpen] = useState(false);
   const [activeTab, setActiveTab] = useState<RequestStatus>("seen");
   const [requests, setRequests] = useState<LabRequest[]>([]);
@@ -263,6 +266,13 @@ export function LabDashboard({ lab, isOwner = false, roleName = "Lab Owner", can
       .then((d) => setAgreementSigned(d.signed ?? false))
       .catch(() => setAgreementSigned(true)); // fail silently — don't nag if API is down
   }, [isOwner]);
+
+  // Load banner dismissal state from localStorage
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    setBalanceBannerDismissed(localStorage.getItem(`balance_banner_dismissed_${lab.id}`) === "1");
+    setAgreementBannerDismissed(localStorage.getItem(`agreement_banner_dismissed_${lab.id}`) === "1");
+  }, [lab.id]);
 
   // Poll Poveon data every 30s when on the poveon tab (real-time updates)
   useEffect(() => {
@@ -703,7 +713,7 @@ export function LabDashboard({ lab, isOwner = false, roleName = "Lab Owner", can
         })()}
 
         {/* Amount owed banner — shown on all tabs when lab has a negative wallet balance */}
-        {poveonBalance !== null && poveonBalance < 0 && (isOwner || canViewWallet) && (
+        {poveonBalance !== null && poveonBalance < 0 && (isOwner || canViewWallet) && !balanceBannerDismissed && (
           <div className="mb-5 flex items-center gap-3 bg-red-500/20 border border-red-500/30 rounded-2xl px-4 py-3">
             <AlertTriangle className="w-4 h-4 text-red-400 shrink-0" />
             <p className="text-sm text-slate-200 flex-1">
@@ -717,17 +727,31 @@ export function LabDashboard({ lab, isOwner = false, roleName = "Lab Owner", can
             >
               View →
             </button>
+            <button
+              onClick={() => { setBalanceBannerDismissed(true); localStorage.setItem(`balance_banner_dismissed_${lab.id}`, "1"); }}
+              className="shrink-0 w-6 h-6 rounded-full bg-white/10 hover:bg-white/20 flex items-center justify-center text-red-300 hover:text-white transition"
+              aria-label="Dismiss"
+            >
+              <X className="w-3 h-3" />
+            </button>
           </div>
         )}
 
         {/* Agreement unsigned banner — shown to owners until agreement is signed */}
-        {isOwner && agreementSigned === false && (
+        {isOwner && agreementSigned === false && !agreementBannerDismissed && (
           <div className="mb-5 flex items-center gap-3 bg-amber-500/15 border border-amber-500/25 rounded-2xl px-4 py-3">
             <FileText className="w-4 h-4 text-amber-400 shrink-0" />
             <p className="text-sm text-slate-200 flex-1">
               Your lab has not yet signed the Poveon Partnership Agreement.{" "}
               Check your email for the invitation link.
             </p>
+            <button
+              onClick={() => { setAgreementBannerDismissed(true); localStorage.setItem(`agreement_banner_dismissed_${lab.id}`, "1"); }}
+              className="shrink-0 w-6 h-6 rounded-full bg-white/10 hover:bg-white/20 flex items-center justify-center text-amber-300 hover:text-white transition"
+              aria-label="Dismiss"
+            >
+              <X className="w-3 h-3" />
+            </button>
           </div>
         )}
 
