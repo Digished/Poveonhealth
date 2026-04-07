@@ -79,7 +79,7 @@ export function LabHeroSection({ labName, logoUrl, heroImageUrl, mode = "profess
           }`}
         >
           {/* ── Mobile layout ── */}
-          <div className="md:hidden px-5 pb-12">
+          <div className="md:hidden px-5 pb-[20vh]">
             <div className="relative bg-white/95 backdrop-blur-sm rounded-3xl shadow-xl px-5 pt-14 pb-6">
               {/* Logo: small, pinned to top-left corner of the card, floating */}
               {logoUrl && (
@@ -161,7 +161,7 @@ export function LabHeroSection({ labName, logoUrl, heroImageUrl, mode = "profess
 
   // ── Default variant (logo blur / gradient background) ─────────────────────
   return (
-    <div id="lab-hero" className="relative overflow-hidden pt-10 pb-8 px-4">
+    <div id="lab-hero" className="relative overflow-hidden min-h-dvh flex flex-col justify-center pt-10 pb-8 px-4">
 
       {/* Background layer: blurred logo palette wash */}
       {logoUrl ? (

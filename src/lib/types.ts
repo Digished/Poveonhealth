@@ -196,7 +196,7 @@ export interface CreateRequestResponse {
   success: boolean;
   code?: string;
   requestId?: string;
-  lab?: Pick<Lab, "name" | "address" | "phones">;
+  lab?: Pick<Lab, "name" | "address" | "phones" | "whatsapp">;
   error?: string;
 }
 

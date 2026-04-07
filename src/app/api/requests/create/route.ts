@@ -272,7 +272,7 @@ export async function POST(request: NextRequest) {
 
     logApiCall({ method: "POST", path: "/api/requests/create", status: 200, duration_ms: Date.now() - start });
     return NextResponse.json(
-      { success: true, code, requestId: newRequest.id, lab: { name: lab.name, address: labAddress } },
+      { success: true, code, requestId: newRequest.id, lab: { name: lab.name, address: labAddress, phones: (lab.phones ?? []) as { number: string; label: string }[], whatsapp: lab.whatsapp ?? null } },
       { headers: CORS_HEADERS }
     );
   } catch (error) {

@@ -326,9 +326,15 @@ export function PatientRequestForm(props: PatientRequestFormProps) {
           <p className="text-xs font-bold text-slate-400 uppercase tracking-wide">Laboratory</p>
           <p className="text-sm font-bold text-slate-800">{successData.labName}</p>
           {successData.labAddress && (
-            <p className="text-xs text-slate-500 flex items-start gap-1.5 mt-0.5">
-              <MapPin className="w-3 h-3 mt-0.5 shrink-0 text-medical-400" />{successData.labAddress}
-            </p>
+            <a
+              href={`https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(successData.labName + " " + successData.labAddress)}`}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="flex items-start gap-1.5 mt-0.5 group"
+            >
+              <MapPin className="w-3 h-3 mt-0.5 shrink-0 text-medical-400" />
+              <span className="text-xs text-medical-600 group-hover:underline">{successData.labAddress}</span>
+            </a>
           )}
           {successData.labPhones.length > 0 && (
             <div className="mt-3 pt-3 border-t border-slate-100">

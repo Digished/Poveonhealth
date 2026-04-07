@@ -1205,6 +1205,7 @@ export function DoctorRequestForm({
         labName={result.lab?.name ?? ""}
         labAddress={result.lab?.address ?? ""}
         labPhones={result.lab?.phones ?? []}
+        labWhatsapp={result.lab?.whatsapp ?? null}
         onReset={() => {
           setResult(null);
           setForm({ ...INITIAL, lab_id: locations.length > 0 ? locations[defaultLocIdx].lab_id : (preselectedLabId ?? "") });
