@@ -617,7 +617,7 @@ export function PatientRequestForm(props: PatientRequestFormProps) {
                           </div>
                           <div>
                             <p className="text-sm font-semibold text-slate-600">How can I help you today?</p>
-                            <p className="text-xs text-slate-400 mt-0.5 max-w-[220px]">Describe your health concern and I'll suggest relevant tests.</p>
+                            <p className="text-xs text-slate-400 mt-0.5 max-w-[220px]">Describe your concern and tests will be automatically added to your request.</p>
                           </div>
                         </div>
                       ) : (
@@ -917,13 +917,13 @@ export function PatientRequestForm(props: PatientRequestFormProps) {
 
       {/* ── FAB: Continue / Submit ── */}
       {(stepValid || step === 3) && (
-        <div className="fixed bottom-6 right-5 z-50">
+        <div className="fixed bottom-6 right-5 z-50 pointer-events-none">
           {step < 3 ? (
             <button
               type="button"
               onClick={handleNext}
               disabled={!stepValid}
-              className="flex items-center gap-2.5 px-6 py-3.5 rounded-2xl bg-medical-600 hover:bg-medical-700 active:scale-95 disabled:opacity-50 text-white font-bold text-sm shadow-2xl shadow-medical-600/40 transition-all"
+              className="pointer-events-auto flex items-center gap-2.5 px-6 py-3 rounded-2xl bg-white/80 backdrop-blur-md border border-medical-200 hover:bg-white active:scale-95 disabled:opacity-40 text-medical-700 font-bold text-sm shadow-lg shadow-slate-900/10 transition-all"
             >
               Continue
               <ChevronRight className="w-5 h-5" />
@@ -933,7 +933,7 @@ export function PatientRequestForm(props: PatientRequestFormProps) {
               type="button"
               onClick={handleSubmit}
               disabled={submitting}
-              className="flex items-center gap-2.5 px-6 py-3.5 rounded-2xl bg-medical-600 hover:bg-medical-700 active:scale-95 disabled:opacity-70 text-white font-bold text-sm shadow-2xl shadow-medical-600/40 transition-all"
+              className="pointer-events-auto flex items-center gap-2.5 px-6 py-3 rounded-2xl bg-white/80 backdrop-blur-md border border-medical-300 hover:bg-white active:scale-95 disabled:opacity-40 text-medical-700 font-bold text-sm shadow-lg shadow-slate-900/10 transition-all"
             >
               {submitting ? <RefreshCw className="w-5 h-5 animate-spin" /> : <Check className="w-5 h-5" />}
               {submitting ? "Submitting…" : "Submit Request"}
