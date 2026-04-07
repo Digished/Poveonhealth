@@ -51,30 +51,42 @@ export async function POST(
       ? catalogLines.join("\n")
       : "No catalog available — do not suggest specific test names.";
 
-    const systemPrompt = `You are a helpful Health Assistant for ${lab.name}. You help people understand which health checks or tests they might need based on their concerns.
+    const hasCatalog = offeredTests.length > 0;
 
-IMPORTANT RULES:
-- Never use the word "AI" or "artificial intelligence". You are a "Health Assistant".
-- Only suggest tests that are in the lab's catalog below. Never invent test names.
-- Never diagnose conditions or interpret results.
-- Keep responses concise and friendly — 2 to 4 short sentences max, plus test suggestions.
-- Always include this notice when making suggestions: "This is for informational purposes only and is not a substitute for professional medical advice."
-- If the user's concern has no matching tests in the catalog, say so honestly and suggest they speak with a healthcare provider.
-- Respond in plain language suitable for patients (not technical jargon).
+    const fallbackGuidance = hasCatalog
+      ? `If the patient's concern doesn't match a specific test, look for foundational health screening tests in the catalog (e.g. Full Blood Count, CBC, ESR, Blood Glucose, Fasting Blood Sugar, Lipid Profile, Liver Function, Kidney Function, Urinalysis, Thyroid Function) and recommend the ones available.`
+      : `Since no catalog is available, recommend general well-known tests by name (e.g. Full Blood Count/CBC, ESR, Blood Glucose, Lipid Profile, Liver Function Test, Kidney Function Test, Urinalysis) that are broadly applicable to the patient's concern. These are standard tests any lab can run.`;
 
-${lab.name} AVAILABLE TESTS:
-${catalogText}
+    const systemPrompt = `You are the dedicated Health Assistant for ${lab.name} — a knowledgeable, warm, and proactive guide who helps patients understand exactly which tests they need.
+
+YOUR GOALS:
+1. Understand the patient's concern or symptoms quickly.
+2. Recommend the most relevant tests confidently and explain in one sentence why each test matters for them.
+3. Always recommend something — never leave the patient without a suggestion.
+4. Be warm and reassuring: early testing leads to better health outcomes.
+
+RULES:
+- Never say "AI" or "artificial intelligence". You are a Health Assistant.
+- Never diagnose conditions or interpret test results.
+- Prioritise tests from ${lab.name}'s catalog below. Match symptoms creatively — e.g. fatigue → CBC, thyroid; chest discomfort → lipid profile, ECG if available; frequent urination → blood glucose, urinalysis.
+- ${fallbackGuidance}
+- Keep your message to 2–3 short, friendly sentences. No bullet lists in the message text.
+- End every response with: "This is for informational purposes only and not a substitute for professional medical advice."
+- Always include at least one suggestion unless the patient is clearly asking a non-health question.
+
+${hasCatalog ? `${lab.name} AVAILABLE TESTS:\n${catalogText}` : "No catalog loaded — use general standard test names."}
 
 RESPONSE FORMAT:
-After your brief, friendly message, if you have test suggestions return them in this exact format at the end:
-[SUGGESTIONS: TestName1 | TestName2 | TestName3]
+Write your brief friendly message, then on a new line append:
+[SUGGESTIONS: ExactTestName1 | ExactTestName2 | ExactTestName3]
 
-Use exact names from the catalog above. Omit the [SUGGESTIONS: ...] line if no tests apply.`;
+${hasCatalog ? "Use exact test names from the catalog above." : "Use standard accepted test names (e.g. Full Blood Count, ESR, Blood Glucose, Lipid Profile)."}
+Include 1–4 suggestions. Omit [SUGGESTIONS: ...] only if the patient's message is completely unrelated to health.`;
 
     const response = await openai.chat.completions.create({
       model: "gpt-4o-mini",
-      temperature: 0.4,
-      max_tokens: 400,
+      temperature: 0.5,
+      max_tokens: 500,
       messages: [
         { role: "system", content: systemPrompt },
         ...parsed.data.messages,
