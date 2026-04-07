@@ -412,7 +412,7 @@ export function PatientRequestForm(props: PatientRequestFormProps) {
 
   // ── Main form ─────────────────────────────────────────────────────────────────
   return (
-    <div className="animate-fade-in pb-24">
+    <div className="animate-fade-in">
       {/* ── Sticky step header ── */}
       <div className={`sticky top-0 z-10 -mx-4 px-4 pt-3 pb-3 transition-all duration-200 ${
         scrolled
@@ -915,15 +915,15 @@ export function PatientRequestForm(props: PatientRequestFormProps) {
         </div>
       )}
 
-      {/* ── FAB: Continue / Submit ── */}
+      {/* ── Sticky bottom action bar ── */}
       {(stepValid || step === 3) && (
-        <div className="fixed bottom-6 right-5 z-50 pointer-events-none">
+        <div className="sticky bottom-0 -mx-4 px-4 pt-3 pb-4 mt-6 bg-white/90 backdrop-blur-sm border-t border-slate-100">
           {step < 3 ? (
             <button
               type="button"
               onClick={handleNext}
               disabled={!stepValid}
-              className="pointer-events-auto flex items-center gap-2.5 px-6 py-3 rounded-2xl bg-white/80 backdrop-blur-md border border-medical-200 hover:bg-white active:scale-95 disabled:opacity-40 text-medical-700 font-bold text-sm shadow-lg shadow-slate-900/10 transition-all"
+              className="w-full flex items-center justify-center gap-2 py-3.5 rounded-2xl bg-medical-600 hover:bg-medical-700 active:scale-[0.98] disabled:opacity-50 text-white font-bold text-sm transition-all"
             >
               Continue
               <ChevronRight className="w-5 h-5" />
@@ -933,7 +933,7 @@ export function PatientRequestForm(props: PatientRequestFormProps) {
               type="button"
               onClick={handleSubmit}
               disabled={submitting}
-              className="pointer-events-auto flex items-center gap-2.5 px-6 py-3 rounded-2xl bg-white/80 backdrop-blur-md border border-medical-300 hover:bg-white active:scale-95 disabled:opacity-40 text-medical-700 font-bold text-sm shadow-lg shadow-slate-900/10 transition-all"
+              className="w-full flex items-center justify-center gap-2 py-3.5 rounded-2xl bg-medical-600 hover:bg-medical-700 active:scale-[0.98] disabled:opacity-70 text-white font-bold text-sm transition-all"
             >
               {submitting ? <RefreshCw className="w-5 h-5 animate-spin" /> : <Check className="w-5 h-5" />}
               {submitting ? "Submitting…" : "Submit Request"}

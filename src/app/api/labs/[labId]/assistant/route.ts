@@ -43,8 +43,8 @@ export async function POST(
 
     const catalogLines = offeredTests.map((t) => {
       const syns = (Array.isArray(t.synonyms) ? t.synonyms as string[] : []).slice(0, 3).join(", ");
-      const cat = t.category_label ? ` [${t.category_label}]` : "";
-      return `- ${t.raw_name}${cat}${syns ? ` (also: ${syns})` : ""}`;
+      const cat = t.category_label ? ` (${t.category_label})` : "";
+      return `- ${t.raw_name}${cat}${syns ? ` | also known as: ${syns}` : ""}`;
     });
 
     const catalogText = catalogLines.length > 0
@@ -68,20 +68,33 @@ YOUR GOALS:
 RULES:
 - Never say "AI" or "artificial intelligence". You are a Health Assistant.
 - Never diagnose conditions or interpret test results.
-- Prioritise tests from ${lab.name}'s catalog below. Match symptoms creatively — e.g. fatigue → CBC, thyroid; chest discomfort → lipid profile, ECG if available; frequent urination → blood glucose, urinalysis.
+- Prioritise tests from ${lab.name}'s catalog. Match symptoms creatively using the SYMPTOM GUIDE below.
 - ${fallbackGuidance}
 - Keep your message to 2–3 short, friendly sentences. No bullet lists in the message text.
 - End every response with: "This is for informational purposes only and not a substitute for professional medical advice."
 - Always include at least one suggestion unless the patient is clearly asking a non-health question.
 
-${hasCatalog ? `${lab.name} AVAILABLE TESTS:\n${catalogText}` : "No catalog loaded — use general standard test names."}
+SYMPTOM GUIDE — use catalog tests that correspond to these mappings:
+- Cough (especially persistent >2 weeks), fever, night sweats, weight loss → suspect TB/respiratory infection: Sputum AFB, GeneXpert MTB/RIF, Sputum Culture, Chest X-ray, ESR, Full Blood Count
+- Cough with chest tightness, shortness of breath → Chest X-ray, Sputum Culture, Full Blood Count, ESR
+- Fatigue, weakness, pallor → Full Blood Count/CBC, Thyroid Function (TSH), Blood Glucose, Kidney Function, Liver Function, Iron Studies
+- Frequent urination, excessive thirst, weight loss → Fasting Blood Sugar, Random Blood Sugar, HbA1c, Urinalysis
+- Chest pain, palpitations → Lipid Profile, ECG (if available), Troponin, Full Blood Count
+- Abdominal pain, nausea, vomiting, jaundice → Liver Function Test, H. pylori Antigen, Stool MCS, Hepatitis B/C
+- Headache, dizziness → Full Blood Count, ESR, Blood Glucose, Thyroid
+- Joint pain, swelling → ESR, CRP, Uric Acid, Rheumatoid Factor
+- STI concerns, unprotected sex → HIV, Hepatitis B Surface Antigen, Syphilis VDRL/TPHA, NAAT (Chlamydia/Gonorrhoea)
+- Skin rashes, itching → Full Blood Count, ESR, Hepatitis B/C, HIV, Thyroid
+- General checkup / "I want to know my health status" → Full Blood Count, Fasting Blood Sugar, Lipid Profile, Liver Function, Kidney Function, Urinalysis, Thyroid (TSH)
+
+${hasCatalog ? `${lab.name} AVAILABLE TESTS:\n${catalogText}` : "No catalog loaded — use standard general test names from the symptom guide above."}
 
 RESPONSE FORMAT:
-Write your brief friendly message, then on a new line append:
-[SUGGESTIONS: ExactTestName1 | ExactTestName2 | ExactTestName3]
+Write your 2–3 sentence friendly message. Then on a new line, output exactly this:
+SUGGESTED_TESTS: TestName1 | TestName2 | TestName3
 
-${hasCatalog ? "Use exact test names from the catalog above." : "Use standard accepted test names (e.g. Full Blood Count, ESR, Blood Glucose, Lipid Profile)."}
-Include 1–4 suggestions. Omit [SUGGESTIONS: ...] only if the patient's message is completely unrelated to health.`;
+CRITICAL: In SUGGESTED_TESTS, write ONLY the test name — no category labels, no brackets, no extra text. Use the exact name from the catalog.
+Include 1–4 tests. Omit the SUGGESTED_TESTS line only if the message is completely unrelated to health.`;
 
     const response = await openai.chat.completions.create({
       model: "gpt-4o-mini",
@@ -95,14 +108,14 @@ Include 1–4 suggestions. Omit [SUGGESTIONS: ...] only if the patient's message
 
     const rawContent = response.choices[0]?.message?.content ?? "";
 
-    // Extract structured suggestions from [SUGGESTIONS: A | B | C] marker
-    const suggestionMatch = rawContent.match(/\[SUGGESTIONS:\s*([^\]]+)\]/);
+    // Extract structured suggestions from "SUGGESTED_TESTS: A | B | C" marker
+    const suggestionMatch = rawContent.match(/^SUGGESTED_TESTS:\s*(.+)$/m);
     const suggestions: string[] = suggestionMatch
       ? suggestionMatch[1].split("|").map((s) => s.trim()).filter(Boolean)
       : [];
 
-    // Clean message for display (strip the suggestion marker)
-    const message = rawContent.replace(/\[SUGGESTIONS:[^\]]*\]/g, "").trim();
+    // Clean message for display (strip the SUGGESTED_TESTS line)
+    const message = rawContent.replace(/^SUGGESTED_TESTS:\s*.+$/mg, "").trim();
 
     return NextResponse.json({ message, suggestions });
   } catch (error) {
