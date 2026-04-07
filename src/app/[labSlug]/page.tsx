@@ -121,7 +121,7 @@ export default async function LabSlugPage({ params }: LabSlugPageProps) {
           locations={locations}
         />
 
-        <div className="w-full border-t border-white/60 bg-white/30 backdrop-blur-sm mt-4">
+        <div className="w-full border-t border-slate-100/60 mt-4">
           <div className="max-w-2xl mx-auto px-4 py-4">
             <TrustIndicators />
           </div>

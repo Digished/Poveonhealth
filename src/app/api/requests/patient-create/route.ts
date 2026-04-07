@@ -25,6 +25,9 @@ const Schema = z.object({
   patient_age: z.number().int().min(0).max(150).optional(),
   tests: z.string().min(1).max(3000),
   additional_notes: z.string().max(1000).optional().or(z.literal("")),
+  is_critical: z.boolean().optional().default(false),
+  needs_ambulance: z.boolean().optional().default(false),
+  ambulance_notes: z.string().max(500).optional().or(z.literal("")),
 });
 
 const CORS_HEADERS = {
@@ -125,9 +128,9 @@ export async function POST(request: NextRequest) {
         tests: testsField,
         quoted_price: quotedPrice,
         test_breakdown: testBreakdown ?? undefined,
-        is_critical: false,
-        needs_ambulance: false,
-        ambulance_notes: null,
+        is_critical: data.is_critical,
+        needs_ambulance: data.needs_ambulance,
+        ambulance_notes: data.ambulance_notes || null,
         test_image_url: null,
         status: "incoming",
       },
@@ -149,9 +152,9 @@ export async function POST(request: NextRequest) {
           patientPhone: data.patient_phone,
           doctorName: SELF_SERVICE_NAME,
           tests: testsField,
-          isUrgent: false,
-          isCritical: false,
-          needsAmbulance: false,
+          isUrgent: data.is_critical || data.needs_ambulance,
+          isCritical: data.is_critical,
+          needsAmbulance: data.needs_ambulance,
           appUrl,
         }),
       })

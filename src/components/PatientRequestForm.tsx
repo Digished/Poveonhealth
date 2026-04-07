@@ -4,9 +4,9 @@ import { useState, useEffect, useRef, useCallback } from "react";
 import { createPortal } from "react-dom";
 import { toast } from "react-hot-toast";
 import {
-  FlaskConical, User, Check, Search, X, ChevronRight, ChevronLeft,
+  FlaskConical, User, Check, Search, X, ChevronRight, ChevronLeft, ChevronDown,
   Building2, MapPin, Loader2, MessageCircle, RefreshCw, Send,
-  ShieldAlert, Sparkles, Grid3X3, Phone, Copy, Link2,
+  ShieldAlert, Sparkles, Grid3X3, Phone, Copy, Link2, AlertTriangle, Truck,
 } from "lucide-react";
 import { parsePhones } from "@/lib/phones";
 import { Button } from "@/components/ui/Button";
@@ -267,6 +267,24 @@ export function PatientRequestForm(props: PatientRequestFormProps) {
   const [patientAge, setPatientAge] = useState("");
   const [patientEmail, setPatientEmail] = useState("");
 
+  // ── Patient condition ────────────────────────────────────────────────────────
+  type Condition = "stable" | "critical" | "ambulance";
+  const [patientCondition, setPatientCondition] = useState<Condition>("stable");
+  const [conditionOpen, setConditionOpen] = useState(false);
+  const [ambulanceNotes, setAmbulanceNotes] = useState("");
+
+  const CONDITION_OPTIONS: { value: Condition; label: string; icon: React.ReactNode; color: string; activeColor: string }[] = [
+    { value: "stable", label: "Stable", icon: <Check className="w-3.5 h-3.5" />, color: "border-slate-200 text-slate-600", activeColor: "bg-emerald-600 border-emerald-600 text-white" },
+    { value: "critical", label: "Critical", icon: <AlertTriangle className="w-3.5 h-3.5" />, color: "border-slate-200 text-slate-600", activeColor: "bg-amber-500 border-amber-500 text-white" },
+    { value: "ambulance", label: "Ambulance", icon: <Truck className="w-3.5 h-3.5" />, color: "border-slate-200 text-slate-600", activeColor: "bg-red-600 border-red-600 text-white" },
+  ];
+
+  function selectCondition(val: Condition) {
+    setPatientCondition(val);
+    setConditionOpen(false);
+    if (val !== "ambulance") setAmbulanceNotes("");
+  }
+
   // ── Submission ───────────────────────────────────────────────────────────────
   const [submitting, setSubmitting] = useState(false);
   const [successData, setSuccessData] = useState<{
@@ -388,6 +406,9 @@ export function PatientRequestForm(props: PatientRequestFormProps) {
           patient_age: patientAge ? parseInt(patientAge) : undefined,
           tests: selectedTests.join(", "),
           additional_notes: additionalNotes,
+          is_critical: patientCondition === "critical",
+          needs_ambulance: patientCondition === "ambulance",
+          ambulance_notes: patientCondition === "ambulance" ? ambulanceNotes : undefined,
         }),
       });
       const data = await res.json();
@@ -848,6 +869,70 @@ export function PatientRequestForm(props: PatientRequestFormProps) {
                   </div>
                 </div>
               )}
+
+              {/* Substep: Patient Condition */}
+              {patientPhone.trim() && patientName.trim() && (
+                <div className="relative flex gap-3 animate-fade-in-up">
+                  <div className="flex flex-col items-center shrink-0 pt-1">
+                    <div className={`w-7 h-7 rounded-full flex items-center justify-center text-xs font-bold border-2 transition-all shrink-0 ${
+                      patientCondition !== "stable"
+                        ? "bg-amber-500 border-amber-500 text-white"
+                        : "bg-emerald-500 border-emerald-500 text-white"
+                    }`}>
+                      {patientCondition === "critical" ? <AlertTriangle className="w-3.5 h-3.5" /> : patientCondition === "ambulance" ? <Truck className="w-3.5 h-3.5" /> : <Check className="w-3.5 h-3.5" />}
+                    </div>
+                  </div>
+                  <div className="flex-1 pb-2 min-w-0">
+                    <p className="text-xs font-semibold text-slate-500 mb-1.5">Patient Condition</p>
+
+                    {/* Collapsed: show current selection as a pill */}
+                    {!conditionOpen && (
+                      <button
+                        type="button"
+                        onClick={() => setConditionOpen(true)}
+                        className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-semibold border transition-all ${
+                          CONDITION_OPTIONS.find(c => c.value === patientCondition)?.activeColor ?? ""
+                        }`}
+                      >
+                        {CONDITION_OPTIONS.find(c => c.value === patientCondition)?.icon}
+                        {CONDITION_OPTIONS.find(c => c.value === patientCondition)?.label}
+                        <ChevronDown className="w-3 h-3 opacity-70 ml-0.5" />
+                      </button>
+                    )}
+
+                    {/* Expanded: three side-by-side options */}
+                    {conditionOpen && (
+                      <div className="flex gap-2 flex-wrap">
+                        {CONDITION_OPTIONS.map(opt => (
+                          <button
+                            key={opt.value}
+                            type="button"
+                            onClick={() => selectCondition(opt.value)}
+                            className={`flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-semibold border transition-all ${
+                              patientCondition === opt.value ? opt.activeColor : `bg-white ${opt.color} hover:bg-slate-50`
+                            }`}
+                          >
+                            {opt.icon}{opt.label}
+                          </button>
+                        ))}
+                      </div>
+                    )}
+
+                    {/* Ambulance notes */}
+                    {patientCondition === "ambulance" && (
+                      <div className="mt-2.5">
+                        <Textarea
+                          label="Ambulance details (optional)"
+                          placeholder="Location, access notes, patient mobility..."
+                          value={ambulanceNotes}
+                          onChange={(e) => setAmbulanceNotes(e.target.value)}
+                          rows={2}
+                        />
+                      </div>
+                    )}
+                  </div>
+                </div>
+              )}
             </div>
           </div>
         </div>
@@ -888,6 +973,21 @@ export function PatientRequestForm(props: PatientRequestFormProps) {
                   <p className="text-xs text-slate-500 font-mono mt-0.5">{patientPhone}</p>
                   {patientAge && <p className="text-xs text-slate-400 mt-0.5">Age: {patientAge}</p>}
                   {patientEmail && <p className="text-xs text-slate-400 mt-0.5">{patientEmail}</p>}
+                </div>
+              </div>
+              {/* Condition */}
+              <div className="px-4 py-3.5 flex items-start justify-between gap-4">
+                <p className="text-[11px] font-semibold text-slate-400 uppercase tracking-wide shrink-0 w-20 pt-px">Condition</p>
+                <div className="text-right">
+                  <span className={`inline-flex items-center gap-1 text-xs font-semibold px-2 py-0.5 rounded-full ${
+                    patientCondition === "ambulance" ? "bg-red-100 text-red-700" :
+                    patientCondition === "critical"  ? "bg-amber-100 text-amber-700" :
+                    "bg-emerald-100 text-emerald-700"
+                  }`}>
+                    {patientCondition === "ambulance" ? <Truck className="w-3 h-3" /> : patientCondition === "critical" ? <AlertTriangle className="w-3 h-3" /> : <Check className="w-3 h-3" />}
+                    {patientCondition === "ambulance" ? "Ambulance" : patientCondition === "critical" ? "Critical" : "Stable"}
+                  </span>
+                  {ambulanceNotes && <p className="text-xs text-slate-400 mt-0.5 text-right max-w-[180px] ml-auto">{ambulanceNotes}</p>}
                 </div>
               </div>
             </div>
