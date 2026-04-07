@@ -233,7 +233,10 @@ export async function POST(request: NextRequest) {
     // Send new-request notification to the lab's request_email (fire-and-forget)
     if (lab.request_email) {
       const isUrgent = data.needs_ambulance || data.is_critical;
-      const appUrl = process.env.NEXT_PUBLIC_APP_URL ?? "";
+      const envUrl = process.env.NEXT_PUBLIC_APP_URL ?? "";
+      const reqHost = request.headers.get("x-forwarded-host") || request.headers.get("host") || "";
+      const reqProto = request.headers.get("x-forwarded-proto") || "https";
+      const appUrl = envUrl || (reqHost ? `${reqProto}://${reqHost}` : "https://poveon.com");
       resend.emails.send({
         from: labSender(lab),
         to: lab.request_email,

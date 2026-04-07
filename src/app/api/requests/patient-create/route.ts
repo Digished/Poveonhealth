@@ -141,7 +141,7 @@ export async function POST(request: NextRequest) {
 
     // Notify lab by email (fire-and-forget)
     if (lab.request_email) {
-      const appUrl = process.env.NEXT_PUBLIC_APP_URL ?? "";
+      const appUrl = process.env.NEXT_PUBLIC_APP_URL || "https://poveon.com";
       resend.emails.send({
         from: labSender(lab),
         to: lab.request_email,

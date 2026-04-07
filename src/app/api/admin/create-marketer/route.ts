@@ -76,7 +76,7 @@ export async function POST(request: NextRequest) {
       throw err;
     }
 
-    const appUrl = process.env.NEXT_PUBLIC_APP_URL ?? "https://poveon.vercel.app";
+    const appUrl = process.env.NEXT_PUBLIC_APP_URL ?? "https://poveon.com";
     const referralLink = `${appUrl}/?ref=${marketer.code}`;
 
     return NextResponse.json({ success: true, marketer, referral_link: referralLink });
@@ -110,7 +110,7 @@ export async function GET(request: NextRequest) {
       },
     });
 
-    const appUrl = process.env.NEXT_PUBLIC_APP_URL ?? "https://poveon.vercel.app";
+    const appUrl = process.env.NEXT_PUBLIC_APP_URL ?? "https://poveon.com";
 
     return NextResponse.json({
       success: true,

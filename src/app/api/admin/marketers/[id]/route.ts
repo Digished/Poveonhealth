@@ -97,7 +97,7 @@ export async function GET(
       done: requests.filter((r) => r.status === "done").length,
     };
 
-    const appUrl = process.env.NEXT_PUBLIC_APP_URL ?? "https://poveon.vercel.app";
+    const appUrl = process.env.NEXT_PUBLIC_APP_URL ?? "https://poveon.com";
 
     return NextResponse.json({
       success: true,

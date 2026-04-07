@@ -116,7 +116,7 @@ export async function POST(request: NextRequest) {
     }
 
     // Send credentials email
-    const loginUrl = `${process.env.NEXT_PUBLIC_APP_URL ?? "https://poveon.vercel.app"}/lab-login`;
+    const loginUrl = `${process.env.NEXT_PUBLIC_APP_URL ?? "https://poveon.com"}/lab-login`;
     await resend.emails.send({
       from: FROM_ADDRESS,
       to: email,
