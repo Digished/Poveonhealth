@@ -27,6 +27,7 @@ export async function GET() {
         logo_url: true,
         phones: true,
         whatsapp: true,
+        service_categories: true,
       },
       orderBy: { name: "asc" },
     });

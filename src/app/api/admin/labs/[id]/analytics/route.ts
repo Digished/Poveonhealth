@@ -76,6 +76,7 @@ export async function GET(
   // Top doctors by referral count
   const doctorMap: Record<string, { name: string; email: string; prefix: string | null; total: number; done: number }> = {};
   allRequests.forEach((r) => {
+    if (!r.doctor_email) return; // skip self-service patient requests
     const key = r.doctor_email;
     if (!doctorMap[key]) doctorMap[key] = { name: r.doctor_name, email: r.doctor_email, prefix: r.doctor_prefix, total: 0, done: 0 };
     doctorMap[key].total++;

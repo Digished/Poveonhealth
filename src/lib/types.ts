@@ -19,6 +19,7 @@ export interface Lab {
   email: string;
   notification_email: string | null;
   logo_url: string | null;
+  hero_image_url: string | null;
   whatsapp: string | null;
   request_email: string | null;
   hidden: boolean;
@@ -195,7 +196,7 @@ export interface CreateRequestResponse {
   success: boolean;
   code?: string;
   requestId?: string;
-  lab?: Pick<Lab, "name" | "address" | "phones">;
+  lab?: Pick<Lab, "name" | "address" | "phones" | "whatsapp">;
   error?: string;
 }
 

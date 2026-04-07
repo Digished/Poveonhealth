@@ -67,6 +67,7 @@ export async function GET(req: NextRequest) {
           created_at: true,
           seen_at: true,
           completed_at: true,
+          lab: { select: { id: true, name: true } },
         },
         orderBy: { created_at: "desc" },
       }),
@@ -81,6 +82,7 @@ export async function GET(req: NextRequest) {
     type ReqRow = typeof requests[number];
     const byDoctor = new Map<string, { doctor_name: string; doctor_phone: string | null; doctor_hospital: string | null; requests: ReqRow[] }>();
     for (const r of requests) {
+      if (!r.doctor_email) continue; // skip self-service patient requests
       if (!byDoctor.has(r.doctor_email)) {
         byDoctor.set(r.doctor_email, { doctor_name: r.doctor_name, doctor_phone: r.doctor_phone, doctor_hospital: r.doctor_hospital, requests: [] });
       }
@@ -122,6 +124,8 @@ export async function GET(req: NextRequest) {
           created_at:         r.created_at,
           seen_at:            r.seen_at,
           completed_at:       r.completed_at,
+          lab_id:             r.lab?.id ?? null,
+          lab_name:           r.lab?.name ?? null,
         })),
       };
     });

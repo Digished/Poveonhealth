@@ -103,7 +103,7 @@ export async function POST(request: NextRequest) {
     const patientEmail = patientEmailOverride || req.patient_email || undefined;
     const brand = req.lab.notification_email ? { name: req.lab.name } : undefined;
 
-    resend.emails.send({
+    if (req.doctor_email) resend.emails.send({
       from: labSender(req.lab),
       to: req.doctor_email,
       subject: `Lab Results Available — ${req.patient_name ?? "Patient"}`,

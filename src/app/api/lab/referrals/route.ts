@@ -78,6 +78,7 @@ export async function GET(request: NextRequest) {
   }>();
 
   for (const r of filtered) {
+    if (!r.doctor_email) continue; // skip self-service patient requests
     const key = r.doctor_email;
     const d = new Date(r.created_at);
     const ym = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}`;

@@ -1,11 +1,10 @@
 import { notFound } from "next/navigation";
 import { prisma } from "@/lib/prisma";
-import { DoctorRequestForm } from "@/components/DoctorRequestForm";
 import { TrustIndicators } from "@/components/TrustIndicators";
 import { PoveonLogo } from "@/components/PoveonLogo";
 import { LabSplash } from "@/components/LabSplash";
 import { LabPageNav } from "@/components/LabPageNav";
-import { LabHeroSection } from "@/components/LabHeroSection";
+import { LabPageContent } from "@/components/LabPageContent";
 
 interface LabSlugPageProps {
   params: { labSlug: string };
@@ -18,7 +17,7 @@ export default async function LabSlugPage({ params }: LabSlugPageProps) {
       id: true, name: true, hidden: true,
       address: true, phones: true, whatsapp: true,
       email: true, request_email: true,
-      logo_url: true,
+      logo_url: true, hero_image_url: true, service_categories: true,
     },
   });
 
@@ -65,10 +64,11 @@ export default async function LabSlugPage({ params }: LabSlugPageProps) {
 
   const locations = [parentLocation, ...branchLocations];
   const logoUrl = lab.logo_url ?? null;
+  const heroImageUrl = lab.hero_image_url ?? null;
 
   return (
     <div className="relative h-dvh flex flex-col bg-slate-50 overflow-hidden">
-      {/* Branded background — logo colors or fallback gradient */}
+      {/* Branded background — logo blur wash or soft gradient (no hero image at page level) */}
       {logoUrl ? (
         <div
           className="absolute inset-0 -z-10 pointer-events-none"
@@ -94,7 +94,6 @@ export default async function LabSlugPage({ params }: LabSlugPageProps) {
           }}
         />
       )}
-      {/* Lighter veil so brand colours actually show through */}
       <div className="absolute inset-0 -z-10 bg-white/30 pointer-events-none" aria-hidden="true" />
 
       {/* Branded splash */}
@@ -111,19 +110,18 @@ export default async function LabSlugPage({ params }: LabSlugPageProps) {
 
       {/* Scrollable content area */}
       <main className="flex-1 overflow-y-auto overflow-x-hidden snap-y snap-mandatory">
-        <div className="w-full snap-start snap-always">
-          <LabHeroSection labName={lab.name} logoUrl={logoUrl} />
-        </div>
+        <LabPageContent
+          labId={lab.id}
+          labName={lab.name}
+          labAddress={lab.address}
+          labServiceCategories={(lab.service_categories as string[]) ?? []}
+          labPhones={lab.phones}
+          logoUrl={logoUrl}
+          heroImageUrl={heroImageUrl}
+          locations={locations}
+        />
 
-        <div className="max-w-2xl mx-auto px-4 pb-2 snap-start snap-always">
-          <DoctorRequestForm
-            preselectedLabId={lab.id}
-            preselectedLabName={lab.name}
-            locations={locations}
-          />
-        </div>
-
-        <div className="w-full border-t border-white/60 bg-white/30 backdrop-blur-sm mt-4">
+        <div className="w-full border-t border-slate-100/60 mt-4">
           <div className="max-w-2xl mx-auto px-4 py-4">
             <TrustIndicators />
           </div>

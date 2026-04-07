@@ -748,6 +748,13 @@ export function labNewRequest({
     ${imageSection}
 
     ${divider}
+
+    ${appUrl ? `<div style="text-align:center;margin:8px 0 4px;">
+      <a href="${appUrl}/lab-login/dashboard" style="display:inline-block;background:#0259a0;color:#ffffff;text-decoration:none;padding:13px 28px;border-radius:10px;font-weight:700;font-size:14px;letter-spacing:0.2px;">
+        View in Dashboard
+      </a>
+    </div>
+    <p style="text-align:center;margin:0;color:#9ca3af;font-size:12px;">Manage this request in your Poveon dashboard.</p>` : ""}
   `, { name: labName });
 }
 

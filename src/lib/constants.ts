@@ -1,5 +1,21 @@
 export const SERVICE_CATEGORIES: { group: string; items: string[] }[] = [
   {
+    group: "Patient Services",
+    items: [
+      "Blood & Lab Tests",
+      "Ultrasound",
+      "X-Ray",
+      "CT Scan",
+      "MRI",
+      "Mammogram",
+      "ECG",
+      "Cardiac Tests",
+      "Wellness & Screenings",
+      "Biopsy",
+      "Others",
+    ],
+  },
+  {
     group: "Laboratory Tests",
     items: [
       "Hematology",

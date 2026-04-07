@@ -7,6 +7,7 @@ import { doctorRequestConfirmation, patientRequestCode, labNewRequest } from "@/
 import { testsToCategories } from "@/lib/test-categories";
 import { resolveTests, totalFromBreakdown } from "@/lib/resolve-tests";
 import { logApiCall } from "@/lib/api-logger";
+import { sendSms, buildPatientRequestSms } from "@/lib/sms/termii";
 
 const CreateRequestSchema = z.object({
   patient_name: z.string().min(1).max(200).optional().or(z.literal("")),
@@ -232,7 +233,10 @@ export async function POST(request: NextRequest) {
     // Send new-request notification to the lab's request_email (fire-and-forget)
     if (lab.request_email) {
       const isUrgent = data.needs_ambulance || data.is_critical;
-      const appUrl = process.env.NEXT_PUBLIC_APP_URL ?? "";
+      const envUrl = process.env.NEXT_PUBLIC_APP_URL ?? "";
+      const reqHost = request.headers.get("x-forwarded-host") || request.headers.get("host") || "";
+      const reqProto = request.headers.get("x-forwarded-proto") || "https";
+      const appUrl = envUrl || (reqHost ? `${reqProto}://${reqHost}` : "https://poveon.com");
       resend.emails.send({
         from: labSender(lab),
         to: lab.request_email,
@@ -261,9 +265,17 @@ export async function POST(request: NextRequest) {
 
     await Promise.all(sends).catch((e) => console.error("[email] send error:", e));
 
+    // Send SMS to patient if phone provided — fire-and-forget, never blocks response
+    if (data.patient_phone) {
+      sendSms(
+        data.patient_phone,
+        buildPatientRequestSms({ patientName: data.patient_name ?? "", labName: lab.name, code })
+      ).catch((e) => console.error("[sms] patient request code:", e));
+    }
+
     logApiCall({ method: "POST", path: "/api/requests/create", status: 200, duration_ms: Date.now() - start });
     return NextResponse.json(
-      { success: true, code, requestId: newRequest.id, lab: { name: lab.name, address: labAddress } },
+      { success: true, code, requestId: newRequest.id, lab: { name: lab.name, address: labAddress, phones: (lab.phones ?? []) as { number: string; label: string }[], whatsapp: lab.whatsapp ?? null } },
       { headers: CORS_HEADERS }
     );
   } catch (error) {

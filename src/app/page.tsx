@@ -1,15 +1,14 @@
-import { DoctorRequestForm } from "@/components/DoctorRequestForm";
 import { TrustIndicators } from "@/components/TrustIndicators";
 import { PoveonLogo } from "@/components/PoveonLogo";
 import { Navbar } from "@/components/Navbar";
-import { HeroSection } from "@/components/HeroSection";
+import { HomePageContent } from "@/components/HomePageContent";
 import { prisma } from "@/lib/prisma";
 
 export default async function HomePage() {
   // Fetch labs at SSR time — data arrives with the HTML, search modal is instant
   const labsData = await prisma.lab.findMany({
     where: { hidden: false, search_hidden: false },
-    select: { id: true, name: true, slug: true, prefix: true, address: true, logo_url: true, phones: true, whatsapp: true },
+    select: { id: true, name: true, slug: true, prefix: true, address: true, logo_url: true, phones: true, whatsapp: true, service_categories: true },
     orderBy: { name: "asc" },
   });
   return (
@@ -30,14 +29,7 @@ export default async function HomePage() {
 
       {/* Scrollable content area */}
       <main className="flex-1 overflow-y-auto overflow-x-hidden snap-y snap-mandatory">
-        <div className="w-full snap-start snap-always">
-          <HeroSection />
-        </div>
-
-        <div className="max-w-2xl mx-auto px-4 pb-2 snap-start snap-always">
-          {/* eslint-disable-next-line @typescript-eslint/no-explicit-any */}
-          <DoctorRequestForm initialLabs={labsData as any} />
-        </div>
+        <HomePageContent initialLabs={labsData as any} />
 
         {/* Trust indicators strip */}
         <div className="w-full border-t border-sky-100/60 bg-sky-50/40 mt-4">

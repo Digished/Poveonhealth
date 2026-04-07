@@ -776,8 +776,8 @@ export function DoctorRequestForm({
   // Step 4 accordion / lookup states
   const [patientInfoOpen, setPatientInfoOpen] = useState(false);
   const [patientLookupStatus, setPatientLookupStatus] = useState<"idle" | "checking" | "found" | "not_found">("idle");
-  // Track what was auto-filled by the last email lookup so we can clear it when email changes
-  const emailAutofillRef = useRef<{ email: string; phone: string; name: string; dob: string; sex: string }>({ email: "", phone: "", name: "", dob: "", sex: "" });
+  // Track what was auto-filled by the last phone lookup so we can clear it when phone changes
+  const phoneAutofillRef = useRef<{ phone: string; name: string; dob: string; sex: string }>({ phone: "", name: "", dob: "", sex: "" });
   // Always-fresh read of form state for use inside async callbacks
   const formRef = useRef(form);
   formRef.current = form;
@@ -811,38 +811,37 @@ export function DoctorRequestForm({
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [form.patient_phone]);
 
-  // Auto-fill patient details from profile when email is entered (Step 4)
+  // Auto-fill patient details from profile when phone is entered (Step 4)
   useEffect(() => {
-    const email = form.patient_email;
+    const phone = form.patient_phone;
 
-    // When email changes, clear any fields that were filled by the previous lookup
-    const prev = emailAutofillRef.current;
-    if (prev.email !== email) {
-      if (prev.phone) set("patient_phone", "");
+    // When phone changes, clear any fields that were filled by the previous lookup
+    const prev = phoneAutofillRef.current;
+    if (prev.phone !== phone) {
       if (prev.name) set("patient_name", "");
       if (prev.dob) set("dob", "");
       if (prev.sex) set("sex", "");
-      emailAutofillRef.current = { email, phone: "", name: "", dob: "", sex: "" };
+      phoneAutofillRef.current = { phone, name: "", dob: "", sex: "" };
     }
 
-    if (!email || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
+    const digits = phone.replace(/\D/g, "");
+    if (digits.length < 8) {
       setPatientLookupStatus("idle");
       return;
     }
     setPatientLookupStatus("checking");
     const timer = setTimeout(() => {
-      fetch(`/api/patient/profile?email=${encodeURIComponent(email)}`)
+      fetch(`/api/patient/profile?phone=${encodeURIComponent(phone)}`)
         .then((r) => r.ok ? r.json() : null)
         .then((data) => {
           if (data?.success) {
             setPatientLookupStatus("found");
             const f = formRef.current;
-            const written = { email, phone: "", name: "", dob: "", sex: "" };
-            if (data.phone && !f.patient_phone) { set("patient_phone", data.phone); written.phone = data.phone; }
+            const written = { phone, name: "", dob: "", sex: "" };
             if (data.name && !f.patient_name) { set("patient_name", data.name); written.name = data.name; setPatientInfoOpen(true); }
             if (data.dob && !f.dob) { set("dob", data.dob); written.dob = data.dob; }
             if (data.sex && !f.sex) { set("sex", data.sex); written.sex = data.sex; }
-            emailAutofillRef.current = written;
+            phoneAutofillRef.current = written;
           } else {
             setPatientLookupStatus("not_found");
           }
@@ -851,7 +850,7 @@ export function DoctorRequestForm({
     }, 600);
     return () => clearTimeout(timer);
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [form.patient_email]);
+  }, [form.patient_phone]);
 
   // Step 3: debounced doctor email profile check
   useEffect(() => {
@@ -1039,10 +1038,8 @@ export function DoctorRequestForm({
         errs.doctor_email = "Invalid email address";
     }
     if (s === 4) {
-      if (!form.patient_email.trim()) errs.patient_email = "Patient email is required";
-      else if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(form.patient_email))
-        errs.patient_email = "Invalid email";
       if (!form.patient_phone) errs.patient_phone = "Phone number is required";
+      if (!form.patient_name.trim()) errs.patient_name = "Patient name is required";
     }
     setErrors(errs);
     return Object.keys(errs).length === 0;
@@ -1208,6 +1205,7 @@ export function DoctorRequestForm({
         labName={result.lab?.name ?? ""}
         labAddress={result.lab?.address ?? ""}
         labPhones={result.lab?.phones ?? []}
+        labWhatsapp={result.lab?.whatsapp ?? null}
         onReset={() => {
           setResult(null);
           setForm({ ...INITIAL, lab_id: locations.length > 0 ? locations[defaultLocIdx].lab_id : (preselectedLabId ?? "") });
@@ -1240,6 +1238,7 @@ export function DoctorRequestForm({
     phones: selectedLocation.phones,
     whatsapp: selectedLocation.whatsapp ?? null,
     logo_url: selectedLocation.logo_url ?? null,
+    hero_image_url: null,
     description: "",
     service_categories: [],
     certifications: [],
@@ -1277,8 +1276,7 @@ export function DoctorRequestForm({
       );
     }
     if (step === 4) {
-      const emailOk = !!form.patient_email && /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(form.patient_email);
-      return emailOk && !!form.patient_phone;
+      return !!form.patient_phone.trim() && !!form.patient_name.trim();
     }
     return true;
   })();
@@ -2053,38 +2051,28 @@ export function DoctorRequestForm({
             </h2>
 
             <div className="relative pt-1">
-              {/* Substep 1: Email */}
+              {/* Substep 1: Phone — primary identifier, triggers profile lookup */}
               <div className="relative flex gap-3">
                 <div className="flex flex-col items-center shrink-0 pt-1">
                   <div className={`w-7 h-7 rounded-full flex items-center justify-center text-xs font-bold border-2 transition-all shrink-0 ${
-                    form.patient_email && /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(form.patient_email)
+                    form.patient_phone.trim()
                       ? "bg-emerald-500 border-emerald-500 text-white"
                       : "bg-white border-medical-400 text-medical-600"
                   }`}>
-                    {form.patient_email && /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(form.patient_email)
-                      ? <Check className="w-3.5 h-3.5" />
-                      : "1"}
+                    {form.patient_phone.trim() ? <Check className="w-3.5 h-3.5" /> : "1"}
                   </div>
-                  {form.patient_email && /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(form.patient_email) && (
+                  {form.patient_phone.trim() && (
                     <div className="w-0.5 flex-1 min-h-4 bg-slate-200 mt-1" />
                   )}
                 </div>
                 <div className="flex-1 pb-3 min-w-0 space-y-2">
-                  <div className="flex flex-col gap-1">
-                    <label htmlFor="patient_email" className="text-sm font-medium text-slate-700 flex items-center gap-1.5">
-                      Patient Email
-                      <span className="inline-block w-1.5 h-1.5 rounded-full bg-amber-400 align-middle" aria-label="required" />
-                    </label>
-                    <Input
-                      id="patient_email"
-                      type="email"
-                      placeholder="patient@example.com"
-                      hint="Used to send the request code, track results, and auto-fill patient details"
-                      value={form.patient_email}
-                      onChange={(e) => set("patient_email", e.target.value)}
-                      error={errors.patient_email}
-                    />
-                  </div>
+                  <PhoneInput
+                    label="Patient Phone"
+                    required
+                    value={form.patient_phone}
+                    onChange={(v) => set("patient_phone", v)}
+                    error={errors.patient_phone}
+                  />
                   {/* Profile lookup feedback */}
                   {patientLookupStatus === "checking" && (
                     <div className="flex items-center gap-2 text-xs text-slate-400">
@@ -2101,59 +2089,63 @@ export function DoctorRequestForm({
                   {patientLookupStatus === "not_found" && (
                     <div className="flex items-start gap-2 px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs">
                       <Info className="w-3.5 h-3.5 text-slate-400 shrink-0 mt-0.5" />
-                      <span className="text-slate-600">No existing profile — please fill in details below</span>
+                      <span className="text-slate-600">New patient — please fill in details below</span>
                     </div>
                   )}
                 </div>
               </div>
 
-              {/* Substep 2: Phone — reveals after email is valid */}
-              {form.patient_email && /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(form.patient_email) && (
+              {/* Substep 2: Name — reveals after phone is entered */}
+              {form.patient_phone.trim() && (
                 <div className="relative flex gap-3 animate-fade-in-up">
                   <div className="flex flex-col items-center shrink-0 pt-1">
                     <div className={`w-7 h-7 rounded-full flex items-center justify-center text-xs font-bold border-2 transition-all shrink-0 ${
-                      form.patient_phone.trim()
+                      form.patient_name.trim()
                         ? "bg-emerald-500 border-emerald-500 text-white"
                         : "bg-white border-medical-400 text-medical-600"
                     }`}>
-                      {form.patient_phone.trim() ? <Check className="w-3.5 h-3.5" /> : "2"}
+                      {form.patient_name.trim() ? <Check className="w-3.5 h-3.5" /> : "2"}
                     </div>
-                    {form.patient_phone.trim() && <div className="w-0.5 flex-1 min-h-4 bg-slate-200 mt-1" />}
+                    {form.patient_name.trim() && <div className="w-0.5 flex-1 min-h-4 bg-slate-200 mt-1" />}
                   </div>
                   <div className="flex-1 pb-3 min-w-0">
-                    <PhoneInput
-                      label="Patient Phone"
+                    <Input
+                      label="Patient Full Name"
+                      placeholder="e.g. Amara Okonkwo"
+                      value={form.patient_name}
+                      onChange={(e) => set("patient_name", e.target.value)}
+                      error={errors.patient_name}
                       required
-                      value={form.patient_phone}
-                      onChange={(v) => set("patient_phone", v)}
-                      error={errors.patient_phone}
                     />
                   </div>
                 </div>
               )}
 
-              {/* Substep 3: Optional patient details — reveals after phone */}
-              {form.patient_email && /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(form.patient_email) && form.patient_phone.trim() && (
+              {/* Substep 3: Optional details — reveals after name */}
+              {form.patient_phone.trim() && form.patient_name.trim() && (
                 <div className="relative flex gap-3 animate-fade-in-up">
                   <div className="flex flex-col items-center shrink-0 pt-1">
                     <div className={`w-7 h-7 rounded-full flex items-center justify-center text-xs font-bold border-2 transition-all shrink-0 ${
-                      (form.patient_name || form.dob || form.sex)
+                      (form.patient_email || form.dob || form.sex)
                         ? "bg-emerald-500 border-emerald-500 text-white"
                         : "bg-white border-slate-300 text-slate-400"
                     }`}>
-                      {(form.patient_name || form.dob || form.sex) ? <Check className="w-3.5 h-3.5" /> : "3"}
+                      {(form.patient_email || form.dob || form.sex) ? <Check className="w-3.5 h-3.5" /> : "3"}
                     </div>
                   </div>
                   <div className="flex-1 pb-2 min-w-0">
-                    <p className="text-sm font-medium text-slate-700 mb-3">
-                      Patient Details
+                    <p className="text-sm font-medium text-slate-500 mb-3">
+                      Optional details
                     </p>
                     <div className="space-y-3">
                       <Input
-                        label="Full Name"
-                        placeholder="e.g. Amara Okonkwo"
-                        value={form.patient_name}
-                        onChange={(e) => set("patient_name", e.target.value)}
+                        label="Patient Email"
+                        type="email"
+                        placeholder="patient@example.com"
+                        hint="Optional — used to send results and track request history"
+                        value={form.patient_email}
+                        onChange={(e) => set("patient_email", e.target.value)}
+                        error={errors.patient_email}
                       />
                       <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                         <DobInput value={form.dob} onChange={(iso) => set("dob", iso)} />

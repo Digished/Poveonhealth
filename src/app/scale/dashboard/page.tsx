@@ -22,6 +22,7 @@ interface RequestSummary {
   id: string; code: string; patient_name: string; tests: string;
   status: string; lab_revenue_amount: number;
   created_at: string; seen_at: string | null; completed_at: string | null;
+  lab_id?: string | null; lab_name?: string | null;
 }
 
 interface Doctor {
@@ -201,6 +202,70 @@ function HospitalDropdown({
               {filtered.length === 0 && (
                 <p className="text-xs text-slate-400 text-center py-6">No hospitals match</p>
               )}
+            </div>
+          </div>
+        </div>
+      )}
+    </>
+  );
+}
+
+// Lab filter dropdown
+function LabDropdown({
+  labs, value, onChange,
+}: { labs: { id: string; name: string; count: number }[]; value: string; onChange: (v: string) => void }) {
+  const [open, setOpen] = useState(false);
+  const [q, setQ] = useState("");
+  const filtered = labs.filter((l) => !q.trim() || l.name.toLowerCase().includes(q.toLowerCase()));
+  const selected = labs.find((l) => l.id === value);
+  function close() { setOpen(false); setQ(""); }
+  return (
+    <>
+      <button
+        type="button"
+        onClick={() => setOpen(true)}
+        className={`flex-1 min-w-0 flex items-center gap-2 px-3 py-2.5 rounded-xl border text-sm transition ${
+          value ? "border-emerald-400 bg-emerald-50 text-emerald-800 font-semibold" : "border-slate-200 bg-white text-slate-600"
+        }`}
+      >
+        <Building2 className="w-3.5 h-3.5 shrink-0 text-slate-400" />
+        <span className="flex-1 text-left truncate">{selected ? selected.name : "All Labs"}</span>
+        {value ? (
+          <span role="button" onClick={(e) => { e.stopPropagation(); onChange(""); }} className="text-emerald-500 hover:text-emerald-700 shrink-0">
+            <X className="w-3.5 h-3.5" />
+          </span>
+        ) : (
+          <ChevronDown className="w-3.5 h-3.5 shrink-0 text-slate-400" />
+        )}
+      </button>
+      {open && (
+        <div className="fixed inset-0 z-50 bg-black/50 backdrop-blur-sm flex items-end sm:items-center justify-center p-0 sm:p-6" onClick={close}>
+          <div className="bg-white w-full sm:w-[400px] sm:max-w-[400px] rounded-t-3xl sm:rounded-2xl shadow-2xl flex flex-col max-h-[58dvh] sm:max-h-[480px]" onClick={(e) => e.stopPropagation()}>
+            <div className="flex items-center justify-between px-4 py-3.5 border-b border-slate-100 shrink-0">
+              <p className="text-sm font-bold text-slate-800">Filter by Laboratory</p>
+              <button type="button" onClick={close} className="w-7 h-7 rounded-lg bg-slate-100 hover:bg-slate-200 flex items-center justify-center transition text-slate-500">
+                <X className="w-3.5 h-3.5" />
+              </button>
+            </div>
+            <div className="px-4 py-2.5 border-b border-slate-100 shrink-0">
+              <div className="flex items-center gap-2 px-3 py-2 bg-slate-50 rounded-xl border border-slate-200">
+                <Search className="w-3.5 h-3.5 text-slate-400 shrink-0" />
+                <input autoFocus value={q} onChange={(e) => setQ(e.target.value)} placeholder="Search lab…" className="flex-1 bg-transparent text-sm text-slate-800 placeholder-slate-400 outline-none" />
+                {q && <button type="button" onClick={() => setQ("")} className="text-slate-400 hover:text-slate-600"><X className="w-3.5 h-3.5" /></button>}
+              </div>
+            </div>
+            <div className="overflow-y-auto flex-1 overscroll-contain">
+              <button type="button" onClick={() => { onChange(""); close(); }} className={`w-full flex items-center justify-between px-4 py-3 text-sm transition hover:bg-slate-50 border-b border-slate-50 ${!value ? "font-semibold text-emerald-700" : "text-slate-700"}`}>
+                <span>All Labs</span>
+                <span className="text-xs text-slate-400">{labs.reduce((s, l) => s + l.count, 0)} requests</span>
+              </button>
+              {filtered.map((l) => (
+                <button key={l.id} type="button" onClick={() => { onChange(l.id); close(); }} className={`w-full flex items-center justify-between px-4 py-3 text-sm transition hover:bg-slate-50 border-b border-slate-50 last:border-0 ${value === l.id ? "font-semibold text-emerald-700 bg-emerald-50/60" : "text-slate-700"}`}>
+                  <span className="text-left flex-1 pr-3 leading-snug">{l.name}</span>
+                  <span className="text-xs text-slate-400 shrink-0">{l.count} req{l.count !== 1 ? "s" : ""}</span>
+                </button>
+              ))}
+              {filtered.length === 0 && <p className="text-xs text-slate-400 text-center py-6">No labs match</p>}
             </div>
           </div>
         </div>
@@ -481,6 +546,7 @@ export default function ScaleDashboardPage() {
   const [loggingOut, setLoggingOut] = useState(false);
   const [search, setSearch]         = useState("");
   const [hospitalFilter, setHospitalFilter] = useState("");
+  const [labFilter, setLabFilter]           = useState("");
   const [monthFilter, setMonthFilter]       = useState("");
   const [showCreate, setShowCreate] = useState(false);
   const [sortBy, setSortBy] = useState<"revenue-desc" | "revenue-asc" | "name-asc">("revenue-desc");
@@ -533,6 +599,19 @@ export default function ScaleDashboardPage() {
       .sort((a, b) => b.revenue - a.revenue || a.name.localeCompare(b.name));
   }, [doctors, monthFilter]);
 
+  // Build lab list from all requests
+  const labList = useMemo(() => {
+    const map = new Map<string, { name: string; count: number }>();
+    for (const d of doctors) {
+      for (const r of d.requests) {
+        if (!r.lab_id || !r.lab_name) continue;
+        const cur = map.get(r.lab_id) ?? { name: r.lab_name, count: 0 };
+        map.set(r.lab_id, { name: cur.name, count: cur.count + 1 });
+      }
+    }
+    return Array.from(map.entries()).map(([id, v]) => ({ id, ...v })).sort((a, b) => b.count - a.count);
+  }, [doctors]);
+
   // Filter + sort doctors
   const filteredDoctors = useMemo(() => {
     let result = doctors;
@@ -546,6 +625,9 @@ export default function ScaleDashboardPage() {
     }
     if (hospitalFilter) {
       result = result.filter((d) => d.hospitals.includes(hospitalFilter));
+    }
+    if (labFilter) {
+      result = result.filter((d) => d.requests.some((r) => r.lab_id === labFilter));
     }
     if (monthFilter) {
       result = result.filter((d) => d.requests.some((r) => toYM(r.created_at) === monthFilter));
@@ -576,7 +658,7 @@ export default function ScaleDashboardPage() {
     }, 0),
   [filteredDoctors, monthFilter]);
 
-  const isFiltered = !!(search || hospitalFilter || monthFilter);
+  const isFiltered = !!(search || hospitalFilter || labFilter || monthFilter);
 
   return (
     <div className="min-h-dvh bg-gradient-to-br from-emerald-50 via-teal-50 to-cyan-50">
@@ -653,9 +735,12 @@ export default function ScaleDashboardPage() {
                 </button>
               )}
             </div>
-            {/* Hospital + Month dropdowns + Sort */}
-            <div className="flex gap-2">
+            {/* Hospital + Lab + Month dropdowns */}
+            <div className="flex gap-2 flex-wrap">
               <HospitalDropdown hospitals={hospitalList} value={hospitalFilter} onChange={setHospitalFilter} />
+              {labList.length > 0 && (
+                <LabDropdown labs={labList} value={labFilter} onChange={setLabFilter} />
+              )}
               {availableMonths.length > 0 && (
                 <MonthDropdown months={availableMonths} value={monthFilter} onChange={setMonthFilter} />
               )}
