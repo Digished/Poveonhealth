@@ -1,20 +1,36 @@
 export const dynamic = "force-dynamic";
 import { NextRequest, NextResponse } from "next/server";
-import { createServerClient } from "@/lib/supabase/server";
+import { verifyAdmin } from "@/lib/admin-auth";
 import { prisma } from "@/lib/prisma";
 import * as xlsx from "xlsx";
-
-async function verifyAdmin() {
-  const authClient = await createServerClient();
-  const { data: { user } } = await authClient.auth.getUser();
-  if (!user) return null;
-  const adminRecord = await prisma.adminUser.findUnique({ where: { user_id: user.id } });
-  return adminRecord ? user : null;
-}
+import OpenAI from "openai";
 
 async function getDefaultCommission(): Promise<number> {
   const setting = await prisma.systemSetting.findUnique({ where: { key: "default_commission_pct" } });
   return setting ? parseFloat(setting.value) : 15;
+}
+
+async function generateSynonyms(testName: string, categoryLabel?: string): Promise<string[]> {
+  if (!process.env.OPENAI_API_KEY) return [testName];
+  try {
+    const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
+    const response = await openai.chat.completions.create({
+      model: "gpt-4o-mini",
+      temperature: 0.2,
+      response_format: { type: "json_object" },
+      messages: [
+        { role: "system", content: 'Return JSON: { "synonyms": string[] }' },
+        {
+          role: "user",
+          content: `Generate 7-10 common synonyms, abbreviations, and alternate names for this medical lab test: "${testName}"${categoryLabel ? ` (category: ${categoryLabel})` : ""}. Nigerian medical context. Include the original name. Return as array.`,
+        },
+      ],
+    });
+    const parsed = JSON.parse(response.choices[0].message.content ?? "{}") as { synonyms?: string[] };
+    return Array.from(new Set([testName, ...(parsed.synonyms ?? [])]));
+  } catch {
+    return [testName];
+  }
 }
 
 type ParsedRow = { test_name: string; price: number; category?: string; commission_pct?: number; is_active?: boolean };
@@ -70,9 +86,8 @@ function parseExcel(buffer: ArrayBuffer): ParsedRow[] {
 
 /**
  * POST /api/admin/labs/[id]/catalog/upload
- * Parses the file and upserts rows. No AI calls — synonyms are generated
- * separately so uploads are fast. Returns noSynonyms count so the client
- * can auto-trigger synonym generation after reload.
+ * Parses the file and upserts rows. Auto-generates AI synonyms for new tests.
+ * For existing tests, preserves current synonyms unless regenerating.
  */
 export async function POST(
   req: NextRequest,
@@ -106,7 +121,7 @@ export async function POST(
   }
 
   const defaultCommission = await getDefaultCommission();
-  const results = { total: rows.length, created: 0, updated: 0, errors: 0, noSynonyms: 0 };
+  const results = { total: rows.length, created: 0, updated: 0, errors: 0 };
 
   for (const row of rows) {
     try {
@@ -117,36 +132,35 @@ export async function POST(
         where: { lab_id_raw_name: { lab_id: id, raw_name: row.test_name } },
       });
 
-      await prisma.labOfferedTest.upsert({
-        where: { lab_id_raw_name: { lab_id: id, raw_name: row.test_name } },
-        create: {
-          lab_id: id,
-          raw_name: row.test_name,
-          category_label: row.category ?? null,
-          synonyms: [row.test_name],   // just raw name; AI generation runs separately
-          lab_price: row.price,
-          poveon_fee,
-          commission_pct,
-          is_active: row.is_active ?? true,
-        },
-        update: {
-          lab_price: row.price,
-          poveon_fee,
-          commission_pct,
-          is_active: row.is_active ?? true,
-          ...(row.category ? { category_label: row.category } : {}),
-          // Don't overwrite existing synonyms on update
-        },
-      });
-
-      if (existing) {
-        results.updated++;
-        // Count tests that still need synonyms
-        const synonyms = existing.synonyms as string[];
-        if (!Array.isArray(synonyms) || synonyms.length <= 1) results.noSynonyms++;
-      } else {
+      if (!existing) {
+        // New test: auto-generate AI synonyms
+        const synonyms = await generateSynonyms(row.test_name, row.category);
+        await prisma.labOfferedTest.create({
+          data: {
+            lab_id: id,
+            raw_name: row.test_name,
+            category_label: row.category ?? null,
+            synonyms,
+            lab_price: row.price,
+            poveon_fee,
+            commission_pct,
+            is_active: row.is_active ?? true,
+          },
+        });
         results.created++;
-        results.noSynonyms++; // new rows always need synonym generation
+      } else {
+        // Existing test: only update price/commission, keep synonyms
+        await prisma.labOfferedTest.update({
+          where: { lab_id_raw_name: { lab_id: id, raw_name: row.test_name } },
+          data: {
+            lab_price: row.price,
+            poveon_fee,
+            commission_pct,
+            is_active: row.is_active ?? true,
+            ...(row.category ? { category_label: row.category } : {}),
+          },
+        });
+        results.updated++;
       }
     } catch {
       results.errors++;

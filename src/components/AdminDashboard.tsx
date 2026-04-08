@@ -5104,8 +5104,26 @@ function AdminLabCatalogModal({ lab, onClose }: { lab: Lab; onClose: () => void 
       });
       const d = await res.json();
       if (!res.ok) { toast.error(d.error ?? "Failed"); return; }
-      toast.success(`Updated ${d.updated} tests with AI synonyms`);
+      toast.success(`Updated ${d.updated} tests with manual synonyms`);
       setBulkSyns(""); setShowBulkSyns(false);
+      await load();
+    } catch { toast.error("Network error"); }
+  }
+
+  async function handleGenerateSynonyms() {
+    const ids = Array.from(selected);
+    if (ids.length === 0) { toast.error("Select tests first"); return; }
+    try {
+      toast.loading("Generating AI synonyms...", { id: "gen-syns" });
+      const res = await fetch(`/api/admin/labs/${lab.id}/catalog/bulk`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ action: "generate_synonyms", ids }),
+      });
+      const d = await res.json();
+      if (!res.ok) { toast.error(d.error ?? "Failed", { id: "gen-syns" }); return; }
+      toast.success(`Generated AI synonyms for ${d.updated} tests`, { id: "gen-syns" });
+      setSelected(new Set());
       await load();
     } catch { toast.error("Network error"); }
   }
@@ -5185,9 +5203,13 @@ function AdminLabCatalogModal({ lab, onClose }: { lab: Lab; onClose: () => void 
                 className="px-2.5 py-1.5 rounded-lg bg-sky-500/10 hover:bg-sky-500/20 text-sky-400 text-xs transition-colors"
               >Commission</button>
               <button
+                onClick={handleGenerateSynonyms}
+                className="px-2.5 py-1.5 rounded-lg bg-emerald-500/10 hover:bg-emerald-500/20 text-emerald-400 text-xs transition-colors flex items-center gap-1"
+              ><Sparkles className="w-3 h-3" />Generate AI</button>
+              <button
                 onClick={() => setShowBulkSyns((v) => !v)}
                 className="px-2.5 py-1.5 rounded-lg bg-purple-500/10 hover:bg-purple-500/20 text-purple-400 text-xs transition-colors"
-              >Synonyms</button>
+              >Manual Synonyms</button>
               <button
                 onClick={handleBulkDelete}
                 className="px-2.5 py-1.5 rounded-lg bg-red-500/10 hover:bg-red-500/20 text-red-400 text-xs transition-colors"
