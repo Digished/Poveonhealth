@@ -1,16 +1,8 @@
 export const dynamic = "force-dynamic";
 import { NextRequest, NextResponse } from "next/server";
 import { z } from "zod";
-import { createServerClient } from "@/lib/supabase/server";
+import { verifyAdmin } from "@/lib/admin-auth";
 import { prisma } from "@/lib/prisma";
-
-async function verifyAdmin() {
-  const authClient = await createServerClient();
-  const { data: { user } } = await authClient.auth.getUser();
-  if (!user) return null;
-  const adminRecord = await prisma.adminUser.findUnique({ where: { user_id: user.id } });
-  return adminRecord ? user : null;
-}
 
 const PatchSchema = z.object({
   raw_name: z.string().min(1).max(300).optional(),
@@ -37,35 +29,67 @@ export async function PATCH(
   const existing = await prisma.labOfferedTest.findFirst({ where: { id: testId, lab_id: id } });
   if (!existing) return NextResponse.json({ error: "Not found" }, { status: 404 });
 
-  const updates: Record<string, unknown> = {};
-
+  // Check for name collision outside transaction first
   if (parsed.data.raw_name !== undefined && parsed.data.raw_name !== existing.raw_name) {
-    // Check for name collision
     const conflict = await prisma.labOfferedTest.findUnique({
       where: { lab_id_raw_name: { lab_id: id, raw_name: parsed.data.raw_name } },
     });
     if (conflict) return NextResponse.json({ error: "A test with that name already exists" }, { status: 409 });
-    updates.raw_name = parsed.data.raw_name;
   }
 
-  if (parsed.data.lab_price !== undefined) {
-    updates.lab_price = parsed.data.lab_price;
-    const commission = parsed.data.commission_pct ?? Number(existing.commission_pct ?? 15);
-    updates.poveon_fee = parseFloat(((parsed.data.lab_price * commission) / 100).toFixed(2));
-  }
+  const test = await prisma.$transaction(async (tx) => {
+    const updates: Record<string, unknown> = {};
 
-  if (parsed.data.commission_pct !== undefined) {
-    updates.commission_pct = parsed.data.commission_pct;
-    const price = parsed.data.lab_price ?? Number(existing.lab_price);
-    updates.poveon_fee = parseFloat(((price * parsed.data.commission_pct) / 100).toFixed(2));
-  }
+    if (parsed.data.raw_name !== undefined && parsed.data.raw_name !== existing.raw_name) {
+      updates.raw_name = parsed.data.raw_name;
+    }
 
-  if (parsed.data.is_active !== undefined) updates.is_active = parsed.data.is_active;
-  if (parsed.data.category_label !== undefined) updates.category_label = parsed.data.category_label;
-  if (parsed.data.synonyms !== undefined) updates.synonyms = parsed.data.synonyms;
+    if (parsed.data.lab_price !== undefined) {
+      updates.lab_price = parsed.data.lab_price;
+      const commission = parsed.data.commission_pct ?? Number(existing.commission_pct ?? 15);
+      updates.poveon_fee = parseFloat(((parsed.data.lab_price * commission) / 100).toFixed(2));
+    }
 
+    if (parsed.data.commission_pct !== undefined) {
+      updates.commission_pct = parsed.data.commission_pct;
+      const price = parsed.data.lab_price ?? Number(existing.lab_price);
+      updates.poveon_fee = parseFloat(((price * parsed.data.commission_pct) / 100).toFixed(2));
+    }
 
-  const test = await prisma.labOfferedTest.update({ where: { id: testId }, data: updates });
+    if (parsed.data.is_active !== undefined) updates.is_active = parsed.data.is_active;
+    if (parsed.data.category_label !== undefined) updates.category_label = parsed.data.category_label;
+    if (parsed.data.synonyms !== undefined) updates.synonyms = parsed.data.synonyms;
+
+    const updated = await tx.labOfferedTest.update({ where: { id: testId }, data: updates });
+
+    // Sync synonyms to knowledge base if they were updated
+    if (parsed.data.synonyms !== undefined) {
+      const existingKb = await tx.kbTest.findFirst({
+        where: {
+          canonical_name: {
+            equals: updated.raw_name,
+            mode: "insensitive",
+          },
+        },
+      });
+
+      if (existingKb) {
+        // Merge new synonyms with existing KB synonyms
+        const currentSyns = Array.isArray(existingKb.synonyms)
+          ? (existingKb.synonyms as string[])
+          : [];
+        const newSyns = Array.isArray(parsed.data.synonyms) ? parsed.data.synonyms : [];
+        const mergedSyns = Array.from(new Set([...currentSyns, ...newSyns]));
+
+        await tx.kbTest.update({
+          where: { id: existingKb.id },
+          data: { synonyms: mergedSyns },
+        });
+      }
+    }
+
+    return updated;
+  });
 
   return NextResponse.json({
     success: true,

@@ -1,15 +1,7 @@
 export const dynamic = "force-dynamic";
 import { NextRequest, NextResponse } from "next/server";
-import { createServerClient } from "@/lib/supabase/server";
+import { verifyAdmin } from "@/lib/admin-auth";
 import { prisma } from "@/lib/prisma";
-
-async function verifyAdmin() {
-  const authClient = await createServerClient();
-  const { data: { user } } = await authClient.auth.getUser();
-  if (!user) return null;
-  const adminRecord = await prisma.adminUser.findUnique({ where: { user_id: user.id } });
-  return adminRecord ? user : null;
-}
 
 /** GET /api/admin/kb — list all KB tests with lab coverage stats */
 export async function GET(req: NextRequest) {
