@@ -1,12 +1,7 @@
 export const dynamic = "force-dynamic";
 import { NextRequest, NextResponse } from "next/server";
 import { verifyAdmin } from "@/lib/admin-auth";
-
-// In-memory progress tracker (resets on deployment)
-// Format: "labId-operationId" => { total, completed, testIds }
-const operationProgress = new Map<string, { total: number; completed: number; testIds: string[]; started: number }>();
-
-export const operations = operationProgress; // Export for bulk route to use
+import { getOperation } from "@/lib/operation-progress";
 
 /**
  * GET /api/admin/labs/[id]/catalog/progress?operation=<operationId>
@@ -27,8 +22,7 @@ export async function GET(
     return NextResponse.json({ error: "operation required" }, { status: 400 });
   }
 
-  const key = `${id}-${operationId}`;
-  const progress = operationProgress.get(key);
+  const progress = getOperation(`${id}-${operationId}`);
 
   if (!progress) {
     return NextResponse.json({ error: "Operation not found or completed" }, { status: 404 });

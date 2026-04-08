@@ -4,7 +4,7 @@ import { z } from "zod";
 import { verifyAdmin } from "@/lib/admin-auth";
 import { prisma } from "@/lib/prisma";
 import OpenAI from "openai";
-import { operations } from "./progress/route";
+import { createOperation, updateOperation, deleteOperation } from "@/lib/operation-progress";
 import { randomUUID } from "crypto";
 
 async function generateSynonyms(testName: string, categoryLabel?: string | null): Promise<string[]> {
@@ -142,12 +142,7 @@ export async function POST(
     // Create a unique operation ID and start tracking progress
     const operationId = randomUUID();
     const progressKey = `${id}-${operationId}`;
-    operations.set(progressKey, {
-      total: tests.length,
-      completed: 0,
-      testIds: tests.map(t => t.id),
-      started: Date.now(),
-    });
+    createOperation(progressKey, tests.length);
 
     // Return immediately with operationId so client can poll progress
     // The actual generation happens in the background
@@ -164,18 +159,15 @@ export async function POST(
 
           // Update progress
           completed++;
-          const progress = operations.get(progressKey);
-          if (progress) {
-            progress.completed = completed;
-          }
+          updateOperation(progressKey, completed);
         }
 
         // Clean up after 30 seconds so client can fetch final status
-        setTimeout(() => operations.delete(progressKey), 30000);
+        setTimeout(() => deleteOperation(progressKey), 30000);
       } catch (error) {
         console.error("Error in background synonym generation:", error);
         // Still clean up on error
-        setTimeout(() => operations.delete(progressKey), 30000);
+        setTimeout(() => deleteOperation(progressKey), 30000);
       }
     })();
 
