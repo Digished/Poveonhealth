@@ -140,28 +140,37 @@ export async function POST(
 
   if (parsed.data.action === "generate_synonyms") {
     const { ids } = parsed.data;
-    // Auto-generate AI synonyms for tests
-    const results = await prisma.$transaction(async (tx) => {
-      const tests = await tx.labOfferedTest.findMany({
-        where: { id: { in: ids }, lab_id: id },
-        select: { id: true, raw_name: true, category_label: true },
-      });
 
+    // Step 1: Fetch tests OUTSIDE transaction
+    const tests = await prisma.labOfferedTest.findMany({
+      where: { id: { in: ids }, lab_id: id },
+      select: { id: true, raw_name: true, category_label: true },
+    });
+
+    if (tests.length === 0) {
+      return NextResponse.json({ success: true, updated: 0 });
+    }
+
+    // Step 2: Generate synonyms for all tests (this is the slow part, do it outside transaction)
+    const testSynonymsMap = new Map<string, string[]>();
+    for (const test of tests) {
+      const syns = await generateSynonyms(test.raw_name, test.category_label);
+      testSynonymsMap.set(test.id, syns);
+    }
+
+    // Step 3: Update database in transaction (fast)
+    const results = await prisma.$transaction(async (tx) => {
       let updated = 0;
-      const updatePromises = tests.map(async (t) => {
-        const syns = await generateSynonyms(t.raw_name, t.category_label);
+
+      for (const test of tests) {
+        const syns = testSynonymsMap.get(test.id) || [test.raw_name];
         await tx.labOfferedTest.update({
-          where: { id: t.id },
+          where: { id: test.id },
           data: { synonyms: syns },
         });
         updated++;
-      });
 
-      await Promise.all(updatePromises);
-
-      // Sync to knowledge base
-      for (const test of tests) {
-        const syns = await generateSynonyms(test.raw_name, test.category_label);
+        // Sync to knowledge base
         const existingKb = await tx.kbTest.findFirst({
           where: {
             canonical_name: {
