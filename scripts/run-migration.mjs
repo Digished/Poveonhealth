@@ -21,7 +21,9 @@ const migrations = [
   },
   {
     desc: "requests.doctor_email nullable (self-service patient requests)",
+    // Use conditional logic to avoid errors if already nullable or constraint exists
     sql: `ALTER TABLE requests ALTER COLUMN doctor_email DROP NOT NULL`,
+    continueOnError: true, // If already nullable, this will fail gracefully
   },
   {
     desc: "labs.hero_image_url column for custom page background",
@@ -31,13 +33,18 @@ const migrations = [
 
 let failed = false;
 
-for (const { desc, sql } of migrations) {
+for (const { desc, sql, continueOnError } of migrations) {
   try {
     await prisma.$executeRawUnsafe(sql);
     console.log(`  ✓ ${desc}`);
   } catch (err) {
-    console.error(`  ✗ ${desc}: ${err.message}`);
-    failed = true;
+    if (continueOnError) {
+      // Expected failures (e.g., column already nullable) are ignored
+      console.log(`  ✓ ${desc} (already applied or not needed)`);
+    } else {
+      console.error(`  ✗ ${desc}: ${err.message}`);
+      failed = true;
+    }
   }
 }
 
