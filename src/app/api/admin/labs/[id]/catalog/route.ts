@@ -30,7 +30,7 @@ async function generateSynonyms(testName: string, categoryLabel?: string): Promi
         { role: "system", content: 'Return JSON: { "synonyms": string[] }' },
         {
           role: "user",
-          content: `Generate 4–8 common synonyms, abbreviations, and alternate names for this medical lab test: "${testName}"${categoryLabel ? ` (category: ${categoryLabel})` : ""}. Nigerian medical context. Include the original name.`,
+          content: `Generate 7-10 common synonyms, abbreviations, and alternate names for this medical lab test: "${testName}"${categoryLabel ? ` (category: ${categoryLabel})` : ""}. Nigerian medical context. Include the original name.`,
         },
       ],
     });
@@ -79,9 +79,10 @@ const CreateSchema = z.object({
   lab_price: z.number().positive(),
   commission_pct: z.number().min(0).max(100).optional(),
   is_active: z.boolean().optional(),
+  synonyms: z.array(z.string()).optional(), // Can be provided but AI generation takes precedence for new tests
 });
 
-/** POST /api/admin/labs/[id]/catalog — add a single offered test */
+/** POST /api/admin/labs/[id]/catalog — add a single offered test with auto-generated AI synonyms */
 export async function POST(
   req: NextRequest,
   { params }: { params: Promise<{ id: string }> }
@@ -97,6 +98,9 @@ export async function POST(
   const { raw_name, category_label, lab_price, is_active = true } = parsed.data;
   const commission_pct = parsed.data.commission_pct ?? (await getDefaultCommission());
   const poveon_fee = parseFloat(((lab_price * commission_pct) / 100).toFixed(2));
+
+  // Always auto-generate AI synonyms for consistency and quality
+  // User can edit them later if needed via the bulk "Manual Synonyms" or "Generate AI" buttons
   const synonyms = await generateSynonyms(raw_name, category_label);
 
   const test = await prisma.labOfferedTest.upsert({

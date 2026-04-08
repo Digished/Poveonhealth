@@ -4932,9 +4932,12 @@ function AdminLabCatalogModal({ lab, onClose }: { lab: Lab; onClose: () => void 
   const [addingRow, setAddingRow] = useState(false);
   const [bulkComm, setBulkComm] = useState("");
   const [showBulkComm, setShowBulkComm] = useState(false);
+  const [bulkSyns, setBulkSyns] = useState("");
+  const [showBulkSyns, setShowBulkSyns] = useState(false);
   const [editingId, setEditingId] = useState<string | null>(null);
-  const [editVals, setEditVals] = useState<{ raw_name: string; lab_price: string; commission_pct: string; category_label: string }>({ raw_name: "", lab_price: "", commission_pct: "", category_label: "" });
-  const [newRow, setNewRow] = useState({ raw_name: "", lab_price: "", commission_pct: "", category_label: "" });
+  const [editVals, setEditVals] = useState<{ raw_name: string; lab_price: string; commission_pct: string; category_label: string; synonyms: string }>({ raw_name: "", lab_price: "", commission_pct: "", category_label: "", synonyms: "" });
+  const [newRow, setNewRow] = useState({ raw_name: "", lab_price: "", commission_pct: "", category_label: "", synonyms: "" });
+  const [generationProgress, setGenerationProgress] = useState<{ operationId: string; percent: number; completed: number; total: number } | null>(null);
   const fileRef = useRef<HTMLInputElement>(null);
 
   const load = useCallback(async () => {
@@ -4991,6 +4994,7 @@ function AdminLabCatalogModal({ lab, onClose }: { lab: Lab; onClose: () => void 
   async function handleAddRow() {
     if (!newRow.raw_name.trim() || !newRow.lab_price.trim()) return;
     try {
+      const syns = newRow.synonyms.trim().split(/[,\n]+/).map(s => s.trim()).filter(s => s.length > 0);
       const res = await fetch(`/api/admin/labs/${lab.id}/catalog`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -4999,12 +5003,13 @@ function AdminLabCatalogModal({ lab, onClose }: { lab: Lab; onClose: () => void 
           lab_price: parseFloat(newRow.lab_price),
           commission_pct: newRow.commission_pct ? parseFloat(newRow.commission_pct) : undefined,
           category_label: newRow.category_label.trim() || undefined,
+          synonyms: syns.length > 0 ? syns : undefined,
         }),
       });
       const d = await res.json();
       if (!res.ok) { toast.error(d.error ?? "Failed"); return; }
       toast.success("Test added");
-      setNewRow({ raw_name: "", lab_price: "", commission_pct: "", category_label: "" });
+      setNewRow({ raw_name: "", lab_price: "", commission_pct: "", category_label: "", synonyms: "" });
       setAddingRow(false);
       await load();
     } catch { toast.error("Network error"); }
@@ -5012,6 +5017,7 @@ function AdminLabCatalogModal({ lab, onClose }: { lab: Lab; onClose: () => void 
 
   async function handleSaveEdit(id: string) {
     try {
+      const syns = editVals.synonyms.trim().split(/[,\n]+/).map(s => s.trim()).filter(s => s.length > 0);
       const res = await fetch(`/api/admin/labs/${lab.id}/catalog/${id}`, {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
@@ -5020,6 +5026,7 @@ function AdminLabCatalogModal({ lab, onClose }: { lab: Lab; onClose: () => void 
           lab_price: editVals.lab_price ? parseFloat(editVals.lab_price) : undefined,
           commission_pct: editVals.commission_pct ? parseFloat(editVals.commission_pct) : undefined,
           category_label: editVals.category_label.trim() || null,
+          synonyms: syns.length > 0 ? syns : undefined,
         }),
       });
       const d = await res.json();
@@ -5086,15 +5093,90 @@ function AdminLabCatalogModal({ lab, onClose }: { lab: Lab; onClose: () => void 
     } catch { toast.error("Network error"); }
   }
 
+  async function handleBulkSynonyms() {
+    const syns = bulkSyns.trim().split(/[,\n]+/).map(s => s.trim()).filter(s => s.length > 0);
+    if (syns.length === 0) { toast.error("Enter at least one synonym"); return; }
+    const ids = Array.from(selected);
+    try {
+      const res = await fetch(`/api/admin/labs/${lab.id}/catalog/bulk`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ action: "set_synonyms", ids, synonyms: syns }),
+      });
+      const d = await res.json();
+      if (!res.ok) { toast.error(d.error ?? "Failed"); return; }
+      toast.success(`Updated ${d.updated} tests with manual synonyms`);
+      setBulkSyns(""); setShowBulkSyns(false);
+      await load();
+    } catch { toast.error("Network error"); }
+  }
+
+  async function handleGenerateSynonyms() {
+    const ids = Array.from(selected);
+    if (ids.length === 0) { toast.error("Select tests first"); return; }
+    try {
+      const res = await fetch(`/api/admin/labs/${lab.id}/catalog/bulk`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ action: "generate_synonyms", ids }),
+      });
+      const d = await res.json();
+      if (!res.ok) { toast.error(d.error ?? "Failed"); return; }
+
+      // Start polling progress
+      if (d.operationId) {
+        setGenerationProgress({ operationId: d.operationId, percent: 0, completed: 0, total: ids.length });
+
+        const pollProgress = async () => {
+          try {
+            const progressRes = await fetch(
+              `/api/admin/labs/${lab.id}/catalog/progress?operation=${d.operationId}`
+            );
+            if (!progressRes.ok) {
+              // Operation completed or expired
+              toast.success(`Generated AI synonyms for ${ids.length} tests`);
+              setGenerationProgress(null);
+              setSelected(new Set());
+              await load();
+              return;
+            }
+            const progress = await progressRes.json();
+            setGenerationProgress({
+              operationId: d.operationId,
+              percent: progress.percent,
+              completed: progress.completed,
+              total: progress.total,
+            });
+
+            if (!progress.isComplete) {
+              setTimeout(pollProgress, 2000); // Poll every 2 seconds
+            } else {
+              setTimeout(() => {
+                toast.success(`Generated AI synonyms for ${ids.length} tests`);
+                setGenerationProgress(null);
+                setSelected(new Set());
+                load();
+              }, 500);
+            }
+          } catch {
+            // Stop polling on error
+            setGenerationProgress(null);
+          }
+        };
+
+        pollProgress();
+      }
+    } catch { toast.error("Network error"); }
+  }
+
   return (
     <div
-      className="fixed inset-0 z-50 flex items-center justify-center p-4"
+      className="fixed inset-0 z-50 flex items-center justify-center p-2 sm:p-4"
       style={{ backgroundColor: "rgba(2,6,23,0.85)", backdropFilter: "blur(6px)" }}
       onClick={onClose}
     >
       <div
-        className="w-full max-w-4xl bg-slate-900 border border-white/10 rounded-3xl shadow-2xl overflow-hidden flex flex-col"
-        style={{ maxHeight: "90vh" }}
+        className="w-full h-full max-h-screen bg-slate-900 border border-white/10 rounded-2xl sm:rounded-3xl shadow-2xl overflow-hidden flex flex-col"
         onClick={(e) => e.stopPropagation()}
       >
         {/* Header */}
@@ -5155,12 +5237,20 @@ function AdminLabCatalogModal({ lab, onClose }: { lab: Lab; onClose: () => void 
             <Plus className="w-3.5 h-3.5" />Add test
           </button>
           {selected.size > 0 && (
-            <div className="flex items-center gap-2 shrink-0">
+            <div className="flex items-center gap-2 shrink-0 flex-wrap">
               <span className="text-xs text-slate-400">{selected.size} selected</span>
               <button
                 onClick={() => setShowBulkComm((v) => !v)}
                 className="px-2.5 py-1.5 rounded-lg bg-sky-500/10 hover:bg-sky-500/20 text-sky-400 text-xs transition-colors"
-              >Set commission</button>
+              >Commission</button>
+              <button
+                onClick={handleGenerateSynonyms}
+                className="px-2.5 py-1.5 rounded-lg bg-emerald-500/10 hover:bg-emerald-500/20 text-emerald-400 text-xs transition-colors flex items-center gap-1"
+              ><Sparkles className="w-3 h-3" />Generate AI</button>
+              <button
+                onClick={() => setShowBulkSyns((v) => !v)}
+                className="px-2.5 py-1.5 rounded-lg bg-purple-500/10 hover:bg-purple-500/20 text-purple-400 text-xs transition-colors"
+              >Manual Synonyms</button>
               <button
                 onClick={handleBulkDelete}
                 className="px-2.5 py-1.5 rounded-lg bg-red-500/10 hover:bg-red-500/20 text-red-400 text-xs transition-colors"
@@ -5186,6 +5276,40 @@ function AdminLabCatalogModal({ lab, onClose }: { lab: Lab; onClose: () => void 
           </div>
         )}
 
+        {/* Bulk synonyms bar */}
+        {showBulkSyns && selected.size > 0 && (
+          <div className="flex items-center gap-2 px-6 py-2 bg-purple-500/5 border-b border-white/5 shrink-0">
+            <span className="text-xs text-purple-300">Add AI synonyms for {selected.size} selected (comma or newline separated):</span>
+            <textarea
+              value={bulkSyns}
+              onChange={(e) => setBulkSyns(e.target.value)}
+              placeholder="e.g. FBC, CBC, Full Blood Count"
+              className="flex-1 px-2.5 py-1 rounded-lg bg-white/8 border border-white/15 text-white text-xs focus:outline-none focus:ring-1 focus:ring-purple-400 font-mono"
+              style={{ minHeight: "2rem", maxHeight: "5rem", resize: "none" }}
+            />
+            <button onClick={handleBulkSynonyms} className="px-2.5 py-1 rounded-lg bg-purple-500/20 hover:bg-purple-500/30 text-purple-300 text-xs transition-colors whitespace-nowrap">Apply</button>
+            <button onClick={() => setShowBulkSyns(false)} className="text-slate-500 hover:text-white text-xs transition-colors">Cancel</button>
+          </div>
+        )}
+
+        {/* Generation progress bar */}
+        {generationProgress && (
+          <div className="px-6 py-3 bg-emerald-500/5 border-b border-white/5 shrink-0">
+            <div className="flex items-center justify-between mb-2">
+              <span className="text-xs text-emerald-300">
+                Generating AI synonyms: {generationProgress.completed} of {generationProgress.total}
+              </span>
+              <span className="text-xs text-emerald-400 font-mono">{generationProgress.percent}%</span>
+            </div>
+            <div className="w-full h-2 bg-white/10 rounded-full overflow-hidden">
+              <div
+                className="h-full bg-emerald-500 transition-all duration-300"
+                style={{ width: `${generationProgress.percent}%` }}
+              />
+            </div>
+          </div>
+        )}
+
         {/* Table */}
         <div className="flex-1 overflow-y-auto">
           <table className="w-full text-xs">
@@ -5197,6 +5321,7 @@ function AdminLabCatalogModal({ lab, onClose }: { lab: Lab; onClose: () => void 
                 </th>
                 <th className="px-3 py-3 text-left text-slate-400 font-semibold uppercase tracking-wider">Test Name</th>
                 <th className="px-3 py-3 text-left text-slate-400 font-semibold uppercase tracking-wider">Category</th>
+                <th className="px-3 py-3 text-left text-slate-400 font-semibold uppercase tracking-wider">Synonyms</th>
                 <th className="px-3 py-3 text-right text-slate-400 font-semibold uppercase tracking-wider">Price (₦)</th>
                 <th className="px-3 py-3 text-right text-slate-400 font-semibold uppercase tracking-wider">Comm%</th>
                 <th className="px-3 py-3 text-right text-slate-400 font-semibold uppercase tracking-wider">Fee (₦)</th>
@@ -5216,6 +5341,10 @@ function AdminLabCatalogModal({ lab, onClose }: { lab: Lab; onClose: () => void 
                   <td className="px-3 py-2">
                     <input value={newRow.category_label} onChange={(e) => setNewRow((p) => ({ ...p, category_label: e.target.value }))}
                       placeholder="Category" className="w-full bg-white/8 border border-white/10 rounded-lg px-2.5 py-1.5 text-white text-xs focus:outline-none" />
+                  </td>
+                  <td className="px-3 py-2">
+                    <textarea value={newRow.synonyms} onChange={(e) => setNewRow((p) => ({ ...p, synonyms: e.target.value }))}
+                      placeholder="Separated by comma or newline" className="w-full bg-white/8 border border-white/10 rounded-lg px-2.5 py-1 text-white text-xs focus:outline-none" style={{ minHeight: "2rem", maxHeight: "4rem", resize: "none" }} />
                   </td>
                   <td className="px-3 py-2">
                     <input value={newRow.lab_price} onChange={(e) => setNewRow((p) => ({ ...p, lab_price: e.target.value }))} type="number"
@@ -5262,6 +5391,10 @@ function AdminLabCatalogModal({ lab, onClose }: { lab: Lab; onClose: () => void 
                             className="w-full bg-white/8 border border-white/10 rounded-lg px-2.5 py-1 text-white text-xs focus:outline-none" />
                         </td>
                         <td className="px-3 py-2">
+                          <textarea value={editVals.synonyms} onChange={(e) => setEditVals((p) => ({ ...p, synonyms: e.target.value }))}
+                            className="w-full bg-white/8 border border-white/10 rounded-lg px-2.5 py-1 text-white text-xs focus:outline-none" style={{ minHeight: "2rem", maxHeight: "4rem", resize: "none" }} />
+                        </td>
+                        <td className="px-3 py-2">
                           <input value={editVals.lab_price} onChange={(e) => setEditVals((p) => ({ ...p, lab_price: e.target.value }))} type="number"
                             className="w-full bg-white/8 border border-teal-500/40 rounded-lg px-2.5 py-1 text-white text-xs focus:outline-none text-right font-mono" />
                         </td>
@@ -5280,8 +5413,22 @@ function AdminLabCatalogModal({ lab, onClose }: { lab: Lab; onClose: () => void 
                       </>
                     ) : (
                       <>
-                        <td className="px-3 py-2.5 text-white font-medium max-w-[200px] truncate" title={t.raw_name}>{t.raw_name}</td>
-                        <td className="px-3 py-2.5 text-slate-400 max-w-[120px] truncate">{t.category_label || <span className="text-slate-600">—</span>}</td>
+                        <td className="px-3 py-2.5 text-white font-medium max-w-[180px] truncate" title={t.raw_name}>{t.raw_name}</td>
+                        <td className="px-3 py-2.5 text-slate-400 max-w-[100px] truncate">{t.category_label || <span className="text-slate-600">—</span>}</td>
+                        <td className="px-3 py-2.5 text-slate-400 max-w-[150px]">
+                          {t.synonyms && t.synonyms.length > 0 ? (
+                            <div className="text-xs space-y-0.5">
+                              {t.synonyms.slice(0, 2).map((s, i) => (
+                                <div key={i} className="text-slate-300">{s}</div>
+                              ))}
+                              {t.synonyms.length > 2 && (
+                                <div className="text-slate-500 italic">+{t.synonyms.length - 2} more</div>
+                              )}
+                            </div>
+                          ) : (
+                            <span className="text-slate-600">—</span>
+                          )}
+                        </td>
                         <td className="px-3 py-2.5 text-right font-mono text-slate-200">{Number(t.lab_price).toLocaleString()}</td>
                         <td className="px-3 py-2.5 text-right font-mono text-slate-400">{t.commission_pct != null ? `${Number(t.commission_pct)}%` : <span className="text-slate-600">—</span>}</td>
                         <td className="px-3 py-2.5 text-right font-mono text-slate-400">{t.poveon_fee != null ? Number(t.poveon_fee).toLocaleString() : <span className="text-slate-600">—</span>}</td>
@@ -5294,7 +5441,7 @@ function AdminLabCatalogModal({ lab, onClose }: { lab: Lab; onClose: () => void 
                         <td className="px-3 py-2.5">
                           <div className="flex items-center gap-1">
                             <button
-                              onClick={() => { setEditingId(t.id); setEditVals({ raw_name: t.raw_name, lab_price: String(t.lab_price), commission_pct: t.commission_pct != null ? String(t.commission_pct) : "", category_label: t.category_label ?? "" }); }}
+                              onClick={() => { setEditingId(t.id); setEditVals({ raw_name: t.raw_name, lab_price: String(t.lab_price), commission_pct: t.commission_pct != null ? String(t.commission_pct) : "", category_label: t.category_label ?? "", synonyms: (t.synonyms ?? []).join(", ") }); }}
                               className="p-1 rounded-lg text-slate-500 hover:text-white hover:bg-white/8 transition-colors"
                             ><Pencil className="w-3 h-3" /></button>
                             <button onClick={() => handleDelete(t.id)} className="p-1 rounded-lg text-slate-500 hover:text-red-400 hover:bg-red-500/10 transition-colors"><Trash2 className="w-3 h-3" /></button>
@@ -5310,9 +5457,12 @@ function AdminLabCatalogModal({ lab, onClose }: { lab: Lab; onClose: () => void 
         </div>
 
         {/* Footer hint */}
-        <div className="px-6 py-3 border-t border-white/5 shrink-0">
+        <div className="px-6 py-3 border-t border-white/5 shrink-0 space-y-1.5">
           <p className="text-[10px] text-slate-600">
             CSV/Excel columns: <span className="font-mono text-slate-500">test_name</span>, <span className="font-mono text-slate-500">price</span> (required) · optional: <span className="font-mono text-slate-500">category</span>, <span className="font-mono text-slate-500">commission_pct</span>, <span className="font-mono text-slate-500">is_active</span>
+          </p>
+          <p className="text-[10px] text-slate-600">
+            Synonyms sync automatically with the Knowledge Base. Edit individual rows or use bulk assignment to set AI synonyms.
           </p>
         </div>
       </div>
