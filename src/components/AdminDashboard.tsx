@@ -4937,6 +4937,7 @@ function AdminLabCatalogModal({ lab, onClose }: { lab: Lab; onClose: () => void 
   const [editingId, setEditingId] = useState<string | null>(null);
   const [editVals, setEditVals] = useState<{ raw_name: string; lab_price: string; commission_pct: string; category_label: string; synonyms: string }>({ raw_name: "", lab_price: "", commission_pct: "", category_label: "", synonyms: "" });
   const [newRow, setNewRow] = useState({ raw_name: "", lab_price: "", commission_pct: "", category_label: "", synonyms: "" });
+  const [generationProgress, setGenerationProgress] = useState<{ operationId: string; percent: number; completed: number; total: number } | null>(null);
   const fileRef = useRef<HTMLInputElement>(null);
 
   const load = useCallback(async () => {
@@ -5114,17 +5115,57 @@ function AdminLabCatalogModal({ lab, onClose }: { lab: Lab; onClose: () => void 
     const ids = Array.from(selected);
     if (ids.length === 0) { toast.error("Select tests first"); return; }
     try {
-      toast.loading("Generating AI synonyms...", { id: "gen-syns" });
       const res = await fetch(`/api/admin/labs/${lab.id}/catalog/bulk`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ action: "generate_synonyms", ids }),
       });
       const d = await res.json();
-      if (!res.ok) { toast.error(d.error ?? "Failed", { id: "gen-syns" }); return; }
-      toast.success(`Generated AI synonyms for ${d.updated} tests`, { id: "gen-syns" });
-      setSelected(new Set());
-      await load();
+      if (!res.ok) { toast.error(d.error ?? "Failed"); return; }
+
+      // Start polling progress
+      if (d.operationId) {
+        setGenerationProgress({ operationId: d.operationId, percent: 0, completed: 0, total: ids.length });
+
+        const pollProgress = async () => {
+          try {
+            const progressRes = await fetch(
+              `/api/admin/labs/${lab.id}/catalog/progress?operation=${d.operationId}`
+            );
+            if (!progressRes.ok) {
+              // Operation completed or expired
+              toast.success(`Generated AI synonyms for ${ids.length} tests`);
+              setGenerationProgress(null);
+              setSelected(new Set());
+              await load();
+              return;
+            }
+            const progress = await progressRes.json();
+            setGenerationProgress({
+              operationId: d.operationId,
+              percent: progress.percent,
+              completed: progress.completed,
+              total: progress.total,
+            });
+
+            if (!progress.isComplete) {
+              setTimeout(pollProgress, 2000); // Poll every 2 seconds
+            } else {
+              setTimeout(() => {
+                toast.success(`Generated AI synonyms for ${ids.length} tests`);
+                setGenerationProgress(null);
+                setSelected(new Set());
+                load();
+              }, 500);
+            }
+          } catch {
+            // Stop polling on error
+            setGenerationProgress(null);
+          }
+        };
+
+        pollProgress();
+      }
     } catch { toast.error("Network error"); }
   }
 
@@ -5248,6 +5289,24 @@ function AdminLabCatalogModal({ lab, onClose }: { lab: Lab; onClose: () => void 
             />
             <button onClick={handleBulkSynonyms} className="px-2.5 py-1 rounded-lg bg-purple-500/20 hover:bg-purple-500/30 text-purple-300 text-xs transition-colors whitespace-nowrap">Apply</button>
             <button onClick={() => setShowBulkSyns(false)} className="text-slate-500 hover:text-white text-xs transition-colors">Cancel</button>
+          </div>
+        )}
+
+        {/* Generation progress bar */}
+        {generationProgress && (
+          <div className="px-6 py-3 bg-emerald-500/5 border-b border-white/5 shrink-0">
+            <div className="flex items-center justify-between mb-2">
+              <span className="text-xs text-emerald-300">
+                Generating AI synonyms: {generationProgress.completed} of {generationProgress.total}
+              </span>
+              <span className="text-xs text-emerald-400 font-mono">{generationProgress.percent}%</span>
+            </div>
+            <div className="w-full h-2 bg-white/10 rounded-full overflow-hidden">
+              <div
+                className="h-full bg-emerald-500 transition-all duration-300"
+                style={{ width: `${generationProgress.percent}%` }}
+              />
+            </div>
           </div>
         )}
 

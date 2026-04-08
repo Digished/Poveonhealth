@@ -4,6 +4,8 @@ import { z } from "zod";
 import { verifyAdmin } from "@/lib/admin-auth";
 import { prisma } from "@/lib/prisma";
 import OpenAI from "openai";
+import { operations } from "./progress/route";
+import { randomUUID } from "crypto";
 
 async function generateSynonyms(testName: string, categoryLabel?: string | null): Promise<string[]> {
   if (!process.env.OPENAI_API_KEY) return [testName];
@@ -135,20 +137,52 @@ export async function POST(
       select: { id: true, raw_name: true, category_label: true },
     });
 
-    if (tests.length === 0) return NextResponse.json({ success: true, updated: 0 });
+    if (tests.length === 0) return NextResponse.json({ success: true, updated: 0, operationId: null });
 
-    // Generate all synonyms first (outside any transaction), then write row by row
-    let updated = 0;
-    for (const t of tests) {
-      const syns = await generateSynonyms(t.raw_name, t.category_label);
-      await prisma.labOfferedTest.update({
-        where: { id: t.id },
-        data: { synonyms: syns },
-      });
-      await syncSynonymsToKb(t.raw_name, syns);
-      updated++;
-    }
+    // Create a unique operation ID and start tracking progress
+    const operationId = randomUUID();
+    const progressKey = `${id}-${operationId}`;
+    operations.set(progressKey, {
+      total: tests.length,
+      completed: 0,
+      testIds: tests.map(t => t.id),
+      started: Date.now(),
+    });
 
-    return NextResponse.json({ success: true, updated });
+    // Return immediately with operationId so client can poll progress
+    // The actual generation happens in the background
+    (async () => {
+      try {
+        let completed = 0;
+        for (const t of tests) {
+          const syns = await generateSynonyms(t.raw_name, t.category_label);
+          await prisma.labOfferedTest.update({
+            where: { id: t.id },
+            data: { synonyms: syns },
+          });
+          await syncSynonymsToKb(t.raw_name, syns);
+
+          // Update progress
+          completed++;
+          const progress = operations.get(progressKey);
+          if (progress) {
+            progress.completed = completed;
+          }
+        }
+
+        // Clean up after 30 seconds so client can fetch final status
+        setTimeout(() => operations.delete(progressKey), 30000);
+      } catch (error) {
+        console.error("Error in background synonym generation:", error);
+        // Still clean up on error
+        setTimeout(() => operations.delete(progressKey), 30000);
+      }
+    })();
+
+    return NextResponse.json({
+      success: true,
+      operationId,
+      message: "Generating synonyms in background. Use operationId to check progress.",
+    });
   }
 }
