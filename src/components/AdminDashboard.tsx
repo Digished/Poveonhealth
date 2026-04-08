@@ -4938,6 +4938,8 @@ function AdminLabCatalogModal({ lab, onClose }: { lab: Lab; onClose: () => void 
   const [editVals, setEditVals] = useState<{ raw_name: string; lab_price: string; commission_pct: string; category_label: string; synonyms: string }>({ raw_name: "", lab_price: "", commission_pct: "", category_label: "", synonyms: "" });
   const [newRow, setNewRow] = useState({ raw_name: "", lab_price: "", commission_pct: "", category_label: "", synonyms: "" });
   const [generationProgress, setGenerationProgress] = useState<{ operationId: string; percent: number; completed: number; total: number } | null>(null);
+  const [uploadProgress, setUploadProgress] = useState<{ operationId: string; percent: number; completed: number; total: number } | null>(null);
+  const [isModalMinimized, setIsModalMinimized] = useState(false);
   const fileRef = useRef<HTMLInputElement>(null);
 
   const load = useCallback(async () => {
@@ -4984,11 +4986,52 @@ function AdminLabCatalogModal({ lab, onClose }: { lab: Lab; onClose: () => void 
       fd.append("file", file);
       const res = await fetch(`/api/admin/labs/${lab.id}/catalog/upload`, { method: "POST", body: fd });
       const d = await res.json();
-      if (!res.ok) { toast.error(d.error ?? "Upload failed"); return; }
-      toast.success(`Imported: ${d.results.created} new, ${d.results.updated} updated${d.results.errors ? `, ${d.results.errors} errors` : ""}`);
-      await load();
-    } catch { toast.error("Network error"); }
-    finally { setUploading(false); }
+      if (!res.ok) { toast.error(d.error ?? "Upload failed"); setUploading(false); return; }
+
+      // Background upload with progress tracking
+      if (d.operationId) {
+        setUploadProgress({ operationId: d.operationId, percent: 0, completed: 0, total: d.totalRows });
+
+        const pollProgress = async () => {
+          try {
+            const progressRes = await fetch(
+              `/api/admin/labs/${lab.id}/catalog/progress?operation=upload-${d.operationId}`
+            );
+            if (!progressRes.ok) {
+              // Upload completed
+              toast.success(`Uploaded ${d.totalRows} tests`);
+              setUploadProgress(null);
+              setUploading(false);
+              await load();
+              return;
+            }
+            const progress = await progressRes.json();
+            setUploadProgress({
+              operationId: d.operationId,
+              percent: progress.percent,
+              completed: progress.completed,
+              total: progress.total,
+            });
+
+            if (!progress.isComplete) {
+              setTimeout(pollProgress, 1000); // Poll every 1 second
+            } else {
+              setTimeout(() => {
+                toast.success(`Uploaded ${d.totalRows} tests`);
+                setUploadProgress(null);
+                setUploading(false);
+                load();
+              }, 500);
+            }
+          } catch {
+            setUploadProgress(null);
+            setUploading(false);
+          }
+        };
+
+        pollProgress();
+      }
+    } catch { toast.error("Network error"); setUploading(false); }
   }
 
   async function handleAddRow() {
@@ -5213,14 +5256,21 @@ function AdminLabCatalogModal({ lab, onClose }: { lab: Lab; onClose: () => void 
               {uploading ? <RefreshCw className="w-3.5 h-3.5 animate-spin" /> : <Upload className="w-3.5 h-3.5" />}
               {uploading ? "Importing…" : "Upload CSV / Excel"}
             </button>
-            <button onClick={onClose} className="p-2 rounded-lg hover:bg-white/8 text-slate-400 hover:text-white transition-colors">
+            <button
+              onClick={() => setIsModalMinimized(!isModalMinimized)}
+              className="p-2 rounded-lg hover:bg-white/8 text-slate-400 hover:text-white transition-colors"
+              title={isModalMinimized ? "Expand" : "Minimize"}
+            >
+              {isModalMinimized ? <ChevronUp className="w-4 h-4" /> : <ChevronDown className="w-4 h-4" />}
+            </button>
+            <button onClick={onClose} className="p-2 rounded-lg hover:bg-white/8 text-slate-400 hover:text-white transition-colors" title="Close">
               <X className="w-4 h-4" />
             </button>
           </div>
         </div>
 
-        {/* Toolbar */}
-        <div className="flex items-center gap-3 px-6 py-3 border-b border-white/5 shrink-0">
+        {/* Toolbar - Hidden when minimized */}
+        {!isModalMinimized && <div className="flex items-center gap-3 px-6 py-3 border-b border-white/5 shrink-0">
           <div className="relative flex-1">
             <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-slate-500" />
             <input
@@ -5257,8 +5307,11 @@ function AdminLabCatalogModal({ lab, onClose }: { lab: Lab; onClose: () => void 
               >Delete</button>
             </div>
           )}
-        </div>
+        </div>}
 
+        {/* Bulk commission bar - Hidden when minimized */}
+        {!isModalMinimized && (
+        <>
         {/* Bulk commission bar */}
         {showBulkComm && selected.size > 0 && (
           <div className="flex items-center gap-2 px-6 py-2 bg-sky-500/5 border-b border-white/5 shrink-0">
@@ -5456,7 +5509,8 @@ function AdminLabCatalogModal({ lab, onClose }: { lab: Lab; onClose: () => void 
           </table>
         </div>
 
-        {/* Footer hint */}
+        {/* Footer hint - Hidden when minimized */}
+        {!isModalMinimized && (
         <div className="px-6 py-3 border-t border-white/5 shrink-0 space-y-1.5">
           <p className="text-[10px] text-slate-600">
             CSV/Excel columns: <span className="font-mono text-slate-500">test_name</span>, <span className="font-mono text-slate-500">price</span> (required) · optional: <span className="font-mono text-slate-500">category</span>, <span className="font-mono text-slate-500">commission_pct</span>, <span className="font-mono text-slate-500">is_active</span>
@@ -5465,6 +5519,8 @@ function AdminLabCatalogModal({ lab, onClose }: { lab: Lab; onClose: () => void 
             Synonyms sync automatically with the Knowledge Base. Edit individual rows or use bulk assignment to set AI synonyms.
           </p>
         </div>
+        )}
+        </>)}
       </div>
     </div>
   );
