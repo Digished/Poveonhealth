@@ -28,19 +28,35 @@ async function generateSynonyms(testName: string, categoryLabel?: string | null)
   }
 }
 
+/** Merge synonyms into a KbTest row if it exists (no transaction, fast) */
+async function syncSynonymsToKb(rawName: string, newSyns: string[]) {
+  const existingKb = await prisma.kbTest.findFirst({
+    where: { canonical_name: { equals: rawName, mode: "insensitive" } },
+    select: { id: true, synonyms: true },
+  });
+  if (!existingKb) return;
+  const current = Array.isArray(existingKb.synonyms) ? (existingKb.synonyms as string[]) : [];
+  const merged = Array.from(new Set([...current, ...newSyns]));
+  if (merged.length !== current.length) {
+    await prisma.kbTest.update({ where: { id: existingKb.id }, data: { synonyms: merged } });
+  }
+}
+
 const BulkSchema = z.discriminatedUnion("action", [
   z.object({ action: z.literal("delete"), ids: z.array(z.string()).min(1) }),
-  z.object({ action: z.literal("set_commission"), ids: z.array(z.string()).min(1), commission_pct: z.number().min(0).max(100) }),
-  z.object({ action: z.literal("set_synonyms"), ids: z.array(z.string()).min(1), synonyms: z.array(z.string()) }),
+  z.object({
+    action: z.literal("set_commission"),
+    ids: z.array(z.string()).min(1),
+    commission_pct: z.number().min(0).max(100),
+  }),
+  z.object({
+    action: z.literal("set_synonyms"),
+    ids: z.array(z.string()).min(1),
+    synonyms: z.array(z.string()),
+  }),
   z.object({ action: z.literal("generate_synonyms"), ids: z.array(z.string()).min(1) }),
 ]);
 
-/**
- * POST /api/admin/labs/[id]/catalog/bulk
- * Body: { action: "delete", ids: string[] }
- *       { action: "set_commission", ids: string[], commission_pct: number }
- *       { action: "set_synonyms", ids: string[], synonyms: string[] }
- */
 export async function POST(
   req: NextRequest,
   { params }: { params: Promise<{ id: string }> }
@@ -51,8 +67,11 @@ export async function POST(
   const { id } = await params;
   const body = await req.json();
   const parsed = BulkSchema.safeParse(body);
-  if (!parsed.success) return NextResponse.json({ error: "Invalid input", issues: parsed.error.issues }, { status: 400 });
+  if (!parsed.success) {
+    return NextResponse.json({ error: "Invalid input", issues: parsed.error.issues }, { status: 400 });
+  }
 
+  // ── delete ────────────────────────────────────────────────────────────────
   if (parsed.data.action === "delete") {
     const { count } = await prisma.labOfferedTest.deleteMany({
       where: { id: { in: parsed.data.ids }, lab_id: id },
@@ -60,142 +79,76 @@ export async function POST(
     return NextResponse.json({ success: true, deleted: count });
   }
 
+  // ── set_commission ────────────────────────────────────────────────────────
   if (parsed.data.action === "set_commission") {
     const { ids, commission_pct } = parsed.data;
-    // Update each test's commission_pct and recalculate poveon_fee within a single transaction
-    const updates = await prisma.$transaction(async (tx) => {
-      const tests = await tx.labOfferedTest.findMany({
-        where: { id: { in: ids }, lab_id: id },
-        select: { id: true, lab_price: true },
-      });
 
-      const updatePromises = tests.map((t) =>
-        tx.labOfferedTest.update({
-          where: { id: t.id },
-          data: {
-            commission_pct,
-            poveon_fee: parseFloat(((Number(t.lab_price) * commission_pct) / 100).toFixed(2)),
-          },
-        })
-      );
-
-      return Promise.all(updatePromises);
+    const tests = await prisma.labOfferedTest.findMany({
+      where: { id: { in: ids }, lab_id: id },
+      select: { id: true, lab_price: true },
     });
 
-    return NextResponse.json({ success: true, updated: updates.length });
+    // No transaction — each row updated independently so no timeout risk
+    let updated = 0;
+    for (const t of tests) {
+      await prisma.labOfferedTest.update({
+        where: { id: t.id },
+        data: {
+          commission_pct,
+          poveon_fee: parseFloat(((Number(t.lab_price) * commission_pct) / 100).toFixed(2)),
+        },
+      });
+      updated++;
+    }
+
+    return NextResponse.json({ success: true, updated });
   }
 
+  // ── set_synonyms ──────────────────────────────────────────────────────────
   if (parsed.data.action === "set_synonyms") {
     const { ids, synonyms } = parsed.data;
-    // Update test synonyms and sync to knowledge base
-    const updates = await prisma.$transaction(async (tx) => {
-      const tests = await tx.labOfferedTest.findMany({
-        where: { id: { in: ids }, lab_id: id },
-        select: { id: true, raw_name: true },
-      });
 
-      const updatePromises = tests.map((t) =>
-        tx.labOfferedTest.update({
-          where: { id: t.id },
-          data: { synonyms: Array.isArray(synonyms) ? synonyms : [] },
-        })
-      );
-
-      const updated = await Promise.all(updatePromises);
-
-      // Sync to knowledge base: ensure synonyms are merged into KbTest
-      for (const test of updated) {
-        const kbName = test.raw_name.toLowerCase().trim();
-        const existingKb = await tx.kbTest.findFirst({
-          where: {
-            canonical_name: {
-              equals: test.raw_name,
-              mode: "insensitive",
-            },
-          },
-        });
-
-        if (existingKb) {
-          // Merge new synonyms with existing ones
-          const currentSyns = Array.isArray(existingKb.synonyms)
-            ? (existingKb.synonyms as string[])
-            : [];
-          const newSyns = Array.isArray(test.synonyms)
-            ? (test.synonyms as string[])
-            : [];
-          const mergedSyns = Array.from(new Set([...currentSyns, ...newSyns]));
-
-          await tx.kbTest.update({
-            where: { id: existingKb.id },
-            data: { synonyms: mergedSyns },
-          });
-        }
-      }
-
-      return updated;
+    const tests = await prisma.labOfferedTest.findMany({
+      where: { id: { in: ids }, lab_id: id },
+      select: { id: true, raw_name: true },
     });
 
-    return NextResponse.json({ success: true, updated: updates.length });
+    let updated = 0;
+    for (const t of tests) {
+      await prisma.labOfferedTest.update({
+        where: { id: t.id },
+        data: { synonyms },
+      });
+      await syncSynonymsToKb(t.raw_name, synonyms);
+      updated++;
+    }
+
+    return NextResponse.json({ success: true, updated });
   }
 
+  // ── generate_synonyms ─────────────────────────────────────────────────────
   if (parsed.data.action === "generate_synonyms") {
     const { ids } = parsed.data;
 
-    // Step 1: Fetch tests OUTSIDE transaction
     const tests = await prisma.labOfferedTest.findMany({
       where: { id: { in: ids }, lab_id: id },
       select: { id: true, raw_name: true, category_label: true },
     });
 
-    if (tests.length === 0) {
-      return NextResponse.json({ success: true, updated: 0 });
+    if (tests.length === 0) return NextResponse.json({ success: true, updated: 0 });
+
+    // Generate all synonyms first (outside any transaction), then write row by row
+    let updated = 0;
+    for (const t of tests) {
+      const syns = await generateSynonyms(t.raw_name, t.category_label);
+      await prisma.labOfferedTest.update({
+        where: { id: t.id },
+        data: { synonyms: syns },
+      });
+      await syncSynonymsToKb(t.raw_name, syns);
+      updated++;
     }
 
-    // Step 2: Generate synonyms for all tests (this is the slow part, do it outside transaction)
-    const testSynonymsMap = new Map<string, string[]>();
-    for (const test of tests) {
-      const syns = await generateSynonyms(test.raw_name, test.category_label);
-      testSynonymsMap.set(test.id, syns);
-    }
-
-    // Step 3: Update database in transaction (fast)
-    const results = await prisma.$transaction(async (tx) => {
-      let updated = 0;
-
-      for (const test of tests) {
-        const syns = testSynonymsMap.get(test.id) || [test.raw_name];
-        await tx.labOfferedTest.update({
-          where: { id: test.id },
-          data: { synonyms: syns },
-        });
-        updated++;
-
-        // Sync to knowledge base
-        const existingKb = await tx.kbTest.findFirst({
-          where: {
-            canonical_name: {
-              equals: test.raw_name,
-              mode: "insensitive",
-            },
-          },
-        });
-
-        if (existingKb) {
-          const currentSyns = Array.isArray(existingKb.synonyms)
-            ? (existingKb.synonyms as string[])
-            : [];
-          const mergedSyns = Array.from(new Set([...currentSyns, ...syns]));
-
-          await tx.kbTest.update({
-            where: { id: existingKb.id },
-            data: { synonyms: mergedSyns },
-          });
-        }
-      }
-
-      return updated;
-    });
-
-    return NextResponse.json({ success: true, updated: results });
+    return NextResponse.json({ success: true, updated });
   }
 }
