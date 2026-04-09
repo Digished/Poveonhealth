@@ -163,10 +163,11 @@ export async function POST(request: NextRequest) {
     }
 
     // SMS the patient their code (fire-and-forget)
+    console.log(`[api/requests/patient-create] Sending SMS to patient: ${data.patient_phone}`);
     sendSms(
       data.patient_phone,
       buildPatientRequestSms({ patientName: data.patient_name, labName: lab.name, code })
-    ).catch((e) => console.error("[sms] patient-create:", e));
+    ).catch((e) => console.error("[api/requests/patient-create] SMS error:", e));
 
     logApiCall({ method: "POST", path: "/api/requests/patient-create", status: 200, duration_ms: Date.now() - start });
     return NextResponse.json(

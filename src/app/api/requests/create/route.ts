@@ -268,10 +268,13 @@ export async function POST(request: NextRequest) {
 
     // Send SMS to patient if phone provided — fire-and-forget, never blocks response
     if (data.patient_phone) {
+      console.log(`[api/requests/create] Sending SMS to patient: ${data.patient_phone}`);
       sendSms(
         data.patient_phone,
         buildPatientRequestSms({ patientName: data.patient_name ?? "", labName: lab.name, code })
-      ).catch((e) => console.error("[sms] patient request code:", e));
+      ).catch((e) => console.error("[api/requests/create] SMS error:", e));
+    } else {
+      console.log("[api/requests/create] No patient phone provided, SMS skipped");
     }
 
     logApiCall({ method: "POST", path: "/api/requests/create", status: 200, duration_ms: Date.now() - start });

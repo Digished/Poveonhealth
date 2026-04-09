@@ -6,7 +6,7 @@
 
 const BASE_URL = "https://api.sendchamp.com/api/v1";
 const API_KEY = process.env.SENDCHAMP_API_KEY;
-const SENDER_ID = process.env.SENDCHAMP_SENDER_ID ?? "Poveon";
+const SENDER_ID = process.env.SENDCHAMP_SENDER_ID ?? "SAlert";
 
 /**
  * Normalise a phone number to international format expected by Sendchamp.
@@ -41,12 +41,15 @@ export function formatPhoneForSendchamp(raw: string): string {
  * Returns the provider message ID if available (for webhook tracking).
  */
 export async function sendSms(to: string, message: string): Promise<{ messageId?: string }> {
+  console.log(`[sendchamp] Attempting to send SMS to ${to}`);
+
   if (!API_KEY) {
-    console.warn("[sendchamp] SENDCHAMP_API_KEY not set — SMS skipped");
+    console.error("[sendchamp] SENDCHAMP_API_KEY not set — SMS skipped");
     return {};
   }
 
   const phone = formatPhoneForSendchamp(to);
+  console.log(`[sendchamp] Formatted phone: ${phone}, Provider: ${SENDER_ID}`);
 
   try {
     const res = await fetch(`${BASE_URL}/sms/send`, {

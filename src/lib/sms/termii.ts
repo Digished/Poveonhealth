@@ -4,7 +4,7 @@
  */
 
 const BASE_URL = process.env.TERMII_BASE_URL ?? "https://v3.api.termii.com";
-const SENDER_ID = process.env.TERMII_SENDER_ID ?? "Poveon";
+const SENDER_ID = process.env.TERMII_SENDER_ID ?? "SAlert";
 
 /**
  * Normalise a phone number to international format expected by Termii.
@@ -32,13 +32,16 @@ export function formatPhoneForTermii(raw: string): string {
  * Returns the provider message ID if available (for webhook tracking).
  */
 export async function sendSms(to: string, message: string): Promise<{ messageId?: string }> {
+  console.log(`[termii] Attempting to send SMS to ${to}`);
+
   const apiKey = process.env.TERMII_API_KEY;
   if (!apiKey) {
-    console.warn("[termii] TERMII_API_KEY not set — SMS skipped");
+    console.error("[termii] TERMII_API_KEY not set — SMS skipped");
     return {};
   }
 
   const phone = formatPhoneForTermii(to);
+  console.log(`[termii] Formatted phone: ${phone}, Provider: ${SENDER_ID}`);
 
   try {
     const res = await fetch(`${BASE_URL}/api/sms/send`, {
