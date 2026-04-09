@@ -205,7 +205,8 @@ export async function POST(request: NextRequest) {
       }).then(({ error }) => { if (error) console.error("[email] doctor confirmation:", JSON.stringify(error)); }),
     ];
 
-    if (data.patient_email) {
+    const patientEmail = data.patient_email?.trim();
+    if (patientEmail) {
       // Derive the app base URL — env var preferred, fallback to inferred origin
       const envUrl = process.env.NEXT_PUBLIC_APP_URL ?? "";
       const reqHost = request.headers.get("x-forwarded-host") || request.headers.get("host") || "";
@@ -214,7 +215,7 @@ export async function POST(request: NextRequest) {
       sends.push(
         resend.emails.send({
           from: labSender(lab),
-          to: data.patient_email,
+          to: patientEmail,
           subject: `Your Lab Request Code — ${code}`,
           html: patientRequestCode({
             patientName: data.patient_name || "",
@@ -226,7 +227,7 @@ export async function POST(request: NextRequest) {
             brand,
             requestPageUrl: patientAppUrl ? `${patientAppUrl}/r/${code}` : undefined,
           }),
-        }).then(({ error }) => { if (error) console.error("[email] patient code:", JSON.stringify(error)); })
+        }).catch((err) => console.error("[email] patient code error:", err))
       );
     }
 

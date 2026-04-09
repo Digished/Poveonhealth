@@ -9,9 +9,10 @@ function parseWhatsapp(raw: string | null | undefined): string[] {
   if (!raw) return [];
   try {
     const p = JSON.parse(raw);
-    return Array.isArray(p) ? p.filter(Boolean) : [raw];
+    const numbers = Array.isArray(p) ? p : [raw];
+    return numbers.filter((n: string) => n && n.trim() && /\d/.test(n));
   } catch {
-    return [raw];
+    return raw && raw.trim() && /\d/.test(raw) ? [raw] : [];
   }
 }
 

@@ -5219,7 +5219,11 @@ function AdminLabCatalogModal({ lab, onClose }: { lab: Lab; onClose: () => void 
       onClick={onClose}
     >
       <div
-        className="w-full h-full max-h-screen bg-slate-900 border border-white/10 rounded-2xl sm:rounded-3xl shadow-2xl overflow-hidden flex flex-col"
+        className={`bg-slate-900 border border-white/10 rounded-2xl sm:rounded-3xl shadow-2xl overflow-hidden flex flex-col transition-all duration-300 ${
+          isModalMinimized
+            ? "w-96 max-w-full"
+            : "w-full h-full max-h-screen"
+        }`}
         onClick={(e) => e.stopPropagation()}
       >
         {/* Header */}
@@ -5345,6 +5349,24 @@ function AdminLabCatalogModal({ lab, onClose }: { lab: Lab; onClose: () => void 
           </div>
         )}
 
+        {/* Upload progress bar */}
+        {uploadProgress && (
+          <div className="px-6 py-3 bg-sky-500/5 border-b border-white/5 shrink-0">
+            <div className="flex items-center justify-between mb-2">
+              <span className="text-xs text-sky-300">
+                Uploading tests: {uploadProgress.completed} of {uploadProgress.total}
+              </span>
+              <span className="text-xs text-sky-400 font-mono">{uploadProgress.percent}%</span>
+            </div>
+            <div className="w-full h-2 bg-white/10 rounded-full overflow-hidden">
+              <div
+                className="h-full bg-sky-500 transition-all duration-300"
+                style={{ width: `${uploadProgress.percent}%` }}
+              />
+            </div>
+          </div>
+        )}
+
         {/* Generation progress bar */}
         {generationProgress && (
           <div className="px-6 py-3 bg-emerald-500/5 border-b border-white/5 shrink-0">
@@ -5363,8 +5385,8 @@ function AdminLabCatalogModal({ lab, onClose }: { lab: Lab; onClose: () => void 
           </div>
         )}
 
-        {/* Table */}
-        <div className="flex-1 overflow-y-auto">
+        {/* Table - Hidden when minimized */}
+        {!isModalMinimized && <div className="flex-1 overflow-y-auto">
           <table className="w-full text-xs">
             <thead className="sticky top-0 bg-slate-900/95 backdrop-blur-sm border-b border-white/8 z-10">
               <tr>
@@ -5508,6 +5530,7 @@ function AdminLabCatalogModal({ lab, onClose }: { lab: Lab; onClose: () => void 
             </tbody>
           </table>
         </div>
+        }
 
         {/* Footer hint - Hidden when minimized */}
         {!isModalMinimized && (

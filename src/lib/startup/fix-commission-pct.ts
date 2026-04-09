@@ -18,9 +18,9 @@ export async function fixCommissionPct() {
 
     if (affected === 0) return; // Already clean
 
-    // Get the configured default commission, fall back to 15%
+    // Get the configured default commission, fall back to 1.5%
     const setting = await prisma.systemSetting.findUnique({ where: { key: "default_commission_pct" } });
-    const commissionPct = setting ? parseFloat(setting.value) : 15;
+    const commissionPct = setting ? parseFloat(setting.value) : 1.5;
 
     const updated = await prisma.$executeRaw`
       UPDATE lab_offered_tests

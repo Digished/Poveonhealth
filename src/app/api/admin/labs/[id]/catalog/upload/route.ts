@@ -9,7 +9,7 @@ import { randomUUID } from "crypto";
 
 async function getDefaultCommission(): Promise<number> {
   const setting = await prisma.systemSetting.findUnique({ where: { key: "default_commission_pct" } });
-  return setting ? parseFloat(setting.value) : 15;
+  return setting ? parseFloat(setting.value) : 1.5;
 }
 
 async function generateSynonyms(testName: string, categoryLabel?: string): Promise<string[]> {
