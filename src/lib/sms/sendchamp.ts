@@ -43,17 +43,20 @@ export function formatPhoneForSendchamp(raw: string): string {
  * Docs: https://sendchamp.com/docs/api/sms/send
  */
 export async function sendSms(to: string, message: string): Promise<{ messageId?: string }> {
-  console.log(`[sendchamp] Attempting to send SMS to ${to}`);
+  console.log(`[sendchamp] sendSms() called with phone: ${to}`);
 
   if (!API_KEY) {
-    console.error("[sendchamp] SENDCHAMP_API_KEY not set — SMS skipped");
+    console.error("[sendchamp] CRITICAL: SENDCHAMP_API_KEY is NOT SET in environment!");
+    console.error("[sendchamp] SMS will not be sent. Please configure SENDCHAMP_API_KEY in Vercel.");
     return {};
   }
 
+  console.log(`[sendchamp] API Key exists (${API_KEY.length} chars)`);
   const phone = formatPhoneForSendchamp(to);
-  console.log(`[sendchamp] Formatted phone: ${phone}, Provider: ${SENDER_ID}`);
+  console.log(`[sendchamp] Formatted phone: ${phone}, Sender: ${SENDER_ID}`);
 
   try {
+    console.log(`[sendchamp] Making API request to ${BASE_URL}/sms/send`);
     const res = await fetch(`${BASE_URL}/sms/send`, {
       method: "POST",
       headers: {
@@ -69,6 +72,7 @@ export async function sendSms(to: string, message: string): Promise<{ messageId?
       }),
     });
 
+    console.log(`[sendchamp] API response status: ${res.status}`);
     const responseText = await res.text().catch(() => "");
 
     if (!res.ok) {
@@ -79,20 +83,24 @@ export async function sendSms(to: string, message: string): Promise<{ messageId?
       } catch {}
 
       console.error(`[sendchamp] SMS send failed for ${phone}: [${res.status}] ${errorMsg}`);
+      console.error(`[sendchamp] Full response: ${responseText}`);
       throw new Error(`Sendchamp SMS failed [${res.status}]: ${errorMsg}`);
     }
 
     // Parse response and extract message ID
     try {
       const json = JSON.parse(responseText);
+      console.log(`[sendchamp] Response JSON:`, JSON.stringify(json));
       if (json.status === "success" || json.code === 200) {
         const messageId = json.data?.id || json.id;
-        console.log(`[sendchamp] SMS sent successfully. Message ID: ${messageId}`);
+        console.log(`[sendchamp] ✅ SMS sent successfully to ${phone}. Message ID: ${messageId}`);
         return { messageId };
       } else {
         console.warn(`[sendchamp] SMS status: ${json.status || json.code} - ${json.message}`);
       }
-    } catch {}
+    } catch (e) {
+      console.error(`[sendchamp] Error parsing response:`, e);
+    }
 
     return {};
   } catch (err) {

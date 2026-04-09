@@ -44,6 +44,12 @@ export async function OPTIONS() {
 
 export async function POST(request: NextRequest) {
   const start = Date.now();
+
+  // Log environment check
+  console.log("[patient-create] ENV CHECK:");
+  console.log(`  - SENDCHAMP_API_KEY set: ${!!process.env.SENDCHAMP_API_KEY}`);
+  console.log(`  - RESEND_API_KEY set: ${!!process.env.RESEND_API_KEY}`);
+
   try {
     const body = await request.json();
     const parsed = Schema.safeParse(body);
@@ -165,15 +171,18 @@ export async function POST(request: NextRequest) {
     }
 
     // SMS the patient their code (fire-and-forget)
-    console.log(`[api/requests/patient-create] Sending SMS to patient: ${data.patient_phone}`);
+    const patientEmail = data.patient_email?.trim();
+    console.log(`[patient-create] SMS: Attempting to send to ${data.patient_phone}`);
+    console.log(`[patient-create] EMAIL: Email field = "${patientEmail}"`);
+
     sendSms(
       data.patient_phone,
       buildPatientRequestSms({ patientName: data.patient_name, labName: lab.name, code })
-    ).catch((e) => console.error("[api/requests/patient-create] SMS error:", e));
+    ).catch((e) => console.error("[patient-create] SMS send error:", e));
 
     // Send email to patient if provided (fire-and-forget)
     if (patientEmail) {
-      console.log(`[api/requests/patient-create] Sending email to patient: ${patientEmail}`);
+      console.log(`[patient-create] EMAIL: Sending to ${patientEmail}`);
       const envUrl = process.env.NEXT_PUBLIC_APP_URL ?? "";
       const appUrl = envUrl || "https://poveon.com";
       resend.emails.send({
@@ -190,8 +199,16 @@ export async function POST(request: NextRequest) {
           requestPageUrl: `${appUrl}/r/${code}`,
         }),
       })
-        .then(({ error }) => { if (error) console.error("[email] patient self-service:", JSON.stringify(error)); })
-        .catch((e) => console.error("[email] patient self-service error:", e));
+        .then(({ error }) => {
+          if (error) {
+            console.error("[patient-create] EMAIL send error:", JSON.stringify(error));
+          } else {
+            console.log(`[patient-create] EMAIL sent successfully to ${patientEmail}`);
+          }
+        })
+        .catch((e) => console.error("[patient-create] EMAIL send exception:", e));
+    } else {
+      console.log("[patient-create] EMAIL: No email provided, skipping");
     }
 
     logApiCall({ method: "POST", path: "/api/requests/patient-create", status: 200, duration_ms: Date.now() - start });
