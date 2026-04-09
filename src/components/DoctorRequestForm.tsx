@@ -2186,6 +2186,7 @@ export function DoctorRequestForm({
                   <div className="text-right min-w-0">
                     {form.patient_name && <p className="text-sm font-semibold text-slate-800 truncate">{form.patient_name}</p>}
                     <p className="text-xs text-slate-500 font-mono mt-0.5">{form.patient_phone}</p>
+                    {form.patient_email && <p className="text-xs text-slate-400 mt-0.5">{form.patient_email}</p>}
                     {form.dob && <p className="text-xs text-slate-400 mt-0.5">DOB {form.dob.split("-").reverse().join(" / ")}{form.sex ? ` · ${form.sex}` : ""}</p>}
                   </div>
                 </div>

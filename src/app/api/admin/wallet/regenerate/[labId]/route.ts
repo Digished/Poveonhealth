@@ -71,6 +71,9 @@ export async function POST(req: NextRequest, { params }: { params: { labId: stri
       create: { lab_id: lab.id, paystack_customer_id: customerCode },
       update: { paystack_customer_id: customerCode },
     });
+
+    // Wait for Paystack to fully register the customer before creating DVA
+    await new Promise((resolve) => setTimeout(resolve, 1000));
   } else if (phone) {
     // Update phone on existing customer before DVA creation
     await fetch(`${BASE}/customer/${customerCode}`, {

@@ -46,7 +46,7 @@ export async function PATCH(
 
     if (parsed.data.lab_price !== undefined) {
       updates.lab_price = parsed.data.lab_price;
-      const commission = parsed.data.commission_pct ?? Number(existing.commission_pct ?? 15);
+      const commission = parsed.data.commission_pct ?? Number(existing.commission_pct ?? 1.5);
       updates.poveon_fee = parseFloat(((parsed.data.lab_price * commission) / 100).toFixed(2));
     }
 

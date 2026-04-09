@@ -19,7 +19,7 @@ async function verifyAdmin() {
  *
  * Body (all optional):
  *   lab_id        — scope fix to a single lab (default: all labs)
- *   commission_pct — correct percentage to apply (default: system setting "default_commission_pct", fallback 15)
+ *   commission_pct — correct percentage to apply (default: system setting "default_commission_pct", fallback 1.5)
  *
  * Only touches rows where commission_pct = 100 to avoid overwriting intentional values.
  * Recalculates poveon_fee = ROUND(lab_price * commission_pct / 100, 2) for all affected rows.
@@ -35,7 +35,7 @@ export async function POST(request: NextRequest) {
     commissionPct = Number(body.commission_pct);
   } else {
     const setting = await prisma.systemSetting.findUnique({ where: { key: "default_commission_pct" } });
-    commissionPct = setting ? parseFloat(setting.value) : 15;
+    commissionPct = setting ? parseFloat(setting.value) : 1.5;
   }
 
   if (commissionPct <= 0 || commissionPct >= 100) {

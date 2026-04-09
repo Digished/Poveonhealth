@@ -7,25 +7,37 @@ import OpenAI from "openai";
 import { createOperation, updateOperation, deleteOperation } from "@/lib/operation-progress";
 import { randomUUID } from "crypto";
 
+// Create OpenAI instance once at module level for reuse
+const openai = process.env.OPENAI_API_KEY ? new OpenAI({ apiKey: process.env.OPENAI_API_KEY }) : null;
+
 async function generateSynonyms(testName: string, categoryLabel?: string | null): Promise<string[]> {
-  if (!process.env.OPENAI_API_KEY) return [testName];
+  if (!openai) return [testName];
   try {
-    const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
-    const response = await openai.chat.completions.create({
-      model: "gpt-4o-mini",
-      temperature: 0.2,
-      response_format: { type: "json_object" },
-      messages: [
-        { role: "system", content: 'Return JSON: { "synonyms": string[] }' },
-        {
-          role: "user",
-          content: `Generate 7-10 common synonyms, abbreviations, and alternate names for this medical lab test: "${testName}"${categoryLabel ? ` (category: ${categoryLabel})` : ""}. Nigerian medical context. Include the original name. Return as array.`,
-        },
-      ],
-    });
-    const parsed = JSON.parse(response.choices[0].message.content ?? "{}") as { synonyms?: string[] };
-    return Array.from(new Set([testName, ...(parsed.synonyms ?? [])]));
-  } catch {
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), 8000); // 8-second timeout
+
+    try {
+      const response = await openai.chat.completions.create({
+        model: "gpt-4o-mini",
+        temperature: 0.2,
+        response_format: { type: "json_object" },
+        messages: [
+          { role: "system", content: 'Return JSON: { "synonyms": string[] }' },
+          {
+            role: "user",
+            content: `Generate 5-7 common synonyms, abbreviations, and alternate names for this medical lab test: "${testName}"${categoryLabel ? ` (category: ${categoryLabel})` : ""}. Include the original name. Return as array.`,
+          },
+        ],
+      } as any, { signal: controller.signal });
+
+      clearTimeout(timeoutId);
+      const parsed = JSON.parse(response.choices[0].message.content ?? "{}") as { synonyms?: string[] };
+      return Array.from(new Set([testName, ...(parsed.synonyms ?? [])]));
+    } finally {
+      clearTimeout(timeoutId);
+    }
+  } catch (err) {
+    console.error(`Synonym generation failed for "${testName}":`, err);
     return [testName];
   }
 }

@@ -288,11 +288,11 @@ export function TestTagInput({ value, onChange, labId, error, label, disabled }:
         <div
           onClick={() => !disabled && inputRef.current?.focus()}
           className={[
-            "min-h-[72px] w-full rounded-xl border bg-white/60 backdrop-blur-sm px-3 py-2.5",
+            "min-h-[72px] w-full rounded-xl border bg-white px-3 py-2.5",
             "flex flex-wrap gap-1.5 items-start cursor-text transition-all duration-200",
             error
-              ? "border-red-400 ring-2 ring-red-400"
-              : "border-slate-200 hover:border-slate-300 focus-within:ring-2 focus-within:ring-medical-500 focus-within:border-medical-400",
+              ? "border-red-400 ring-2 ring-red-400 bg-red-50/40"
+              : "border-slate-200 hover:border-slate-300 focus-within:ring-2 focus-within:ring-medical-500 focus-within:border-medical-400 focus-within:bg-white",
           ].join(" ")}
         >
           {value.map((tag, i) => (
