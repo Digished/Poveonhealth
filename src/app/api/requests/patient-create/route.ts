@@ -13,7 +13,7 @@ import { resend, labSender } from "@/lib/email/resend";
 import { labNewRequest } from "@/lib/email/templates";
 import { resolveTests, totalFromBreakdown } from "@/lib/resolve-tests";
 import { logApiCall } from "@/lib/api-logger";
-import { sendSms, buildPatientRequestSms } from "@/lib/sms/termii";
+import { sendSms, buildPatientRequestSms } from "@/lib/sms";
 
 const SELF_SERVICE_NAME = "Self Service";
 
