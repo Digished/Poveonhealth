@@ -7,15 +7,20 @@ import OpenAI from "openai";
 import { createOperation, updateOperation, deleteOperation } from "@/lib/operation-progress";
 import { randomUUID } from "crypto";
 
+// Create OpenAI instance once at module level for reuse
+const openai = process.env.OPENAI_API_KEY ? new OpenAI({ apiKey: process.env.OPENAI_API_KEY }) : null;
+
 async function getDefaultCommission(): Promise<number> {
   const setting = await prisma.systemSetting.findUnique({ where: { key: "default_commission_pct" } });
   return setting ? parseFloat(setting.value) : 1.5;
 }
 
 async function generateSynonyms(testName: string, categoryLabel?: string): Promise<string[]> {
-  if (!process.env.OPENAI_API_KEY) return [testName];
+  if (!openai) return [testName];
   try {
-    const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), 8000); // 8-second timeout per request
+
     const response = await openai.chat.completions.create({
       model: "gpt-4o-mini",
       temperature: 0.2,
@@ -24,13 +29,17 @@ async function generateSynonyms(testName: string, categoryLabel?: string): Promi
         { role: "system", content: 'Return JSON: { "synonyms": string[] }' },
         {
           role: "user",
-          content: `Generate 7-10 common synonyms, abbreviations, and alternate names for this medical lab test: "${testName}"${categoryLabel ? ` (category: ${categoryLabel})` : ""}. Nigerian medical context. Include the original name. Return as array.`,
+          content: `Generate 5-7 common synonyms, abbreviations, and alternate names for this medical lab test: "${testName}"${categoryLabel ? ` (category: ${categoryLabel})` : ""}. Include the original name. Return as array.`,
         },
       ],
+      timeout: 8000, // 8-second API timeout
     });
+
+    clearTimeout(timeout);
     const parsed = JSON.parse(response.choices[0].message.content ?? "{}") as { synonyms?: string[] };
     return Array.from(new Set([testName, ...(parsed.synonyms ?? [])]));
-  } catch {
+  } catch (err) {
+    console.error(`Synonym generation failed for "${testName}":`, err);
     return [testName];
   }
 }
