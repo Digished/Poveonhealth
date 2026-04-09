@@ -199,6 +199,7 @@ export async function POST(request: NextRequest) {
             labPhones: labPhones,
             testCategories: testsToCategories(data.tests),
             requestPageUrl: `${appUrl}/r/${code}`,
+            isSelfService: true,
           }),
         });
 

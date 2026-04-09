@@ -149,6 +149,7 @@ export function patientRequestCode({
   testCategories,
   brand,
   requestPageUrl,
+  isSelfService = false,
 }: {
   patientName: string;
   code: string;
@@ -158,6 +159,7 @@ export function patientRequestCode({
   testCategories?: string[];
   brand?: { name: string };
   requestPageUrl?: string;
+  isSelfService?: boolean;
 }) {
   const phoneLines = labPhones.length
     ? labPhones.map((p) => `<p style="margin:2px 0;color:#1e3a5f;font-size:14px;">📞 ${p.label ? `${p.label}: ` : ""}${p.number}</p>`).join("")
@@ -185,7 +187,9 @@ export function patientRequestCode({
   return base(`
     <h2 style="margin:0 0 8px;color:#0259a0;font-size:20px;font-weight:700;">Your Lab Test Request</h2>
     <p style="margin:0 0 24px;color:#4b5563;font-size:15px;">
-      ${greeting}Your doctor has sent a laboratory test request on your behalf to <strong>${labName}</strong>.
+      ${greeting}${isSelfService
+        ? `Your lab test request has been received by <strong>${labName}</strong>.`
+        : `Your doctor has sent a laboratory test request on your behalf to <strong>${labName}</strong>.`}
       Please present the code below when you arrive at the laboratory.
     </p>
 
