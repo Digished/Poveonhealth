@@ -1051,6 +1051,15 @@ export default function DashboardPage() {
         {/* Tests Tab */}
         {!loading && activeTab === "tests" && (
           <>
+          {/* Submit New Request Button */}
+          <button
+            onClick={() => router.push("/")}
+            className="w-full flex items-center justify-center gap-2 py-3 px-4 rounded-xl bg-gradient-to-r from-emerald-500 to-green-500 text-white font-semibold text-sm hover:from-emerald-600 hover:to-green-600 transition-all shadow-md hover:shadow-lg"
+          >
+            <FlaskConical className="w-4 h-4" />
+            Submit New Lab Request
+          </button>
+
           <div>
             <div className="flex items-center justify-between gap-3 mb-3">
               <div className="flex items-center gap-2">
