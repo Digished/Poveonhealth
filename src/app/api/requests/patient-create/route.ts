@@ -10,7 +10,8 @@ import { z } from "zod";
 import { prisma } from "@/lib/prisma";
 import { generateUniqueCode } from "@/lib/code-generator";
 import { resend, labSender } from "@/lib/email/resend";
-import { labNewRequest } from "@/lib/email/templates";
+import { labNewRequest, patientRequestCode } from "@/lib/email/templates";
+import { testsToCategories } from "@/lib/test-categories";
 import { resolveTests, totalFromBreakdown } from "@/lib/resolve-tests";
 import { logApiCall } from "@/lib/api-logger";
 import { sendSms, buildPatientRequestSms } from "@/lib/sms";
@@ -22,6 +23,7 @@ const Schema = z.object({
   branch_id: z.string().uuid().optional(),
   patient_name: z.string().min(1).max(200),
   patient_phone: z.string().min(5).max(50),
+  patient_email: z.string().email().optional().or(z.literal("")),
   patient_age: z.number().int().min(0).max(150).optional(),
   tests: z.string().min(1).max(3000),
   additional_notes: z.string().max(1000).optional().or(z.literal("")),
@@ -109,12 +111,12 @@ export async function POST(request: NextRequest) {
         branch_id: data.branch_id ?? null,
         patient_name: data.patient_name,
         patient_phone: data.patient_phone,
+        patient_email: data.patient_email?.trim() || null,
         // Store age as dob = null; age is included in additional notes or stored as-is
         // The schema has no plain "age" column; we include age in the tests/notes string
         dob: null,
         sex: null,
         address: null,
-        patient_email: null,
         doctor_name: SELF_SERVICE_NAME,
         doctor_email: null,
         doctor_prefix: null,
@@ -168,6 +170,29 @@ export async function POST(request: NextRequest) {
       data.patient_phone,
       buildPatientRequestSms({ patientName: data.patient_name, labName: lab.name, code })
     ).catch((e) => console.error("[api/requests/patient-create] SMS error:", e));
+
+    // Send email to patient if provided (fire-and-forget)
+    if (patientEmail) {
+      console.log(`[api/requests/patient-create] Sending email to patient: ${patientEmail}`);
+      const envUrl = process.env.NEXT_PUBLIC_APP_URL ?? "";
+      const appUrl = envUrl || "https://poveon.com";
+      resend.emails.send({
+        from: labSender(lab),
+        to: patientEmail,
+        subject: `Your Lab Request Code — ${code}`,
+        html: patientRequestCode({
+          patientName: data.patient_name,
+          code,
+          labName: lab.name,
+          labAddress: labAddress,
+          labPhones: labPhones,
+          testCategories: testsToCategories(data.tests),
+          requestPageUrl: `${appUrl}/r/${code}`,
+        }),
+      })
+        .then(({ error }) => { if (error) console.error("[email] patient self-service:", JSON.stringify(error)); })
+        .catch((e) => console.error("[email] patient self-service error:", e));
+    }
 
     logApiCall({ method: "POST", path: "/api/requests/patient-create", status: 200, duration_ms: Date.now() - start });
     return NextResponse.json(
