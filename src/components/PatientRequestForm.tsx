@@ -643,7 +643,7 @@ export function PatientRequestForm(props: PatientRequestFormProps) {
                   </div>
 
                   {/* Chat window */}
-                  <div className="rounded-2xl border border-slate-200 bg-slate-50 shadow-sm">
+                  <div className="rounded-2xl border border-slate-200 bg-white shadow-sm">
                     <div className="flex items-center gap-2 px-3.5 py-2.5 border-b border-slate-200 bg-white rounded-t-2xl">
                       <div className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse" />
                       <p className="text-xs font-bold text-slate-700">{labName ? `${labName} Assistant` : "Health Assistant"}</p>
@@ -656,7 +656,7 @@ export function PatientRequestForm(props: PatientRequestFormProps) {
                             <Sparkles className="w-6 h-6 text-medical-600" />
                           </div>
                           <div>
-                            <p className="text-sm font-bold text-slate-700">How can I help you today?</p>
+                            <p className="text-sm font-bold text-slate-700">How can we be of assistance today?</p>
                             <p className="text-xs text-slate-400 mt-1 max-w-[230px] leading-relaxed">Tell me your symptoms or health concerns and I'll recommend the right tests — automatically added for you.</p>
                           </div>
                           <div className="flex flex-wrap gap-1.5 justify-center max-w-[260px]">
