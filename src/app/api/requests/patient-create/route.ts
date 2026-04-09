@@ -170,15 +170,26 @@ export async function POST(request: NextRequest) {
         .catch((e) => console.error("[email] lab self-service error:", e));
     }
 
-    // SMS the patient their code (fire-and-forget)
-    const patientEmail = data.patient_email?.trim();
-    console.log(`[patient-create] SMS: Attempting to send to ${data.patient_phone}`);
-    console.log(`[patient-create] EMAIL: Email field = "${patientEmail}"`);
+    // SMS the patient their code — wait for confirmation
+    const phoneValue = data.patient_phone?.trim();
+    console.log(`[patient-create] SMS: Attempting to send to ${phoneValue}`);
 
-    sendSms(
-      data.patient_phone,
-      buildPatientRequestSms({ patientName: data.patient_name, labName: lab.name, code })
-    ).catch((e) => console.error("[patient-create] SMS send error:", e));
+    let smsSent = false;
+    try {
+      const smsResult = await sendSms(
+        data.patient_phone,
+        buildPatientRequestSms({ patientName: data.patient_name, labName: lab.name, code })
+      );
+      console.log(`[patient-create] SMS result:`, JSON.stringify(smsResult));
+      smsSent = !!smsResult.messageId;
+      if (smsSent) {
+        console.log(`[patient-create] ✅ SMS sent successfully to ${phoneValue}. Message ID: ${smsResult.messageId}`);
+      } else {
+        console.warn(`[patient-create] SMS sent but no message ID returned`);
+      }
+    } catch (smsErr) {
+      console.error(`[patient-create] SMS failed:`, smsErr instanceof Error ? smsErr.message : String(smsErr));
+    }
 
     // Send email to patient if provided — wait for confirmation
     if (patientEmail) {
@@ -217,7 +228,7 @@ export async function POST(request: NextRequest) {
 
     logApiCall({ method: "POST", path: "/api/requests/patient-create", status: 200, duration_ms: Date.now() - start });
     return NextResponse.json(
-      { success: true, code, requestId: newRequest.id, lab: { name: lab.name, address: labAddress, phones: labPhones } },
+      { success: true, code, requestId: newRequest.id, lab: { name: lab.name, address: labAddress, phones: labPhones }, smsSent },
       { headers: CORS_HEADERS }
     );
   } catch (error) {
