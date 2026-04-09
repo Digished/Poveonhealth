@@ -57,6 +57,11 @@ export async function sendSms(to: string, message: string): Promise<{ messageId?
 
   try {
     console.log(`[sendchamp] Making API request to ${BASE_URL}/sms/send`);
+
+    // Add 5 second timeout to prevent hanging
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), 5000);
+
     const res = await fetch(`${BASE_URL}/sms/send`, {
       method: "POST",
       headers: {
@@ -70,10 +75,13 @@ export async function sendSms(to: string, message: string): Promise<{ messageId?
         type: "text",
         route: "dnd",
       }),
+      signal: controller.signal,
     });
 
+    clearTimeout(timeoutId);
     console.log(`[sendchamp] API response status: ${res.status}`);
     const responseText = await res.text().catch(() => "");
+    console.log(`[sendchamp] Response text: ${responseText}`);
 
     if (!res.ok) {
       let errorMsg = responseText;
