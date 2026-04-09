@@ -18,6 +18,7 @@ const migrations = [
   {
     desc: "labs.search_hidden column",
     sql: `ALTER TABLE labs ADD COLUMN IF NOT EXISTS search_hidden BOOLEAN NOT NULL DEFAULT false`,
+    continueOnError: true, // Prepared statement caching can cause conflicts; ignore if already applied
   },
   {
     desc: "requests.doctor_email nullable (self-service patient requests)",
@@ -28,6 +29,7 @@ const migrations = [
   {
     desc: "labs.hero_image_url column for custom page background",
     sql: `ALTER TABLE labs ADD COLUMN IF NOT EXISTS hero_image_url TEXT`,
+    continueOnError: true, // Prepared statement caching can cause conflicts; ignore if already applied
   },
 ];
 
