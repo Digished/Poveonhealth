@@ -19,25 +19,28 @@ async function generateSynonyms(testName: string, categoryLabel?: string): Promi
   if (!openai) return [testName];
   try {
     const controller = new AbortController();
-    const timeout = setTimeout(() => controller.abort(), 8000); // 8-second timeout per request
+    const timeoutId = setTimeout(() => controller.abort(), 8000); // 8-second timeout
 
-    const response = await openai.chat.completions.create({
-      model: "gpt-4o-mini",
-      temperature: 0.2,
-      response_format: { type: "json_object" },
-      messages: [
-        { role: "system", content: 'Return JSON: { "synonyms": string[] }' },
-        {
-          role: "user",
-          content: `Generate 5-7 common synonyms, abbreviations, and alternate names for this medical lab test: "${testName}"${categoryLabel ? ` (category: ${categoryLabel})` : ""}. Include the original name. Return as array.`,
-        },
-      ],
-      timeout: 8000, // 8-second API timeout
-    });
+    try {
+      const response = await openai.chat.completions.create({
+        model: "gpt-4o-mini",
+        temperature: 0.2,
+        response_format: { type: "json_object" },
+        messages: [
+          { role: "system", content: 'Return JSON: { "synonyms": string[] }' },
+          {
+            role: "user",
+            content: `Generate 5-7 common synonyms, abbreviations, and alternate names for this medical lab test: "${testName}"${categoryLabel ? ` (category: ${categoryLabel})` : ""}. Include the original name. Return as array.`,
+          },
+        ],
+      } as any, { signal: controller.signal });
 
-    clearTimeout(timeout);
-    const parsed = JSON.parse(response.choices[0].message.content ?? "{}") as { synonyms?: string[] };
-    return Array.from(new Set([testName, ...(parsed.synonyms ?? [])]));
+      clearTimeout(timeoutId);
+      const parsed = JSON.parse(response.choices[0].message.content ?? "{}") as { synonyms?: string[] };
+      return Array.from(new Set([testName, ...(parsed.synonyms ?? [])]));
+    } finally {
+      clearTimeout(timeoutId);
+    }
   } catch (err) {
     console.error(`Synonym generation failed for "${testName}":`, err);
     return [testName];
