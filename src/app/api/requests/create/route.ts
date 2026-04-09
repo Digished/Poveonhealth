@@ -7,7 +7,7 @@ import { doctorRequestConfirmation, patientRequestCode, labNewRequest } from "@/
 import { testsToCategories } from "@/lib/test-categories";
 import { resolveTests, totalFromBreakdown } from "@/lib/resolve-tests";
 import { logApiCall } from "@/lib/api-logger";
-import { sendSms, buildPatientRequestSms } from "@/lib/sms/termii";
+import { sendSms, buildPatientRequestSms } from "@/lib/sms";
 
 const CreateRequestSchema = z.object({
   patient_name: z.string().min(1).max(200).optional().or(z.literal("")),
