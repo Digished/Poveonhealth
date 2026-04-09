@@ -39,22 +39,37 @@ export async function sendSms(to: string, message: string): Promise<void> {
 
   const phone = formatPhoneForTermii(to);
 
-  const res = await fetch(`${BASE_URL}/api/sms/send`, {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({
-      api_key: apiKey,
-      to: phone,
-      from: SENDER_ID,
-      sms: message,
-      type: "plain",
-      channel: "dnd", // DND channel works without an approved sender ID
-    }),
-  });
+  try {
+    const res = await fetch(`${BASE_URL}/api/sms/send`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        api_key: apiKey,
+        to: phone,
+        from: SENDER_ID,
+        sms: message,
+        type: "plain",
+        channel: "dnd", // DND channel works without an approved sender ID
+      }),
+    });
 
-  if (!res.ok) {
-    const text = await res.text().catch(() => "");
-    throw new Error(`Termii SMS failed [${res.status}]: ${text}`);
+    if (!res.ok) {
+      const text = await res.text().catch(() => "");
+      let errorMsg = text;
+      try {
+        const json = JSON.parse(text);
+        errorMsg = json.message || text;
+      } catch {}
+
+      // Log detailed error for debugging
+      console.error(`[termii] SMS send failed for ${phone}: [${res.status}] ${errorMsg}`);
+      throw new Error(`Termii SMS failed [${res.status}]: ${errorMsg}`);
+    }
+  } catch (err) {
+    // SMS failures should not block the main request flow
+    console.error("[termii] SMS error:", err instanceof Error ? err.message : String(err));
+    // Re-throw only to be caught at a higher level; the caller should handle gracefully
+    throw err;
   }
 }
 
