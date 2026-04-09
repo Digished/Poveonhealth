@@ -213,21 +213,27 @@ export async function POST(request: NextRequest) {
       const reqProto = request.headers.get("x-forwarded-proto") || "https";
       const patientAppUrl = envUrl || (reqHost ? `${reqProto}://${reqHost}` : "");
       sends.push(
-        resend.emails.send({
-          from: labSender(lab),
-          to: patientEmail,
-          subject: `Your Lab Request Code — ${code}`,
-          html: patientRequestCode({
-            patientName: data.patient_name || "",
-            code,
-            labName: lab.name,
-            labAddress,
-            labPhones,
-            testCategories: testsToCategories(data.tests || ""),
-            brand,
-            requestPageUrl: patientAppUrl ? `${patientAppUrl}/r/${code}` : undefined,
-          }),
-        }).catch((err) => console.error("[email] patient code error:", err))
+        (async () => {
+          try {
+            await resend.emails.send({
+              from: labSender(lab),
+              to: patientEmail,
+              subject: `Your Lab Request Code — ${code}`,
+              html: patientRequestCode({
+                patientName: data.patient_name || "",
+                code,
+                labName: lab.name,
+                labAddress,
+                labPhones,
+                testCategories: testsToCategories(data.tests || ""),
+                brand,
+                requestPageUrl: patientAppUrl ? `${patientAppUrl}/r/${code}` : undefined,
+              }),
+            });
+          } catch (err) {
+            console.error("[email] patient code error:", err);
+          }
+        })()
       );
     }
 
