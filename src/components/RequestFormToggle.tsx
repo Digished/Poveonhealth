@@ -116,10 +116,6 @@ export function RequestFormToggle({
           </div>
         )}
 
-        {/* Subtle hint about switching */}
-        <p className="text-xs text-slate-400 mt-2 px-1">
-          <span className="opacity-60">Can switch anytime</span>
-        </p>
       </div>
 
       {/* Forms */}

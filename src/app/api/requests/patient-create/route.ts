@@ -185,28 +185,36 @@ export async function POST(request: NextRequest) {
       console.log(`[patient-create] EMAIL: Sending to ${patientEmail}`);
       const envUrl = process.env.NEXT_PUBLIC_APP_URL ?? "";
       const appUrl = envUrl || "https://poveon.com";
-      resend.emails.send({
-        from: labSender(lab),
-        to: patientEmail,
-        subject: `Your Lab Request Code — ${code}`,
-        html: patientRequestCode({
-          patientName: data.patient_name,
-          code,
-          labName: lab.name,
-          labAddress: labAddress,
-          labPhones: labPhones,
-          testCategories: testsToCategories(data.tests),
-          requestPageUrl: `${appUrl}/r/${code}`,
-        }),
-      })
-        .then(({ error }) => {
-          if (error) {
-            console.error("[patient-create] EMAIL send error:", JSON.stringify(error));
+
+      // Fire-and-forget but with proper logging
+      (async () => {
+        try {
+          const result = await resend.emails.send({
+            from: labSender(lab),
+            to: patientEmail,
+            subject: `Your Lab Request Code — ${code}`,
+            html: patientRequestCode({
+              patientName: data.patient_name,
+              code,
+              labName: lab.name,
+              labAddress: labAddress,
+              labPhones: labPhones,
+              testCategories: testsToCategories(data.tests),
+              requestPageUrl: `${appUrl}/r/${code}`,
+            }),
+          });
+
+          console.log(`[patient-create] EMAIL: Resend API response:`, JSON.stringify(result));
+
+          if (result.error) {
+            console.error(`[patient-create] EMAIL send error:`, JSON.stringify(result.error));
           } else {
-            console.log(`[patient-create] EMAIL sent successfully to ${patientEmail}`);
+            console.log(`[patient-create] ✅ EMAIL sent successfully to ${patientEmail}. ID: ${result.id}`);
           }
-        })
-        .catch((e) => console.error("[patient-create] EMAIL send exception:", e));
+        } catch (e) {
+          console.error(`[patient-create] EMAIL exception:`, e instanceof Error ? e.message : String(e));
+        }
+      })();
     } else {
       console.log("[patient-create] EMAIL: No email provided, skipping");
     }

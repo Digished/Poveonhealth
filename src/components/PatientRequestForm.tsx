@@ -506,7 +506,7 @@ export function PatientRequestForm(props: PatientRequestFormProps) {
 
       {/* ── Step 1: Services ── */}
       {step === 1 && (
-        <div className="mt-4 space-y-4">
+        <div className="mt-4 space-y-4 pb-32">
           {/* Lab selection card (home page) */}
           {!preselectedLabId && (
             <div className="glass-card p-4">
@@ -787,7 +787,7 @@ export function PatientRequestForm(props: PatientRequestFormProps) {
 
       {/* ── Step 2: Your Details ── */}
       {step === 2 && (
-        <div className="mt-4 space-y-4">
+        <div className="mt-4 space-y-4 pb-32">
           <div className="glass-card p-4">
             <h2 className="flex items-center gap-3 text-base font-bold text-slate-800 pb-4 border-b border-slate-100 mb-1">
               <div className="w-8 h-8 rounded-xl bg-medical-50 flex items-center justify-center shrink-0">
@@ -967,7 +967,7 @@ export function PatientRequestForm(props: PatientRequestFormProps) {
 
       {/* ── Step 3: Review & Submit ── */}
       {step === 3 && (
-        <div className="mt-4 space-y-4">
+        <div className="mt-4 space-y-4 pb-32">
           <div className="rounded-2xl border border-slate-200/80 overflow-hidden shadow-sm">
             <div className="px-4 py-3 bg-gradient-to-r from-slate-50 to-slate-50/60 border-b border-slate-100 flex items-center gap-2">
               <div className="w-1.5 h-1.5 rounded-full bg-medical-400" />
