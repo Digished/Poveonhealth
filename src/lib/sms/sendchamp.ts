@@ -37,11 +37,12 @@ export function formatPhoneForSendchamp(raw: string): string {
 /**
  * Send a plain-text SMS via Sendchamp.
  * This is fire-and-forget safe — callers should not await this in critical paths.
+ * Returns the provider message ID if available (for webhook tracking).
  */
-export async function sendSms(to: string, message: string): Promise<void> {
+export async function sendSms(to: string, message: string): Promise<{ messageId?: string }> {
   if (!API_KEY) {
     console.warn("[sendchamp] SENDCHAMP_API_KEY not set — SMS skipped");
-    return;
+    return {};
   }
 
   const phone = formatPhoneForSendchamp(to);
@@ -61,7 +62,7 @@ export async function sendSms(to: string, message: string): Promise<void> {
     });
 
     const responseText = await res.text().catch(() => "");
-    
+
     if (!res.ok) {
       let errorMsg = responseText;
       try {
@@ -73,13 +74,18 @@ export async function sendSms(to: string, message: string): Promise<void> {
       throw new Error(`Sendchamp SMS failed [${res.status}]: ${errorMsg}`);
     }
 
-    // Verify success from response
+    // Parse response and extract message ID
     try {
       const json = JSON.parse(responseText);
       if (json.status !== "success" && json.status !== 200) {
         console.warn(`[sendchamp] SMS may not have sent: ${json.message || json.error}`);
       }
+      // Sendchamp returns message_id or id in the response
+      const messageId = json.data?.message_id || json.message_id || json.id;
+      return { messageId };
     } catch {}
+
+    return {};
   } catch (err) {
     // SMS failures should not block the main request flow
     console.error("[sendchamp] SMS error:", err instanceof Error ? err.message : String(err));

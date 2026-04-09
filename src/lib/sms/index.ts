@@ -5,7 +5,7 @@
 
 import { smsProvider } from "./config";
 
-export async function sendSms(to: string, message: string): Promise<void> {
+export async function sendSms(to: string, message: string): Promise<{ messageId?: string }> {
   return smsProvider.sendSms(to, message);
 }
 

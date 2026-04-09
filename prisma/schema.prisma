@@ -535,6 +535,28 @@ model KbTest {
   @@map("kb_tests")
 }
 
+// ── SMS Tracking ─────────────────────────────────────────────────────────────
+
+// Tracks SMS messages sent via Sendchamp/Termii for delivery status monitoring
+model SmsLog {
+  id              String   @id @default(uuid())
+  provider        String   // "termii" | "sendchamp"
+  provider_msg_id String? // Message ID from SMS provider (for webhook lookup)
+  to_phone        String   // Phone number sent to
+  message_body    String
+  status          String   @default("pending") // "pending" | "sent" | "delivered" | "failed"
+  error_message   String?
+  request_id      String? // Link to Request if sent for a lab request
+  created_at      DateTime @default(now())
+  updated_at      DateTime @updatedAt
+
+  @@index([provider_msg_id])
+  @@index([to_phone])
+  @@index([request_id])
+  @@index([created_at])
+  @@map("sms_logs")
+}
+
 // ── Lab Agreements ────────────────────────────────────────────────────────────
 
 // One-time invite link for a lab owner to digitally sign the partnership agreement

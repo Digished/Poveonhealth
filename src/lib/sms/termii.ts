@@ -29,12 +29,13 @@ export function formatPhoneForTermii(raw: string): string {
 /**
  * Send a plain-text SMS via Termii.
  * This is fire-and-forget safe — callers should not await this in critical paths.
+ * Returns the provider message ID if available (for webhook tracking).
  */
-export async function sendSms(to: string, message: string): Promise<void> {
+export async function sendSms(to: string, message: string): Promise<{ messageId?: string }> {
   const apiKey = process.env.TERMII_API_KEY;
   if (!apiKey) {
     console.warn("[termii] TERMII_API_KEY not set — SMS skipped");
-    return;
+    return {};
   }
 
   const phone = formatPhoneForTermii(to);
@@ -53,8 +54,9 @@ export async function sendSms(to: string, message: string): Promise<void> {
       }),
     });
 
+    const text = await res.text().catch(() => "");
+
     if (!res.ok) {
-      const text = await res.text().catch(() => "");
       let errorMsg = text;
       try {
         const json = JSON.parse(text);
@@ -65,6 +67,15 @@ export async function sendSms(to: string, message: string): Promise<void> {
       console.error(`[termii] SMS send failed for ${phone}: [${res.status}] ${errorMsg}`);
       throw new Error(`Termii SMS failed [${res.status}]: ${errorMsg}`);
     }
+
+    // Parse response and extract message ID
+    try {
+      const json = JSON.parse(text);
+      const messageId = json.message_id;
+      return { messageId };
+    } catch {}
+
+    return {};
   } catch (err) {
     // SMS failures should not block the main request flow
     console.error("[termii] SMS error:", err instanceof Error ? err.message : String(err));
