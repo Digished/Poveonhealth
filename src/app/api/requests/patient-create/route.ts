@@ -209,7 +209,7 @@ export async function POST(request: NextRequest) {
           if (result.error) {
             console.error(`[patient-create] EMAIL send error:`, JSON.stringify(result.error));
           } else {
-            console.log(`[patient-create] ✅ EMAIL sent successfully to ${patientEmail}. ID: ${result.id}`);
+            console.log(`[patient-create] ✅ EMAIL sent successfully to ${patientEmail}. ID: ${result?.id || 'pending'}`);
           }
         } catch (e) {
           console.error(`[patient-create] EMAIL exception:`, e instanceof Error ? e.message : String(e));
