@@ -172,6 +172,7 @@ export async function POST(request: NextRequest) {
 
     // SMS the patient their code — wait for confirmation
     const phoneValue = data.patient_phone?.trim();
+    const patientEmail = data.patient_email?.trim();
     console.log(`[patient-create] SMS: Attempting to send to ${phoneValue}`);
 
     let smsSent = false;
