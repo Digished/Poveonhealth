@@ -342,8 +342,10 @@ export function TestTagInput({ value, onChange, labId, error, label, disabled }:
               className="flex-1 bg-transparent text-slate-800 text-sm placeholder-slate-400 outline-none py-0.5 my-0.5"
             />
             {inputText.trim().length > 0 && (
-              <span className="shrink-0 text-[10px] text-slate-400 bg-slate-100 border border-slate-200 rounded px-1 py-0.5 pointer-events-none">
-                ↵ save
+              <span className="shrink-0 flex items-center gap-1 px-2 py-1 rounded-lg bg-medical-50 border border-medical-200 pointer-events-none">
+                <span className="text-xs font-semibold text-medical-700">Press</span>
+                <kbd className="px-1.5 py-0.5 bg-white border border-medical-300 rounded text-xs font-mono text-medical-700 shadow-sm">⏎</kbd>
+                <span className="text-xs font-semibold text-medical-700">to add</span>
               </span>
             )}
           </div>
@@ -365,11 +367,13 @@ export function TestTagInput({ value, onChange, labId, error, label, disabled }:
       )}
 
       {error && <p className="text-xs text-red-600 font-medium">{error}</p>}
-      {!error && value.length === 0 && !inputText.trim() && (
-        <p className="text-xs text-slate-400">
-          Type a test name, then press{" "}
-          <kbd className="px-1 py-0.5 bg-slate-100 rounded text-slate-600 font-mono text-[10px]">Enter</kbd>
-          {" "}to add it
+      {!error && (
+        <p className="text-xs text-slate-500">
+          Tip: Type a test name and press{" "}
+          <kbd className="px-1.5 py-0.5 bg-slate-100 border border-slate-200 rounded text-slate-700 font-mono text-[10px]">Enter</kbd>
+          {" "}or{" "}
+          <kbd className="px-1.5 py-0.5 bg-slate-100 border border-slate-200 rounded text-slate-700 font-mono text-[10px]">Tab</kbd>
+          {" "}to add each test
         </p>
       )}
     </div>

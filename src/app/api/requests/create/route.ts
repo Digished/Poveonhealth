@@ -7,7 +7,7 @@ import { doctorRequestConfirmation, patientRequestCode, labNewRequest } from "@/
 import { testsToCategories } from "@/lib/test-categories";
 import { resolveTests, totalFromBreakdown } from "@/lib/resolve-tests";
 import { logApiCall } from "@/lib/api-logger";
-import { sendSms, buildPatientRequestSms } from "@/lib/sms/termii";
+import { sendSms, buildPatientRequestSms } from "@/lib/sms";
 
 const CreateRequestSchema = z.object({
   patient_name: z.string().min(1).max(200).optional().or(z.literal("")),
@@ -268,10 +268,13 @@ export async function POST(request: NextRequest) {
 
     // Send SMS to patient if phone provided — fire-and-forget, never blocks response
     if (data.patient_phone) {
+      console.log(`[api/requests/create] Sending SMS to patient: ${data.patient_phone}`);
       sendSms(
         data.patient_phone,
         buildPatientRequestSms({ patientName: data.patient_name ?? "", labName: lab.name, code })
-      ).catch((e) => console.error("[sms] patient request code:", e));
+      ).catch((e) => console.error("[api/requests/create] SMS error:", e));
+    } else {
+      console.log("[api/requests/create] No patient phone provided, SMS skipped");
     }
 
     logApiCall({ method: "POST", path: "/api/requests/create", status: 200, duration_ms: Date.now() - start });

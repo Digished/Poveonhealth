@@ -10,10 +10,11 @@ import { z } from "zod";
 import { prisma } from "@/lib/prisma";
 import { generateUniqueCode } from "@/lib/code-generator";
 import { resend, labSender } from "@/lib/email/resend";
-import { labNewRequest } from "@/lib/email/templates";
+import { labNewRequest, patientRequestCode } from "@/lib/email/templates";
+import { testsToCategories } from "@/lib/test-categories";
 import { resolveTests, totalFromBreakdown } from "@/lib/resolve-tests";
 import { logApiCall } from "@/lib/api-logger";
-import { sendSms, buildPatientRequestSms } from "@/lib/sms/termii";
+import { sendSms, buildPatientRequestSms } from "@/lib/sms";
 
 const SELF_SERVICE_NAME = "Self Service";
 
@@ -22,6 +23,7 @@ const Schema = z.object({
   branch_id: z.string().uuid().optional(),
   patient_name: z.string().min(1).max(200),
   patient_phone: z.string().min(5).max(50),
+  patient_email: z.string().email().optional().or(z.literal("")),
   patient_age: z.number().int().min(0).max(150).optional(),
   tests: z.string().min(1).max(3000),
   additional_notes: z.string().max(1000).optional().or(z.literal("")),
@@ -42,6 +44,12 @@ export async function OPTIONS() {
 
 export async function POST(request: NextRequest) {
   const start = Date.now();
+
+  // Log environment check
+  console.log("[patient-create] ENV CHECK:");
+  console.log(`  - SENDCHAMP_API_KEY set: ${!!process.env.SENDCHAMP_API_KEY}`);
+  console.log(`  - RESEND_API_KEY set: ${!!process.env.RESEND_API_KEY}`);
+
   try {
     const body = await request.json();
     const parsed = Schema.safeParse(body);
@@ -109,12 +117,12 @@ export async function POST(request: NextRequest) {
         branch_id: data.branch_id ?? null,
         patient_name: data.patient_name,
         patient_phone: data.patient_phone,
+        patient_email: data.patient_email?.trim() || null,
         // Store age as dob = null; age is included in additional notes or stored as-is
         // The schema has no plain "age" column; we include age in the tests/notes string
         dob: null,
         sex: null,
         address: null,
-        patient_email: null,
         doctor_name: SELF_SERVICE_NAME,
         doctor_email: null,
         doctor_prefix: null,
@@ -163,10 +171,53 @@ export async function POST(request: NextRequest) {
     }
 
     // SMS the patient their code (fire-and-forget)
+    const patientEmail = data.patient_email?.trim();
+    console.log(`[patient-create] SMS: Attempting to send to ${data.patient_phone}`);
+    console.log(`[patient-create] EMAIL: Email field = "${patientEmail}"`);
+
     sendSms(
       data.patient_phone,
       buildPatientRequestSms({ patientName: data.patient_name, labName: lab.name, code })
-    ).catch((e) => console.error("[sms] patient-create:", e));
+    ).catch((e) => console.error("[patient-create] SMS send error:", e));
+
+    // Send email to patient if provided (fire-and-forget)
+    if (patientEmail) {
+      console.log(`[patient-create] EMAIL: Sending to ${patientEmail}`);
+      const envUrl = process.env.NEXT_PUBLIC_APP_URL ?? "";
+      const appUrl = envUrl || "https://poveon.com";
+
+      // Fire-and-forget but with proper logging
+      (async () => {
+        try {
+          const result = await resend.emails.send({
+            from: labSender(lab),
+            to: patientEmail,
+            subject: `Your Lab Request Code — ${code}`,
+            html: patientRequestCode({
+              patientName: data.patient_name,
+              code,
+              labName: lab.name,
+              labAddress: labAddress,
+              labPhones: labPhones,
+              testCategories: testsToCategories(data.tests),
+              requestPageUrl: `${appUrl}/r/${code}`,
+            }),
+          });
+
+          console.log(`[patient-create] EMAIL: Resend API response:`, JSON.stringify(result));
+
+          if (result.error) {
+            console.error(`[patient-create] EMAIL send error:`, JSON.stringify(result.error));
+          } else {
+            console.log(`[patient-create] ✅ EMAIL sent successfully to ${patientEmail}`);
+          }
+        } catch (e) {
+          console.error(`[patient-create] EMAIL exception:`, e instanceof Error ? e.message : String(e));
+        }
+      })();
+    } else {
+      console.log("[patient-create] EMAIL: No email provided, skipping");
+    }
 
     logApiCall({ method: "POST", path: "/api/requests/patient-create", status: 200, duration_ms: Date.now() - start });
     return NextResponse.json(

@@ -31,6 +31,28 @@ const migrations = [
     sql: `ALTER TABLE labs ADD COLUMN IF NOT EXISTS hero_image_url TEXT`,
     continueOnError: true, // Prepared statement caching can cause conflicts; ignore if already applied
   },
+  {
+    desc: "sms_logs table for SMS delivery tracking",
+    sql: `
+      CREATE TABLE IF NOT EXISTS sms_logs (
+        id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+        provider VARCHAR(50) NOT NULL,
+        provider_msg_id VARCHAR(255),
+        to_phone VARCHAR(50) NOT NULL,
+        message_body TEXT NOT NULL,
+        status VARCHAR(50) NOT NULL DEFAULT 'pending',
+        error_message TEXT,
+        request_id UUID,
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+        updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+      );
+      CREATE INDEX IF NOT EXISTS sms_logs_provider_msg_id_idx ON sms_logs(provider_msg_id);
+      CREATE INDEX IF NOT EXISTS sms_logs_to_phone_idx ON sms_logs(to_phone);
+      CREATE INDEX IF NOT EXISTS sms_logs_request_id_idx ON sms_logs(request_id);
+      CREATE INDEX IF NOT EXISTS sms_logs_created_at_idx ON sms_logs(created_at);
+    `,
+    continueOnError: true, // Ignore if table already exists
+  },
 ];
 
 let failed = false;
