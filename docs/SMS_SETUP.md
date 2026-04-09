@@ -12,11 +12,13 @@ Set `SMS_PROVIDER` in `.env.local`:
 # Use Sendchamp (recommended for Africa/Nigeria - no sender ID approval required)
 SMS_PROVIDER=sendchamp
 SENDCHAMP_API_KEY=your-api-key-from-sendchamp
+SENDCHAMP_SENDER_ID=Poveon  # Optional, defaults to "Poveon"
 
-# OR use Termii (legacy, currently in use)
+# OR use Termii
 SMS_PROVIDER=termii
 TERMII_API_KEY=your-api-key-from-termii
-TERMII_BASE_URL=https://v3.api.termii.com (optional, defaults shown)
+TERMII_SENDER_ID=Poveon     # Optional, defaults to "Poveon"
+TERMII_BASE_URL=https://v3.api.termii.com (optional)
 ```
 
 ## Provider Details
@@ -175,15 +177,17 @@ sendSms("+234 800 123 4567", "Hello"); // With spaces
 ## Environment Variables Reference
 
 ```env
-# SMS Provider selection
+# SMS Provider selection (default: sendchamp)
 SMS_PROVIDER=sendchamp|termii
 
-# Sendchamp
-SENDCHAMP_API_KEY=...
+# Sendchamp Configuration
+SENDCHAMP_API_KEY=...               # Required: Get from Settings > API Keys
+SENDCHAMP_SENDER_ID=Poveon          # Optional: SMS sender name (default: "Poveon")
 
-# Termii (optional base URL override)
-TERMII_API_KEY=...
-TERMII_BASE_URL=https://v3.api.termii.com
+# Termii Configuration
+TERMII_API_KEY=...                  # Required: Get from Settings > API Keys
+TERMII_SENDER_ID=Poveon             # Optional: SMS sender name (default: "Poveon")
+TERMII_BASE_URL=https://v3.api.termii.com  # Optional: Override API endpoint
 
 # Required for webhooks to work
 NEXT_PUBLIC_APP_URL=https://your-production-domain.com

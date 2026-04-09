@@ -6,6 +6,7 @@
 
 const BASE_URL = "https://api.sendchamp.com/api/v1";
 const API_KEY = process.env.SENDCHAMP_API_KEY;
+const SENDER_ID = process.env.SENDCHAMP_SENDER_ID ?? "Poveon";
 
 /**
  * Normalise a phone number to international format expected by Sendchamp.
@@ -57,7 +58,7 @@ export async function sendSms(to: string, message: string): Promise<{ messageId?
       body: JSON.stringify({
         to: phone,
         sms: message,
-        sender_name: "Poveon", // No registration needed with Sendchamp
+        sender_name: SENDER_ID,
       }),
     });
 
