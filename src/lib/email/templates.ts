@@ -133,7 +133,7 @@ export function doctorRequestConfirmation({
         View My Dashboard
       </a>
     </div>
-    <p style="text-align:center;margin:0;color:#9ca3af;font-size:12px;">Track all your referrals and results in one place.</p>
+    <p style="text-align:center;margin:0;color:#9ca3af;font-size:12px;">Track all your referrals and results. <a href="https://poveon.com/doc-login" style="color:#0259a0;text-decoration:none;font-weight:600;">Sign in here</a> if you don't have an account.</p>
   `, brand);
 }
 
@@ -750,7 +750,7 @@ export function labNewRequest({
     ${divider}
 
     ${appUrl ? `<div style="text-align:center;margin:8px 0 4px;">
-      <a href="${appUrl}/lab-login/dashboard" style="display:inline-block;background:#0259a0;color:#ffffff;text-decoration:none;padding:13px 28px;border-radius:10px;font-weight:700;font-size:14px;letter-spacing:0.2px;">
+      <a href="${appUrl}/lab-dashboard" style="display:inline-block;background:#0259a0;color:#ffffff;text-decoration:none;padding:13px 28px;border-radius:10px;font-weight:700;font-size:14px;letter-spacing:0.2px;">
         View in Dashboard
       </a>
     </div>
