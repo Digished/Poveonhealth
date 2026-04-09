@@ -703,6 +703,15 @@ function DocDashboardInner() {
           })}
         </div>
 
+        {/* Submit New Request Button */}
+        <button
+          onClick={() => router.push("/")}
+          className="w-full flex items-center justify-center gap-2 py-3 px-4 rounded-xl bg-gradient-to-r from-emerald-500 to-green-500 text-white font-semibold text-sm hover:from-emerald-600 hover:to-green-600 transition-all shadow-md hover:shadow-lg"
+        >
+          <FlaskConical className="w-4 h-4" />
+          Submit New Lab Request
+        </button>
+
         {/* Error */}
         {error && (
           <div className="bg-red-50 border border-red-100 rounded-xl px-4 py-3 text-sm text-red-600">{error}</div>
