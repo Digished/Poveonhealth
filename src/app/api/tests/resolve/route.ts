@@ -67,9 +67,9 @@ async function matchTestToKB(input: string): Promise<MatchResult | null> {
   let bestScore = -1;
 
   for (const test of allTests) {
-    const synonyms = Array.isArray(test.synonyms) ? test.synonyms : [];
-    const variants = Array.isArray(test.variants) ? test.variants : [];
-    const allNames = [test.canonical_name, ...synonyms];
+    const synonyms = Array.isArray(test.synonyms) ? (test.synonyms as string[]) : [];
+    const variants = Array.isArray(test.variants) ? (test.variants as string[]) : [];
+    const allNames = [test.canonical_name, ...synonyms] as string[];
 
     for (const name of allNames) {
       if (matchesSynonym(input, name)) {
