@@ -4928,6 +4928,7 @@ function AdminLabCatalogModal({ lab, onClose }: { lab: Lab; onClose: () => void 
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState("");
   const [selectedCategory, setSelectedCategory] = useState<string | null>(null);
+  const [categoryDropdownOpen, setCategoryDropdownOpen] = useState(false);
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const [uploading, setUploading] = useState(false);
   const [addingRow, setAddingRow] = useState(false);
@@ -5361,33 +5362,48 @@ function AdminLabCatalogModal({ lab, onClose }: { lab: Lab; onClose: () => void 
           {categories.length > 0 && (
             <div className="relative">
               <button
+                onClick={() => setCategoryDropdownOpen(!categoryDropdownOpen)}
                 className="flex items-center gap-2 px-3 py-2 rounded-xl bg-white/5 border border-white/8 text-white text-xs hover:bg-white/8 transition-colors"
               >
                 <Filter className="w-3.5 h-3.5" />
                 {selectedCategory ? `Category: ${selectedCategory}` : "All Categories"}
                 <ChevronDown className="w-3 h-3" />
               </button>
-              <div className="absolute top-full left-0 mt-1 w-48 bg-slate-800 border border-white/10 rounded-xl shadow-lg z-50 max-h-64 overflow-y-auto">
-                <button
-                  onClick={() => setSelectedCategory(null)}
-                  className={`w-full text-left px-4 py-2 text-xs transition-colors ${
-                    selectedCategory === null ? "bg-teal-600/30 text-teal-300" : "text-slate-300 hover:bg-white/5"
-                  }`}
-                >
-                  All Categories
-                </button>
-                {categories.map((cat) => (
-                  <button
-                    key={cat}
-                    onClick={() => setSelectedCategory(cat)}
-                    className={`w-full text-left px-4 py-2 text-xs transition-colors ${
-                      selectedCategory === cat ? "bg-teal-600/30 text-teal-300" : "text-slate-300 hover:bg-white/5"
-                    }`}
-                  >
-                    {cat}
-                  </button>
-                ))}
-              </div>
+              {categoryDropdownOpen && (
+                <>
+                  <div
+                    className="fixed inset-0 z-40"
+                    onClick={() => setCategoryDropdownOpen(false)}
+                  />
+                  <div className="absolute top-full left-0 mt-1 w-48 bg-slate-800 border border-white/10 rounded-xl shadow-lg z-50 max-h-64 overflow-y-auto">
+                    <button
+                      onClick={() => {
+                        setSelectedCategory(null);
+                        setCategoryDropdownOpen(false);
+                      }}
+                      className={`w-full text-left px-4 py-2 text-xs transition-colors ${
+                        selectedCategory === null ? "bg-teal-600/30 text-teal-300" : "text-slate-300 hover:bg-white/5"
+                      }`}
+                    >
+                      All Categories
+                    </button>
+                    {categories.map((cat) => (
+                      <button
+                        key={cat}
+                        onClick={() => {
+                          setSelectedCategory(cat);
+                          setCategoryDropdownOpen(false);
+                        }}
+                        className={`w-full text-left px-4 py-2 text-xs transition-colors ${
+                          selectedCategory === cat ? "bg-teal-600/30 text-teal-300" : "text-slate-300 hover:bg-white/5"
+                        }`}
+                      >
+                        {cat}
+                      </button>
+                    ))}
+                  </div>
+                </>
+              )}
             </div>
           )}
 
