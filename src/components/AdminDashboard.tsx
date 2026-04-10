@@ -4964,7 +4964,35 @@ function AdminLabCatalogModal({ lab, onClose }: { lab: Lab; onClose: () => void 
   const [generationProgress, setGenerationProgress] = useState<{ jobId: string; percent: number; completed: number; total: number; status?: string } | null>(null);
   const [uploadProgress, setUploadProgress] = useState<{ operationId: string; percent: number; completed: number; total: number } | null>(null);
   const [isModalMinimized, setIsModalMinimized] = useState(false);
+  const [kbMappings, setKbMappings] = useState<Record<string, { canonical: string; synonyms: string[]; variants: string[] }>>({});
+  const [mappingLabTestId, setMappingLabTestId] = useState<string | null>(null);
+  const [mappingSearchQuery, setMappingSearchQuery] = useState("");
+  const [mappingOptions, setMappingOptions] = useState<Array<{ id: string; canonical: string; synonyms: string[]; variants: string[] }>>([]);
+  const [mappingLoading, setMappingLoading] = useState(false);
   const fileRef = useRef<HTMLInputElement>(null);
+
+  // Fetch KB mappings for this lab
+  const loadMappings = useCallback(async () => {
+    try {
+      const res = await fetch(`/api/admin/test-kb-manage/lab-mappings/${lab.id}`);
+      const data = await res.json();
+      if (data.success) {
+        const mappingMap: typeof kbMappings = {};
+        for (const test of data.tests) {
+          if (test.isMapped) {
+            mappingMap[test.labTestId] = {
+              canonical: test.canonical,
+              synonyms: test.synonyms,
+              variants: test.variants,
+            };
+          }
+        }
+        setKbMappings(mappingMap);
+      }
+    } catch (e) {
+      console.error("[lab-mappings] load error:", e);
+    }
+  }, [lab.id]);
 
   // Extract unique categories from tests
   const categories = useMemo(() => {
@@ -4982,7 +5010,7 @@ function AdminLabCatalogModal({ lab, onClose }: { lab: Lab; onClose: () => void 
     finally { setLoading(false); }
   }, [lab.id]);
 
-  useEffect(() => { load(); }, [load]);
+  useEffect(() => { load(); loadMappings(); }, [load, loadMappings]);
 
   const visible = useMemo(() => {
     let result = tests;
@@ -5550,6 +5578,7 @@ function AdminLabCatalogModal({ lab, onClose }: { lab: Lab; onClose: () => void 
                     className="rounded border-white/20 bg-white/5 text-teal-500 cursor-pointer" />
                 </th>
                 <th className="px-3 py-3 text-left text-slate-400 font-semibold uppercase tracking-wider">Test Name</th>
+                <th className="px-3 py-3 text-left text-slate-400 font-semibold uppercase tracking-wider">KB Mapping</th>
                 <th className="px-3 py-3 text-left text-slate-400 font-semibold uppercase tracking-wider">Category</th>
                 <th className="px-3 py-3 text-left text-slate-400 font-semibold uppercase tracking-wider">Synonyms</th>
                 <th className="px-3 py-3 text-right text-slate-400 font-semibold uppercase tracking-wider">Price (₦)</th>
@@ -5567,6 +5596,9 @@ function AdminLabCatalogModal({ lab, onClose }: { lab: Lab; onClose: () => void 
                   <td className="px-3 py-2">
                     <input autoFocus value={newRow.raw_name} onChange={(e) => setNewRow((p) => ({ ...p, raw_name: e.target.value }))}
                       placeholder="Test name *" className="w-full bg-white/8 border border-teal-500/40 rounded-lg px-2.5 py-1.5 text-white text-xs focus:outline-none focus:ring-1 focus:ring-teal-400" />
+                  </td>
+                  <td className="px-3 py-2">
+                    <span className="text-slate-500 text-xs">—</span>
                   </td>
                   <td className="px-3 py-2">
                     <input value={newRow.category_label} onChange={(e) => setNewRow((p) => ({ ...p, category_label: e.target.value }))}
@@ -5616,6 +5648,13 @@ function AdminLabCatalogModal({ lab, onClose }: { lab: Lab; onClose: () => void 
                           <input value={editVals.raw_name} onChange={(e) => setEditVals((p) => ({ ...p, raw_name: e.target.value }))} autoFocus
                             className="w-full bg-white/8 border border-teal-500/40 rounded-lg px-2.5 py-1 text-white text-xs focus:outline-none focus:ring-1 focus:ring-teal-400" />
                         </td>
+                        <td className="px-3 py-2 text-xs">
+                          {kbMappings[t.id] ? (
+                            <span className="text-emerald-300">{kbMappings[t.id].canonical}</span>
+                          ) : (
+                            <span className="text-slate-500">—</span>
+                          )}
+                        </td>
                         <td className="px-3 py-2">
                           <input value={editVals.category_label} onChange={(e) => setEditVals((p) => ({ ...p, category_label: e.target.value }))}
                             className="w-full bg-white/8 border border-white/10 rounded-lg px-2.5 py-1 text-white text-xs focus:outline-none" />
@@ -5644,6 +5683,13 @@ function AdminLabCatalogModal({ lab, onClose }: { lab: Lab; onClose: () => void 
                     ) : (
                       <>
                         <td className="px-3 py-2.5 text-white font-medium max-w-[180px] truncate" title={t.raw_name}>{t.raw_name}</td>
+                        <td className="px-3 py-2.5 text-xs">
+                          {kbMappings[t.id] ? (
+                            <div className="text-emerald-300">{kbMappings[t.id].canonical}</div>
+                          ) : (
+                            <button onClick={() => setMappingLabTestId(t.id)} className="text-sky-400 hover:text-sky-300 underline">Map</button>
+                          )}
+                        </td>
                         <td className="px-3 py-2.5 text-slate-400 max-w-[100px] truncate">{t.category_label || <span className="text-slate-600">—</span>}</td>
                         <td className="px-3 py-2.5 text-slate-400 max-w-[150px]">
                           {t.synonyms && t.synonyms.length > 0 ? (
