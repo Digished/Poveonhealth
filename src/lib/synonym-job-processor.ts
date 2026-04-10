@@ -64,13 +64,17 @@ async function processSingleTest(
     });
 
     if (!result) {
+      console.error(`[processSingleTest] Test result not found for job ${jobId}, test ${testId}`);
       return { success: false, error: "Test result record not found" };
     }
 
     // Check if max retries exceeded
     if (result.status === "failed" && result.retry_count >= result.max_retries) {
+      console.warn(`[processSingleTest] Max retries exceeded for test ${testName} (${testId})`);
       return { success: false, error: "Max retries exceeded" };
     }
+
+    console.log(`[processSingleTest] Processing test: ${testName} (${testId})`);
 
     // Mark as processing
     await prisma.labSynonymGenerationTestResult.update({
@@ -84,6 +88,7 @@ async function processSingleTest(
 
     // Generate synonyms
     const synonyms = await generateSynonyms(testName, categoryLabel);
+    console.log(`[processSingleTest] Generated ${synonyms.length} synonyms for ${testName}`);
 
     // Update test with new synonyms
     await prisma.labOfferedTest.update({
@@ -133,25 +138,43 @@ async function processSingleTest(
 export async function processJob(jobId: string): Promise<void> {
   const job = await prisma.labSynonymGenerationJob.findUnique({
     where: { id: jobId },
-    include: {
-      test_results: {
-        where: { status: { in: ["pending", "processing"] } },
-        include: {
-          // We'll fetch test info separately
-        },
-      },
-    },
+    select: { id: true, status: true },
   });
 
   if (!job || job.status === "completed" || job.status === "failed") {
     return;
   }
 
-  let completed = job.completed_tests;
-  let failed = job.failed_tests;
+  // Fetch pending/processing tests
+  const pendingTests = await prisma.labSynonymGenerationTestResult.findMany({
+    where: { job_id: jobId, status: { in: ["pending", "processing"] } },
+    select: { id: true, test_id: true },
+  });
 
-  // Process each pending/processing test
-  for (const testResult of job.test_results) {
+  if (pendingTests.length === 0) {
+    // Count actual completed/failed from database
+    const completedCount = await prisma.labSynonymGenerationTestResult.count({
+      where: { job_id: jobId, status: "completed" },
+    });
+    const failedCount = await prisma.labSynonymGenerationTestResult.count({
+      where: { job_id: jobId, status: "failed" },
+    });
+
+    // Update job to completed
+    await prisma.labSynonymGenerationJob.update({
+      where: { id: jobId },
+      data: {
+        status: "completed",
+        completed_tests: completedCount,
+        failed_tests: failedCount,
+        completed_at: new Date(),
+      },
+    });
+    return;
+  }
+
+  // Process each pending test one by one
+  for (const testResult of pendingTests) {
     const test = await prisma.labOfferedTest.findUnique({
       where: { id: testResult.test_id },
       select: { raw_name: true, category_label: true },
@@ -166,50 +189,28 @@ export async function processJob(jobId: string): Promise<void> {
           completed_at: new Date(),
         },
       });
-      failed++;
       continue;
     }
 
-    const result = await processSingleTest(testResult.test_id, test.raw_name, test.category_label, jobId);
+    await processSingleTest(testResult.test_id, test.raw_name, test.category_label, jobId);
 
-    if (!result.success) {
-      const testResult2 = await prisma.labSynonymGenerationTestResult.findUnique({
-        where: { job_id_test_id: { job_id: jobId, test_id: testResult.test_id } },
-        select: { retry_count: true, max_retries: true, status: true },
-      });
-      if (testResult2?.status === "failed") {
-        failed++;
-      }
-    } else {
-      completed++;
-    }
-  }
+    // Update job progress after each test
+    const completedCount = await prisma.labSynonymGenerationTestResult.count({
+      where: { job_id: jobId, status: "completed" },
+    });
+    const failedCount = await prisma.labSynonymGenerationTestResult.count({
+      where: { job_id: jobId, status: "failed" },
+    });
 
-  // Check if job is complete
-  const remainingTests = await prisma.labSynonymGenerationTestResult.count({
-    where: { job_id: jobId, status: { in: ["pending", "processing"] } },
-  });
-
-  if (remainingTests === 0) {
-    // Job is done
     await prisma.labSynonymGenerationJob.update({
       where: { id: jobId },
       data: {
-        status: "completed",
-        completed_tests: completed,
-        failed_tests: failed,
-        completed_at: new Date(),
+        completed_tests: completedCount,
+        failed_tests: failedCount,
       },
     });
-  } else {
-    // Update progress
-    await prisma.labSynonymGenerationJob.update({
-      where: { id: jobId },
-      data: {
-        completed_tests: completed,
-        failed_tests: failed,
-      },
-    });
+
+    console.log(`[synonym-gen] Job ${jobId} progress: ${completedCount} completed, ${failedCount} failed`);
   }
 }
 
