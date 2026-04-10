@@ -4,43 +4,41 @@ import OpenAI from "openai";
 const openai = process.env.OPENAI_API_KEY ? new OpenAI({ apiKey: process.env.OPENAI_API_KEY }) : null;
 
 async function generateSynonyms(testName: string, categoryLabel?: string | null): Promise<string[]> {
-  // If no OpenAI key, return just the test name
   if (!openai) {
-    console.log(`[generateSynonyms] No OpenAI API key, using test name as synonym for "${testName}"`);
+    console.log(`[generateSynonyms] No OpenAI API key configured`);
     return [testName];
   }
 
+  const startTime = Date.now();
   try {
-    const controller = new AbortController();
-    // 3 second timeout - be aggressive in serverless
-    const timeoutId = setTimeout(() => controller.abort(), 3000);
+    console.log(`[generateSynonyms] Starting request for: "${testName}"`);
 
-    try {
-      const response = await openai.chat.completions.create({
-        model: "gpt-4o-mini",
-        temperature: 0.2,
-        response_format: { type: "json_object" },
-        messages: [
-          { role: "system", content: 'Return JSON: { "synonyms": string[] }' },
-          {
-            role: "user",
-            content: `Generate 5-7 common synonyms, abbreviations, and alternate names for this medical lab test: "${testName}"${categoryLabel ? ` (category: ${categoryLabel})` : ""}. Include the original name. Return as array.`,
-          },
-        ],
-      } as any, { signal: controller.signal });
+    const response = await openai.chat.completions.create({
+      model: "gpt-4o-mini",
+      temperature: 0.2,
+      response_format: { type: "json_object" },
+      messages: [
+        { role: "system", content: 'Return JSON: { "synonyms": string[] }' },
+        {
+          role: "user",
+          content: `Generate 5-7 common synonyms, abbreviations, and alternate names for this medical lab test: "${testName}"${categoryLabel ? ` (category: ${categoryLabel})` : ""}. Include the original name. Return as array.`,
+        },
+      ],
+      timeout: 30000, // 30 second timeout
+    } as any);
 
-      clearTimeout(timeoutId);
-      const parsed = JSON.parse(response.choices[0].message.content ?? "{}") as { synonyms?: string[] };
-      return Array.from(new Set([testName, ...(parsed.synonyms ?? [])]));
-    } finally {
-      clearTimeout(timeoutId);
-    }
+    const duration = Date.now() - startTime;
+    console.log(`[generateSynonyms] Success for "${testName}" in ${duration}ms`);
+
+    const parsed = JSON.parse(response.choices[0].message.content ?? "{}") as { synonyms?: string[] };
+    const result = Array.from(new Set([testName, ...(parsed.synonyms ?? [])]));
+    console.log(`[generateSynonyms] Generated ${result.length} synonyms: ${result.join(", ")}`);
+    return result;
   } catch (err) {
-    // Don't throw - gracefully degrade to just the test name
-    // This prevents the entire job from failing due to OpenAI timeouts
-    console.warn(`[generateSynonyms] Failed for "${testName}", using test name only:`,
-      err instanceof Error ? err.message : String(err));
-    return [testName];
+    const duration = Date.now() - startTime;
+    const errorMsg = err instanceof Error ? err.message : String(err);
+    console.error(`[generateSynonyms] FAILED for "${testName}" after ${duration}ms: ${errorMsg}`, err);
+    throw err; // Re-throw so we can see the actual error
   }
 }
 
@@ -59,7 +57,6 @@ async function syncSynonymsToKb(rawName: string, newSyns: string[]) {
 
 /**
  * Process a single test's synonym generation
- * Gracefully handles OpenAI failures by falling back to test name
  */
 async function processSingleTest(
   testId: string,
@@ -78,17 +75,14 @@ async function processSingleTest(
   }
 
   try {
-    console.log(`[processSingleTest] Processing test: ${testName}`);
-
     // Mark as processing
     await prisma.labSynonymGenerationTestResult.update({
       where: { id: resultRecord.id },
       data: { status: "processing", last_attempted_at: new Date() },
     });
 
-    // Generate synonyms (gracefully degrades if OpenAI fails)
+    // Generate synonyms via OpenAI
     const synonyms = await generateSynonyms(testName, categoryLabel);
-    console.log(`[processSingleTest] Synonyms for ${testName}: ${synonyms.join(", ")}`);
 
     // Update test and mark as completed
     await prisma.labOfferedTest.update({
@@ -106,23 +100,24 @@ async function processSingleTest(
         completed_at: new Date(),
       },
     });
-  } catch (error) {
-    // Log the error but don't fail the entire job
-    console.error(`[processSingleTest] Unexpected error for ${testName}:`, error);
 
-    // Mark as completed anyway - we tried our best
+    console.log(`[processSingleTest] ✓ Completed: ${testName}`);
+  } catch (error) {
+    const errorMsg = error instanceof Error ? error.message : String(error);
+    console.error(`[processSingleTest] ✗ Failed: ${testName} - ${errorMsg}`);
+
+    // Mark as failed so we can see what went wrong
     try {
       await prisma.labSynonymGenerationTestResult.update({
         where: { id: resultRecord.id },
         data: {
-          status: "completed",
-          generated_synonyms: [testName],
-          error_message: error instanceof Error ? error.message : String(error),
+          status: "failed",
+          error_message: errorMsg,
           completed_at: new Date(),
         },
       });
     } catch (updateError) {
-      console.error(`[processSingleTest] Failed to update result:`, updateError);
+      console.error(`[processSingleTest] Failed to mark test as failed:`, updateError);
     }
   }
 }
@@ -181,12 +176,14 @@ export async function processJob(jobId: string): Promise<void> {
   });
   const testMap = new Map(tests.map((t) => [t.id, t]));
 
-  // Process each test with a small delay between API calls
-  let processed = 0;
+  // Process each test
+  console.log(`[synonym-gen] Processing ${pendingTestResults.length} tests`);
+
   for (const testResult of pendingTestResults) {
     const test = testMap.get(testResult.test_id);
 
     if (!test) {
+      console.warn(`[synonym-gen] Test not found: ${testResult.test_id}`);
       await prisma.labSynonymGenerationTestResult.update({
         where: { id: testResult.id },
         data: {
@@ -195,35 +192,32 @@ export async function processJob(jobId: string): Promise<void> {
           completed_at: new Date(),
         },
       });
-      console.warn(`[synonym-gen] Test ${testResult.test_id} not found`);
       continue;
     }
 
     await processSingleTest(testResult.test_id, test.raw_name, test.category_label, jobId);
-    processed++;
 
-    // Update progress every 5 tests to reduce DB load
-    if (processed % 5 === 0) {
-      const completedCount = await prisma.labSynonymGenerationTestResult.count({
-        where: { job_id: jobId, status: "completed" },
-      });
-      const failedCount = await prisma.labSynonymGenerationTestResult.count({
-        where: { job_id: jobId, status: "failed" },
-      });
+    // Update progress after each test
+    const completedCount = await prisma.labSynonymGenerationTestResult.count({
+      where: { job_id: jobId, status: "completed" },
+    });
+    const failedCount = await prisma.labSynonymGenerationTestResult.count({
+      where: { job_id: jobId, status: "failed" },
+    });
+    const percent = Math.round(((completedCount + failedCount) / job.total_tests) * 100);
 
-      await prisma.labSynonymGenerationJob.update({
-        where: { id: jobId },
-        data: {
-          completed_tests: completedCount,
-          failed_tests: failedCount,
-        },
-      });
+    await prisma.labSynonymGenerationJob.update({
+      where: { id: jobId },
+      data: {
+        completed_tests: completedCount,
+        failed_tests: failedCount,
+      },
+    });
 
-      console.log(`[synonym-gen] Job ${jobId} progress: ${completedCount} completed, ${failedCount} failed`);
-    }
+    console.log(`[synonym-gen] Progress: ${percent}% (${completedCount} completed, ${failedCount} failed)`);
 
-    // Small delay between API calls to prevent rate limiting and connection pool exhaustion
-    await new Promise((resolve) => setTimeout(resolve, 300));
+    // Delay between API calls
+    await new Promise((resolve) => setTimeout(resolve, 500));
   }
 
   // Final progress update
