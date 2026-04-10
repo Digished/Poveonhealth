@@ -8,7 +8,7 @@ import {
   Phone, Upload, Check, MapPin, Users, ChevronRight, ChevronDown, ChevronUp,
   Code2, Key, Copy, TrendingUp, Link, Sun, Moon, Star, GitBranch,
   ArrowUpRight, ArrowDownRight, ArrowDownToLine, Settings, CreditCard, MessageCircle,
-  BookOpen, Database, Sparkles, Search, Layers, UserCircle, Wallet, FileText, AlertCircle,
+  BookOpen, Database, Sparkles, Search, Layers, UserCircle, Wallet, FileText, AlertCircle, Filter,
 } from "lucide-react";
 import { useDashTheme } from "@/hooks/useDashTheme";
 import { serializeAgreementToText } from "@/lib/agreement/content";
@@ -4927,6 +4927,8 @@ function AdminLabCatalogModal({ lab, onClose }: { lab: Lab; onClose: () => void 
   const [tests, setTests] = useState<CatalogTest[]>([]);
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState("");
+  const [selectedCategory, setSelectedCategory] = useState<string | null>(null);
+  const [categoryDropdownOpen, setCategoryDropdownOpen] = useState(false);
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const [uploading, setUploading] = useState(false);
   const [addingRow, setAddingRow] = useState(false);
@@ -4942,6 +4944,12 @@ function AdminLabCatalogModal({ lab, onClose }: { lab: Lab; onClose: () => void 
   const [isModalMinimized, setIsModalMinimized] = useState(false);
   const fileRef = useRef<HTMLInputElement>(null);
 
+  // Extract unique categories from tests
+  const categories = useMemo(() => {
+    const cats = new Set(tests.map(t => t.category_label).filter(Boolean) as string[]);
+    return Array.from(cats).sort();
+  }, [tests]);
+
   const load = useCallback(async () => {
     setLoading(true);
     try {
@@ -4955,13 +4963,24 @@ function AdminLabCatalogModal({ lab, onClose }: { lab: Lab; onClose: () => void 
   useEffect(() => { load(); }, [load]);
 
   const visible = useMemo(() => {
+    let result = tests;
     const q = search.toLowerCase();
-    if (!q) return tests;
-    return tests.filter((t) =>
-      t.raw_name.toLowerCase().includes(q) ||
-      (t.category_label ?? "").toLowerCase().includes(q)
-    );
-  }, [tests, search]);
+
+    // Filter by search
+    if (q) {
+      result = result.filter((t) =>
+        t.raw_name.toLowerCase().includes(q) ||
+        (t.category_label ?? "").toLowerCase().includes(q)
+      );
+    }
+
+    // Filter by category
+    if (selectedCategory) {
+      result = result.filter((t) => t.category_label === selectedCategory);
+    }
+
+    return result;
+  }, [tests, search, selectedCategory]);
 
   function toggleSelect(id: string) {
     setSelected((prev) => {
@@ -5212,6 +5231,64 @@ function AdminLabCatalogModal({ lab, onClose }: { lab: Lab; onClose: () => void 
     } catch { toast.error("Network error"); }
   }
 
+  // Determine if there's an operation in progress
+  const operationInProgress = uploadProgress || generationProgress;
+  const progressPercent = uploadProgress?.percent ?? generationProgress?.percent ?? 0;
+  const operationType = uploadProgress ? "upload" : generationProgress ? "generation" : null;
+
+  if (isModalMinimized) {
+    // Minimized floating tab in bottom-right corner
+    return (
+      <div className="fixed bottom-4 right-4 z-50">
+        <button
+          onClick={() => setIsModalMinimized(false)}
+          className="flex flex-col items-center justify-center w-20 h-20 rounded-full bg-gradient-to-br from-teal-600 to-teal-700 text-white shadow-lg hover:shadow-xl transition-shadow border border-teal-500/50 relative group"
+          title="Click to expand catalog modal"
+        >
+          <FlaskConical className="w-5 h-5" />
+          <p className="text-[10px] text-center mt-1 font-semibold leading-tight">{tests.length}</p>
+          <p className="text-[8px] text-teal-100">Tests</p>
+
+          {/* Progress Ring and Indicator */}
+          {operationInProgress && (
+            <div className="absolute inset-0 flex items-center justify-center rounded-full">
+              <svg className="w-20 h-20 transform -rotate-90" style={{ filter: "drop-shadow(0 0 2px rgba(0,0,0,0.3))" }}>
+                <circle
+                  cx="40"
+                  cy="40"
+                  r="36"
+                  fill="none"
+                  stroke="rgba(255,255,255,0.2)"
+                  strokeWidth="2"
+                />
+                <circle
+                  cx="40"
+                  cy="40"
+                  r="36"
+                  fill="none"
+                  stroke="rgb(16,185,129)"
+                  strokeWidth="2"
+                  strokeDasharray={`${(36 * 2 * Math.PI * progressPercent) / 100} ${36 * 2 * Math.PI}`}
+                  strokeLinecap="round"
+                  style={{ transition: "stroke-dasharray 0.3s ease" }}
+                />
+              </svg>
+              <div className="absolute flex flex-col items-center">
+                <p className="text-xs font-bold text-white">{progressPercent}%</p>
+                <p className="text-[8px] text-teal-100 capitalize">{operationType}</p>
+              </div>
+            </div>
+          )}
+
+          {/* Tooltip on hover */}
+          <div className="absolute bottom-full mb-2 hidden group-hover:block bg-slate-800 text-white text-xs px-2 py-1 rounded whitespace-nowrap">
+            {lab.name}
+          </div>
+        </button>
+      </div>
+    );
+  }
+
   return (
     <div
       className="fixed inset-0 z-50 flex items-center justify-center p-2 sm:p-4"
@@ -5219,11 +5296,7 @@ function AdminLabCatalogModal({ lab, onClose }: { lab: Lab; onClose: () => void 
       onClick={onClose}
     >
       <div
-        className={`bg-slate-900 border border-white/10 rounded-2xl sm:rounded-3xl shadow-2xl overflow-hidden flex flex-col transition-all duration-300 ${
-          isModalMinimized
-            ? "w-96 max-w-full"
-            : "w-full h-full max-h-screen"
-        }`}
+        className="bg-slate-900 border border-white/10 rounded-2xl sm:rounded-3xl shadow-2xl overflow-hidden flex flex-col transition-all duration-300 w-full h-full max-h-screen"
         onClick={(e) => e.stopPropagation()}
       >
         {/* Header */}
@@ -5274,8 +5347,8 @@ function AdminLabCatalogModal({ lab, onClose }: { lab: Lab; onClose: () => void 
         </div>
 
         {/* Toolbar - Hidden when minimized */}
-        {!isModalMinimized && <div className="flex items-center gap-3 px-6 py-3 border-b border-white/5 shrink-0">
-          <div className="relative flex-1">
+        {!isModalMinimized && <div className="flex items-center gap-2 px-6 py-3 border-b border-white/5 shrink-0 flex-wrap">
+          <div className="relative flex-1 min-w-40">
             <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-slate-500" />
             <input
               value={search}
@@ -5284,6 +5357,56 @@ function AdminLabCatalogModal({ lab, onClose }: { lab: Lab; onClose: () => void 
               className="w-full pl-9 pr-4 py-2 rounded-xl bg-white/5 border border-white/8 text-white text-sm placeholder-slate-500 focus:outline-none focus:ring-2 focus:ring-teal-500/40"
             />
           </div>
+
+          {/* Category Filter */}
+          {categories.length > 0 && (
+            <div className="relative">
+              <button
+                onClick={() => setCategoryDropdownOpen(!categoryDropdownOpen)}
+                className="flex items-center gap-2 px-3 py-2 rounded-xl bg-white/5 border border-white/8 text-white text-xs hover:bg-white/8 transition-colors"
+              >
+                <Filter className="w-3.5 h-3.5" />
+                {selectedCategory ? `Category: ${selectedCategory}` : "All Categories"}
+                <ChevronDown className="w-3 h-3" />
+              </button>
+              {categoryDropdownOpen && (
+                <>
+                  <div
+                    className="fixed inset-0 z-40"
+                    onClick={() => setCategoryDropdownOpen(false)}
+                  />
+                  <div className="absolute top-full left-0 mt-1 w-48 bg-slate-800 border border-white/10 rounded-xl shadow-lg z-50 max-h-64 overflow-y-auto">
+                    <button
+                      onClick={() => {
+                        setSelectedCategory(null);
+                        setCategoryDropdownOpen(false);
+                      }}
+                      className={`w-full text-left px-4 py-2 text-xs transition-colors ${
+                        selectedCategory === null ? "bg-teal-600/30 text-teal-300" : "text-slate-300 hover:bg-white/5"
+                      }`}
+                    >
+                      All Categories
+                    </button>
+                    {categories.map((cat) => (
+                      <button
+                        key={cat}
+                        onClick={() => {
+                          setSelectedCategory(cat);
+                          setCategoryDropdownOpen(false);
+                        }}
+                        className={`w-full text-left px-4 py-2 text-xs transition-colors ${
+                          selectedCategory === cat ? "bg-teal-600/30 text-teal-300" : "text-slate-300 hover:bg-white/5"
+                        }`}
+                      >
+                        {cat}
+                      </button>
+                    ))}
+                  </div>
+                </>
+              )}
+            </div>
+          )}
+
           <button
             onClick={() => { setAddingRow((v) => !v); }}
             className="flex items-center gap-1.5 px-3 py-2 rounded-xl bg-teal-600/20 hover:bg-teal-600/30 text-teal-300 text-xs font-medium transition-colors shrink-0"
@@ -5386,8 +5509,8 @@ function AdminLabCatalogModal({ lab, onClose }: { lab: Lab; onClose: () => void 
         )}
 
         {/* Table - Hidden when minimized */}
-        {!isModalMinimized && <div className="flex-1 overflow-y-auto">
-          <table className="w-full text-xs">
+        {!isModalMinimized && <div className="flex-1 overflow-y-auto overflow-x-auto">
+          <table className="w-full text-xs min-w-max sm:min-w-full">
             <thead className="sticky top-0 bg-slate-900/95 backdrop-blur-sm border-b border-white/8 z-10">
               <tr>
                 <th className="w-8 px-3 py-3">

@@ -413,6 +413,9 @@ export function PatientRequestForm(props: PatientRequestFormProps) {
   const handleSubmit = async () => {
     setSubmitting(true);
     try {
+      const emailValue = patientEmail.trim() || undefined;
+      console.log("[PatientRequestForm] Submitting with email:", emailValue);
+
       const res = await fetch("/api/requests/patient-create", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -421,7 +424,7 @@ export function PatientRequestForm(props: PatientRequestFormProps) {
           branch_id: selectedLocationId || undefined,
           patient_name: patientName,
           patient_phone: patientPhone,
-          patient_email: patientEmail || undefined,
+          patient_email: emailValue,
           patient_age: patientAge ? parseInt(patientAge) : undefined,
           tests: selectedTests.join(", "),
           additional_notes: additionalNotes,
@@ -872,7 +875,7 @@ export function PatientRequestForm(props: PatientRequestFormProps) {
                 </div>
               )}
 
-              {/* Substep 4: Email — reveals after name */}
+              {/* Substep 4: Email — always show, not conditional */}
               {patientPhone.trim() && patientName.trim() && (
                 <div className="relative flex gap-3 animate-fade-in-up">
                   <div className="flex flex-col items-center shrink-0 pt-1">
@@ -891,8 +894,9 @@ export function PatientRequestForm(props: PatientRequestFormProps) {
                       placeholder="your@email.com"
                       value={patientEmail}
                       onChange={(e) => setPatientEmail(e.target.value)}
+                      autoComplete="email"
                     />
-                    <p className="text-xs text-slate-400 mt-1.5">For email confirmations if desired.</p>
+                    <p className="text-xs text-slate-400 mt-1.5">For email confirmations and request tracking.</p>
                   </div>
                 </div>
               )}

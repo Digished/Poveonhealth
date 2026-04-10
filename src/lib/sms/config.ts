@@ -1,10 +1,10 @@
 /**
  * SMS Provider Configuration
- * Using Sendchamp only
+ * Using Twilio - reliable, simple, works everywhere
  */
 
-import * as sendchamp from "./sendchamp";
+import * as twilio from "./twilio";
 
-export type SMSProvider = "sendchamp";
+export type SMSProvider = "twilio";
 
-export const smsProvider = sendchamp;
+export const smsProvider = twilio;

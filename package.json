@@ -28,6 +28,7 @@
     "react-dom": "^18",
     "react-hot-toast": "^2.4.1",
     "resend": "^3.5.0",
+    "twilio": "^5.13.1",
     "xlsx": "^0.18.5",
     "zod": "^3.23.8"
   },

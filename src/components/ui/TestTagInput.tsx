@@ -328,7 +328,7 @@ export function TestTagInput({ value, onChange, labId, error, label, disabled }:
             </span>
           ))}
 
-          <div className="flex-1 min-w-[160px] flex items-center gap-1.5 relative">
+          <div className="flex-1 min-w-[160px] flex items-center relative">
             <input
               ref={inputRef}
               value={inputText}
@@ -342,10 +342,8 @@ export function TestTagInput({ value, onChange, labId, error, label, disabled }:
               className="flex-1 bg-transparent text-slate-800 text-sm placeholder-slate-400 outline-none py-0.5 my-0.5"
             />
             {inputText.trim().length > 0 && (
-              <span className="shrink-0 flex items-center gap-1 px-2 py-1 rounded-lg bg-medical-50 border border-medical-200 pointer-events-none">
-                <span className="text-xs font-semibold text-medical-700">Press</span>
-                <kbd className="px-1.5 py-0.5 bg-white border border-medical-300 rounded text-xs font-mono text-medical-700 shadow-sm">⏎</kbd>
-                <span className="text-xs font-semibold text-medical-700">to add</span>
+              <span className="absolute right-0 text-xs text-medical-400 pointer-events-none font-medium animate-pulse opacity-70 whitespace-nowrap">
+                Press ⏎ to add
               </span>
             )}
           </div>

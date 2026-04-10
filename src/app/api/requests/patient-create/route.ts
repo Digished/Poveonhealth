@@ -170,51 +170,59 @@ export async function POST(request: NextRequest) {
         .catch((e) => console.error("[email] lab self-service error:", e));
     }
 
-    // SMS the patient their code (fire-and-forget)
+    // SMS the patient their code (fire-and-forget, but with proper error handling)
+    const phoneValue = data.patient_phone?.trim();
     const patientEmail = data.patient_email?.trim();
-    console.log(`[patient-create] SMS: Attempting to send to ${data.patient_phone}`);
-    console.log(`[patient-create] EMAIL: Email field = "${patientEmail}"`);
+    console.log(`[patient-create] SMS: Attempting to send to ${phoneValue}`);
 
+    let smsSent = false;
+    // Fire-and-forget but log results for debugging
     sendSms(
       data.patient_phone,
       buildPatientRequestSms({ patientName: data.patient_name, labName: lab.name, code })
-    ).catch((e) => console.error("[patient-create] SMS send error:", e));
+    ).then((smsResult) => {
+      console.log(`[patient-create] SMS result:`, JSON.stringify(smsResult));
+      smsSent = !!smsResult.messageId;
+      if (smsSent) {
+        console.log(`[patient-create] ✅ SMS sent successfully to ${phoneValue}. Message ID: ${smsResult.messageId}`);
+      } else {
+        console.warn(`[patient-create] SMS sent but no message ID returned`);
+      }
+    }).catch((smsErr) => {
+      console.error(`[patient-create] SMS failed:`, smsErr instanceof Error ? smsErr.message : String(smsErr));
+    });
 
-    // Send email to patient if provided (fire-and-forget)
+    // Send email to patient if provided — wait for confirmation
     if (patientEmail) {
       console.log(`[patient-create] EMAIL: Sending to ${patientEmail}`);
       const envUrl = process.env.NEXT_PUBLIC_APP_URL ?? "";
       const appUrl = envUrl || "https://poveon.com";
 
-      // Fire-and-forget but with proper logging
-      (async () => {
-        try {
-          const result = await resend.emails.send({
-            from: labSender(lab),
-            to: patientEmail,
-            subject: `Your Lab Request Code — ${code}`,
-            html: patientRequestCode({
-              patientName: data.patient_name,
-              code,
-              labName: lab.name,
-              labAddress: labAddress,
-              labPhones: labPhones,
-              testCategories: testsToCategories(data.tests),
-              requestPageUrl: `${appUrl}/r/${code}`,
-            }),
-          });
+      try {
+        const result = await resend.emails.send({
+          from: labSender(lab),
+          to: patientEmail,
+          subject: `Your Lab Request Code — ${code}`,
+          html: patientRequestCode({
+            patientName: data.patient_name,
+            code,
+            labName: lab.name,
+            labAddress: labAddress,
+            labPhones: labPhones,
+            testCategories: testsToCategories(data.tests),
+            requestPageUrl: `${appUrl}/r/${code}`,
+            isSelfService: true,
+          }),
+        });
 
-          console.log(`[patient-create] EMAIL: Resend API response:`, JSON.stringify(result));
-
-          if (result.error) {
-            console.error(`[patient-create] EMAIL send error:`, JSON.stringify(result.error));
-          } else {
-            console.log(`[patient-create] ✅ EMAIL sent successfully to ${patientEmail}`);
-          }
-        } catch (e) {
-          console.error(`[patient-create] EMAIL exception:`, e instanceof Error ? e.message : String(e));
+        if (result.error) {
+          console.error(`[patient-create] EMAIL send failed:`, JSON.stringify(result.error));
+        } else {
+          console.log(`[patient-create] ✅ EMAIL sent successfully to ${patientEmail}`);
         }
-      })();
+      } catch (e) {
+        console.error(`[patient-create] EMAIL exception:`, e instanceof Error ? e.message : String(e));
+      }
     } else {
       console.log("[patient-create] EMAIL: No email provided, skipping");
     }
