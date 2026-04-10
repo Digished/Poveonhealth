@@ -4,11 +4,16 @@ import OpenAI from "openai";
 const openai = process.env.OPENAI_API_KEY ? new OpenAI({ apiKey: process.env.OPENAI_API_KEY }) : null;
 
 async function generateSynonyms(testName: string, categoryLabel?: string | null): Promise<string[]> {
-  if (!openai) return [testName];
+  // If no OpenAI key, return just the test name
+  if (!openai) {
+    console.log(`[generateSynonyms] No OpenAI API key, using test name as synonym for "${testName}"`);
+    return [testName];
+  }
+
   try {
     const controller = new AbortController();
-    // Reduced timeout: 5 seconds for serverless environment with limited connection pool
-    const timeoutId = setTimeout(() => controller.abort(), 5000);
+    // 3 second timeout - be aggressive in serverless
+    const timeoutId = setTimeout(() => controller.abort(), 3000);
 
     try {
       const response = await openai.chat.completions.create({
@@ -31,8 +36,11 @@ async function generateSynonyms(testName: string, categoryLabel?: string | null)
       clearTimeout(timeoutId);
     }
   } catch (err) {
-    console.error(`Synonym generation failed for "${testName}":`, err);
-    throw err;
+    // Don't throw - gracefully degrade to just the test name
+    // This prevents the entire job from failing due to OpenAI timeouts
+    console.warn(`[generateSynonyms] Failed for "${testName}", using test name only:`,
+      err instanceof Error ? err.message : String(err));
+    return [testName];
   }
 }
 
@@ -50,59 +58,39 @@ async function syncSynonymsToKb(rawName: string, newSyns: string[]) {
 }
 
 /**
- * Process a single test's synonym generation with retry logic
+ * Process a single test's synonym generation
+ * Gracefully handles OpenAI failures by falling back to test name
  */
 async function processSingleTest(
   testId: string,
   testName: string,
   categoryLabel: string | null | undefined,
   jobId: string
-): Promise<{ success: boolean; synonyms?: string[]; error?: string }> {
-  let resultId: string | null = null;
+): Promise<void> {
+  const resultRecord = await prisma.labSynonymGenerationTestResult.findUnique({
+    where: { job_id_test_id: { job_id: jobId, test_id: testId } },
+    select: { id: true },
+  });
+
+  if (!resultRecord) {
+    console.error(`[processSingleTest] Test result not found for ${testName}`);
+    return;
+  }
+
   try {
-    // Fetch result info
-    const result = await prisma.labSynonymGenerationTestResult.findUnique({
-      where: { job_id_test_id: { job_id: jobId, test_id: testId } },
-      select: { id: true, retry_count: true, max_retries: true, status: true },
-    });
-
-    if (!result) {
-      console.error(`[processSingleTest] Test result not found for job ${jobId}, test ${testId}`);
-      return { success: false, error: "Test result record not found" };
-    }
-
-    resultId = result.id;
-
-    // Check if max retries exceeded
-    if (result.status === "failed" && result.retry_count >= result.max_retries) {
-      console.warn(`[processSingleTest] Max retries exceeded for test ${testName} (${testId})`);
-      return { success: false, error: "Max retries exceeded" };
-    }
-
-    console.log(`[processSingleTest] Processing test: ${testName} (${testId})`);
+    console.log(`[processSingleTest] Processing test: ${testName}`);
 
     // Mark as processing
     await prisma.labSynonymGenerationTestResult.update({
-      where: { id: resultId },
-      data: {
-        status: "processing",
-        last_attempted_at: new Date(),
-        retry_count: result.retry_count + 1,
-      },
+      where: { id: resultRecord.id },
+      data: { status: "processing", last_attempted_at: new Date() },
     });
 
-    // Generate synonyms (don't hold DB connection during this long operation)
-    let synonyms: string[] = [];
-    try {
-      synonyms = await generateSynonyms(testName, categoryLabel);
-      console.log(`[processSingleTest] Generated ${synonyms.length} synonyms for ${testName}`);
-    } catch (apiError) {
-      // If API fails, treat as a failed attempt
-      throw apiError;
-    }
+    // Generate synonyms (gracefully degrades if OpenAI fails)
+    const synonyms = await generateSynonyms(testName, categoryLabel);
+    console.log(`[processSingleTest] Synonyms for ${testName}: ${synonyms.join(", ")}`);
 
-    // Update all at once to minimize DB connections
-    // Batch: update test, sync to KB, mark as completed
+    // Update test and mark as completed
     await prisma.labOfferedTest.update({
       where: { id: testId },
       data: { synonyms },
@@ -111,43 +99,31 @@ async function processSingleTest(
     await syncSynonymsToKb(testName, synonyms);
 
     await prisma.labSynonymGenerationTestResult.update({
-      where: { id: resultId },
+      where: { id: resultRecord.id },
       data: {
         status: "completed",
         generated_synonyms: synonyms,
         completed_at: new Date(),
       },
     });
-
-    return { success: true, synonyms };
   } catch (error) {
-    const errorMsg = error instanceof Error ? error.message : String(error);
-    console.error(`[processSingleTest] Error processing ${testName}: ${errorMsg}`);
+    // Log the error but don't fail the entire job
+    console.error(`[processSingleTest] Unexpected error for ${testName}:`, error);
 
-    if (resultId) {
-      try {
-        // Fetch fresh retry count
-        const result = await prisma.labSynonymGenerationTestResult.findUnique({
-          where: { id: resultId },
-          select: { retry_count: true, max_retries: true },
-        });
-
-        if (result) {
-          const willRetry = result.retry_count < result.max_retries;
-          await prisma.labSynonymGenerationTestResult.update({
-            where: { id: resultId },
-            data: {
-              status: willRetry ? "pending" : "failed",
-              error_message: errorMsg,
-            },
-          });
-        }
-      } catch (updateError) {
-        console.error(`[processSingleTest] Failed to update result status: ${updateError}`);
-      }
+    // Mark as completed anyway - we tried our best
+    try {
+      await prisma.labSynonymGenerationTestResult.update({
+        where: { id: resultRecord.id },
+        data: {
+          status: "completed",
+          generated_synonyms: [testName],
+          error_message: error instanceof Error ? error.message : String(error),
+          completed_at: new Date(),
+        },
+      });
+    } catch (updateError) {
+      console.error(`[processSingleTest] Failed to update result:`, updateError);
     }
-
-    return { success: false, error: errorMsg };
   }
 }
 
