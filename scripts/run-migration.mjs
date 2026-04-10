@@ -53,6 +53,50 @@ const migrations = [
     `,
     continueOnError: true, // Ignore if table already exists
   },
+  {
+    desc: "lab_synonym_generation_jobs table for background synonym processing",
+    sql: `
+      CREATE TABLE IF NOT EXISTS lab_synonym_generation_jobs (
+        id TEXT PRIMARY KEY,
+        lab_id TEXT NOT NULL REFERENCES labs(id) ON DELETE CASCADE,
+        total_tests INTEGER NOT NULL,
+        completed_tests INTEGER NOT NULL DEFAULT 0,
+        failed_tests INTEGER NOT NULL DEFAULT 0,
+        status TEXT NOT NULL DEFAULT 'processing',
+        error_message TEXT,
+        initiated_by TEXT NOT NULL,
+        started_at TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+        completed_at TIMESTAMP(3),
+        created_at TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP
+      );
+      CREATE INDEX IF NOT EXISTS lab_synonym_generation_jobs_lab_id_status_idx ON lab_synonym_generation_jobs(lab_id, status);
+      CREATE INDEX IF NOT EXISTS lab_synonym_generation_jobs_status_idx ON lab_synonym_generation_jobs(status);
+      CREATE INDEX IF NOT EXISTS lab_synonym_generation_jobs_started_at_idx ON lab_synonym_generation_jobs(started_at);
+    `,
+    continueOnError: true,
+  },
+  {
+    desc: "lab_synonym_generation_test_results table for tracking individual test processing",
+    sql: `
+      CREATE TABLE IF NOT EXISTS lab_synonym_generation_test_results (
+        id TEXT PRIMARY KEY,
+        job_id TEXT NOT NULL REFERENCES lab_synonym_generation_jobs(id) ON DELETE CASCADE,
+        test_id TEXT NOT NULL,
+        status TEXT NOT NULL DEFAULT 'pending',
+        generated_synonyms JSONB,
+        error_message TEXT,
+        retry_count INTEGER NOT NULL DEFAULT 0,
+        max_retries INTEGER NOT NULL DEFAULT 3,
+        last_attempted_at TIMESTAMP(3),
+        completed_at TIMESTAMP(3),
+        created_at TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+        UNIQUE(job_id, test_id)
+      );
+      CREATE INDEX IF NOT EXISTS lab_synonym_generation_test_results_job_id_status_idx ON lab_synonym_generation_test_results(job_id, status);
+      CREATE INDEX IF NOT EXISTS lab_synonym_generation_test_results_status_idx ON lab_synonym_generation_test_results(status);
+    `,
+    continueOnError: true,
+  },
 ];
 
 let failed = false;
