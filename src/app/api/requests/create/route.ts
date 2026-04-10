@@ -184,7 +184,8 @@ export async function POST(request: NextRequest) {
 
     const labAddress = lab.address ?? "";
     const labPhones = (lab.phones as { number: string; label: string }[]) ?? [];
-    const brand = lab.notification_email ? { name: lab.name } : undefined;
+    // Always brand emails with the lab name (not just when custom email is set)
+    const brand = { name: lab.name };
 
     // Send emails — failures are logged but never block the request response
     const sends: Promise<void>[] = [
