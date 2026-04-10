@@ -67,7 +67,7 @@ export async function GET(
           synonyms: (Array.isArray(mapping.knowledge_base.synonyms) ? mapping.knowledge_base.synonyms : []) as string[],
           variants: (Array.isArray(mapping.knowledge_base.variants) ? mapping.knowledge_base.variants : []) as string[],
           variantsAvailable: mapping.variants_available
-            ? (Array.isArray(mapping.variants_available) ? mapping.variants_available : [])
+            ? (Array.isArray(mapping.variants_available) ? (mapping.variants_available as string[]) : null)
             : null,
           isMapped: true,
         };
