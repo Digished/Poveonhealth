@@ -214,7 +214,6 @@ export async function POST(req: NextRequest) {
           matched: true,
           status: "resolved",
           canonical: kbMatch.canonical,
-          variants: null,
         });
       }
     }
