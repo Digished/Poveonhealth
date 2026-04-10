@@ -34,6 +34,15 @@ const CreateRequestSchema = z.object({
   needs_ambulance: z.boolean().optional().default(false),
   ambulance_notes: z.string().max(500).optional().or(z.literal("")),
   test_image_url: z.string().url().optional().or(z.literal("")),
+  // New: resolved tests from KB validation (frontend sends this)
+  resolvedTests: z.array(
+    z.object({
+      input: z.string(),
+      canonical: z.string().optional(),
+      variant: z.string().optional().nullable(),
+      status: z.enum(["resolved", "ambiguous", "unknown"]),
+    })
+  ).optional(),
 });
 
 const CORS_HEADERS = {
@@ -112,12 +121,27 @@ export async function POST(request: NextRequest) {
     // Resolve marketer attribution from pov_ref cookie (first-touch, non-blocking)
     const povRef = request.cookies.get("pov_ref")?.value;
 
+    // Build final tests string from resolved tests or raw tests
+    let finalTests = data.tests || "See attached image";
+    if (data.resolvedTests && data.resolvedTests.length > 0) {
+      // Format resolved tests as newline-separated canonical names
+      finalTests = data.resolvedTests
+        .filter((t) => t.status === "resolved" || t.status === "ambiguous")
+        .map((t) => {
+          if (t.canonical) {
+            return t.variant ? `${t.canonical} (${t.variant})` : t.canonical;
+          }
+          return t.input;
+        })
+        .join("\n");
+    }
+
     // Resolve tests → quoted_price + breakdown (non-blocking fallback to null)
     let quotedPrice: number | null = null;
     let testBreakdown: unknown = null;
-    if (data.tests && data.tests !== "See attached image") {
+    if (finalTests && finalTests !== "See attached image") {
       try {
-        const breakdown = await resolveTests(data.tests, data.lab_id);
+        const breakdown = await resolveTests(finalTests, data.lab_id);
         quotedPrice = totalFromBreakdown(breakdown);
         testBreakdown = breakdown;
       } catch (e) {
@@ -147,7 +171,7 @@ export async function POST(request: NextRequest) {
         doctor_account_name: doctorAccountName,
         schedule: data.schedule || null,
         diagnosis: data.diagnosis || null,
-        tests: data.tests || "See attached image",
+        tests: finalTests,
         quoted_price: quotedPrice,
         test_breakdown: testBreakdown ?? undefined,
         is_critical: data.is_critical,
