@@ -7,7 +7,7 @@ import { prisma } from "@/lib/prisma";
 const MapTestSchema = z.object({
   labTestName: z.string().min(1).max(200),
   knowledgeBaseId: z.string().uuid(),
-  variantsAvailable: z.array(z.string()).optional().nullable(),
+  variantsAvailable: z.array(z.string()).optional(),
 });
 
 export async function POST(
