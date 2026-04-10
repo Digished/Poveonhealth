@@ -164,12 +164,9 @@ export async function processJob(jobId: string): Promise<void> {
     return;
   }
 
-  // Fetch pending/processing tests with their test details in one query
+  // Fetch pending/processing tests
   const pendingTestResults = await prisma.labSynonymGenerationTestResult.findMany({
     where: { job_id: jobId, status: { in: ["pending", "processing"] } },
-    include: {
-      // Fetch related LabOfferedTest data in same query
-    },
     select: {
       id: true,
       test_id: true,
