@@ -3422,6 +3422,7 @@ function AdminKnowledgeBaseTab() {
   const [savingSyn, setSavingSyn] = useState(false);
   const [syncing, setSyncing] = useState(false);
   const [syncMode, setSyncMode] = useState<"new_only" | "merge_synonyms">("new_only");
+  const [seeding, setSeeding] = useState(false);
   const [hospitalTab, setHospitalTab] = useState(false);
   const [hospitals, setHospitals] = useState<{ id: string; name: string; city: string | null; is_active: boolean }[]>([]);
   const [hospLoading, setHospLoading] = useState(false);
@@ -3454,6 +3455,22 @@ function AdminKnowledgeBaseTab() {
 
   useEffect(() => { fetchKb(); }, [fetchKb]);
   useEffect(() => { if (hospitalTab) fetchHospitals(); }, [hospitalTab, fetchHospitals]);
+
+  async function handleSeed() {
+    setSeeding(true);
+    try {
+      const res = await fetch("/api/admin/test-kb-manage/seed", {
+        method: "POST", headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ action: "seed" }),
+      });
+      const data = await res.json();
+      if (data.success) {
+        toast.success(`Seeded ${data.created} tests (${data.skipped} already existed)`);
+        fetchKb();
+      } else { toast.error("Seeding failed"); }
+    } catch (e) { console.error(e); toast.error("Seed failed"); }
+    setSeeding(false);
+  }
 
   async function handleSync() {
     setSyncing(true);
@@ -3612,11 +3629,17 @@ function AdminKnowledgeBaseTab() {
             </div>
             <div className="flex items-center gap-3 pt-1 border-t border-white/8">
               <Sparkles className="w-4 h-4 text-amber-400 shrink-0" />
-              <p className="text-xs text-slate-400 flex-1">Migrate old KB data and map lab tests to the new Knowledge Base system.</p>
-              <button onClick={handleSync} disabled={syncing} className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-amber-500/20 border border-amber-500/30 text-amber-300 text-xs font-semibold hover:bg-amber-500/30 transition-colors disabled:opacity-50">
-                {syncing ? <RefreshCw className="w-3.5 h-3.5 animate-spin" /> : <Sparkles className="w-3.5 h-3.5" />}
-                {syncing ? "Syncing…" : "Migrate & Sync"}
-              </button>
+              <p className="text-xs text-slate-400 flex-1">Populate or sync the Knowledge Base with tests and lab data.</p>
+              <div className="flex gap-2">
+                <button onClick={handleSeed} disabled={seeding} className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-green-500/20 border border-green-500/30 text-green-300 text-xs font-semibold hover:bg-green-500/30 transition-colors disabled:opacity-50">
+                  {seeding ? <RefreshCw className="w-3.5 h-3.5 animate-spin" /> : <Plus className="w-3.5 h-3.5" />}
+                  {seeding ? "Seeding…" : "Seed KB"}
+                </button>
+                <button onClick={handleSync} disabled={syncing} className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-amber-500/20 border border-amber-500/30 text-amber-300 text-xs font-semibold hover:bg-amber-500/30 transition-colors disabled:opacity-50">
+                  {syncing ? <RefreshCw className="w-3.5 h-3.5 animate-spin" /> : <Sparkles className="w-3.5 h-3.5" />}
+                  {syncing ? "Syncing…" : "Migrate & Sync"}
+                </button>
+              </div>
             </div>
           </div>
 
