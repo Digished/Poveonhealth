@@ -97,6 +97,41 @@ const migrations = [
     `,
     continueOnError: true,
   },
+  {
+    desc: "test_knowledge_bases table for KB management",
+    sql: `
+      CREATE TABLE IF NOT EXISTS test_knowledge_bases (
+        id TEXT PRIMARY KEY,
+        canonical_name TEXT NOT NULL UNIQUE,
+        synonyms JSONB NOT NULL DEFAULT '[]',
+        variants JSONB NOT NULL DEFAULT '[]',
+        category TEXT,
+        description TEXT,
+        is_active BOOLEAN NOT NULL DEFAULT true,
+        created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+        updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
+      );
+      CREATE INDEX IF NOT EXISTS test_knowledge_bases_canonical_name_idx ON test_knowledge_bases(canonical_name);
+    `,
+    continueOnError: true,
+  },
+  {
+    desc: "lab_test_kb_mappings table for KB mapping",
+    sql: `
+      CREATE TABLE IF NOT EXISTS lab_test_kb_mappings (
+        id TEXT PRIMARY KEY,
+        lab_id TEXT NOT NULL REFERENCES labs(id) ON DELETE CASCADE,
+        lab_test_name TEXT NOT NULL,
+        knowledge_base_id TEXT NOT NULL REFERENCES test_knowledge_bases(id) ON DELETE CASCADE,
+        variants_available JSONB,
+        is_active BOOLEAN NOT NULL DEFAULT true,
+        created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+        UNIQUE(lab_id, lab_test_name)
+      );
+      CREATE INDEX IF NOT EXISTS lab_test_kb_mappings_lab_id_knowledge_base_id_idx ON lab_test_kb_mappings(lab_id, knowledge_base_id);
+    `,
+    continueOnError: true,
+  },
 ];
 
 let failed = false;
