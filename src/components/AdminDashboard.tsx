@@ -5242,48 +5242,49 @@ function AdminLabCatalogModal({ lab, onClose }: { lab: Lab; onClose: () => void 
       <div className="fixed bottom-4 right-4 z-50">
         <button
           onClick={() => setIsModalMinimized(false)}
-          className="flex flex-col items-center justify-center w-20 h-20 rounded-full bg-gradient-to-br from-teal-600 to-teal-700 text-white shadow-lg hover:shadow-xl transition-shadow border border-teal-500/50 relative group"
+          className="flex items-center gap-3 px-4 py-3 rounded-xl bg-gradient-to-r from-teal-600 to-teal-700 text-white shadow-lg hover:shadow-xl transition-shadow border border-teal-500/50 relative group min-w-fit"
           title="Click to expand catalog modal"
         >
-          <FlaskConical className="w-5 h-5" />
-          <p className="text-[10px] text-center mt-1 font-semibold leading-tight">{tests.length}</p>
-          <p className="text-[8px] text-teal-100">Tests</p>
+          <div className="flex items-center gap-2">
+            <FlaskConical className="w-5 h-5 flex-shrink-0" />
+            <div className="flex flex-col text-left">
+              <p className="text-sm font-semibold leading-tight">{lab.name}</p>
+              <p className="text-xs text-teal-100">{tests.length} tests</p>
+            </div>
+          </div>
 
-          {/* Progress Ring and Indicator */}
+          {/* Progress Indicator */}
           {operationInProgress && (
-            <div className="absolute inset-0 flex items-center justify-center rounded-full">
-              <svg className="w-20 h-20 transform -rotate-90" style={{ filter: "drop-shadow(0 0 2px rgba(0,0,0,0.3))" }}>
-                <circle
-                  cx="40"
-                  cy="40"
-                  r="36"
-                  fill="none"
-                  stroke="rgba(255,255,255,0.2)"
-                  strokeWidth="2"
-                />
-                <circle
-                  cx="40"
-                  cy="40"
-                  r="36"
-                  fill="none"
-                  stroke="rgb(16,185,129)"
-                  strokeWidth="2"
-                  strokeDasharray={`${(36 * 2 * Math.PI * progressPercent) / 100} ${36 * 2 * Math.PI}`}
-                  strokeLinecap="round"
-                  style={{ transition: "stroke-dasharray 0.3s ease" }}
-                />
-              </svg>
-              <div className="absolute flex flex-col items-center">
-                <p className="text-xs font-bold text-white">{progressPercent}%</p>
-                <p className="text-[8px] text-teal-100 capitalize">{operationType}</p>
+            <div className="flex items-center gap-2 pl-3 border-l border-teal-500/50">
+              <div className="flex flex-col text-right">
+                <p className="text-xs font-semibold">{progressPercent}%</p>
+                <p className="text-[10px] text-teal-100 capitalize">{operationType}</p>
+              </div>
+              <div className="relative w-6 h-6">
+                <svg className="w-6 h-6 transform -rotate-90" style={{ filter: "drop-shadow(0 0 1px rgba(0,0,0,0.3))" }}>
+                  <circle
+                    cx="12"
+                    cy="12"
+                    r="10"
+                    fill="none"
+                    stroke="rgba(255,255,255,0.2)"
+                    strokeWidth="1.5"
+                  />
+                  <circle
+                    cx="12"
+                    cy="12"
+                    r="10"
+                    fill="none"
+                    stroke="rgb(255,255,255)"
+                    strokeWidth="1.5"
+                    strokeDasharray={`${(10 * 2 * Math.PI * progressPercent) / 100} ${10 * 2 * Math.PI}`}
+                    strokeLinecap="round"
+                    style={{ transition: "stroke-dasharray 0.3s ease" }}
+                  />
+                </svg>
               </div>
             </div>
           )}
-
-          {/* Tooltip on hover */}
-          <div className="absolute bottom-full mb-2 hidden group-hover:block bg-slate-800 text-white text-xs px-2 py-1 rounded whitespace-nowrap">
-            {lab.name}
-          </div>
         </button>
       </div>
     );

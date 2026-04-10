@@ -100,9 +100,12 @@ function parseExcel(buffer: ArrayBuffer): ParsedRow[] {
 
 /**
  * POST /api/admin/labs/[id]/catalog/upload
- * Parses file immediately and returns operationId.
- * Processes upload in background with progress tracking.
- * Handles up to 50+ sheets without timeout.
+ * Ultra-fast CSV/Excel upload for test catalogs
+ * - Parses file immediately (milliseconds)
+ * - Processes upload in background with progress tracking
+ * - Handles 100+ tests in seconds (no AI synonym generation)
+ * - Users can generate AI synonyms after via bulk "Generate AI" button
+ * - Handles up to 50+ sheets without timeout
  */
 export async function POST(
   req: NextRequest,
@@ -149,57 +152,63 @@ export async function POST(
   (async () => {
     try {
       const defaultCommission = await getDefaultCommission();
-      let completed = 0;
+
+      // BATCH OPTIMIZATION: Get all existing tests in ONE query instead of N queries
+      const existingTests = await prisma.labOfferedTest.findMany({
+        where: { lab_id: id },
+        select: { id: true, raw_name: true, synonyms: true },
+      });
+      const existingMap = new Map(existingTests.map((t) => [t.raw_name, t]));
+
+      // Separate into create and update batches
+      const toCreate: any[] = [];
+      const toUpdate: { id: string; data: any }[] = [];
 
       for (const row of rows) {
-        try {
-          const commission_pct = (!row.commission_pct || isNaN(row.commission_pct)) ? defaultCommission : row.commission_pct;
-          const poveon_fee = parseFloat(((row.price * commission_pct) / 100).toFixed(2));
+        const commission_pct = (!row.commission_pct || isNaN(row.commission_pct)) ? defaultCommission : row.commission_pct;
+        const poveon_fee = parseFloat(((row.price * commission_pct) / 100).toFixed(2));
 
-          const existing = await prisma.labOfferedTest.findUnique({
-            where: { lab_id_raw_name: { lab_id: id, raw_name: row.test_name } },
-            select: { id: true, synonyms: true },
+        const existing = existingMap.get(row.test_name);
+        if (!existing) {
+          toCreate.push({
+            lab_id: id,
+            raw_name: row.test_name,
+            category_label: row.category ?? null,
+            synonyms: [row.test_name],
+            lab_price: row.price,
+            poveon_fee,
+            commission_pct,
+            is_active: row.is_active ?? true,
           });
-
-          if (!existing) {
-            // New test: auto-generate AI synonyms
-            const synonyms = await generateSynonyms(row.test_name, row.category);
-            await prisma.labOfferedTest.create({
-              data: {
-                lab_id: id,
-                raw_name: row.test_name,
-                category_label: row.category ?? null,
-                synonyms,
-                lab_price: row.price,
-                poveon_fee,
-                commission_pct,
-                is_active: row.is_active ?? true,
-              },
-            });
-          } else {
-            // Existing test: update price/commission, preserve synonyms
-            await prisma.labOfferedTest.update({
-              where: { id: existing.id },
-              data: {
-                lab_price: row.price,
-                poveon_fee,
-                commission_pct,
-                is_active: row.is_active ?? true,
-                ...(row.category ? { category_label: row.category } : {}),
-              },
-            });
-          }
-        } catch (err) {
-          console.error(`Error processing row "${row.test_name}":`, err);
-          // Continue processing other rows on error
+        } else {
+          toUpdate.push({
+            id: existing.id,
+            data: {
+              lab_price: row.price,
+              poveon_fee,
+              commission_pct,
+              is_active: row.is_active ?? true,
+              ...(row.category ? { category_label: row.category } : {}),
+            },
+          });
         }
-
-        completed++;
-        updateOperation(progressKey, completed);
       }
 
-      // Clean up after 60 seconds
-      setTimeout(() => deleteOperation(progressKey), 60000);
+      // BATCH INSERT: Create all new tests in one operation
+      if (toCreate.length > 0) {
+        await prisma.labOfferedTest.createMany({ data: toCreate, skipDuplicates: true });
+      }
+
+      // BATCH UPDATE: Update all existing tests
+      for (const { id, data } of toUpdate) {
+        await prisma.labOfferedTest.update({ where: { id }, data });
+      }
+
+      let completed = toCreate.length + toUpdate.length;
+      updateOperation(progressKey, completed);
+
+      // Clean up after 30 seconds
+      setTimeout(() => deleteOperation(progressKey), 30000);
     } catch (error) {
       console.error("Error in background upload:", error);
       setTimeout(() => deleteOperation(progressKey), 60000);
