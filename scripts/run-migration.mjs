@@ -53,6 +53,85 @@ const migrations = [
     `,
     continueOnError: true, // Ignore if table already exists
   },
+  {
+    desc: "lab_synonym_generation_jobs table for background synonym processing",
+    sql: `
+      CREATE TABLE IF NOT EXISTS lab_synonym_generation_jobs (
+        id TEXT PRIMARY KEY,
+        lab_id TEXT NOT NULL REFERENCES labs(id) ON DELETE CASCADE,
+        total_tests INTEGER NOT NULL,
+        completed_tests INTEGER NOT NULL DEFAULT 0,
+        failed_tests INTEGER NOT NULL DEFAULT 0,
+        status TEXT NOT NULL DEFAULT 'processing',
+        error_message TEXT,
+        initiated_by TEXT NOT NULL,
+        started_at TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+        completed_at TIMESTAMP(3),
+        created_at TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP
+      );
+      CREATE INDEX IF NOT EXISTS lab_synonym_generation_jobs_lab_id_status_idx ON lab_synonym_generation_jobs(lab_id, status);
+      CREATE INDEX IF NOT EXISTS lab_synonym_generation_jobs_status_idx ON lab_synonym_generation_jobs(status);
+      CREATE INDEX IF NOT EXISTS lab_synonym_generation_jobs_started_at_idx ON lab_synonym_generation_jobs(started_at);
+    `,
+    continueOnError: true,
+  },
+  {
+    desc: "lab_synonym_generation_test_results table for tracking individual test processing",
+    sql: `
+      CREATE TABLE IF NOT EXISTS lab_synonym_generation_test_results (
+        id TEXT PRIMARY KEY,
+        job_id TEXT NOT NULL REFERENCES lab_synonym_generation_jobs(id) ON DELETE CASCADE,
+        test_id TEXT NOT NULL,
+        status TEXT NOT NULL DEFAULT 'pending',
+        generated_synonyms JSONB,
+        error_message TEXT,
+        retry_count INTEGER NOT NULL DEFAULT 0,
+        max_retries INTEGER NOT NULL DEFAULT 3,
+        last_attempted_at TIMESTAMP(3),
+        completed_at TIMESTAMP(3),
+        created_at TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+        UNIQUE(job_id, test_id)
+      );
+      CREATE INDEX IF NOT EXISTS lab_synonym_generation_test_results_job_id_status_idx ON lab_synonym_generation_test_results(job_id, status);
+      CREATE INDEX IF NOT EXISTS lab_synonym_generation_test_results_status_idx ON lab_synonym_generation_test_results(status);
+    `,
+    continueOnError: true,
+  },
+  {
+    desc: "test_knowledge_bases table for KB management",
+    sql: `
+      CREATE TABLE IF NOT EXISTS test_knowledge_bases (
+        id TEXT PRIMARY KEY,
+        canonical_name TEXT NOT NULL UNIQUE,
+        synonyms JSONB NOT NULL DEFAULT '[]',
+        variants JSONB NOT NULL DEFAULT '[]',
+        category TEXT,
+        description TEXT,
+        is_active BOOLEAN NOT NULL DEFAULT true,
+        created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+        updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
+      );
+      CREATE INDEX IF NOT EXISTS test_knowledge_bases_canonical_name_idx ON test_knowledge_bases(canonical_name);
+    `,
+    continueOnError: true,
+  },
+  {
+    desc: "lab_test_kb_mappings table for KB mapping",
+    sql: `
+      CREATE TABLE IF NOT EXISTS lab_test_kb_mappings (
+        id TEXT PRIMARY KEY,
+        lab_id TEXT NOT NULL REFERENCES labs(id) ON DELETE CASCADE,
+        lab_test_name TEXT NOT NULL,
+        knowledge_base_id TEXT NOT NULL REFERENCES test_knowledge_bases(id) ON DELETE CASCADE,
+        variants_available JSONB,
+        is_active BOOLEAN NOT NULL DEFAULT true,
+        created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+        UNIQUE(lab_id, lab_test_name)
+      );
+      CREATE INDEX IF NOT EXISTS lab_test_kb_mappings_lab_id_knowledge_base_id_idx ON lab_test_kb_mappings(lab_id, knowledge_base_id);
+    `,
+    continueOnError: true,
+  },
 ];
 
 let failed = false;

@@ -17,7 +17,7 @@ export interface Lab {
   description: string;
   phones: PhoneEntry[];
   email: string;
-  notification_email: string | null;
+  notification_email: string | null; // Branded "from" address for emails (must be verified in Resend)
   logo_url: string | null;
   hero_image_url: string | null;
   whatsapp: string | null;

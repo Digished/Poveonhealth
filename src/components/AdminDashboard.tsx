@@ -3400,9 +3400,9 @@ function AdminTransactionsTab({ labs }: { labs: Lab[] }) {
    Admin Knowledge Base Tab
 ───────────────────────────────────────────── */
 type KbTest = {
-  id: string; canonical_name: string; synonyms: string[];
+  id: string; canonical_name: string; synonyms: string[]; variants: string[];
   category: string | null; description: string | null;
-  updated_at: string; lab_count: number;
+  lab_count: number;
   labs: { lab_id: string; lab_name: string; price: number }[];
 };
 
@@ -3422,6 +3422,7 @@ function AdminKnowledgeBaseTab() {
   const [savingSyn, setSavingSyn] = useState(false);
   const [syncing, setSyncing] = useState(false);
   const [syncMode, setSyncMode] = useState<"new_only" | "merge_synonyms">("new_only");
+  const [seeding, setSeeding] = useState(false);
   const [hospitalTab, setHospitalTab] = useState(false);
   const [hospitals, setHospitals] = useState<{ id: string; name: string; city: string | null; is_active: boolean }[]>([]);
   const [hospLoading, setHospLoading] = useState(false);
@@ -3432,7 +3433,7 @@ function AdminKnowledgeBaseTab() {
 
   const fetchKb = useCallback(async (q?: string) => {
     setLoading(true);
-    const url = `/api/admin/kb${q ? `?q=${encodeURIComponent(q)}` : ""}`;
+    const url = `/api/admin/test-kb-manage${q ? `?q=${encodeURIComponent(q)}` : ""}`;
     try {
       const res = await fetch(url);
       const data = await res.json();
@@ -3455,19 +3456,52 @@ function AdminKnowledgeBaseTab() {
   useEffect(() => { fetchKb(); }, [fetchKb]);
   useEffect(() => { if (hospitalTab) fetchHospitals(); }, [hospitalTab, fetchHospitals]);
 
-  async function handleSync() {
-    setSyncing(true);
+  async function handleSeed() {
+    setSeeding(true);
     try {
-      const res = await fetch("/api/admin/kb/sync", {
+      const res = await fetch("/api/admin/test-kb-manage/seed", {
         method: "POST", headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ mode: syncMode }),
+        body: JSON.stringify({ action: "seed" }),
       });
       const data = await res.json();
       if (data.success) {
-        toast.success(`Synced: ${data.created} new · ${data.merged} merged · ${data.total_scanned} scanned`);
+        toast.success(`Seeded ${data.created} tests (${data.skipped} already existed)`);
         fetchKb();
-      } else { toast.error("Sync failed"); }
-    } catch { toast.error("Sync failed"); }
+      } else { toast.error("Seeding failed"); }
+    } catch (e) { console.error(e); toast.error("Seed failed"); }
+    setSeeding(false);
+  }
+
+  async function handleSync() {
+    setSyncing(true);
+    try {
+      // Step 1: Migrate old KB to new system if needed
+      let migrateRes = await fetch("/api/admin/test-kb-manage/migrate", {
+        method: "POST", headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ action: "migrate_from_old_kb" }),
+      });
+      const migrateData = await migrateRes.json();
+      console.log("Migration result:", migrateData);
+
+      // Step 2: Clear old synonyms
+      let clearRes = await fetch("/api/admin/test-kb-manage/migrate", {
+        method: "POST", headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ action: "clear_old_synonyms" }),
+      });
+      const clearData = await clearRes.json();
+      console.log("Clear synonyms result:", clearData);
+
+      // Step 3: Map labs to KB
+      let mapRes = await fetch("/api/admin/test-kb-manage/migrate", {
+        method: "POST", headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ action: "map_labs_to_kb" }),
+      });
+      const mapData = await mapRes.json();
+      console.log("Mapping result:", mapData);
+
+      toast.success(`Sync complete: Migrated ${migrateData.migrated} tests, mapped ${mapData.created} lab tests`);
+      fetchKb();
+    } catch (e) { console.error(e); toast.error("Sync failed"); }
     setSyncing(false);
   }
 
@@ -3476,7 +3510,7 @@ function AdminKnowledgeBaseTab() {
     setAdding(true);
     try {
       const syns = addSyns.split(",").map((s) => s.trim()).filter(Boolean);
-      const res = await fetch("/api/admin/kb", {
+      const res = await fetch("/api/admin/test-kb-manage", {
         method: "POST", headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ canonical_name: addName.trim(), synonyms: syns, category: addCategory.trim() || null }),
       });
@@ -3490,14 +3524,14 @@ function AdminKnowledgeBaseTab() {
 
   async function handleDelete(id: string, name: string) {
     if (!confirm(`Remove "${name}" from the knowledge base?`)) return;
-    await fetch(`/api/admin/kb/${id}`, { method: "DELETE" });
+    await fetch(`/api/admin/test-kb-manage/${id}`, { method: "DELETE" });
     setTests((prev) => prev.filter((t) => t.id !== id));
   }
 
   async function saveSynonyms(id: string, raw: string) {
     setSavingSyn(true);
     const syns = raw.split(",").map((s) => s.trim()).filter(Boolean);
-    const res = await fetch(`/api/admin/kb/${id}`, {
+    const res = await fetch(`/api/admin/test-kb-manage/${id}`, {
       method: "PATCH", headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ synonyms: syns }),
     });
@@ -3595,15 +3629,17 @@ function AdminKnowledgeBaseTab() {
             </div>
             <div className="flex items-center gap-3 pt-1 border-t border-white/8">
               <Sparkles className="w-4 h-4 text-amber-400 shrink-0" />
-              <p className="text-xs text-slate-400 flex-1">Auto-sync imports test names from all lab catalogs into this knowledge base.</p>
-              <select value={syncMode} onChange={(e) => setSyncMode(e.target.value as "new_only" | "merge_synonyms")} className="text-xs bg-white/8 border border-white/10 text-slate-300 rounded-lg px-2 py-1.5 [color-scheme:dark] focus:outline-none">
-                <option value="new_only">New entries only</option>
-                <option value="merge_synonyms">Merge synonyms too</option>
-              </select>
-              <button onClick={handleSync} disabled={syncing} className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-amber-500/20 border border-amber-500/30 text-amber-300 text-xs font-semibold hover:bg-amber-500/30 transition-colors disabled:opacity-50">
-                {syncing ? <RefreshCw className="w-3.5 h-3.5 animate-spin" /> : <Sparkles className="w-3.5 h-3.5" />}
-                {syncing ? "Syncing…" : "Sync from Labs"}
-              </button>
+              <p className="text-xs text-slate-400 flex-1">Populate or sync the Knowledge Base with tests and lab data.</p>
+              <div className="flex gap-2">
+                <button onClick={handleSeed} disabled={seeding} className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-green-500/20 border border-green-500/30 text-green-300 text-xs font-semibold hover:bg-green-500/30 transition-colors disabled:opacity-50">
+                  {seeding ? <RefreshCw className="w-3.5 h-3.5 animate-spin" /> : <Plus className="w-3.5 h-3.5" />}
+                  {seeding ? "Seeding…" : "Seed KB"}
+                </button>
+                <button onClick={handleSync} disabled={syncing} className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-amber-500/20 border border-amber-500/30 text-amber-300 text-xs font-semibold hover:bg-amber-500/30 transition-colors disabled:opacity-50">
+                  {syncing ? <RefreshCw className="w-3.5 h-3.5 animate-spin" /> : <Sparkles className="w-3.5 h-3.5" />}
+                  {syncing ? "Syncing…" : "Migrate & Sync"}
+                </button>
+              </div>
             </div>
           </div>
 
@@ -3643,7 +3679,8 @@ function AdminKnowledgeBaseTab() {
                           {test.category && <span className="text-[10px] bg-sky-500/15 text-sky-400 border border-sky-500/20 px-1.5 py-0.5 rounded-full">{test.category}</span>}
                         </div>
                         <p className="text-xs text-slate-500 mt-0.5 truncate">
-                          {test.synonyms.length > 0 ? test.synonyms.slice(0, 4).join(" · ") + (test.synonyms.length > 4 ? ` +${test.synonyms.length - 4}` : "") : "No synonyms"}
+                          {test.synonyms.length > 0 ? test.synonyms.slice(0, 3).join(" · ") + (test.synonyms.length > 3 ? ` +${test.synonyms.length - 3}` : "") : "No synonyms"}
+                          {test.variants && test.variants.length > 0 && ` • Variants: ${test.variants.slice(0, 2).join(", ")}`}
                         </p>
                       </div>
                       <div className="shrink-0 text-right">
@@ -3670,6 +3707,14 @@ function AdminKnowledgeBaseTab() {
                             </div>
                           )}
                         </div>
+                        {test.variants && test.variants.length > 0 && (
+                          <div>
+                            <p className="text-xs text-slate-400 font-semibold uppercase tracking-wider mb-2">Variants</p>
+                            <div className="flex flex-wrap gap-1.5">
+                              {test.variants.map((v) => <span key={v} className="text-xs bg-purple-500/10 text-purple-300 border border-purple-500/20 px-2 py-0.5 rounded-full">{v}</span>)}
+                            </div>
+                          </div>
+                        )}
                         {test.labs.length > 0 && (
                           <div>
                             <p className="text-xs text-slate-400 font-semibold uppercase tracking-wider mb-2">Labs offering this test</p>
@@ -4939,10 +4984,38 @@ function AdminLabCatalogModal({ lab, onClose }: { lab: Lab; onClose: () => void 
   const [editingId, setEditingId] = useState<string | null>(null);
   const [editVals, setEditVals] = useState<{ raw_name: string; lab_price: string; commission_pct: string; category_label: string; synonyms: string }>({ raw_name: "", lab_price: "", commission_pct: "", category_label: "", synonyms: "" });
   const [newRow, setNewRow] = useState({ raw_name: "", lab_price: "", commission_pct: "", category_label: "", synonyms: "" });
-  const [generationProgress, setGenerationProgress] = useState<{ operationId: string; percent: number; completed: number; total: number } | null>(null);
+  const [generationProgress, setGenerationProgress] = useState<{ jobId: string; percent: number; completed: number; total: number; status?: string } | null>(null);
   const [uploadProgress, setUploadProgress] = useState<{ operationId: string; percent: number; completed: number; total: number } | null>(null);
   const [isModalMinimized, setIsModalMinimized] = useState(false);
+  const [kbMappings, setKbMappings] = useState<Record<string, { canonical: string; synonyms: string[]; variants: string[] }>>({});
+  const [mappingLabTestId, setMappingLabTestId] = useState<string | null>(null);
+  const [mappingSearchQuery, setMappingSearchQuery] = useState("");
+  const [mappingOptions, setMappingOptions] = useState<Array<{ id: string; canonical: string; synonyms: string[]; variants: string[] }>>([]);
+  const [mappingLoading, setMappingLoading] = useState(false);
   const fileRef = useRef<HTMLInputElement>(null);
+
+  // Fetch KB mappings for this lab
+  const loadMappings = useCallback(async () => {
+    try {
+      const res = await fetch(`/api/admin/test-kb-manage/lab-mappings/${lab.id}`);
+      const data = await res.json();
+      if (data.success) {
+        const mappingMap: typeof kbMappings = {};
+        for (const test of data.tests) {
+          if (test.isMapped) {
+            mappingMap[test.labTestId] = {
+              canonical: test.canonical,
+              synonyms: test.synonyms,
+              variants: test.variants,
+            };
+          }
+        }
+        setKbMappings(mappingMap);
+      }
+    } catch (e) {
+      console.error("[lab-mappings] load error:", e);
+    }
+  }, [lab.id]);
 
   // Extract unique categories from tests
   const categories = useMemo(() => {
@@ -4960,7 +5033,7 @@ function AdminLabCatalogModal({ lab, onClose }: { lab: Lab; onClose: () => void 
     finally { setLoading(false); }
   }, [lab.id]);
 
-  useEffect(() => { load(); }, [load]);
+  useEffect(() => { load(); loadMappings(); }, [load, loadMappings]);
 
   const visible = useMemo(() => {
     let result = tests;
@@ -5185,44 +5258,53 @@ function AdminLabCatalogModal({ lab, onClose }: { lab: Lab; onClose: () => void 
       const d = await res.json();
       if (!res.ok) { toast.error(d.error ?? "Failed"); return; }
 
-      // Start polling progress
-      if (d.operationId) {
-        setGenerationProgress({ operationId: d.operationId, percent: 0, completed: 0, total: ids.length });
+      // Start polling progress using jobId
+      if (d.jobId) {
+        setGenerationProgress({ jobId: d.jobId, percent: 0, completed: 0, total: ids.length, status: "processing" });
+        toast.success("Synonym generation started. Processing in background...");
 
         const pollProgress = async () => {
           try {
             const progressRes = await fetch(
-              `/api/admin/labs/${lab.id}/catalog/progress?operation=${d.operationId}`
+              `/api/admin/labs/${lab.id}/catalog/synonym-progress?jobId=${d.jobId}`
             );
             if (!progressRes.ok) {
-              // Operation completed or expired
-              toast.success(`Generated AI synonyms for ${ids.length} tests`);
+              // Job not found
               setGenerationProgress(null);
-              setSelected(new Set());
-              await load();
               return;
             }
             const progress = await progressRes.json();
+            if (!progress.success) {
+              setGenerationProgress(null);
+              return;
+            }
+
             setGenerationProgress({
-              operationId: d.operationId,
+              jobId: d.jobId,
               percent: progress.percent,
               completed: progress.completed,
               total: progress.total,
+              status: progress.status,
             });
 
-            if (!progress.isComplete) {
-              setTimeout(pollProgress, 2000); // Poll every 2 seconds
-            } else {
+            if (progress.isComplete) {
               setTimeout(() => {
-                toast.success(`Generated AI synonyms for ${ids.length} tests`);
+                const message = progress.status === "completed"
+                  ? `Generated AI synonyms for ${progress.completed} tests (${progress.failed} failed)`
+                  : `Synonym generation failed: ${progress.errorMessage || "Unknown error"}`;
+                toast.success(message);
                 setGenerationProgress(null);
                 setSelected(new Set());
                 load();
               }, 500);
+            } else {
+              // Continue polling every 3 seconds
+              setTimeout(pollProgress, 3000);
             }
-          } catch {
-            // Stop polling on error
-            setGenerationProgress(null);
+          } catch (err) {
+            console.error("[handleGenerateSynonyms] polling error:", err);
+            // Continue polling even on error
+            setTimeout(pollProgress, 5000);
           }
         };
 
@@ -5519,6 +5601,7 @@ function AdminLabCatalogModal({ lab, onClose }: { lab: Lab; onClose: () => void 
                     className="rounded border-white/20 bg-white/5 text-teal-500 cursor-pointer" />
                 </th>
                 <th className="px-3 py-3 text-left text-slate-400 font-semibold uppercase tracking-wider">Test Name</th>
+                <th className="px-3 py-3 text-left text-slate-400 font-semibold uppercase tracking-wider">KB Mapping</th>
                 <th className="px-3 py-3 text-left text-slate-400 font-semibold uppercase tracking-wider">Category</th>
                 <th className="px-3 py-3 text-left text-slate-400 font-semibold uppercase tracking-wider">Synonyms</th>
                 <th className="px-3 py-3 text-right text-slate-400 font-semibold uppercase tracking-wider">Price (₦)</th>
@@ -5536,6 +5619,9 @@ function AdminLabCatalogModal({ lab, onClose }: { lab: Lab; onClose: () => void 
                   <td className="px-3 py-2">
                     <input autoFocus value={newRow.raw_name} onChange={(e) => setNewRow((p) => ({ ...p, raw_name: e.target.value }))}
                       placeholder="Test name *" className="w-full bg-white/8 border border-teal-500/40 rounded-lg px-2.5 py-1.5 text-white text-xs focus:outline-none focus:ring-1 focus:ring-teal-400" />
+                  </td>
+                  <td className="px-3 py-2">
+                    <span className="text-slate-500 text-xs">—</span>
                   </td>
                   <td className="px-3 py-2">
                     <input value={newRow.category_label} onChange={(e) => setNewRow((p) => ({ ...p, category_label: e.target.value }))}
@@ -5585,6 +5671,13 @@ function AdminLabCatalogModal({ lab, onClose }: { lab: Lab; onClose: () => void 
                           <input value={editVals.raw_name} onChange={(e) => setEditVals((p) => ({ ...p, raw_name: e.target.value }))} autoFocus
                             className="w-full bg-white/8 border border-teal-500/40 rounded-lg px-2.5 py-1 text-white text-xs focus:outline-none focus:ring-1 focus:ring-teal-400" />
                         </td>
+                        <td className="px-3 py-2 text-xs">
+                          {kbMappings[t.id] ? (
+                            <span className="text-emerald-300">{kbMappings[t.id].canonical}</span>
+                          ) : (
+                            <span className="text-slate-500">—</span>
+                          )}
+                        </td>
                         <td className="px-3 py-2">
                           <input value={editVals.category_label} onChange={(e) => setEditVals((p) => ({ ...p, category_label: e.target.value }))}
                             className="w-full bg-white/8 border border-white/10 rounded-lg px-2.5 py-1 text-white text-xs focus:outline-none" />
@@ -5613,6 +5706,13 @@ function AdminLabCatalogModal({ lab, onClose }: { lab: Lab; onClose: () => void 
                     ) : (
                       <>
                         <td className="px-3 py-2.5 text-white font-medium max-w-[180px] truncate" title={t.raw_name}>{t.raw_name}</td>
+                        <td className="px-3 py-2.5 text-xs">
+                          {kbMappings[t.id] ? (
+                            <div className="text-emerald-300">{kbMappings[t.id].canonical}</div>
+                          ) : (
+                            <button onClick={() => setMappingLabTestId(t.id)} className="text-sky-400 hover:text-sky-300 underline">Map</button>
+                          )}
+                        </td>
                         <td className="px-3 py-2.5 text-slate-400 max-w-[100px] truncate">{t.category_label || <span className="text-slate-600">—</span>}</td>
                         <td className="px-3 py-2.5 text-slate-400 max-w-[150px]">
                           {t.synonyms && t.synonyms.length > 0 ? (
@@ -5668,6 +5768,216 @@ function AdminLabCatalogModal({ lab, onClose }: { lab: Lab; onClose: () => void 
         </div>
         )}
         </>)}
+
+        {/* KB Mapping Modal */}
+        {mappingLabTestId && (
+          <KbMappingModal
+            labId={lab.id}
+            testId={mappingLabTestId}
+            testName={tests.find((t) => t.id === mappingLabTestId)?.raw_name || ""}
+            onClose={() => setMappingLabTestId(null)}
+            onMapped={(canonical, synonyms, variants) => {
+              setKbMappings((prev) => ({
+                ...prev,
+                [mappingLabTestId]: { canonical, synonyms, variants },
+              }));
+              setMappingLabTestId(null);
+            }}
+          />
+        )}
+      </div>
+    </div>
+  );
+}
+
+// ── KB Mapping Modal ─────────────────────────────────────────────────────────
+
+function KbMappingModal({
+  labId,
+  testId,
+  testName,
+  onClose,
+  onMapped,
+}: {
+  labId: string;
+  testId: string;
+  testName: string;
+  onClose: () => void;
+  onMapped: (canonical: string, synonyms: string[], variants: string[]) => void;
+}) {
+  const [searchQuery, setSearchQuery] = useState("");
+  const [searchResults, setSearchResults] = useState<Array<{ id: string; canonical: string; synonyms: string[]; variants: string[] }>>([]);
+  const [searching, setSearching] = useState(false);
+  const [mapping, setMapping] = useState(false);
+  const [selectedVariants, setSelectedVariants] = useState<string[]>([]);
+
+  const handleSearch = useCallback(async () => {
+    if (!searchQuery.trim()) {
+      setSearchResults([]);
+      return;
+    }
+
+    setSearching(true);
+    try {
+      const res = await fetch(
+        `/api/admin/test-kb/search?q=${encodeURIComponent(searchQuery)}&limit=10`
+      );
+      const data = await res.json();
+      if (data.success) {
+        setSearchResults(
+          data.tests.map((t: any) => ({
+            id: t.id,
+            canonical: t.canonical,
+            synonyms: t.synonyms || [],
+            variants: t.variants || [],
+          }))
+        );
+      }
+    } catch (e) {
+      console.error("Search error:", e);
+    }
+    setSearching(false);
+  }, [searchQuery]);
+
+  const handleMapTest = async (kbTestId: string, canonical: string, synonyms: string[], variants: string[]) => {
+    setMapping(true);
+    try {
+      const res = await fetch(
+        `/api/admin/labs/${labId}/test-kb-mapping`,
+        {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            labTestName: testName,
+            knowledgeBaseId: kbTestId,
+            variantsAvailable: selectedVariants.length > 0 ? selectedVariants : null,
+          }),
+        }
+      );
+      const data = await res.json();
+      if (data.success) {
+        toast.success(`Mapped to ${canonical}`);
+        onMapped(canonical, synonyms, variants);
+        onClose();
+      } else {
+        toast.error(data.error || "Mapping failed");
+      }
+    } catch (e) {
+      toast.error("Mapping error");
+    }
+    setMapping(false);
+  };
+
+  return (
+    <div
+      className="fixed inset-0 z-50 flex items-center justify-center p-4"
+      style={{ backgroundColor: "rgba(2,6,23,0.85)", backdropFilter: "blur(6px)" }}
+      onClick={onClose}
+    >
+      <div
+        className="w-full max-w-lg bg-slate-900 border border-white/10 rounded-2xl shadow-2xl overflow-hidden flex flex-col max-h-[80vh]"
+        onClick={(e) => e.stopPropagation()}
+      >
+        {/* Header */}
+        <div className="px-6 py-4 border-b border-white/8">
+          <h2 className="font-semibold text-white">Map to Knowledge Base</h2>
+          <p className="text-xs text-slate-400 mt-1">
+            Search and select a KB entry to map: <span className="font-mono text-slate-300">{testName}</span>
+          </p>
+        </div>
+
+        {/* Search */}
+        <div className="px-6 py-4 border-b border-white/8 space-y-3">
+          <div className="flex gap-2">
+            <input
+              autoFocus
+              value={searchQuery}
+              onChange={(e) => setSearchQuery(e.target.value)}
+              onKeyDown={(e) => e.key === "Enter" && handleSearch()}
+              placeholder="Search KB tests..."
+              className="flex-1 px-3 py-2 rounded-lg bg-white/8 border border-white/10 text-sm text-white placeholder-slate-500 focus:outline-none focus:ring-1 focus:ring-teal-500"
+            />
+            <button
+              onClick={handleSearch}
+              disabled={searching}
+              className="px-4 py-2 rounded-lg bg-teal-600 hover:bg-teal-500 text-white text-sm font-medium disabled:opacity-50 transition-colors"
+            >
+              {searching ? "..." : "Search"}
+            </button>
+          </div>
+        </div>
+
+        {/* Results */}
+        <div className="flex-1 overflow-y-auto px-6 py-4 space-y-2">
+          {searchResults.length === 0 ? (
+            <p className="text-center py-8 text-slate-500 text-sm">
+              {searchQuery ? "No results found" : "Enter a search term"}
+            </p>
+          ) : (
+            searchResults.map((result) => (
+              <div
+                key={result.id}
+                className="bg-white/5 border border-white/10 rounded-lg p-4 space-y-2"
+              >
+                <div className="flex items-start justify-between gap-3">
+                  <div className="flex-1 min-w-0">
+                    <p className="font-medium text-white text-sm">{result.canonical}</p>
+                    {result.synonyms.length > 0 && (
+                      <p className="text-xs text-slate-400 mt-1">
+                        {result.synonyms.slice(0, 3).join(", ")}
+                        {result.synonyms.length > 3 && ` +${result.synonyms.length - 3}`}
+                      </p>
+                    )}
+                  </div>
+                </div>
+
+                {/* Variants selection */}
+                {result.variants.length > 0 && (
+                  <div className="space-y-2">
+                    <p className="text-xs text-slate-400">Variants offered by this lab:</p>
+                    <div className="flex flex-wrap gap-2">
+                      {result.variants.map((v) => (
+                        <button
+                          key={v}
+                          onClick={() =>
+                            setSelectedVariants((prev) =>
+                              prev.includes(v) ? prev.filter((x) => x !== v) : [...prev, v]
+                            )
+                          }
+                          className={`px-2.5 py-1 rounded-full text-xs font-medium transition-colors ${
+                            selectedVariants.includes(v)
+                              ? "bg-teal-600 text-white"
+                              : "bg-white/10 text-slate-300 hover:bg-white/15"
+                          }`}
+                        >
+                          {v}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+                )}
+
+                <button
+                  onClick={() => handleMapTest(result.id, result.canonical, result.synonyms, result.variants)}
+                  disabled={mapping}
+                  className="w-full mt-3 px-3 py-2 rounded-lg bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-medium disabled:opacity-50 transition-colors"
+                >
+                  {mapping ? "Mapping..." : "Select This"}
+                </button>
+              </div>
+            ))
+          )}
+        </div>
+
+        {/* Footer */}
+        <div className="px-6 py-4 border-t border-white/8 flex justify-end gap-2">
+          <button
+            onClick={onClose}
+            className="px-4 py-2 rounded-lg bg-white/8 hover:bg-white/12 text-slate-300 text-sm transition-colors"
+          >
+            Cancel
+          </button>
+        </div>
       </div>
     </div>
   );

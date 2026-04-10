@@ -6,11 +6,13 @@ export const FROM_ADDRESS = "Poveon <notifications@poveon.com>";
 
 /**
  * Returns the "from" address for a lab's outgoing emails.
- * Always sends from notifications@poveon.com but with the lab name as the display name.
- * This makes emails appear to come from the lab while keeping the unified inbox.
+ * Uses the lab's branded email (notification_email) if set, otherwise defaults to Poveon email.
  *
- * Example: "XYZ Laboratory <notifications@poveon.com>"
+ * Example: "XYZ Laboratory <hello@xyzlab.com>" or "XYZ Laboratory <notifications@poveon.com>"
  */
-export function labSender(lab: { name: string }): string {
+export function labSender(lab: { name: string; notification_email?: string | null }): string {
+  if (lab.notification_email) {
+    return `${lab.name} <${lab.notification_email}>`;
+  }
   return `${lab.name} <notifications@poveon.com>`;
 }

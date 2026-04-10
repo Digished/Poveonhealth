@@ -41,6 +41,8 @@ model Lab {
   lab_offered_tests LabOfferedTest[]
   agreement_invites LabAgreementInvite[]
   agreements        LabAgreement[]
+  synonym_generation_jobs LabSynonymGenerationJob[]
+  test_kb_mappings LabTestKnowledgeBaseMapping[]
 
   @@map("labs")
 }
@@ -555,6 +557,91 @@ model SmsLog {
   @@index([request_id])
   @@index([created_at])
   @@map("sms_logs")
+}
+
+// ── Synonym Generation Jobs ──────────────────────────────────────────────────
+
+// Tracks long-running synonym generation operations — persists across server restarts
+model LabSynonymGenerationJob {
+  id               String   @id @default(uuid())
+  lab_id           String
+  total_tests      Int
+  completed_tests  Int      @default(0)
+  failed_tests     Int      @default(0)
+  status           String   @default("processing") // "processing" | "completed" | "failed"
+  error_message    String?
+  initiated_by     String // admin email who started the job
+  started_at       DateTime @default(now())
+  completed_at     DateTime?
+  created_at       DateTime @default(now())
+
+  lab              Lab      @relation(fields: [lab_id], references: [id], onDelete: Cascade)
+  test_results     LabSynonymGenerationTestResult[]
+
+  @@index([lab_id, status])
+  @@index([status])
+  @@index([started_at])
+  @@map("lab_synonym_generation_jobs")
+}
+
+// Per-test results for synonym generation — allows retry tracking
+model LabSynonymGenerationTestResult {
+  id               String   @id @default(uuid())
+  job_id           String
+  test_id          String
+  status           String   @default("pending") // "pending" | "processing" | "completed" | "failed"
+  generated_synonyms Json? // stored synonyms if succeeded
+  error_message    String?
+  retry_count      Int      @default(0)
+  max_retries      Int      @default(3)
+  last_attempted_at DateTime?
+  completed_at     DateTime?
+  created_at       DateTime @default(now())
+
+  job              LabSynonymGenerationJob @relation(fields: [job_id], references: [id], onDelete: Cascade)
+
+  @@unique([job_id, test_id])
+  @@index([job_id, status])
+  @@index([status])
+  @@map("lab_synonym_generation_test_results")
+}
+
+// ── Test Knowledge Base ───────────────────────────────────────────────────────
+
+// Global knowledge base of medical tests with synonyms and variants
+model TestKnowledgeBase {
+  id              String   @id @default(uuid())
+  canonical_name  String   @unique
+  synonyms        Json     @default("[]") // ["FBC", "CBC", "Complete Blood Count"]
+  variants        Json     @default("[]") // ["1.5T", "3T"] or [] for simple tests
+  category        String? // "Hematology", "Imaging", etc
+  description     String?
+  is_active       Boolean  @default(true)
+  created_at      DateTime @default(now())
+  updated_at      DateTime @updatedAt
+
+  lab_test_mappings LabTestKnowledgeBaseMapping[]
+
+  @@index([canonical_name])
+  @@map("test_knowledge_bases")
+}
+
+// Mapping: each lab's test → KB canonical test
+model LabTestKnowledgeBaseMapping {
+  id                String   @id @default(uuid())
+  lab_id            String
+  lab_test_name     String   // Test name as stored in lab's catalog
+  knowledge_base_id String
+  variants_available Json?   // ["1.5T", "3T"] if lab only offers some variants
+  is_active         Boolean  @default(true)
+  created_at        DateTime @default(now())
+
+  lab               Lab      @relation(fields: [lab_id], references: [id], onDelete: Cascade)
+  knowledge_base    TestKnowledgeBase @relation(fields: [knowledge_base_id], references: [id], onDelete: Cascade)
+
+  @@unique([lab_id, lab_test_name])
+  @@index([lab_id, knowledge_base_id])
+  @@map("lab_test_kb_mappings")
 }
 
 // ── Lab Agreements ────────────────────────────────────────────────────────────

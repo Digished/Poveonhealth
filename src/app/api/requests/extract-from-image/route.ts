@@ -47,11 +47,18 @@ const USER_PROMPT = `Extract all clinical data from this test request slip and r
 export async function POST(req: NextRequest) {
   try {
     const body = await req.json();
-    const { imageUrl } = body as { imageUrl?: string };
+    const { imageUrl, labId } = body as { imageUrl?: string; labId?: string };
 
     if (!imageUrl || typeof imageUrl !== "string") {
       return NextResponse.json(
         { success: false, error: "imageUrl is required" },
+        { status: 400 }
+      );
+    }
+
+    if (!labId || typeof labId !== "string") {
+      return NextResponse.json(
+        { success: false, error: "labId is required" },
         { status: 400 }
       );
     }
@@ -152,7 +159,40 @@ export async function POST(req: NextRequest) {
         : [],
     };
 
-    return NextResponse.json({ success: true, extracted: safe });
+    // Resolve extracted tests against KB for the selected lab
+    let resolvedTests: any = null;
+    if (safe.tests.length > 0) {
+      try {
+        const resolveResponse = await fetch(
+          `${process.env.NEXT_PUBLIC_APP_URL || "http://localhost:3000"}/api/tests/resolve`,
+          {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              labId,
+              testInputs: safe.tests,
+            }),
+          }
+        );
+
+        if (resolveResponse.ok) {
+          const resolveData = await resolveResponse.json();
+          resolvedTests = resolveData.results || null;
+          console.log("[extract-from-image] Resolved tests:", resolvedTests);
+        } else {
+          console.warn("[extract-from-image] KB resolve failed, returning raw extraction");
+        }
+      } catch (err) {
+        console.warn("[extract-from-image] KB resolution error:", err);
+        // Continue anyway - return raw extraction
+      }
+    }
+
+    return NextResponse.json({
+      success: true,
+      extracted: safe,
+      resolvedTests, // Include resolved tests if KB resolution succeeded
+    });
   } catch (err) {
     console.error("[extract-from-image]", err);
 
