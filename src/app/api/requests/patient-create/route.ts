@@ -212,6 +212,7 @@ export async function POST(request: NextRequest) {
             testCategories: testsToCategories(data.tests),
             requestPageUrl: `${appUrl}/r/${code}`,
             isSelfService: true,
+            brand: { name: lab.name },
           }),
         });
 

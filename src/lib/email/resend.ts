@@ -2,17 +2,15 @@ import { Resend } from "resend";
 
 export const resend = new Resend(process.env.RESEND_API_KEY);
 
-export const FROM_ADDRESS = `${process.env.FROM_NAME ?? "Poveon"} <${process.env.FROM_EMAIL ?? "notifications@poveon.com"}>`;
+export const FROM_ADDRESS = "Poveon <notifications@poveon.com>";
 
 /**
- * Returns the correct "from" address for a lab's outgoing emails.
- * If the lab has a custom notification_email set (e.g. no-reply@foremost.com),
- * that address is used so the email appears to come from the lab.
- * Falls back to the platform default (notifications@poveon.com).
+ * Returns the "from" address for a lab's outgoing emails.
+ * Always sends from notifications@poveon.com but with the lab name as the display name.
+ * This makes emails appear to come from the lab while keeping the unified inbox.
  *
- * NOTE: Custom addresses must be verified in Resend before use.
+ * Example: "XYZ Laboratory <notifications@poveon.com>"
  */
-export function labSender(lab: { name: string; notification_email?: string | null }): string {
-  if (lab.notification_email) return `${lab.name} <${lab.notification_email}>`;
-  return FROM_ADDRESS;
+export function labSender(lab: { name: string }): string {
+  return `${lab.name} <notifications@poveon.com>`;
 }
