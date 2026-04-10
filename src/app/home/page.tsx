@@ -62,10 +62,13 @@ export default function HomePage() {
                   Start Now
                   <ArrowRight className="w-5 h-5" />
                 </Link>
-                <button className="inline-flex items-center justify-center gap-2 px-6 py-3 rounded-xl border border-slate-200 text-slate-700 font-semibold hover:bg-slate-50 transition">
+                <a
+                  href="#features"
+                  className="inline-flex items-center justify-center gap-2 px-6 py-3 rounded-xl border border-slate-200 text-slate-700 font-semibold hover:bg-slate-50 transition"
+                >
                   <MessageCircle className="w-5 h-5" />
                   Learn More
-                </button>
+                </a>
               </div>
 
               {/* Stats */}
@@ -291,7 +294,6 @@ export default function HomePage() {
               <ul className="space-y-2 text-sm">
                 <li><a href="/about" className="hover:text-white transition">About</a></li>
                 <li><a href="/contact" className="hover:text-white transition">Contact</a></li>
-                <li><a href="/careers" className="hover:text-white transition">Careers</a></li>
               </ul>
             </div>
 
@@ -306,14 +308,7 @@ export default function HomePage() {
           </div>
 
           <div className="border-t border-slate-800 pt-8">
-            <div className="flex flex-col sm:flex-row items-center justify-between gap-4">
-              <p className="text-sm">© 2025 Poveon Health. All rights reserved.</p>
-              <div className="flex gap-6">
-                <a href="#" className="hover:text-white transition">Twitter</a>
-                <a href="#" className="hover:text-white transition">LinkedIn</a>
-                <a href="#" className="hover:text-white transition">Facebook</a>
-              </div>
-            </div>
+            <p className="text-sm">© 2025 Poveon Health. All rights reserved.</p>
           </div>
         </div>
       </footer>
