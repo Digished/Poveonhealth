@@ -4939,7 +4939,7 @@ function AdminLabCatalogModal({ lab, onClose }: { lab: Lab; onClose: () => void 
   const [editingId, setEditingId] = useState<string | null>(null);
   const [editVals, setEditVals] = useState<{ raw_name: string; lab_price: string; commission_pct: string; category_label: string; synonyms: string }>({ raw_name: "", lab_price: "", commission_pct: "", category_label: "", synonyms: "" });
   const [newRow, setNewRow] = useState({ raw_name: "", lab_price: "", commission_pct: "", category_label: "", synonyms: "" });
-  const [generationProgress, setGenerationProgress] = useState<{ operationId: string; percent: number; completed: number; total: number } | null>(null);
+  const [generationProgress, setGenerationProgress] = useState<{ jobId: string; percent: number; completed: number; total: number; status?: string } | null>(null);
   const [uploadProgress, setUploadProgress] = useState<{ operationId: string; percent: number; completed: number; total: number } | null>(null);
   const [isModalMinimized, setIsModalMinimized] = useState(false);
   const fileRef = useRef<HTMLInputElement>(null);
@@ -5185,44 +5185,53 @@ function AdminLabCatalogModal({ lab, onClose }: { lab: Lab; onClose: () => void 
       const d = await res.json();
       if (!res.ok) { toast.error(d.error ?? "Failed"); return; }
 
-      // Start polling progress
-      if (d.operationId) {
-        setGenerationProgress({ operationId: d.operationId, percent: 0, completed: 0, total: ids.length });
+      // Start polling progress using jobId
+      if (d.jobId) {
+        setGenerationProgress({ jobId: d.jobId, percent: 0, completed: 0, total: ids.length, status: "processing" });
+        toast.success("Synonym generation started. Processing in background...");
 
         const pollProgress = async () => {
           try {
             const progressRes = await fetch(
-              `/api/admin/labs/${lab.id}/catalog/progress?operation=${d.operationId}`
+              `/api/admin/labs/${lab.id}/catalog/synonym-progress?jobId=${d.jobId}`
             );
             if (!progressRes.ok) {
-              // Operation completed or expired
-              toast.success(`Generated AI synonyms for ${ids.length} tests`);
+              // Job not found
               setGenerationProgress(null);
-              setSelected(new Set());
-              await load();
               return;
             }
             const progress = await progressRes.json();
+            if (!progress.success) {
+              setGenerationProgress(null);
+              return;
+            }
+
             setGenerationProgress({
-              operationId: d.operationId,
+              jobId: d.jobId,
               percent: progress.percent,
               completed: progress.completed,
               total: progress.total,
+              status: progress.status,
             });
 
-            if (!progress.isComplete) {
-              setTimeout(pollProgress, 2000); // Poll every 2 seconds
-            } else {
+            if (progress.isComplete) {
               setTimeout(() => {
-                toast.success(`Generated AI synonyms for ${ids.length} tests`);
+                const message = progress.status === "completed"
+                  ? `Generated AI synonyms for ${progress.completed} tests (${progress.failed} failed)`
+                  : `Synonym generation failed: ${progress.errorMessage || "Unknown error"}`;
+                toast.success(message);
                 setGenerationProgress(null);
                 setSelected(new Set());
                 load();
               }, 500);
+            } else {
+              // Continue polling every 3 seconds
+              setTimeout(pollProgress, 3000);
             }
-          } catch {
-            // Stop polling on error
-            setGenerationProgress(null);
+          } catch (err) {
+            console.error("[handleGenerateSynonyms] polling error:", err);
+            // Continue polling even on error
+            setTimeout(pollProgress, 5000);
           }
         };
 

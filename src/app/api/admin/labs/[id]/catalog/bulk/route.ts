@@ -3,46 +3,9 @@ import { NextRequest, NextResponse } from "next/server";
 import { z } from "zod";
 import { verifyAdmin } from "@/lib/admin-auth";
 import { prisma } from "@/lib/prisma";
-import OpenAI from "openai";
-import { createOperation, updateOperation, deleteOperation } from "@/lib/operation-progress";
-import { randomUUID } from "crypto";
+import { processJob } from "@/lib/synonym-job-processor";
+import { resend, labSender } from "@/lib/email/resend";
 
-// Create OpenAI instance once at module level for reuse
-const openai = process.env.OPENAI_API_KEY ? new OpenAI({ apiKey: process.env.OPENAI_API_KEY }) : null;
-
-async function generateSynonyms(testName: string, categoryLabel?: string | null): Promise<string[]> {
-  if (!openai) return [testName];
-  try {
-    const controller = new AbortController();
-    const timeoutId = setTimeout(() => controller.abort(), 8000); // 8-second timeout
-
-    try {
-      const response = await openai.chat.completions.create({
-        model: "gpt-4o-mini",
-        temperature: 0.2,
-        response_format: { type: "json_object" },
-        messages: [
-          { role: "system", content: 'Return JSON: { "synonyms": string[] }' },
-          {
-            role: "user",
-            content: `Generate 5-7 common synonyms, abbreviations, and alternate names for this medical lab test: "${testName}"${categoryLabel ? ` (category: ${categoryLabel})` : ""}. Include the original name. Return as array.`,
-          },
-        ],
-      } as any, { signal: controller.signal });
-
-      clearTimeout(timeoutId);
-      const parsed = JSON.parse(response.choices[0].message.content ?? "{}") as { synonyms?: string[] };
-      return Array.from(new Set([testName, ...(parsed.synonyms ?? [])]));
-    } finally {
-      clearTimeout(timeoutId);
-    }
-  } catch (err) {
-    console.error(`Synonym generation failed for "${testName}":`, err);
-    return [testName];
-  }
-}
-
-/** Merge synonyms into a KbTest row if it exists (no transaction, fast) */
 async function syncSynonymsToKb(rawName: string, newSyns: string[]) {
   const existingKb = await prisma.kbTest.findFirst({
     where: { canonical_name: { equals: rawName, mode: "insensitive" } },
@@ -143,50 +106,84 @@ export async function POST(
   // ── generate_synonyms ─────────────────────────────────────────────────────
   if (parsed.data.action === "generate_synonyms") {
     const { ids } = parsed.data;
+    const adminEmail = (admin as any)?.email || "admin@poveon.com";
 
     const tests = await prisma.labOfferedTest.findMany({
       where: { id: { in: ids }, lab_id: id },
       select: { id: true, raw_name: true, category_label: true },
     });
 
-    if (tests.length === 0) return NextResponse.json({ success: true, updated: 0, operationId: null });
+    if (tests.length === 0) {
+      return NextResponse.json({ success: true, jobId: null, message: "No tests to process" });
+    }
 
-    // Create a unique operation ID and start tracking progress
-    const operationId = randomUUID();
-    const progressKey = `${id}-${operationId}`;
-    createOperation(progressKey, tests.length);
+    // Create a database-driven job for tracking
+    const job = await prisma.labSynonymGenerationJob.create({
+      data: {
+        lab_id: id,
+        total_tests: tests.length,
+        initiated_by: adminEmail,
+        test_results: {
+          createMany: {
+            data: tests.map((t) => ({
+              test_id: t.id,
+              status: "pending",
+            })),
+          },
+        },
+      },
+    });
 
-    // Return immediately with operationId so client can poll progress
+    // Return immediately with jobId so client can check progress anytime
     // The actual generation happens in the background
     (async () => {
       try {
-        let completed = 0;
-        for (const t of tests) {
-          const syns = await generateSynonyms(t.raw_name, t.category_label);
-          await prisma.labOfferedTest.update({
-            where: { id: t.id },
-            data: { synonyms: syns },
-          });
-          await syncSynonymsToKb(t.raw_name, syns);
+        console.log(`[synonym-gen] Started job ${job.id} for lab ${id} with ${tests.length} tests`);
 
-          // Update progress
-          completed++;
-          updateOperation(progressKey, completed);
+        // Process the job
+        await processJob(job.id);
+
+        // After job completes, send notification email
+        const lab = await prisma.lab.findUnique({
+          where: { id },
+          select: { name: true, request_email: true },
+        });
+
+        if (lab?.request_email) {
+          try {
+            await resend.emails.send({
+              from: labSender(lab),
+              to: lab.request_email,
+              subject: `AI Synonyms Generation Complete`,
+              html: `
+                <h2>Synonym Generation Complete</h2>
+                <p>The AI synonym generation for ${tests.length} tests has been completed.</p>
+                <p>Status: The test catalog has been updated with AI-generated synonyms.</p>
+                <p>You can now use these synonyms to improve test matching and discovery.</p>
+              `,
+            });
+          } catch (emailErr) {
+            console.error(`[synonym-gen] Failed to send completion email:`, emailErr);
+          }
         }
 
-        // Clean up after 30 seconds so client can fetch final status
-        setTimeout(() => deleteOperation(progressKey), 30000);
+        console.log(`[synonym-gen] Completed job ${job.id}`);
       } catch (error) {
-        console.error("Error in background synonym generation:", error);
-        // Still clean up on error
-        setTimeout(() => deleteOperation(progressKey), 30000);
+        console.error(`[synonym-gen] Error processing job ${job.id}:`, error);
+        await prisma.labSynonymGenerationJob.update({
+          where: { id: job.id },
+          data: {
+            status: "failed",
+            error_message: error instanceof Error ? error.message : String(error),
+          },
+        });
       }
     })();
 
     return NextResponse.json({
       success: true,
-      operationId,
-      message: "Generating synonyms in background. Use operationId to check progress.",
+      jobId: job.id,
+      message: "Synonym generation started. This may take several minutes. You can check progress anytime.",
     });
   }
 }
