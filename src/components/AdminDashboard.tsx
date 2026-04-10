@@ -3400,9 +3400,9 @@ function AdminTransactionsTab({ labs }: { labs: Lab[] }) {
    Admin Knowledge Base Tab
 ───────────────────────────────────────────── */
 type KbTest = {
-  id: string; canonical_name: string; synonyms: string[];
+  id: string; canonical_name: string; synonyms: string[]; variants: string[];
   category: string | null; description: string | null;
-  updated_at: string; lab_count: number;
+  lab_count: number;
   labs: { lab_id: string; lab_name: string; price: number }[];
 };
 
@@ -3432,7 +3432,7 @@ function AdminKnowledgeBaseTab() {
 
   const fetchKb = useCallback(async (q?: string) => {
     setLoading(true);
-    const url = `/api/admin/kb${q ? `?q=${encodeURIComponent(q)}` : ""}`;
+    const url = `/api/admin/test-kb-manage${q ? `?q=${encodeURIComponent(q)}` : ""}`;
     try {
       const res = await fetch(url);
       const data = await res.json();
@@ -3458,16 +3458,33 @@ function AdminKnowledgeBaseTab() {
   async function handleSync() {
     setSyncing(true);
     try {
-      const res = await fetch("/api/admin/kb/sync", {
+      // Step 1: Migrate old KB to new system if needed
+      let migrateRes = await fetch("/api/admin/test-kb-manage/migrate", {
         method: "POST", headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ mode: syncMode }),
+        body: JSON.stringify({ action: "migrate_from_old_kb" }),
       });
-      const data = await res.json();
-      if (data.success) {
-        toast.success(`Synced: ${data.created} new · ${data.merged} merged · ${data.total_scanned} scanned`);
-        fetchKb();
-      } else { toast.error("Sync failed"); }
-    } catch { toast.error("Sync failed"); }
+      const migrateData = await migrateRes.json();
+      console.log("Migration result:", migrateData);
+
+      // Step 2: Clear old synonyms
+      let clearRes = await fetch("/api/admin/test-kb-manage/migrate", {
+        method: "POST", headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ action: "clear_old_synonyms" }),
+      });
+      const clearData = await clearRes.json();
+      console.log("Clear synonyms result:", clearData);
+
+      // Step 3: Map labs to KB
+      let mapRes = await fetch("/api/admin/test-kb-manage/migrate", {
+        method: "POST", headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ action: "map_labs_to_kb" }),
+      });
+      const mapData = await mapRes.json();
+      console.log("Mapping result:", mapData);
+
+      toast.success(`Sync complete: Migrated ${migrateData.migrated} tests, mapped ${mapData.created} lab tests`);
+      fetchKb();
+    } catch (e) { console.error(e); toast.error("Sync failed"); }
     setSyncing(false);
   }
 
@@ -3476,7 +3493,7 @@ function AdminKnowledgeBaseTab() {
     setAdding(true);
     try {
       const syns = addSyns.split(",").map((s) => s.trim()).filter(Boolean);
-      const res = await fetch("/api/admin/kb", {
+      const res = await fetch("/api/admin/test-kb-manage", {
         method: "POST", headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ canonical_name: addName.trim(), synonyms: syns, category: addCategory.trim() || null }),
       });
@@ -3490,14 +3507,14 @@ function AdminKnowledgeBaseTab() {
 
   async function handleDelete(id: string, name: string) {
     if (!confirm(`Remove "${name}" from the knowledge base?`)) return;
-    await fetch(`/api/admin/kb/${id}`, { method: "DELETE" });
+    await fetch(`/api/admin/test-kb-manage/${id}`, { method: "DELETE" });
     setTests((prev) => prev.filter((t) => t.id !== id));
   }
 
   async function saveSynonyms(id: string, raw: string) {
     setSavingSyn(true);
     const syns = raw.split(",").map((s) => s.trim()).filter(Boolean);
-    const res = await fetch(`/api/admin/kb/${id}`, {
+    const res = await fetch(`/api/admin/test-kb-manage/${id}`, {
       method: "PATCH", headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ synonyms: syns }),
     });
@@ -3595,14 +3612,10 @@ function AdminKnowledgeBaseTab() {
             </div>
             <div className="flex items-center gap-3 pt-1 border-t border-white/8">
               <Sparkles className="w-4 h-4 text-amber-400 shrink-0" />
-              <p className="text-xs text-slate-400 flex-1">Auto-sync imports test names from all lab catalogs into this knowledge base.</p>
-              <select value={syncMode} onChange={(e) => setSyncMode(e.target.value as "new_only" | "merge_synonyms")} className="text-xs bg-white/8 border border-white/10 text-slate-300 rounded-lg px-2 py-1.5 [color-scheme:dark] focus:outline-none">
-                <option value="new_only">New entries only</option>
-                <option value="merge_synonyms">Merge synonyms too</option>
-              </select>
+              <p className="text-xs text-slate-400 flex-1">Migrate old KB data and map lab tests to the new Knowledge Base system.</p>
               <button onClick={handleSync} disabled={syncing} className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-amber-500/20 border border-amber-500/30 text-amber-300 text-xs font-semibold hover:bg-amber-500/30 transition-colors disabled:opacity-50">
                 {syncing ? <RefreshCw className="w-3.5 h-3.5 animate-spin" /> : <Sparkles className="w-3.5 h-3.5" />}
-                {syncing ? "Syncing…" : "Sync from Labs"}
+                {syncing ? "Syncing…" : "Migrate & Sync"}
               </button>
             </div>
           </div>
@@ -3643,7 +3656,8 @@ function AdminKnowledgeBaseTab() {
                           {test.category && <span className="text-[10px] bg-sky-500/15 text-sky-400 border border-sky-500/20 px-1.5 py-0.5 rounded-full">{test.category}</span>}
                         </div>
                         <p className="text-xs text-slate-500 mt-0.5 truncate">
-                          {test.synonyms.length > 0 ? test.synonyms.slice(0, 4).join(" · ") + (test.synonyms.length > 4 ? ` +${test.synonyms.length - 4}` : "") : "No synonyms"}
+                          {test.synonyms.length > 0 ? test.synonyms.slice(0, 3).join(" · ") + (test.synonyms.length > 3 ? ` +${test.synonyms.length - 3}` : "") : "No synonyms"}
+                          {test.variants && test.variants.length > 0 && ` • Variants: ${test.variants.slice(0, 2).join(", ")}`}
                         </p>
                       </div>
                       <div className="shrink-0 text-right">
@@ -3670,6 +3684,14 @@ function AdminKnowledgeBaseTab() {
                             </div>
                           )}
                         </div>
+                        {test.variants && test.variants.length > 0 && (
+                          <div>
+                            <p className="text-xs text-slate-400 font-semibold uppercase tracking-wider mb-2">Variants</p>
+                            <div className="flex flex-wrap gap-1.5">
+                              {test.variants.map((v) => <span key={v} className="text-xs bg-purple-500/10 text-purple-300 border border-purple-500/20 px-2 py-0.5 rounded-full">{v}</span>)}
+                            </div>
+                          </div>
+                        )}
                         {test.labs.length > 0 && (
                           <div>
                             <p className="text-xs text-slate-400 font-semibold uppercase tracking-wider mb-2">Labs offering this test</p>
