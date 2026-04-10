@@ -5745,6 +5745,216 @@ function AdminLabCatalogModal({ lab, onClose }: { lab: Lab; onClose: () => void 
         </div>
         )}
         </>)}
+
+        {/* KB Mapping Modal */}
+        {mappingLabTestId && (
+          <KbMappingModal
+            labId={lab.id}
+            testId={mappingLabTestId}
+            testName={tests.find((t) => t.id === mappingLabTestId)?.raw_name || ""}
+            onClose={() => setMappingLabTestId(null)}
+            onMapped={(canonical, synonyms, variants) => {
+              setKbMappings((prev) => ({
+                ...prev,
+                [mappingLabTestId]: { canonical, synonyms, variants },
+              }));
+              setMappingLabTestId(null);
+            }}
+          />
+        )}
+      </div>
+    </div>
+  );
+}
+
+// ── KB Mapping Modal ─────────────────────────────────────────────────────────
+
+function KbMappingModal({
+  labId,
+  testId,
+  testName,
+  onClose,
+  onMapped,
+}: {
+  labId: string;
+  testId: string;
+  testName: string;
+  onClose: () => void;
+  onMapped: (canonical: string, synonyms: string[], variants: string[]) => void;
+}) {
+  const [searchQuery, setSearchQuery] = useState("");
+  const [searchResults, setSearchResults] = useState<Array<{ id: string; canonical: string; synonyms: string[]; variants: string[] }>>([]);
+  const [searching, setSearching] = useState(false);
+  const [mapping, setMapping] = useState(false);
+  const [selectedVariants, setSelectedVariants] = useState<string[]>([]);
+
+  const handleSearch = useCallback(async () => {
+    if (!searchQuery.trim()) {
+      setSearchResults([]);
+      return;
+    }
+
+    setSearching(true);
+    try {
+      const res = await fetch(
+        `/api/admin/test-kb/search?q=${encodeURIComponent(searchQuery)}&limit=10`
+      );
+      const data = await res.json();
+      if (data.success) {
+        setSearchResults(
+          data.tests.map((t: any) => ({
+            id: t.id,
+            canonical: t.canonical,
+            synonyms: t.synonyms || [],
+            variants: t.variants || [],
+          }))
+        );
+      }
+    } catch (e) {
+      console.error("Search error:", e);
+    }
+    setSearching(false);
+  }, [searchQuery]);
+
+  const handleMapTest = async (kbTestId: string, canonical: string, synonyms: string[], variants: string[]) => {
+    setMapping(true);
+    try {
+      const res = await fetch(
+        `/api/admin/labs/${labId}/test-kb-mapping`,
+        {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            labTestName: testName,
+            knowledgeBaseId: kbTestId,
+            variantsAvailable: selectedVariants.length > 0 ? selectedVariants : null,
+          }),
+        }
+      );
+      const data = await res.json();
+      if (data.success) {
+        toast.success(`Mapped to ${canonical}`);
+        onMapped(canonical, synonyms, variants);
+        onClose();
+      } else {
+        toast.error(data.error || "Mapping failed");
+      }
+    } catch (e) {
+      toast.error("Mapping error");
+    }
+    setMapping(false);
+  };
+
+  return (
+    <div
+      className="fixed inset-0 z-50 flex items-center justify-center p-4"
+      style={{ backgroundColor: "rgba(2,6,23,0.85)", backdropFilter: "blur(6px)" }}
+      onClick={onClose}
+    >
+      <div
+        className="w-full max-w-lg bg-slate-900 border border-white/10 rounded-2xl shadow-2xl overflow-hidden flex flex-col max-h-[80vh]"
+        onClick={(e) => e.stopPropagation()}
+      >
+        {/* Header */}
+        <div className="px-6 py-4 border-b border-white/8">
+          <h2 className="font-semibold text-white">Map to Knowledge Base</h2>
+          <p className="text-xs text-slate-400 mt-1">
+            Search and select a KB entry to map: <span className="font-mono text-slate-300">{testName}</span>
+          </p>
+        </div>
+
+        {/* Search */}
+        <div className="px-6 py-4 border-b border-white/8 space-y-3">
+          <div className="flex gap-2">
+            <input
+              autoFocus
+              value={searchQuery}
+              onChange={(e) => setSearchQuery(e.target.value)}
+              onKeyDown={(e) => e.key === "Enter" && handleSearch()}
+              placeholder="Search KB tests..."
+              className="flex-1 px-3 py-2 rounded-lg bg-white/8 border border-white/10 text-sm text-white placeholder-slate-500 focus:outline-none focus:ring-1 focus:ring-teal-500"
+            />
+            <button
+              onClick={handleSearch}
+              disabled={searching}
+              className="px-4 py-2 rounded-lg bg-teal-600 hover:bg-teal-500 text-white text-sm font-medium disabled:opacity-50 transition-colors"
+            >
+              {searching ? "..." : "Search"}
+            </button>
+          </div>
+        </div>
+
+        {/* Results */}
+        <div className="flex-1 overflow-y-auto px-6 py-4 space-y-2">
+          {searchResults.length === 0 ? (
+            <p className="text-center py-8 text-slate-500 text-sm">
+              {searchQuery ? "No results found" : "Enter a search term"}
+            </p>
+          ) : (
+            searchResults.map((result) => (
+              <div
+                key={result.id}
+                className="bg-white/5 border border-white/10 rounded-lg p-4 space-y-2"
+              >
+                <div className="flex items-start justify-between gap-3">
+                  <div className="flex-1 min-w-0">
+                    <p className="font-medium text-white text-sm">{result.canonical}</p>
+                    {result.synonyms.length > 0 && (
+                      <p className="text-xs text-slate-400 mt-1">
+                        {result.synonyms.slice(0, 3).join(", ")}
+                        {result.synonyms.length > 3 && ` +${result.synonyms.length - 3}`}
+                      </p>
+                    )}
+                  </div>
+                </div>
+
+                {/* Variants selection */}
+                {result.variants.length > 0 && (
+                  <div className="space-y-2">
+                    <p className="text-xs text-slate-400">Variants offered by this lab:</p>
+                    <div className="flex flex-wrap gap-2">
+                      {result.variants.map((v) => (
+                        <button
+                          key={v}
+                          onClick={() =>
+                            setSelectedVariants((prev) =>
+                              prev.includes(v) ? prev.filter((x) => x !== v) : [...prev, v]
+                            )
+                          }
+                          className={`px-2.5 py-1 rounded-full text-xs font-medium transition-colors ${
+                            selectedVariants.includes(v)
+                              ? "bg-teal-600 text-white"
+                              : "bg-white/10 text-slate-300 hover:bg-white/15"
+                          }`}
+                        >
+                          {v}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+                )}
+
+                <button
+                  onClick={() => handleMapTest(result.id, result.canonical, result.synonyms, result.variants)}
+                  disabled={mapping}
+                  className="w-full mt-3 px-3 py-2 rounded-lg bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-medium disabled:opacity-50 transition-colors"
+                >
+                  {mapping ? "Mapping..." : "Select This"}
+                </button>
+              </div>
+            ))
+          )}
+        </div>
+
+        {/* Footer */}
+        <div className="px-6 py-4 border-t border-white/8 flex justify-end gap-2">
+          <button
+            onClick={onClose}
+            className="px-4 py-2 rounded-lg bg-white/8 hover:bg-white/12 text-slate-300 text-sm transition-colors"
+          >
+            Cancel
+          </button>
+        </div>
       </div>
     </div>
   );
