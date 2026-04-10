@@ -100,9 +100,12 @@ function parseExcel(buffer: ArrayBuffer): ParsedRow[] {
 
 /**
  * POST /api/admin/labs/[id]/catalog/upload
- * Parses file immediately and returns operationId.
- * Processes upload in background with progress tracking.
- * Handles up to 50+ sheets without timeout.
+ * Ultra-fast CSV/Excel upload for test catalogs
+ * - Parses file immediately (milliseconds)
+ * - Processes upload in background with progress tracking
+ * - Handles 100+ tests in seconds (no AI synonym generation)
+ * - Users can generate AI synonyms after via bulk "Generate AI" button
+ * - Handles up to 50+ sheets without timeout
  */
 export async function POST(
   req: NextRequest,
@@ -162,14 +165,14 @@ export async function POST(
           });
 
           if (!existing) {
-            // New test: auto-generate AI synonyms
-            const synonyms = await generateSynonyms(row.test_name, row.category);
+            // New test: skip AI synonyms for blazing-fast upload
+            // Users can generate AI synonyms later via "Generate AI Synonyms" button for selected tests
             await prisma.labOfferedTest.create({
               data: {
                 lab_id: id,
                 raw_name: row.test_name,
                 category_label: row.category ?? null,
-                synonyms,
+                synonyms: [row.test_name], // Just use test name, skip AI for speed
                 lab_price: row.price,
                 poveon_fee,
                 commission_pct,
