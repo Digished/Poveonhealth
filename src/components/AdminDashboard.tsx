@@ -23,7 +23,7 @@ import { format } from "date-fns";
 import { createClient } from "@/lib/supabase/client"; // still used for auth sign-out
 import { useRouter } from "next/navigation";
 
-type AdminTab = "metrics" | "requests" | "referrals" | "labs" | "analytics" | "marketers" | "settings" | "transactions" | "knowledge-base" | "users" | "hospitals" | "agreements";
+type AdminTab = "metrics" | "requests" | "referrals" | "labs" | "analytics" | "marketers" | "lab-marketers" | "settings" | "transactions" | "knowledge-base" | "users" | "hospitals" | "agreements";
 
 interface ReferralGroup {
   key: string; // doctor_email
@@ -81,6 +81,12 @@ export function AdminDashboard() {
   const [agreementsLoading, setAgreementsLoading] = useState(false);
   const [defaultRequestPrice, setDefaultRequestPrice] = useState<string>("500");
   const [savingSettings, setSavingSettings] = useState(false);
+
+  // Lab marketers state
+  const [labMarketers, setLabMarketers] = useState<any[]>([]);
+  const [labMarketerLoading, setLabMarketerLoading] = useState(false);
+  const [selectedLabMarketerLabId, setSelectedLabMarketerLabId] = useState<string | null>(null);
+  const [selectedLabMarketerActivity, setSelectedLabMarketerActivity] = useState<any[]>([]);
 
   type RevenueData = {
     total_poveon_earned: number;
@@ -161,6 +167,31 @@ export function AdminDashboard() {
     }
   }, []);
 
+  const fetchLabMarketers = useCallback(async () => {
+    setLabMarketerLoading(true);
+    try {
+      const res = await fetch("/api/admin/lab-marketers");
+      const data = await res.json();
+      if (data.success) setLabMarketers(data.lab_marketers ?? []);
+    } catch (error) {
+      console.error("[fetchLabMarketers]", error);
+      toast.error("Failed to load lab marketers");
+    } finally {
+      setLabMarketerLoading(false);
+    }
+  }, []);
+
+  const fetchLabMarketerActivity = useCallback(async (labId: string) => {
+    try {
+      const res = await fetch(`/api/admin/lab-marketers/${labId}/activity`);
+      const data = await res.json();
+      if (data.success) setSelectedLabMarketerActivity(data.events ?? []);
+    } catch (error) {
+      console.error("[fetchLabMarketerActivity]", error);
+      toast.error("Failed to load activity");
+    }
+  }, []);
+
   const fetchSettings = useCallback(async () => {
     try {
       const res = await fetch("/api/admin/settings");
@@ -233,6 +264,7 @@ export function AdminDashboard() {
   }, [fetchLabs, fetchMarketers, fetchRevenue]);
 
   useEffect(() => { fetchData(); }, [fetchData]);
+  useEffect(() => { if (activeTab === "lab-marketers") fetchLabMarketers(); }, [activeTab, fetchLabMarketers]);
 
   const referralGroups = useMemo<ReferralGroup[]>(() => {
     const map = new Map<string, ReferralGroup>();
@@ -431,6 +463,7 @@ export function AdminDashboard() {
             { key: "labs" as AdminTab, label: "Labs", icon: <Building2 className="w-4 h-4" /> },
             { key: "analytics" as AdminTab, label: "API Analytics", icon: <BarChart3 className="w-4 h-4" /> },
             { key: "marketers" as AdminTab, label: "Marketers", icon: <TrendingUp className="w-4 h-4" /> },
+            { key: "lab-marketers" as AdminTab, label: "Lab Marketers", icon: <Users className="w-4 h-4" /> },
             { key: "settings" as AdminTab, label: "Settings", icon: <Settings className="w-4 h-4" /> },
             { key: "transactions" as AdminTab, label: "Transactions", icon: <CreditCard className="w-4 h-4" /> },
             { key: "knowledge-base" as AdminTab, label: "Knowledge Base", icon: <BookOpen className="w-4 h-4" /> },
@@ -1419,6 +1452,81 @@ export function AdminDashboard() {
 
         {/* ── KNOWLEDGE BASE ── */}
         {activeTab === "knowledge-base" && <AdminKnowledgeBaseTab />}
+
+        {/* ── LAB MARKETERS ── */}
+        {activeTab === "lab-marketers" && (
+          <div className="animate-fade-in space-y-5">
+            <div className="flex items-center justify-between">
+              <h2 className="text-lg font-semibold text-white">Lab-Specific Marketers</h2>
+              <button
+                onClick={() => fetchLabMarketers()}
+                disabled={labMarketerLoading}
+                className="p-2 rounded-lg bg-white/8 border border-white/10 text-slate-400 hover:text-white transition-colors disabled:opacity-50"
+              >
+                <RefreshCw className={`w-4 h-4 ${labMarketerLoading ? "animate-spin" : ""}`} />
+              </button>
+            </div>
+
+            {labMarketerLoading ? (
+              <div className="space-y-2">{[...Array(5)].map((_, i) => <div key={i} className="bg-white/5 border border-white/10 rounded-xl h-16 animate-pulse" />)}</div>
+            ) : labMarketers.length === 0 ? (
+              <div className="text-center py-12 text-slate-400">
+                <Users className="w-12 h-12 mx-auto mb-3 opacity-30" />
+                <p className="text-sm">No lab marketers assigned yet.</p>
+              </div>
+            ) : (
+              <div className="space-y-2">
+                {labMarketers.map((lm) => (
+                  <div
+                    key={lm.id}
+                    className="bg-white/5 border border-white/10 rounded-xl overflow-hidden hover:bg-white/8 transition-colors"
+                  >
+                    <button
+                      onClick={() => {
+                        if (selectedLabMarketerLabId === lm.lab.id) {
+                          setSelectedLabMarketerLabId(null);
+                        } else {
+                          setSelectedLabMarketerLabId(lm.lab.id);
+                          fetchLabMarketerActivity(lm.lab.id);
+                        }
+                      }}
+                      className="w-full flex items-center gap-4 px-4 py-3 text-left"
+                    >
+                      <div className="flex-1 min-w-0">
+                        <p className="text-sm font-semibold text-white">{lm.lab.name}</p>
+                        <p className="text-xs text-slate-400">{lm.marketer.name} ({lm.marketer.email})</p>
+                      </div>
+                      <div className="text-right shrink-0">
+                        <p className="text-xs text-emerald-400 font-semibold">{lm.doctors_count} doctors</p>
+                        <p className="text-[10px] text-slate-500">Added by {lm.added_by}</p>
+                      </div>
+                      <ChevronDown className={`w-4 h-4 text-slate-500 transition-transform ${selectedLabMarketerLabId === lm.lab.id ? "rotate-180" : ""}`} />
+                    </button>
+
+                    {selectedLabMarketerLabId === lm.lab.id && (
+                      <div className="border-t border-white/8 px-4 py-4 space-y-3 bg-slate-950/40">
+                        <p className="text-xs text-slate-400 font-semibold uppercase tracking-wider">Activity Timeline</p>
+                        {selectedLabMarketerActivity.length === 0 ? (
+                          <p className="text-sm text-slate-500">No activity yet</p>
+                        ) : (
+                          <div className="space-y-2 max-h-96 overflow-y-auto">
+                            {selectedLabMarketerActivity.slice(0, 50).map((event, i) => (
+                              <div key={i} className="text-xs text-slate-300 border-l border-slate-700/50 pl-3 py-1.5">
+                                <p className="font-medium text-slate-200">{event.type.replace(/_/g, " ").toUpperCase()}</p>
+                                <p className="text-slate-400 text-[11px] mt-0.5">{event.description}</p>
+                                <p className="text-slate-600 text-[10px] mt-1">{new Date(event.timestamp).toLocaleString()}</p>
+                              </div>
+                            ))}
+                          </div>
+                        )}
+                      </div>
+                    )}
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+        )}
 
         {/* ── USERS ── */}
         {activeTab === "users" && <AdminUsersTab />}
