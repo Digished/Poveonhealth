@@ -137,3 +137,33 @@ export async function getLabAuth(request: NextRequest): Promise<LabAuthResult | 
 
   return null;
 }
+
+/**
+ * Verify that the current user is the owner of the specified lab.
+ * Returns the lab object if authorized, null otherwise.
+ */
+export async function verifyLabOwner(labId: string) {
+  try {
+    const authClient = await createServerClient();
+    const { data: { user } } = await authClient.auth.getUser();
+
+    if (!user || user.user_metadata?.role !== "lab") return null;
+
+    const labUser = await prisma.labUser.findUnique({
+      where: { user_id: user.id },
+      select: { lab_id: true },
+    });
+
+    if (!labUser || labUser.lab_id !== labId) return null;
+
+    // Return lab with owner_email field for audit
+    const lab = await prisma.lab.findUnique({
+      where: { id: labId },
+      select: { id: true, name: true, email: true },
+    });
+
+    return lab ? { ...lab, owner_email: user.email } : null;
+  } catch {
+    return null;
+  }
+}

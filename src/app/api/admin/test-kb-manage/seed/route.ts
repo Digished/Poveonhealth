@@ -207,8 +207,16 @@ export async function POST(req: NextRequest) {
     );
   } catch (error) {
     console.error("[KB Seed] Error:", error);
+    const msg = error instanceof Error ? error.message : String(error);
+
+    // Check for missing table
+    const isMissingTable = /does not exist in the current database/i.test(msg) || /relation.*does not exist/i.test(msg);
+    const hint = isMissingTable
+      ? "Missing database tables. Run migrations with: 'node scripts/run-migration.mjs' or redeploy to trigger build script."
+      : undefined;
+
     return NextResponse.json(
-      { success: false, error: "Failed to seed KB" },
+      { success: false, error: msg, hint },
       { status: 500 }
     );
   }

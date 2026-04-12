@@ -159,8 +159,9 @@ export async function POST(req: NextRequest) {
     );
   } catch (error) {
     console.error("[test-kb-migrate] error:", error);
+    const msg = error instanceof Error ? error.message : String(error);
     return NextResponse.json(
-      { success: false, error: "Migration failed" },
+      { success: false, error: msg },
       { status: 500 }
     );
   }

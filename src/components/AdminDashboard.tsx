@@ -23,7 +23,7 @@ import { format } from "date-fns";
 import { createClient } from "@/lib/supabase/client"; // still used for auth sign-out
 import { useRouter } from "next/navigation";
 
-type AdminTab = "metrics" | "requests" | "referrals" | "labs" | "analytics" | "marketers" | "settings" | "transactions" | "knowledge-base" | "users" | "hospitals" | "agreements";
+type AdminTab = "metrics" | "requests" | "referrals" | "labs" | "analytics" | "marketers" | "lab-marketers" | "settings" | "transactions" | "knowledge-base" | "users" | "hospitals" | "agreements";
 
 interface ReferralGroup {
   key: string; // doctor_email
@@ -63,6 +63,7 @@ export function AdminDashboard() {
   const [deletingId, setDeletingId] = useState<string | null>(null);
   const [togglingId, setTogglingId] = useState<string | null>(null);
   const [togglingSearchHiddenId, setTogglingSearchHiddenId] = useState<string | null>(null);
+  const [togglingFreeTrialId, setTogglingFreeTrialId] = useState<string | null>(null);
   const [deleteConfirmLab, setDeleteConfirmLab] = useState<Lab | null>(null);
   const [deleteConfirmMarketer, setDeleteConfirmMarketer] = useState<typeof marketers[number] | null>(null);
   const [deletingRequestId, setDeletingRequestId] = useState<string | null>(null);
@@ -81,6 +82,12 @@ export function AdminDashboard() {
   const [agreementsLoading, setAgreementsLoading] = useState(false);
   const [defaultRequestPrice, setDefaultRequestPrice] = useState<string>("500");
   const [savingSettings, setSavingSettings] = useState(false);
+
+  // Lab marketers state
+  const [labMarketers, setLabMarketers] = useState<any[]>([]);
+  const [labMarketerLoading, setLabMarketerLoading] = useState(false);
+  const [selectedLabMarketerLabId, setSelectedLabMarketerLabId] = useState<string | null>(null);
+  const [selectedLabMarketerActivity, setSelectedLabMarketerActivity] = useState<any[]>([]);
 
   type RevenueData = {
     total_poveon_earned: number;
@@ -161,6 +168,31 @@ export function AdminDashboard() {
     }
   }, []);
 
+  const fetchLabMarketers = useCallback(async () => {
+    setLabMarketerLoading(true);
+    try {
+      const res = await fetch("/api/admin/lab-marketers");
+      const data = await res.json();
+      if (data.success) setLabMarketers(data.lab_marketers ?? []);
+    } catch (error) {
+      console.error("[fetchLabMarketers]", error);
+      toast.error("Failed to load lab marketers");
+    } finally {
+      setLabMarketerLoading(false);
+    }
+  }, []);
+
+  const fetchLabMarketerActivity = useCallback(async (labId: string) => {
+    try {
+      const res = await fetch(`/api/admin/lab-marketers/${labId}/activity`);
+      const data = await res.json();
+      if (data.success) setSelectedLabMarketerActivity(data.events ?? []);
+    } catch (error) {
+      console.error("[fetchLabMarketerActivity]", error);
+      toast.error("Failed to load activity");
+    }
+  }, []);
+
   const fetchSettings = useCallback(async () => {
     try {
       const res = await fetch("/api/admin/settings");
@@ -233,6 +265,7 @@ export function AdminDashboard() {
   }, [fetchLabs, fetchMarketers, fetchRevenue]);
 
   useEffect(() => { fetchData(); }, [fetchData]);
+  useEffect(() => { if (activeTab === "lab-marketers") fetchLabMarketers(); }, [activeTab, fetchLabMarketers]);
 
   const referralGroups = useMemo<ReferralGroup[]>(() => {
     const map = new Map<string, ReferralGroup>();
@@ -371,6 +404,32 @@ export function AdminDashboard() {
     }
   }
 
+  async function handleToggleFreeTrial(lab: Lab) {
+    const newStatus = !(lab.free_trial ?? false);
+    if (newStatus && !window.confirm(`Enable free trial for "${lab.name}"? This lab won't record commission.\n\nContinue?`)) {
+      return;
+    }
+    setTogglingFreeTrialId(lab.id);
+    try {
+      const res = await fetch(`/api/admin/labs/${lab.id}/free-trial`, {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ enabled: newStatus }),
+      });
+      const data = await res.json();
+      if (data.success) {
+        toast.success(newStatus ? "Free trial enabled" : "Free trial disabled");
+        await fetchLabs();
+      } else {
+        toast.error(data.error ?? "Failed to update");
+      }
+    } catch {
+      toast.error("Network error");
+    } finally {
+      setTogglingFreeTrialId(null);
+    }
+  }
+
   async function handleDeleteLab(lab: Lab) {
     setDeletingId(lab.id);
     try {
@@ -431,6 +490,7 @@ export function AdminDashboard() {
             { key: "labs" as AdminTab, label: "Labs", icon: <Building2 className="w-4 h-4" /> },
             { key: "analytics" as AdminTab, label: "API Analytics", icon: <BarChart3 className="w-4 h-4" /> },
             { key: "marketers" as AdminTab, label: "Marketers", icon: <TrendingUp className="w-4 h-4" /> },
+            { key: "lab-marketers" as AdminTab, label: "Lab Marketers", icon: <Users className="w-4 h-4" /> },
             { key: "settings" as AdminTab, label: "Settings", icon: <Settings className="w-4 h-4" /> },
             { key: "transactions" as AdminTab, label: "Transactions", icon: <CreditCard className="w-4 h-4" /> },
             { key: "knowledge-base" as AdminTab, label: "Knowledge Base", icon: <BookOpen className="w-4 h-4" /> },
@@ -914,6 +974,7 @@ export function AdminDashboard() {
                             <p className="text-sm font-semibold text-white leading-tight">{lab.name}</p>
                             <Badge variant="blue">Prefix: {lab.prefix}</Badge>
                             {lab.hidden && <span className="text-[10px] text-slate-500 bg-white/5 px-1.5 py-0.5 rounded">hidden</span>}
+                            {lab.free_trial && <span className="text-[10px] bg-emerald-900/30 text-emerald-400 border border-emerald-800/30 px-1.5 py-0.5 rounded-full" title="Free trial - no commission">FREE TRIAL</span>}
                             {lab.slug && (
                               <a href={`/${lab.slug}`} target="_blank" rel="noopener noreferrer"
                                 className="text-[10px] text-blue-400 hover:text-blue-300 font-mono bg-blue-500/8 border border-blue-500/20 px-1.5 py-0.5 rounded"
@@ -1000,6 +1061,18 @@ export function AdminDashboard() {
                             <UserCircle className="w-3.5 h-3.5" />
                           </button>
                           <LabWalletButton labId={lab.id} />
+                          <button
+                            onClick={() => handleToggleFreeTrial(lab)}
+                            disabled={togglingFreeTrialId === lab.id}
+                            title={lab.free_trial ? "Disable free trial" : "Enable free trial"}
+                            className={`p-2 rounded-lg transition-colors ${
+                              lab.free_trial
+                                ? "text-emerald-400 hover:bg-emerald-500/15"
+                                : "text-slate-500 hover:bg-emerald-500/10 hover:text-emerald-400"
+                            }`}
+                          >
+                            <Star className="w-3.5 h-3.5" />
+                          </button>
                           <button onClick={() => setDeleteConfirmLab(lab)} disabled={deletingId === lab.id} title="Delete" className="p-2 rounded-lg hover:bg-red-500/15 text-slate-600 hover:text-red-400 transition-colors">
                             <Trash2 className="w-3.5 h-3.5" />
                           </button>
@@ -1419,6 +1492,81 @@ export function AdminDashboard() {
 
         {/* ── KNOWLEDGE BASE ── */}
         {activeTab === "knowledge-base" && <AdminKnowledgeBaseTab />}
+
+        {/* ── LAB MARKETERS ── */}
+        {activeTab === "lab-marketers" && (
+          <div className="animate-fade-in space-y-5">
+            <div className="flex items-center justify-between">
+              <h2 className="text-lg font-semibold text-white">Lab-Specific Marketers</h2>
+              <button
+                onClick={() => fetchLabMarketers()}
+                disabled={labMarketerLoading}
+                className="p-2 rounded-lg bg-white/8 border border-white/10 text-slate-400 hover:text-white transition-colors disabled:opacity-50"
+              >
+                <RefreshCw className={`w-4 h-4 ${labMarketerLoading ? "animate-spin" : ""}`} />
+              </button>
+            </div>
+
+            {labMarketerLoading ? (
+              <div className="space-y-2">{[...Array(5)].map((_, i) => <div key={i} className="bg-white/5 border border-white/10 rounded-xl h-16 animate-pulse" />)}</div>
+            ) : labMarketers.length === 0 ? (
+              <div className="text-center py-12 text-slate-400">
+                <Users className="w-12 h-12 mx-auto mb-3 opacity-30" />
+                <p className="text-sm">No lab marketers assigned yet.</p>
+              </div>
+            ) : (
+              <div className="space-y-2">
+                {labMarketers.map((lm) => (
+                  <div
+                    key={lm.id}
+                    className="bg-white/5 border border-white/10 rounded-xl overflow-hidden hover:bg-white/8 transition-colors"
+                  >
+                    <button
+                      onClick={() => {
+                        if (selectedLabMarketerLabId === lm.lab.id) {
+                          setSelectedLabMarketerLabId(null);
+                        } else {
+                          setSelectedLabMarketerLabId(lm.lab.id);
+                          fetchLabMarketerActivity(lm.lab.id);
+                        }
+                      }}
+                      className="w-full flex items-center gap-4 px-4 py-3 text-left"
+                    >
+                      <div className="flex-1 min-w-0">
+                        <p className="text-sm font-semibold text-white">{lm.lab.name}</p>
+                        <p className="text-xs text-slate-400">{lm.marketer.name} ({lm.marketer.email})</p>
+                      </div>
+                      <div className="text-right shrink-0">
+                        <p className="text-xs text-emerald-400 font-semibold">{lm.doctors_count} doctors</p>
+                        <p className="text-[10px] text-slate-500">Added by {lm.added_by}</p>
+                      </div>
+                      <ChevronDown className={`w-4 h-4 text-slate-500 transition-transform ${selectedLabMarketerLabId === lm.lab.id ? "rotate-180" : ""}`} />
+                    </button>
+
+                    {selectedLabMarketerLabId === lm.lab.id && (
+                      <div className="border-t border-white/8 px-4 py-4 space-y-3 bg-slate-950/40">
+                        <p className="text-xs text-slate-400 font-semibold uppercase tracking-wider">Activity Timeline</p>
+                        {selectedLabMarketerActivity.length === 0 ? (
+                          <p className="text-sm text-slate-500">No activity yet</p>
+                        ) : (
+                          <div className="space-y-2 max-h-96 overflow-y-auto">
+                            {selectedLabMarketerActivity.slice(0, 50).map((event, i) => (
+                              <div key={i} className="text-xs text-slate-300 border-l border-slate-700/50 pl-3 py-1.5">
+                                <p className="font-medium text-slate-200">{event.type.replace(/_/g, " ").toUpperCase()}</p>
+                                <p className="text-slate-400 text-[11px] mt-0.5">{event.description}</p>
+                                <p className="text-slate-600 text-[10px] mt-1">{new Date(event.timestamp).toLocaleString()}</p>
+                              </div>
+                            ))}
+                          </div>
+                        )}
+                      </div>
+                    )}
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+        )}
 
         {/* ── USERS ── */}
         {activeTab === "users" && <AdminUsersTab />}
@@ -2288,6 +2436,7 @@ const PAGE_PERMISSIONS: { key: keyof LabRole; label: string; description: string
   { key: "can_view_activity",   label: "Activity",   description: "View team activity log" },
   { key: "can_view_feedback",   label: "Feedback",   description: "View patient and doctor feedback" },
   { key: "can_view_wallet",     label: "Wallet",     description: "View wallet balance and transactions" },
+  { key: "can_view_marketers",  label: "Marketers",  description: "Manage lab marketers and assign doctors" },
 ];
 
 const ACTION_PERMISSIONS: { key: keyof LabRole; label: string; description: string }[] = [
@@ -2314,10 +2463,11 @@ type DraftRole = {
   can_view_activity:   boolean;
   can_view_feedback:   boolean;
   can_view_wallet:     boolean;
+  can_view_marketers:  boolean;
 };
 
 function blankRole(): DraftRole {
-  return { name: "", can_view_requests: true, can_mark_seen: false, can_mark_done: false, can_send_results: false, can_manage_team: false, can_manage_api_keys: false, can_view_referrals: false, can_view_clients: false, can_view_analytics: false, can_view_activity: false, can_view_feedback: false, can_view_wallet: false };
+  return { name: "", can_view_requests: true, can_mark_seen: false, can_mark_done: false, can_send_results: false, can_manage_team: false, can_manage_api_keys: false, can_view_referrals: false, can_view_clients: false, can_view_analytics: false, can_view_activity: false, can_view_feedback: false, can_view_wallet: false, can_view_marketers: false };
 }
 
 function LabTeamTab({ lab }: { lab: Lab }) {
@@ -2392,6 +2542,7 @@ function LabTeamTab({ lab }: { lab: Lab }) {
       can_view_activity:   (role as DraftRole).can_view_activity ?? false,
       can_view_feedback:   (role as DraftRole).can_view_feedback ?? false,
       can_view_wallet:     (role as DraftRole).can_view_wallet ?? false,
+      can_view_marketers:  (role as DraftRole).can_view_marketers ?? false,
     });
     setShowNewRole(true);
   }
@@ -3423,6 +3574,8 @@ function AdminKnowledgeBaseTab() {
   const [syncing, setSyncing] = useState(false);
   const [syncMode, setSyncMode] = useState<"new_only" | "merge_synonyms">("new_only");
   const [seeding, setSeeding] = useState(false);
+  const csvFileRef = useRef<HTMLInputElement | null>(null);
+  const [uploadingCsv, setUploadingCsv] = useState(false);
   const [hospitalTab, setHospitalTab] = useState(false);
   const [hospitals, setHospitals] = useState<{ id: string; name: string; city: string | null; is_active: boolean }[]>([]);
   const [hospLoading, setHospLoading] = useState(false);
@@ -3436,9 +3589,18 @@ function AdminKnowledgeBaseTab() {
     const url = `/api/admin/test-kb-manage${q ? `?q=${encodeURIComponent(q)}` : ""}`;
     try {
       const res = await fetch(url);
-      const data = await res.json();
-      if (data.success) { setTests(data.tests); setStats(data.stats); }
-    } catch { /* ignore */ }
+      const data = await res.json().catch(() => ({ success: false, error: `HTTP ${res.status}` }));
+      if (data.success) {
+        setTests(data.tests);
+        setStats(data.stats);
+      } else {
+        const msg = data.error || `HTTP ${res.status}`;
+        console.error("[fetchKb] Failed:", msg, data);
+        toast.error(`KB load failed: ${msg}${data.hint ? ` — ${data.hint}` : ""}`, { duration: 8000 });
+      }
+    } catch (e) {
+      console.error("[fetchKb] Exception:", e);
+    }
     setLoading(false);
     setFetched(true);
   }, []);
@@ -3463,45 +3625,79 @@ function AdminKnowledgeBaseTab() {
         method: "POST", headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ action: "seed" }),
       });
-      const data = await res.json();
-      if (data.success) {
+      // Surface HTTP errors (403, 500, etc) with the real server message
+      const data = await res.json().catch(() => ({ success: false, error: `HTTP ${res.status} ${res.statusText}` }));
+      if (!res.ok || !data.success) {
+        const msg = data.error || data.message || `HTTP ${res.status}`;
+        console.error("[Seed KB] Failed:", msg, data);
+        toast.error(`Seeding failed: ${msg}`, { duration: 6000 });
+      } else {
         toast.success(`Seeded ${data.created} tests (${data.skipped} already existed)`);
-        fetchKb();
-      } else { toast.error("Seeding failed"); }
-    } catch (e) { console.error(e); toast.error("Seed failed"); }
+        await fetchKb();
+      }
+    } catch (e) {
+      console.error("[Seed KB] Exception:", e);
+      toast.error(`Seed failed: ${e instanceof Error ? e.message : "Unknown error"}`, { duration: 6000 });
+    }
     setSeeding(false);
+  }
+
+  async function handleCsvUpload(e: React.ChangeEvent<HTMLInputElement>) {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    setUploadingCsv(true);
+    try {
+      const formData = new FormData();
+      formData.append("file", file);
+      const res = await fetch("/api/admin/test-kb/import-csv", {
+        method: "POST",
+        body: formData,
+      });
+      const data = await res.json().catch(() => ({ success: false, error: `HTTP ${res.status}` }));
+      if (!res.ok || !data.success) {
+        toast.error(`Import failed: ${data.error || `HTTP ${res.status}`}`, { duration: 6000 });
+      } else {
+        toast.success(`Imported ${data.created} tests (${data.skipped} skipped)`);
+        if (data.errors && data.errors.length > 0) {
+          console.warn("[CSV Import] Errors:", data.errors);
+          toast(`${data.errors.length} rows had errors — see console`, { duration: 5000 });
+        }
+        await fetchKb();
+      }
+    } catch (err) {
+      console.error("[CSV Import] Exception:", err);
+      toast.error(`Upload failed: ${err instanceof Error ? err.message : "Unknown error"}`);
+    }
+    setUploadingCsv(false);
+    if (csvFileRef.current) csvFileRef.current.value = "";
   }
 
   async function handleSync() {
     setSyncing(true);
     try {
-      // Step 1: Migrate old KB to new system if needed
-      let migrateRes = await fetch("/api/admin/test-kb-manage/migrate", {
-        method: "POST", headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ action: "migrate_from_old_kb" }),
-      });
-      const migrateData = await migrateRes.json();
-      console.log("Migration result:", migrateData);
+      const callStep = async (action: string) => {
+        const res = await fetch("/api/admin/test-kb-manage/migrate", {
+          method: "POST", headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ action }),
+        });
+        const data = await res.json().catch(() => ({ success: false, error: `HTTP ${res.status}` }));
+        if (!res.ok || !data.success) {
+          throw new Error(`${action}: ${data.error || `HTTP ${res.status}`}`);
+        }
+        return data;
+      };
 
-      // Step 2: Clear old synonyms
-      let clearRes = await fetch("/api/admin/test-kb-manage/migrate", {
-        method: "POST", headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ action: "clear_old_synonyms" }),
-      });
-      const clearData = await clearRes.json();
-      console.log("Clear synonyms result:", clearData);
+      const migrateData = await callStep("migrate_from_old_kb");
+      const clearData = await callStep("clear_old_synonyms");
+      const mapData = await callStep("map_labs_to_kb");
 
-      // Step 3: Map labs to KB
-      let mapRes = await fetch("/api/admin/test-kb-manage/migrate", {
-        method: "POST", headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ action: "map_labs_to_kb" }),
-      });
-      const mapData = await mapRes.json();
-      console.log("Mapping result:", mapData);
-
-      toast.success(`Sync complete: Migrated ${migrateData.migrated} tests, mapped ${mapData.created} lab tests`);
-      fetchKb();
-    } catch (e) { console.error(e); toast.error("Sync failed"); }
+      console.log("[Sync] migrate:", migrateData, "clear:", clearData, "map:", mapData);
+      toast.success(`Sync complete: Migrated ${migrateData.migrated ?? 0} tests, mapped ${mapData.created ?? 0} lab tests`);
+      await fetchKb();
+    } catch (e) {
+      console.error("[Sync] Exception:", e);
+      toast.error(`Sync failed: ${e instanceof Error ? e.message : "Unknown error"}`, { duration: 8000 });
+    }
     setSyncing(false);
   }
 
@@ -3634,6 +3830,22 @@ function AdminKnowledgeBaseTab() {
                 <button onClick={handleSeed} disabled={seeding} className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-green-500/20 border border-green-500/30 text-green-300 text-xs font-semibold hover:bg-green-500/30 transition-colors disabled:opacity-50">
                   {seeding ? <RefreshCw className="w-3.5 h-3.5 animate-spin" /> : <Plus className="w-3.5 h-3.5" />}
                   {seeding ? "Seeding…" : "Seed KB"}
+                </button>
+                <input
+                  ref={csvFileRef}
+                  type="file"
+                  accept=".csv,text/csv"
+                  onChange={handleCsvUpload}
+                  className="hidden"
+                />
+                <button
+                  onClick={() => csvFileRef.current?.click()}
+                  disabled={uploadingCsv}
+                  className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-sky-500/20 border border-sky-500/30 text-sky-300 text-xs font-semibold hover:bg-sky-500/30 transition-colors disabled:opacity-50"
+                  title="Upload CSV: canonical_name, synonyms, variants, category"
+                >
+                  {uploadingCsv ? <RefreshCw className="w-3.5 h-3.5 animate-spin" /> : <Upload className="w-3.5 h-3.5" />}
+                  {uploadingCsv ? "Uploading…" : "Import CSV"}
                 </button>
                 <button onClick={handleSync} disabled={syncing} className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-amber-500/20 border border-amber-500/30 text-amber-300 text-xs font-semibold hover:bg-amber-500/30 transition-colors disabled:opacity-50">
                   {syncing ? <RefreshCw className="w-3.5 h-3.5 animate-spin" /> : <Sparkles className="w-3.5 h-3.5" />}

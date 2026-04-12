@@ -111,7 +111,7 @@ export function TestTagInput({ value, onChange, labId, error, label, disabled }:
       } catch (e) {
         if ((e as Error).name !== "AbortError") setSearching(false);
       }
-    }, 250);
+    }, 100);
     return () => { clearTimeout(t); controller.abort(); };
   }, [inputText, labId]);
 

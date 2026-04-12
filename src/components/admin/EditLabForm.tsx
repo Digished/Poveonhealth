@@ -40,11 +40,17 @@ const COUNTRY_CODES = [
   { code: "+971", label: "🇦🇪 UAE (+971)" },
   { code: "+91",  label: "🇮🇳 India (+91)" },
   { code: "+86",  label: "🇨🇳 China (+86)" },
+  { code: "",     label: "N/A (No country code)" },
 ];
 
 function parseDialCode(full: string): { dial: string; local: string } {
+  // Check for empty string first (N/A option)
+  if (!full.startsWith("+")) {
+    return { dial: "", local: full };
+  }
+  // Check country codes
   for (const c of COUNTRY_CODES) {
-    if (full.startsWith(c.code)) {
+    if (c.code && full.startsWith(c.code)) {
       return { dial: c.code, local: full.slice(c.code.length).trimStart() };
     }
   }

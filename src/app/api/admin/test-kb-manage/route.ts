@@ -114,8 +114,12 @@ export async function GET(req: NextRequest) {
     });
   } catch (error) {
     console.error("[test-kb-manage] GET error:", error);
+    const msg = error instanceof Error ? error.message : String(error);
+    const hint = /relation .*test_knowledge_bases.* does not exist/i.test(msg)
+      ? "Table test_knowledge_bases is missing. Run migrations (redeploy triggers scripts/run-migration.mjs)."
+      : undefined;
     return NextResponse.json(
-      { success: false, error: "Failed to fetch KB tests" },
+      { success: false, error: msg, hint },
       { status: 500 }
     );
   }
@@ -171,8 +175,9 @@ export async function POST(req: NextRequest) {
     });
   } catch (error) {
     console.error("[test-kb-manage] POST error:", error);
+    const msg = error instanceof Error ? error.message : String(error);
     return NextResponse.json(
-      { success: false, error: "Failed to create KB test" },
+      { success: false, error: msg },
       { status: 500 }
     );
   }

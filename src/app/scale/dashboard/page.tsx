@@ -457,11 +457,78 @@ function CreateProfessionalModal({ onClose, onCreated }: { onClose: () => void; 
   const [accountName, setAccountName]     = useState("");
   const [loading, setLoading] = useState(false);
   const [error, setError]     = useState("");
+  const [checkingEmail, setCheckingEmail] = useState(false);
+  const [emailCheckResult, setEmailCheckResult] = useState<any>(null);
+  const [autoFillStatus, setAutoFillStatus] = useState("");
+  const checkTimeoutRef = useRef<NodeJS.Timeout | null>(null);
+
+  // Auto-fill when email is checked
+  useEffect(() => {
+    if (emailCheckResult?.data && emailCheckResult.exists) {
+      setPrefix(emailCheckResult.data.prefix || "Dr.");
+      setFullName(emailCheckResult.data.full_name || "");
+      setPhone(emailCheckResult.data.phone || "");
+      setHospitals(emailCheckResult.data.hospitals || []);
+
+      if (emailCheckResult.alreadyLinked) {
+        setAutoFillStatus("Already linked to you");
+      } else if (emailCheckResult.assignedToMarketer) {
+        setAutoFillStatus(`Assigned to ${emailCheckResult.assignedToMarketer} in same lab`);
+      } else {
+        setAutoFillStatus("Auto-filled from existing profile");
+      }
+    } else {
+      setAutoFillStatus("");
+    }
+  }, [emailCheckResult]);
+
+  // Debounced email check
+  useEffect(() => {
+    if (!email.trim()) {
+      setEmailCheckResult(null);
+      setAutoFillStatus("");
+      return;
+    }
+
+    if (checkTimeoutRef.current) clearTimeout(checkTimeoutRef.current);
+
+    checkTimeoutRef.current = setTimeout(async () => {
+      setCheckingEmail(true);
+      try {
+        const res = await fetch(`/api/scale/professionals/check-email?email=${encodeURIComponent(email.trim())}`);
+        if (res.ok) {
+          const data = await res.json();
+          setEmailCheckResult(data);
+        }
+      } catch {
+        // Ignore check errors
+      } finally {
+        setCheckingEmail(false);
+      }
+    }, 300);
+
+    return () => {
+      if (checkTimeoutRef.current) clearTimeout(checkTimeoutRef.current);
+    };
+  }, [email]);
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
     if (!email.trim())    { setError("Email is required."); return; }
     if (!fullName.trim()) { setError("Full name is required."); return; }
+
+    // Prevent adding if already linked to this marketer
+    if (emailCheckResult?.alreadyLinked) {
+      setError("This doctor is already linked to you.");
+      return;
+    }
+
+    // Prevent adding if assigned to another marketer in same lab
+    if (emailCheckResult?.assignedToMarketer) {
+      setError(`This doctor is already assigned to ${emailCheckResult.assignedToMarketer} in your lab.`);
+      return;
+    }
+
     setLoading(true);
     try {
       const res = await fetch("/api/scale/professionals", {
@@ -496,6 +563,17 @@ function CreateProfessionalModal({ onClose, onCreated }: { onClose: () => void; 
             <div>
               <label className={labelCls}>Email Address <span className="text-red-400">*</span></label>
               <input type="email" placeholder="doctor@clinic.com" value={email} onChange={(e) => { setEmail(e.target.value); setError(""); }} className={inputCls} />
+              {checkingEmail && <p className="text-xs text-slate-400 mt-1">Checking...</p>}
+              {emailCheckResult && !checkingEmail && (
+                <div className={`mt-2 p-2 rounded text-xs ${emailCheckResult.exists ? "bg-blue-50 text-blue-700 border border-blue-100" : "bg-gray-50 text-gray-600 border border-gray-100"}`}>
+                  {emailCheckResult.exists ? `✓ Found: ${emailCheckResult.data?.full_name || "Doctor profile exists"}` : "No existing profile"}
+                </div>
+              )}
+              {autoFillStatus && (
+                <p className={`text-xs mt-1 ${emailCheckResult?.assignedToMarketer ? "text-amber-600" : "text-blue-600"}`}>
+                  {emailCheckResult?.assignedToMarketer ? "⚠ " : "ℹ "}{autoFillStatus}
+                </p>
+              )}
             </div>
             <div>
               <label className={labelCls}>Title &amp; Full Name <span className="text-red-400">*</span></label>
