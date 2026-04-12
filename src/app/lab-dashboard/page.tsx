@@ -25,6 +25,7 @@ export default async function LabDashboardPage() {
   let canViewActivity = true;
   let canViewFeedback = true;
   let canViewWallet = true;
+  let canViewMarketers = false;
 
   if (role === "lab") {
     const labUser = await prisma.labUser.findUnique({
@@ -32,13 +33,14 @@ export default async function LabDashboardPage() {
       select: { lab_id: true },
     });
     labId = labUser?.lab_id ?? null;
+    canViewMarketers = true; // Lab owners can manage marketers
   } else {
     // lab_member — look up via LabMember table
     const member = await prisma.labMember.findUnique({
       where: { user_id: user.id },
       select: {
         lab_id: true,
-        role: { select: { name: true, can_view_referrals: true, can_view_clients: true, can_view_analytics: true, can_view_activity: true, can_view_feedback: true, can_view_wallet: true } },
+        role: { select: { name: true, can_view_referrals: true, can_view_clients: true, can_view_analytics: true, can_view_activity: true, can_view_feedback: true, can_view_wallet: true, can_view_marketers: true } },
       },
     });
     labId = member?.lab_id ?? null;
@@ -49,6 +51,7 @@ export default async function LabDashboardPage() {
     canViewActivity = member?.role.can_view_activity ?? false;
     canViewFeedback = member?.role.can_view_feedback ?? false;
     canViewWallet = member?.role.can_view_wallet ?? false;
+    canViewMarketers = member?.role.can_view_marketers ?? false;
   }
 
   if (!labId) redirect("/lab-login");
@@ -80,6 +83,7 @@ export default async function LabDashboardPage() {
       canViewActivity={canViewActivity}
       canViewFeedback={canViewFeedback}
       canViewWallet={canViewWallet}
+      canViewMarketers={canViewMarketers}
       lab={{
         id: lab.id,
         name: lab.name,

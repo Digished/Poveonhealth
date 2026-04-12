@@ -83,6 +83,7 @@ export interface LabRole {
   can_view_activity: boolean;
   can_view_feedback: boolean;
   can_view_wallet: boolean;
+  can_view_marketers: boolean;
   created_at: string;
   _count?: { members: number };
 }

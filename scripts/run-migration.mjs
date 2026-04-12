@@ -149,6 +149,11 @@ const migrations = [
     `,
     continueOnError: true,
   },
+  {
+    desc: "LabRole.can_view_marketers permission for marketer management access",
+    sql: `ALTER TABLE "LabRole" ADD COLUMN IF NOT EXISTS can_view_marketers BOOLEAN NOT NULL DEFAULT false`,
+    continueOnError: true,
+  },
 ];
 
 let failed = false;

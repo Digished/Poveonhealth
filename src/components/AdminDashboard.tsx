@@ -2396,6 +2396,7 @@ const PAGE_PERMISSIONS: { key: keyof LabRole; label: string; description: string
   { key: "can_view_activity",   label: "Activity",   description: "View team activity log" },
   { key: "can_view_feedback",   label: "Feedback",   description: "View patient and doctor feedback" },
   { key: "can_view_wallet",     label: "Wallet",     description: "View wallet balance and transactions" },
+  { key: "can_view_marketers",  label: "Marketers",  description: "Manage lab marketers and assign doctors" },
 ];
 
 const ACTION_PERMISSIONS: { key: keyof LabRole; label: string; description: string }[] = [
@@ -2422,10 +2423,11 @@ type DraftRole = {
   can_view_activity:   boolean;
   can_view_feedback:   boolean;
   can_view_wallet:     boolean;
+  can_view_marketers:  boolean;
 };
 
 function blankRole(): DraftRole {
-  return { name: "", can_view_requests: true, can_mark_seen: false, can_mark_done: false, can_send_results: false, can_manage_team: false, can_manage_api_keys: false, can_view_referrals: false, can_view_clients: false, can_view_analytics: false, can_view_activity: false, can_view_feedback: false, can_view_wallet: false };
+  return { name: "", can_view_requests: true, can_mark_seen: false, can_mark_done: false, can_send_results: false, can_manage_team: false, can_manage_api_keys: false, can_view_referrals: false, can_view_clients: false, can_view_analytics: false, can_view_activity: false, can_view_feedback: false, can_view_wallet: false, can_view_marketers: false };
 }
 
 function LabTeamTab({ lab }: { lab: Lab }) {
@@ -2500,6 +2502,7 @@ function LabTeamTab({ lab }: { lab: Lab }) {
       can_view_activity:   (role as DraftRole).can_view_activity ?? false,
       can_view_feedback:   (role as DraftRole).can_view_feedback ?? false,
       can_view_wallet:     (role as DraftRole).can_view_wallet ?? false,
+      can_view_marketers:  (role as DraftRole).can_view_marketers ?? false,
     });
     setShowNewRole(true);
   }

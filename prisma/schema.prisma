@@ -111,6 +111,7 @@ model LabRole {
   can_view_activity   Boolean  @default(false)
   can_view_feedback      Boolean  @default(false)
   can_view_wallet        Boolean  @default(false)
+  can_view_marketers     Boolean  @default(false)
   created_at             DateTime @default(now())
 
   lab     Lab         @relation(fields: [lab_id], references: [id], onDelete: Cascade)

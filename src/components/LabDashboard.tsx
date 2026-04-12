@@ -62,6 +62,7 @@ interface LabDashboardProps {
   canViewActivity?: boolean;
   canViewFeedback?: boolean;
   canViewWallet?: boolean;
+  canViewMarketers?: boolean;
 }
 
 const TABS: { key: RequestStatus; label: string; icon: React.ReactNode }[] = [
@@ -85,7 +86,7 @@ function displayTests(raw: string | null | undefined): string {
 }
 
 
-export function LabDashboard({ lab, isOwner = false, roleName = "Lab Owner", canViewReferrals = false, canViewClients = false, canViewAnalytics = false, canViewActivity = false, canViewFeedback = false, canViewWallet = false }: LabDashboardProps) {
+export function LabDashboard({ lab, isOwner = false, roleName = "Lab Owner", canViewReferrals = false, canViewClients = false, canViewAnalytics = false, canViewActivity = false, canViewFeedback = false, canViewWallet = false, canViewMarketers = false }: LabDashboardProps) {
   const { name: labName, logo_url: labLogoUrl } = lab;
   const router = useRouter();
   const searchParams = useSearchParams();
@@ -344,8 +345,8 @@ export function LabDashboard({ lab, isOwner = false, roleName = "Lab Owner", can
   useEffect(() => {
     if (mainView === "referrals" && (isOwner || canViewReferrals)) fetchReferrals();
     if (mainView === "clients" && (isOwner || canViewClients)) fetchClients();
-    if (mainView === "marketers" && isOwner) fetchMarketers();
-  }, [mainView, fetchReferrals, fetchClients, fetchMarketers, isOwner, canViewReferrals, canViewClients]);
+    if (mainView === "marketers" && (isOwner || canViewMarketers)) fetchMarketers();
+  }, [mainView, fetchReferrals, fetchClients, fetchMarketers, isOwner, canViewReferrals, canViewClients, canViewMarketers]);
 
   const tabRequests = requests.filter((r) => r.status === activeTab);
 
@@ -774,7 +775,7 @@ export function LabDashboard({ lab, isOwner = false, roleName = "Lab Owner", can
             { key: "analytics" as const, label: "Analytics", icon: <BarChart3 className="w-4 h-4" />, show: isOwner || canViewAnalytics },
             { key: "activity" as const, label: "Activity", icon: <Activity className="w-4 h-4" />, show: isOwner || canViewActivity },
             { key: "feedback" as const, label: "Feedback", icon: <Star className="w-4 h-4" />, show: isOwner || canViewFeedback },
-            { key: "marketers" as const, label: "Marketers", icon: <Users className="w-4 h-4" />, show: isOwner },
+            { key: "marketers" as const, label: "Marketers", icon: <Users className="w-4 h-4" />, show: isOwner || canViewMarketers },
             { key: "price-list" as const, label: "Price List", icon: <Layers className="w-4 h-4" />, show: isOwner || canViewWallet },
           ].filter((item) => item.show);
           if (navItems.length <= 1) return null;
@@ -1885,6 +1886,47 @@ export function LabDashboard({ lab, isOwner = false, roleName = "Lab Owner", can
                   })()}
                 </div>
               )}
+
+              {/* Marketer Breakdown */}
+              {marketers.length > 0 && (
+                <div className="bg-white/5 border border-white/10 rounded-2xl p-5">
+                  <p className="text-xs font-semibold text-slate-400 uppercase tracking-wider mb-4">
+                    Requests by Marketer
+                  </p>
+                  <div className="space-y-4">
+                    {marketers.map((m) => {
+                      const marketerRequests = filteredRequests.filter((r) => {
+                        // Find if this request belongs to a doctor under this marketer
+                        // This would need the marketer data enriched in requests,
+                        // so for now we show a placeholder
+                        return false; // Placeholder
+                      });
+                      const marketerCount = marketerDoctors[m.marketer_id]?.length ?? 0;
+                      const marketerRequestCount = (marketerDoctors[m.marketer_id] ?? []).reduce((sum, doc) => {
+                        return sum + (doc.request_count ?? 0);
+                      }, 0);
+                      return (
+                        <div key={m.marketer_id} className="bg-white/5 border border-white/8 rounded-lg p-3">
+                          <div className="flex items-center justify-between mb-2">
+                            <div className="min-w-0">
+                              <p className="text-sm font-semibold text-slate-200">{m.marketer.name}</p>
+                              <p className="text-xs text-slate-500">{m.marketer.email}</p>
+                            </div>
+                            <div className="text-right shrink-0">
+                              <p className="text-lg font-bold text-blue-400">{marketerRequestCount}</p>
+                              <p className="text-xs text-slate-500">requests</p>
+                            </div>
+                          </div>
+                          <div className="flex gap-3 text-xs">
+                            <span className="text-slate-400">Doctors: <span className="text-slate-300">{marketerCount}</span></span>
+                            <span className="text-slate-400">Added: <span className="text-slate-300">{new Date(m.added_at).toLocaleDateString("en-GB")}</span></span>
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
+                </div>
+              )}
             </div>
           );
         })()}
@@ -1932,7 +1974,7 @@ export function LabDashboard({ lab, isOwner = false, roleName = "Lab Owner", can
         )}
 
         {/* Marketers tab */}
-        {mainView === "marketers" && isOwner && (
+        {mainView === "marketers" && (isOwner || canViewMarketers) && (
           <div className="space-y-5">
             <div className="flex items-center justify-between">
               <div>
