@@ -98,6 +98,8 @@ export async function GET(
         });
 
         for (const req of requests) {
+          if (!req.doctor_email) continue; // Skip self-service patient requests
+
           // Find marketer for this doctor
           const docLink = await prisma.doctorMarketerLink.findFirst({
             where: { doctor_email: req.doctor_email },
