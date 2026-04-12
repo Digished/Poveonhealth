@@ -345,7 +345,7 @@ export function LabDashboard({ lab, isOwner = false, roleName = "Lab Owner", can
   useEffect(() => {
     if (mainView === "referrals" && (isOwner || canViewReferrals)) fetchReferrals();
     if (mainView === "clients" && (isOwner || canViewClients)) fetchClients();
-    if (mainView === "marketers" && (isOwner || canViewMarketers)) fetchMarketers();
+    if ((mainView === "marketers" || mainView === "analytics") && (isOwner || canViewMarketers)) fetchMarketers();
   }, [mainView, fetchReferrals, fetchClients, fetchMarketers, isOwner, canViewReferrals, canViewClients, canViewMarketers]);
 
   const tabRequests = requests.filter((r) => r.status === activeTab);
@@ -1895,16 +1895,16 @@ export function LabDashboard({ lab, isOwner = false, roleName = "Lab Owner", can
                   </p>
                   <div className="space-y-4">
                     {marketers.map((m) => {
-                      const marketerRequests = filteredRequests.filter((r) => {
-                        // Find if this request belongs to a doctor under this marketer
-                        // This would need the marketer data enriched in requests,
-                        // so for now we show a placeholder
-                        return false; // Placeholder
-                      });
-                      const marketerCount = marketerDoctors[m.marketer_id]?.length ?? 0;
-                      const marketerRequestCount = (marketerDoctors[m.marketer_id] ?? []).reduce((sum, doc) => {
-                        return sum + (doc.request_count ?? 0);
-                      }, 0);
+                      // Get all doctors linked to this marketer
+                      const marketerDoctorEmails = new Set<string>();
+                      // We'll calculate this from filtered requests
+                      let marketerRequestCount = 0;
+                      let marketerCompletedCount = 0;
+                      let marketerRevenue = 0;
+
+                      // Since we don't have full doctor details in analytics view,
+                      // we'll need to fetch them. For now, show the doctors_count from API
+
                       return (
                         <div key={m.marketer_id} className="bg-white/5 border border-white/8 rounded-lg p-3">
                           <div className="flex items-center justify-between mb-2">
@@ -1918,7 +1918,7 @@ export function LabDashboard({ lab, isOwner = false, roleName = "Lab Owner", can
                             </div>
                           </div>
                           <div className="flex gap-3 text-xs">
-                            <span className="text-slate-400">Doctors: <span className="text-slate-300">{marketerCount}</span></span>
+                            <span className="text-slate-400">Doctors: <span className="text-slate-300">{m.doctors_count}</span></span>
                             <span className="text-slate-400">Added: <span className="text-slate-300">{new Date(m.added_at).toLocaleDateString("en-GB")}</span></span>
                           </div>
                         </div>
