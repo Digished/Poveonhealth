@@ -3423,6 +3423,8 @@ function AdminKnowledgeBaseTab() {
   const [syncing, setSyncing] = useState(false);
   const [syncMode, setSyncMode] = useState<"new_only" | "merge_synonyms">("new_only");
   const [seeding, setSeeding] = useState(false);
+  const csvFileRef = useRef<HTMLInputElement | null>(null);
+  const [uploadingCsv, setUploadingCsv] = useState(false);
   const [hospitalTab, setHospitalTab] = useState(false);
   const [hospitals, setHospitals] = useState<{ id: string; name: string; city: string | null; is_active: boolean }[]>([]);
   const [hospLoading, setHospLoading] = useState(false);
@@ -3436,9 +3438,18 @@ function AdminKnowledgeBaseTab() {
     const url = `/api/admin/test-kb-manage${q ? `?q=${encodeURIComponent(q)}` : ""}`;
     try {
       const res = await fetch(url);
-      const data = await res.json();
-      if (data.success) { setTests(data.tests); setStats(data.stats); }
-    } catch { /* ignore */ }
+      const data = await res.json().catch(() => ({ success: false, error: `HTTP ${res.status}` }));
+      if (data.success) {
+        setTests(data.tests);
+        setStats(data.stats);
+      } else {
+        const msg = data.error || `HTTP ${res.status}`;
+        console.error("[fetchKb] Failed:", msg, data);
+        toast.error(`KB load failed: ${msg}${data.hint ? ` — ${data.hint}` : ""}`, { duration: 8000 });
+      }
+    } catch (e) {
+      console.error("[fetchKb] Exception:", e);
+    }
     setLoading(false);
     setFetched(true);
   }, []);
@@ -3463,45 +3474,79 @@ function AdminKnowledgeBaseTab() {
         method: "POST", headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ action: "seed" }),
       });
-      const data = await res.json();
-      if (data.success) {
+      // Surface HTTP errors (403, 500, etc) with the real server message
+      const data = await res.json().catch(() => ({ success: false, error: `HTTP ${res.status} ${res.statusText}` }));
+      if (!res.ok || !data.success) {
+        const msg = data.error || data.message || `HTTP ${res.status}`;
+        console.error("[Seed KB] Failed:", msg, data);
+        toast.error(`Seeding failed: ${msg}`, { duration: 6000 });
+      } else {
         toast.success(`Seeded ${data.created} tests (${data.skipped} already existed)`);
-        fetchKb();
-      } else { toast.error("Seeding failed"); }
-    } catch (e) { console.error(e); toast.error("Seed failed"); }
+        await fetchKb();
+      }
+    } catch (e) {
+      console.error("[Seed KB] Exception:", e);
+      toast.error(`Seed failed: ${e instanceof Error ? e.message : "Unknown error"}`, { duration: 6000 });
+    }
     setSeeding(false);
+  }
+
+  async function handleCsvUpload(e: React.ChangeEvent<HTMLInputElement>) {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    setUploadingCsv(true);
+    try {
+      const formData = new FormData();
+      formData.append("file", file);
+      const res = await fetch("/api/admin/test-kb/import-csv", {
+        method: "POST",
+        body: formData,
+      });
+      const data = await res.json().catch(() => ({ success: false, error: `HTTP ${res.status}` }));
+      if (!res.ok || !data.success) {
+        toast.error(`Import failed: ${data.error || `HTTP ${res.status}`}`, { duration: 6000 });
+      } else {
+        toast.success(`Imported ${data.created} tests (${data.skipped} skipped)`);
+        if (data.errors && data.errors.length > 0) {
+          console.warn("[CSV Import] Errors:", data.errors);
+          toast(`${data.errors.length} rows had errors — see console`, { duration: 5000 });
+        }
+        await fetchKb();
+      }
+    } catch (err) {
+      console.error("[CSV Import] Exception:", err);
+      toast.error(`Upload failed: ${err instanceof Error ? err.message : "Unknown error"}`);
+    }
+    setUploadingCsv(false);
+    if (csvFileRef.current) csvFileRef.current.value = "";
   }
 
   async function handleSync() {
     setSyncing(true);
     try {
-      // Step 1: Migrate old KB to new system if needed
-      let migrateRes = await fetch("/api/admin/test-kb-manage/migrate", {
-        method: "POST", headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ action: "migrate_from_old_kb" }),
-      });
-      const migrateData = await migrateRes.json();
-      console.log("Migration result:", migrateData);
+      const callStep = async (action: string) => {
+        const res = await fetch("/api/admin/test-kb-manage/migrate", {
+          method: "POST", headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ action }),
+        });
+        const data = await res.json().catch(() => ({ success: false, error: `HTTP ${res.status}` }));
+        if (!res.ok || !data.success) {
+          throw new Error(`${action}: ${data.error || `HTTP ${res.status}`}`);
+        }
+        return data;
+      };
 
-      // Step 2: Clear old synonyms
-      let clearRes = await fetch("/api/admin/test-kb-manage/migrate", {
-        method: "POST", headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ action: "clear_old_synonyms" }),
-      });
-      const clearData = await clearRes.json();
-      console.log("Clear synonyms result:", clearData);
+      const migrateData = await callStep("migrate_from_old_kb");
+      const clearData = await callStep("clear_old_synonyms");
+      const mapData = await callStep("map_labs_to_kb");
 
-      // Step 3: Map labs to KB
-      let mapRes = await fetch("/api/admin/test-kb-manage/migrate", {
-        method: "POST", headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ action: "map_labs_to_kb" }),
-      });
-      const mapData = await mapRes.json();
-      console.log("Mapping result:", mapData);
-
-      toast.success(`Sync complete: Migrated ${migrateData.migrated} tests, mapped ${mapData.created} lab tests`);
-      fetchKb();
-    } catch (e) { console.error(e); toast.error("Sync failed"); }
+      console.log("[Sync] migrate:", migrateData, "clear:", clearData, "map:", mapData);
+      toast.success(`Sync complete: Migrated ${migrateData.migrated ?? 0} tests, mapped ${mapData.created ?? 0} lab tests`);
+      await fetchKb();
+    } catch (e) {
+      console.error("[Sync] Exception:", e);
+      toast.error(`Sync failed: ${e instanceof Error ? e.message : "Unknown error"}`, { duration: 8000 });
+    }
     setSyncing(false);
   }
 
@@ -3634,6 +3679,22 @@ function AdminKnowledgeBaseTab() {
                 <button onClick={handleSeed} disabled={seeding} className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-green-500/20 border border-green-500/30 text-green-300 text-xs font-semibold hover:bg-green-500/30 transition-colors disabled:opacity-50">
                   {seeding ? <RefreshCw className="w-3.5 h-3.5 animate-spin" /> : <Plus className="w-3.5 h-3.5" />}
                   {seeding ? "Seeding…" : "Seed KB"}
+                </button>
+                <input
+                  ref={csvFileRef}
+                  type="file"
+                  accept=".csv,text/csv"
+                  onChange={handleCsvUpload}
+                  className="hidden"
+                />
+                <button
+                  onClick={() => csvFileRef.current?.click()}
+                  disabled={uploadingCsv}
+                  className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-sky-500/20 border border-sky-500/30 text-sky-300 text-xs font-semibold hover:bg-sky-500/30 transition-colors disabled:opacity-50"
+                  title="Upload a CSV with columns: canonical_name, synonyms, variants, category, description. Use ; to separate multiple synonyms/variants."
+                >
+                  {uploadingCsv ? <RefreshCw className="w-3.5 h-3.5 animate-spin" /> : <Upload className="w-3.5 h-3.5" />}
+                  {uploadingCsv ? "Uploading…" : "Import CSV"}
                 </button>
                 <button onClick={handleSync} disabled={syncing} className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-amber-500/20 border border-amber-500/30 text-amber-300 text-xs font-semibold hover:bg-amber-500/30 transition-colors disabled:opacity-50">
                   {syncing ? <RefreshCw className="w-3.5 h-3.5 animate-spin" /> : <Sparkles className="w-3.5 h-3.5" />}
