@@ -3654,24 +3654,6 @@ function AdminKnowledgeBaseTab() {
             </div>
           )}
 
-          {/* ── Workflow Help Panel ── */}
-          <div className="bg-gradient-to-r from-indigo-500/10 to-purple-500/10 border border-indigo-500/20 rounded-2xl p-5 space-y-3">
-            <div className="flex items-start gap-3">
-              <div className="flex-1">
-                <p className="text-sm font-semibold text-indigo-300 mb-2">📚 Knowledge Base Setup Workflow</p>
-                <ol className="text-xs text-slate-300 space-y-1.5 list-decimal list-inside">
-                  <li><span className="font-medium text-emerald-300">1. Seed the KB</span> — Click "Seed KB" to load 23+ standard medical tests (FBC, LFT, ECG, Imaging, etc.)</li>
-                  <li><span className="font-medium text-sky-300">2. Import More Tests</span> — Use "Import CSV" to bulk-add your custom tests. Format: <code className="bg-slate-900/50 px-1.5 py-0.5 rounded text-xs">canonical_name,synonyms,variants,category</code></li>
-                  <li><span className="font-medium text-amber-300">3. Auto-Map Labs</span> — Click "Migrate & Sync" to automatically link lab tests to KB entries using fuzzy matching</li>
-                  <li><span className="font-medium text-violet-300">4. Customize Mappings</span> — Go to Admin Labs → Lab Catalog → click "Map" to manually override any auto-mappings</li>
-                </ol>
-              </div>
-            </div>
-            <p className="text-xs text-slate-400 italic border-t border-slate-700/30 pt-2.5">
-              ✓ No need to manually map each lab test — the sync process handles it automatically. Only use the "Map" button if you need custom variant selection (e.g., only 1.5T MRI).
-            </p>
-          </div>
-
           <div className="bg-white/5 border border-white/10 rounded-2xl p-4 space-y-3">
             <div className="flex items-center gap-2 flex-wrap">
               <div className="relative flex-1 min-w-[200px]">
@@ -3690,47 +3672,34 @@ function AdminKnowledgeBaseTab() {
                 <RefreshCw className={`w-4 h-4 ${loading ? "animate-spin" : ""}`} />
               </button>
             </div>
-            <div className="flex items-start gap-3 pt-1 border-t border-white/8">
-              <Sparkles className="w-4 h-4 text-amber-400 shrink-0 mt-0.5" />
-              <div className="flex-1 space-y-1.5">
-                <p className="text-xs text-slate-400"><span className="font-semibold text-white">Populate & Map:</span> Load tests into KB, then auto-sync lab catalog</p>
-                <div className="flex flex-wrap gap-2">
-                  <div className="text-xs">
-                    <p className="text-slate-500 mb-0.5">Start here →</p>
-                    <button onClick={handleSeed} disabled={seeding} className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-green-500/20 border border-green-500/30 text-green-300 text-xs font-semibold hover:bg-green-500/30 transition-colors disabled:opacity-50 w-full" title="Load 23+ standard medical tests">
-                      {seeding ? <RefreshCw className="w-3.5 h-3.5 animate-spin" /> : <Plus className="w-3.5 h-3.5" />}
-                      {seeding ? "Seeding…" : "Seed KB"}
-                    </button>
-                  </div>
-                  <div className="text-xs">
-                    <p className="text-slate-500 mb-0.5">Or bulk-import →</p>
-                    <div className="flex gap-1">
-                      <input
-                        ref={csvFileRef}
-                        type="file"
-                        accept=".csv,text/csv"
-                        onChange={handleCsvUpload}
-                        className="hidden"
-                      />
-                      <button
-                        onClick={() => csvFileRef.current?.click()}
-                        disabled={uploadingCsv}
-                        className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-sky-500/20 border border-sky-500/30 text-sky-300 text-xs font-semibold hover:bg-sky-500/30 transition-colors disabled:opacity-50"
-                        title="Upload CSV: canonical_name, synonyms, variants, category"
-                      >
-                        {uploadingCsv ? <RefreshCw className="w-3.5 h-3.5 animate-spin" /> : <Upload className="w-3.5 h-3.5" />}
-                        {uploadingCsv ? "Uploading…" : "Import CSV"}
-                      </button>
-                    </div>
-                  </div>
-                  <div className="text-xs">
-                    <p className="text-slate-500 mb-0.5">Then sync labs →</p>
-                    <button onClick={handleSync} disabled={syncing} className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-amber-500/20 border border-amber-500/30 text-amber-300 text-xs font-semibold hover:bg-amber-500/30 transition-colors disabled:opacity-50 w-full" title="Auto-map lab tests to KB using fuzzy matching">
-                      {syncing ? <RefreshCw className="w-3.5 h-3.5 animate-spin" /> : <Sparkles className="w-3.5 h-3.5" />}
-                      {syncing ? "Syncing…" : "Migrate & Sync"}
-                    </button>
-                  </div>
-                </div>
+            <div className="flex items-center gap-3 pt-1 border-t border-white/8">
+              <Sparkles className="w-4 h-4 text-amber-400 shrink-0" />
+              <p className="text-xs text-slate-400 flex-1">Populate or sync the Knowledge Base with tests and lab data.</p>
+              <div className="flex gap-2">
+                <button onClick={handleSeed} disabled={seeding} className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-green-500/20 border border-green-500/30 text-green-300 text-xs font-semibold hover:bg-green-500/30 transition-colors disabled:opacity-50">
+                  {seeding ? <RefreshCw className="w-3.5 h-3.5 animate-spin" /> : <Plus className="w-3.5 h-3.5" />}
+                  {seeding ? "Seeding…" : "Seed KB"}
+                </button>
+                <input
+                  ref={csvFileRef}
+                  type="file"
+                  accept=".csv,text/csv"
+                  onChange={handleCsvUpload}
+                  className="hidden"
+                />
+                <button
+                  onClick={() => csvFileRef.current?.click()}
+                  disabled={uploadingCsv}
+                  className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-sky-500/20 border border-sky-500/30 text-sky-300 text-xs font-semibold hover:bg-sky-500/30 transition-colors disabled:opacity-50"
+                  title="Upload CSV: canonical_name, synonyms, variants, category"
+                >
+                  {uploadingCsv ? <RefreshCw className="w-3.5 h-3.5 animate-spin" /> : <Upload className="w-3.5 h-3.5" />}
+                  {uploadingCsv ? "Uploading…" : "Import CSV"}
+                </button>
+                <button onClick={handleSync} disabled={syncing} className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-amber-500/20 border border-amber-500/30 text-amber-300 text-xs font-semibold hover:bg-amber-500/30 transition-colors disabled:opacity-50">
+                  {syncing ? <RefreshCw className="w-3.5 h-3.5 animate-spin" /> : <Sparkles className="w-3.5 h-3.5" />}
+                  {syncing ? "Syncing…" : "Migrate & Sync"}
+                </button>
               </div>
             </div>
           </div>
