@@ -4,14 +4,14 @@ import { verifyAdminAuth } from "@/lib/admin-auth";
 import { prisma } from "@/lib/prisma";
 
 /**
- * PUT /api/admin/labs/[labId]/free-trial
+ * PUT /api/admin/labs/[id]/free-trial
  * Toggle free trial status for a lab
  */
 export async function PUT(
   req: NextRequest,
-  { params }: { params: Promise<{ labId: string }> }
+  { params }: { params: Promise<{ id: string }> }
 ) {
-  const labId = (await params).labId;
+  const labId = (await params).id;
   const admin = await verifyAdminAuth();
   if (!admin) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
 
