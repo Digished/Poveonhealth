@@ -9,7 +9,7 @@ import {
   Users, CreditCard, Filter, ChevronDown, AlertTriangle, Truck, ExternalLink,
   MessageCircle, ChevronLeft, FileImage, Sun, Moon, Pencil, Save, BarChart3, Lock,
   Menu, Activity, KeyRound, ArrowRight, Star, MessageSquare, Wallet2, Copy, ArrowUpRight,
-  Settings2, FileText,
+  Settings2, FileText, Plus,
 } from "lucide-react";
 import dynamic from "next/dynamic";
 
