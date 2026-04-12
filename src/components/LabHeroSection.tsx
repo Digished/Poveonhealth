@@ -244,9 +244,7 @@ export function LabHeroSection({ labName, logoUrl, heroImageUrl, mode = "profess
             {GREETING[tod]}
           </p>
           <p className="text-[13px] text-slate-500 leading-relaxed">
-            {mode === "patient"
-              ? "What test do you need today?"
-              : "What test does your patient need today?"}
+            Book a lab test today.
           </p>
         </div>
 
