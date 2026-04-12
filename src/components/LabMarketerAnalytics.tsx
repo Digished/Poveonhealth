@@ -151,7 +151,7 @@ export function LabMarketerAnalytics({ labId }: { labId: string }) {
           <div className="flex items-center justify-between">
             <div>
               <p className="text-xs text-slate-400 uppercase tracking-wider">Total Revenue</p>
-              <p className="text-2xl font-bold text-white mt-1">₹{(data.summary.total_revenue / 1000).toFixed(0)}k</p>
+              <p className="text-2xl font-bold text-white mt-1">₦{(data.summary.total_revenue / 1000).toFixed(0)}k</p>
             </div>
             <DollarSign className="w-8 h-8 text-green-400 opacity-50" />
           </div>
@@ -194,7 +194,7 @@ export function LabMarketerAnalytics({ labId }: { labId: string }) {
           </div>
 
           <div>
-            <label className="text-xs text-slate-400 uppercase tracking-wider block mb-2">Min Revenue (₹)</label>
+            <label className="text-xs text-slate-400 uppercase tracking-wider block mb-2">Min Revenue (₦)</label>
             <input
               type="number"
               value={minRevenue}
@@ -240,7 +240,7 @@ export function LabMarketerAnalytics({ labId }: { labId: string }) {
                 <div className="grid grid-cols-5 gap-4 shrink-0 text-right text-xs">
                   <div>
                     <p className="text-slate-400">Revenue</p>
-                    <p className="text-lg font-bold text-green-400 mt-1">₹{(m.total_revenue / 1000).toFixed(1)}k</p>
+                    <p className="text-lg font-bold text-green-400 mt-1">₦{(m.total_revenue / 1000).toFixed(1)}k</p>
                   </div>
                   <div>
                     <p className="text-slate-400">Requests</p>
@@ -306,7 +306,7 @@ export function LabMarketerAnalytics({ labId }: { labId: string }) {
                       <div className="bg-slate-800/50 rounded-lg p-3 text-center">
                         <p className="text-xs text-slate-400">Avg/Request</p>
                         <p className="text-lg font-bold text-orange-400 mt-1">
-                          ₹{m.average_revenue_per_request.toFixed(0)}
+                          ₦{m.average_revenue_per_request.toFixed(0)}
                         </p>
                         <p className="text-xs text-slate-600 mt-1">revenue</p>
                       </div>
@@ -345,7 +345,7 @@ export function LabMarketerAnalytics({ labId }: { labId: string }) {
                       <div className="bg-slate-800/50 rounded-lg p-3">
                         <p className="text-xs text-slate-400">Avg/Doctor</p>
                         <p className="text-lg font-bold text-blue-400 mt-1">
-                          ₹{m.average_revenue_per_doctor.toFixed(0)}
+                          ₦{m.average_revenue_per_doctor.toFixed(0)}
                         </p>
                       </div>
                       <div className="bg-slate-800/50 rounded-lg p-3">
