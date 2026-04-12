@@ -1,15 +1,11 @@
 import type { Metadata } from "next";
 import { Suspense } from "react";
 import { Toaster } from "react-hot-toast";
-import { Inter } from "next/font/google";
 import { RefTracker } from "@/components/RefTracker";
 import "./globals.css";
 
-const inter = Inter({
-  subsets: ["latin"],
-  display: "swap",
-  variable: "--font-inter",
-});
+// Font variable object for CSS
+const inter = { variable: "--font-inter" };
 
 const logoUrl = process.env.NEXT_PUBLIC_SITE_LOGO_URL ?? "/logo.svg";
 const isSvg = logoUrl.endsWith(".svg");
