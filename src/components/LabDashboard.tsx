@@ -129,6 +129,10 @@ export function LabDashboard({ lab, isOwner = false, roleName = "Lab Owner", can
   const [expandedMarketer, setExpandedMarketer] = useState<string | null>(null);
   const [marketerDoctors, setMarketerDoctors] = useState<Record<string, any[]>>({});
   const [loadingDoctors, setLoadingDoctors] = useState<Record<string, boolean>>({});
+  const [removeMarketerConfirm, setRemoveMarketerConfirm] = useState<{ marketerId: string; marketerName: string } | null>(null);
+  const [removeMarketerNameInput, setRemoveMarketerNameInput] = useState("");
+  const [unassignDoctorConfirm, setUnassignDoctorConfirm] = useState<{ marketerId: string; doctorEmail: string; doctorName: string } | null>(null);
+  const [unassigningDoctor, setUnassigningDoctor] = useState(false);
 
   const [activeTab, setActiveTab] = useState<RequestStatus>("seen");
   const [requests, setRequests] = useState<LabRequest[]>([]);
@@ -531,17 +535,56 @@ export function LabDashboard({ lab, isOwner = false, roleName = "Lab Owner", can
     }
   }
 
-  async function handleRemoveMarketer(marketerId: string) {
-    if (!confirm("Remove this marketer from your lab?")) return;
+  function openRemoveMarketerModal(marketerId: string, marketerName: string) {
+    setRemoveMarketerConfirm({ marketerId, marketerName });
+    setRemoveMarketerNameInput("");
+  }
+
+  async function handleConfirmRemoveMarketer() {
+    if (!removeMarketerConfirm) return;
+    if (removeMarketerNameInput !== removeMarketerConfirm.marketerName) {
+      toast.error("Please type the marketer's full name correctly");
+      return;
+    }
     try {
-      const res = await fetch(`/api/lab/${lab.id}/marketers/${marketerId}`, { method: "DELETE" });
+      const res = await fetch(`/api/lab/${lab.id}/marketers/${removeMarketerConfirm.marketerId}`, { method: "DELETE" });
       const data = await res.json();
       if (!data.success) { toast.error(data.error ?? "Failed to remove"); return; }
       toast.success("Marketer removed");
+      setRemoveMarketerConfirm(null);
+      setRemoveMarketerNameInput("");
       await fetchMarketers();
     } catch (error) {
       console.error("[handleRemoveMarketer]", error);
       toast.error("Network error");
+    }
+  }
+
+  async function handleUnassignDoctor(marketerId: string, doctorEmail: string, doctorName: string) {
+    setUnassignDoctorConfirm({ marketerId, doctorEmail, doctorName });
+  }
+
+  async function handleConfirmUnassignDoctor() {
+    if (!unassignDoctorConfirm) return;
+    setUnassigningDoctor(true);
+    try {
+      const res = await fetch(
+        `/api/lab/${lab.id}/marketers/${unassignDoctorConfirm.marketerId}/doctors?email=${encodeURIComponent(unassignDoctorConfirm.doctorEmail)}`,
+        { method: "DELETE" }
+      );
+      const data = await res.json();
+      if (!data.success) { toast.error(data.error ?? "Failed to unassign"); return; }
+      toast.success("Doctor unassigned");
+      setUnassignDoctorConfirm(null);
+      await fetchMarketers();
+      if (expandedMarketer === unassignDoctorConfirm.marketerId) {
+        await fetchMarketerDoctors(unassignDoctorConfirm.marketerId);
+      }
+    } catch (error) {
+      console.error("[handleUnassignDoctor]", error);
+      toast.error("Network error");
+    } finally {
+      setUnassigningDoctor(false);
     }
   }
 
@@ -1941,6 +1984,75 @@ export function LabDashboard({ lab, isOwner = false, roleName = "Lab Owner", can
               </div>
             )}
 
+            {/* Remove Marketer Confirmation Modal */}
+            {removeMarketerConfirm && (
+              <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
+                <div className="bg-slate-900 border border-slate-700 rounded-2xl max-w-md w-full p-6 space-y-4">
+                  <div>
+                    <h3 className="text-lg font-bold text-white mb-2">Remove Marketer?</h3>
+                    <p className="text-sm text-slate-400">
+                      This will remove <span className="font-semibold text-white">{removeMarketerConfirm.marketerName}</span> from your lab. All doctor assignments will remain intact.
+                    </p>
+                  </div>
+                  <div className="bg-rose-500/10 border border-rose-500/20 rounded-lg p-3">
+                    <p className="text-xs text-slate-400 mb-2">Type the marketer's full name to confirm:</p>
+                    <input
+                      type="text"
+                      placeholder={removeMarketerConfirm.marketerName}
+                      value={removeMarketerNameInput}
+                      onChange={(e) => setRemoveMarketerNameInput(e.target.value)}
+                      className="w-full bg-white/5 border border-rose-500/30 rounded-lg px-3 py-2 text-sm text-white placeholder-slate-600 focus:outline-none focus:ring-2 focus:ring-rose-500/50"
+                    />
+                  </div>
+                  <div className="flex gap-2">
+                    <button
+                      onClick={handleConfirmRemoveMarketer}
+                      disabled={removeMarketerNameInput !== removeMarketerConfirm.marketerName}
+                      className="flex-1 px-4 py-2 rounded-lg bg-rose-600 text-white text-sm font-semibold hover:bg-rose-500 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+                    >
+                      Remove
+                    </button>
+                    <button
+                      onClick={() => { setRemoveMarketerConfirm(null); setRemoveMarketerNameInput(""); }}
+                      className="flex-1 px-4 py-2 rounded-lg bg-white/8 text-slate-400 text-sm font-semibold hover:text-white transition-colors"
+                    >
+                      Cancel
+                    </button>
+                  </div>
+                </div>
+              </div>
+            )}
+
+            {/* Unassign Doctor Confirmation Modal */}
+            {unassignDoctorConfirm && (
+              <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
+                <div className="bg-slate-900 border border-slate-700 rounded-2xl max-w-md w-full p-6 space-y-4">
+                  <div>
+                    <h3 className="text-lg font-bold text-white mb-2">Unassign Doctor?</h3>
+                    <p className="text-sm text-slate-400">
+                      This will remove <span className="font-semibold text-white">{unassignDoctorConfirm.doctorName}</span> from this marketer.
+                    </p>
+                  </div>
+                  <div className="flex gap-2">
+                    <button
+                      onClick={handleConfirmUnassignDoctor}
+                      disabled={unassigningDoctor}
+                      className="flex-1 px-4 py-2 rounded-lg bg-rose-600 text-white text-sm font-semibold hover:bg-rose-500 disabled:opacity-50 disabled:cursor-not-allowed transition-colors flex items-center justify-center gap-2"
+                    >
+                      {unassigningDoctor && <RefreshCw className="w-4 h-4 animate-spin" />}
+                      Unassign
+                    </button>
+                    <button
+                      onClick={() => setUnassignDoctorConfirm(null)}
+                      className="flex-1 px-4 py-2 rounded-lg bg-white/8 text-slate-400 text-sm font-semibold hover:text-white transition-colors"
+                    >
+                      Cancel
+                    </button>
+                  </div>
+                </div>
+              </div>
+            )}
+
             {marketerLoading ? (
               <div className="space-y-2">{[...Array(3)].map((_, i) => <div key={i} className="bg-white/5 border border-white/10 rounded-xl h-16 animate-pulse" />)}</div>
             ) : marketers.length === 0 ? (
@@ -1990,14 +2102,23 @@ export function LabDashboard({ lab, isOwner = false, roleName = "Lab Owner", can
                                   <p className="text-xs font-medium text-white truncate">{doc.name}</p>
                                   <p className="text-xs text-slate-400 truncate">{doc.email}</p>
                                 </div>
-                                <span className="text-xs text-slate-400 ml-2 shrink-0">{doc.request_count} requests</span>
+                                <div className="flex items-center gap-2 ml-2 shrink-0">
+                                  <span className="text-xs text-slate-400">{doc.request_count} requests</span>
+                                  <button
+                                    onClick={() => handleUnassignDoctor(m.marketer_id, doc.email, doc.name)}
+                                    className="text-xs text-slate-400 hover:text-rose-400 p-1 rounded hover:bg-rose-500/10 transition-colors"
+                                    title="Unassign doctor"
+                                  >
+                                    ×
+                                  </button>
+                                </div>
                               </div>
                             ))}
                           </div>
                         )}
                         <button
-                          onClick={() => handleRemoveMarketer(m.marketer_id)}
-                          className="w-full text-xs text-rose-400 hover:text-rose-300 border border-rose-500/20 hover:border-rose-500/40 px-3 py-1.5 rounded-lg transition-colors"
+                          onClick={() => openRemoveMarketerModal(m.marketer_id, m.marketer.name)}
+                          className="w-full text-xs text-rose-400 hover:text-rose-300 border border-rose-500/20 hover:border-rose-500/40 px-3 py-1.5 rounded-lg transition-colors mt-2"
                         >
                           Remove Marketer
                         </button>
