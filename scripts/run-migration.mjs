@@ -132,6 +132,23 @@ const migrations = [
     `,
     continueOnError: true,
   },
+  {
+    desc: "lab_marketers table for lab-specific marketer assignments",
+    sql: `
+      CREATE TABLE IF NOT EXISTS lab_marketers (
+        id TEXT PRIMARY KEY,
+        lab_id TEXT NOT NULL REFERENCES labs(id) ON DELETE CASCADE,
+        marketer_id TEXT NOT NULL REFERENCES marketers(id) ON DELETE CASCADE,
+        added_by TEXT NOT NULL,
+        added_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+        UNIQUE(lab_id, marketer_id)
+      );
+      CREATE INDEX IF NOT EXISTS lab_marketers_lab_id_idx ON lab_marketers(lab_id);
+      CREATE INDEX IF NOT EXISTS lab_marketers_marketer_id_idx ON lab_marketers(marketer_id);
+      CREATE INDEX IF NOT EXISTS lab_marketers_added_at_idx ON lab_marketers(added_at);
+    `,
+    continueOnError: true,
+  },
 ];
 
 let failed = false;

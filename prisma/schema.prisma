@@ -43,6 +43,7 @@ model Lab {
   agreements        LabAgreement[]
   synonym_generation_jobs LabSynonymGenerationJob[]
   test_kb_mappings LabTestKnowledgeBaseMapping[]
+  marketers       LabMarketer[]       @relation("lab_marketers")
 
   @@map("labs")
 }
@@ -251,6 +252,7 @@ model Marketer {
   doctor_links DoctorMarketerLink[]
   otp_records  MarketerOtp[]
   sessions     MarketerSession[]
+  lab_marketers LabMarketer[] @relation("lab_marketers")
 
   @@map("marketers")
 }
@@ -642,6 +644,23 @@ model LabTestKnowledgeBaseMapping {
   @@unique([lab_id, lab_test_name])
   @@index([lab_id, knowledge_base_id])
   @@map("lab_test_kb_mappings")
+}
+
+// Links a marketer to a specific lab (many-to-many with context)
+model LabMarketer {
+  id         String   @id @default(uuid())
+  lab_id     String
+  marketer_id String
+  added_by   String   // Lab owner email who added them
+  added_at   DateTime @default(now())
+
+  lab      Lab      @relation("lab_marketers", fields: [lab_id], references: [id], onDelete: Cascade)
+  marketer Marketer @relation("lab_marketers", fields: [marketer_id], references: [id], onDelete: Cascade)
+
+  @@unique([lab_id, marketer_id])
+  @@index([lab_id])
+  @@index([marketer_id])
+  @@map("lab_marketers")
 }
 
 // ── Lab Agreements ────────────────────────────────────────────────────────────
