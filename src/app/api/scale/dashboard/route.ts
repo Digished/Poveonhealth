@@ -50,9 +50,24 @@ export async function GET(req: NextRequest) {
 
     const doctorEmails = links.map((l: { doctor_email: string }) => l.doctor_email);
 
+    // Get labs this marketer is assigned to
+    const labMarketerAssignments = await prisma.labMarketer.findMany({
+      where: { marketer_id: marketer.id },
+      select: { lab_id: true },
+    });
+    const assignedLabIds = labMarketerAssignments.map((lm) => lm.lab_id);
+
+    // Build the WHERE clause for requests
+    // If marketer has no assigned labs, they see ALL their doctors' requests (legacy /scale behavior)
+    // If marketer has assigned labs, they ONLY see requests to their assigned labs
+    const requestsWhere = {
+      doctor_email: { in: doctorEmails },
+      ...(assignedLabIds.length > 0 ? { lab_id: { in: assignedLabIds } } : {}),
+    };
+
     const [requests, profiles] = await Promise.all([
       prisma.request.findMany({
-        where: { doctor_email: { in: doctorEmails } },
+        where: requestsWhere,
         select: {
           id: true,
           code: true,
