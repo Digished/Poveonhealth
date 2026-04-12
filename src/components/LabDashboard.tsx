@@ -14,6 +14,7 @@ import {
 import dynamic from "next/dynamic";
 
 const LabPriceListManager = dynamic(() => import("@/components/LabPriceListManager"), { ssr: false });
+const LabMarketerAnalytics = dynamic(() => import("@/components/LabMarketerAnalytics").then(m => ({ default: m.LabMarketerAnalytics })), { ssr: false });
 import { useDashTheme } from "@/hooks/useDashTheme";
 import { Button } from "@/components/ui/Button";
 import { Input } from "@/components/ui/Input";
@@ -53,6 +54,7 @@ interface LabDashboardProps {
     whatsapp?: string | null;
     service_categories: string[];
     certifications: string[];
+    free_trial?: boolean;
   };
   isOwner?: boolean;
   roleName?: string;
@@ -656,7 +658,14 @@ export function LabDashboard({ lab, isOwner = false, roleName = "Lab Owner", can
             )}
             <div>
               <h1 className="font-bold text-white text-sm leading-none">{labName}</h1>
-              <p className="text-xs text-blue-300 mt-0.5">{roleName}</p>
+              <div className="flex items-center gap-1.5 mt-0.5">
+                <p className="text-xs text-blue-300">{roleName}</p>
+                {lab.free_trial && (
+                  <span className="text-[10px] bg-emerald-500/20 text-emerald-300 border border-emerald-500/30 px-1.5 py-0.5 rounded-full">
+                    Free Trial
+                  </span>
+                )}
+              </div>
             </div>
           </div>
           <div className="flex items-center gap-2">
@@ -1887,44 +1896,15 @@ export function LabDashboard({ lab, isOwner = false, roleName = "Lab Owner", can
                 </div>
               )}
 
-              {/* Marketer Breakdown */}
-              {marketers.length > 0 && (
+              {/* Marketer Analytics */}
+              {!marketerLoading && (
                 <div className="bg-white/5 border border-white/10 rounded-2xl p-5">
-                  <p className="text-xs font-semibold text-slate-400 uppercase tracking-wider mb-4">
-                    Requests by Marketer
-                  </p>
-                  <div className="space-y-4">
-                    {marketers.map((m) => {
-                      // Get all doctors linked to this marketer
-                      const marketerDoctorEmails = new Set<string>();
-                      // We'll calculate this from filtered requests
-                      let marketerRequestCount = 0;
-                      let marketerCompletedCount = 0;
-                      let marketerRevenue = 0;
-
-                      // Since we don't have full doctor details in analytics view,
-                      // we'll need to fetch them. For now, show the doctors_count from API
-
-                      return (
-                        <div key={m.marketer_id} className="bg-white/5 border border-white/8 rounded-lg p-3">
-                          <div className="flex items-center justify-between mb-2">
-                            <div className="min-w-0">
-                              <p className="text-sm font-semibold text-slate-200">{m.marketer.name}</p>
-                              <p className="text-xs text-slate-500">{m.marketer.email}</p>
-                            </div>
-                            <div className="text-right shrink-0">
-                              <p className="text-lg font-bold text-blue-400">{marketerRequestCount}</p>
-                              <p className="text-xs text-slate-500">requests</p>
-                            </div>
-                          </div>
-                          <div className="flex gap-3 text-xs">
-                            <span className="text-slate-400">Doctors: <span className="text-slate-300">{m.doctors_count}</span></span>
-                            <span className="text-slate-400">Added: <span className="text-slate-300">{new Date(m.added_at).toLocaleDateString("en-GB")}</span></span>
-                          </div>
-                        </div>
-                      );
-                    })}
+                  <div className="mb-4">
+                    <p className="text-xs font-semibold text-slate-400 uppercase tracking-wider">
+                      Marketer Performance Analytics
+                    </p>
                   </div>
+                  <LabMarketerAnalytics labId={lab.id} />
                 </div>
               )}
             </div>

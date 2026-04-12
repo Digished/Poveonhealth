@@ -24,6 +24,7 @@ export interface Lab {
   request_email: string | null;
   hidden: boolean;
   search_hidden: boolean;
+  free_trial: boolean;
   service_categories: string[];
   certifications: string[];
   created_at: string;

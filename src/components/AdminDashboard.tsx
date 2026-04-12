@@ -63,6 +63,7 @@ export function AdminDashboard() {
   const [deletingId, setDeletingId] = useState<string | null>(null);
   const [togglingId, setTogglingId] = useState<string | null>(null);
   const [togglingSearchHiddenId, setTogglingSearchHiddenId] = useState<string | null>(null);
+  const [togglingFreeTrialId, setTogglingFreeTrialId] = useState<string | null>(null);
   const [deleteConfirmLab, setDeleteConfirmLab] = useState<Lab | null>(null);
   const [deleteConfirmMarketer, setDeleteConfirmMarketer] = useState<typeof marketers[number] | null>(null);
   const [deletingRequestId, setDeletingRequestId] = useState<string | null>(null);
@@ -400,6 +401,32 @@ export function AdminDashboard() {
       toast.error("Network error");
     } finally {
       setTogglingSearchHiddenId(null);
+    }
+  }
+
+  async function handleToggleFreeTrial(lab: Lab) {
+    const newStatus = !(lab.free_trial ?? false);
+    if (newStatus && !window.confirm(`Enable free trial for "${lab.name}"? This lab won't record commission.\n\nContinue?`)) {
+      return;
+    }
+    setTogglingFreeTrialId(lab.id);
+    try {
+      const res = await fetch(`/api/admin/labs/${lab.id}/free-trial`, {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ enabled: newStatus }),
+      });
+      const data = await res.json();
+      if (data.success) {
+        toast.success(newStatus ? "Free trial enabled" : "Free trial disabled");
+        await fetchLabs();
+      } else {
+        toast.error(data.error ?? "Failed to update");
+      }
+    } catch {
+      toast.error("Network error");
+    } finally {
+      setTogglingFreeTrialId(null);
     }
   }
 
@@ -947,6 +974,7 @@ export function AdminDashboard() {
                             <p className="text-sm font-semibold text-white leading-tight">{lab.name}</p>
                             <Badge variant="blue">Prefix: {lab.prefix}</Badge>
                             {lab.hidden && <span className="text-[10px] text-slate-500 bg-white/5 px-1.5 py-0.5 rounded">hidden</span>}
+                            {lab.free_trial && <span className="text-[10px] bg-emerald-900/30 text-emerald-400 border border-emerald-800/30 px-1.5 py-0.5 rounded-full" title="Free trial - no commission">FREE TRIAL</span>}
                             {lab.slug && (
                               <a href={`/${lab.slug}`} target="_blank" rel="noopener noreferrer"
                                 className="text-[10px] text-blue-400 hover:text-blue-300 font-mono bg-blue-500/8 border border-blue-500/20 px-1.5 py-0.5 rounded"
@@ -1033,6 +1061,18 @@ export function AdminDashboard() {
                             <UserCircle className="w-3.5 h-3.5" />
                           </button>
                           <LabWalletButton labId={lab.id} />
+                          <button
+                            onClick={() => handleToggleFreeTrial(lab)}
+                            disabled={togglingFreeTrialId === lab.id}
+                            title={lab.free_trial ? "Disable free trial" : "Enable free trial"}
+                            className={`p-2 rounded-lg transition-colors ${
+                              lab.free_trial
+                                ? "text-emerald-400 hover:bg-emerald-500/15"
+                                : "text-slate-500 hover:bg-emerald-500/10 hover:text-emerald-400"
+                            }`}
+                          >
+                            <Star className="w-3.5 h-3.5" />
+                          </button>
                           <button onClick={() => setDeleteConfirmLab(lab)} disabled={deletingId === lab.id} title="Delete" className="p-2 rounded-lg hover:bg-red-500/15 text-slate-600 hover:text-red-400 transition-colors">
                             <Trash2 className="w-3.5 h-3.5" />
                           </button>

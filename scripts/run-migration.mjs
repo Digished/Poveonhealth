@@ -154,6 +154,11 @@ const migrations = [
     sql: `ALTER TABLE "LabRole" ADD COLUMN IF NOT EXISTS can_view_marketers BOOLEAN NOT NULL DEFAULT false`,
     continueOnError: true,
   },
+  {
+    desc: "labs.free_trial column for free trial status",
+    sql: `ALTER TABLE labs ADD COLUMN IF NOT EXISTS free_trial BOOLEAN NOT NULL DEFAULT false`,
+    continueOnError: true,
+  },
 ];
 
 let failed = false;

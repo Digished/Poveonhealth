@@ -27,6 +27,7 @@ model Lab {
   search_hidden      Boolean  @default(false) // hides from search/directory but unique page still works
   service_categories Json     @default("[]")
   certifications     Json     @default("[]")
+  free_trial         Boolean  @default(false) // if true, no commission is recorded
   created_at         DateTime @default(now())
 
   lab_users       LabUser[]

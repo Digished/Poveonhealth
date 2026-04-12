@@ -34,7 +34,7 @@ export async function POST(request: NextRequest) {
 
     const req = await prisma.request.findUnique({
       where: { id: requestId },
-      include: { lab: { select: { name: true, notification_email: true } } },
+      include: { lab: { select: { name: true, notification_email: true, free_trial: true } } },
     });
     if (!req) return NextResponse.json({ success: false, error: "Request not found" }, { status: 404 });
     if (req.lab_id !== auth.lab_id) return NextResponse.json({ success: false, error: "Unauthorized" }, { status: 403 });
@@ -65,9 +65,9 @@ export async function POST(request: NextRequest) {
       }
 
       // Deduct commission from wallet — balance is allowed to go negative (lab owes Poveon).
-      // Only skipped if the lab has no wallet provisioned at all.
+      // Only skipped if the lab has no wallet provisioned at all, OR if lab is on free trial.
       let isPaidToPoveon = false;
-      if (poveonFee > 0) {
+      if (poveonFee > 0 && !req.lab.free_trial) {
         const wallet = await prisma.labWallet.findUnique({ where: { lab_id: req.lab_id } });
         if (wallet) {
           await prisma.labWallet.update({
