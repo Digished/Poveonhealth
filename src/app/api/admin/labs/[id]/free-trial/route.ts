@@ -1,6 +1,6 @@
 export const dynamic = "force-dynamic";
 import { NextRequest, NextResponse } from "next/server";
-import { verifyAdminAuth } from "@/lib/admin-auth";
+import { verifyAdmin } from "@/lib/admin-auth";
 import { prisma } from "@/lib/prisma";
 
 /**
@@ -12,7 +12,7 @@ export async function PUT(
   { params }: { params: Promise<{ id: string }> }
 ) {
   const labId = (await params).id;
-  const admin = await verifyAdminAuth();
+  const admin = await verifyAdmin();
   if (!admin) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
 
   try {
