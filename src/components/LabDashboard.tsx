@@ -90,8 +90,8 @@ export function LabDashboard({ lab, isOwner = false, roleName = "Lab Owner", can
   const router = useRouter();
   const searchParams = useSearchParams();
   const { isLight, toggle, themeClass } = useDashTheme("lab_dash_theme");
-  type MainView = "requests" | "referrals" | "clients" | "analytics" | "activity" | "feedback" | "poveon" | "price-list";
-  const VALID_TABS: MainView[] = ["requests", "referrals", "clients", "analytics", "activity", "feedback", "poveon", "price-list"];
+  type MainView = "requests" | "referrals" | "clients" | "analytics" | "activity" | "feedback" | "poveon" | "price-list" | "marketers";
+  const VALID_TABS: MainView[] = ["requests", "referrals", "clients", "analytics", "activity", "feedback", "poveon", "price-list", "marketers"];
   const tabParam = searchParams.get("tab") as MainView | null;
   const [mainView, setMainView] = useState<MainView>(
     tabParam && VALID_TABS.includes(tabParam) ? tabParam : "requests"
@@ -118,6 +118,18 @@ export function LabDashboard({ lab, isOwner = false, roleName = "Lab Owner", can
   const [balanceBannerDismissed, setBalanceBannerDismissed] = useState(false);
   const [agreementBannerDismissed, setAgreementBannerDismissed] = useState(false);
   const [mobileHeaderOpen, setMobileHeaderOpen] = useState(false);
+
+  // Marketers tab state
+  const [marketers, setMarketers] = useState<any[]>([]);
+  const [marketerLoading, setMarketerLoading] = useState(false);
+  const [showAddMarketerModal, setShowAddMarketerModal] = useState(false);
+  const [newMarketerEmail, setNewMarketerEmail] = useState("");
+  const [newMarketerName, setNewMarketerName] = useState("");
+  const [addingMarketer, setAddingMarketer] = useState(false);
+  const [expandedMarketer, setExpandedMarketer] = useState<string | null>(null);
+  const [marketerDoctors, setMarketerDoctors] = useState<Record<string, any[]>>({});
+  const [loadingDoctors, setLoadingDoctors] = useState<Record<string, boolean>>({});
+
   const [activeTab, setActiveTab] = useState<RequestStatus>("seen");
   const [requests, setRequests] = useState<LabRequest[]>([]);
   const [loading, setLoading] = useState(true);
@@ -295,10 +307,41 @@ export function LabDashboard({ lab, isOwner = false, roleName = "Lab Owner", can
     }
   }, []);
 
+  const fetchMarketers = useCallback(async () => {
+    setMarketerLoading(true);
+    try {
+      const res = await fetch(`/api/lab/${lab.id}/marketers`);
+      const data = await res.json();
+      if (!data.success) throw new Error(data.error);
+      setMarketers(data.marketers ?? []);
+    } catch (error) {
+      console.error("[fetchMarketers]", error);
+      toast.error("Failed to load marketers");
+    } finally {
+      setMarketerLoading(false);
+    }
+  }, [lab.id]);
+
+  const fetchMarketerDoctors = useCallback(async (marketerId: string) => {
+    setLoadingDoctors((prev) => ({ ...prev, [marketerId]: true }));
+    try {
+      const res = await fetch(`/api/lab/${lab.id}/marketers/${marketerId}`);
+      const data = await res.json();
+      if (!data.success) throw new Error(data.error);
+      setMarketerDoctors((prev) => ({ ...prev, [marketerId]: data.doctors ?? [] }));
+    } catch (error) {
+      console.error("[fetchMarketerDoctors]", error);
+      toast.error("Failed to load doctors");
+    } finally {
+      setLoadingDoctors((prev) => ({ ...prev, [marketerId]: false }));
+    }
+  }, [lab.id]);
+
   useEffect(() => {
     if (mainView === "referrals" && (isOwner || canViewReferrals)) fetchReferrals();
     if (mainView === "clients" && (isOwner || canViewClients)) fetchClients();
-  }, [mainView, fetchReferrals, fetchClients, isOwner, canViewReferrals, canViewClients]);
+    if (mainView === "marketers" && isOwner) fetchMarketers();
+  }, [mainView, fetchReferrals, fetchClients, fetchMarketers, isOwner, canViewReferrals, canViewClients]);
 
   const tabRequests = requests.filter((r) => r.status === activeTab);
 
@@ -462,6 +505,44 @@ export function LabDashboard({ lab, isOwner = false, roleName = "Lab Owner", can
     await createClient().auth.signOut();
     router.push("/lab-login");
     router.refresh();
+  }
+
+  async function handleAddMarketer() {
+    if (!newMarketerEmail.trim()) { toast.error("Email is required"); return; }
+    setAddingMarketer(true);
+    try {
+      const res = await fetch(`/api/lab/${lab.id}/marketers`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ email: newMarketerEmail.trim(), name: newMarketerName.trim() || undefined }),
+      });
+      const data = await res.json();
+      if (!data.success) { toast.error(data.error ?? "Failed to add marketer"); return; }
+      toast.success(`Marketer ${data.marketer_email} added`);
+      setShowAddMarketerModal(false);
+      setNewMarketerEmail("");
+      setNewMarketerName("");
+      await fetchMarketers();
+    } catch (error) {
+      console.error("[handleAddMarketer]", error);
+      toast.error("Network error");
+    } finally {
+      setAddingMarketer(false);
+    }
+  }
+
+  async function handleRemoveMarketer(marketerId: string) {
+    if (!confirm("Remove this marketer from your lab?")) return;
+    try {
+      const res = await fetch(`/api/lab/${lab.id}/marketers/${marketerId}`, { method: "DELETE" });
+      const data = await res.json();
+      if (!data.success) { toast.error(data.error ?? "Failed to remove"); return; }
+      toast.success("Marketer removed");
+      await fetchMarketers();
+    } catch (error) {
+      console.error("[handleRemoveMarketer]", error);
+      toast.error("Network error");
+    }
   }
 
   function openEditPatient(req: LabRequest) {
@@ -650,6 +731,7 @@ export function LabDashboard({ lab, isOwner = false, roleName = "Lab Owner", can
             { key: "analytics" as const, label: "Analytics", icon: <BarChart3 className="w-4 h-4" />, show: isOwner || canViewAnalytics },
             { key: "activity" as const, label: "Activity", icon: <Activity className="w-4 h-4" />, show: isOwner || canViewActivity },
             { key: "feedback" as const, label: "Feedback", icon: <Star className="w-4 h-4" />, show: isOwner || canViewFeedback },
+            { key: "marketers" as const, label: "Marketers", icon: <Users className="w-4 h-4" />, show: isOwner },
             { key: "price-list" as const, label: "Price List", icon: <Layers className="w-4 h-4" />, show: isOwner || canViewWallet },
           ].filter((item) => item.show);
           if (navItems.length <= 1) return null;
@@ -1804,6 +1886,128 @@ export function LabDashboard({ lab, isOwner = false, roleName = "Lab Owner", can
               <LabPriceListManager onClose={() => setPriceManagerOpen(false)} />
             )}
           </>
+        )}
+
+        {/* Marketers tab */}
+        {mainView === "marketers" && isOwner && (
+          <div className="space-y-5">
+            <div className="flex items-center justify-between">
+              <div>
+                <h2 className="text-lg font-semibold text-white">Lab Marketers</h2>
+                <p className="text-sm text-slate-400 mt-1">Manage marketers and track their doctors</p>
+              </div>
+              <button
+                onClick={() => setShowAddMarketerModal(true)}
+                className="flex items-center gap-1.5 px-4 py-2 rounded-lg bg-emerald-600/20 border border-emerald-600/30 text-emerald-400 text-sm font-semibold hover:bg-emerald-600/30 transition-colors"
+              >
+                <Plus className="w-4 h-4" />
+                Add Marketer
+              </button>
+            </div>
+
+            {showAddMarketerModal && (
+              <div className="bg-emerald-500/10 border border-emerald-500/20 rounded-2xl p-5 space-y-3">
+                <p className="text-sm font-semibold text-emerald-300">Add New Marketer</p>
+                <input
+                  type="email"
+                  placeholder="Email address"
+                  value={newMarketerEmail}
+                  onChange={(e) => setNewMarketerEmail(e.target.value)}
+                  className="w-full bg-white/5 border border-white/10 rounded-xl px-4 py-2.5 text-sm text-white placeholder-slate-500 focus:outline-none focus:ring-2 focus:ring-emerald-500/50"
+                />
+                <input
+                  type="text"
+                  placeholder="Name (optional)"
+                  value={newMarketerName}
+                  onChange={(e) => setNewMarketerName(e.target.value)}
+                  className="w-full bg-white/5 border border-white/10 rounded-xl px-4 py-2.5 text-sm text-white placeholder-slate-500 focus:outline-none focus:ring-2 focus:ring-emerald-500/50"
+                />
+                <div className="flex gap-2">
+                  <button
+                    onClick={handleAddMarketer}
+                    disabled={addingMarketer || !newMarketerEmail.trim()}
+                    className="flex items-center gap-1.5 px-4 py-2 rounded-lg bg-emerald-600 text-white text-sm font-semibold hover:bg-emerald-500 disabled:opacity-50 transition-colors"
+                  >
+                    {addingMarketer ? <RefreshCw className="w-4 h-4 animate-spin" /> : <Check className="w-4 h-4" />}
+                    {addingMarketer ? "Adding..." : "Add"}
+                  </button>
+                  <button
+                    onClick={() => { setShowAddMarketerModal(false); setNewMarketerEmail(""); setNewMarketerName(""); }}
+                    className="px-4 py-2 rounded-lg bg-white/8 text-slate-400 text-sm font-semibold hover:text-white transition-colors"
+                  >
+                    Cancel
+                  </button>
+                </div>
+              </div>
+            )}
+
+            {marketerLoading ? (
+              <div className="space-y-2">{[...Array(3)].map((_, i) => <div key={i} className="bg-white/5 border border-white/10 rounded-xl h-16 animate-pulse" />)}</div>
+            ) : marketers.length === 0 ? (
+              <div className="text-center py-12 text-slate-400">
+                <Users className="w-12 h-12 mx-auto mb-3 opacity-30" />
+                <p className="text-sm">No marketers added yet. Click "Add Marketer" to get started.</p>
+              </div>
+            ) : (
+              <div className="space-y-3">
+                {marketers.map((m) => (
+                  <div key={m.id} className="bg-white/5 border border-white/10 rounded-xl overflow-hidden">
+                    <button
+                      onClick={() => {
+                        if (expandedMarketer === m.marketer_id) {
+                          setExpandedMarketer(null);
+                        } else {
+                          setExpandedMarketer(m.marketer_id);
+                          if (!marketerDoctors[m.marketer_id]) {
+                            fetchMarketerDoctors(m.marketer_id);
+                          }
+                        }
+                      }}
+                      className="w-full flex items-center gap-3 px-4 py-3 text-left hover:bg-white/8 transition-colors"
+                    >
+                      <div className="flex-1 min-w-0">
+                        <p className="text-sm font-semibold text-white">{m.marketer.name}</p>
+                        <p className="text-xs text-slate-400">{m.marketer.email}</p>
+                      </div>
+                      <div className="text-right shrink-0">
+                        <p className="text-xs text-emerald-400 font-semibold">{m.doctors_count} doctor{m.doctors_count !== 1 ? "s" : ""}</p>
+                        <ChevronDown className={`w-4 h-4 text-slate-500 mt-1 transition-transform ${expandedMarketer === m.marketer_id ? "rotate-180" : ""}`} />
+                      </div>
+                    </button>
+
+                    {expandedMarketer === m.marketer_id && (
+                      <div className="border-t border-white/8 px-4 py-4 space-y-3 bg-slate-950/40">
+                        <p className="text-xs text-slate-400 font-semibold uppercase tracking-wider">Doctors ({m.doctors_count})</p>
+                        {loadingDoctors[m.marketer_id] ? (
+                          <p className="text-sm text-slate-400">Loading doctors...</p>
+                        ) : (marketerDoctors[m.marketer_id] ?? []).length === 0 ? (
+                          <p className="text-sm text-slate-500">No doctors added yet</p>
+                        ) : (
+                          <div className="space-y-1.5">
+                            {(marketerDoctors[m.marketer_id] ?? []).map((doc) => (
+                              <div key={doc.email} className="flex items-center justify-between bg-white/5 border border-white/10 rounded-lg px-3 py-2">
+                                <div className="min-w-0 flex-1">
+                                  <p className="text-xs font-medium text-white truncate">{doc.name}</p>
+                                  <p className="text-xs text-slate-400 truncate">{doc.email}</p>
+                                </div>
+                                <span className="text-xs text-slate-400 ml-2 shrink-0">{doc.request_count} requests</span>
+                              </div>
+                            ))}
+                          </div>
+                        )}
+                        <button
+                          onClick={() => handleRemoveMarketer(m.marketer_id)}
+                          className="w-full text-xs text-rose-400 hover:text-rose-300 border border-rose-500/20 hover:border-rose-500/40 px-3 py-1.5 rounded-lg transition-colors"
+                        >
+                          Remove Marketer
+                        </button>
+                      </div>
+                    )}
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
         )}
 
         {/* Requests view */}
