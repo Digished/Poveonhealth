@@ -1846,28 +1846,54 @@ export function DoctorRequestForm({
                 </div>
 
                 {/* Patient Condition — optional */}
-                <div className={`rounded-xl border-2 overflow-hidden transition-colors ${isCritical || needsAmbulance ? "border-orange-200 bg-orange-50/20" : "border-slate-200"}`}>
+                <div className={`rounded-xl border-2 overflow-hidden transition-colors ${
+                  isCritical ? "border-red-200 bg-red-50/20"
+                  : needsAmbulance ? "border-orange-200 bg-orange-50/20"
+                  : "border-slate-200"
+                }`}>
                   <button
                     type="button"
                     onClick={() => setPatientConditionOpen((v) => !v)}
-                    className={`w-full flex items-center justify-between px-4 py-3 transition-colors ${isCritical || needsAmbulance ? "hover:bg-orange-50/40" : "hover:bg-slate-50 bg-slate-50/50"}`}
+                    className={`w-full flex items-center justify-between px-4 py-3 transition-colors ${
+                      isCritical ? "hover:bg-red-50/40"
+                      : needsAmbulance ? "hover:bg-orange-50/40"
+                      : "hover:bg-slate-50 bg-slate-50/50"
+                    }`}
                   >
                     <div className="flex items-center gap-2 text-left">
-                      {isCritical || needsAmbulance
-                        ? <><AlertTriangle className="w-4 h-4 text-orange-500 shrink-0" /><span className="text-sm font-semibold text-slate-700">Patient Condition set</span></>
-                        : <><AlertTriangle className="w-4 h-4 text-slate-400 shrink-0" /><span className="text-sm font-semibold text-slate-700">Patient Condition</span></>
-                      }
+                      <AlertTriangle className={`w-4 h-4 shrink-0 ${isCritical ? "text-red-500" : needsAmbulance ? "text-orange-500" : "text-slate-400"}`} />
+                      <span className="text-sm font-semibold text-slate-700">Patient Condition</span>
                     </div>
-                    <ChevronDown className={`w-4 h-4 shrink-0 transition-transform ${isCritical || needsAmbulance ? "text-orange-500" : "text-slate-400"} ${patientConditionOpen ? "rotate-180" : ""}`} />
+                    <div className="flex items-center gap-2">
+                      {/* Status badge — always visible in header */}
+                      {isCritical ? (
+                        <span className="text-xs font-semibold text-red-600 bg-red-100 px-2 py-0.5 rounded-full">Critical</span>
+                      ) : needsAmbulance ? (
+                        <span className="text-xs font-semibold text-orange-600 bg-orange-100 px-2 py-0.5 rounded-full">Ambulance</span>
+                      ) : (
+                        <span className="text-xs font-semibold text-emerald-600 bg-emerald-100 px-2 py-0.5 rounded-full">Stable</span>
+                      )}
+                      <ChevronDown className={`w-4 h-4 shrink-0 transition-transform text-slate-400 ${patientConditionOpen ? "rotate-180" : ""}`} />
+                    </div>
                   </button>
                   {patientConditionOpen && (
-                    <div className={`px-4 pb-4 pt-3 border-t space-y-3 ${isCritical || needsAmbulance ? "border-orange-100 bg-orange-50/10" : "border-slate-100"}`}>
-                      <div className="flex gap-2 p-1 bg-slate-100 rounded-2xl">
+                    <div className="px-4 pb-4 pt-3 border-t border-slate-100 space-y-3">
+                      {/* Stable — passive label shown when no flag is active */}
+                      {!isCritical && !needsAmbulance && (
+                        <div className="flex items-center gap-2 text-sm text-emerald-600 font-medium">
+                          <div className="w-2 h-2 rounded-full bg-emerald-400 shrink-0" />
+                          Stable — no flags set
+                        </div>
+                      )}
+                      {/* Selectable condition flags */}
+                      <div className="flex gap-2">
                         <button
                           type="button"
                           onClick={() => setIsCritical((v) => !v)}
-                          className={`flex-1 flex items-center justify-center gap-1.5 py-2.5 px-3 rounded-xl text-sm font-semibold transition-all ${
-                            isCritical ? "bg-white shadow text-red-600" : "text-slate-400 hover:text-slate-600"
+                          className={`flex-1 flex items-center justify-center gap-1.5 py-2.5 px-3 rounded-xl text-sm font-semibold border-2 transition-all ${
+                            isCritical
+                              ? "bg-red-50 border-red-300 text-red-600 shadow-sm"
+                              : "border-slate-200 text-slate-400 hover:border-red-200 hover:text-red-500 hover:bg-red-50/40"
                           }`}
                         >
                           <AlertTriangle className="w-3.5 h-3.5" />
@@ -1876,8 +1902,10 @@ export function DoctorRequestForm({
                         <button
                           type="button"
                           onClick={() => setNeedsAmbulance((v) => !v)}
-                          className={`flex-1 flex items-center justify-center gap-1.5 py-2.5 px-3 rounded-xl text-sm font-semibold transition-all ${
-                            needsAmbulance ? "bg-white shadow text-orange-600" : "text-slate-400 hover:text-slate-600"
+                          className={`flex-1 flex items-center justify-center gap-1.5 py-2.5 px-3 rounded-xl text-sm font-semibold border-2 transition-all ${
+                            needsAmbulance
+                              ? "bg-orange-50 border-orange-300 text-orange-600 shadow-sm"
+                              : "border-slate-200 text-slate-400 hover:border-orange-200 hover:text-orange-500 hover:bg-orange-50/40"
                           }`}
                         >
                           <Truck className="w-3.5 h-3.5" />

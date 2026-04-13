@@ -96,6 +96,8 @@ function TestSearchModal({
   const [results, setResults] = useState<CatalogResult[]>([]);
   const [searching, setSearching] = useState(false);
   const inputRef = useRef<HTMLInputElement>(null);
+  // Track keyboard height so the sheet floats above it on mobile
+  const [sheetStyle, setSheetStyle] = useState<React.CSSProperties>({});
 
   // Auto-focus when modal opens
   useEffect(() => {
@@ -108,6 +110,36 @@ function TestSearchModal({
     const prev = document.body.style.overflow;
     document.body.style.overflow = "hidden";
     return () => { document.body.style.overflow = prev; };
+  }, []);
+
+  // Reposition sheet above the software keyboard using visualViewport API
+  useEffect(() => {
+    const vv = window.visualViewport;
+    if (!vv) return;
+
+    function update() {
+      // Only apply on mobile widths; desktop uses centered positioning
+      if (window.innerWidth >= 640) {
+        setSheetStyle({});
+        return;
+      }
+      // keyboard offset = gap between bottom of visual viewport and bottom of layout viewport
+      const keyboardH = Math.max(0, window.innerHeight - vv!.height - vv!.offsetTop);
+      setSheetStyle({
+        bottom: keyboardH,
+        maxHeight: `${vv!.height * 0.92}px`,
+        // smooth transition as keyboard animates in/out
+        transition: "bottom 0.22s ease, max-height 0.22s ease",
+      });
+    }
+
+    update();
+    vv.addEventListener("resize", update);
+    vv.addEventListener("scroll", update);
+    return () => {
+      vv.removeEventListener("resize", update);
+      vv.removeEventListener("scroll", update);
+    };
   }, []);
 
   // Debounced catalog search — 100 ms
@@ -210,10 +242,13 @@ function TestSearchModal({
 
       {/* Sheet — slides up from bottom on mobile, centered on sm+ */}
       <div
+        style={sheetStyle}
         className={[
           "fixed z-[99999] bg-white flex flex-col shadow-2xl",
-          "inset-x-0 bottom-0 rounded-t-2xl max-h-[88vh]",
-          "sm:inset-auto sm:left-1/2 sm:-translate-x-1/2 sm:top-1/2 sm:-translate-y-1/2",
+          // Mobile: anchored to bottom, height constrained by visualViewport (via sheetStyle)
+          "inset-x-0 bottom-0 rounded-t-2xl max-h-[92dvh]",
+          // Desktop: centered dialog, static sizing
+          "sm:inset-auto sm:bottom-auto sm:left-1/2 sm:-translate-x-1/2 sm:top-1/2 sm:-translate-y-1/2",
           "sm:w-full sm:max-w-md sm:rounded-2xl sm:max-h-[80vh]",
           "animate-sheet-up sm:animate-scale-in",
         ].join(" ")}
