@@ -1436,9 +1436,7 @@ export function DoctorRequestForm({
       </div>
 
       {/* Step content */}
-      <div
-        className="glass-card p-4 mt-3 mb-2"
-      >
+      <div className="px-0 pt-3 pb-2">
 
         {/* Step 1: Choose Lab / Branch */}
         {step === 1 && (
@@ -1893,7 +1891,7 @@ export function DoctorRequestForm({
                           className={`flex-1 flex items-center justify-center gap-1.5 py-2.5 px-3 rounded-xl text-sm font-semibold border-2 transition-all ${
                             isCritical
                               ? "bg-red-50 border-red-300 text-red-600 shadow-sm"
-                              : "border-slate-200 text-slate-400 hover:border-red-200 hover:text-red-500 hover:bg-red-50/40"
+                              : "border-slate-200 text-slate-500 hover:border-slate-300 hover:bg-slate-50"
                           }`}
                         >
                           <AlertTriangle className="w-3.5 h-3.5" />
@@ -1905,7 +1903,7 @@ export function DoctorRequestForm({
                           className={`flex-1 flex items-center justify-center gap-1.5 py-2.5 px-3 rounded-xl text-sm font-semibold border-2 transition-all ${
                             needsAmbulance
                               ? "bg-orange-50 border-orange-300 text-orange-600 shadow-sm"
-                              : "border-slate-200 text-slate-400 hover:border-orange-200 hover:text-orange-500 hover:bg-orange-50/40"
+                              : "border-slate-200 text-slate-500 hover:border-slate-300 hover:bg-slate-50"
                           }`}
                         >
                           <Truck className="w-3.5 h-3.5" />

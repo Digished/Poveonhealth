@@ -5,6 +5,9 @@ import { createPortal } from "react-dom";
 import { X, Plus, Search, FlaskConical } from "lucide-react";
 import { smartSplitTestNames } from "@/lib/smart-split";
 
+// Module-level cache — persists for the session across modal opens
+const _resultCache = new Map<string, CatalogResult[]>();
+
 export type TestTag = {
   name: string;
   catalog_test_id: string | null;
@@ -142,14 +145,31 @@ function TestSearchModal({
     };
   }, []);
 
-  // Debounced catalog search — 100 ms
+  // Debounced catalog search — skipped for comma-separated input, cached for repeats
   useEffect(() => {
     const q = query.trim();
+
+    // Comma = user is entering a list — skip catalog entirely
+    if (q.includes(",")) {
+      setResults([]);
+      setSearching(false);
+      return;
+    }
+
     if (q.length < 2) {
       setResults([]);
       setSearching(false);
       return;
     }
+
+    // Serve from cache instantly if we've seen this query before
+    const cacheKey = `${labId ?? ""}:${q.toLowerCase()}`;
+    if (_resultCache.has(cacheKey)) {
+      setResults(_resultCache.get(cacheKey)!);
+      setSearching(false);
+      return;
+    }
+
     setSearching(true);
     const controller = new AbortController();
     const t = setTimeout(async () => {
@@ -161,7 +181,9 @@ function TestSearchModal({
         );
         if (res.ok) {
           const data = await res.json();
-          setResults(data.results ?? []);
+          const r: CatalogResult[] = data.results ?? [];
+          _resultCache.set(cacheKey, r);
+          setResults(r);
           setSearching(false);
         }
       } catch (e) {
@@ -220,6 +242,8 @@ function TestSearchModal({
     if (e.key === "Escape") { onClose(); return; }
     if (e.key === "Enter") {
       e.preventDefault();
+      // Comma-separated list → add all immediately, no catalog needed
+      if (query.includes(",")) { addSplitTags(query); return; }
       if (results[0] && query.trim()) { addCatalogTag(results[0]); return; }
       if (query.trim()) addSplitTags(query);
       return;
@@ -229,8 +253,11 @@ function TestSearchModal({
     }
   }
 
-  const showCustomHint = query.trim().length >= 2 && !searching && results.length === 0;
-  const showEmpty = !searching && query.trim().length < 2 && value.length === 0;
+  const hasComma = query.includes(",");
+  const splitPreview = hasComma ? smartSplitTestNames(query) : [];
+  const showMultiHint = hasComma && splitPreview.length >= 2;
+  const showCustomHint = !hasComma && query.trim().length >= 2 && !searching && results.length === 0;
+  const showEmpty = !searching && !hasComma && query.trim().length < 2 && value.length === 0;
 
   return (
     <>
@@ -317,8 +344,32 @@ function TestSearchModal({
 
         {/* Results list */}
         <div className="flex-1 overflow-y-auto overscroll-contain">
+          {/* Multi-test hint — shown when input has commas */}
+          {showMultiHint && (
+            <div className="px-4 py-4">
+              <button
+                type="button"
+                onClick={() => addSplitTags(query)}
+                className="w-full flex items-start gap-3 rounded-xl bg-medical-50 border border-medical-200 px-4 py-3.5 text-left hover:bg-medical-100 active:bg-medical-200 transition-colors"
+              >
+                <div className="w-8 h-8 rounded-full bg-medical-100 flex items-center justify-center shrink-0 mt-0.5">
+                  <Plus className="w-4 h-4 text-medical-600" />
+                </div>
+                <div className="min-w-0">
+                  <p className="text-sm font-semibold text-medical-700">
+                    Add {splitPreview.length} tests at once
+                  </p>
+                  <p className="text-xs text-medical-500 mt-0.5 leading-relaxed">
+                    {splitPreview.slice(0, 4).join(" · ")}{splitPreview.length > 4 ? ` · +${splitPreview.length - 4} more` : ""}
+                  </p>
+                  <p className="text-xs text-medical-400 mt-1.5">Tap or press Enter</p>
+                </div>
+              </button>
+            </div>
+          )}
+
           {/* Catalog matches */}
-          {!searching && results.map((r) => {
+          {!hasComma && !searching && results.map((r) => {
             const already = value.some((t) => t.name.toLowerCase() === r.canonical_name.toLowerCase());
             return (
               <button
