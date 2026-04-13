@@ -283,6 +283,7 @@ export async function POST(request: NextRequest) {
           ambulanceNotes: data.ambulance_notes || undefined,
           testImageUrl: data.test_image_url || undefined,
           appUrl,
+          code,
         }),
       })
         .then(({ error }) => { if (error) console.error("[email] lab new request:", JSON.stringify(error)); })

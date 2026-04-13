@@ -78,7 +78,7 @@ const INITIAL: FormData = {
   patient_email: "",
   address: "",
   patient_phone: "",
-  doctor_prefix: "",
+  doctor_prefix: "Dr.",
   doctor_name: "",
   doctor_email: "",
   doctor_phone: "",
@@ -784,10 +784,12 @@ export function DoctorRequestForm({
 
   // Step 3: doctor profile check
   const [docProfileStatus, setDocProfileStatus] = useState<"idle" | "checking" | "found_complete" | "found_partial" | "not_found">("idle");
-  const [docProfileInfo, setDocProfileInfo] = useState<{ prefix: string | null; full_name: string | null; hospital: string | null; has_bank: boolean; claimed: boolean } | null>(null);
+  const [docProfileInfo, setDocProfileInfo] = useState<{ prefix: string | null; full_name: string | null; hospital: string | null; phone: string | null; has_bank: boolean; claimed: boolean } | null>(null);
   // Sub-step for collecting doctor details inline when profile is incomplete (1=name, 2=hospital, 3=bank)
   // Track which fields were auto-filled from a doctor profile lookup so we can clear them on email change
   const docAutofillRef = useRef<{ email: string; prefix: string; name: string; hospital: string }>({ email: "", prefix: "", name: "", hospital: "" });
+  // Cache for doctor fields (name, phone, hospital) keyed by email — persists across form interactions
+  const docFieldsCacheRef = useRef<Record<string, { name?: string; phone?: string; hospital?: string }>>({});
 
   // Auto-fill from patient profile when phone is entered
   useEffect(() => {
@@ -855,15 +857,29 @@ export function DoctorRequestForm({
   // Step 3: debounced doctor email profile check
   useEffect(() => {
     const email = form.doctor_email.trim();
+    const prevEmail = docAutofillRef.current.email;
+
+    // When email changes, save current values to cache and restore cached values for new email
+    if (prevEmail !== email && prevEmail) {
+      // Save current values to cache for previous email
+      docFieldsCacheRef.current[prevEmail] = {
+        name: form.doctor_name,
+        phone: form.doctor_phone,
+        hospital: form.doctor_hospital,
+      };
+    }
 
     // When the email changes, clear any fields that were auto-filled from the previous profile
     const prev = docAutofillRef.current;
     if (prev.email !== email) {
+      // Restore cached values for this email if they exist
+      const cached = docFieldsCacheRef.current[email];
       setForm((f) => ({
         ...f,
         doctor_prefix: f.doctor_prefix === prev.prefix ? "" : f.doctor_prefix,
-        doctor_name: f.doctor_name === prev.name ? "" : f.doctor_name,
-        doctor_hospital: f.doctor_hospital === prev.hospital ? "" : f.doctor_hospital,
+        doctor_name: cached?.name !== undefined ? cached.name : (f.doctor_name === prev.name ? "" : f.doctor_name),
+        doctor_phone: cached?.phone !== undefined ? cached.phone : f.doctor_phone,
+        doctor_hospital: cached?.hospital !== undefined ? cached.hospital : (f.doctor_hospital === prev.hospital ? "" : f.doctor_hospital),
       }));
       docAutofillRef.current = { email, prefix: "", name: "", hospital: "" };
     }
@@ -882,18 +898,19 @@ export function DoctorRequestForm({
         .then((data) => {
           if (!data) { setDocProfileStatus("not_found"); return; }
           if (data.exists) {
-            const info = { prefix: data.prefix, full_name: data.full_name, hospital: data.hospital, has_bank: !!data.has_bank, claimed: data.claimed !== false };
+            const info = { prefix: data.prefix, full_name: data.full_name, hospital: data.hospital, phone: data.phone, has_bank: !!data.has_bank, claimed: data.claimed !== false };
             setDocProfileInfo(info);
             if (data.profile_complete) {
               setDocProfileStatus("found_complete");
-              // Auto-fill form fields from the live profile and record what was filled
+              // Auto-fill form fields from the live profile (only if fields are empty)
               const filled = { email, prefix: data.prefix ?? "", name: data.full_name ?? "", hospital: data.hospital ?? "" };
               docAutofillRef.current = filled;
               setForm((prev) => ({
                 ...prev,
-                doctor_prefix: data.prefix ?? prev.doctor_prefix,
-                doctor_name: data.full_name ?? prev.doctor_name,
-                doctor_hospital: data.hospital ?? prev.doctor_hospital,
+                doctor_prefix: prev.doctor_prefix || data.prefix || "",
+                doctor_name: prev.doctor_name || data.full_name || "",
+                doctor_phone: prev.doctor_phone || data.phone || "",
+                doctor_hospital: prev.doctor_hospital || data.hospital || "",
               }));
             } else {
               setDocProfileStatus("found_partial");
@@ -1036,6 +1053,7 @@ export function DoctorRequestForm({
       if (!form.doctor_email.trim()) errs.doctor_email = "Email is required";
       else if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(form.doctor_email))
         errs.doctor_email = "Invalid email address";
+      if (!form.doctor_name.trim()) errs.doctor_name = "Doctor name is required";
     }
     if (s === 4) {
       if (!form.patient_phone) errs.patient_phone = "Phone number is required";
@@ -1937,107 +1955,143 @@ export function DoctorRequestForm({
         {/* Step 3: Referring Professional */}
         {step === 3 && (
           <div className="space-y-5">
-            <h2 className="flex items-center gap-2 text-base font-semibold text-slate-700 pb-3 border-b border-slate-100">
-              <Stethoscope className="w-4 h-4 text-medical-600" />
+            <h2 className="flex items-center gap-3 text-base font-bold text-slate-800 pb-4 border-b border-slate-100">
+              <div className="w-8 h-8 rounded-xl bg-medical-50 flex items-center justify-center shrink-0">
+                <Stethoscope className="w-4 h-4 text-medical-600" />
+              </div>
               Referral
             </h2>
 
-            {/* Email */}
-            <div className="space-y-1">
-              <Input
-                label="Your Email"
-                type="email"
-                required
-                placeholder="you@hospital.com"
-                value={form.doctor_email}
-                onChange={(e) => set("doctor_email", e.target.value)}
-                error={errors.doctor_email}
-              />
-              {savedProfile && form.doctor_email && (
-                <div className="flex items-center justify-between pt-0.5">
-                  <p className="text-xs text-slate-400">Saved email</p>
-                  <button type="button" onClick={clearDoctorProfile} className="text-xs text-slate-400 hover:text-slate-600 underline underline-offset-2">Clear</button>
+            <div className="relative pt-1">
+              {/* Substep 1: Email — primary identifier */}
+              <div className="relative flex gap-3">
+                <div className="flex flex-col items-center shrink-0 pt-1">
+                  <div className={`w-7 h-7 rounded-full flex items-center justify-center text-xs font-bold border-2 transition-all shrink-0 ${
+                    form.doctor_email.trim()
+                      ? "bg-emerald-500 border-emerald-500 text-white"
+                      : "bg-white border-medical-400 text-medical-600"
+                  }`}>
+                    {form.doctor_email.trim() ? <Check className="w-3.5 h-3.5" /> : "1"}
+                  </div>
+                  {form.doctor_email.trim() && (
+                    <div className="w-0.5 flex-1 min-h-4 bg-slate-200 mt-1" />
+                  )}
+                </div>
+                <div className="flex-1 pb-3 min-w-0 space-y-2">
+                  <Input
+                    label="Your Email"
+                    type="email"
+                    required
+                    placeholder="you@hospital.com"
+                    value={form.doctor_email}
+                    onChange={(e) => set("doctor_email", e.target.value)}
+                    error={errors.doctor_email}
+                  />
+                  {savedProfile && form.doctor_email && (
+                    <div className="flex items-center justify-between pt-0.5">
+                      <p className="text-xs text-slate-400">Saved email</p>
+                      <button type="button" onClick={clearDoctorProfile} className="text-xs text-slate-400 hover:text-slate-600 underline underline-offset-2">Clear</button>
+                    </div>
+                  )}
+                  {/* Checking spinner */}
+                  {docProfileStatus === "checking" && (
+                    <div className="flex items-center gap-2 text-xs text-slate-400">
+                      <RefreshCw className="w-3 h-3 animate-spin" />Checking…
+                    </div>
+                  )}
+                </div>
+              </div>
+
+              {/* Substep 2: Registered doctor — read-only details */}
+              {docProfileStatus === "found_complete" && docProfileInfo && (
+                <div className="relative flex gap-3 animate-fade-in-up">
+                  <div className="flex flex-col items-center shrink-0 pt-1">
+                    <div className="w-7 h-7 rounded-full flex items-center justify-center text-xs font-bold border-2 transition-all shrink-0 bg-emerald-500 border-emerald-500 text-white">
+                      <Check className="w-3.5 h-3.5" />
+                    </div>
+                  </div>
+                  <div className="flex-1 pb-2 min-w-0 space-y-3">
+                    {/* Doctor info — read-only display */}
+                    <div className="space-y-3">
+                      {/* Name row */}
+                      <div className="flex items-start justify-between gap-4 px-4 py-3 bg-emerald-50 border border-emerald-200 rounded-2xl">
+                        <div>
+                          <p className="text-xs font-semibold text-slate-500 uppercase tracking-wide">Name</p>
+                          <p className="text-sm font-semibold text-slate-800 mt-1">
+                            {[docProfileInfo.prefix, docProfileInfo.full_name].filter(Boolean).join(" ")}
+                          </p>
+                        </div>
+                      </div>
+
+                      {/* Email row */}
+                      <div className="flex items-start justify-between gap-4 px-4 py-3 bg-slate-50 border border-slate-200 rounded-2xl">
+                        <div>
+                          <p className="text-xs font-semibold text-slate-500 uppercase tracking-wide">Email</p>
+                          <p className="text-sm font-semibold text-slate-800 mt-1">{form.doctor_email}</p>
+                        </div>
+                      </div>
+
+                      {/* Phone row */}
+                      {docProfileInfo.phone && (
+                        <div className="flex items-start justify-between gap-4 px-4 py-3 bg-slate-50 border border-slate-200 rounded-2xl">
+                          <div>
+                            <p className="text-xs font-semibold text-slate-500 uppercase tracking-wide">Phone</p>
+                            <p className="text-sm font-semibold text-slate-800 mt-1">{docProfileInfo.phone}</p>
+                          </div>
+                        </div>
+                      )}
+
+                      {/* Bank status */}
+                      <div className={`flex items-center gap-2.5 px-4 py-3 rounded-2xl border text-xs font-medium ${
+                        docProfileInfo.has_bank
+                          ? "bg-emerald-50 border-emerald-200 text-emerald-700"
+                          : "bg-amber-50 border-amber-200 text-amber-700"
+                      }`}>
+                        {docProfileInfo.has_bank
+                          ? <><Check className="w-3.5 h-3.5 shrink-0" />Bank details registered</>
+                          : <><Info className="w-3.5 h-3.5 shrink-0" />Bank details not registered</>
+                        }
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              )}
+
+              {/* Substep 2: Unregistered doctor — name input */}
+              {(docProfileStatus === "not_found" || docProfileStatus === "found_partial") && form.doctor_email.trim() && (
+                <div className="relative flex gap-3 animate-fade-in-up">
+                  <div className="flex flex-col items-center shrink-0 pt-1">
+                    <div className={`w-7 h-7 rounded-full flex items-center justify-center text-xs font-bold border-2 transition-all shrink-0 ${
+                      form.doctor_name.trim()
+                        ? "bg-emerald-500 border-emerald-500 text-white"
+                        : "bg-white border-medical-400 text-medical-600"
+                    }`}>
+                      {form.doctor_name.trim() ? <Check className="w-3.5 h-3.5" /> : "2"}
+                    </div>
+                  </div>
+                  <div className="flex-1 pb-2 min-w-0">
+                    <div className="grid grid-cols-1 sm:grid-cols-4 gap-3">
+                      <div className="sm:col-span-1">
+                        <PrefixSelect
+                          value={form.doctor_prefix || "Dr."}
+                          onChange={(prefix) => set("doctor_prefix", prefix)}
+                        />
+                      </div>
+                      <div className="sm:col-span-3">
+                        <Input
+                          label="Full Name"
+                          placeholder="e.g. Chioma Okafor"
+                          value={form.doctor_name}
+                          onChange={(e) => set("doctor_name", e.target.value)}
+                          error={errors.doctor_name}
+                          required
+                        />
+                      </div>
+                    </div>
+                  </div>
                 </div>
               )}
             </div>
-
-            {/* Checking spinner */}
-            {docProfileStatus === "checking" && (
-              <div className="flex items-center gap-2 text-xs text-slate-400">
-                <RefreshCw className="w-3 h-3 animate-spin" />Checking…
-              </div>
-            )}
-
-            {/* ── Profile found & complete (claimed) — read-only summary ── */}
-            {docProfileStatus === "found_complete" && docProfileInfo && docProfileInfo.claimed && (
-              <div className="space-y-2">
-                {/* Name row */}
-                <div className="flex items-center gap-3 px-4 py-3 bg-emerald-50 border border-emerald-200 rounded-2xl">
-                  <Check className="w-4 h-4 text-emerald-600 shrink-0" />
-                  <div className="min-w-0 flex-1">
-                    <p className="text-sm font-semibold text-slate-800 truncate">
-                      {[docProfileInfo.prefix, docProfileInfo.full_name].filter(Boolean).join(" ")}
-                    </p>
-                    {docProfileInfo.hospital && (
-                      <p className="text-xs text-slate-500 truncate">{docProfileInfo.hospital}</p>
-                    )}
-                  </div>
-                </div>
-                {/* Bank status */}
-                <div className={`flex items-center gap-2.5 px-4 py-2.5 rounded-2xl border text-xs ${docProfileInfo.has_bank ? "bg-slate-50 border-slate-200 text-slate-600" : "bg-amber-50 border-amber-200 text-amber-700"}`}>
-                  {docProfileInfo.has_bank
-                    ? <><Check className="w-3.5 h-3.5 text-emerald-500 shrink-0" />Bank account on file</>
-                    : <><Info className="w-3.5 h-3.5 shrink-0" />Bank details not set — add them in your <a href="/doc-login" className="underline font-medium">dashboard</a></>
-                  }
-                </div>
-              </div>
-            )}
-
-            {/* ── Profile found but not yet claimed — prompt to claim ── */}
-            {docProfileStatus === "found_complete" && docProfileInfo && !docProfileInfo.claimed && (
-              <div className="space-y-2">
-                <div className="flex items-center gap-3 px-4 py-3 bg-orange-50 border border-orange-200 rounded-2xl">
-                  <Info className="w-4 h-4 text-orange-500 shrink-0" />
-                  <div className="min-w-0 flex-1">
-                    <p className="text-sm font-semibold text-slate-800 truncate">
-                      {[docProfileInfo.prefix, docProfileInfo.full_name].filter(Boolean).join(" ")}
-                    </p>
-                    <p className="text-xs text-orange-600 mt-0.5">Account not yet claimed</p>
-                  </div>
-                </div>
-                <a
-                  href={`/doc-login?email=${encodeURIComponent(form.doctor_email)}`}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className="flex items-center justify-between gap-3 px-4 py-3 rounded-2xl bg-medical-50 border border-medical-200 hover:bg-medical-100 transition-colors group"
-                >
-                  <p className="text-xs text-medical-700 leading-snug">
-                    <span className="font-semibold">Claim your account</span> — verify your email to activate this profile
-                  </p>
-                  <span className="text-medical-500 text-xs font-semibold shrink-0 group-hover:underline">Claim →</span>
-                </a>
-              </div>
-            )}
-
-            {/* ── No account found or profile incomplete — prompt to create / complete ── */}
-            {(docProfileStatus === "not_found" || docProfileStatus === "found_partial") && (
-              <a
-                href={`/doc-login?email=${encodeURIComponent(form.doctor_email)}`}
-                target="_blank"
-                rel="noopener noreferrer"
-                className="flex items-center justify-between gap-3 px-4 py-3 rounded-2xl bg-medical-50 border border-medical-200 hover:bg-medical-100 transition-colors group"
-              >
-                <p className="text-xs text-medical-700 leading-snug">
-                  <span className="font-semibold">
-                    {docProfileStatus === "found_partial" ? "Complete your profile" : "Create your account"}
-                  </span>
-                  {" "}— sign in at the Professional Portal to set up your details in less than 2 minutes.
-                </p>
-                <span className="text-medical-500 text-xs font-semibold shrink-0 group-hover:underline">
-                  {docProfileStatus === "found_partial" ? "Complete →" : "Create →"}
-                </span>
-              </a>
-            )}
           </div>
         )}
 

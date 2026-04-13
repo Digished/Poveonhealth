@@ -160,10 +160,13 @@ export async function POST(request: NextRequest) {
           patientPhone: data.patient_phone,
           doctorName: SELF_SERVICE_NAME,
           tests: testsField,
+          diagnosis: data.additional_notes || undefined,
           isUrgent: data.is_critical || data.needs_ambulance,
           isCritical: data.is_critical,
           needsAmbulance: data.needs_ambulance,
+          ambulanceNotes: data.ambulance_notes || undefined,
           appUrl,
+          code,
         }),
       })
         .then(({ error }) => { if (error) console.error("[email] lab self-service:", JSON.stringify(error)); })
