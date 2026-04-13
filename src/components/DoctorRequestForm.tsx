@@ -784,7 +784,7 @@ export function DoctorRequestForm({
 
   // Step 3: doctor profile check
   const [docProfileStatus, setDocProfileStatus] = useState<"idle" | "checking" | "found_complete" | "found_partial" | "not_found">("idle");
-  const [docProfileInfo, setDocProfileInfo] = useState<{ prefix: string | null; full_name: string | null; hospital: string | null; has_bank: boolean; claimed: boolean } | null>(null);
+  const [docProfileInfo, setDocProfileInfo] = useState<{ prefix: string | null; full_name: string | null; hospital: string | null; phone: string | null; has_bank: boolean; claimed: boolean } | null>(null);
   // Sub-step for collecting doctor details inline when profile is incomplete (1=name, 2=hospital, 3=bank)
   // Track which fields were auto-filled from a doctor profile lookup so we can clear them on email change
   const docAutofillRef = useRef<{ email: string; prefix: string; name: string; hospital: string }>({ email: "", prefix: "", name: "", hospital: "" });
@@ -898,7 +898,7 @@ export function DoctorRequestForm({
         .then((data) => {
           if (!data) { setDocProfileStatus("not_found"); return; }
           if (data.exists) {
-            const info = { prefix: data.prefix, full_name: data.full_name, hospital: data.hospital, has_bank: !!data.has_bank, claimed: data.claimed !== false };
+            const info = { prefix: data.prefix, full_name: data.full_name, hospital: data.hospital, phone: data.phone, has_bank: !!data.has_bank, claimed: data.claimed !== false };
             setDocProfileInfo(info);
             if (data.profile_complete) {
               setDocProfileStatus("found_complete");
@@ -1999,18 +1999,66 @@ export function DoctorRequestForm({
                       <RefreshCw className="w-3 h-3 animate-spin" />Checking…
                     </div>
                   )}
-                  {/* Profile found indicator */}
-                  {docProfileStatus === "found_complete" && docProfileInfo && (
-                    <div className="flex items-center gap-2 px-3 py-2 bg-emerald-50 border border-emerald-200 rounded-xl text-xs">
-                      <Check className="w-3.5 h-3.5 text-emerald-600 shrink-0" />
-                      <span className="text-emerald-800 font-medium">Profile found — details auto-filled</span>
-                    </div>
-                  )}
                 </div>
               </div>
 
-              {/* Substep 2: Name — reveals after email is entered */}
-              {form.doctor_email.trim() && (
+              {/* Substep 2: Registered doctor — read-only details */}
+              {docProfileStatus === "found_complete" && docProfileInfo && (
+                <div className="relative flex gap-3 animate-fade-in-up">
+                  <div className="flex flex-col items-center shrink-0 pt-1">
+                    <div className="w-7 h-7 rounded-full flex items-center justify-center text-xs font-bold border-2 transition-all shrink-0 bg-emerald-500 border-emerald-500 text-white">
+                      <Check className="w-3.5 h-3.5" />
+                    </div>
+                  </div>
+                  <div className="flex-1 pb-2 min-w-0 space-y-3">
+                    {/* Doctor info — read-only display */}
+                    <div className="space-y-3">
+                      {/* Name row */}
+                      <div className="flex items-start justify-between gap-4 px-4 py-3 bg-emerald-50 border border-emerald-200 rounded-2xl">
+                        <div>
+                          <p className="text-xs font-semibold text-slate-500 uppercase tracking-wide">Name</p>
+                          <p className="text-sm font-semibold text-slate-800 mt-1">
+                            {[docProfileInfo.prefix, docProfileInfo.full_name].filter(Boolean).join(" ")}
+                          </p>
+                        </div>
+                      </div>
+
+                      {/* Email row */}
+                      <div className="flex items-start justify-between gap-4 px-4 py-3 bg-slate-50 border border-slate-200 rounded-2xl">
+                        <div>
+                          <p className="text-xs font-semibold text-slate-500 uppercase tracking-wide">Email</p>
+                          <p className="text-sm font-semibold text-slate-800 mt-1">{form.doctor_email}</p>
+                        </div>
+                      </div>
+
+                      {/* Phone row */}
+                      {docProfileInfo.phone && (
+                        <div className="flex items-start justify-between gap-4 px-4 py-3 bg-slate-50 border border-slate-200 rounded-2xl">
+                          <div>
+                            <p className="text-xs font-semibold text-slate-500 uppercase tracking-wide">Phone</p>
+                            <p className="text-sm font-semibold text-slate-800 mt-1">{docProfileInfo.phone}</p>
+                          </div>
+                        </div>
+                      )}
+
+                      {/* Bank status */}
+                      <div className={`flex items-center gap-2.5 px-4 py-3 rounded-2xl border text-xs font-medium ${
+                        docProfileInfo.has_bank
+                          ? "bg-emerald-50 border-emerald-200 text-emerald-700"
+                          : "bg-amber-50 border-amber-200 text-amber-700"
+                      }`}>
+                        {docProfileInfo.has_bank
+                          ? <><Check className="w-3.5 h-3.5 shrink-0" />Bank details registered</>
+                          : <><Info className="w-3.5 h-3.5 shrink-0" />Bank details not registered</>
+                        }
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              )}
+
+              {/* Substep 2: Unregistered doctor — name input */}
+              {(docProfileStatus === "not_found" || docProfileStatus === "found_partial") && form.doctor_email.trim() && (
                 <div className="relative flex gap-3 animate-fade-in-up">
                   <div className="flex flex-col items-center shrink-0 pt-1">
                     <div className={`w-7 h-7 rounded-full flex items-center justify-center text-xs font-bold border-2 transition-all shrink-0 ${
@@ -2020,11 +2068,8 @@ export function DoctorRequestForm({
                     }`}>
                       {form.doctor_name.trim() ? <Check className="w-3.5 h-3.5" /> : "2"}
                     </div>
-                    {form.doctor_name.trim() && (
-                      <div className="w-0.5 flex-1 min-h-4 bg-slate-200 mt-1" />
-                    )}
                   </div>
-                  <div className="flex-1 pb-3 min-w-0">
+                  <div className="flex-1 pb-2 min-w-0">
                     <div className="grid grid-cols-1 sm:grid-cols-4 gap-3">
                       <div className="sm:col-span-1">
                         <PrefixSelect
@@ -2042,39 +2087,6 @@ export function DoctorRequestForm({
                           required
                         />
                       </div>
-                    </div>
-                  </div>
-                </div>
-              )}
-
-              {/* Substep 3: Optional details — reveals after name */}
-              {form.doctor_email.trim() && form.doctor_name.trim() && (
-                <div className="relative flex gap-3 animate-fade-in-up">
-                  <div className="flex flex-col items-center shrink-0 pt-1">
-                    <div className={`w-7 h-7 rounded-full flex items-center justify-center text-xs font-bold border-2 transition-all shrink-0 ${
-                      (form.doctor_phone || form.doctor_hospital)
-                        ? "bg-emerald-500 border-emerald-500 text-white"
-                        : "bg-white border-slate-300 text-slate-400"
-                    }`}>
-                      {(form.doctor_phone || form.doctor_hospital) ? <Check className="w-3.5 h-3.5" /> : "3"}
-                    </div>
-                  </div>
-                  <div className="flex-1 pb-2 min-w-0">
-                    <p className="text-sm font-medium text-slate-500 mb-3">
-                      Optional details
-                    </p>
-                    <div className="space-y-3">
-                      <PhoneInput
-                        label="Doctor Phone"
-                        value={form.doctor_phone}
-                        onChange={(v) => set("doctor_phone", v)}
-                      />
-                      <Input
-                        label="Hospital / Clinic"
-                        placeholder="e.g. St. Mary's Hospital, Lagos"
-                        value={form.doctor_hospital}
-                        onChange={(e) => set("doctor_hospital", e.target.value)}
-                      />
                     </div>
                   </div>
                 </div>
