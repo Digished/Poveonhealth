@@ -78,7 +78,7 @@ const INITIAL: FormData = {
   patient_email: "",
   address: "",
   patient_phone: "",
-  doctor_prefix: "",
+  doctor_prefix: "Dr.",
   doctor_name: "",
   doctor_email: "",
   doctor_phone: "",
@@ -1053,6 +1053,7 @@ export function DoctorRequestForm({
       if (!form.doctor_email.trim()) errs.doctor_email = "Email is required";
       else if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(form.doctor_email))
         errs.doctor_email = "Invalid email address";
+      if (!form.doctor_name.trim()) errs.doctor_name = "Doctor name is required";
     }
     if (s === 4) {
       if (!form.patient_phone) errs.patient_phone = "Phone number is required";
@@ -1954,104 +1955,131 @@ export function DoctorRequestForm({
         {/* Step 3: Referring Professional */}
         {step === 3 && (
           <div className="space-y-5">
-            <h2 className="flex items-center gap-2 text-base font-semibold text-slate-700 pb-3 border-b border-slate-100">
-              <Stethoscope className="w-4 h-4 text-medical-600" />
+            <h2 className="flex items-center gap-3 text-base font-bold text-slate-800 pb-4 border-b border-slate-100">
+              <div className="w-8 h-8 rounded-xl bg-medical-50 flex items-center justify-center shrink-0">
+                <Stethoscope className="w-4 h-4 text-medical-600" />
+              </div>
               Referral
             </h2>
 
-            {/* Email */}
-            <div className="space-y-1">
-              <Input
-                label="Your Email"
-                type="email"
-                required
-                placeholder="you@hospital.com"
-                value={form.doctor_email}
-                onChange={(e) => set("doctor_email", e.target.value)}
-                error={errors.doctor_email}
-              />
-              {savedProfile && form.doctor_email && (
-                <div className="flex items-center justify-between pt-0.5">
-                  <p className="text-xs text-slate-400">Saved email</p>
-                  <button type="button" onClick={clearDoctorProfile} className="text-xs text-slate-400 hover:text-slate-600 underline underline-offset-2">Clear</button>
+            <div className="relative pt-1">
+              {/* Substep 1: Email — primary identifier */}
+              <div className="relative flex gap-3">
+                <div className="flex flex-col items-center shrink-0 pt-1">
+                  <div className={`w-7 h-7 rounded-full flex items-center justify-center text-xs font-bold border-2 transition-all shrink-0 ${
+                    form.doctor_email.trim()
+                      ? "bg-emerald-500 border-emerald-500 text-white"
+                      : "bg-white border-medical-400 text-medical-600"
+                  }`}>
+                    {form.doctor_email.trim() ? <Check className="w-3.5 h-3.5" /> : "1"}
+                  </div>
+                  {form.doctor_email.trim() && (
+                    <div className="w-0.5 flex-1 min-h-4 bg-slate-200 mt-1" />
+                  )}
+                </div>
+                <div className="flex-1 pb-3 min-w-0 space-y-2">
+                  <Input
+                    label="Your Email"
+                    type="email"
+                    required
+                    placeholder="you@hospital.com"
+                    value={form.doctor_email}
+                    onChange={(e) => set("doctor_email", e.target.value)}
+                    error={errors.doctor_email}
+                  />
+                  {savedProfile && form.doctor_email && (
+                    <div className="flex items-center justify-between pt-0.5">
+                      <p className="text-xs text-slate-400">Saved email</p>
+                      <button type="button" onClick={clearDoctorProfile} className="text-xs text-slate-400 hover:text-slate-600 underline underline-offset-2">Clear</button>
+                    </div>
+                  )}
+                  {/* Checking spinner */}
+                  {docProfileStatus === "checking" && (
+                    <div className="flex items-center gap-2 text-xs text-slate-400">
+                      <RefreshCw className="w-3 h-3 animate-spin" />Checking…
+                    </div>
+                  )}
+                  {/* Profile found indicator */}
+                  {docProfileStatus === "found_complete" && docProfileInfo && (
+                    <div className="flex items-center gap-2 px-3 py-2 bg-emerald-50 border border-emerald-200 rounded-xl text-xs">
+                      <Check className="w-3.5 h-3.5 text-emerald-600 shrink-0" />
+                      <span className="text-emerald-800 font-medium">Profile found — details auto-filled</span>
+                    </div>
+                  )}
+                </div>
+              </div>
+
+              {/* Substep 2: Name — reveals after email is entered */}
+              {form.doctor_email.trim() && (
+                <div className="relative flex gap-3 animate-fade-in-up">
+                  <div className="flex flex-col items-center shrink-0 pt-1">
+                    <div className={`w-7 h-7 rounded-full flex items-center justify-center text-xs font-bold border-2 transition-all shrink-0 ${
+                      form.doctor_name.trim()
+                        ? "bg-emerald-500 border-emerald-500 text-white"
+                        : "bg-white border-medical-400 text-medical-600"
+                    }`}>
+                      {form.doctor_name.trim() ? <Check className="w-3.5 h-3.5" /> : "2"}
+                    </div>
+                    {form.doctor_name.trim() && (
+                      <div className="w-0.5 flex-1 min-h-4 bg-slate-200 mt-1" />
+                    )}
+                  </div>
+                  <div className="flex-1 pb-3 min-w-0">
+                    <div className="grid grid-cols-1 sm:grid-cols-4 gap-3">
+                      <div className="sm:col-span-1">
+                        <PrefixSelect
+                          value={form.doctor_prefix || "Dr."}
+                          onChange={(prefix) => set("doctor_prefix", prefix)}
+                        />
+                      </div>
+                      <div className="sm:col-span-3">
+                        <Input
+                          label="Full Name"
+                          placeholder="e.g. Chioma Okafor"
+                          value={form.doctor_name}
+                          onChange={(e) => set("doctor_name", e.target.value)}
+                          error={errors.doctor_name}
+                          required
+                        />
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              )}
+
+              {/* Substep 3: Optional details — reveals after name */}
+              {form.doctor_email.trim() && form.doctor_name.trim() && (
+                <div className="relative flex gap-3 animate-fade-in-up">
+                  <div className="flex flex-col items-center shrink-0 pt-1">
+                    <div className={`w-7 h-7 rounded-full flex items-center justify-center text-xs font-bold border-2 transition-all shrink-0 ${
+                      (form.doctor_phone || form.doctor_hospital)
+                        ? "bg-emerald-500 border-emerald-500 text-white"
+                        : "bg-white border-slate-300 text-slate-400"
+                    }`}>
+                      {(form.doctor_phone || form.doctor_hospital) ? <Check className="w-3.5 h-3.5" /> : "3"}
+                    </div>
+                  </div>
+                  <div className="flex-1 pb-2 min-w-0">
+                    <p className="text-sm font-medium text-slate-500 mb-3">
+                      Optional details
+                    </p>
+                    <div className="space-y-3">
+                      <PhoneInput
+                        label="Doctor Phone"
+                        value={form.doctor_phone}
+                        onChange={(v) => set("doctor_phone", v)}
+                      />
+                      <Input
+                        label="Hospital / Clinic"
+                        placeholder="e.g. St. Mary's Hospital, Lagos"
+                        value={form.doctor_hospital}
+                        onChange={(e) => set("doctor_hospital", e.target.value)}
+                      />
+                    </div>
+                  </div>
                 </div>
               )}
             </div>
-
-            {/* Checking spinner */}
-            {docProfileStatus === "checking" && (
-              <div className="flex items-center gap-2 text-xs text-slate-400">
-                <RefreshCw className="w-3 h-3 animate-spin" />Checking…
-              </div>
-            )}
-
-            {/* Profile found indicator */}
-            {docProfileStatus === "found_complete" && docProfileInfo && (
-              <div className="flex items-center gap-2 px-3 py-2 bg-emerald-50 border border-emerald-200 rounded-xl text-xs">
-                <Check className="w-3.5 h-3.5 text-emerald-600 shrink-0" />
-                <span className="text-emerald-800 font-medium">Profile found — details auto-filled below</span>
-              </div>
-            )}
-
-            {/* Doctor prefix + name — editable, optional */}
-            <div className="grid grid-cols-1 sm:grid-cols-4 gap-3">
-              <div className="sm:col-span-1">
-                <PrefixSelect
-                  value={form.doctor_prefix}
-                  onChange={(prefix) => set("doctor_prefix", prefix)}
-                />
-              </div>
-              <div className="sm:col-span-3">
-                <Input
-                  label="Doctor Name"
-                  placeholder="e.g. Chioma Okafor"
-                  value={form.doctor_name}
-                  onChange={(e) => set("doctor_name", e.target.value)}
-                />
-              </div>
-            </div>
-            <p className="text-xs text-slate-400 mt-1">Optional — can be filled manually if not registered</p>
-
-            {/* Doctor phone — editable, optional */}
-            <div>
-              <PhoneInput
-                label="Doctor Phone"
-                value={form.doctor_phone}
-                onChange={(v) => set("doctor_phone", v)}
-              />
-              <p className="text-xs text-slate-400 mt-1">Optional</p>
-            </div>
-
-            {/* Doctor hospital — editable, optional */}
-            <div>
-              <Input
-                label="Hospital / Clinic"
-                placeholder="e.g. St. Mary's Hospital, Lagos"
-                value={form.doctor_hospital}
-                onChange={(e) => set("doctor_hospital", e.target.value)}
-              />
-              <p className="text-xs text-slate-400 mt-1">Optional</p>
-            </div>
-
-            {/* ── No account found or profile incomplete — prompt to create / complete ── */}
-            {(docProfileStatus === "not_found" || docProfileStatus === "found_partial") && (
-              <a
-                href={`/doc-login?email=${encodeURIComponent(form.doctor_email)}`}
-                target="_blank"
-                rel="noopener noreferrer"
-                className="flex items-center justify-between gap-3 px-4 py-3 rounded-2xl bg-medical-50 border border-medical-200 hover:bg-medical-100 transition-colors group"
-              >
-                <p className="text-xs text-medical-700 leading-snug">
-                  <span className="font-semibold">
-                    {docProfileStatus === "found_partial" ? "Complete your profile" : "Create your account"}
-                  </span>
-                  {" "}— sign in at the Professional Portal to set up your details in less than 2 minutes.
-                </p>
-                <span className="text-medical-500 text-xs font-semibold shrink-0 group-hover:underline">
-                  {docProfileStatus === "found_partial" ? "Complete →" : "Create →"}
-                </span>
-              </a>
-            )}
           </div>
         )}
 
