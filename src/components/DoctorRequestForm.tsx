@@ -10,7 +10,7 @@ import {
   TestTube2, ChevronRight, ChevronLeft, Building2, Check,
   Search, X, PhoneCall, RefreshCw, ChevronDown, Mail,
   Award, Info, Layers, Pencil, Camera, FileText,
-  AlertTriangle, Truck, MessageCircle,
+  AlertTriangle, Truck, MessageCircle, Heart,
 } from "lucide-react";
 
 function MarsIcon({ className }: { className?: string }) {
@@ -770,9 +770,8 @@ export function DoctorRequestForm({
   const [isCritical, setIsCritical] = useState(false);
   const [needsAmbulance, setNeedsAmbulance] = useState(false);
   const [ambulanceNotes, setAmbulanceNotes] = useState("");
-  // Step 2 collapsibles
-  const [diagnosisOpen, setDiagnosisOpen] = useState(false);
-  const [patientConditionOpen, setPatientConditionOpen] = useState(false);
+  // Step 2 optional details collapsible (diagnosis + condition combined)
+  const [optionalDetailsOpen, setOptionalDetailsOpen] = useState(false);
   // Step 4 accordion / lookup states
   const [patientInfoOpen, setPatientInfoOpen] = useState(false);
   const [patientLookupStatus, setPatientLookupStatus] = useState<"idle" | "checking" | "found" | "not_found">("idle");
@@ -1294,7 +1293,7 @@ export function DoctorRequestForm({
   const clinicalDone = testTags.length > 0 || !!testImageUrl;
 
   return (
-    <div className="animate-fade-in">
+    <div className="animate-fade-in bg-white">
       {/* Sticky header + step indicator */}
       <div className={`sticky top-0 z-10 -mx-4 px-4 transition-all duration-300 ${scrolled ? "pt-2 pb-2" : "pt-3 pb-3"}`}>
         {/* Full-width frosted background */}
@@ -1658,7 +1657,7 @@ export function DoctorRequestForm({
                                   doctor_name: prev.doctor_name || res.extracted.doctor_name,
                                   doctor_prefix: prev.doctor_prefix || res.extracted.doctor_prefix,
                                 }));
-                                if (res.extracted.diagnosis) setDiagnosisOpen(true);
+                                if (res.extracted.diagnosis) setOptionalDetailsOpen(true);
                               }
                             })
                             .catch(() => { /* silent — user continues manually */ })
@@ -1815,115 +1814,99 @@ export function DoctorRequestForm({
             {/* Sub-steps — revealed progressively once at least one test is added */}
             {(testTags.length > 0 || !!testImageUrl) && (
               <div className="space-y-3 animate-fade-in-up">
-                {/* Diagnosis — collapsible; auto-opens after scan */}
-                <div className={`rounded-xl border-2 overflow-hidden transition-colors ${form.diagnosis.trim() ? "border-emerald-200 bg-emerald-50/30" : "border-slate-200"}`}>
-                  <button
-                    type="button"
-                    onClick={() => setDiagnosisOpen((v) => !v)}
-                    className={`w-full flex items-center justify-between px-4 py-3 transition-colors ${form.diagnosis.trim() ? "hover:bg-emerald-50/50" : "hover:bg-slate-50 bg-slate-50/50"}`}
-                  >
-                    <div className="flex items-center gap-2 text-left">
-                      {form.diagnosis.trim()
-                        ? <><Check className="w-4 h-4 text-emerald-500 shrink-0" /><span className="text-sm font-semibold text-slate-700">Diagnosis / Clinical Notes added</span></>
-                        : <><FileText className="w-4 h-4 text-slate-400 shrink-0" /><span className="text-sm font-semibold text-slate-700">Diagnosis / Clinical Notes</span></>
-                      }
-                    </div>
-                    <ChevronDown className={`w-4 h-4 shrink-0 transition-transform ${form.diagnosis.trim() ? "text-emerald-500" : "text-slate-400"} ${diagnosisOpen ? "rotate-180" : ""}`} />
-                  </button>
-                  {diagnosisOpen && (
-                    <div className={`px-4 pb-4 pt-2 border-t ${form.diagnosis.trim() ? "border-emerald-100 bg-emerald-50/20" : "border-slate-100"}`}>
-                      <Textarea
-                        label=""
-                        placeholder="Brief clinical summary or working diagnosis…"
-                        rows={3}
-                        value={form.diagnosis}
-                        onChange={(e) => set("diagnosis", e.target.value)}
-                      />
-                    </div>
-                  )}
-                </div>
+                {/* Optional Details — single collapsible for diagnosis + patient condition */}
+                {(() => {
+                  const hasDiagnosis = form.diagnosis.trim().length > 0;
+                  const hasCondition = isCritical || needsAmbulance;
+                  const borderColor = isCritical ? "border-red-200" : needsAmbulance ? "border-orange-200" : hasDiagnosis ? "border-emerald-200" : "border-slate-200";
+                  const bgColor = isCritical ? "bg-red-50/20" : needsAmbulance ? "bg-orange-50/20" : hasDiagnosis ? "bg-emerald-50/30" : "";
+                  return (
+                    <div className={`rounded-xl border-2 overflow-hidden transition-colors ${borderColor} ${bgColor}`}>
+                      <button
+                        type="button"
+                        onClick={() => setOptionalDetailsOpen((v) => !v)}
+                        className="w-full flex items-center justify-between px-4 py-3 hover:bg-black/[0.02] transition-colors bg-slate-50/40"
+                      >
+                        <div className="flex items-center gap-2 text-left">
+                          <FileText className={`w-4 h-4 shrink-0 ${hasDiagnosis || hasCondition ? "text-slate-500" : "text-slate-400"}`} />
+                          <span className="text-sm font-semibold text-slate-700">Optional Details</span>
+                        </div>
+                        <div className="flex items-center gap-1.5">
+                          {hasDiagnosis && <span className="text-xs font-semibold text-emerald-600 bg-emerald-100 px-2 py-0.5 rounded-full">Notes</span>}
+                          {isCritical && <span className="text-xs font-semibold text-red-600 bg-red-100 px-2 py-0.5 rounded-full">Critical</span>}
+                          {needsAmbulance && <span className="text-xs font-semibold text-orange-600 bg-orange-100 px-2 py-0.5 rounded-full">Ambulance</span>}
+                          {!hasDiagnosis && !hasCondition && <span className="text-xs text-slate-400">diagnosis, condition</span>}
+                          <ChevronDown className={`w-4 h-4 shrink-0 transition-transform text-slate-400 ml-1 ${optionalDetailsOpen ? "rotate-180" : ""}`} />
+                        </div>
+                      </button>
 
-                {/* Patient Condition — optional */}
-                <div className={`rounded-xl border-2 overflow-hidden transition-colors ${
-                  isCritical ? "border-red-200 bg-red-50/20"
-                  : needsAmbulance ? "border-orange-200 bg-orange-50/20"
-                  : "border-slate-200"
-                }`}>
-                  <button
-                    type="button"
-                    onClick={() => setPatientConditionOpen((v) => !v)}
-                    className={`w-full flex items-center justify-between px-4 py-3 transition-colors ${
-                      isCritical ? "hover:bg-red-50/40"
-                      : needsAmbulance ? "hover:bg-orange-50/40"
-                      : "hover:bg-slate-50 bg-slate-50/50"
-                    }`}
-                  >
-                    <div className="flex items-center gap-2 text-left">
-                      <AlertTriangle className={`w-4 h-4 shrink-0 ${isCritical ? "text-red-500" : needsAmbulance ? "text-orange-500" : "text-slate-400"}`} />
-                      <span className="text-sm font-semibold text-slate-700">Patient Condition</span>
-                    </div>
-                    <div className="flex items-center gap-2">
-                      {/* Status badge — always visible in header */}
-                      {isCritical ? (
-                        <span className="text-xs font-semibold text-red-600 bg-red-100 px-2 py-0.5 rounded-full">Critical</span>
-                      ) : needsAmbulance ? (
-                        <span className="text-xs font-semibold text-orange-600 bg-orange-100 px-2 py-0.5 rounded-full">Ambulance</span>
-                      ) : (
-                        <span className="text-xs font-semibold text-emerald-600 bg-emerald-100 px-2 py-0.5 rounded-full">Stable</span>
-                      )}
-                      <ChevronDown className={`w-4 h-4 shrink-0 transition-transform text-slate-400 ${patientConditionOpen ? "rotate-180" : ""}`} />
-                    </div>
-                  </button>
-                  {patientConditionOpen && (
-                    <div className="px-4 pb-4 pt-3 border-t border-slate-100 space-y-3">
-                      {/* Stable — passive label shown when no flag is active */}
-                      {!isCritical && !needsAmbulance && (
-                        <div className="flex items-center gap-2 text-sm text-emerald-600 font-medium">
-                          <div className="w-2 h-2 rounded-full bg-emerald-400 shrink-0" />
-                          Stable — no flags set
-                        </div>
-                      )}
-                      {/* Selectable condition flags */}
-                      <div className="flex gap-2">
-                        <button
-                          type="button"
-                          onClick={() => setIsCritical((v) => !v)}
-                          className={`flex-1 flex items-center justify-center gap-1.5 py-2.5 px-3 rounded-xl text-sm font-semibold border-2 transition-all ${
-                            isCritical
-                              ? "bg-red-50 border-red-300 text-red-600 shadow-sm"
-                              : "border-slate-200 text-slate-500 hover:border-slate-300 hover:bg-slate-50"
-                          }`}
-                        >
-                          <AlertTriangle className="w-3.5 h-3.5" />
-                          Critical
-                        </button>
-                        <button
-                          type="button"
-                          onClick={() => setNeedsAmbulance((v) => !v)}
-                          className={`flex-1 flex items-center justify-center gap-1.5 py-2.5 px-3 rounded-xl text-sm font-semibold border-2 transition-all ${
-                            needsAmbulance
-                              ? "bg-orange-50 border-orange-300 text-orange-600 shadow-sm"
-                              : "border-slate-200 text-slate-500 hover:border-slate-300 hover:bg-slate-50"
-                          }`}
-                        >
-                          <Truck className="w-3.5 h-3.5" />
-                          Ambulance
-                        </button>
-                      </div>
-                      {needsAmbulance && (
-                        <div className="animate-fade-in-up">
-                          <Textarea
-                            label=""
-                            placeholder="Pickup address or notes for the ambulance team…"
-                            rows={2}
-                            value={ambulanceNotes}
-                            onChange={(e) => setAmbulanceNotes(e.target.value)}
-                          />
+                      {optionalDetailsOpen && (
+                        <div className="border-t border-slate-100 divide-y divide-slate-100">
+                          {/* Diagnosis */}
+                          <div className="px-4 py-4 space-y-2">
+                            <p className="text-xs font-semibold text-slate-400 uppercase tracking-wide">Diagnosis / Clinical Notes</p>
+                            <Textarea
+                              label=""
+                              placeholder="Brief clinical summary or working diagnosis…"
+                              rows={3}
+                              value={form.diagnosis}
+                              onChange={(e) => set("diagnosis", e.target.value)}
+                            />
+                          </div>
+
+                          {/* Patient Condition */}
+                          <div className="px-4 py-4 space-y-3">
+                            <p className="text-xs font-semibold text-slate-400 uppercase tracking-wide">Patient Condition</p>
+                            {/* Stable passive indicator */}
+                            {!isCritical && !needsAmbulance && (
+                              <div className="flex items-center gap-2 text-sm text-emerald-600 font-medium">
+                                <Heart className="w-4 h-4 shrink-0" />
+                                Stable
+                              </div>
+                            )}
+                            <div className="flex gap-2">
+                              <button
+                                type="button"
+                                onClick={() => setIsCritical((v) => !v)}
+                                className={`flex-1 flex items-center justify-center gap-1.5 py-2.5 px-3 rounded-xl text-sm font-semibold border-2 transition-all ${
+                                  isCritical
+                                    ? "bg-red-50 border-red-300 text-red-600 shadow-sm"
+                                    : "border-slate-200 text-slate-500 hover:border-slate-300 hover:bg-slate-50"
+                                }`}
+                              >
+                                <AlertTriangle className="w-3.5 h-3.5" />
+                                Critical
+                              </button>
+                              <button
+                                type="button"
+                                onClick={() => setNeedsAmbulance((v) => !v)}
+                                className={`flex-1 flex items-center justify-center gap-1.5 py-2.5 px-3 rounded-xl text-sm font-semibold border-2 transition-all ${
+                                  needsAmbulance
+                                    ? "bg-orange-50 border-orange-300 text-orange-600 shadow-sm"
+                                    : "border-slate-200 text-slate-500 hover:border-slate-300 hover:bg-slate-50"
+                                }`}
+                              >
+                                <Truck className="w-3.5 h-3.5" />
+                                Ambulance
+                              </button>
+                            </div>
+                            {needsAmbulance && (
+                              <div className="animate-fade-in-up">
+                                <Textarea
+                                  label=""
+                                  placeholder="Pickup address or notes for the ambulance team…"
+                                  rows={2}
+                                  value={ambulanceNotes}
+                                  onChange={(e) => setAmbulanceNotes(e.target.value)}
+                                />
+                              </div>
+                            )}
+                          </div>
                         </div>
                       )}
                     </div>
-                  )}
-                </div>
+                  );
+                })()}
               </div>
             )}
           </div>
@@ -2289,7 +2272,7 @@ export function DoctorRequestForm({
         </div>
       )}
 
-      <p className="text-center text-xs text-slate-400 mt-4 leading-relaxed">
+      <p className="text-center text-xs text-slate-400 mt-10 pb-6 leading-relaxed">
         By submitting, you confirm you are authorised to request these tests on behalf of the patient and receive the results.{" "}
         <a href="/terms" className="underline hover:text-slate-600 transition-colors">Terms &amp; Conditions</a>
         {" "}and{" "}
