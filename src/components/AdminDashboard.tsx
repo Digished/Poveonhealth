@@ -64,6 +64,8 @@ export function AdminDashboard() {
   const [togglingId, setTogglingId] = useState<string | null>(null);
   const [togglingSearchHiddenId, setTogglingSearchHiddenId] = useState<string | null>(null);
   const [togglingFreeTrialId, setTogglingFreeTrialId] = useState<string | null>(null);
+  const [tempPasswordLab, setTempPasswordLab] = useState<Lab | null>(null);
+  const [settingTempPassword, setSettingTempPassword] = useState(false);
   const [deleteConfirmLab, setDeleteConfirmLab] = useState<Lab | null>(null);
   const [deleteConfirmMarketer, setDeleteConfirmMarketer] = useState<typeof marketers[number] | null>(null);
   const [deletingRequestId, setDeletingRequestId] = useState<string | null>(null);
@@ -427,6 +429,28 @@ export function AdminDashboard() {
       toast.error("Network error");
     } finally {
       setTogglingFreeTrialId(null);
+    }
+  }
+
+  async function handleSetTempPassword(lab: Lab) {
+    setSettingTempPassword(true);
+    try {
+      const res = await fetch(`/api/admin/labs/${lab.id}/set-temp-password`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ email: lab.email }),
+      });
+      const data = await res.json();
+      if (data.success) {
+        toast.success(`Temporary password sent to ${lab.email}`);
+        setTempPasswordLab(null);
+      } else {
+        toast.error(data.error ?? "Failed to set temporary password");
+      }
+    } catch {
+      toast.error("Network error");
+    } finally {
+      setSettingTempPassword(false);
     }
   }
 
@@ -1073,6 +1097,9 @@ export function AdminDashboard() {
                           >
                             <Star className="w-3.5 h-3.5" />
                           </button>
+                          <button onClick={() => setTempPasswordLab(lab)} disabled={settingTempPassword} title="Set temporary password" className="p-2 rounded-lg hover:bg-sky-500/15 text-slate-500 hover:text-sky-400 transition-colors">
+                            <Key className="w-3.5 h-3.5" />
+                          </button>
                           <button onClick={() => setDeleteConfirmLab(lab)} disabled={deletingId === lab.id} title="Delete" className="p-2 rounded-lg hover:bg-red-500/15 text-slate-600 hover:text-red-400 transition-colors">
                             <Trash2 className="w-3.5 h-3.5" />
                           </button>
@@ -1662,6 +1689,66 @@ export function AdminDashboard() {
           onClose={() => setDeleteConfirmMarketer(null)}
           onConfirm={() => { setDeleteConfirmMarketer(null); handleDeleteMarketer(deleteConfirmMarketer); }}
         />
+      )}
+
+      {/* Set Temporary Password Modal */}
+      {tempPasswordLab && (
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm"
+          onClick={() => setTempPasswordLab(null)}
+        >
+          <div
+            className="bg-slate-900 border border-white/15 rounded-2xl shadow-2xl w-full max-w-md overflow-hidden"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="px-6 py-5 border-b border-white/10">
+              <div className="flex items-center gap-3">
+                <Key className="w-5 h-5 text-sky-400" />
+                <h3 className="font-semibold text-white">Set Temporary Password</h3>
+              </div>
+              <p className="text-sm text-slate-400 mt-2">Send a temporary password to {tempPasswordLab.name}</p>
+            </div>
+
+            <div className="px-6 py-5 space-y-4">
+              <div>
+                <p className="text-sm text-slate-400 mb-2">Lab Email</p>
+                <p className="text-white font-mono text-sm bg-white/5 rounded-lg px-3 py-2 border border-white/10">
+                  {tempPasswordLab.email}
+                </p>
+              </div>
+              <p className="text-xs text-slate-500">
+                A temporary password will be generated and sent to this email. The lab must change it on first login.
+              </p>
+            </div>
+
+            <div className="px-6 py-4 border-t border-white/10 flex gap-3">
+              <button
+                onClick={() => setTempPasswordLab(null)}
+                disabled={settingTempPassword}
+                className="flex-1 px-4 py-2 rounded-lg bg-white/5 border border-white/10 text-slate-300 hover:bg-white/10 transition-colors disabled:opacity-50"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={() => { handleSetTempPassword(tempPasswordLab); }}
+                disabled={settingTempPassword}
+                className="flex-1 px-4 py-2 rounded-lg bg-sky-600 hover:bg-sky-700 text-white font-medium transition-colors disabled:opacity-50 flex items-center justify-center gap-2"
+              >
+                {settingTempPassword ? (
+                  <>
+                    <div className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" />
+                    Sending...
+                  </>
+                ) : (
+                  <>
+                    <Key className="w-4 h-4" />
+                    Send Password
+                  </>
+                )}
+              </button>
+            </div>
+          </div>
+        </div>
       )}
 
       {/* Per-lab analytics modal */}
