@@ -788,6 +788,8 @@ export function DoctorRequestForm({
   // Sub-step for collecting doctor details inline when profile is incomplete (1=name, 2=hospital, 3=bank)
   // Track which fields were auto-filled from a doctor profile lookup so we can clear them on email change
   const docAutofillRef = useRef<{ email: string; prefix: string; name: string; hospital: string }>({ email: "", prefix: "", name: "", hospital: "" });
+  // Cache for doctor fields (name, phone, hospital) keyed by email — persists across form interactions
+  const docFieldsCacheRef = useRef<Record<string, { name?: string; phone?: string; hospital?: string }>>({});
 
   // Auto-fill from patient profile when phone is entered
   useEffect(() => {
@@ -855,15 +857,29 @@ export function DoctorRequestForm({
   // Step 3: debounced doctor email profile check
   useEffect(() => {
     const email = form.doctor_email.trim();
+    const prevEmail = docAutofillRef.current.email;
+
+    // When email changes, save current values to cache and restore cached values for new email
+    if (prevEmail !== email && prevEmail) {
+      // Save current values to cache for previous email
+      docFieldsCacheRef.current[prevEmail] = {
+        name: form.doctor_name,
+        phone: form.doctor_phone,
+        hospital: form.doctor_hospital,
+      };
+    }
 
     // When the email changes, clear any fields that were auto-filled from the previous profile
     const prev = docAutofillRef.current;
     if (prev.email !== email) {
+      // Restore cached values for this email if they exist
+      const cached = docFieldsCacheRef.current[email];
       setForm((f) => ({
         ...f,
         doctor_prefix: f.doctor_prefix === prev.prefix ? "" : f.doctor_prefix,
-        doctor_name: f.doctor_name === prev.name ? "" : f.doctor_name,
-        doctor_hospital: f.doctor_hospital === prev.hospital ? "" : f.doctor_hospital,
+        doctor_name: cached?.name !== undefined ? cached.name : (f.doctor_name === prev.name ? "" : f.doctor_name),
+        doctor_phone: cached?.phone !== undefined ? cached.phone : f.doctor_phone,
+        doctor_hospital: cached?.hospital !== undefined ? cached.hospital : (f.doctor_hospital === prev.hospital ? "" : f.doctor_hospital),
       }));
       docAutofillRef.current = { email, prefix: "", name: "", hospital: "" };
     }
@@ -886,14 +902,15 @@ export function DoctorRequestForm({
             setDocProfileInfo(info);
             if (data.profile_complete) {
               setDocProfileStatus("found_complete");
-              // Auto-fill form fields from the live profile and record what was filled
+              // Auto-fill form fields from the live profile (only if fields are empty)
               const filled = { email, prefix: data.prefix ?? "", name: data.full_name ?? "", hospital: data.hospital ?? "" };
               docAutofillRef.current = filled;
               setForm((prev) => ({
                 ...prev,
-                doctor_prefix: data.prefix ?? prev.doctor_prefix,
-                doctor_name: data.full_name ?? prev.doctor_name,
-                doctor_hospital: data.hospital ?? prev.doctor_hospital,
+                doctor_prefix: prev.doctor_prefix || data.prefix || "",
+                doctor_name: prev.doctor_name || data.full_name || "",
+                doctor_phone: prev.doctor_phone || data.phone || "",
+                doctor_hospital: prev.doctor_hospital || data.hospital || "",
               }));
             } else {
               setDocProfileStatus("found_partial");
@@ -1968,56 +1985,53 @@ export function DoctorRequestForm({
               </div>
             )}
 
-            {/* ── Profile found & complete (claimed) — read-only summary ── */}
-            {docProfileStatus === "found_complete" && docProfileInfo && docProfileInfo.claimed && (
-              <div className="space-y-2">
-                {/* Name row */}
-                <div className="flex items-center gap-3 px-4 py-3 bg-emerald-50 border border-emerald-200 rounded-2xl">
-                  <Check className="w-4 h-4 text-emerald-600 shrink-0" />
-                  <div className="min-w-0 flex-1">
-                    <p className="text-sm font-semibold text-slate-800 truncate">
-                      {[docProfileInfo.prefix, docProfileInfo.full_name].filter(Boolean).join(" ")}
-                    </p>
-                    {docProfileInfo.hospital && (
-                      <p className="text-xs text-slate-500 truncate">{docProfileInfo.hospital}</p>
-                    )}
-                  </div>
-                </div>
-                {/* Bank status */}
-                <div className={`flex items-center gap-2.5 px-4 py-2.5 rounded-2xl border text-xs ${docProfileInfo.has_bank ? "bg-slate-50 border-slate-200 text-slate-600" : "bg-amber-50 border-amber-200 text-amber-700"}`}>
-                  {docProfileInfo.has_bank
-                    ? <><Check className="w-3.5 h-3.5 text-emerald-500 shrink-0" />Bank account on file</>
-                    : <><Info className="w-3.5 h-3.5 shrink-0" />Bank details not set — add them in your <a href="/doc-login" className="underline font-medium">dashboard</a></>
-                  }
-                </div>
+            {/* Profile found indicator */}
+            {docProfileStatus === "found_complete" && docProfileInfo && (
+              <div className="flex items-center gap-2 px-3 py-2 bg-emerald-50 border border-emerald-200 rounded-xl text-xs">
+                <Check className="w-3.5 h-3.5 text-emerald-600 shrink-0" />
+                <span className="text-emerald-800 font-medium">Profile found — details auto-filled below</span>
               </div>
             )}
 
-            {/* ── Profile found but not yet claimed — prompt to claim ── */}
-            {docProfileStatus === "found_complete" && docProfileInfo && !docProfileInfo.claimed && (
-              <div className="space-y-2">
-                <div className="flex items-center gap-3 px-4 py-3 bg-orange-50 border border-orange-200 rounded-2xl">
-                  <Info className="w-4 h-4 text-orange-500 shrink-0" />
-                  <div className="min-w-0 flex-1">
-                    <p className="text-sm font-semibold text-slate-800 truncate">
-                      {[docProfileInfo.prefix, docProfileInfo.full_name].filter(Boolean).join(" ")}
-                    </p>
-                    <p className="text-xs text-orange-600 mt-0.5">Account not yet claimed</p>
-                  </div>
-                </div>
-                <a
-                  href={`/doc-login?email=${encodeURIComponent(form.doctor_email)}`}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className="flex items-center justify-between gap-3 px-4 py-3 rounded-2xl bg-medical-50 border border-medical-200 hover:bg-medical-100 transition-colors group"
-                >
-                  <p className="text-xs text-medical-700 leading-snug">
-                    <span className="font-semibold">Claim your account</span> — verify your email to activate this profile
-                  </p>
-                  <span className="text-medical-500 text-xs font-semibold shrink-0 group-hover:underline">Claim →</span>
-                </a>
+            {/* Doctor prefix + name — editable, optional */}
+            <div className="grid grid-cols-1 sm:grid-cols-4 gap-3">
+              <div className="sm:col-span-1">
+                <PrefixSelect
+                  value={form.doctor_prefix}
+                  onChange={(prefix) => set("doctor_prefix", prefix)}
+                />
               </div>
-            )}
+              <div className="sm:col-span-3">
+                <Input
+                  label="Doctor Name"
+                  placeholder="e.g. Chioma Okafor"
+                  value={form.doctor_name}
+                  onChange={(e) => set("doctor_name", e.target.value)}
+                />
+              </div>
+            </div>
+            <p className="text-xs text-slate-400 mt-1">Optional — can be filled manually if not registered</p>
+
+            {/* Doctor phone — editable, optional */}
+            <div>
+              <PhoneInput
+                label="Doctor Phone"
+                value={form.doctor_phone}
+                onChange={(v) => set("doctor_phone", v)}
+              />
+              <p className="text-xs text-slate-400 mt-1">Optional</p>
+            </div>
+
+            {/* Doctor hospital — editable, optional */}
+            <div>
+              <Input
+                label="Hospital / Clinic"
+                placeholder="e.g. St. Mary's Hospital, Lagos"
+                value={form.doctor_hospital}
+                onChange={(e) => set("doctor_hospital", e.target.value)}
+              />
+              <p className="text-xs text-slate-400 mt-1">Optional</p>
+            </div>
 
             {/* ── No account found or profile incomplete — prompt to create / complete ── */}
             {(docProfileStatus === "not_found" || docProfileStatus === "found_partial") && (
