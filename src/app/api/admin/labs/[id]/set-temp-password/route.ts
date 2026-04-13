@@ -4,7 +4,8 @@ import { createHash, randomBytes } from "crypto";
 import { z } from "zod";
 import { verifyAdmin } from "@/lib/admin-auth";
 import { prisma } from "@/lib/prisma";
-import { resend, FROM_ADDRESS } from "@/lib/email/resend";
+import { resend } from "@/lib/email/resend";
+import { labSender } from "@/lib/email/resend";
 import { createAdminClient } from "@/lib/supabase/server";
 
 const Schema = z.object({
@@ -84,7 +85,7 @@ export async function POST(
 
     // Send email with temporary password
     const emailResult = await resend.emails.send({
-      from: FROM_ADDRESS,
+      from: labSender(lab),
       to: email,
       subject: "Your Temporary Poveon Dashboard Password",
       html: `
