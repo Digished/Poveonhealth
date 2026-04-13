@@ -44,19 +44,19 @@ export default function ContactPage() {
               {
                 icon: Mail,
                 title: "Email",
-                value: "hello@poveon.com",
-                href: "mailto:hello@poveon.com",
+                value: "notifications@poveon.com",
+                href: "mailto:notifications@poveon.com",
               },
               {
                 icon: Phone,
                 title: "Phone",
-                value: "+234 (0) 800 POVEON",
-                href: "tel:+2348007686366",
+                value: "+234 9167015451",
+                href: "tel:+2349167015451",
               },
               {
                 icon: MapPin,
                 title: "Address",
-                value: "Lagos, Nigeria",
+                value: "16 Bamgbopa Street, Abule Ijesha Yaba Lagos",
                 href: "#",
               },
             ].map((item, idx) => {
