@@ -685,6 +685,7 @@ export function labNewRequest({
   ambulanceNotes,
   testImageUrl,
   appUrl,
+  code,
 }: {
   labName: string;
   patientName: string;
@@ -701,6 +702,7 @@ export function labNewRequest({
   ambulanceNotes?: string;
   testImageUrl?: string;
   appUrl: string;
+  code: string;
 }) {
   const urgentBanner = isUrgent
     ? `<div style="background:#fee2e2;border:2px solid #ef4444;border-radius:8px;padding:14px 20px;margin:0 0 24px;text-align:center;">
@@ -733,14 +735,27 @@ export function labNewRequest({
   return base(`
     <h2 style="margin:0 0 8px;color:#0259a0;font-size:20px;font-weight:700;">New Lab Request Received</h2>
     <p style="margin:0 0 24px;color:#4b5563;font-size:15px;">
-      ${labName} has received a new laboratory request. Details are provided below.
+      ${labName} has received a new laboratory request. Complete details are provided below.
     </p>
 
     ${urgentBanner}
 
+    ${code ? `${codeBox(code)}` : ""}
+
     <h3 style="margin:0 0 16px;color:#0259a0;font-size:16px;font-weight:600;">Patient Information</h3>
     ${patientName ? `${label("Patient Name")}${value(patientName)}` : ""}
     ${patientPhone ? `${label("Patient Phone")}${value(patientPhone)}` : ""}
+    ${divider}
+
+    <h3 style="margin:0 0 16px;color:#0259a0;font-size:16px;font-weight:600;">Referring Doctor</h3>
+    ${doctorName ? `${label("Doctor Name")}${value(doctorName)}` : ""}
+    ${doctorPhone ? `${label("Doctor Phone")}${value(doctorPhone)}` : ""}
+    ${doctorHospital ? `${label("Hospital / Clinic")}${value(doctorHospital)}` : ""}
+    ${divider}
+
+    <h3 style="margin:0 0 16px;color:#0259a0;font-size:16px;font-weight:600;">Tests Requested</h3>
+    ${label("Test Details")}
+    ${value(tests)}
     ${divider}
 
     <h3 style="margin:0 0 16px;color:#0259a0;font-size:16px;font-weight:600;">Request Details</h3>
