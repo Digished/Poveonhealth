@@ -54,12 +54,20 @@ export async function POST(req: NextRequest) {
       data: { marketer_id: marketer.id, code_hash: codeHash, expires_at: expiresAt },
     });
 
-    await resend.emails.send({
+    const emailResult = await resend.emails.send({
       from: FROM_ADDRESS,
       to: normalised,
       subject: "Your Poveon login code",
       html: marketerOtpEmail({ marketerName: marketer.name, marketerEmail: normalised, otp }),
     });
+
+    if (emailResult.error) {
+      console.error("[scale/send-otp] Email send failed:", emailResult.error);
+      return NextResponse.json(
+        { error: "Failed to send code. Please try again." },
+        { status: 500 }
+      );
+    }
 
     return NextResponse.json({ success: true });
   } catch (err) {

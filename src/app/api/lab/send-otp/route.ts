@@ -50,12 +50,20 @@ export async function POST(req: NextRequest) {
 
     await prisma.labOtp.create({ data: { email, code_hash: codeHash, purpose, expires_at: expiresAt } });
 
-    await resend.emails.send({
+    const emailResult = await resend.emails.send({
       from: FROM_ADDRESS,
       to: email,
       subject: purpose === "reset" ? "Your Poveon password reset code" : "Your Poveon verification code",
       html: labOtpEmail({ email, otp, purpose }),
     });
+
+    if (emailResult.error) {
+      console.error("[lab/send-otp] Email send failed:", emailResult.error);
+      return NextResponse.json(
+        { error: "Failed to send code. Please try again." },
+        { status: 500 }
+      );
+    }
 
     return NextResponse.json({ success: true });
   } catch (err) {

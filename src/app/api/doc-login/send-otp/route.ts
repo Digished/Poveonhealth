@@ -41,12 +41,20 @@ export async function POST(req: NextRequest) {
     });
 
     // Send email
-    await resend.emails.send({
+    const emailResult = await resend.emails.send({
       from: FROM_ADDRESS,
       to: normalised,
       subject: "Your Poveon login code",
       html: doctorOtpEmail({ doctorEmail: normalised, otp }),
     });
+
+    if (emailResult.error) {
+      console.error("[doc-login/send-otp] Email send failed:", emailResult.error);
+      return NextResponse.json(
+        { error: "Failed to send code. Please try again." },
+        { status: 500 }
+      );
+    }
 
     return NextResponse.json({ success: true });
   } catch (err) {
