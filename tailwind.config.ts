@@ -32,6 +32,7 @@ const config: Config = {
       animation: {
         "fade-in": "fadeIn 0.5s ease-in-out",
         "slide-up": "slideUp 0.4s ease-out",
+        "sheet-up": "sheetUp 0.32s cubic-bezier(0.22, 1, 0.36, 1) both",
         "fade-in-up": "fadeInUp 0.5s cubic-bezier(0.22, 1, 0.36, 1) both",
         "scale-in": "scaleIn 0.28s cubic-bezier(0.34, 1.56, 0.64, 1) both",
         "backdrop-in": "backdropIn 0.2s ease-out both",
@@ -60,6 +61,10 @@ const config: Config = {
         backdropIn: {
           "0%": { opacity: "0" },
           "100%": { opacity: "1" },
+        },
+        sheetUp: {
+          "0%": { opacity: "0", transform: "translateY(100%)" },
+          "100%": { opacity: "1", transform: "translateY(0)" },
         },
         floatBob: {
           "0%, 100%": { transform: "translateY(0px)" },
