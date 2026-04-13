@@ -13,6 +13,15 @@ const Schema = z.object({
 
 export async function POST(req: NextRequest) {
   try {
+    // Check if Resend API key is configured
+    if (!process.env.RESEND_API_KEY) {
+      console.error("[lab/send-otp] RESEND_API_KEY environment variable is not set");
+      return NextResponse.json(
+        { error: "Email service is not configured. Please contact support." },
+        { status: 500 }
+      );
+    }
+
     const body = await req.json();
     const parsed = Schema.safeParse(body);
     if (!parsed.success) {
@@ -58,12 +67,19 @@ export async function POST(req: NextRequest) {
     });
 
     if (emailResult.error) {
-      console.error("[lab/send-otp] Email send failed:", emailResult.error);
+      console.error("[lab/send-otp] Email send failed:", {
+        error: emailResult.error,
+        from: FROM_ADDRESS,
+        to: email,
+        purpose,
+      });
       return NextResponse.json(
         { error: "Failed to send code. Please try again." },
         { status: 500 }
       );
     }
+
+    console.log("[lab/send-otp] Email sent successfully to", email, "for purpose:", purpose);
 
     return NextResponse.json({ success: true });
   } catch (err) {
