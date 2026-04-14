@@ -184,8 +184,10 @@ function TestSearchModal({
           const r: CatalogResult[] = data.results ?? [];
           _resultCache.set(cacheKey, r);
           setResults(r);
-          setSearching(false);
+        } else {
+          setResults([]);
         }
+        setSearching(false);
       } catch (e) {
         if ((e as Error).name !== "AbortError") setSearching(false);
       }
