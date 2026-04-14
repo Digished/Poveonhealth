@@ -13,6 +13,7 @@ interface LabPageContentProps {
   labAddress?: string | null;
   labServiceCategories: string[];
   labPhones: unknown;
+  labWhatsapp?: string | null;
   logoUrl?: string | null;
   heroImageUrl?: string | null;
   locations: Array<{
@@ -34,6 +35,7 @@ export function LabPageContent({
   labAddress,
   labServiceCategories,
   labPhones,
+  labWhatsapp,
   logoUrl,
   heroImageUrl,
   locations,
@@ -42,11 +44,19 @@ export function LabPageContent({
 
   return (
     <>
-      <div className="w-full snap-start snap-always">
-        <LabHeroSection labName={labName} logoUrl={logoUrl} heroImageUrl={heroImageUrl} mode={mode} />
-      </div>
+      {/* Hero — sticky, collapses into a compact bar on scroll */}
+      <LabHeroSection
+        labName={labName}
+        logoUrl={logoUrl}
+        heroImageUrl={heroImageUrl}
+        labAddress={labAddress}
+        labServiceCategories={labServiceCategories}
+        labPhones={labPhones}
+        labWhatsapp={labWhatsapp}
+        mode={mode}
+      />
 
-      <div id="form-toggle" className="max-w-2xl mx-auto px-4 pb-2 snap-start snap-always">
+      <div id="form-toggle" className="max-w-2xl mx-auto px-4 pb-2">
         <RequestFormToggle
           preselectedLabId={labId}
           preselectedLabName={labName}

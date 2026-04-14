@@ -18,6 +18,8 @@ interface BankAccountInputProps {
   bankError?: string;
   accountNumberError?: string;
   accountNameError?: string;
+  /** When true, removes the required constraint so the section can be left blank */
+  optional?: boolean;
 }
 
 export function BankAccountInput({
@@ -32,6 +34,7 @@ export function BankAccountInput({
   bankError,
   accountNumberError,
   accountNameError,
+  optional = false,
 }: BankAccountInputProps) {
   const [dropdownOpen, setDropdownOpen] = useState(false);
   const [search, setSearch] = useState("");
@@ -217,7 +220,7 @@ export function BankAccountInput({
       <div className="relative">
         <Input
           label="Account Number"
-          required
+          required={!optional}
           placeholder="10-digit NUBAN account number"
           value={accountNumber}
           onChange={(e) => {
@@ -260,7 +263,7 @@ export function BankAccountInput({
       ) : (
         <Input
           label="Account Name"
-          required
+          required={!optional}
           placeholder="Name as it appears on bank account"
           value={accountName}
           onChange={(e) => onAccountNameChange(e.target.value)}

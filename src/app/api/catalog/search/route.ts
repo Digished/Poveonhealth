@@ -1,12 +1,15 @@
-export const dynamic = "force-dynamic";
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
+
+// Cache catalog search results for 5 minutes (CDN + browser)
+export const revalidate = 300;
 
 /**
  * GET /api/catalog/search?q=fbc&lab_id=xxx&limit=8
  *
  * Typeahead search against a lab's own offered tests (lab_offered_tests).
- * Searches raw_name and synonyms JSON array.
+ * Searches raw_name with ILIKE and synonyms via a single Postgres raw query
+ * so we avoid a full-table scan on every keystroke.
  */
 export async function GET(request: NextRequest) {
   const { searchParams } = new URL(request.url);
@@ -14,64 +17,62 @@ export async function GET(request: NextRequest) {
   const labId = searchParams.get("lab_id") ?? null;
   const limit = Math.min(20, parseInt(searchParams.get("limit") ?? "8", 10));
 
-  if (q.length < 1) return NextResponse.json({ success: true, results: [] });
+  if (q.length < 1) {
+    return NextResponse.json({ success: true, results: [] }, {
+      headers: { "Cache-Control": "public, max-age=60" },
+    });
+  }
 
   try {
-    const where = {
-      is_active: true,
-      ...(labId ? { lab_id: labId } : {}),
-      raw_name: { contains: q, mode: "insensitive" as const },
+    const pattern = `%${q}%`;
+
+    // Single query: search raw_name + synonyms JSON array via Postgres
+    // This avoids the N+1 full-table scan of the old synonym approach
+    type Row = {
+      id: string;
+      raw_name: string;
+      category_label: string | null;
+      lab_price: string | null;
     };
 
-    const tests = await prisma.labOfferedTest.findMany({
-      where,
-      take: limit * 3,
-      select: {
-        id: true,
-        raw_name: true,
-        category_label: true,
-        lab_price: true,
-        synonyms: true,
-      },
-    });
+    const rows: Row[] = await prisma.$queryRaw`
+      SELECT id, raw_name, category_label, lab_price::text
+      FROM "lab_offered_tests"
+      WHERE is_active = true
+        AND (${labId}::text IS NULL OR lab_id = ${labId})
+        AND (
+          raw_name ILIKE ${pattern}
+          OR (
+            synonyms IS NOT NULL
+            AND jsonb_typeof(synonyms::jsonb) = 'array'
+            AND EXISTS (
+              SELECT 1 FROM jsonb_array_elements_text(synonyms::jsonb) s
+              WHERE s ILIKE ${pattern}
+            )
+          )
+        )
+      ORDER BY
+        CASE
+          WHEN lower(raw_name) = lower(${q})              THEN 0
+          WHEN lower(raw_name) LIKE lower(${q}) || '%'    THEN 1
+          ELSE 2
+        END
+      LIMIT ${limit}
+    `;
 
-    // Also search synonyms for tests not matched by raw_name
-    const allTests = labId
-      ? await prisma.labOfferedTest.findMany({
-          where: { is_active: true, lab_id: labId },
-          select: { id: true, raw_name: true, category_label: true, lab_price: true, synonyms: true },
-        })
-      : [];
-
-    const synonymMatches = allTests.filter((t) => {
-      if (tests.find((r) => r.id === t.id)) return false; // already in results
-      const syns = Array.isArray(t.synonyms) ? (t.synonyms as string[]) : [];
-      return syns.some((s) => s.toLowerCase().includes(q.toLowerCase()));
-    });
-
-    const merged = [...tests, ...synonymMatches];
-
-    // Rank: exact → starts-with → substring
-    const ql = q.toLowerCase();
-    const ranked = merged.sort((a, b) => {
-      const score = (t: typeof a) => {
-        const n = t.raw_name.toLowerCase();
-        if (n === ql) return 0;
-        if (n.startsWith(ql)) return 1;
-        return 2;
-      };
-      return score(a) - score(b);
-    }).slice(0, limit);
-
-    const results = ranked.map((t) => ({
+    const results = rows.map((t) => ({
       id: t.id,
       canonical_name: t.raw_name,
       category: t.category_label ?? "Lab Test",
-      effective_price: Number(t.lab_price),
+      effective_price: t.lab_price ? Number(t.lab_price) : 0,
       is_rapid_test: false,
     }));
 
-    return NextResponse.json({ success: true, results });
+    return NextResponse.json({ success: true, results }, {
+      headers: {
+        "Cache-Control": "public, max-age=300, s-maxage=300, stale-while-revalidate=60",
+      },
+    });
   } catch (e) {
     console.error("[catalog/search]", e);
     return NextResponse.json({ success: false, error: "Search failed" }, { status: 500 });

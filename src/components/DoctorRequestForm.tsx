@@ -10,7 +10,7 @@ import {
   TestTube2, ChevronRight, ChevronLeft, Building2, Check,
   Search, X, PhoneCall, RefreshCw, ChevronDown, Mail,
   Award, Info, Layers, Pencil, Camera, FileText,
-  AlertTriangle, Truck, MessageCircle,
+  AlertTriangle, Truck, MessageCircle, Heart,
 } from "lucide-react";
 
 function MarsIcon({ className }: { className?: string }) {
@@ -350,9 +350,6 @@ function LabSearch({
 
   return (
     <div className="flex flex-col gap-1">
-      <label className="text-sm font-medium text-slate-700">
-        Destination Laboratory <span className="inline-block w-1.5 h-1.5 rounded-full bg-amber-400 ml-0.5 align-middle" aria-label="required" />
-      </label>
       {selectedLab ? (
         <div className="w-full rounded-xl border border-medical-300 bg-medical-50 px-4 py-2.5 flex items-center justify-between">
           <button
@@ -746,7 +743,6 @@ export function DoctorRequestForm({
   const [doctorOptionalOpen, setDoctorOptionalOpen] = useState(false);
   const [savedProfile, setSavedProfile] = useState<{ prefix: string; name: string; email: string; phone: string; hospital: string; bankName: string; bankCode: string; accountNumber: string; accountName: string } | null>(null);
   const [maxStep, setMaxStep] = useState(startStep);
-  const [clinicalMode, setClinicalMode] = useState<"type" | "picture">("type");
   // Index into the locations[] array; drives which lab_id is submitted
   const [selectedLocIdx, setSelectedLocIdx] = useState(defaultLocIdx);
   // Image upload state
@@ -771,8 +767,8 @@ export function DoctorRequestForm({
   const [isCritical, setIsCritical] = useState(false);
   const [needsAmbulance, setNeedsAmbulance] = useState(false);
   const [ambulanceNotes, setAmbulanceNotes] = useState("");
-  // Step 2 diagnosis collapsible
-  const [diagnosisOpen, setDiagnosisOpen] = useState(false);
+  // Step 2 optional details collapsible (diagnosis + condition combined)
+  const [optionalDetailsOpen, setOptionalDetailsOpen] = useState(false);
   // Step 4 accordion / lookup states
   const [patientInfoOpen, setPatientInfoOpen] = useState(false);
   const [patientLookupStatus, setPatientLookupStatus] = useState<"idle" | "checking" | "found" | "not_found">("idle");
@@ -1038,16 +1034,8 @@ export function DoctorRequestForm({
       if (labPreselected && hasLocations && selectedLocIdx < 0) errs.lab_id = "Please select a location";
     }
     if (s === 2) {
-      if (clinicalMode === "type") {
-        if (testTags.length === 0) errs.tests = "Required";
-        // diagnosis is optional
-      }
-      if (clinicalMode === "picture") {
-        if (!testImageUrl) {
-          setImageUploadError("Please upload a test request image");
-        }
-        // tests and diagnosis are optional for picture mode
-      }
+      if (testTags.length === 0 && !testImageUrl) errs.tests = "Required";
+      // diagnosis is always optional
     }
     if (s === 3) {
       if (!form.doctor_email.trim()) errs.doctor_email = "Email is required";
@@ -1128,7 +1116,7 @@ export function DoctorRequestForm({
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           ...form,
-          tests: clinicalMode === "picture" ? (testsString || "See attached image") : testsString,
+          tests: testsString || (testImageUrl ? "See attached image" : ""),
           test_image_url: testImageUrl ?? undefined,
           is_critical: isCritical,
           needs_ambulance: needsAmbulance,
@@ -1231,7 +1219,6 @@ export function DoctorRequestForm({
           setStep(startStep);
           setMaxStep(startStep);
           setSelectedLocIdx(defaultLocIdx);
-          setClinicalMode("type");
           setTestImageUrl(null);
           setImageUploadError(null);
           setIsCritical(false);
@@ -1285,8 +1272,7 @@ export function DoctorRequestForm({
       return true;
     }
     if (step === 2) {
-      if (clinicalMode === "picture") return !!testImageUrl;
-      return testTags.length > 0;
+      return testTags.length > 0 || !!testImageUrl;
     }
     if (step === 3) {
       return (
@@ -1301,19 +1287,19 @@ export function DoctorRequestForm({
   })();
 
   // Whether the clinical section of step 2 is done (drives the connector line)
-  const clinicalDone =
-    (clinicalMode === "picture" && !!testImageUrl) ||
-    (clinicalMode === "type" && testTags.length > 0);
+  const clinicalDone = testTags.length > 0 || !!testImageUrl;
 
   return (
-    <div className="animate-fade-in">
-      {/* Sticky header + step indicator */}
-      <div className={`sticky top-0 z-10 -mx-4 px-4 transition-all duration-300 ${scrolled ? "pt-2 pb-2" : "pt-3 pb-3"}`}>
+    <div className="animate-fade-in bg-white -mx-4">
+      {/* Sticky header + step indicator
+          On lab pages a fixed 64 px mini-header (from LabHeroSection) appears
+          once the hero scrolls out of view. Offset by 64 px so they don't overlap. */}
+      <div className={`sticky ${preselectedLabId ? "top-16" : "top-0"} z-10 px-4 transition-all duration-300 ${scrolled ? "pt-2 pb-2" : "pt-3 pb-3"}`}>
         {/* Full-width frosted background */}
         <div className="absolute inset-0 left-1/2 -translate-x-1/2 w-screen bg-white/80 backdrop-blur-md border-b border-white/60 -z-10" />
 
-        {/* Lab info / branding */}
-        <div className="mb-3">
+        {/* Lab info / branding — only on home page; on lab pages the sticky hero shows this */}
+        {!labPreselected && <div className="mb-3">
             {displayLab ? (() => {
               const phones = parsePhones(displayLab.phones);
               const waNumbers: string[] = (displayLab.whatsapp
@@ -1398,7 +1384,7 @@ export function DoctorRequestForm({
                 </div>
               );
             })() : null}
-        </div>
+        </div>}
 
         {/* Step indicator */}
         <div className="flex items-center">
@@ -1448,68 +1434,27 @@ export function DoctorRequestForm({
       </div>
 
       {/* Step content */}
-      <div
-        className="glass-card p-4 mt-3 mb-2"
-      >
+      <div className="px-4 pt-3 pb-2">
 
         {/* Step 1: Choose Lab / Branch */}
         {step === 1 && (
           <div className="space-y-5">
-            {/* Generic URL: lab search — unchanged */}
+            {/* Generic URL: lab search */}
             {!labPreselected && (
-              <>
-                <h2 className="flex items-center gap-2 text-base font-semibold text-slate-700 pb-3 border-b border-slate-100">
-                  <Building2 className="w-4 h-4 text-medical-600" />
-                  Select Laboratory
-                </h2>
-                <LabSearch
-                  labs={labs}
-                  loading={labsLoading}
-                  value={form.lab_id}
-                  onChange={(id) => set("lab_id", id)}
-                  error={errors.lab_id}
-                  onOpen={() => fetchLabs(false)}
-                  onRefresh={() => fetchLabs(true)}
-                />
-                {selectedLab && (
-                  <div className="rounded-2xl border border-medical-100 overflow-hidden">
-                    <div className="bg-medical-50 px-4 pt-4 pb-3 flex items-start gap-3">
-                      {selectedLab.logo_url ? (
-                        <img src={selectedLab.logo_url} alt={selectedLab.name} className="w-10 h-10 rounded-xl object-cover shrink-0 shadow-sm" />
-                      ) : (
-                        <div className="w-10 h-10 rounded-xl bg-medical-100 flex items-center justify-center shrink-0">
-                          <Building2 className="w-5 h-5 text-medical-600" />
-                        </div>
-                      )}
-                      <div className="min-w-0">
-                        <p className="text-sm font-bold text-medical-900 leading-tight">{selectedLab.name}</p>
-                        {selectedLab.address && (
-                          <p className="text-xs text-medical-600 flex items-start gap-1 mt-1">
-                            <MapPin className="w-3 h-3 mt-0.5 shrink-0" />{selectedLab.address}
-                          </p>
-                        )}
-                        <button
-                          type="button"
-                          onClick={() => setLabDetailsOpen(true)}
-                          className="mt-1.5 text-xs text-medical-600 hover:text-medical-800 underline underline-offset-2 font-medium"
-                        >
-                          View details
-                        </button>
-                      </div>
-                    </div>
-                  </div>
-                )}
-              </>
+              <LabSearch
+                labs={labs}
+                loading={labsLoading}
+                value={form.lab_id}
+                onChange={(id) => set("lab_id", id)}
+                error={errors.lab_id}
+                onOpen={() => fetchLabs(false)}
+                onRefresh={() => fetchLabs(true)}
+              />
             )}
 
             {/* Lab-specific URL with locations: location selection */}
             {labPreselected && hasLocations && (
-              <div className="space-y-4">
-                <h2 className="flex items-center gap-2 text-base font-semibold text-slate-700 pb-3 border-b border-slate-100">
-                  <MapPin className="w-4 h-4 text-medical-600" />
-                  Select Location
-                </h2>
-                <p className="text-sm text-slate-500">Choose the {preselectedLabName} location you are sending this request to.</p>
+              <div className="space-y-3">
                 <BranchSearchDropdown
                   locations={locations}
                   selectedIdx={selectedLocIdx}
@@ -1520,23 +1465,29 @@ export function DoctorRequestForm({
             )}
 
             {/* Lab-specific URL, no locations: lab confirmation */}
-            {labPreselected && !hasLocations && (
-              <div className="space-y-4">
-                <h2 className="flex items-center gap-2 text-base font-semibold text-slate-700 pb-3 border-b border-slate-100">
-                  <Building2 className="w-4 h-4 text-medical-600" />
-                  Submit a Lab Request
-                </h2>
-                <div className="rounded-2xl border border-medical-100 bg-medical-50/40 px-5 py-4 space-y-2">
-                  <p className="text-sm font-semibold text-slate-800">{preselectedLabName}</p>
-                  <p className="text-xs text-slate-500 leading-relaxed">
-                    You are about to send a lab test request directly to this laboratory. Fill in the required details and your request will be delivered instantly.
-                  </p>
-                </div>
-                <div className="flex items-start gap-3 bg-sky-50 border border-sky-200 rounded-xl px-4 py-3">
-                  <Info className="w-4 h-4 text-sky-500 shrink-0 mt-0.5" />
-                  <p className="text-xs text-sky-800 leading-relaxed">
-                    Fill in the clinical tests, your email, and the patient's contact details — the request will be delivered to the lab instantly.
-                  </p>
+            {labPreselected && !hasLocations && displayLab && (
+              <div className="rounded-2xl bg-medical-50 border border-medical-100 px-4 py-4 flex items-center gap-3">
+                {displayLab.logo_url ? (
+                  <img src={displayLab.logo_url} alt={displayLab.name} className="w-10 h-10 rounded-xl object-cover shrink-0 shadow-sm" />
+                ) : (
+                  <div className="w-10 h-10 rounded-xl bg-medical-100 flex items-center justify-center shrink-0">
+                    <Building2 className="w-5 h-5 text-medical-600" />
+                  </div>
+                )}
+                <div className="min-w-0 flex-1">
+                  <p className="text-sm font-bold text-medical-900 leading-tight">{displayLab.name}</p>
+                  {displayLab.address && (
+                    <p className="text-xs text-medical-600 flex items-center gap-1 mt-0.5">
+                      <MapPin className="w-3 h-3 shrink-0" />{displayLab.address}
+                    </p>
+                  )}
+                  <button
+                    type="button"
+                    onClick={() => setLabDetailsOpen(true)}
+                    className="mt-1 text-xs text-medical-600 hover:text-medical-800 underline underline-offset-2 font-medium transition-colors"
+                  >
+                    View details
+                  </button>
                 </div>
               </div>
             )}
@@ -1546,63 +1497,320 @@ export function DoctorRequestForm({
         {/* Step 2: Clinical Details */}
         {step === 2 && (
           <div className="space-y-4">
-            <h2 className="flex items-center gap-2 text-base font-semibold text-slate-700 pb-3 border-b border-slate-100">
-              <TestTube2 className="w-4 h-4 text-medical-600" />
-              Clinical Details
-            </h2>
+            {/* Header row: title + camera button in corner */}
+            <div className="flex items-center justify-between pb-3 border-b border-slate-100">
+              <h2 className="flex items-center gap-2 text-base font-semibold text-slate-700">
+                <TestTube2 className="w-4 h-4 text-medical-600" />
+                Clinical Details
+              </h2>
+              {/* Camera button — tap to scan a physical test request slip */}
+              <label className="cursor-pointer select-none" aria-label="Scan test request slip">
+                <div className={`flex items-center gap-1.5 py-1.5 px-3 rounded-xl text-xs font-semibold transition-colors active:scale-95 ${testImageUrl ? "bg-emerald-100 text-emerald-700" : "bg-slate-100 text-slate-500 hover:bg-medical-100 hover:text-medical-600"}`}>
+                  <Camera className="w-3.5 h-3.5" />
+                  {testImageUrl ? "Retake" : "Scan slip"}
+                </div>
+                <input
+                  type="file"
+                  accept="image/jpeg,image/png,image/webp,image/heic,.heic"
+                  className="sr-only"
+                  onChange={(e) => {
+                    const file = e.target.files?.[0];
+                    if (!file) return;
+                    const MAX_MB = 10;
+                    if (file.size > MAX_MB * 1024 * 1024) {
+                      setImageUploadError(`File is too large (${(file.size / 1024 / 1024).toFixed(1)} MB). Maximum is ${MAX_MB} MB.`);
+                      e.target.value = "";
+                      return;
+                    }
+                    const allowed = ["image/jpeg", "image/png", "image/webp", "image/heic"];
+                    if (!allowed.includes(file.type) && !file.name.toLowerCase().endsWith(".heic")) {
+                      setImageUploadError(`Unsupported format: ${file.type || file.name.split(".").pop()?.toUpperCase()}. Please use JPEG, PNG, WebP, or HEIC.`);
+                      e.target.value = "";
+                      return;
+                    }
+                    setImageUploading(true);
+                    setImageUploadProgress(0);
+                    setImageUploadError(null);
+                    setTestImageUrl(null);
+                    setExtractionResult(null);
+                    setExtractionDismissed(false);
+                    const fd = new FormData();
+                    fd.append("file", file);
+                    const xhr = new XMLHttpRequest();
+                    xhr.upload.onprogress = (ev) => {
+                      if (ev.lengthComputable) setImageUploadProgress(Math.round((ev.loaded / ev.total) * 100));
+                    };
+                    xhr.onload = () => {
+                      try {
+                        const data = JSON.parse(xhr.responseText);
+                        if (data.url) {
+                          setTestImageUrl(data.url);
+                          setImageUploadProgress(100);
+                          setImageExtracting(true);
+                          setExtractionProgress(0);
+                          fetch("/api/requests/extract-from-image", {
+                            method: "POST",
+                            headers: { "Content-Type": "application/json" },
+                            body: JSON.stringify({ imageUrl: data.url }),
+                          })
+                            .then((r) => r.json())
+                            .then((res) => {
+                              if (res.success && res.extracted) {
+                                setExtractionResult(res.extracted);
+                                if (Array.isArray(res.extracted.tests) && res.extracted.tests.length > 0) {
+                                  const lowConfSet = new Set<string>(
+                                    (res.extracted.low_confidence_items ?? []).map((s: string) => s.toLowerCase())
+                                  );
+                                  const expanded = res.extracted.tests.flatMap((n: string) => {
+                                    const isLow = lowConfSet.has(n.toLowerCase());
+                                    const parts = smartSplitTestNames(n);
+                                    const names = parts.length > 0 ? parts : [n];
+                                    return names.map((name: string) => ({ name, low_confidence: isLow }));
+                                  });
+                                  const initialTags: { name: string; catalog_test_id: string | null; low_confidence: boolean }[] = expanded.map(({ name, low_confidence }: { name: string; low_confidence: boolean }) => ({
+                                    name,
+                                    catalog_test_id: null as string | null,
+                                    low_confidence,
+                                  }));
+                                  setTestTags(initialTags);
+                                  const labId = form.lab_id;
+                                  Promise.allSettled(
+                                    initialTags.map((tag: { name: string; catalog_test_id: string | null; low_confidence: boolean }) =>
+                                      fetch(`/api/catalog/search?q=${encodeURIComponent(tag.name)}${labId ? `&lab_id=${encodeURIComponent(labId)}` : ""}&limit=1`)
+                                        .then((r) => r.json())
+                                        .then((d) => {
+                                          const match = d.results?.[0];
+                                          if (!match) return null;
+                                          const nameLC = tag.name.toLowerCase();
+                                          const canonLC = match.canonical_name.toLowerCase();
+                                          if (canonLC === nameLC || canonLC.includes(nameLC) || nameLC.includes(canonLC)) {
+                                            return { originalName: tag.name, match };
+                                          }
+                                          return null;
+                                        })
+                                        .catch(() => null)
+                                    )
+                                  ).then((results) => {
+                                    const upgrades = new Map<string, { id: string; name: string; price?: number; category?: string; is_rapid_test?: boolean }>();
+                                    results.forEach((r) => {
+                                      if (r.status === "fulfilled" && r.value) {
+                                        upgrades.set(r.value.originalName.toLowerCase(), {
+                                          id: r.value.match.id,
+                                          name: r.value.match.canonical_name,
+                                          price: r.value.match.effective_price,
+                                          category: r.value.match.category,
+                                          is_rapid_test: r.value.match.is_rapid_test,
+                                        });
+                                      }
+                                    });
+                                    if (upgrades.size > 0) {
+                                      setTestTags((prev) =>
+                                        prev.map((t) => {
+                                          const up = upgrades.get(t.name.toLowerCase());
+                                          if (!up) return t;
+                                          return { name: up.name, catalog_test_id: up.id, low_confidence: false, price: up.price, category: up.category, is_rapid_test: up.is_rapid_test };
+                                        })
+                                      );
+                                    }
+                                  });
+                                }
+                                setForm((prev) => ({
+                                  ...prev,
+                                  diagnosis: res.extracted.diagnosis || prev.diagnosis,
+                                  patient_name: prev.patient_name || res.extracted.patient_name,
+                                  dob: prev.dob || res.extracted.dob,
+                                  sex: prev.sex || res.extracted.sex,
+                                  doctor_name: prev.doctor_name || res.extracted.doctor_name,
+                                  doctor_prefix: prev.doctor_prefix || res.extracted.doctor_prefix,
+                                }));
+                                if (res.extracted.diagnosis) setOptionalDetailsOpen(true);
+                              }
+                            })
+                            .catch(() => { /* silent — user continues manually */ })
+                            .finally(() => {
+                              setExtractionProgress(100);
+                              setTimeout(() => setImageExtracting(false), 700);
+                            });
+                        } else {
+                          setImageUploadError(data.error ?? "Upload failed. Please try again.");
+                        }
+                      } catch {
+                        setImageUploadError("Upload failed. Please try again.");
+                      } finally {
+                        setImageUploading(false);
+                        e.target.value = "";
+                      }
+                    };
+                    xhr.onerror = () => {
+                      setImageUploadError("Network error. Check your connection and try again.");
+                      setImageUploading(false);
+                      e.target.value = "";
+                    };
+                    xhr.open("POST", "/api/requests/upload-image");
+                    xhr.send(fd);
+                  }}
+                />
+              </label>
+            </div>
 
             <div className="space-y-3">
-                  {/* Mode toggle */}
-                  <div className="flex gap-2 p-1 bg-slate-100 rounded-2xl">
-                    <button
-                      type="button"
-                      onClick={() => setClinicalMode("type")}
-                      className={`flex-1 flex items-center justify-center gap-2 py-2.5 px-3 rounded-xl text-sm font-semibold transition-all ${
-                        clinicalMode === "type" ? "bg-white shadow text-slate-800" : "text-slate-500 hover:text-slate-700"
-                      }`}
-                    >
-                      <Stethoscope className="w-4 h-4" />
-                      Type
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => setClinicalMode("picture")}
-                      className={`flex-1 flex items-center justify-center gap-2 py-2.5 px-3 rounded-xl text-sm font-semibold transition-all ${
-                        clinicalMode === "picture" ? "bg-white shadow text-slate-800" : "text-slate-500 hover:text-slate-700"
-                      }`}
-                    >
-                      <Camera className="w-4 h-4" />
-                      Upload
-                    </button>
-                  </div>
-
-                  {/* Type mode: tests (required) + diagnosis (optional, collapsible) */}
-                  {clinicalMode === "type" && (
-                    <div className="space-y-4 animate-fade-in-up">
-                      <TestTagInput
-                        label="Laboratory Tests Requested"
-                        value={testTags}
-                        onChange={setTestTags}
-                        labId={form.lab_id}
-                        error={errors.tests}
-                      />
-                      {/* Optional collapsible diagnosis */}
-                      <div className={`rounded-xl border-2 overflow-hidden transition-colors ${form.diagnosis.trim() ? "border-emerald-200 bg-emerald-50/30" : "border-slate-200"}`}>
-                        <button
-                          type="button"
-                          onClick={() => setDiagnosisOpen((v) => !v)}
-                          className={`w-full flex items-center justify-between px-4 py-3 transition-colors ${form.diagnosis.trim() ? "hover:bg-emerald-50/50" : "hover:bg-slate-50 bg-slate-50/50"}`}
-                        >
-                          <div className="flex items-center gap-2 text-left">
-                            {form.diagnosis.trim()
-                              ? <><Check className="w-4 h-4 text-emerald-500 shrink-0" /><span className="text-sm font-semibold text-slate-700">Diagnosis / Clinical Notes added</span></>
-                              : <><FileText className="w-4 h-4 text-slate-400 shrink-0" /><span className="text-sm font-semibold text-slate-700">Diagnosis / Clinical Notes</span></>
-                            }
+                  {/* Upload / extraction progress — shown while processing the scanned slip */}
+                  {imageUploading ? (
+                    (() => {
+                      const uploadPct = imageUploadProgress;
+                      const UPLOAD_STAGES = [
+                        { icon: "📷", label: "Reading your image…", start: 0, end: 40 },
+                        { icon: "🧠", label: "Understanding the image…", start: 40, end: 100 },
+                      ];
+                      return (
+                        <div className="rounded-2xl border border-slate-200 bg-white px-6 py-8 space-y-5">
+                          <div className="text-center">
+                            <p className="text-sm font-semibold text-slate-700">Uploading image…</p>
+                            <p className="text-xs text-slate-400 mt-0.5">{uploadPct < 100 ? `${uploadPct}%` : "Almost done…"}</p>
                           </div>
-                          <ChevronDown className={`w-4 h-4 shrink-0 transition-transform ${form.diagnosis.trim() ? "text-emerald-500" : "text-slate-400"} ${diagnosisOpen ? "rotate-180" : ""}`} />
+                          <div className="w-full bg-slate-100 rounded-full h-1.5 overflow-hidden">
+                            <div className="h-full bg-medical-500 rounded-full transition-all duration-300" style={{ width: `${uploadPct}%` }} />
+                          </div>
+                          <div className="space-y-2.5">
+                            {UPLOAD_STAGES.map((stage) => {
+                              const done = uploadPct >= stage.end;
+                              const active = uploadPct >= stage.start && uploadPct < stage.end;
+                              return (
+                                <div key={stage.label} className={`flex items-center gap-3 transition-opacity duration-300 ${uploadPct < stage.start ? "opacity-30" : "opacity-100"}`}>
+                                  <div className={`w-7 h-7 rounded-full flex items-center justify-center shrink-0 text-base transition-all ${done ? "bg-emerald-100" : active ? "bg-medical-100" : "bg-slate-100"}`}>
+                                    {done ? "✓" : stage.icon}
+                                  </div>
+                                  <span className={`text-sm font-medium ${done ? "text-emerald-600" : active ? "text-slate-800" : "text-slate-400"}`}>{stage.label}</span>
+                                  {active && <RefreshCw className="w-3.5 h-3.5 text-medical-400 animate-spin ml-auto shrink-0" />}
+                                  {done && <span className="text-xs text-emerald-500 ml-auto shrink-0 font-medium">Done</span>}
+                                </div>
+                              );
+                            })}
+                          </div>
+                        </div>
+                      );
+                    })()
+                  ) : imageExtracting ? (
+                    (() => {
+                      const p = extractionProgress;
+                      const SCAN_STAGES = [
+                        { icon: "🔍", label: "Reading the document…",        start: 0,  end: 25 },
+                        { icon: "🧬", label: "Identifying tests & fields…",  start: 25, end: 50 },
+                        { icon: "🏷️", label: "Matching to test catalog…",    start: 50, end: 75 },
+                        { icon: "✨", label: "Pre-filling your form…",       start: 75, end: 100 },
+                      ];
+                      return (
+                        <div className="rounded-2xl border border-slate-200 bg-white px-6 py-8 space-y-5">
+                          <div className="text-center">
+                            <p className="text-sm font-semibold text-slate-700">Scanning with AI…</p>
+                            <p className="text-xs text-slate-400 mt-0.5">Hang tight, this only takes a few seconds</p>
+                          </div>
+                          <div className="w-full bg-slate-100 rounded-full h-1.5 overflow-hidden">
+                            <div className="h-full bg-medical-500 rounded-full transition-all duration-700" style={{ width: `${p}%` }} />
+                          </div>
+                          <div className="space-y-2.5">
+                            {SCAN_STAGES.map((stage) => {
+                              const done = p >= stage.end;
+                              const active = p >= stage.start && p < stage.end;
+                              return (
+                                <div key={stage.label} className={`flex items-center gap-3 transition-opacity duration-300 ${p < stage.start ? "opacity-30" : "opacity-100"}`}>
+                                  <div className={`w-7 h-7 rounded-full flex items-center justify-center shrink-0 text-base transition-all ${done ? "bg-emerald-100" : active ? "bg-medical-100" : "bg-slate-100"}`}>
+                                    {done ? "✓" : stage.icon}
+                                  </div>
+                                  <span className={`text-sm font-medium ${done ? "text-emerald-600" : active ? "text-slate-800" : "text-slate-400"}`}>{stage.label}</span>
+                                  {active && <RefreshCw className="w-3.5 h-3.5 text-medical-400 animate-spin ml-auto shrink-0" />}
+                                  {done && <span className="text-xs text-emerald-500 ml-auto shrink-0 font-medium">Done</span>}
+                                </div>
+                              );
+                            })}
+                          </div>
+                        </div>
+                      );
+                    })()
+                  ) : testImageUrl ? (
+                    <div className="space-y-2 animate-fade-in-up">
+                      {/* Image thumbnail row */}
+                      <div className="flex items-center gap-3 rounded-xl border border-emerald-200 bg-emerald-50/40 px-4 py-3">
+                        <img src={testImageUrl} alt="Scanned test request slip" className="w-14 h-14 rounded-lg object-cover border border-emerald-200 shrink-0" />
+                        <div className="flex-1 min-w-0">
+                          <p className="text-sm font-semibold text-emerald-700 flex items-center gap-1.5">
+                            <Check className="w-4 h-4" /> Image uploaded
+                          </p>
+                          {extractionResult && !extractionDismissed ? (
+                            <p className="text-xs text-emerald-600 mt-0.5 flex items-center gap-1">
+                              <Check className="w-3 h-3" /> Fields pre-filled
+                            </p>
+                          ) : (
+                            <p className="text-xs text-slate-400 mt-0.5 truncate">{testImageUrl?.split("/").pop()}</p>
+                          )}
+                        </div>
+                        <button type="button" onClick={() => { setTestImageUrl(null); setImageUploadError(null); setExtractionResult(null); setExtractionDismissed(false); setTestTags([]); }} className="p-1.5 rounded-lg hover:bg-emerald-100 text-emerald-400 hover:text-emerald-700 transition-colors shrink-0" aria-label="Remove uploaded image">
+                          <X className="w-4 h-4" />
                         </button>
-                        {diagnosisOpen && (
-                          <div className={`px-4 pb-4 pt-2 border-t ${form.diagnosis.trim() ? "border-emerald-100 bg-emerald-50/20" : "border-slate-100"}`}>
+                      </div>
+                      {/* Low-confidence warning */}
+                      {extractionResult && !extractionDismissed && extractionResult.low_confidence_items.length > 0 && (
+                        <div className="flex items-start gap-2 px-3 py-2 rounded-xl bg-amber-50 border border-amber-200">
+                          <span className="text-amber-500 text-sm shrink-0 mt-0.5">⚠</span>
+                          <p className="text-xs text-amber-700 flex-1">
+                            Please verify: <span className="font-medium">{extractionResult.low_confidence_items.join(", ")}</span>
+                          </p>
+                          <button type="button" onClick={() => setExtractionDismissed(true)} className="text-amber-400 hover:text-amber-600 transition-colors shrink-0" aria-label="Dismiss">
+                            <X className="w-3.5 h-3.5" />
+                          </button>
+                        </div>
+                      )}
+                    </div>
+                  ) : null}
+
+                  {imageUploadError && <p className="text-xs text-red-600 font-medium">{imageUploadError}</p>}
+
+                  {/* Tests — always visible; pre-filled after scan */}
+                  <TestTagInput
+                    label={imageExtracting ? "Laboratory Tests (scanning…)" : "Laboratory Tests Requested"}
+                    value={testTags}
+                    onChange={setTestTags}
+                    labId={form.lab_id}
+                    error={errors.tests}
+                    disabled={imageExtracting}
+                  />
+
+              </div>
+
+            {/* Sub-steps — revealed progressively once at least one test is added */}
+            {(testTags.length > 0 || !!testImageUrl) && (
+              <div className="space-y-3 animate-fade-in-up">
+                {/* Optional Details — single collapsible for diagnosis + patient condition */}
+                {(() => {
+                  const hasDiagnosis = form.diagnosis.trim().length > 0;
+                  const hasCondition = isCritical || needsAmbulance;
+                  const borderColor = isCritical ? "border-red-200" : needsAmbulance ? "border-orange-200" : hasDiagnosis ? "border-emerald-200" : "border-slate-200";
+                  const bgColor = isCritical ? "bg-red-50/20" : needsAmbulance ? "bg-orange-50/20" : hasDiagnosis ? "bg-emerald-50/30" : "";
+                  return (
+                    <div className={`rounded-xl border-2 overflow-hidden transition-colors ${borderColor} ${bgColor}`}>
+                      <button
+                        type="button"
+                        onClick={() => setOptionalDetailsOpen((v) => !v)}
+                        className="w-full flex items-center justify-between px-4 py-3 hover:bg-black/[0.02] transition-colors bg-slate-50/40"
+                      >
+                        <div className="flex items-center gap-2 text-left">
+                          <FileText className={`w-4 h-4 shrink-0 ${hasDiagnosis || hasCondition ? "text-slate-500" : "text-slate-400"}`} />
+                          <span className="text-sm font-semibold text-slate-700">Optional Details</span>
+                        </div>
+                        <div className="flex items-center gap-1.5">
+                          {hasDiagnosis && <span className="text-xs font-semibold text-emerald-600 bg-emerald-100 px-2 py-0.5 rounded-full">Notes</span>}
+                          {isCritical && <span className="text-xs font-semibold text-red-600 bg-red-100 px-2 py-0.5 rounded-full">Critical</span>}
+                          {needsAmbulance && <span className="text-xs font-semibold text-orange-600 bg-orange-100 px-2 py-0.5 rounded-full">Ambulance</span>}
+                          {!hasDiagnosis && !hasCondition && <span className="text-xs text-slate-400">diagnosis, condition</span>}
+                          <ChevronDown className={`w-4 h-4 shrink-0 transition-transform text-slate-400 ml-1 ${optionalDetailsOpen ? "rotate-180" : ""}`} />
+                        </div>
+                      </button>
+
+                      {optionalDetailsOpen && (
+                        <div className="border-t border-slate-100 divide-y divide-slate-100">
+                          {/* Diagnosis */}
+                          <div className="px-4 py-4 space-y-2">
+                            <p className="text-xs font-semibold text-slate-400 uppercase tracking-wide">Diagnosis / Clinical Notes</p>
                             <Textarea
                               label=""
                               placeholder="Brief clinical summary or working diagnosis…"
@@ -1611,344 +1819,62 @@ export function DoctorRequestForm({
                               onChange={(e) => set("diagnosis", e.target.value)}
                             />
                           </div>
-                        )}
-                      </div>
-                    </div>
-                  )}
 
-                  {/* Picture mode: image upload */}
-                  {clinicalMode === "picture" && (
-                    <div className="space-y-3 animate-fade-in-up">
-                      <p className="text-sm text-slate-500">Upload a photo of a filled physical test request and watch the magic happen.</p>
-                        {imageUploading ? (
-                          (() => {
-                            const uploadPct = imageUploadProgress;
-                            const UPLOAD_STAGES = [
-                              { icon: "📷", label: "Reading your image…", start: 0, end: 40 },
-                              { icon: "🧠", label: "Understanding the image…", start: 40, end: 100 },
-                            ];
-                            return (
-                              <div className="rounded-2xl border border-slate-200 bg-white px-6 py-8 space-y-5">
-                                <div className="text-center">
-                                  <p className="text-sm font-semibold text-slate-700">Uploading image…</p>
-                                  <p className="text-xs text-slate-400 mt-0.5">{uploadPct < 100 ? `${uploadPct}%` : "Almost done…"}</p>
-                                </div>
-                                <div className="w-full bg-slate-100 rounded-full h-1.5 overflow-hidden">
-                                  <div className="h-full bg-medical-500 rounded-full transition-all duration-300" style={{ width: `${uploadPct}%` }} />
-                                </div>
-                                <div className="space-y-2.5">
-                                  {UPLOAD_STAGES.map((stage) => {
-                                    const done = uploadPct >= stage.end;
-                                    const active = uploadPct >= stage.start && uploadPct < stage.end;
-                                    return (
-                                      <div key={stage.label} className={`flex items-center gap-3 transition-opacity duration-300 ${uploadPct < stage.start ? "opacity-30" : "opacity-100"}`}>
-                                        <div className={`w-7 h-7 rounded-full flex items-center justify-center shrink-0 text-base transition-all ${done ? "bg-emerald-100" : active ? "bg-medical-100" : "bg-slate-100"}`}>
-                                          {done ? "✓" : stage.icon}
-                                        </div>
-                                        <span className={`text-sm font-medium ${done ? "text-emerald-600" : active ? "text-slate-800" : "text-slate-400"}`}>{stage.label}</span>
-                                        {active && <RefreshCw className="w-3.5 h-3.5 text-medical-400 animate-spin ml-auto shrink-0" />}
-                                        {done && <span className="text-xs text-emerald-500 ml-auto shrink-0 font-medium">Done</span>}
-                                      </div>
-                                    );
-                                  })}
-                                </div>
+                          {/* Patient Condition */}
+                          <div className="px-4 py-4 space-y-3">
+                            <p className="text-xs font-semibold text-slate-400 uppercase tracking-wide">Patient Condition</p>
+                            {/* Stable passive indicator */}
+                            {!isCritical && !needsAmbulance && (
+                              <div className="flex items-center gap-2 text-sm text-emerald-600 font-medium">
+                                <Heart className="w-4 h-4 shrink-0" />
+                                Stable
                               </div>
-                            );
-                          })()
-                        ) : imageExtracting ? (
-                          (() => {
-                            const p = extractionProgress;
-                            const SCAN_STAGES = [
-                              { icon: "🔍", label: "Reading the document…",        start: 0,  end: 25 },
-                              { icon: "🧬", label: "Identifying tests & fields…",  start: 25, end: 50 },
-                              { icon: "🏷️", label: "Matching to test catalog…",    start: 50, end: 75 },
-                              { icon: "✨", label: "Pre-filling your form…",       start: 75, end: 100 },
-                            ];
-                            return (
-                              <div className="rounded-2xl border border-slate-200 bg-white px-6 py-8 space-y-5">
-                                <div className="text-center">
-                                  <p className="text-sm font-semibold text-slate-700">Scanning with AI…</p>
-                                  <p className="text-xs text-slate-400 mt-0.5">Hang tight, this only takes a few seconds</p>
-                                </div>
-                                <div className="w-full bg-slate-100 rounded-full h-1.5 overflow-hidden">
-                                  <div className="h-full bg-medical-500 rounded-full transition-all duration-700" style={{ width: `${p}%` }} />
-                                </div>
-                                <div className="space-y-2.5">
-                                  {SCAN_STAGES.map((stage) => {
-                                    const done = p >= stage.end;
-                                    const active = p >= stage.start && p < stage.end;
-                                    return (
-                                      <div key={stage.label} className={`flex items-center gap-3 transition-opacity duration-300 ${p < stage.start ? "opacity-30" : "opacity-100"}`}>
-                                        <div className={`w-7 h-7 rounded-full flex items-center justify-center shrink-0 text-base transition-all ${done ? "bg-emerald-100" : active ? "bg-medical-100" : "bg-slate-100"}`}>
-                                          {done ? "✓" : stage.icon}
-                                        </div>
-                                        <span className={`text-sm font-medium ${done ? "text-emerald-600" : active ? "text-slate-800" : "text-slate-400"}`}>{stage.label}</span>
-                                        {active && <RefreshCw className="w-3.5 h-3.5 text-medical-400 animate-spin ml-auto shrink-0" />}
-                                        {done && <span className="text-xs text-emerald-500 ml-auto shrink-0 font-medium">Done</span>}
-                                      </div>
-                                    );
-                                  })}
-                                </div>
-                              </div>
-                            );
-                          })()
-                        ) : testImageUrl ? (
-                          <div className="space-y-2">
-                            {/* Image thumbnail row */}
-                            <div className="flex items-center gap-3 rounded-xl border border-emerald-200 bg-emerald-50/40 px-4 py-3">
-                              <img src={testImageUrl} alt="Uploaded test request slip" className="w-14 h-14 rounded-lg object-cover border border-emerald-200 shrink-0" />
-                              <div className="flex-1 min-w-0">
-                                <p className="text-sm font-semibold text-emerald-700 flex items-center gap-1.5">
-                                  <Check className="w-4 h-4" /> Image uploaded
-                                </p>
-                                {extractionResult && !extractionDismissed ? (
-                                  <p className="text-xs text-emerald-600 mt-0.5 flex items-center gap-1">
-                                    <Check className="w-3 h-3" /> Fields pre-filled
-                                  </p>
-                                ) : (
-                                  <p className="text-xs text-slate-400 mt-0.5 truncate">{testImageUrl?.split("/").pop()}</p>
-                                )}
-                              </div>
-                              <button type="button" onClick={() => { setTestImageUrl(null); setImageUploadError(null); setExtractionResult(null); setExtractionDismissed(false); }} className="p-1.5 rounded-lg hover:bg-emerald-100 text-emerald-400 hover:text-emerald-700 transition-colors shrink-0" aria-label="Remove uploaded image">
-                                <X className="w-4 h-4" />
+                            )}
+                            <div className="flex gap-2">
+                              <button
+                                type="button"
+                                onClick={() => setIsCritical((v) => !v)}
+                                className={`flex-1 flex items-center justify-center gap-1.5 py-2.5 px-3 rounded-xl text-sm font-semibold border-2 transition-all ${
+                                  isCritical
+                                    ? "bg-red-50 border-red-300 text-red-600 shadow-sm"
+                                    : "border-slate-200 text-slate-500 hover:border-slate-300 hover:bg-slate-50"
+                                }`}
+                              >
+                                <AlertTriangle className="w-3.5 h-3.5" />
+                                Critical
+                              </button>
+                              <button
+                                type="button"
+                                onClick={() => setNeedsAmbulance((v) => !v)}
+                                className={`flex-1 flex items-center justify-center gap-1.5 py-2.5 px-3 rounded-xl text-sm font-semibold border-2 transition-all ${
+                                  needsAmbulance
+                                    ? "bg-orange-50 border-orange-300 text-orange-600 shadow-sm"
+                                    : "border-slate-200 text-slate-500 hover:border-slate-300 hover:bg-slate-50"
+                                }`}
+                              >
+                                <Truck className="w-3.5 h-3.5" />
+                                Ambulance
                               </button>
                             </div>
-
-                            {/* Show only if AI flagged uncertain items — otherwise the filled fields speak for themselves */}
-                            {extractionResult && !extractionDismissed && extractionResult.low_confidence_items.length > 0 && (
-                              <div className="flex items-start gap-2 px-3 py-2 rounded-xl bg-amber-50 border border-amber-200">
-                                <span className="text-amber-500 text-sm shrink-0 mt-0.5">⚠</span>
-                                <p className="text-xs text-amber-700 flex-1">
-                                  Please verify: <span className="font-medium">{extractionResult.low_confidence_items.join(", ")}</span>
-                                </p>
-                                <button type="button" onClick={() => setExtractionDismissed(true)} className="text-amber-400 hover:text-amber-600 transition-colors shrink-0" aria-label="Dismiss">
-                                  <X className="w-3.5 h-3.5" />
-                                </button>
+                            {needsAmbulance && (
+                              <div className="animate-fade-in-up">
+                                <Textarea
+                                  label=""
+                                  placeholder="Pickup address or notes for the ambulance team…"
+                                  rows={2}
+                                  value={ambulanceNotes}
+                                  onChange={(e) => setAmbulanceNotes(e.target.value)}
+                                />
                               </div>
                             )}
                           </div>
-                        ) : (
-                          <label className="cursor-pointer">
-                            <div className={`flex flex-col items-center gap-2 rounded-2xl border-2 border-dashed px-6 py-8 transition-colors text-center ${imageUploadError ? "border-red-300 bg-red-50/30" : "border-slate-200 bg-slate-50/50 hover:border-medical-300 hover:bg-medical-50/30"}`}>
-                              <FlaskConical className="w-8 h-8 text-slate-300" />
-                              <div>
-                                <p className="text-sm font-medium text-slate-600">Tap to upload test request slip</p>
-                                <p className="text-xs text-slate-400 mt-0.5">JPEG, PNG, WebP, HEIC — max 10 MB</p>
-                              </div>
-                            </div>
-                            <input
-                              type="file"
-                              accept="image/jpeg,image/png,image/webp,image/heic,.heic"
-                              className="sr-only"
-                              onChange={(e) => {
-                                const file = e.target.files?.[0];
-                                if (!file) return;
-                                // Client-side validation
-                                const MAX_MB = 10;
-                                if (file.size > MAX_MB * 1024 * 1024) {
-                                  setImageUploadError(`File is too large (${(file.size / 1024 / 1024).toFixed(1)} MB). Maximum is ${MAX_MB} MB.`);
-                                  e.target.value = "";
-                                  return;
-                                }
-                                const allowed = ["image/jpeg", "image/png", "image/webp", "image/heic"];
-                                if (!allowed.includes(file.type) && !file.name.toLowerCase().endsWith(".heic")) {
-                                  setImageUploadError(`Unsupported format: ${file.type || file.name.split(".").pop()?.toUpperCase()}. Please use JPEG, PNG, WebP, or HEIC.`);
-                                  e.target.value = "";
-                                  return;
-                                }
-                                setImageUploading(true);
-                                setImageUploadProgress(0);
-                                setImageUploadError(null);
-                                const fd = new FormData();
-                                fd.append("file", file);
-                                const xhr = new XMLHttpRequest();
-                                xhr.upload.onprogress = (ev) => {
-                                  if (ev.lengthComputable) setImageUploadProgress(Math.round((ev.loaded / ev.total) * 100));
-                                };
-                                xhr.onload = () => {
-                                  try {
-                                    const data = JSON.parse(xhr.responseText);
-                                    if (data.url) {
-                                      setTestImageUrl(data.url);
-                                      setImageUploadProgress(100);
-                                      // Kick off AI extraction immediately
-                                      setImageExtracting(true);
-                                      setExtractionResult(null);
-                                      setExtractionDismissed(false);
-                                      fetch("/api/requests/extract-from-image", {
-                                        method: "POST",
-                                        headers: { "Content-Type": "application/json" },
-                                        body: JSON.stringify({ imageUrl: data.url }),
-                                      })
-                                        .then((r) => r.json())
-                                        .then((res) => {
-                                          if (res.success && res.extracted) {
-                                            setExtractionResult(res.extracted);
-                                            // Auto-fill tests & diagnosis immediately
-                                            if (Array.isArray(res.extracted.tests) && res.extracted.tests.length > 0) {
-                                              // Smart-split each AI-extracted name (handles "CT scan of leg, back and hand")
-                                              const lowConfSet = new Set<string>(
-                                                (res.extracted.low_confidence_items ?? []).map((s: string) => s.toLowerCase())
-                                              );
-                                              const expanded = res.extracted.tests.flatMap((n: string) => {
-                                                const isLow = lowConfSet.has(n.toLowerCase());
-                                                const parts = smartSplitTestNames(n);
-                                                const names = parts.length > 0 ? parts : [n];
-                                                return names.map((name: string) => ({ name, low_confidence: isLow }));
-                                              });
-                                              const initialTags: { name: string; catalog_test_id: string | null; low_confidence: boolean }[] = expanded.map(({ name, low_confidence }: { name: string; low_confidence: boolean }) => ({
-                                                name,
-                                                catalog_test_id: null as string | null,
-                                                low_confidence,
-                                              }));
-                                              setTestTags(initialTags);
-                                              // Background catalog verification — upgrade exact matches to catalog pills
-                                              const labId = form.lab_id;
-                                              Promise.allSettled(
-                                                initialTags.map((tag: { name: string; catalog_test_id: string | null; low_confidence: boolean }) =>
-                                                  fetch(`/api/catalog/search?q=${encodeURIComponent(tag.name)}${labId ? `&lab_id=${encodeURIComponent(labId)}` : ""}&limit=1`)
-                                                    .then((r) => r.json())
-                                                    .then((d) => {
-                                                      const match = d.results?.[0];
-                                                      if (!match) return null;
-                                                      // Accept if canonical name matches (case-insensitive) OR the query name is included in the canonical
-                                                      const nameLC = tag.name.toLowerCase();
-                                                      const canonLC = match.canonical_name.toLowerCase();
-                                                      if (canonLC === nameLC || canonLC.includes(nameLC) || nameLC.includes(canonLC)) {
-                                                        return { originalName: tag.name, match };
-                                                      }
-                                                      return null;
-                                                    })
-                                                    .catch(() => null)
-                                                )
-                                              ).then((results) => {
-                                                const upgrades = new Map<string, { id: string; name: string; price?: number; category?: string; is_rapid_test?: boolean }>();
-                                                results.forEach((r) => {
-                                                  if (r.status === "fulfilled" && r.value) {
-                                                    upgrades.set(r.value.originalName.toLowerCase(), {
-                                                      id: r.value.match.id,
-                                                      name: r.value.match.canonical_name,
-                                                      price: r.value.match.effective_price,
-                                                      category: r.value.match.category,
-                                                      is_rapid_test: r.value.match.is_rapid_test,
-                                                    });
-                                                  }
-                                                });
-                                                if (upgrades.size > 0) {
-                                                  setTestTags((prev) =>
-                                                    prev.map((t) => {
-                                                      const up = upgrades.get(t.name.toLowerCase());
-                                                      if (!up) return t;
-                                                      return { name: up.name, catalog_test_id: up.id, low_confidence: false, price: up.price, category: up.category, is_rapid_test: up.is_rapid_test };
-                                                    })
-                                                  );
-                                                }
-                                              });
-                                            }
-                                            setForm((prev) => ({
-                                              ...prev,
-                                              diagnosis: res.extracted.diagnosis || prev.diagnosis,
-                                              // Only fill patient/doctor fields if currently empty
-                                              patient_name: prev.patient_name || res.extracted.patient_name,
-                                              dob: prev.dob || res.extracted.dob,
-                                              sex: prev.sex || res.extracted.sex,
-                                              doctor_name: prev.doctor_name || res.extracted.doctor_name,
-                                              doctor_prefix: prev.doctor_prefix || res.extracted.doctor_prefix,
-                                            }));
-                                          }
-                                        })
-                                        .catch(() => { /* silent — user continues manually */ })
-                                        .finally(() => {
-                                          // Complete progress to 100%, then pause so the user sees all steps done before the card closes
-                                          setExtractionProgress(100);
-                                          setTimeout(() => setImageExtracting(false), 700);
-                                        });
-                                    } else {
-                                      setImageUploadError(data.error ?? "Upload failed. Please try again.");
-                                    }
-                                  } catch {
-                                    setImageUploadError("Upload failed. Please try again.");
-                                  } finally {
-                                    setImageUploading(false);
-                                    e.target.value = "";
-                                  }
-                                };
-                                xhr.onerror = () => {
-                                  setImageUploadError("Network error. Check your connection and try again.");
-                                  setImageUploading(false);
-                                  e.target.value = "";
-                                };
-                                xhr.open("POST", "/api/requests/upload-image");
-                                xhr.send(fd);
-                              }}
-                            />
-                          </label>
-                        )}
-                        {imageUploadError && <p className="text-xs text-red-600 font-medium">{imageUploadError}</p>}
-
-                        {/* Editable review area — shown after extraction so doctor can confirm/correct */}
-                        {testImageUrl && !imageUploading && (
-                          <div className="space-y-3 pt-1">
-                            <TestTagInput
-                              label={imageExtracting ? "Tests Requested (scanning…)" : "Tests Requested"}
-                              value={testTags}
-                              onChange={setTestTags}
-                              labId={form.lab_id}
-                              error={errors.tests}
-                              disabled={imageExtracting}
-                            />
-                            <Textarea
-                              label="Diagnosis / Clinical Notes"
-                              placeholder={imageExtracting ? "Extracting…" : "Extracted from slip, or add manually"}
-                              rows={2}
-                              value={form.diagnosis}
-                              onChange={(e) => set("diagnosis", e.target.value)}
-                            />
-                          </div>
-                        )}
-                      </div>
-                    )}
+                        </div>
+                      )}
+                    </div>
+                  );
+                })()}
               </div>
-
-            {/* Patient Condition — optional */}
-            <div className="space-y-2">
-              <p className="text-sm font-medium text-slate-700">
-                Patient Condition
-              </p>
-              <div className="flex gap-2 p-1 bg-slate-100 rounded-2xl">
-                <button
-                  type="button"
-                  onClick={() => setIsCritical((v) => !v)}
-                  className={`flex-1 flex items-center justify-center gap-1.5 py-2.5 px-3 rounded-xl text-sm font-semibold transition-all ${
-                    isCritical ? "bg-white shadow text-red-600" : "text-slate-400 hover:text-slate-600"
-                  }`}
-                >
-                  <AlertTriangle className="w-3.5 h-3.5" />
-                  Critical
-                </button>
-                <button
-                  type="button"
-                  onClick={() => setNeedsAmbulance((v) => !v)}
-                  className={`flex-1 flex items-center justify-center gap-1.5 py-2.5 px-3 rounded-xl text-sm font-semibold transition-all ${
-                    needsAmbulance ? "bg-white shadow text-orange-600" : "text-slate-400 hover:text-slate-600"
-                  }`}
-                >
-                  <Truck className="w-3.5 h-3.5" />
-                  Ambulance
-                </button>
-              </div>
-              {needsAmbulance && (
-                <div className="animate-fade-in-up">
-                  <Textarea
-                    label=""
-                    placeholder="Pickup address or notes for the ambulance team…"
-                    rows={2}
-                    value={ambulanceNotes}
-                    onChange={(e) => setAmbulanceNotes(e.target.value)}
-                  />
-                </div>
-              )}
-            </div>
+            )}
           </div>
         )}
 
@@ -2041,17 +1967,6 @@ export function DoctorRequestForm({
                         </div>
                       )}
 
-                      {/* Bank status */}
-                      <div className={`flex items-center gap-2.5 px-4 py-3 rounded-2xl border text-xs font-medium ${
-                        docProfileInfo.has_bank
-                          ? "bg-emerald-50 border-emerald-200 text-emerald-700"
-                          : "bg-amber-50 border-amber-200 text-amber-700"
-                      }`}>
-                        {docProfileInfo.has_bank
-                          ? <><Check className="w-3.5 h-3.5 shrink-0" />Bank details registered</>
-                          : <><Info className="w-3.5 h-3.5 shrink-0" />Bank details not registered</>
-                        }
-                      </div>
                     </div>
                   </div>
                 </div>
@@ -2249,13 +2164,9 @@ export function DoctorRequestForm({
                 <div className="px-4 py-3.5 flex items-start justify-between gap-4">
                   <p className="text-[11px] font-semibold text-slate-400 uppercase tracking-wide shrink-0 w-20 pt-px">Clinical</p>
                   <div className="text-right min-w-0">
-                    {clinicalMode === "picture"
-                      ? <p className="text-sm font-semibold text-slate-800">{testImageUrl ? "Image attached" : "No image"}</p>
-                      : <>
-                          {form.diagnosis && <p className="text-xs text-slate-500 truncate mb-0.5">{form.diagnosis}</p>}
-                          <p className="text-sm font-semibold text-slate-800 truncate">{testsString}</p>
-                        </>
-                    }
+                    {testImageUrl && <p className="text-xs text-emerald-600 truncate mb-0.5">Image attached</p>}
+                    {form.diagnosis && <p className="text-xs text-slate-500 truncate mb-0.5">{form.diagnosis}</p>}
+                    <p className="text-sm font-semibold text-slate-800 truncate">{testsString || (testImageUrl ? "See attached image" : "")}</p>
                   </div>
                 </div>
                 {/* Referrer */}
@@ -2282,7 +2193,7 @@ export function DoctorRequestForm({
 
       {/* Back button — inline */}
       {step > 1 && (
-        <div className="mt-4">
+        <div className="mt-4 px-4">
           <Button variant="ghost" onClick={handleBack} type="button" className="shrink-0">
             <ChevronLeft className="w-4 h-4" />
             Back
@@ -2316,7 +2227,7 @@ export function DoctorRequestForm({
         </div>
       )}
 
-      <p className="text-center text-xs text-slate-400 mt-4 leading-relaxed">
+      <p className="text-center text-xs text-slate-400 mt-10 pb-6 px-4 leading-relaxed">
         By submitting, you confirm you are authorised to request these tests on behalf of the patient and receive the results.{" "}
         <a href="/terms" className="underline hover:text-slate-600 transition-colors">Terms &amp; Conditions</a>
         {" "}and{" "}

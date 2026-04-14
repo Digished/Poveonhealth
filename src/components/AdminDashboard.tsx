@@ -14,6 +14,7 @@ import { useDashTheme } from "@/hooks/useDashTheme";
 import { serializeAgreementToText } from "@/lib/agreement/content";
 import { CreateLabForm } from "@/components/admin/CreateLabForm";
 import { EditLabForm } from "@/components/admin/EditLabForm";
+import { AdminProfessionalsTab } from "@/components/admin/AdminProfessionalsTab";
 import { Button } from "@/components/ui/Button";
 import { Input, Textarea } from "@/components/ui/Input";
 import { StatusBadge, Badge } from "@/components/ui/Badge";
@@ -23,7 +24,7 @@ import { format } from "date-fns";
 import { createClient } from "@/lib/supabase/client"; // still used for auth sign-out
 import { useRouter } from "next/navigation";
 
-type AdminTab = "metrics" | "requests" | "referrals" | "labs" | "analytics" | "marketers" | "lab-marketers" | "settings" | "transactions" | "knowledge-base" | "users" | "hospitals" | "agreements";
+type AdminTab = "metrics" | "requests" | "referrals" | "labs" | "analytics" | "marketers" | "lab-marketers" | "professionals" | "settings" | "transactions" | "knowledge-base" | "users" | "hospitals" | "agreements";
 
 interface ReferralGroup {
   key: string; // doctor_email
@@ -515,6 +516,7 @@ export function AdminDashboard() {
             { key: "analytics" as AdminTab, label: "API Analytics", icon: <BarChart3 className="w-4 h-4" /> },
             { key: "marketers" as AdminTab, label: "Marketers", icon: <TrendingUp className="w-4 h-4" /> },
             { key: "lab-marketers" as AdminTab, label: "Lab Marketers", icon: <Users className="w-4 h-4" /> },
+            { key: "professionals" as AdminTab, label: "Professionals", icon: <UserCircle className="w-4 h-4" /> },
             { key: "settings" as AdminTab, label: "Settings", icon: <Settings className="w-4 h-4" /> },
             { key: "transactions" as AdminTab, label: "Transactions", icon: <CreditCard className="w-4 h-4" /> },
             { key: "knowledge-base" as AdminTab, label: "Knowledge Base", icon: <BookOpen className="w-4 h-4" /> },
@@ -1600,6 +1602,9 @@ export function AdminDashboard() {
 
         {/* ── HOSPITALS ── */}
         {activeTab === "hospitals" && <AdminHospitalsTab />}
+
+        {/* ── PROFESSIONALS ── */}
+        {activeTab === "professionals" && <AdminProfessionalsTab />}
 
         {/* ── AGREEMENTS ── */}
         {activeTab === "agreements" && (

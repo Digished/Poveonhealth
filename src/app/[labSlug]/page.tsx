@@ -3,7 +3,6 @@ import { prisma } from "@/lib/prisma";
 import { TrustIndicators } from "@/components/TrustIndicators";
 import { PoveonLogo } from "@/components/PoveonLogo";
 import { LabSplash } from "@/components/LabSplash";
-import { LabPageNav } from "@/components/LabPageNav";
 import { LabPageContent } from "@/components/LabPageContent";
 
 interface LabSlugPageProps {
@@ -99,23 +98,15 @@ export default async function LabSlugPage({ params }: LabSlugPageProps) {
       {/* Branded splash */}
       <LabSplash logoUrl={logoUrl} labName={lab.name} />
 
-      {/*
-        LabPageNav sits OUTSIDE <main> as a flex-column sibling.
-        When the hero is visible its max-h is 0 (no space taken).
-        When the hero scrolls away it grows to ~52 px, shrinking main
-        automatically — so the form's sticky top-0 header lands right
-        below the nav with zero overlap and no extra props needed.
-      */}
-      <LabPageNav labName={lab.name} logoUrl={logoUrl} />
-
-      {/* Scrollable content area */}
-      <main className="flex-1 overflow-y-auto overflow-x-hidden snap-y snap-mandatory">
+      {/* Scrollable content area — regular scroll so sticky hero can collapse properly */}
+      <main className="flex-1 overflow-y-auto overflow-x-hidden">
         <LabPageContent
           labId={lab.id}
           labName={lab.name}
           labAddress={lab.address}
           labServiceCategories={(lab.service_categories as string[]) ?? []}
           labPhones={lab.phones}
+          labWhatsapp={lab.whatsapp ?? null}
           logoUrl={logoUrl}
           heroImageUrl={heroImageUrl}
           locations={locations}
