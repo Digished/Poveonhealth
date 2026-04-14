@@ -350,9 +350,6 @@ function LabSearch({
 
   return (
     <div className="flex flex-col gap-1">
-      <label className="text-sm font-medium text-slate-700">
-        Destination Laboratory <span className="inline-block w-1.5 h-1.5 rounded-full bg-amber-400 ml-0.5 align-middle" aria-label="required" />
-      </label>
       {selectedLab ? (
         <div className="w-full rounded-xl border border-medical-300 bg-medical-50 px-4 py-2.5 flex items-center justify-between">
           <button
@@ -1440,61 +1437,22 @@ export function DoctorRequestForm({
         {/* Step 1: Choose Lab / Branch */}
         {step === 1 && (
           <div className="space-y-5">
-            {/* Generic URL: lab search — unchanged */}
+            {/* Generic URL: lab search */}
             {!labPreselected && (
-              <>
-                <h2 className="flex items-center gap-2 text-base font-semibold text-slate-700 pb-3 border-b border-slate-100">
-                  <Building2 className="w-4 h-4 text-medical-600" />
-                  Select Laboratory
-                </h2>
-                <LabSearch
-                  labs={labs}
-                  loading={labsLoading}
-                  value={form.lab_id}
-                  onChange={(id) => set("lab_id", id)}
-                  error={errors.lab_id}
-                  onOpen={() => fetchLabs(false)}
-                  onRefresh={() => fetchLabs(true)}
-                />
-                {selectedLab && (
-                  <div className="rounded-2xl border border-medical-100 overflow-hidden">
-                    <div className="bg-medical-50 px-4 pt-4 pb-3 flex items-start gap-3">
-                      {selectedLab.logo_url ? (
-                        <img src={selectedLab.logo_url} alt={selectedLab.name} className="w-10 h-10 rounded-xl object-cover shrink-0 shadow-sm" />
-                      ) : (
-                        <div className="w-10 h-10 rounded-xl bg-medical-100 flex items-center justify-center shrink-0">
-                          <Building2 className="w-5 h-5 text-medical-600" />
-                        </div>
-                      )}
-                      <div className="min-w-0">
-                        <p className="text-sm font-bold text-medical-900 leading-tight">{selectedLab.name}</p>
-                        {selectedLab.address && (
-                          <p className="text-xs text-medical-600 flex items-start gap-1 mt-1">
-                            <MapPin className="w-3 h-3 mt-0.5 shrink-0" />{selectedLab.address}
-                          </p>
-                        )}
-                        <button
-                          type="button"
-                          onClick={() => setLabDetailsOpen(true)}
-                          className="mt-1.5 text-xs text-medical-600 hover:text-medical-800 underline underline-offset-2 font-medium"
-                        >
-                          View details
-                        </button>
-                      </div>
-                    </div>
-                  </div>
-                )}
-              </>
+              <LabSearch
+                labs={labs}
+                loading={labsLoading}
+                value={form.lab_id}
+                onChange={(id) => set("lab_id", id)}
+                error={errors.lab_id}
+                onOpen={() => fetchLabs(false)}
+                onRefresh={() => fetchLabs(true)}
+              />
             )}
 
             {/* Lab-specific URL with locations: location selection */}
             {labPreselected && hasLocations && (
-              <div className="space-y-4">
-                <h2 className="flex items-center gap-2 text-base font-semibold text-slate-700 pb-3 border-b border-slate-100">
-                  <MapPin className="w-4 h-4 text-medical-600" />
-                  Select Location
-                </h2>
-                <p className="text-sm text-slate-500">Choose the {preselectedLabName} location you are sending this request to.</p>
+              <div className="space-y-3">
                 <BranchSearchDropdown
                   locations={locations}
                   selectedIdx={selectedLocIdx}
@@ -1505,23 +1463,29 @@ export function DoctorRequestForm({
             )}
 
             {/* Lab-specific URL, no locations: lab confirmation */}
-            {labPreselected && !hasLocations && (
-              <div className="space-y-4">
-                <h2 className="flex items-center gap-2 text-base font-semibold text-slate-700 pb-3 border-b border-slate-100">
-                  <Building2 className="w-4 h-4 text-medical-600" />
-                  Submit a Lab Request
-                </h2>
-                <div className="rounded-2xl border border-medical-100 bg-medical-50/40 px-5 py-4 space-y-2">
-                  <p className="text-sm font-semibold text-slate-800">{preselectedLabName}</p>
-                  <p className="text-xs text-slate-500 leading-relaxed">
-                    You are about to send a lab test request directly to this laboratory. Fill in the required details and your request will be delivered instantly.
-                  </p>
-                </div>
-                <div className="flex items-start gap-3 bg-sky-50 border border-sky-200 rounded-xl px-4 py-3">
-                  <Info className="w-4 h-4 text-sky-500 shrink-0 mt-0.5" />
-                  <p className="text-xs text-sky-800 leading-relaxed">
-                    Fill in the clinical tests, your email, and the patient's contact details — the request will be delivered to the lab instantly.
-                  </p>
+            {labPreselected && !hasLocations && displayLab && (
+              <div className="rounded-2xl bg-medical-50 border border-medical-100 px-4 py-4 flex items-center gap-3">
+                {displayLab.logo_url ? (
+                  <img src={displayLab.logo_url} alt={displayLab.name} className="w-10 h-10 rounded-xl object-cover shrink-0 shadow-sm" />
+                ) : (
+                  <div className="w-10 h-10 rounded-xl bg-medical-100 flex items-center justify-center shrink-0">
+                    <Building2 className="w-5 h-5 text-medical-600" />
+                  </div>
+                )}
+                <div className="min-w-0 flex-1">
+                  <p className="text-sm font-bold text-medical-900 leading-tight">{displayLab.name}</p>
+                  {displayLab.address && (
+                    <p className="text-xs text-medical-600 flex items-center gap-1 mt-0.5">
+                      <MapPin className="w-3 h-3 shrink-0" />{displayLab.address}
+                    </p>
+                  )}
+                  <button
+                    type="button"
+                    onClick={() => setLabDetailsOpen(true)}
+                    className="mt-1 text-xs text-medical-600 hover:text-medical-800 underline underline-offset-2 font-medium transition-colors"
+                  >
+                    View details
+                  </button>
                 </div>
               </div>
             )}
