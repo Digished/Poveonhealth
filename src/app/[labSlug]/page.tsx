@@ -98,14 +98,15 @@ export default async function LabSlugPage({ params }: LabSlugPageProps) {
       {/* Branded splash */}
       <LabSplash logoUrl={logoUrl} labName={lab.name} />
 
-      {/* Scrollable content area */}
-      <main className="flex-1 overflow-y-auto overflow-x-hidden snap-y snap-mandatory">
+      {/* Scrollable content area — regular scroll so sticky hero can collapse properly */}
+      <main className="flex-1 overflow-y-auto overflow-x-hidden">
         <LabPageContent
           labId={lab.id}
           labName={lab.name}
           labAddress={lab.address}
           labServiceCategories={(lab.service_categories as string[]) ?? []}
           labPhones={lab.phones}
+          labWhatsapp={lab.whatsapp ?? null}
           logoUrl={logoUrl}
           heroImageUrl={heroImageUrl}
           locations={locations}

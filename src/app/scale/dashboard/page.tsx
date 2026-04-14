@@ -444,169 +444,376 @@ function DoctorCard({ doctor, monthFilter }: { doctor: Doctor; monthFilter: stri
 }
 
 // ─── create professional modal ────────────────────────────────────────────────
+// Flow:
+//  subStep "email"   → enter email, live-check against DB
+//    • not found       → Continue → subStep "details" (full create form)
+//    • found, not added→ read-only card + direct Add button
+//    • found, in team  → read-only card, disabled (already added)
+//  subStep "details" → fill out new professional profile, then submit
+
+type EmailCheckResult = {
+  exists: boolean;
+  claimed: boolean;
+  alreadyLinked: boolean;
+  assignedToMarketer: string | null;
+  data?: { email: string; full_name: string; prefix: string | null; phone: string | null; hospitals: string[] };
+};
 
 function CreateProfessionalModal({ onClose, onCreated }: { onClose: () => void; onCreated: () => void }) {
-  const [email, setEmail]       = useState("");
-  const [prefix, setPrefix]     = useState("Dr.");
-  const [fullName, setFullName] = useState("");
-  const [phone, setPhone]       = useState("");
-  const [hospitals, setHospitals] = useState<string[]>([]);
-  const [bankName, setBankName]   = useState("");
-  const [bankCode, setBankCode]   = useState("");
-  const [accountNumber, setAccountNumber] = useState("");
-  const [accountName, setAccountName]     = useState("");
-  const [loading, setLoading] = useState(false);
-  const [error, setError]     = useState("");
+  // ── substep state ──────────────────────────────────────────────────────────
+  const [subStep, setSubStep] = useState<"email" | "details">("email");
+
+  // ── email step ─────────────────────────────────────────────────────────────
+  const [email, setEmail]             = useState("");
   const [checkingEmail, setCheckingEmail] = useState(false);
-  const [emailCheckResult, setEmailCheckResult] = useState<any>(null);
-  const [autoFillStatus, setAutoFillStatus] = useState("");
+  const [emailCheckResult, setEmailCheckResult] = useState<EmailCheckResult | null>(null);
   const checkTimeoutRef = useRef<NodeJS.Timeout | null>(null);
 
-  // Auto-fill when email is checked
-  useEffect(() => {
-    if (emailCheckResult?.data && emailCheckResult.exists) {
-      setPrefix(emailCheckResult.data.prefix || "Dr.");
-      setFullName(emailCheckResult.data.full_name || "");
-      setPhone(emailCheckResult.data.phone || "");
-      setHospitals(emailCheckResult.data.hospitals || []);
+  // ── details step (new professional only) ──────────────────────────────────
+  const [prefix, setPrefix]           = useState("Dr.");
+  const [fullName, setFullName]       = useState("");
+  const [phone, setPhone]             = useState("");
+  const [hospitals, setHospitals]     = useState<string[]>([]);
+  const [bankName, setBankName]       = useState("");
+  const [bankCode, setBankCode]       = useState("");
+  const [accountNumber, setAccountNumber] = useState("");
+  const [accountName, setAccountName]     = useState("");
 
-      if (emailCheckResult.alreadyLinked) {
-        setAutoFillStatus("Already linked to you");
-      } else if (emailCheckResult.assignedToMarketer) {
-        setAutoFillStatus(`Assigned to ${emailCheckResult.assignedToMarketer} in same lab`);
-      } else {
-        setAutoFillStatus("Auto-filled from existing profile");
-      }
-    } else {
-      setAutoFillStatus("");
-    }
-  }, [emailCheckResult]);
+  // ── shared ─────────────────────────────────────────────────────────────────
+  const [loading, setLoading] = useState(false);
+  const [error, setError]     = useState("");
 
-  // Debounced email check
+  // Debounced email check — runs whenever email changes
   useEffect(() => {
-    if (!email.trim()) {
+    const trimmed = email.trim();
+    if (!trimmed || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(trimmed)) {
       setEmailCheckResult(null);
-      setAutoFillStatus("");
       return;
     }
-
     if (checkTimeoutRef.current) clearTimeout(checkTimeoutRef.current);
-
     checkTimeoutRef.current = setTimeout(async () => {
       setCheckingEmail(true);
       try {
-        const res = await fetch(`/api/scale/professionals/check-email?email=${encodeURIComponent(email.trim())}`);
-        if (res.ok) {
-          const data = await res.json();
-          setEmailCheckResult(data);
-        }
-      } catch {
-        // Ignore check errors
-      } finally {
-        setCheckingEmail(false);
-      }
-    }, 300);
-
-    return () => {
-      if (checkTimeoutRef.current) clearTimeout(checkTimeoutRef.current);
-    };
+        const res = await fetch(`/api/scale/professionals/check-email?email=${encodeURIComponent(trimmed)}`);
+        if (res.ok) setEmailCheckResult(await res.json());
+      } catch { /* ignore */ }
+      finally { setCheckingEmail(false); }
+    }, 350);
+    return () => { if (checkTimeoutRef.current) clearTimeout(checkTimeoutRef.current); };
   }, [email]);
 
-  async function handleSubmit(e: React.FormEvent) {
-    e.preventDefault();
-    if (!email.trim())    { setError("Email is required."); return; }
-    if (!fullName.trim()) { setError("Full name is required."); return; }
-
-    // Prevent adding if already linked to this marketer
-    if (emailCheckResult?.alreadyLinked) {
-      setError("This doctor is already linked to you.");
-      return;
-    }
-
-    // Prevent adding if assigned to another marketer in same lab
-    if (emailCheckResult?.assignedToMarketer) {
-      setError(`This doctor is already assigned to ${emailCheckResult.assignedToMarketer} in your lab.`);
-      return;
-    }
-
+  // Submit — used for both "found, not added" (direct) and "details" (new) paths
+  async function doSubmit(overrideName?: string) {
+    const name = overrideName ?? fullName;
+    if (!email.trim())  { setError("Email is required."); return; }
+    if (!name.trim())   { setError("Full name is required."); return; }
+    setError("");
     setLoading(true);
     try {
+      const existingPrefix = emailCheckResult?.data?.prefix ?? null;
       const res = await fetch("/api/scale/professionals", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ email: email.trim(), prefix: prefix || null, full_name: fullName.trim(), phone: phone.trim() || null, hospitals, bank_name: bankName || null, account_number: accountNumber || null, account_name: accountName || null }),
+        body: JSON.stringify({
+          email: email.trim(),
+          prefix: (overrideName ? existingPrefix : prefix) || null,
+          full_name: name.trim(),
+          phone: (overrideName ? emailCheckResult?.data?.phone : phone.trim()) || null,
+          hospitals: overrideName ? (emailCheckResult?.data?.hospitals ?? []) : hospitals,
+          bank_name: bankName || null,
+          account_number: accountNumber || null,
+          account_name: accountName || null,
+        }),
       });
       const data = await res.json();
-      if (!res.ok) { setError(data.error ?? "Failed to create."); return; }
+      if (!res.ok) { setError(data.error ?? "Failed to add."); return; }
       onCreated();
     } catch { setError("Network error. Please try again."); }
     finally { setLoading(false); }
   }
 
   const inputCls = "w-full px-3 py-2.5 rounded-xl border border-slate-200 bg-white text-slate-800 placeholder-slate-400 text-sm focus:outline-none focus:ring-2 focus:ring-emerald-400 focus:border-transparent transition";
-  const labelCls = "block text-xs font-medium text-slate-600 mb-1";
+  const labelCls = "block text-xs font-medium text-slate-600 mb-1.5";
 
+  // ── derived state ──────────────────────────────────────────────────────────
+  const isAlreadyInTeam  = emailCheckResult?.alreadyLinked || !!emailCheckResult?.assignedToMarketer;
+  const isFoundNotAdded  = !!emailCheckResult?.exists && !isAlreadyInTeam;
+  const isNew            = emailCheckResult !== null && !emailCheckResult.exists;
+  const foundName        = emailCheckResult?.data ? `${emailCheckResult.data.prefix ?? ""} ${emailCheckResult.data.full_name}`.trim() : "";
+
+  // ── render ─────────────────────────────────────────────────────────────────
   return (
     <div className="fixed inset-0 z-50 bg-black/40 backdrop-blur-sm flex items-end sm:items-center justify-center p-0 sm:p-4">
       <div className="bg-white w-full sm:max-w-md rounded-t-3xl sm:rounded-3xl shadow-2xl overflow-hidden flex flex-col max-h-[92dvh]">
+
+        {/* ── Header ─────────────────────────────────────────────────────── */}
         <div className="flex items-center justify-between px-5 py-4 border-b border-slate-100 shrink-0">
-          <div>
-            <p className="text-sm font-bold text-slate-800">Add Professional</p>
-            <p className="text-xs text-slate-400 mt-0.5">Create a profile for a medical professional you work with</p>
+          <div className="flex items-center gap-2 min-w-0">
+            {subStep === "details" && (
+              <button
+                type="button"
+                onClick={() => { setSubStep("email"); setError(""); }}
+                className="w-7 h-7 rounded-lg bg-slate-100 hover:bg-slate-200 flex items-center justify-center text-slate-500 transition shrink-0"
+                aria-label="Back"
+              >
+                <ChevronDown className="w-4 h-4 rotate-90" />
+              </button>
+            )}
+            <div className="min-w-0">
+              <p className="text-sm font-bold text-slate-800">Add Professional</p>
+              <p className="text-xs text-slate-400 mt-0.5 truncate">
+                {subStep === "email" ? "Enter their email to get started" : "Fill in the professional's details"}
+              </p>
+            </div>
           </div>
-          <button type="button" onClick={onClose} className="w-8 h-8 rounded-xl bg-slate-100 hover:bg-slate-200 flex items-center justify-center transition text-slate-500">
+          <button
+            type="button"
+            onClick={onClose}
+            className="w-8 h-8 rounded-xl bg-slate-100 hover:bg-slate-200 flex items-center justify-center transition text-slate-500 shrink-0 ml-2"
+          >
             <X className="w-4 h-4" />
           </button>
         </div>
-        <form onSubmit={handleSubmit} className="overflow-y-auto flex-1">
-          <div className="px-5 py-4 space-y-4">
-            <div>
-              <label className={labelCls}>Email Address <span className="text-red-400">*</span></label>
-              <input type="email" placeholder="doctor@clinic.com" value={email} onChange={(e) => { setEmail(e.target.value); setError(""); }} className={inputCls} />
-              {checkingEmail && <p className="text-xs text-slate-400 mt-1">Checking...</p>}
-              {emailCheckResult && !checkingEmail && (
-                <div className={`mt-2 p-2 rounded text-xs ${emailCheckResult.exists ? "bg-blue-50 text-blue-700 border border-blue-100" : "bg-gray-50 text-gray-600 border border-gray-100"}`}>
-                  {emailCheckResult.exists ? `✓ Found: ${emailCheckResult.data?.full_name || "Doctor profile exists"}` : "No existing profile"}
+
+        {/* ── Substep indicator ──────────────────────────────────────────── */}
+        <div className="flex items-center gap-0 px-5 pt-3 pb-1 shrink-0">
+          {["Email", "Details"].map((label, i) => {
+            const stepNum = i + 1;
+            const currentNum = subStep === "email" ? 1 : 2;
+            const done = stepNum < currentNum;
+            const active = stepNum === currentNum;
+            return (
+              <div key={label} className="flex items-center">
+                <div className="flex flex-col items-center gap-0.5">
+                  <div className={`w-5 h-5 rounded-full flex items-center justify-center text-[10px] font-bold transition-colors ${
+                    done   ? "bg-emerald-600 text-white"
+                    : active ? "bg-slate-800 text-white"
+                    : "bg-slate-200 text-slate-400"
+                  }`}>
+                    {done ? <CheckCircle className="w-3 h-3" /> : stepNum}
+                  </div>
+                  <span className={`text-[10px] font-semibold ${active ? "text-slate-700" : "text-slate-400"}`}>{label}</span>
+                </div>
+                {i === 0 && (
+                  <div className={`w-10 h-0.5 mx-1.5 mb-3 rounded transition-colors ${done ? "bg-emerald-400" : "bg-slate-200"}`} />
+                )}
+              </div>
+            );
+          })}
+        </div>
+
+        {/* ── SUBSTEP: EMAIL ─────────────────────────────────────────────── */}
+        {subStep === "email" && (
+          <div className="overflow-y-auto flex-1 flex flex-col">
+            <div className="px-5 py-4 space-y-4 flex-1">
+              {/* Email input */}
+              <div>
+                <label className={labelCls}>Email Address <span className="text-red-400">*</span></label>
+                <input
+                  type="email"
+                  placeholder="doctor@clinic.com"
+                  value={email}
+                  onChange={(e) => { setEmail(e.target.value); setError(""); setEmailCheckResult(null); }}
+                  className={inputCls}
+                  autoFocus
+                />
+                {/* Checking indicator */}
+                {checkingEmail && (
+                  <p className="flex items-center gap-1.5 text-xs text-slate-400 mt-2">
+                    <Loader2 className="w-3 h-3 animate-spin" /> Checking...
+                  </p>
+                )}
+              </div>
+
+              {/* ── Result: NEW professional ── */}
+              {isNew && !checkingEmail && (
+                <div className="rounded-2xl border border-sky-200 bg-sky-50 px-4 py-3.5 flex items-start gap-3">
+                  <div className="w-8 h-8 rounded-xl bg-sky-100 flex items-center justify-center shrink-0">
+                    <Plus className="w-4 h-4 text-sky-600" />
+                  </div>
+                  <div>
+                    <p className="text-sm font-bold text-sky-800">New professional</p>
+                    <p className="text-xs text-sky-600 mt-0.5">No existing profile found. Continue to fill in their details.</p>
+                  </div>
                 </div>
               )}
-              {autoFillStatus && (
-                <p className={`text-xs mt-1 ${emailCheckResult?.assignedToMarketer ? "text-amber-600" : "text-blue-600"}`}>
-                  {emailCheckResult?.assignedToMarketer ? "⚠ " : "ℹ "}{autoFillStatus}
-                </p>
+
+              {/* ── Result: FOUND, not in team ── */}
+              {isFoundNotAdded && !checkingEmail && (
+                <div className="rounded-2xl border border-emerald-200 bg-emerald-50/60 px-4 py-3.5 space-y-3">
+                  <div className="flex items-start gap-3">
+                    <div className="w-8 h-8 rounded-xl bg-emerald-100 flex items-center justify-center shrink-0">
+                      <User className="w-4 h-4 text-emerald-600" />
+                    </div>
+                    <div className="min-w-0 flex-1">
+                      <p className="text-sm font-bold text-slate-800 truncate">{foundName || "Doctor"}</p>
+                      <p className="text-xs text-slate-500">{email}</p>
+                    </div>
+                    {emailCheckResult?.claimed && (
+                      <span className="text-[10px] bg-emerald-100 text-emerald-700 px-2 py-0.5 rounded-full font-semibold shrink-0">Verified</span>
+                    )}
+                  </div>
+                  {emailCheckResult?.data?.phone && (
+                    <p className="text-xs text-slate-500 flex items-center gap-1.5 pl-11">
+                      <Phone className="w-3 h-3" />{emailCheckResult.data.phone}
+                    </p>
+                  )}
+                  {(emailCheckResult?.data?.hospitals ?? []).length > 0 && (
+                    <div className="flex flex-wrap gap-1.5 pl-11">
+                      {emailCheckResult!.data!.hospitals.map((h) => (
+                        <span key={h} className="text-xs bg-white border border-slate-200 text-slate-600 px-2 py-0.5 rounded-full">{h}</span>
+                      ))}
+                    </div>
+                  )}
+                  <p className="text-xs text-emerald-700 font-medium pl-11">Profile exists — tap below to link them to you.</p>
+                </div>
+              )}
+
+              {/* ── Result: ALREADY IN TEAM ── */}
+              {isAlreadyInTeam && !checkingEmail && (
+                <div className="rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3.5 space-y-2">
+                  <div className="flex items-start gap-3">
+                    <div className="w-8 h-8 rounded-xl bg-slate-200 flex items-center justify-center shrink-0">
+                      <User className="w-4 h-4 text-slate-500" />
+                    </div>
+                    <div className="min-w-0 flex-1">
+                      <p className="text-sm font-bold text-slate-700 truncate">{foundName || "Doctor"}</p>
+                      <p className="text-xs text-slate-400">{email}</p>
+                    </div>
+                  </div>
+                  {emailCheckResult?.alreadyLinked && (
+                    <div className="flex items-center gap-2 pl-11">
+                      <CheckCircle className="w-3.5 h-3.5 text-emerald-500 shrink-0" />
+                      <p className="text-xs font-semibold text-emerald-700">Already linked to you</p>
+                    </div>
+                  )}
+                  {emailCheckResult?.assignedToMarketer && !emailCheckResult.alreadyLinked && (
+                    <div className="flex items-center gap-2 pl-11">
+                      <ShieldAlert className="w-3.5 h-3.5 text-amber-500 shrink-0" />
+                      <p className="text-xs font-semibold text-amber-700">In your team — added by {emailCheckResult.assignedToMarketer}</p>
+                    </div>
+                  )}
+                </div>
+              )}
+
+              {error && (
+                <p className="text-xs text-red-600 bg-red-50 border border-red-100 rounded-xl px-3 py-2">{error}</p>
               )}
             </div>
-            <div>
-              <label className={labelCls}>Title &amp; Full Name <span className="text-red-400">*</span></label>
-              <PrefixSelect value={prefix} onChange={setPrefix} />
-              <div className="mt-2">
-                <input type="text" placeholder="Full name" value={fullName} onChange={(e) => { setFullName(e.target.value); setError(""); }} className={inputCls} />
+
+            {/* Footer action */}
+            <div className="px-5 pb-5 pt-2 shrink-0 border-t border-slate-100 space-y-2">
+              {/* New: Continue to details */}
+              {isNew && !checkingEmail && (
+                <button
+                  type="button"
+                  onClick={() => setSubStep("details")}
+                  className="w-full flex items-center justify-center gap-2 bg-slate-900 hover:bg-slate-700 text-white font-semibold text-sm px-4 py-3 rounded-xl transition shadow-md"
+                >
+                  Continue
+                  <ChevronDown className="w-4 h-4 -rotate-90" />
+                </button>
+              )}
+              {/* Found, not added: direct add */}
+              {isFoundNotAdded && !checkingEmail && (
+                <button
+                  type="button"
+                  disabled={loading}
+                  onClick={() => doSubmit(emailCheckResult!.data!.full_name)}
+                  className="w-full flex items-center justify-center gap-2 bg-emerald-600 hover:bg-emerald-700 disabled:opacity-60 text-white font-semibold text-sm px-4 py-3 rounded-xl transition shadow-md"
+                >
+                  {loading ? <Loader2 className="w-4 h-4 animate-spin" /> : <Plus className="w-4 h-4" />}
+                  {loading ? "Adding..." : `Add ${foundName || "Professional"}`}
+                </button>
+              )}
+              {/* Already in team: disabled */}
+              {isAlreadyInTeam && !checkingEmail && (
+                <button disabled className="w-full flex items-center justify-center gap-2 bg-slate-200 text-slate-400 font-semibold text-sm px-4 py-3 rounded-xl cursor-not-allowed">
+                  Cannot add again
+                </button>
+              )}
+              {/* Waiting for a valid result */}
+              {!isNew && !isFoundNotAdded && !isAlreadyInTeam && (
+                <button disabled className="w-full flex items-center justify-center gap-2 bg-emerald-600/40 text-white font-semibold text-sm px-4 py-3 rounded-xl cursor-not-allowed">
+                  {checkingEmail ? <><Loader2 className="w-4 h-4 animate-spin" />Checking…</> : "Enter an email to continue"}
+                </button>
+              )}
+            </div>
+          </div>
+        )}
+
+        {/* ── SUBSTEP: DETAILS (new professional) ───────────────────────── */}
+        {subStep === "details" && (
+          <form
+            onSubmit={(e) => { e.preventDefault(); doSubmit(); }}
+            className="overflow-y-auto flex-1 flex flex-col"
+          >
+            <div className="px-5 py-4 space-y-4 flex-1">
+              {/* Email — read-only reminder */}
+              <div className="flex items-center gap-2 px-3 py-2.5 rounded-xl bg-slate-50 border border-slate-200">
+                <span className="text-xs text-slate-400 flex-1 truncate">{email}</span>
+                <span className="text-[10px] bg-sky-100 text-sky-700 px-2 py-0.5 rounded-full font-semibold shrink-0">New</span>
               </div>
+
+              {/* Prefix + Name */}
+              <div>
+                <label className={labelCls}>Title &amp; Full Name <span className="text-red-400">*</span></label>
+                <PrefixSelect value={prefix} onChange={setPrefix} />
+                <div className="mt-2">
+                  <input
+                    type="text"
+                    placeholder="Full name"
+                    value={fullName}
+                    onChange={(e) => { setFullName(e.target.value); setError(""); }}
+                    className={inputCls}
+                    autoFocus
+                  />
+                </div>
+              </div>
+
+              {/* Phone */}
+              <div>
+                <label className={labelCls}>Phone Number</label>
+                <PhoneInput value={phone} onChange={setPhone} />
+              </div>
+
+              {/* Hospital */}
+              <div>
+                <label className={labelCls}>Hospital / Clinic</label>
+                <HospitalTagInput value={hospitals} onChange={setHospitals} />
+              </div>
+
+              {/* Bank details */}
+              <div className="rounded-2xl border border-slate-100 bg-slate-50/60 p-3.5 space-y-1">
+                <p className="text-xs font-semibold text-slate-500 uppercase tracking-wider mb-1">Bank Details</p>
+                <p className="text-xs text-slate-400 mb-3">Doctor will confirm when they claim their profile.</p>
+                <BankAccountInput
+                  bankName={bankName} bankCode={bankCode}
+                  accountNumber={accountNumber} accountName={accountName}
+                  onBankChange={(name, code) => { setBankName(name); setBankCode(code); }}
+                  onAccountNumberChange={setAccountNumber}
+                  onAccountNameChange={setAccountName}
+                />
+              </div>
+
+              {error && (
+                <p className="text-xs text-red-600 bg-red-50 border border-red-100 rounded-xl px-3 py-2">{error}</p>
+              )}
             </div>
-            <div>
-              <label className={labelCls}>Phone Number</label>
-              <PhoneInput value={phone} onChange={setPhone} />
+
+            <div className="px-5 pb-5 pt-2 shrink-0 border-t border-slate-100">
+              <button
+                type="submit"
+                disabled={loading}
+                className="w-full flex items-center justify-center gap-2 bg-emerald-600 hover:bg-emerald-700 disabled:opacity-60 text-white font-semibold text-sm px-4 py-3 rounded-xl transition shadow-md"
+              >
+                {loading ? <Loader2 className="w-4 h-4 animate-spin" /> : <Plus className="w-4 h-4" />}
+                {loading ? "Creating..." : "Add Professional"}
+              </button>
             </div>
-            <div>
-              <label className={labelCls}>Hospital / Clinic</label>
-              <HospitalTagInput value={hospitals} onChange={setHospitals} />
-            </div>
-            <div className="rounded-2xl border border-slate-100 bg-slate-50/60 p-3 space-y-1">
-              <p className="text-xs font-semibold text-slate-500 uppercase tracking-wider mb-1">Bank Details</p>
-              <p className="text-xs text-slate-400 mb-3">Doctor will confirm these when they claim their profile.</p>
-              <BankAccountInput bankName={bankName} bankCode={bankCode} accountNumber={accountNumber} accountName={accountName}
-                onBankChange={(name, code) => { setBankName(name); setBankCode(code); }}
-                onAccountNumberChange={setAccountNumber} onAccountNameChange={setAccountName} />
-            </div>
-            {error && <p className="text-xs text-red-600 bg-red-50 border border-red-100 rounded-xl px-3 py-2">{error}</p>}
-          </div>
-          <div className="px-5 pb-5 pt-1 shrink-0 border-t border-slate-100">
-            <button type="submit" disabled={loading}
-              className="w-full flex items-center justify-center gap-2 bg-emerald-600 hover:bg-emerald-700 disabled:opacity-60 text-white font-semibold text-sm px-4 py-3 rounded-xl transition shadow-md">
-              {loading ? <Loader2 className="w-4 h-4 animate-spin" /> : <Plus className="w-4 h-4" />}
-              {loading ? "Creating..." : "Add Professional"}
-            </button>
-          </div>
-        </form>
+          </form>
+        )}
+
       </div>
     </div>
   );

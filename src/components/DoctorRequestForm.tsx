@@ -1291,13 +1291,15 @@ export function DoctorRequestForm({
 
   return (
     <div className="animate-fade-in bg-white -mx-4">
-      {/* Sticky header + step indicator */}
-      <div className={`sticky top-0 z-10 px-4 transition-all duration-300 ${scrolled ? "pt-2 pb-2" : "pt-3 pb-3"}`}>
+      {/* Sticky header + step indicator
+          On lab pages the hero is a sticky 64 px bar (top-0, z-50).
+          Offset this header by 64 px (top-16) so it lands right below. */}
+      <div className={`sticky ${preselectedLabId ? "top-16" : "top-0"} z-10 px-4 transition-all duration-300 ${scrolled ? "pt-2 pb-2" : "pt-3 pb-3"}`}>
         {/* Full-width frosted background */}
         <div className="absolute inset-0 left-1/2 -translate-x-1/2 w-screen bg-white/80 backdrop-blur-md border-b border-white/60 -z-10" />
 
-        {/* Lab info / branding */}
-        <div className="mb-3">
+        {/* Lab info / branding — only on home page; on lab pages the sticky hero shows this */}
+        {!labPreselected && <div className="mb-3">
             {displayLab ? (() => {
               const phones = parsePhones(displayLab.phones);
               const waNumbers: string[] = (displayLab.whatsapp
@@ -1382,7 +1384,7 @@ export function DoctorRequestForm({
                 </div>
               );
             })() : null}
-        </div>
+        </div>}
 
         {/* Step indicator */}
         <div className="flex items-center">
