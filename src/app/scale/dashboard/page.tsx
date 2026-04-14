@@ -537,7 +537,8 @@ function CreateProfessionalModal({ onClose, onCreated }: { onClose: () => void; 
 
   // ── derived state ──────────────────────────────────────────────────────────
   const isAlreadyInTeam  = emailCheckResult?.alreadyLinked || !!emailCheckResult?.assignedToMarketer;
-  const isFoundNotAdded  = !!emailCheckResult?.exists && !isAlreadyInTeam;
+  const isClaimed        = !!emailCheckResult?.exists && !!emailCheckResult?.claimed && !isAlreadyInTeam;
+  const isFoundNotAdded  = !!emailCheckResult?.exists && !emailCheckResult?.claimed && !isAlreadyInTeam;
   const isNew            = emailCheckResult !== null && !emailCheckResult.exists;
   const foundName        = emailCheckResult?.data ? `${emailCheckResult.data.prefix ?? ""} ${emailCheckResult.data.full_name}`.trim() : "";
 
@@ -669,6 +670,28 @@ function CreateProfessionalModal({ onClose, onCreated }: { onClose: () => void; 
                 </div>
               )}
 
+              {/* ── Result: CLAIMED / ACTIVE ACCOUNT ── */}
+              {isClaimed && !checkingEmail && (
+                <div className="rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3.5 space-y-2">
+                  <div className="flex items-start gap-3">
+                    <div className="w-8 h-8 rounded-xl bg-emerald-50 border border-emerald-100 flex items-center justify-center shrink-0">
+                      <CheckCircle className="w-4 h-4 text-emerald-600" />
+                    </div>
+                    <div className="min-w-0 flex-1">
+                      <p className="text-sm font-bold text-slate-800 truncate">{foundName || "Doctor"}</p>
+                      <p className="text-xs text-slate-500">{email}</p>
+                    </div>
+                    <span className="text-[10px] bg-emerald-100 text-emerald-700 px-2 py-0.5 rounded-full font-semibold shrink-0">Verified</span>
+                  </div>
+                  <div className="flex items-start gap-2 pl-11">
+                    <ShieldAlert className="w-3.5 h-3.5 text-amber-500 shrink-0 mt-0.5" />
+                    <p className="text-xs text-amber-700 leading-relaxed">
+                      This doctor already has an active Poveon account. They can log in and send referrals directly — no need to add them manually.
+                    </p>
+                  </div>
+                </div>
+              )}
+
               {/* ── Result: ALREADY IN TEAM ── */}
               {isAlreadyInTeam && !checkingEmail && (
                 <div className="rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3.5 space-y-2">
@@ -726,6 +749,13 @@ function CreateProfessionalModal({ onClose, onCreated }: { onClose: () => void; 
                   {loading ? "Adding..." : `Add ${foundName || "Professional"}`}
                 </button>
               )}
+              {/* Claimed: informational, no action */}
+              {isClaimed && !checkingEmail && (
+                <button disabled className="w-full flex items-center justify-center gap-2 bg-slate-100 text-slate-400 font-semibold text-sm px-4 py-3 rounded-xl cursor-not-allowed">
+                  <CheckCircle className="w-4 h-4" />
+                  Doctor has an active account
+                </button>
+              )}
               {/* Already in team: disabled */}
               {isAlreadyInTeam && !checkingEmail && (
                 <button disabled className="w-full flex items-center justify-center gap-2 bg-slate-200 text-slate-400 font-semibold text-sm px-4 py-3 rounded-xl cursor-not-allowed">
@@ -733,7 +763,7 @@ function CreateProfessionalModal({ onClose, onCreated }: { onClose: () => void; 
                 </button>
               )}
               {/* Waiting for a valid result */}
-              {!isNew && !isFoundNotAdded && !isAlreadyInTeam && (
+              {!isNew && !isFoundNotAdded && !isClaimed && !isAlreadyInTeam && (
                 <button disabled className="w-full flex items-center justify-center gap-2 bg-emerald-600/40 text-white font-semibold text-sm px-4 py-3 rounded-xl cursor-not-allowed">
                   {checkingEmail ? <><Loader2 className="w-4 h-4 animate-spin" />Checking…</> : "Enter an email to continue"}
                 </button>
