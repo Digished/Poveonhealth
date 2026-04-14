@@ -670,11 +670,11 @@ function CreateProfessionalModal({ onClose, onCreated }: { onClose: () => void; 
                 </div>
               )}
 
-              {/* ── Result: CLAIMED / ACTIVE ACCOUNT ── */}
+              {/* ── Result: CLAIMED / ACTIVE ACCOUNT — assignable ── */}
               {isClaimed && !checkingEmail && (
-                <div className="rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3.5 space-y-2">
+                <div className="rounded-2xl border border-emerald-200 bg-emerald-50/60 px-4 py-3.5 space-y-3">
                   <div className="flex items-start gap-3">
-                    <div className="w-8 h-8 rounded-xl bg-emerald-50 border border-emerald-100 flex items-center justify-center shrink-0">
+                    <div className="w-8 h-8 rounded-xl bg-emerald-100 flex items-center justify-center shrink-0">
                       <CheckCircle className="w-4 h-4 text-emerald-600" />
                     </div>
                     <div className="min-w-0 flex-1">
@@ -683,12 +683,19 @@ function CreateProfessionalModal({ onClose, onCreated }: { onClose: () => void; 
                     </div>
                     <span className="text-[10px] bg-emerald-100 text-emerald-700 px-2 py-0.5 rounded-full font-semibold shrink-0">Verified</span>
                   </div>
-                  <div className="flex items-start gap-2 pl-11">
-                    <ShieldAlert className="w-3.5 h-3.5 text-amber-500 shrink-0 mt-0.5" />
-                    <p className="text-xs text-amber-700 leading-relaxed">
-                      This doctor already has an active Poveon account. They can log in and send referrals directly — no need to add them manually.
+                  {emailCheckResult?.data?.phone && (
+                    <p className="text-xs text-slate-500 flex items-center gap-1.5 pl-11">
+                      <Phone className="w-3 h-3" />{emailCheckResult.data.phone}
                     </p>
-                  </div>
+                  )}
+                  {(emailCheckResult?.data?.hospitals ?? []).length > 0 && (
+                    <div className="flex flex-wrap gap-1.5 pl-11">
+                      {emailCheckResult!.data!.hospitals.map((h) => (
+                        <span key={h} className="text-xs bg-white border border-slate-200 text-slate-600 px-2 py-0.5 rounded-full">{h}</span>
+                      ))}
+                    </div>
+                  )}
+                  <p className="text-xs text-emerald-700 font-medium pl-11">Active account — assign them to you to track their referrals.</p>
                 </div>
               )}
 
@@ -737,7 +744,7 @@ function CreateProfessionalModal({ onClose, onCreated }: { onClose: () => void; 
                   <ChevronDown className="w-4 h-4 -rotate-90" />
                 </button>
               )}
-              {/* Found, not added: direct add */}
+              {/* Found, not added (unclaimed): assign */}
               {isFoundNotAdded && !checkingEmail && (
                 <button
                   type="button"
@@ -746,14 +753,19 @@ function CreateProfessionalModal({ onClose, onCreated }: { onClose: () => void; 
                   className="w-full flex items-center justify-center gap-2 bg-emerald-600 hover:bg-emerald-700 disabled:opacity-60 text-white font-semibold text-sm px-4 py-3 rounded-xl transition shadow-md"
                 >
                   {loading ? <Loader2 className="w-4 h-4 animate-spin" /> : <Plus className="w-4 h-4" />}
-                  {loading ? "Adding..." : `Add ${foundName || "Professional"}`}
+                  {loading ? "Assigning..." : `Assign ${foundName || "Professional"}`}
                 </button>
               )}
-              {/* Claimed: informational, no action */}
+              {/* Claimed / active account: assign for attribution */}
               {isClaimed && !checkingEmail && (
-                <button disabled className="w-full flex items-center justify-center gap-2 bg-slate-100 text-slate-400 font-semibold text-sm px-4 py-3 rounded-xl cursor-not-allowed">
-                  <CheckCircle className="w-4 h-4" />
-                  Doctor has an active account
+                <button
+                  type="button"
+                  disabled={loading}
+                  onClick={() => doSubmit(emailCheckResult!.data!.full_name)}
+                  className="w-full flex items-center justify-center gap-2 bg-emerald-600 hover:bg-emerald-700 disabled:opacity-60 text-white font-semibold text-sm px-4 py-3 rounded-xl transition shadow-md"
+                >
+                  {loading ? <Loader2 className="w-4 h-4 animate-spin" /> : <CheckCircle className="w-4 h-4" />}
+                  {loading ? "Assigning..." : `Assign ${foundName || "Doctor"}`}
                 </button>
               )}
               {/* Already in team: disabled */}

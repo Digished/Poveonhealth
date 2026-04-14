@@ -15,14 +15,14 @@ async function getMarketer(req: NextRequest) {
 
 /**
  * POST /api/scale/professionals
- * Marketer pre-creates a doctor profile or links an existing unclaimed one.
+ * Marketer creates a new doctor profile or assigns an existing one to themselves.
  * Body: { email, full_name?, prefix?, phone?, hospitals?, bank_name?, account_number?, account_name? }
  *
  * Outcomes:
- * - Doctor profile doesn't exist → creates profile + marketer link
- * - Profile exists, unclaimed, not linked to same-lab marketer → creates/updates marketer link only
- * - Profile exists, claimed → 409
- * - Profile exists, linked to a same-lab marketer → 409 with marketer name
+ * - Doctor profile doesn't exist            → creates profile + marketer link (full_name required)
+ * - Profile exists, not linked in same lab  → creates/reassigns marketer link (claimed or unclaimed)
+ * - Profile exists, already linked to me    → idempotent success
+ * - Profile exists, linked to same-lab peer → 409 with peer's name
  */
 export async function POST(req: NextRequest) {
   const marketer = await getMarketer(req);
@@ -42,26 +42,19 @@ export async function POST(req: NextRequest) {
     select: { claimed: true },
   });
 
-  if (existing?.claimed) {
-    return NextResponse.json(
-      { error: "This doctor has already registered their own account and cannot be added this way." },
-      { status: 409 }
-    );
-  }
-
   if (existing) {
-    // Unclaimed profile exists — check if this marketer already has a link
+    // Profile exists (claimed or unclaimed) — only need to manage the marketer link
+
+    // Already linked to this marketer — idempotent success
     const myLink = await prisma.doctorMarketerLink.findFirst({
       where: { doctor_email: normalised, marketer_id: marketer.id },
     });
-
     if (myLink) {
-      // Already linked — idempotent success
       const profile = await prisma.doctorProfile.findUnique({ where: { email: normalised } });
       return NextResponse.json({ success: true, profile });
     }
 
-    // Check if linked to a marketer in the same lab (team conflict)
+    // Check if a same-lab peer already has this doctor (team conflict)
     const myLabIds = (
       await prisma.labMarketer.findMany({
         where: { marketer_id: marketer.id },
@@ -74,23 +67,22 @@ export async function POST(req: NextRequest) {
         where: { doctor_email: normalised },
         include: { marketer: { select: { name: true } } },
       });
-
       if (otherLink) {
         const otherInSameLab = await prisma.labMarketer.findFirst({
           where: { marketer_id: otherLink.marketer_id, lab_id: { in: myLabIds } },
         });
         if (otherInSameLab) {
           return NextResponse.json(
-            { error: `This doctor is already managed by ${otherLink.marketer.name} in your team.` },
+            { error: `This doctor is already assigned to ${otherLink.marketer.name} in your team.` },
             { status: 409 }
           );
         }
       }
     }
 
-    // Safe to link — create or reassign the marketer link
+    // No same-lab conflict — assign this doctor to the current marketer
     await prisma.doctorMarketerLink.upsert({
-      where: { doctor_email: normalised },
+      where:  { doctor_email: normalised },
       create: { doctor_email: normalised, marketer_id: marketer.id },
       update: { marketer_id: marketer.id },
     });
