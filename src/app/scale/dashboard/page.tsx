@@ -835,6 +835,7 @@ function CreateProfessionalModal({ onClose, onCreated }: { onClose: () => void; 
                   onBankChange={(name, code) => { setBankName(name); setBankCode(code); }}
                   onAccountNumberChange={setAccountNumber}
                   onAccountNameChange={setAccountName}
+                  optional
                 />
               </div>
 

@@ -1967,17 +1967,6 @@ export function DoctorRequestForm({
                         </div>
                       )}
 
-                      {/* Bank status */}
-                      <div className={`flex items-center gap-2.5 px-4 py-3 rounded-2xl border text-xs font-medium ${
-                        docProfileInfo.has_bank
-                          ? "bg-emerald-50 border-emerald-200 text-emerald-700"
-                          : "bg-amber-50 border-amber-200 text-amber-700"
-                      }`}>
-                        {docProfileInfo.has_bank
-                          ? <><Check className="w-3.5 h-3.5 shrink-0" />Bank details registered</>
-                          : <><Info className="w-3.5 h-3.5 shrink-0" />Bank details not registered</>
-                        }
-                      </div>
                     </div>
                   </div>
                 </div>
