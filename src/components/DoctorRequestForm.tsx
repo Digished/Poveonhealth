@@ -1292,8 +1292,8 @@ export function DoctorRequestForm({
   return (
     <div className="animate-fade-in bg-white -mx-4">
       {/* Sticky header + step indicator
-          On lab pages the hero is a sticky 64 px bar (top-0, z-50).
-          Offset this header by 64 px (top-16) so it lands right below. */}
+          On lab pages a fixed 64 px mini-header (from LabHeroSection) appears
+          once the hero scrolls out of view. Offset by 64 px so they don't overlap. */}
       <div className={`sticky ${preselectedLabId ? "top-16" : "top-0"} z-10 px-4 transition-all duration-300 ${scrolled ? "pt-2 pb-2" : "pt-3 pb-3"}`}>
         {/* Full-width frosted background */}
         <div className="absolute inset-0 left-1/2 -translate-x-1/2 w-screen bg-white/80 backdrop-blur-md border-b border-white/60 -z-10" />

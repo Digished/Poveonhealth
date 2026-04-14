@@ -274,10 +274,10 @@ function TestSearchModal({
           "fixed z-[99999] bg-white flex flex-col shadow-2xl",
           // Mobile: anchored to bottom, height constrained by visualViewport (via sheetStyle)
           "inset-x-0 bottom-0 rounded-t-2xl max-h-[92dvh]",
-          // Desktop: centered dialog, static sizing
-          "sm:inset-auto sm:bottom-auto sm:left-1/2 sm:-translate-x-1/2 sm:top-1/2 sm:-translate-y-1/2",
+          // Desktop: centered using inset-0 + m-auto (avoids transform conflict with animation)
+          "sm:inset-0 sm:m-auto sm:h-fit",
           "sm:w-full sm:max-w-md sm:rounded-2xl sm:max-h-[80vh]",
-          "animate-sheet-up sm:animate-scale-in",
+          "animate-sheet-up sm:animate-fade-in",
         ].join(" ")}
       >
         {/* Drag handle (mobile visual cue) */}
