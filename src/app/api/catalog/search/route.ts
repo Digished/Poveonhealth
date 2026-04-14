@@ -37,7 +37,7 @@ export async function GET(request: NextRequest) {
 
     const rows: Row[] = await prisma.$queryRaw`
       SELECT id, raw_name, category_label, lab_price::text
-      FROM "LabOfferedTest"
+      FROM "lab_offered_tests"
       WHERE is_active = true
         AND (${labId}::text IS NULL OR lab_id = ${labId})
         AND (
