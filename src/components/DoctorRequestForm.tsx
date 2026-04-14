@@ -1293,9 +1293,9 @@ export function DoctorRequestForm({
   const clinicalDone = testTags.length > 0 || !!testImageUrl;
 
   return (
-    <div className="animate-fade-in bg-white">
+    <div className="animate-fade-in bg-white -mx-4">
       {/* Sticky header + step indicator */}
-      <div className={`sticky top-0 z-10 -mx-4 px-4 transition-all duration-300 ${scrolled ? "pt-2 pb-2" : "pt-3 pb-3"}`}>
+      <div className={`sticky top-0 z-10 px-4 transition-all duration-300 ${scrolled ? "pt-2 pb-2" : "pt-3 pb-3"}`}>
         {/* Full-width frosted background */}
         <div className="absolute inset-0 left-1/2 -translate-x-1/2 w-screen bg-white/80 backdrop-blur-md border-b border-white/60 -z-10" />
 
@@ -1435,7 +1435,7 @@ export function DoctorRequestForm({
       </div>
 
       {/* Step content */}
-      <div className="px-0 pt-3 pb-2">
+      <div className="px-4 pt-3 pb-2">
 
         {/* Step 1: Choose Lab / Branch */}
         {step === 1 && (
@@ -2238,7 +2238,7 @@ export function DoctorRequestForm({
 
       {/* Back button — inline */}
       {step > 1 && (
-        <div className="mt-4">
+        <div className="mt-4 px-4">
           <Button variant="ghost" onClick={handleBack} type="button" className="shrink-0">
             <ChevronLeft className="w-4 h-4" />
             Back
@@ -2272,7 +2272,7 @@ export function DoctorRequestForm({
         </div>
       )}
 
-      <p className="text-center text-xs text-slate-400 mt-10 pb-6 leading-relaxed">
+      <p className="text-center text-xs text-slate-400 mt-10 pb-6 px-4 leading-relaxed">
         By submitting, you confirm you are authorised to request these tests on behalf of the patient and receive the results.{" "}
         <a href="/terms" className="underline hover:text-slate-600 transition-colors">Terms &amp; Conditions</a>
         {" "}and{" "}
