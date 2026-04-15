@@ -94,9 +94,8 @@ const INITIAL: FormData = {
 
 const STEPS = [
   { title: "Location", icon: Building2 },
-  { title: "Clinical", icon: TestTube2 },
-  { title: "Referral", icon: Stethoscope },
   { title: "Patient", icon: User },
+  { title: "Clinical", icon: TestTube2 },
 ];
 
 
@@ -1034,18 +1033,15 @@ export function DoctorRequestForm({
       if (labPreselected && hasLocations && selectedLocIdx < 0) errs.lab_id = "Please select a location";
     }
     if (s === 2) {
-      if (testTags.length === 0 && !testImageUrl) errs.tests = "Required";
-      // diagnosis is always optional
+      if (!form.patient_phone) errs.patient_phone = "Phone number is required";
+      if (!form.patient_name.trim()) errs.patient_name = "Patient name is required";
     }
     if (s === 3) {
+      if (testTags.length === 0 && !testImageUrl) errs.tests = "Required";
       if (!form.doctor_email.trim()) errs.doctor_email = "Email is required";
       else if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(form.doctor_email))
         errs.doctor_email = "Invalid email address";
       if (!form.doctor_name.trim()) errs.doctor_name = "Doctor name is required";
-    }
-    if (s === 4) {
-      if (!form.patient_phone) errs.patient_phone = "Phone number is required";
-      if (!form.patient_name.trim()) errs.patient_name = "Patient name is required";
     }
     setErrors(errs);
     return Object.keys(errs).length === 0;
@@ -1060,8 +1056,7 @@ export function DoctorRequestForm({
 
   function handleNext() {
     if (validateStep(step)) {
-      if (step === 3) persistDoctorProfile();
-      const next = Math.min(4, step + 1);
+      const next = Math.min(3, step + 1);
       setStep(next);
       setMaxStep((m) => Math.max(m, next));
     }
@@ -1072,7 +1067,6 @@ export function DoctorRequestForm({
     if (target === step) return;
     if (target > step) {
       if (!validateStep(step)) return;
-      if (step === 3) persistDoctorProfile();
     } else {
       setErrors({});
     }
@@ -1108,7 +1102,7 @@ export function DoctorRequestForm({
   }, [imageExtracting]);
 
   async function handleSubmit() {
-    if (!validateStep(4)) return;
+    if (!validateStep(3)) return;
     setSubmitting(true);
     try {
       const res = await fetch("/api/requests/create", {
@@ -1272,16 +1266,14 @@ export function DoctorRequestForm({
       return true;
     }
     if (step === 2) {
-      return testTags.length > 0 || !!testImageUrl;
+      return !!form.patient_phone.trim() && !!form.patient_name.trim();
     }
     if (step === 3) {
       return (
+        (testTags.length > 0 || !!testImageUrl) &&
         form.doctor_email.trim().length > 0 &&
         /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(form.doctor_email)
       );
-    }
-    if (step === 4) {
-      return !!form.patient_phone.trim() && !!form.patient_name.trim();
     }
     return true;
   })();
@@ -1494,8 +1486,8 @@ export function DoctorRequestForm({
           </div>
         )}
 
-        {/* Step 2: Clinical Details */}
-        {step === 2 && (
+        {/* Step 3: Clinical, Referral & Review */}
+        {step === 3 && (
           <div className="space-y-4">
             {/* Header row: title + camera button in corner */}
             <div className="flex items-center justify-between pb-3 border-b border-slate-100">
@@ -1876,11 +1868,8 @@ export function DoctorRequestForm({
               </div>
             )}
           </div>
-        )}
 
-        {/* Step 3: Referring Professional */}
-        {step === 3 && (
-          <div className="space-y-5">
+          <div className="mt-6 pt-5 border-t border-slate-100 space-y-5">
             <h2 className="flex items-center gap-3 text-base font-bold text-slate-800 pb-4 border-b border-slate-100">
               <div className="w-8 h-8 rounded-xl bg-medical-50 flex items-center justify-center shrink-0">
                 <Stethoscope className="w-4 h-4 text-medical-600" />
@@ -2008,10 +1997,61 @@ export function DoctorRequestForm({
               )}
             </div>
           </div>
+
+          {/* Review summary */}
+          <div className="rounded-2xl border border-slate-200/80 overflow-hidden shadow-sm">
+            <div className="px-4 py-3 bg-gradient-to-r from-slate-50 to-slate-50/60 border-b border-slate-100 flex items-center gap-2">
+              <div className="w-1.5 h-1.5 rounded-full bg-medical-400" />
+              <p className="text-xs font-bold text-slate-600 tracking-wide">Review before sending</p>
+            </div>
+            <div className="divide-y divide-slate-100/80">
+              {/* Lab */}
+              <div className="px-4 py-3.5 flex items-start justify-between gap-4">
+                <p className="text-[11px] font-semibold text-slate-400 uppercase tracking-wide shrink-0 w-20 pt-px">Lab</p>
+                <p className="text-sm font-semibold text-slate-800 text-right truncate">{hasLocations ? (locations[selectedLocIdx]?.name ?? preselectedLabName ?? "") : (selectedLab?.name ?? preselectedLabName ?? "")}</p>
+              </div>
+              {/* Patient */}
+              <div className="px-4 py-3.5 flex items-start justify-between gap-4">
+                <p className="text-[11px] font-semibold text-slate-400 uppercase tracking-wide shrink-0 w-20 pt-px">Patient</p>
+                <div className="text-right min-w-0">
+                  {form.patient_name && <p className="text-sm font-semibold text-slate-800 truncate">{form.patient_name}</p>}
+                  <p className="text-xs text-slate-500 font-mono mt-0.5">{form.patient_phone}</p>
+                  {form.patient_email && <p className="text-xs text-slate-400 mt-0.5">{form.patient_email}</p>}
+                  {form.dob && <p className="text-xs text-slate-400 mt-0.5">DOB {form.dob.split("-").reverse().join(" / ")}{form.sex ? ` · ${form.sex}` : ""}</p>}
+                </div>
+              </div>
+              {/* Clinical */}
+              <div className="px-4 py-3.5 flex items-start justify-between gap-4">
+                <p className="text-[11px] font-semibold text-slate-400 uppercase tracking-wide shrink-0 w-20 pt-px">Clinical</p>
+                <div className="text-right min-w-0">
+                  {testImageUrl && <p className="text-xs text-emerald-600 truncate mb-0.5">Image attached</p>}
+                  {form.diagnosis && <p className="text-xs text-slate-500 truncate mb-0.5">{form.diagnosis}</p>}
+                  <p className="text-sm font-semibold text-slate-800 truncate">{testsString || (testImageUrl ? "See attached image" : "")}</p>
+                </div>
+              </div>
+              {/* Referrer */}
+              <div className="px-4 py-3.5 flex items-start justify-between gap-4">
+                <p className="text-[11px] font-semibold text-slate-400 uppercase tracking-wide shrink-0 w-20 pt-px">Referrer</p>
+                <div className="text-right min-w-0">
+                  <p className="text-sm font-semibold text-slate-800 truncate">{[form.doctor_prefix, form.doctor_name].filter(Boolean).join(" ")}</p>
+                  {form.doctor_hospital && <p className="text-xs text-slate-500 truncate mt-0.5">{form.doctor_hospital}</p>}
+                  <p className="text-xs text-slate-400 truncate mt-0.5">{form.doctor_email}</p>
+                </div>
+              </div>
+              {/* Flags */}
+              {(isCritical || needsAmbulance) && (
+                <div className="px-4 py-3 flex items-center gap-2 flex-wrap bg-slate-50/60">
+                  {isCritical && <span className="inline-flex items-center gap-1 text-xs font-semibold bg-red-50 text-red-600 border border-red-200 px-2.5 py-1 rounded-full"><AlertTriangle className="w-3 h-3" />Critical</span>}
+                  {needsAmbulance && <span className="inline-flex items-center gap-1 text-xs font-semibold bg-orange-50 text-orange-600 border border-orange-200 px-2.5 py-1 rounded-full"><Truck className="w-3 h-3" />Ambulance</span>}
+                </div>
+              )}
+            </div>
+          </div>
+        </div>
         )}
 
-        {/* Step 4: Patient Contact + Details + Review */}
-        {step === 4 && (
+        {/* Step 2: Patient */}
+        {step === 2 && (
           <div className="space-y-5">
             <h2 className="flex items-center gap-3 text-base font-bold text-slate-800 pb-4 border-b border-slate-100">
               <div className="w-8 h-8 rounded-xl bg-medical-50 flex items-center justify-center shrink-0">
@@ -2137,56 +2177,6 @@ export function DoctorRequestForm({
                 </div>
               )}
             </div>
-
-            {/* Review summary */}
-            <div className="rounded-2xl border border-slate-200/80 overflow-hidden shadow-sm">
-              <div className="px-4 py-3 bg-gradient-to-r from-slate-50 to-slate-50/60 border-b border-slate-100 flex items-center gap-2">
-                <div className="w-1.5 h-1.5 rounded-full bg-medical-400" />
-                <p className="text-xs font-bold text-slate-600 tracking-wide">Review before sending</p>
-              </div>
-              <div className="divide-y divide-slate-100/80">
-                {/* Lab */}
-                <div className="px-4 py-3.5 flex items-start justify-between gap-4">
-                  <p className="text-[11px] font-semibold text-slate-400 uppercase tracking-wide shrink-0 w-20 pt-px">Lab</p>
-                  <p className="text-sm font-semibold text-slate-800 text-right truncate">{hasLocations ? (locations[selectedLocIdx]?.name ?? preselectedLabName ?? "") : (selectedLab?.name ?? preselectedLabName ?? "")}</p>
-                </div>
-                {/* Patient */}
-                <div className="px-4 py-3.5 flex items-start justify-between gap-4">
-                  <p className="text-[11px] font-semibold text-slate-400 uppercase tracking-wide shrink-0 w-20 pt-px">Patient</p>
-                  <div className="text-right min-w-0">
-                    {form.patient_name && <p className="text-sm font-semibold text-slate-800 truncate">{form.patient_name}</p>}
-                    <p className="text-xs text-slate-500 font-mono mt-0.5">{form.patient_phone}</p>
-                    {form.patient_email && <p className="text-xs text-slate-400 mt-0.5">{form.patient_email}</p>}
-                    {form.dob && <p className="text-xs text-slate-400 mt-0.5">DOB {form.dob.split("-").reverse().join(" / ")}{form.sex ? ` · ${form.sex}` : ""}</p>}
-                  </div>
-                </div>
-                {/* Clinical */}
-                <div className="px-4 py-3.5 flex items-start justify-between gap-4">
-                  <p className="text-[11px] font-semibold text-slate-400 uppercase tracking-wide shrink-0 w-20 pt-px">Clinical</p>
-                  <div className="text-right min-w-0">
-                    {testImageUrl && <p className="text-xs text-emerald-600 truncate mb-0.5">Image attached</p>}
-                    {form.diagnosis && <p className="text-xs text-slate-500 truncate mb-0.5">{form.diagnosis}</p>}
-                    <p className="text-sm font-semibold text-slate-800 truncate">{testsString || (testImageUrl ? "See attached image" : "")}</p>
-                  </div>
-                </div>
-                {/* Referrer */}
-                <div className="px-4 py-3.5 flex items-start justify-between gap-4">
-                  <p className="text-[11px] font-semibold text-slate-400 uppercase tracking-wide shrink-0 w-20 pt-px">Referrer</p>
-                  <div className="text-right min-w-0">
-                    <p className="text-sm font-semibold text-slate-800 truncate">{[form.doctor_prefix, form.doctor_name].filter(Boolean).join(" ")}</p>
-                    {form.doctor_hospital && <p className="text-xs text-slate-500 truncate mt-0.5">{form.doctor_hospital}</p>}
-                    <p className="text-xs text-slate-400 truncate mt-0.5">{form.doctor_email}</p>
-                  </div>
-                </div>
-                {/* Flags */}
-                {(isCritical || needsAmbulance) && (
-                  <div className="px-4 py-3 flex items-center gap-2 flex-wrap bg-slate-50/60">
-                    {isCritical && <span className="inline-flex items-center gap-1 text-xs font-semibold bg-red-50 text-red-600 border border-red-200 px-2.5 py-1 rounded-full"><AlertTriangle className="w-3 h-3" />Critical</span>}
-                    {needsAmbulance && <span className="inline-flex items-center gap-1 text-xs font-semibold bg-orange-50 text-orange-600 border border-orange-200 px-2.5 py-1 rounded-full"><Truck className="w-3 h-3" />Ambulance</span>}
-                  </div>
-                )}
-              </div>
-            </div>
           </div>
         )}
       </div>
@@ -2204,7 +2194,7 @@ export function DoctorRequestForm({
       {/* FAB — Next / Submit — fixed bottom-right, appears when step is valid */}
       {stepValid && (
         <div className="fixed bottom-6 right-5 z-50">
-          {step < 4 ? (
+          {step < 3 ? (
             <button
               type="button"
               onClick={handleNext}
