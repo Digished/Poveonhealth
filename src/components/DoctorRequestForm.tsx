@@ -95,7 +95,7 @@ const INITIAL: FormData = {
 const STEPS = [
   { title: "Location", icon: Building2 },
   { title: "Patient", icon: User },
-  { title: "Clinical", icon: TestTube2 },
+  { title: "Referral", icon: Stethoscope },
 ];
 
 
@@ -1033,11 +1033,11 @@ export function DoctorRequestForm({
       if (labPreselected && hasLocations && selectedLocIdx < 0) errs.lab_id = "Please select a location";
     }
     if (s === 2) {
+      if (testTags.length === 0 && !testImageUrl) errs.tests = "Required";
       if (!form.patient_phone) errs.patient_phone = "Phone number is required";
       if (!form.patient_name.trim()) errs.patient_name = "Patient name is required";
     }
     if (s === 3) {
-      if (testTags.length === 0 && !testImageUrl) errs.tests = "Required";
       if (!form.doctor_email.trim()) errs.doctor_email = "Email is required";
       else if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(form.doctor_email))
         errs.doctor_email = "Invalid email address";
@@ -1102,7 +1102,7 @@ export function DoctorRequestForm({
   }, [imageExtracting]);
 
   async function handleSubmit() {
-    if (!validateStep(3)) return;
+    if (!validateStep(2) || !validateStep(3)) return;
     setSubmitting(true);
     try {
       const res = await fetch("/api/requests/create", {
@@ -1266,20 +1266,20 @@ export function DoctorRequestForm({
       return true;
     }
     if (step === 2) {
-      return !!form.patient_phone.trim() && !!form.patient_name.trim();
+      return (
+        (testTags.length > 0 || !!testImageUrl) &&
+        !!form.patient_phone.trim() &&
+        !!form.patient_name.trim()
+      );
     }
     if (step === 3) {
       return (
-        (testTags.length > 0 || !!testImageUrl) &&
         form.doctor_email.trim().length > 0 &&
         /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(form.doctor_email)
       );
     }
     return true;
   })();
-
-  // Whether the clinical section of step 2 is done (drives the connector line)
-  const clinicalDone = testTags.length > 0 || !!testImageUrl;
 
   return (
     <div className="animate-fade-in bg-white -mx-4">
@@ -1486,389 +1486,10 @@ export function DoctorRequestForm({
           </div>
         )}
 
-        {/* Step 3: Clinical, Referral & Review */}
+        {/* Step 3: Referral & Review */}
         {step === 3 && (
           <div className="space-y-4">
-            {/* Header row: title + camera button in corner */}
-            <div className="flex items-center justify-between pb-3 border-b border-slate-100">
-              <h2 className="flex items-center gap-2 text-base font-semibold text-slate-700">
-                <TestTube2 className="w-4 h-4 text-medical-600" />
-                Clinical Details
-              </h2>
-              {/* Camera button — tap to scan a physical test request slip */}
-              <label className="cursor-pointer select-none" aria-label="Scan test request slip">
-                <div className={`flex items-center gap-1.5 py-1.5 px-3 rounded-xl text-xs font-semibold transition-colors active:scale-95 ${testImageUrl ? "bg-emerald-100 text-emerald-700" : "bg-slate-100 text-slate-500 hover:bg-medical-100 hover:text-medical-600"}`}>
-                  <Camera className="w-3.5 h-3.5" />
-                  {testImageUrl ? "Retake" : "Scan slip"}
-                </div>
-                <input
-                  type="file"
-                  accept="image/jpeg,image/png,image/webp,image/heic,.heic"
-                  className="sr-only"
-                  onChange={(e) => {
-                    const file = e.target.files?.[0];
-                    if (!file) return;
-                    const MAX_MB = 10;
-                    if (file.size > MAX_MB * 1024 * 1024) {
-                      setImageUploadError(`File is too large (${(file.size / 1024 / 1024).toFixed(1)} MB). Maximum is ${MAX_MB} MB.`);
-                      e.target.value = "";
-                      return;
-                    }
-                    const allowed = ["image/jpeg", "image/png", "image/webp", "image/heic"];
-                    if (!allowed.includes(file.type) && !file.name.toLowerCase().endsWith(".heic")) {
-                      setImageUploadError(`Unsupported format: ${file.type || file.name.split(".").pop()?.toUpperCase()}. Please use JPEG, PNG, WebP, or HEIC.`);
-                      e.target.value = "";
-                      return;
-                    }
-                    setImageUploading(true);
-                    setImageUploadProgress(0);
-                    setImageUploadError(null);
-                    setTestImageUrl(null);
-                    setExtractionResult(null);
-                    setExtractionDismissed(false);
-                    const fd = new FormData();
-                    fd.append("file", file);
-                    const xhr = new XMLHttpRequest();
-                    xhr.upload.onprogress = (ev) => {
-                      if (ev.lengthComputable) setImageUploadProgress(Math.round((ev.loaded / ev.total) * 100));
-                    };
-                    xhr.onload = () => {
-                      try {
-                        const data = JSON.parse(xhr.responseText);
-                        if (data.url) {
-                          setTestImageUrl(data.url);
-                          setImageUploadProgress(100);
-                          setImageExtracting(true);
-                          setExtractionProgress(0);
-                          fetch("/api/requests/extract-from-image", {
-                            method: "POST",
-                            headers: { "Content-Type": "application/json" },
-                            body: JSON.stringify({ imageUrl: data.url }),
-                          })
-                            .then((r) => r.json())
-                            .then((res) => {
-                              if (res.success && res.extracted) {
-                                setExtractionResult(res.extracted);
-                                if (Array.isArray(res.extracted.tests) && res.extracted.tests.length > 0) {
-                                  const lowConfSet = new Set<string>(
-                                    (res.extracted.low_confidence_items ?? []).map((s: string) => s.toLowerCase())
-                                  );
-                                  const expanded = res.extracted.tests.flatMap((n: string) => {
-                                    const isLow = lowConfSet.has(n.toLowerCase());
-                                    const parts = smartSplitTestNames(n);
-                                    const names = parts.length > 0 ? parts : [n];
-                                    return names.map((name: string) => ({ name, low_confidence: isLow }));
-                                  });
-                                  const initialTags: { name: string; catalog_test_id: string | null; low_confidence: boolean }[] = expanded.map(({ name, low_confidence }: { name: string; low_confidence: boolean }) => ({
-                                    name,
-                                    catalog_test_id: null as string | null,
-                                    low_confidence,
-                                  }));
-                                  setTestTags(initialTags);
-                                  const labId = form.lab_id;
-                                  Promise.allSettled(
-                                    initialTags.map((tag: { name: string; catalog_test_id: string | null; low_confidence: boolean }) =>
-                                      fetch(`/api/catalog/search?q=${encodeURIComponent(tag.name)}${labId ? `&lab_id=${encodeURIComponent(labId)}` : ""}&limit=1`)
-                                        .then((r) => r.json())
-                                        .then((d) => {
-                                          const match = d.results?.[0];
-                                          if (!match) return null;
-                                          const nameLC = tag.name.toLowerCase();
-                                          const canonLC = match.canonical_name.toLowerCase();
-                                          if (canonLC === nameLC || canonLC.includes(nameLC) || nameLC.includes(canonLC)) {
-                                            return { originalName: tag.name, match };
-                                          }
-                                          return null;
-                                        })
-                                        .catch(() => null)
-                                    )
-                                  ).then((results) => {
-                                    const upgrades = new Map<string, { id: string; name: string; price?: number; category?: string; is_rapid_test?: boolean }>();
-                                    results.forEach((r) => {
-                                      if (r.status === "fulfilled" && r.value) {
-                                        upgrades.set(r.value.originalName.toLowerCase(), {
-                                          id: r.value.match.id,
-                                          name: r.value.match.canonical_name,
-                                          price: r.value.match.effective_price,
-                                          category: r.value.match.category,
-                                          is_rapid_test: r.value.match.is_rapid_test,
-                                        });
-                                      }
-                                    });
-                                    if (upgrades.size > 0) {
-                                      setTestTags((prev) =>
-                                        prev.map((t) => {
-                                          const up = upgrades.get(t.name.toLowerCase());
-                                          if (!up) return t;
-                                          return { name: up.name, catalog_test_id: up.id, low_confidence: false, price: up.price, category: up.category, is_rapid_test: up.is_rapid_test };
-                                        })
-                                      );
-                                    }
-                                  });
-                                }
-                                setForm((prev) => ({
-                                  ...prev,
-                                  diagnosis: res.extracted.diagnosis || prev.diagnosis,
-                                  patient_name: prev.patient_name || res.extracted.patient_name,
-                                  dob: prev.dob || res.extracted.dob,
-                                  sex: prev.sex || res.extracted.sex,
-                                  doctor_name: prev.doctor_name || res.extracted.doctor_name,
-                                  doctor_prefix: prev.doctor_prefix || res.extracted.doctor_prefix,
-                                }));
-                                if (res.extracted.diagnosis) setOptionalDetailsOpen(true);
-                              }
-                            })
-                            .catch(() => { /* silent — user continues manually */ })
-                            .finally(() => {
-                              setExtractionProgress(100);
-                              setTimeout(() => setImageExtracting(false), 700);
-                            });
-                        } else {
-                          setImageUploadError(data.error ?? "Upload failed. Please try again.");
-                        }
-                      } catch {
-                        setImageUploadError("Upload failed. Please try again.");
-                      } finally {
-                        setImageUploading(false);
-                        e.target.value = "";
-                      }
-                    };
-                    xhr.onerror = () => {
-                      setImageUploadError("Network error. Check your connection and try again.");
-                      setImageUploading(false);
-                      e.target.value = "";
-                    };
-                    xhr.open("POST", "/api/requests/upload-image");
-                    xhr.send(fd);
-                  }}
-                />
-              </label>
-            </div>
-
-            <div className="space-y-3">
-                  {/* Upload / extraction progress — shown while processing the scanned slip */}
-                  {imageUploading ? (
-                    (() => {
-                      const uploadPct = imageUploadProgress;
-                      const UPLOAD_STAGES = [
-                        { icon: "📷", label: "Reading your image…", start: 0, end: 40 },
-                        { icon: "🧠", label: "Understanding the image…", start: 40, end: 100 },
-                      ];
-                      return (
-                        <div className="rounded-2xl border border-slate-200 bg-white px-6 py-8 space-y-5">
-                          <div className="text-center">
-                            <p className="text-sm font-semibold text-slate-700">Uploading image…</p>
-                            <p className="text-xs text-slate-400 mt-0.5">{uploadPct < 100 ? `${uploadPct}%` : "Almost done…"}</p>
-                          </div>
-                          <div className="w-full bg-slate-100 rounded-full h-1.5 overflow-hidden">
-                            <div className="h-full bg-medical-500 rounded-full transition-all duration-300" style={{ width: `${uploadPct}%` }} />
-                          </div>
-                          <div className="space-y-2.5">
-                            {UPLOAD_STAGES.map((stage) => {
-                              const done = uploadPct >= stage.end;
-                              const active = uploadPct >= stage.start && uploadPct < stage.end;
-                              return (
-                                <div key={stage.label} className={`flex items-center gap-3 transition-opacity duration-300 ${uploadPct < stage.start ? "opacity-30" : "opacity-100"}`}>
-                                  <div className={`w-7 h-7 rounded-full flex items-center justify-center shrink-0 text-base transition-all ${done ? "bg-emerald-100" : active ? "bg-medical-100" : "bg-slate-100"}`}>
-                                    {done ? "✓" : stage.icon}
-                                  </div>
-                                  <span className={`text-sm font-medium ${done ? "text-emerald-600" : active ? "text-slate-800" : "text-slate-400"}`}>{stage.label}</span>
-                                  {active && <RefreshCw className="w-3.5 h-3.5 text-medical-400 animate-spin ml-auto shrink-0" />}
-                                  {done && <span className="text-xs text-emerald-500 ml-auto shrink-0 font-medium">Done</span>}
-                                </div>
-                              );
-                            })}
-                          </div>
-                        </div>
-                      );
-                    })()
-                  ) : imageExtracting ? (
-                    (() => {
-                      const p = extractionProgress;
-                      const SCAN_STAGES = [
-                        { icon: "🔍", label: "Reading the document…",        start: 0,  end: 25 },
-                        { icon: "🧬", label: "Identifying tests & fields…",  start: 25, end: 50 },
-                        { icon: "🏷️", label: "Matching to test catalog…",    start: 50, end: 75 },
-                        { icon: "✨", label: "Pre-filling your form…",       start: 75, end: 100 },
-                      ];
-                      return (
-                        <div className="rounded-2xl border border-slate-200 bg-white px-6 py-8 space-y-5">
-                          <div className="text-center">
-                            <p className="text-sm font-semibold text-slate-700">Scanning with AI…</p>
-                            <p className="text-xs text-slate-400 mt-0.5">Hang tight, this only takes a few seconds</p>
-                          </div>
-                          <div className="w-full bg-slate-100 rounded-full h-1.5 overflow-hidden">
-                            <div className="h-full bg-medical-500 rounded-full transition-all duration-700" style={{ width: `${p}%` }} />
-                          </div>
-                          <div className="space-y-2.5">
-                            {SCAN_STAGES.map((stage) => {
-                              const done = p >= stage.end;
-                              const active = p >= stage.start && p < stage.end;
-                              return (
-                                <div key={stage.label} className={`flex items-center gap-3 transition-opacity duration-300 ${p < stage.start ? "opacity-30" : "opacity-100"}`}>
-                                  <div className={`w-7 h-7 rounded-full flex items-center justify-center shrink-0 text-base transition-all ${done ? "bg-emerald-100" : active ? "bg-medical-100" : "bg-slate-100"}`}>
-                                    {done ? "✓" : stage.icon}
-                                  </div>
-                                  <span className={`text-sm font-medium ${done ? "text-emerald-600" : active ? "text-slate-800" : "text-slate-400"}`}>{stage.label}</span>
-                                  {active && <RefreshCw className="w-3.5 h-3.5 text-medical-400 animate-spin ml-auto shrink-0" />}
-                                  {done && <span className="text-xs text-emerald-500 ml-auto shrink-0 font-medium">Done</span>}
-                                </div>
-                              );
-                            })}
-                          </div>
-                        </div>
-                      );
-                    })()
-                  ) : testImageUrl ? (
-                    <div className="space-y-2 animate-fade-in-up">
-                      {/* Image thumbnail row */}
-                      <div className="flex items-center gap-3 rounded-xl border border-emerald-200 bg-emerald-50/40 px-4 py-3">
-                        <img src={testImageUrl} alt="Scanned test request slip" className="w-14 h-14 rounded-lg object-cover border border-emerald-200 shrink-0" />
-                        <div className="flex-1 min-w-0">
-                          <p className="text-sm font-semibold text-emerald-700 flex items-center gap-1.5">
-                            <Check className="w-4 h-4" /> Image uploaded
-                          </p>
-                          {extractionResult && !extractionDismissed ? (
-                            <p className="text-xs text-emerald-600 mt-0.5 flex items-center gap-1">
-                              <Check className="w-3 h-3" /> Fields pre-filled
-                            </p>
-                          ) : (
-                            <p className="text-xs text-slate-400 mt-0.5 truncate">{testImageUrl?.split("/").pop()}</p>
-                          )}
-                        </div>
-                        <button type="button" onClick={() => { setTestImageUrl(null); setImageUploadError(null); setExtractionResult(null); setExtractionDismissed(false); setTestTags([]); }} className="p-1.5 rounded-lg hover:bg-emerald-100 text-emerald-400 hover:text-emerald-700 transition-colors shrink-0" aria-label="Remove uploaded image">
-                          <X className="w-4 h-4" />
-                        </button>
-                      </div>
-                      {/* Low-confidence warning */}
-                      {extractionResult && !extractionDismissed && extractionResult.low_confidence_items.length > 0 && (
-                        <div className="flex items-start gap-2 px-3 py-2 rounded-xl bg-amber-50 border border-amber-200">
-                          <span className="text-amber-500 text-sm shrink-0 mt-0.5">⚠</span>
-                          <p className="text-xs text-amber-700 flex-1">
-                            Please verify: <span className="font-medium">{extractionResult.low_confidence_items.join(", ")}</span>
-                          </p>
-                          <button type="button" onClick={() => setExtractionDismissed(true)} className="text-amber-400 hover:text-amber-600 transition-colors shrink-0" aria-label="Dismiss">
-                            <X className="w-3.5 h-3.5" />
-                          </button>
-                        </div>
-                      )}
-                    </div>
-                  ) : null}
-
-                  {imageUploadError && <p className="text-xs text-red-600 font-medium">{imageUploadError}</p>}
-
-                  {/* Tests — always visible; pre-filled after scan */}
-                  <TestTagInput
-                    label={imageExtracting ? "Laboratory Tests (scanning…)" : "Laboratory Tests Requested"}
-                    value={testTags}
-                    onChange={setTestTags}
-                    labId={form.lab_id}
-                    error={errors.tests}
-                    disabled={imageExtracting}
-                  />
-
-              </div>
-
-            {/* Sub-steps — revealed progressively once at least one test is added */}
-            {(testTags.length > 0 || !!testImageUrl) && (
-              <div className="space-y-3 animate-fade-in-up">
-                {/* Optional Details — single collapsible for diagnosis + patient condition */}
-                {(() => {
-                  const hasDiagnosis = form.diagnosis.trim().length > 0;
-                  const hasCondition = isCritical || needsAmbulance;
-                  const borderColor = isCritical ? "border-red-200" : needsAmbulance ? "border-orange-200" : hasDiagnosis ? "border-emerald-200" : "border-slate-200";
-                  const bgColor = isCritical ? "bg-red-50/20" : needsAmbulance ? "bg-orange-50/20" : hasDiagnosis ? "bg-emerald-50/30" : "";
-                  return (
-                    <div className={`rounded-xl border-2 overflow-hidden transition-colors ${borderColor} ${bgColor}`}>
-                      <button
-                        type="button"
-                        onClick={() => setOptionalDetailsOpen((v) => !v)}
-                        className="w-full flex items-center justify-between px-4 py-3 hover:bg-black/[0.02] transition-colors bg-slate-50/40"
-                      >
-                        <div className="flex items-center gap-2 text-left">
-                          <FileText className={`w-4 h-4 shrink-0 ${hasDiagnosis || hasCondition ? "text-slate-500" : "text-slate-400"}`} />
-                          <span className="text-sm font-semibold text-slate-700">Optional Details</span>
-                        </div>
-                        <div className="flex items-center gap-1.5">
-                          {hasDiagnosis && <span className="text-xs font-semibold text-emerald-600 bg-emerald-100 px-2 py-0.5 rounded-full">Notes</span>}
-                          {isCritical && <span className="text-xs font-semibold text-red-600 bg-red-100 px-2 py-0.5 rounded-full">Critical</span>}
-                          {needsAmbulance && <span className="text-xs font-semibold text-orange-600 bg-orange-100 px-2 py-0.5 rounded-full">Ambulance</span>}
-                          {!hasDiagnosis && !hasCondition && <span className="text-xs text-slate-400">diagnosis, condition</span>}
-                          <ChevronDown className={`w-4 h-4 shrink-0 transition-transform text-slate-400 ml-1 ${optionalDetailsOpen ? "rotate-180" : ""}`} />
-                        </div>
-                      </button>
-
-                      {optionalDetailsOpen && (
-                        <div className="border-t border-slate-100 divide-y divide-slate-100">
-                          {/* Diagnosis */}
-                          <div className="px-4 py-4 space-y-2">
-                            <p className="text-xs font-semibold text-slate-400 uppercase tracking-wide">Diagnosis / Clinical Notes</p>
-                            <Textarea
-                              label=""
-                              placeholder="Brief clinical summary or working diagnosis…"
-                              rows={3}
-                              value={form.diagnosis}
-                              onChange={(e) => set("diagnosis", e.target.value)}
-                            />
-                          </div>
-
-                          {/* Patient Condition */}
-                          <div className="px-4 py-4 space-y-3">
-                            <p className="text-xs font-semibold text-slate-400 uppercase tracking-wide">Patient Condition</p>
-                            {/* Stable passive indicator */}
-                            {!isCritical && !needsAmbulance && (
-                              <div className="flex items-center gap-2 text-sm text-emerald-600 font-medium">
-                                <Heart className="w-4 h-4 shrink-0" />
-                                Stable
-                              </div>
-                            )}
-                            <div className="flex gap-2">
-                              <button
-                                type="button"
-                                onClick={() => setIsCritical((v) => !v)}
-                                className={`flex-1 flex items-center justify-center gap-1.5 py-2.5 px-3 rounded-xl text-sm font-semibold border-2 transition-all ${
-                                  isCritical
-                                    ? "bg-red-50 border-red-300 text-red-600 shadow-sm"
-                                    : "border-slate-200 text-slate-500 hover:border-slate-300 hover:bg-slate-50"
-                                }`}
-                              >
-                                <AlertTriangle className="w-3.5 h-3.5" />
-                                Critical
-                              </button>
-                              <button
-                                type="button"
-                                onClick={() => setNeedsAmbulance((v) => !v)}
-                                className={`flex-1 flex items-center justify-center gap-1.5 py-2.5 px-3 rounded-xl text-sm font-semibold border-2 transition-all ${
-                                  needsAmbulance
-                                    ? "bg-orange-50 border-orange-300 text-orange-600 shadow-sm"
-                                    : "border-slate-200 text-slate-500 hover:border-slate-300 hover:bg-slate-50"
-                                }`}
-                              >
-                                <Truck className="w-3.5 h-3.5" />
-                                Ambulance
-                              </button>
-                            </div>
-                            {needsAmbulance && (
-                              <div className="animate-fade-in-up">
-                                <Textarea
-                                  label=""
-                                  placeholder="Pickup address or notes for the ambulance team…"
-                                  rows={2}
-                                  value={ambulanceNotes}
-                                  onChange={(e) => setAmbulanceNotes(e.target.value)}
-                                />
-                              </div>
-                            )}
-                          </div>
-                        </div>
-                      )}
-                    </div>
-                  );
-                })()}
-              </div>
-            )}
-
-          <div className="mt-6 pt-5 border-t border-slate-100 space-y-5">
+                    <div className="space-y-5">
             <h2 className="flex items-center gap-3 text-base font-bold text-slate-800 pb-4 border-b border-slate-100">
               <div className="w-8 h-8 rounded-xl bg-medical-50 flex items-center justify-center shrink-0">
                 <Stethoscope className="w-4 h-4 text-medical-600" />
@@ -2049,104 +1670,394 @@ export function DoctorRequestForm({
         </div>
         )}
 
-        {/* Step 2: Patient */}
+        {/* Step 2: Tests & Patient */}
         {step === 2 && (
-          <div className="space-y-5">
-            <h2 className="flex items-center gap-3 text-base font-bold text-slate-800 pb-4 border-b border-slate-100">
-              <div className="w-8 h-8 rounded-xl bg-medical-50 flex items-center justify-center shrink-0">
-                <User className="w-4 h-4 text-medical-600" />
-              </div>
-              Patient Contact
-            </h2>
-
-            <div className="relative pt-1">
-              {/* Substep 1: Phone — primary identifier, triggers profile lookup */}
-              <div className="relative flex gap-3">
-                <div className="flex flex-col items-center shrink-0 pt-1">
-                  <div className={`w-7 h-7 rounded-full flex items-center justify-center text-xs font-bold border-2 transition-all shrink-0 ${
-                    form.patient_phone.trim()
-                      ? "bg-emerald-500 border-emerald-500 text-white"
-                      : "bg-white border-medical-400 text-medical-600"
-                  }`}>
-                    {form.patient_phone.trim() ? <Check className="w-3.5 h-3.5" /> : "1"}
-                  </div>
-                  {form.patient_phone.trim() && (
-                    <div className="w-0.5 flex-1 min-h-4 bg-slate-200 mt-1" />
-                  )}
+          <div className="space-y-4">
+            {/* Header row: title + camera button */}
+            <div className="flex items-center justify-between pb-3 border-b border-slate-100">
+              <h2 className="flex items-center gap-2 text-base font-semibold text-slate-700">
+                <TestTube2 className="w-4 h-4 text-medical-600" />
+                Tests &amp; Patient
+              </h2>
+              {/* Camera button — tap to scan a physical test request slip */}
+              <label className="cursor-pointer select-none" aria-label="Scan test request slip">
+                <div className={`flex items-center gap-1.5 py-1.5 px-3 rounded-xl text-xs font-semibold transition-colors active:scale-95 ${testImageUrl ? "bg-emerald-100 text-emerald-700" : "bg-slate-100 text-slate-500 hover:bg-medical-100 hover:text-medical-600"}`}>
+                  <Camera className="w-3.5 h-3.5" />
+                  {testImageUrl ? "Retake" : "Scan slip"}
                 </div>
-                <div className="flex-1 pb-3 min-w-0 space-y-2">
-                  <PhoneInput
-                    label="Patient Phone"
-                    required
-                    value={form.patient_phone}
-                    onChange={(v) => set("patient_phone", v)}
-                    error={errors.patient_phone}
+                <input
+                  type="file"
+                  accept="image/jpeg,image/png,image/webp,image/heic,.heic"
+                  className="sr-only"
+                  onChange={(e) => {
+                    const file = e.target.files?.[0];
+                    if (!file) return;
+                    const MAX_MB = 10;
+                    if (file.size > MAX_MB * 1024 * 1024) {
+                      setImageUploadError(`File is too large (${(file.size / 1024 / 1024).toFixed(1)} MB). Maximum is ${MAX_MB} MB.`);
+                      e.target.value = "";
+                      return;
+                    }
+                    const allowed = ["image/jpeg", "image/png", "image/webp", "image/heic"];
+                    if (!allowed.includes(file.type) && !file.name.toLowerCase().endsWith(".heic")) {
+                      setImageUploadError(`Unsupported format: ${file.type || file.name.split(".").pop()?.toUpperCase()}. Please use JPEG, PNG, WebP, or HEIC.`);
+                      e.target.value = "";
+                      return;
+                    }
+                    setImageUploading(true);
+                    setImageUploadProgress(0);
+                    setImageUploadError(null);
+                    setTestImageUrl(null);
+                    setExtractionResult(null);
+                    setExtractionDismissed(false);
+                    const fd = new FormData();
+                    fd.append("file", file);
+                    const xhr = new XMLHttpRequest();
+                    xhr.upload.onprogress = (ev) => {
+                      if (ev.lengthComputable) setImageUploadProgress(Math.round((ev.loaded / ev.total) * 100));
+                    };
+                    xhr.onload = () => {
+                      try {
+                        const data = JSON.parse(xhr.responseText);
+                        if (data.url) {
+                          setTestImageUrl(data.url);
+                          setImageUploadProgress(100);
+                          setImageExtracting(true);
+                          setExtractionProgress(0);
+                          fetch("/api/requests/extract-from-image", {
+                            method: "POST",
+                            headers: { "Content-Type": "application/json" },
+                            body: JSON.stringify({ imageUrl: data.url }),
+                          })
+                            .then((r) => r.json())
+                            .then((res) => {
+                              if (res.success && res.extracted) {
+                                setExtractionResult(res.extracted);
+                                if (Array.isArray(res.extracted.tests) && res.extracted.tests.length > 0) {
+                                  const lowConfSet = new Set<string>(
+                                    (res.extracted.low_confidence_items ?? []).map((s: string) => s.toLowerCase())
+                                  );
+                                  const expanded = res.extracted.tests.flatMap((n: string) => {
+                                    const isLow = lowConfSet.has(n.toLowerCase());
+                                    const parts = smartSplitTestNames(n);
+                                    const names = parts.length > 0 ? parts : [n];
+                                    return names.map((name: string) => ({ name, low_confidence: isLow }));
+                                  });
+                                  const initialTags: { name: string; catalog_test_id: string | null; low_confidence: boolean }[] = expanded.map(({ name, low_confidence }: { name: string; low_confidence: boolean }) => ({
+                                    name,
+                                    catalog_test_id: null as string | null,
+                                    low_confidence,
+                                  }));
+                                  setTestTags(initialTags);
+                                  const labId = form.lab_id;
+                                  Promise.allSettled(
+                                    initialTags.map((tag: { name: string; catalog_test_id: string | null; low_confidence: boolean }) =>
+                                      fetch(`/api/catalog/search?q=${encodeURIComponent(tag.name)}${labId ? `&lab_id=${encodeURIComponent(labId)}` : ""}&limit=1`)
+                                        .then((r) => r.json())
+                                        .then((d) => {
+                                          const match = d.results?.[0];
+                                          if (!match) return null;
+                                          const nameLC = tag.name.toLowerCase();
+                                          const canonLC = match.canonical_name.toLowerCase();
+                                          if (canonLC === nameLC || canonLC.includes(nameLC) || nameLC.includes(canonLC)) {
+                                            return { originalName: tag.name, match };
+                                          }
+                                          return null;
+                                        })
+                                        .catch(() => null)
+                                    )
+                                  ).then((results) => {
+                                    const upgrades = new Map<string, { id: string; name: string; price?: number; category?: string; is_rapid_test?: boolean }>();
+                                    results.forEach((r) => {
+                                      if (r.status === "fulfilled" && r.value) {
+                                        upgrades.set(r.value.originalName.toLowerCase(), {
+                                          id: r.value.match.id,
+                                          name: r.value.match.canonical_name,
+                                          price: r.value.match.effective_price,
+                                          category: r.value.match.category,
+                                          is_rapid_test: r.value.match.is_rapid_test,
+                                        });
+                                      }
+                                    });
+                                    if (upgrades.size > 0) {
+                                      setTestTags((prev) =>
+                                        prev.map((t) => {
+                                          const up = upgrades.get(t.name.toLowerCase());
+                                          if (!up) return t;
+                                          return { name: up.name, catalog_test_id: up.id, low_confidence: false, price: up.price, category: up.category, is_rapid_test: up.is_rapid_test };
+                                        })
+                                      );
+                                    }
+                                  });
+                                }
+                                setForm((prev) => ({
+                                  ...prev,
+                                  diagnosis: res.extracted.diagnosis || prev.diagnosis,
+                                  patient_name: prev.patient_name || res.extracted.patient_name,
+                                  dob: prev.dob || res.extracted.dob,
+                                  sex: prev.sex || res.extracted.sex,
+                                  doctor_name: prev.doctor_name || res.extracted.doctor_name,
+                                  doctor_prefix: prev.doctor_prefix || res.extracted.doctor_prefix,
+                                }));
+                                if (res.extracted.dob || res.extracted.sex) setOptionalDetailsOpen(true);
+                              }
+                            })
+                            .catch(() => { /* silent — user continues manually */ })
+                            .finally(() => {
+                              setExtractionProgress(100);
+                              setTimeout(() => setImageExtracting(false), 700);
+                            });
+                        } else {
+                          setImageUploadError(data.error ?? "Upload failed. Please try again.");
+                        }
+                      } catch {
+                        setImageUploadError("Upload failed. Please try again.");
+                      } finally {
+                        setImageUploading(false);
+                        e.target.value = "";
+                      }
+                    };
+                    xhr.onerror = () => {
+                      setImageUploadError("Network error. Check your connection and try again.");
+                      setImageUploading(false);
+                      e.target.value = "";
+                    };
+                    xhr.open("POST", "/api/requests/upload-image");
+                    xhr.send(fd);
+                  }}
+                />
+              </label>
+            </div>
+
+            <div className="space-y-3">
+                  {/* Upload / extraction progress — shown while processing the scanned slip */}
+                  {imageUploading ? (
+                    (() => {
+                      const uploadPct = imageUploadProgress;
+                      const UPLOAD_STAGES = [
+                        { icon: "📷", label: "Reading your image…", start: 0, end: 40 },
+                        { icon: "🧠", label: "Understanding the image…", start: 40, end: 100 },
+                      ];
+                      return (
+                        <div className="rounded-2xl border border-slate-200 bg-white px-6 py-8 space-y-5">
+                          <div className="text-center">
+                            <p className="text-sm font-semibold text-slate-700">Uploading image…</p>
+                            <p className="text-xs text-slate-400 mt-0.5">{uploadPct < 100 ? `${uploadPct}%` : "Almost done…"}</p>
+                          </div>
+                          <div className="w-full bg-slate-100 rounded-full h-1.5 overflow-hidden">
+                            <div className="h-full bg-medical-500 rounded-full transition-all duration-300" style={{ width: `${uploadPct}%` }} />
+                          </div>
+                          <div className="space-y-2.5">
+                            {UPLOAD_STAGES.map((stage) => {
+                              const done = uploadPct >= stage.end;
+                              const active = uploadPct >= stage.start && uploadPct < stage.end;
+                              return (
+                                <div key={stage.label} className={`flex items-center gap-3 transition-opacity duration-300 ${uploadPct < stage.start ? "opacity-30" : "opacity-100"}`}>
+                                  <div className={`w-7 h-7 rounded-full flex items-center justify-center shrink-0 text-base transition-all ${done ? "bg-emerald-100" : active ? "bg-medical-100" : "bg-slate-100"}`}>
+                                    {done ? "✓" : stage.icon}
+                                  </div>
+                                  <span className={`text-sm font-medium ${done ? "text-emerald-600" : active ? "text-slate-800" : "text-slate-400"}`}>{stage.label}</span>
+                                  {active && <RefreshCw className="w-3.5 h-3.5 text-medical-400 animate-spin ml-auto shrink-0" />}
+                                  {done && <span className="text-xs text-emerald-500 ml-auto shrink-0 font-medium">Done</span>}
+                                </div>
+                              );
+                            })}
+                          </div>
+                        </div>
+                      );
+                    })()
+                  ) : imageExtracting ? (
+                    (() => {
+                      const p = extractionProgress;
+                      const SCAN_STAGES = [
+                        { icon: "🔍", label: "Reading the document…",        start: 0,  end: 25 },
+                        { icon: "🧬", label: "Identifying tests & fields…",  start: 25, end: 50 },
+                        { icon: "🏷️", label: "Matching to test catalog…",    start: 50, end: 75 },
+                        { icon: "✨", label: "Pre-filling your form…",       start: 75, end: 100 },
+                      ];
+                      return (
+                        <div className="rounded-2xl border border-slate-200 bg-white px-6 py-8 space-y-5">
+                          <div className="text-center">
+                            <p className="text-sm font-semibold text-slate-700">Scanning with AI…</p>
+                            <p className="text-xs text-slate-400 mt-0.5">Hang tight, this only takes a few seconds</p>
+                          </div>
+                          <div className="w-full bg-slate-100 rounded-full h-1.5 overflow-hidden">
+                            <div className="h-full bg-medical-500 rounded-full transition-all duration-700" style={{ width: `${p}%` }} />
+                          </div>
+                          <div className="space-y-2.5">
+                            {SCAN_STAGES.map((stage) => {
+                              const done = p >= stage.end;
+                              const active = p >= stage.start && p < stage.end;
+                              return (
+                                <div key={stage.label} className={`flex items-center gap-3 transition-opacity duration-300 ${p < stage.start ? "opacity-30" : "opacity-100"}`}>
+                                  <div className={`w-7 h-7 rounded-full flex items-center justify-center shrink-0 text-base transition-all ${done ? "bg-emerald-100" : active ? "bg-medical-100" : "bg-slate-100"}`}>
+                                    {done ? "✓" : stage.icon}
+                                  </div>
+                                  <span className={`text-sm font-medium ${done ? "text-emerald-600" : active ? "text-slate-800" : "text-slate-400"}`}>{stage.label}</span>
+                                  {active && <RefreshCw className="w-3.5 h-3.5 text-medical-400 animate-spin ml-auto shrink-0" />}
+                                  {done && <span className="text-xs text-emerald-500 ml-auto shrink-0 font-medium">Done</span>}
+                                </div>
+                              );
+                            })}
+                          </div>
+                        </div>
+                      );
+                    })()
+                  ) : testImageUrl ? (
+                    <div className="space-y-2 animate-fade-in-up">
+                      {/* Image thumbnail row */}
+                      <div className="flex items-center gap-3 rounded-xl border border-emerald-200 bg-emerald-50/40 px-4 py-3">
+                        <img src={testImageUrl} alt="Scanned test request slip" className="w-14 h-14 rounded-lg object-cover border border-emerald-200 shrink-0" />
+                        <div className="flex-1 min-w-0">
+                          <p className="text-sm font-semibold text-emerald-700 flex items-center gap-1.5">
+                            <Check className="w-4 h-4" /> Image uploaded
+                          </p>
+                          {extractionResult && !extractionDismissed ? (
+                            <p className="text-xs text-emerald-600 mt-0.5 flex items-center gap-1">
+                              <Check className="w-3 h-3" /> Fields pre-filled
+                            </p>
+                          ) : (
+                            <p className="text-xs text-slate-400 mt-0.5 truncate">{testImageUrl?.split("/").pop()}</p>
+                          )}
+                        </div>
+                        <button type="button" onClick={() => { setTestImageUrl(null); setImageUploadError(null); setExtractionResult(null); setExtractionDismissed(false); setTestTags([]); }} className="p-1.5 rounded-lg hover:bg-emerald-100 text-emerald-400 hover:text-emerald-700 transition-colors shrink-0" aria-label="Remove uploaded image">
+                          <X className="w-4 h-4" />
+                        </button>
+                      </div>
+                      {/* Low-confidence warning */}
+                      {extractionResult && !extractionDismissed && extractionResult.low_confidence_items.length > 0 && (
+                        <div className="flex items-start gap-2 px-3 py-2 rounded-xl bg-amber-50 border border-amber-200">
+                          <span className="text-amber-500 text-sm shrink-0 mt-0.5">⚠</span>
+                          <p className="text-xs text-amber-700 flex-1">
+                            Please verify: <span className="font-medium">{extractionResult.low_confidence_items.join(", ")}</span>
+                          </p>
+                          <button type="button" onClick={() => setExtractionDismissed(true)} className="text-amber-400 hover:text-amber-600 transition-colors shrink-0" aria-label="Dismiss">
+                            <X className="w-3.5 h-3.5" />
+                          </button>
+                        </div>
+                      )}
+                    </div>
+                  ) : null}
+
+                  {imageUploadError && <p className="text-xs text-red-600 font-medium">{imageUploadError}</p>}
+
+                  {/* Tests — always visible; pre-filled after scan */}
+                  <TestTagInput
+                    label={imageExtracting ? "Laboratory Tests (scanning…)" : "Laboratory Tests Requested"}
+                    value={testTags}
+                    onChange={setTestTags}
+                    labId={form.lab_id}
+                    error={errors.tests}
+                    disabled={imageExtracting}
                   />
-                  {/* Profile lookup feedback */}
-                  {patientLookupStatus === "checking" && (
-                    <div className="flex items-center gap-2 text-xs text-slate-400">
-                      <RefreshCw className="w-3 h-3 animate-spin" />
-                      Looking up patient profile…
-                    </div>
-                  )}
-                  {patientLookupStatus === "found" && (
-                    <div className="flex items-start gap-2 px-3 py-2 bg-emerald-50 border border-emerald-200 rounded-xl text-xs">
-                      <Check className="w-3.5 h-3.5 text-emerald-600 shrink-0 mt-0.5" />
-                      <span className="text-emerald-800 font-medium">Patient profile found — details pre-filled below</span>
-                    </div>
-                  )}
-                  {patientLookupStatus === "not_found" && (
-                    <div className="flex items-start gap-2 px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs">
-                      <Info className="w-3.5 h-3.5 text-slate-400 shrink-0 mt-0.5" />
-                      <span className="text-slate-600">New patient — please fill in details below</span>
-                    </div>
-                  )}
-                </div>
+
               </div>
 
-              {/* Substep 2: Name — reveals after phone is entered */}
-              {form.patient_phone.trim() && (
-                <div className="relative flex gap-3 animate-fade-in-up">
+            {/* Diagnosis / Clinical Notes — always visible */}
+            <div className="space-y-2">
+              <Textarea
+                label="Diagnosis / Clinical Notes"
+                placeholder="Brief clinical summary or working diagnosis…"
+                rows={3}
+                value={form.diagnosis}
+                onChange={(e) => set("diagnosis", e.target.value)}
+              />
+            </div>
+
+            {/* Patient Contact */}
+            <div className="pt-4 border-t border-slate-100 space-y-5">
+              <h2 className="flex items-center gap-3 text-base font-bold text-slate-800 pb-4 border-b border-slate-100">
+                <div className="w-8 h-8 rounded-xl bg-medical-50 flex items-center justify-center shrink-0">
+                  <User className="w-4 h-4 text-medical-600" />
+                </div>
+                Patient Contact
+              </h2>
+
+              <div className="relative pt-1">
+                {/* Substep 1: Phone — primary identifier, triggers profile lookup */}
+                <div className="relative flex gap-3">
                   <div className="flex flex-col items-center shrink-0 pt-1">
                     <div className={`w-7 h-7 rounded-full flex items-center justify-center text-xs font-bold border-2 transition-all shrink-0 ${
-                      form.patient_name.trim()
+                      form.patient_phone.trim()
                         ? "bg-emerald-500 border-emerald-500 text-white"
                         : "bg-white border-medical-400 text-medical-600"
                     }`}>
-                      {form.patient_name.trim() ? <Check className="w-3.5 h-3.5" /> : "2"}
+                      {form.patient_phone.trim() ? <Check className="w-3.5 h-3.5" /> : "1"}
                     </div>
-                    {form.patient_name.trim() && <div className="w-0.5 flex-1 min-h-4 bg-slate-200 mt-1" />}
+                    {form.patient_phone.trim() && (
+                      <div className="w-0.5 flex-1 min-h-4 bg-slate-200 mt-1" />
+                    )}
                   </div>
-                  <div className="flex-1 pb-3 min-w-0">
-                    <Input
-                      label="Patient Full Name"
-                      placeholder="e.g. Amara Okonkwo"
-                      value={form.patient_name}
-                      onChange={(e) => set("patient_name", e.target.value)}
-                      error={errors.patient_name}
+                  <div className="flex-1 pb-3 min-w-0 space-y-2">
+                    <PhoneInput
+                      label="Patient Phone"
                       required
+                      value={form.patient_phone}
+                      onChange={(v) => set("patient_phone", v)}
+                      error={errors.patient_phone}
                     />
+                    {/* Profile lookup feedback */}
+                    {patientLookupStatus === "checking" && (
+                      <div className="flex items-center gap-2 text-xs text-slate-400">
+                        <RefreshCw className="w-3 h-3 animate-spin" />
+                        Looking up patient profile…
+                      </div>
+                    )}
+                    {patientLookupStatus === "found" && (
+                      <div className="flex items-start gap-2 px-3 py-2 bg-emerald-50 border border-emerald-200 rounded-xl text-xs">
+                        <Check className="w-3.5 h-3.5 text-emerald-600 shrink-0 mt-0.5" />
+                        <span className="text-emerald-800 font-medium">Patient profile found — details pre-filled below</span>
+                      </div>
+                    )}
+                    {patientLookupStatus === "not_found" && (
+                      <div className="flex items-start gap-2 px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs">
+                        <Info className="w-3.5 h-3.5 text-slate-400 shrink-0 mt-0.5" />
+                        <span className="text-slate-600">New patient — please fill in details below</span>
+                      </div>
+                    )}
                   </div>
                 </div>
-              )}
 
-              {/* Substep 3: Optional details — reveals after name */}
-              {form.patient_phone.trim() && form.patient_name.trim() && (
-                <div className="relative flex gap-3 animate-fade-in-up">
-                  <div className="flex flex-col items-center shrink-0 pt-1">
-                    <div className={`w-7 h-7 rounded-full flex items-center justify-center text-xs font-bold border-2 transition-all shrink-0 ${
-                      (form.patient_email || form.dob || form.sex)
-                        ? "bg-emerald-500 border-emerald-500 text-white"
-                        : "bg-white border-slate-300 text-slate-400"
-                    }`}>
-                      {(form.patient_email || form.dob || form.sex) ? <Check className="w-3.5 h-3.5" /> : "3"}
+                {/* Substep 2: Name — reveals after phone is entered */}
+                {form.patient_phone.trim() && (
+                  <div className="relative flex gap-3 animate-fade-in-up">
+                    <div className="flex flex-col items-center shrink-0 pt-1">
+                      <div className={`w-7 h-7 rounded-full flex items-center justify-center text-xs font-bold border-2 transition-all shrink-0 ${
+                        form.patient_name.trim()
+                          ? "bg-emerald-500 border-emerald-500 text-white"
+                          : "bg-white border-medical-400 text-medical-600"
+                      }`}>
+                        {form.patient_name.trim() ? <Check className="w-3.5 h-3.5" /> : "2"}
+                      </div>
+                      {form.patient_name.trim() && <div className="w-0.5 flex-1 min-h-4 bg-slate-200 mt-1" />}
+                    </div>
+                    <div className="flex-1 pb-3 min-w-0">
+                      <Input
+                        label="Patient Full Name"
+                        placeholder="e.g. Amara Okonkwo"
+                        value={form.patient_name}
+                        onChange={(e) => set("patient_name", e.target.value)}
+                        error={errors.patient_name}
+                        required
+                      />
                     </div>
                   </div>
-                  <div className="flex-1 pb-2 min-w-0">
-                    <p className="text-sm font-medium text-slate-500 mb-3">
-                      Optional details
-                    </p>
-                    <div className="space-y-3">
+                )}
+
+                {/* Substep 3: Email — reveals after name */}
+                {form.patient_phone.trim() && form.patient_name.trim() && (
+                  <div className="relative flex gap-3 animate-fade-in-up">
+                    <div className="flex flex-col items-center shrink-0 pt-1">
+                      <div className={`w-7 h-7 rounded-full flex items-center justify-center text-xs font-bold border-2 transition-all shrink-0 ${
+                        form.patient_email.trim()
+                          ? "bg-emerald-500 border-emerald-500 text-white"
+                          : "bg-white border-slate-300 text-slate-400"
+                      }`}>
+                        {form.patient_email.trim() ? <Check className="w-3.5 h-3.5" /> : "3"}
+                      </div>
+                      {form.patient_email.trim() && <div className="w-0.5 flex-1 min-h-4 bg-slate-200 mt-1" />}
+                    </div>
+                    <div className="flex-1 pb-3 min-w-0">
                       <Input
                         label="Patient Email"
                         type="email"
@@ -2156,25 +2067,126 @@ export function DoctorRequestForm({
                         onChange={(e) => set("patient_email", e.target.value)}
                         error={errors.patient_email}
                       />
-                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                        <DobInput value={form.dob} onChange={(iso) => set("dob", iso)} />
-                        <div className="flex flex-col gap-1">
-                          <label className="text-sm font-medium text-slate-700">Sex</label>
-                          <div className="flex gap-2">
-                            {(["male", "female"] as const).map((s) => (
-                              <button key={s} type="button" onClick={() => set("sex", form.sex === s ? "" : s)}
-                                className={`flex items-center gap-2 px-4 py-2.5 rounded-xl border-2 transition-all text-sm font-semibold ${form.sex === s ? "border-medical-400 bg-medical-50 text-medical-700" : "border-slate-200 bg-white/60 text-slate-500 hover:border-slate-300 hover:bg-slate-50"}`}>
-                                {s === "male" ? <MarsIcon className={`w-4 h-4 ${form.sex === s ? "text-medical-500" : "text-slate-400"}`} /> : <VenusIcon className={`w-4 h-4 ${form.sex === s ? "text-medical-500" : "text-slate-400"}`} />}
-                                {s.charAt(0).toUpperCase() + s.slice(1)}
-                              </button>
-                            ))}
-                          </div>
-                        </div>
-                      </div>
                     </div>
                   </div>
-                </div>
-              )}
+                )}
+
+                {/* Substep 4: Collapsed optional — age, sex, patient condition */}
+                {form.patient_phone.trim() && form.patient_name.trim() && (
+                  <div className="relative flex gap-3 animate-fade-in-up">
+                    <div className="flex flex-col items-center shrink-0 pt-1">
+                      <div className={`w-7 h-7 rounded-full flex items-center justify-center text-xs font-bold border-2 transition-all shrink-0 ${
+                        (form.dob || form.sex || isCritical || needsAmbulance)
+                          ? "bg-emerald-500 border-emerald-500 text-white"
+                          : "bg-white border-slate-300 text-slate-400"
+                      }`}>
+                        {(form.dob || form.sex || isCritical || needsAmbulance) ? <Check className="w-3.5 h-3.5" /> : "4"}
+                      </div>
+                    </div>
+                    <div className="flex-1 pb-2 min-w-0">
+                      {(() => {
+                        const hasDemographics = !!(form.dob || form.sex);
+                        const hasCondition = isCritical || needsAmbulance;
+                        const borderColor = isCritical ? "border-red-200" : needsAmbulance ? "border-orange-200" : hasDemographics ? "border-emerald-200" : "border-slate-200";
+                        const bgColor = isCritical ? "bg-red-50/20" : needsAmbulance ? "bg-orange-50/20" : hasDemographics ? "bg-emerald-50/30" : "";
+                        return (
+                          <div className={`rounded-xl border-2 overflow-hidden transition-colors ${borderColor} ${bgColor}`}>
+                            <button
+                              type="button"
+                              onClick={() => setOptionalDetailsOpen((v) => !v)}
+                              className="w-full flex items-center justify-between px-4 py-3 hover:bg-black/[0.02] transition-colors bg-slate-50/40"
+                            >
+                              <div className="flex items-center gap-2 text-left">
+                                <FileText className={`w-4 h-4 shrink-0 ${hasDemographics || hasCondition ? "text-slate-500" : "text-slate-400"}`} />
+                                <span className="text-sm font-semibold text-slate-700">Optional Details</span>
+                              </div>
+                              <div className="flex items-center gap-1.5">
+                                {hasDemographics && <span className="text-xs font-semibold text-emerald-600 bg-emerald-100 px-2 py-0.5 rounded-full">Age/Sex</span>}
+                                {isCritical && <span className="text-xs font-semibold text-red-600 bg-red-100 px-2 py-0.5 rounded-full">Critical</span>}
+                                {needsAmbulance && <span className="text-xs font-semibold text-orange-600 bg-orange-100 px-2 py-0.5 rounded-full">Ambulance</span>}
+                                {!hasDemographics && !hasCondition && <span className="text-xs text-slate-400">age, sex, condition</span>}
+                                <ChevronDown className={`w-4 h-4 shrink-0 transition-transform text-slate-400 ml-1 ${optionalDetailsOpen ? "rotate-180" : ""}`} />
+                              </div>
+                            </button>
+
+                            {optionalDetailsOpen && (
+                              <div className="border-t border-slate-100 divide-y divide-slate-100">
+                                {/* Age & Sex */}
+                                <div className="px-4 py-4 space-y-3">
+                                  <p className="text-xs font-semibold text-slate-400 uppercase tracking-wide">Age &amp; Sex</p>
+                                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                                    <DobInput value={form.dob} onChange={(iso) => set("dob", iso)} />
+                                    <div className="flex flex-col gap-1">
+                                      <label className="text-sm font-medium text-slate-700">Sex</label>
+                                      <div className="flex gap-2">
+                                        {(["male", "female"] as const).map((s) => (
+                                          <button key={s} type="button" onClick={() => set("sex", form.sex === s ? "" : s)}
+                                            className={`flex items-center gap-2 px-4 py-2.5 rounded-xl border-2 transition-all text-sm font-semibold ${form.sex === s ? "border-medical-400 bg-medical-50 text-medical-700" : "border-slate-200 bg-white/60 text-slate-500 hover:border-slate-300 hover:bg-slate-50"}`}>
+                                            {s === "male" ? <MarsIcon className={`w-4 h-4 ${form.sex === s ? "text-medical-500" : "text-slate-400"}`} /> : <VenusIcon className={`w-4 h-4 ${form.sex === s ? "text-medical-500" : "text-slate-400"}`} />}
+                                            {s.charAt(0).toUpperCase() + s.slice(1)}
+                                          </button>
+                                        ))}
+                                      </div>
+                                    </div>
+                                  </div>
+                                </div>
+
+                                {/* Patient Condition */}
+                                <div className="px-4 py-4 space-y-3">
+                                  <p className="text-xs font-semibold text-slate-400 uppercase tracking-wide">Patient Condition</p>
+                                  {!isCritical && !needsAmbulance && (
+                                    <div className="flex items-center gap-2 text-sm text-emerald-600 font-medium">
+                                      <Heart className="w-4 h-4 shrink-0" />
+                                      Stable
+                                    </div>
+                                  )}
+                                  <div className="flex gap-2">
+                                    <button
+                                      type="button"
+                                      onClick={() => setIsCritical((v) => !v)}
+                                      className={`flex-1 flex items-center justify-center gap-1.5 py-2.5 px-3 rounded-xl text-sm font-semibold border-2 transition-all ${
+                                        isCritical
+                                          ? "bg-red-50 border-red-300 text-red-600 shadow-sm"
+                                          : "border-slate-200 text-slate-500 hover:border-slate-300 hover:bg-slate-50"
+                                      }`}
+                                    >
+                                      <AlertTriangle className="w-3.5 h-3.5" />
+                                      Critical
+                                    </button>
+                                    <button
+                                      type="button"
+                                      onClick={() => setNeedsAmbulance((v) => !v)}
+                                      className={`flex-1 flex items-center justify-center gap-1.5 py-2.5 px-3 rounded-xl text-sm font-semibold border-2 transition-all ${
+                                        needsAmbulance
+                                          ? "bg-orange-50 border-orange-300 text-orange-600 shadow-sm"
+                                          : "border-slate-200 text-slate-500 hover:border-slate-300 hover:bg-slate-50"
+                                      }`}
+                                    >
+                                      <Truck className="w-3.5 h-3.5" />
+                                      Ambulance
+                                    </button>
+                                  </div>
+                                  {needsAmbulance && (
+                                    <div className="animate-fade-in-up">
+                                      <Textarea
+                                        label=""
+                                        placeholder="Pickup address or notes for the ambulance team…"
+                                        rows={2}
+                                        value={ambulanceNotes}
+                                        onChange={(e) => setAmbulanceNotes(e.target.value)}
+                                      />
+                                    </div>
+                                  )}
+                                </div>
+                              </div>
+                            )}
+                          </div>
+                        );
+                      })()}
+                    </div>
+                  </div>
+                )}
+              </div>
             </div>
           </div>
         )}
