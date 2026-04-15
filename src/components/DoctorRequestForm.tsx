@@ -1867,7 +1867,6 @@ export function DoctorRequestForm({
                 })()}
               </div>
             )}
-          </div>
 
           <div className="mt-6 pt-5 border-t border-slate-100 space-y-5">
             <h2 className="flex items-center gap-3 text-base font-bold text-slate-800 pb-4 border-b border-slate-100">
