@@ -1,10 +1,10 @@
 /**
  * SMS Provider Configuration
- * Using Twilio - reliable, simple, works everywhere
+ * Active provider: Termii (DND channel, sender ID: N-Alert)
  */
 
-import * as twilio from "./twilio";
+import * as termii from "./termii";
 
-export type SMSProvider = "twilio";
+export type SMSProvider = "termii";
 
-export const smsProvider = twilio;
+export const smsProvider = termii;

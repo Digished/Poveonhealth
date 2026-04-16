@@ -7,7 +7,7 @@
 import { prisma } from "@/lib/prisma";
 
 export async function logSmsSend(params: {
-  provider: "termii" | "sendchamp";
+  provider: "termii";
   toPhone: string;
   messageBody: string;
   messageId?: string;
