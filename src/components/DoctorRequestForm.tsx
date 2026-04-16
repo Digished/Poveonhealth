@@ -744,6 +744,7 @@ export function DoctorRequestForm({
   const [isCritical, setIsCritical] = useState(false);
   const [needsAmbulance, setNeedsAmbulance] = useState(false);
   const [ambulanceNotes, setAmbulanceNotes] = useState("");
+  const [conditionExpanded, setConditionExpanded] = useState(false);
   // Step 2: patient contact section active (collapses clinical section)
   const [patientContactActive, setPatientContactActive] = useState(false);
   // Step 4 accordion / lookup states
@@ -941,6 +942,19 @@ export function DoctorRequestForm({
     else setTod("evening");
   }, []);
 
+  // Auto-scroll focused inputs into view on mobile (accounts for keyboard opening)
+  useEffect(() => {
+    function handleFocusIn(e: FocusEvent) {
+      const el = e.target as HTMLElement;
+      if (!el || !["INPUT", "TEXTAREA"].includes(el.tagName)) return;
+      setTimeout(() => {
+        el.scrollIntoView({ behavior: "smooth", block: "center" });
+      }, 320);
+    }
+    document.addEventListener("focusin", handleFocusIn);
+    return () => document.removeEventListener("focusin", handleFocusIn);
+  }, []);
+
   // Hero visibility — when a #lab-hero element exists, track whether it's still in view.
   // Used to hide the logo/name in the sticky header while the hero is prominent.
   const [heroVisible, setHeroVisible] = useState(false);
@@ -1014,6 +1028,7 @@ export function DoctorRequestForm({
     }
     if (s === 2) {
       if (testTags.length === 0 && !testImageUrl) errs.tests = "Required";
+      if (!form.diagnosis.trim()) errs.diagnosis = "Clinical note is required";
       if (!form.patient_phone) errs.patient_phone = "Phone number is required";
       if (!form.patient_name.trim()) errs.patient_name = "Patient name is required";
     }
@@ -1248,6 +1263,7 @@ export function DoctorRequestForm({
     if (step === 2) {
       return (
         (testTags.length > 0 || !!testImageUrl) &&
+        !!form.diagnosis.trim() &&
         !!form.patient_phone.trim() &&
         !!form.patient_name.trim()
       );
@@ -1982,64 +1998,89 @@ export function DoctorRequestForm({
                   <div className="relative flex gap-3 animate-fade-in-up">
                     <div className="flex flex-col items-center shrink-0 pt-1">
                       <div className={`w-7 h-7 rounded-full flex items-center justify-center text-xs font-bold border-2 transition-all shrink-0 ${
-                        (form.diagnosis.trim() || isCritical || needsAmbulance)
+                        form.diagnosis.trim()
                           ? "bg-emerald-500 border-emerald-500 text-white"
-                          : "bg-white border-slate-300 text-slate-400"
+                          : "bg-white border-medical-400 text-medical-600"
                       }`}>
-                        {(form.diagnosis.trim() || isCritical || needsAmbulance) ? <Check className="w-3.5 h-3.5" /> : "2"}
+                        {form.diagnosis.trim() ? <Check className="w-3.5 h-3.5" /> : "2"}
                       </div>
                     </div>
                     <div className="flex-1 min-w-0 space-y-3">
                       <Textarea
-                        label="Diagnosis / Clinical Notes"
-                        placeholder="Brief clinical summary or working diagnosis…"
+                        label="Clinical Note"
+                        placeholder="e.g. 35 year old man with symptoms suggestive of sepsis"
                         rows={3}
+                        required
                         value={form.diagnosis}
                         onChange={(e) => set("diagnosis", e.target.value)}
+                        error={errors.diagnosis}
                       />
                       {/* Patient Condition */}
                       <div className="space-y-2">
-                        {!isCritical && !needsAmbulance && (
-                          <div className="flex items-center gap-2 text-xs text-emerald-600 font-medium">
-                            <Heart className="w-3.5 h-3.5 shrink-0" />
-                            Stable
+                        {!conditionExpanded && !isCritical && !needsAmbulance ? (
+                          /* Subtle stable row */
+                          <div className="flex items-center justify-between">
+                            <div className="flex items-center gap-1.5 text-xs text-emerald-600 font-medium">
+                              <Heart className="w-3.5 h-3.5 shrink-0" />
+                              This patient is stable
+                            </div>
+                            <button
+                              type="button"
+                              onClick={() => setConditionExpanded(true)}
+                              className="text-xs text-slate-400 hover:text-slate-600 font-medium underline underline-offset-2 transition-colors"
+                            >
+                              Change
+                            </button>
                           </div>
-                        )}
-                        <div className="flex gap-2">
-                          <button
-                            type="button"
-                            onClick={() => setIsCritical((v) => !v)}
-                            className={`flex-1 flex items-center justify-center gap-1.5 py-2 px-3 rounded-xl text-xs font-semibold border-2 transition-all ${
-                              isCritical
-                                ? "bg-red-50 border-red-300 text-red-600 shadow-sm"
-                                : "border-slate-200 text-slate-500 hover:border-slate-300 hover:bg-slate-50"
-                            }`}
-                          >
-                            <AlertTriangle className="w-3 h-3" />
-                            Critical
-                          </button>
-                          <button
-                            type="button"
-                            onClick={() => setNeedsAmbulance((v) => !v)}
-                            className={`flex-1 flex items-center justify-center gap-1.5 py-2 px-3 rounded-xl text-xs font-semibold border-2 transition-all ${
-                              needsAmbulance
-                                ? "bg-orange-50 border-orange-300 text-orange-600 shadow-sm"
-                                : "border-slate-200 text-slate-500 hover:border-slate-300 hover:bg-slate-50"
-                            }`}
-                          >
-                            <Truck className="w-3 h-3" />
-                            Ambulance
-                          </button>
-                        </div>
-                        {needsAmbulance && (
-                          <div className="animate-fade-in-up">
-                            <Textarea
-                              label=""
-                              placeholder="Pickup address or notes for the ambulance team…"
-                              rows={2}
-                              value={ambulanceNotes}
-                              onChange={(e) => setAmbulanceNotes(e.target.value)}
-                            />
+                        ) : (
+                          /* Expanded condition toggles */
+                          <div className="space-y-2 animate-fade-in">
+                            <div className="flex gap-2">
+                              <button
+                                type="button"
+                                onClick={() => setIsCritical((v) => !v)}
+                                className={`flex-1 flex items-center justify-center gap-1.5 py-2 px-3 rounded-xl text-xs font-semibold border-2 transition-all ${
+                                  isCritical
+                                    ? "bg-red-50 border-red-300 text-red-600 shadow-sm"
+                                    : "border-slate-200 text-slate-500 hover:border-slate-300 hover:bg-slate-50"
+                                }`}
+                              >
+                                <AlertTriangle className="w-3 h-3" />
+                                Critical
+                              </button>
+                              <button
+                                type="button"
+                                onClick={() => setNeedsAmbulance((v) => !v)}
+                                className={`flex-1 flex items-center justify-center gap-1.5 py-2 px-3 rounded-xl text-xs font-semibold border-2 transition-all ${
+                                  needsAmbulance
+                                    ? "bg-orange-50 border-orange-300 text-orange-600 shadow-sm"
+                                    : "border-slate-200 text-slate-500 hover:border-slate-300 hover:bg-slate-50"
+                                }`}
+                              >
+                                <Truck className="w-3 h-3" />
+                                Ambulance
+                              </button>
+                              {!isCritical && !needsAmbulance && (
+                                <button
+                                  type="button"
+                                  onClick={() => setConditionExpanded(false)}
+                                  className="px-3 py-2 rounded-xl text-xs text-slate-400 hover:text-slate-600 border-2 border-transparent hover:border-slate-200 transition-all"
+                                >
+                                  Cancel
+                                </button>
+                              )}
+                            </div>
+                            {needsAmbulance && (
+                              <div className="animate-fade-in-up">
+                                <Textarea
+                                  label=""
+                                  placeholder="Pickup address or notes for the ambulance team…"
+                                  rows={2}
+                                  value={ambulanceNotes}
+                                  onChange={(e) => setAmbulanceNotes(e.target.value)}
+                                />
+                              </div>
+                            )}
                           </div>
                         )}
                       </div>
@@ -2049,8 +2090,8 @@ export function DoctorRequestForm({
               </div>
             )}
 
-            {/* Patient Contact — revealed once tests are added */}
-            {(testTags.length > 0 || !!testImageUrl) && (
+            {/* Patient Contact — revealed once tests and clinical note are filled */}
+            {(testTags.length > 0 || !!testImageUrl) && !!form.diagnosis.trim() && (
               <div
                 ref={patientContactRef}
                 onFocus={() => setPatientContactActive(true)}
