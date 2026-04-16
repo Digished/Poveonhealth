@@ -13,34 +13,12 @@ import {
   AlertTriangle, Truck, MessageCircle, Heart,
 } from "lucide-react";
 
-function MarsIcon({ className }: { className?: string }) {
-  return (
-    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"
-      strokeLinecap="round" strokeLinejoin="round" className={className}>
-      <circle cx="10" cy="14" r="5" />
-      <line x1="14.5" y1="9.5" x2="21" y2="3" />
-      <polyline points="16 3 21 3 21 8" />
-    </svg>
-  );
-}
-
-function VenusIcon({ className }: { className?: string }) {
-  return (
-    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"
-      strokeLinecap="round" strokeLinejoin="round" className={className}>
-      <circle cx="12" cy="9" r="5" />
-      <line x1="12" y1="14" x2="12" y2="21" />
-      <line x1="9" y1="18" x2="15" y2="18" />
-    </svg>
-  );
-}
 import { Button } from "@/components/ui/Button";
-import { Input, Textarea, Select } from "@/components/ui/Input";
+import { Input, Textarea } from "@/components/ui/Input";
 import { TestTagInput, TestTag } from "@/components/ui/TestTagInput";
 import { smartSplitTestNames } from "@/lib/smart-split";
 import { PhoneInput } from "@/components/PhoneInput";
 import { BankAccountInput } from "@/components/BankAccountInput";
-import { DobInput } from "@/components/DobInput";
 import { SuccessScreen } from "@/components/SuccessScreen";
 import { PoveonLogo } from "@/components/PoveonLogo";
 import { PROFESSIONAL_PREFIXES, PrefixSelectModal, PrefixSelect } from "@/components/PrefixSelect";
@@ -766,8 +744,8 @@ export function DoctorRequestForm({
   const [isCritical, setIsCritical] = useState(false);
   const [needsAmbulance, setNeedsAmbulance] = useState(false);
   const [ambulanceNotes, setAmbulanceNotes] = useState("");
-  // Step 2 optional details collapsible (diagnosis + condition combined)
-  const [optionalDetailsOpen, setOptionalDetailsOpen] = useState(false);
+  // Step 2: patient contact section active (collapses clinical section)
+  const [patientContactActive, setPatientContactActive] = useState(false);
   // Step 4 accordion / lookup states
   const [patientInfoOpen, setPatientInfoOpen] = useState(false);
   const [patientLookupStatus, setPatientLookupStatus] = useState<"idle" | "checking" | "found" | "not_found">("idle");
@@ -776,6 +754,8 @@ export function DoctorRequestForm({
   // Always-fresh read of form state for use inside async callbacks
   const formRef = useRef(form);
   formRef.current = form;
+  // Ref for the patient contact section (used for collapse detection)
+  const patientContactRef = useRef<HTMLDivElement>(null);
 
   // Step 3: doctor profile check
   const [docProfileStatus, setDocProfileStatus] = useState<"idle" | "checking" | "found_complete" | "found_partial" | "not_found">("idle");
@@ -1673,13 +1653,39 @@ export function DoctorRequestForm({
         {/* Step 2: Tests & Patient */}
         {step === 2 && (
           <div className="space-y-4">
-            {/* Header row: title + camera button */}
-            <div className="flex items-center justify-between pb-3 border-b border-slate-100">
-              <h2 className="flex items-center gap-2 text-base font-semibold text-slate-700">
-                <TestTube2 className="w-4 h-4 text-medical-600" />
-                Tests &amp; Patient
-              </h2>
-              {/* Camera button — tap to scan a physical test request slip */}
+
+            {/* Clinical section — collapses to summary when patient contact is focused */}
+            {patientContactActive ? (
+              /* Collapsed summary */
+              <button
+                type="button"
+                onClick={() => setPatientContactActive(false)}
+                className="w-full flex items-center gap-3 px-4 py-3 rounded-xl border border-emerald-200 bg-emerald-50/60 hover:bg-emerald-100/60 transition-colors text-left animate-fade-in"
+              >
+                <div className="w-6 h-6 rounded-full bg-emerald-500 flex items-center justify-center shrink-0">
+                  <Check className="w-3 h-3 text-white" />
+                </div>
+                <div className="flex-1 min-w-0">
+                  <p className="text-xs font-semibold text-emerald-800 truncate">
+                    {testTags.length > 0
+                      ? `${testTags.length} test${testTags.length !== 1 ? "s" : ""}${form.diagnosis.trim() ? ` · ${form.diagnosis.trim().slice(0, 40)}${form.diagnosis.trim().length > 40 ? "…" : ""}` : ""}`
+                      : testImageUrl ? "Image attached" : ""}
+                    {isCritical && " · Critical"}
+                    {needsAmbulance && " · Ambulance"}
+                  </p>
+                </div>
+                <span className="text-xs text-emerald-600 font-medium shrink-0">Edit</span>
+              </button>
+            ) : (
+              /* Full clinical section */
+              <div className="space-y-3">
+                {/* Header: title + camera */}
+                <div className="flex items-center justify-between pb-3 border-b border-slate-100">
+                  <h2 className="flex items-center gap-2 text-base font-semibold text-slate-700">
+                    <TestTube2 className="w-4 h-4 text-medical-600" />
+                    Clinical Details
+                  </h2>
+                  {/* Camera button */}
               <label className="cursor-pointer select-none" aria-label="Scan test request slip">
                 <div className={`flex items-center gap-1.5 py-1.5 px-3 rounded-xl text-xs font-semibold transition-colors active:scale-95 ${testImageUrl ? "bg-emerald-100 text-emerald-700" : "bg-slate-100 text-slate-500 hover:bg-medical-100 hover:text-medical-600"}`}>
                   <Camera className="w-3.5 h-3.5" />
@@ -1799,7 +1805,7 @@ export function DoctorRequestForm({
                                   doctor_name: prev.doctor_name || res.extracted.doctor_name,
                                   doctor_prefix: prev.doctor_prefix || res.extracted.doctor_prefix,
                                 }));
-                                if (res.extracted.dob || res.extracted.sex) setOptionalDetailsOpen(true);
+
                               }
                             })
                             .catch(() => { /* silent — user continues manually */ })
@@ -1827,7 +1833,23 @@ export function DoctorRequestForm({
                   }}
                 />
               </label>
-            </div>
+                </div>
+
+                {/* Substep 1: Tests */}
+                <div className="relative flex gap-3">
+                  <div className="flex flex-col items-center shrink-0 pt-1">
+                    <div className={`w-7 h-7 rounded-full flex items-center justify-center text-xs font-bold border-2 transition-all shrink-0 ${
+                      (testTags.length > 0 || !!testImageUrl)
+                        ? "bg-emerald-500 border-emerald-500 text-white"
+                        : "bg-white border-medical-400 text-medical-600"
+                    }`}>
+                      {(testTags.length > 0 || !!testImageUrl) ? <Check className="w-3.5 h-3.5" /> : "1"}
+                    </div>
+                    {(testTags.length > 0 || !!testImageUrl) && (
+                      <div className="w-0.5 flex-1 min-h-4 bg-slate-200 mt-1" />
+                    )}
+                  </div>
+                  <div className="flex-1 min-w-0">
 
             <div className="space-y-3">
                   {/* Upload / extraction progress — shown while processing the scanned slip */}
@@ -1952,242 +1974,200 @@ export function DoctorRequestForm({
                   />
 
               </div>
-
-            {/* Diagnosis / Clinical Notes — always visible */}
-            <div className="space-y-2">
-              <Textarea
-                label="Diagnosis / Clinical Notes"
-                placeholder="Brief clinical summary or working diagnosis…"
-                rows={3}
-                value={form.diagnosis}
-                onChange={(e) => set("diagnosis", e.target.value)}
-              />
-            </div>
-
-            {/* Patient Contact */}
-            <div className="pt-4 border-t border-slate-100 space-y-5">
-              <h2 className="flex items-center gap-3 text-base font-bold text-slate-800 pb-4 border-b border-slate-100">
-                <div className="w-8 h-8 rounded-xl bg-medical-50 flex items-center justify-center shrink-0">
-                  <User className="w-4 h-4 text-medical-600" />
-                </div>
-                Patient Contact
-              </h2>
-
-              <div className="relative pt-1">
-                {/* Substep 1: Phone — primary identifier, triggers profile lookup */}
-                <div className="relative flex gap-3">
-                  <div className="flex flex-col items-center shrink-0 pt-1">
-                    <div className={`w-7 h-7 rounded-full flex items-center justify-center text-xs font-bold border-2 transition-all shrink-0 ${
-                      form.patient_phone.trim()
-                        ? "bg-emerald-500 border-emerald-500 text-white"
-                        : "bg-white border-medical-400 text-medical-600"
-                    }`}>
-                      {form.patient_phone.trim() ? <Check className="w-3.5 h-3.5" /> : "1"}
-                    </div>
-                    {form.patient_phone.trim() && (
-                      <div className="w-0.5 flex-1 min-h-4 bg-slate-200 mt-1" />
-                    )}
-                  </div>
-                  <div className="flex-1 pb-3 min-w-0 space-y-2">
-                    <PhoneInput
-                      label="Patient Phone"
-                      required
-                      value={form.patient_phone}
-                      onChange={(v) => set("patient_phone", v)}
-                      error={errors.patient_phone}
-                    />
-                    {/* Profile lookup feedback */}
-                    {patientLookupStatus === "checking" && (
-                      <div className="flex items-center gap-2 text-xs text-slate-400">
-                        <RefreshCw className="w-3 h-3 animate-spin" />
-                        Looking up patient profile…
-                      </div>
-                    )}
-                    {patientLookupStatus === "found" && (
-                      <div className="flex items-start gap-2 px-3 py-2 bg-emerald-50 border border-emerald-200 rounded-xl text-xs">
-                        <Check className="w-3.5 h-3.5 text-emerald-600 shrink-0 mt-0.5" />
-                        <span className="text-emerald-800 font-medium">Patient profile found — details pre-filled below</span>
-                      </div>
-                    )}
-                    {patientLookupStatus === "not_found" && (
-                      <div className="flex items-start gap-2 px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs">
-                        <Info className="w-3.5 h-3.5 text-slate-400 shrink-0 mt-0.5" />
-                        <span className="text-slate-600">New patient — please fill in details below</span>
-                      </div>
-                    )}
                   </div>
                 </div>
 
-                {/* Substep 2: Name — reveals after phone is entered */}
-                {form.patient_phone.trim() && (
+                {/* Substep 2: Diagnosis + Patient Condition (reveals after tests filled) */}
+                {(testTags.length > 0 || !!testImageUrl) && (
                   <div className="relative flex gap-3 animate-fade-in-up">
                     <div className="flex flex-col items-center shrink-0 pt-1">
                       <div className={`w-7 h-7 rounded-full flex items-center justify-center text-xs font-bold border-2 transition-all shrink-0 ${
-                        form.patient_name.trim()
-                          ? "bg-emerald-500 border-emerald-500 text-white"
-                          : "bg-white border-medical-400 text-medical-600"
-                      }`}>
-                        {form.patient_name.trim() ? <Check className="w-3.5 h-3.5" /> : "2"}
-                      </div>
-                      {form.patient_name.trim() && <div className="w-0.5 flex-1 min-h-4 bg-slate-200 mt-1" />}
-                    </div>
-                    <div className="flex-1 pb-3 min-w-0">
-                      <Input
-                        label="Patient Full Name"
-                        placeholder="e.g. Amara Okonkwo"
-                        value={form.patient_name}
-                        onChange={(e) => set("patient_name", e.target.value)}
-                        error={errors.patient_name}
-                        required
-                      />
-                    </div>
-                  </div>
-                )}
-
-                {/* Substep 3: Email — reveals after name */}
-                {form.patient_phone.trim() && form.patient_name.trim() && (
-                  <div className="relative flex gap-3 animate-fade-in-up">
-                    <div className="flex flex-col items-center shrink-0 pt-1">
-                      <div className={`w-7 h-7 rounded-full flex items-center justify-center text-xs font-bold border-2 transition-all shrink-0 ${
-                        form.patient_email.trim()
+                        (form.diagnosis.trim() || isCritical || needsAmbulance)
                           ? "bg-emerald-500 border-emerald-500 text-white"
                           : "bg-white border-slate-300 text-slate-400"
                       }`}>
-                        {form.patient_email.trim() ? <Check className="w-3.5 h-3.5" /> : "3"}
+                        {(form.diagnosis.trim() || isCritical || needsAmbulance) ? <Check className="w-3.5 h-3.5" /> : "2"}
                       </div>
-                      {form.patient_email.trim() && <div className="w-0.5 flex-1 min-h-4 bg-slate-200 mt-1" />}
                     </div>
-                    <div className="flex-1 pb-3 min-w-0">
-                      <Input
-                        label="Patient Email"
-                        type="email"
-                        placeholder="patient@example.com"
-                        hint="Optional — used to send results and track request history"
-                        value={form.patient_email}
-                        onChange={(e) => set("patient_email", e.target.value)}
-                        error={errors.patient_email}
+                    <div className="flex-1 min-w-0 space-y-3">
+                      <Textarea
+                        label="Diagnosis / Clinical Notes"
+                        placeholder="Brief clinical summary or working diagnosis…"
+                        rows={3}
+                        value={form.diagnosis}
+                        onChange={(e) => set("diagnosis", e.target.value)}
                       />
-                    </div>
-                  </div>
-                )}
-
-                {/* Substep 4: Collapsed optional — age, sex, patient condition */}
-                {form.patient_phone.trim() && form.patient_name.trim() && (
-                  <div className="relative flex gap-3 animate-fade-in-up">
-                    <div className="flex flex-col items-center shrink-0 pt-1">
-                      <div className={`w-7 h-7 rounded-full flex items-center justify-center text-xs font-bold border-2 transition-all shrink-0 ${
-                        (form.dob || form.sex || isCritical || needsAmbulance)
-                          ? "bg-emerald-500 border-emerald-500 text-white"
-                          : "bg-white border-slate-300 text-slate-400"
-                      }`}>
-                        {(form.dob || form.sex || isCritical || needsAmbulance) ? <Check className="w-3.5 h-3.5" /> : "4"}
-                      </div>
-                    </div>
-                    <div className="flex-1 pb-2 min-w-0">
-                      {(() => {
-                        const hasDemographics = !!(form.dob || form.sex);
-                        const hasCondition = isCritical || needsAmbulance;
-                        const borderColor = isCritical ? "border-red-200" : needsAmbulance ? "border-orange-200" : hasDemographics ? "border-emerald-200" : "border-slate-200";
-                        const bgColor = isCritical ? "bg-red-50/20" : needsAmbulance ? "bg-orange-50/20" : hasDemographics ? "bg-emerald-50/30" : "";
-                        return (
-                          <div className={`rounded-xl border-2 overflow-hidden transition-colors ${borderColor} ${bgColor}`}>
-                            <button
-                              type="button"
-                              onClick={() => setOptionalDetailsOpen((v) => !v)}
-                              className="w-full flex items-center justify-between px-4 py-3 hover:bg-black/[0.02] transition-colors bg-slate-50/40"
-                            >
-                              <div className="flex items-center gap-2 text-left">
-                                <FileText className={`w-4 h-4 shrink-0 ${hasDemographics || hasCondition ? "text-slate-500" : "text-slate-400"}`} />
-                                <span className="text-sm font-semibold text-slate-700">Optional Details</span>
-                              </div>
-                              <div className="flex items-center gap-1.5">
-                                {hasDemographics && <span className="text-xs font-semibold text-emerald-600 bg-emerald-100 px-2 py-0.5 rounded-full">Age/Sex</span>}
-                                {isCritical && <span className="text-xs font-semibold text-red-600 bg-red-100 px-2 py-0.5 rounded-full">Critical</span>}
-                                {needsAmbulance && <span className="text-xs font-semibold text-orange-600 bg-orange-100 px-2 py-0.5 rounded-full">Ambulance</span>}
-                                {!hasDemographics && !hasCondition && <span className="text-xs text-slate-400">age, sex, condition</span>}
-                                <ChevronDown className={`w-4 h-4 shrink-0 transition-transform text-slate-400 ml-1 ${optionalDetailsOpen ? "rotate-180" : ""}`} />
-                              </div>
-                            </button>
-
-                            {optionalDetailsOpen && (
-                              <div className="border-t border-slate-100 divide-y divide-slate-100">
-                                {/* Age & Sex */}
-                                <div className="px-4 py-4 space-y-3">
-                                  <p className="text-xs font-semibold text-slate-400 uppercase tracking-wide">Age &amp; Sex</p>
-                                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                                    <DobInput value={form.dob} onChange={(iso) => set("dob", iso)} />
-                                    <div className="flex flex-col gap-1">
-                                      <label className="text-sm font-medium text-slate-700">Sex</label>
-                                      <div className="flex gap-2">
-                                        {(["male", "female"] as const).map((s) => (
-                                          <button key={s} type="button" onClick={() => set("sex", form.sex === s ? "" : s)}
-                                            className={`flex items-center gap-2 px-4 py-2.5 rounded-xl border-2 transition-all text-sm font-semibold ${form.sex === s ? "border-medical-400 bg-medical-50 text-medical-700" : "border-slate-200 bg-white/60 text-slate-500 hover:border-slate-300 hover:bg-slate-50"}`}>
-                                            {s === "male" ? <MarsIcon className={`w-4 h-4 ${form.sex === s ? "text-medical-500" : "text-slate-400"}`} /> : <VenusIcon className={`w-4 h-4 ${form.sex === s ? "text-medical-500" : "text-slate-400"}`} />}
-                                            {s.charAt(0).toUpperCase() + s.slice(1)}
-                                          </button>
-                                        ))}
-                                      </div>
-                                    </div>
-                                  </div>
-                                </div>
-
-                                {/* Patient Condition */}
-                                <div className="px-4 py-4 space-y-3">
-                                  <p className="text-xs font-semibold text-slate-400 uppercase tracking-wide">Patient Condition</p>
-                                  {!isCritical && !needsAmbulance && (
-                                    <div className="flex items-center gap-2 text-sm text-emerald-600 font-medium">
-                                      <Heart className="w-4 h-4 shrink-0" />
-                                      Stable
-                                    </div>
-                                  )}
-                                  <div className="flex gap-2">
-                                    <button
-                                      type="button"
-                                      onClick={() => setIsCritical((v) => !v)}
-                                      className={`flex-1 flex items-center justify-center gap-1.5 py-2.5 px-3 rounded-xl text-sm font-semibold border-2 transition-all ${
-                                        isCritical
-                                          ? "bg-red-50 border-red-300 text-red-600 shadow-sm"
-                                          : "border-slate-200 text-slate-500 hover:border-slate-300 hover:bg-slate-50"
-                                      }`}
-                                    >
-                                      <AlertTriangle className="w-3.5 h-3.5" />
-                                      Critical
-                                    </button>
-                                    <button
-                                      type="button"
-                                      onClick={() => setNeedsAmbulance((v) => !v)}
-                                      className={`flex-1 flex items-center justify-center gap-1.5 py-2.5 px-3 rounded-xl text-sm font-semibold border-2 transition-all ${
-                                        needsAmbulance
-                                          ? "bg-orange-50 border-orange-300 text-orange-600 shadow-sm"
-                                          : "border-slate-200 text-slate-500 hover:border-slate-300 hover:bg-slate-50"
-                                      }`}
-                                    >
-                                      <Truck className="w-3.5 h-3.5" />
-                                      Ambulance
-                                    </button>
-                                  </div>
-                                  {needsAmbulance && (
-                                    <div className="animate-fade-in-up">
-                                      <Textarea
-                                        label=""
-                                        placeholder="Pickup address or notes for the ambulance team…"
-                                        rows={2}
-                                        value={ambulanceNotes}
-                                        onChange={(e) => setAmbulanceNotes(e.target.value)}
-                                      />
-                                    </div>
-                                  )}
-                                </div>
-                              </div>
-                            )}
+                      {/* Patient Condition */}
+                      <div className="space-y-2">
+                        {!isCritical && !needsAmbulance && (
+                          <div className="flex items-center gap-2 text-xs text-emerald-600 font-medium">
+                            <Heart className="w-3.5 h-3.5 shrink-0" />
+                            Stable
                           </div>
-                        );
-                      })()}
+                        )}
+                        <div className="flex gap-2">
+                          <button
+                            type="button"
+                            onClick={() => setIsCritical((v) => !v)}
+                            className={`flex-1 flex items-center justify-center gap-1.5 py-2 px-3 rounded-xl text-xs font-semibold border-2 transition-all ${
+                              isCritical
+                                ? "bg-red-50 border-red-300 text-red-600 shadow-sm"
+                                : "border-slate-200 text-slate-500 hover:border-slate-300 hover:bg-slate-50"
+                            }`}
+                          >
+                            <AlertTriangle className="w-3 h-3" />
+                            Critical
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => setNeedsAmbulance((v) => !v)}
+                            className={`flex-1 flex items-center justify-center gap-1.5 py-2 px-3 rounded-xl text-xs font-semibold border-2 transition-all ${
+                              needsAmbulance
+                                ? "bg-orange-50 border-orange-300 text-orange-600 shadow-sm"
+                                : "border-slate-200 text-slate-500 hover:border-slate-300 hover:bg-slate-50"
+                            }`}
+                          >
+                            <Truck className="w-3 h-3" />
+                            Ambulance
+                          </button>
+                        </div>
+                        {needsAmbulance && (
+                          <div className="animate-fade-in-up">
+                            <Textarea
+                              label=""
+                              placeholder="Pickup address or notes for the ambulance team…"
+                              rows={2}
+                              value={ambulanceNotes}
+                              onChange={(e) => setAmbulanceNotes(e.target.value)}
+                            />
+                          </div>
+                        )}
+                      </div>
                     </div>
                   </div>
                 )}
               </div>
-            </div>
+            )}
+
+            {/* Patient Contact — revealed once tests are added */}
+            {(testTags.length > 0 || !!testImageUrl) && (
+              <div
+                ref={patientContactRef}
+                onFocus={() => setPatientContactActive(true)}
+                onBlur={() => {
+                  setTimeout(() => {
+                    if (patientContactRef.current && !patientContactRef.current.contains(document.activeElement)) {
+                      setPatientContactActive(false);
+                    }
+                  }, 50);
+                }}
+                className="pt-4 border-t border-slate-100 space-y-5 animate-fade-in-up"
+              >
+                <h2 className="flex items-center gap-3 text-base font-bold text-slate-800 pb-4 border-b border-slate-100">
+                  <div className="w-8 h-8 rounded-xl bg-medical-50 flex items-center justify-center shrink-0">
+                    <User className="w-4 h-4 text-medical-600" />
+                  </div>
+                  Patient Contact
+                </h2>
+
+                <div className="relative pt-1">
+                  {/* Substep 1: Phone */}
+                  <div className="relative flex gap-3">
+                    <div className="flex flex-col items-center shrink-0 pt-1">
+                      <div className={`w-7 h-7 rounded-full flex items-center justify-center text-xs font-bold border-2 transition-all shrink-0 ${
+                        form.patient_phone.trim()
+                          ? "bg-emerald-500 border-emerald-500 text-white"
+                          : "bg-white border-medical-400 text-medical-600"
+                      }`}>
+                        {form.patient_phone.trim() ? <Check className="w-3.5 h-3.5" /> : "1"}
+                      </div>
+                      {form.patient_phone.trim() && (
+                        <div className="w-0.5 flex-1 min-h-4 bg-slate-200 mt-1" />
+                      )}
+                    </div>
+                    <div className="flex-1 pb-3 min-w-0 space-y-2">
+                      <PhoneInput
+                        label="Patient Phone"
+                        required
+                        value={form.patient_phone}
+                        onChange={(v) => set("patient_phone", v)}
+                        error={errors.patient_phone}
+                      />
+                      {patientLookupStatus === "checking" && (
+                        <div className="flex items-center gap-2 text-xs text-slate-400">
+                          <RefreshCw className="w-3 h-3 animate-spin" />
+                          Looking up patient profile…
+                        </div>
+                      )}
+                      {patientLookupStatus === "found" && (
+                        <div className="flex items-start gap-2 px-3 py-2 bg-emerald-50 border border-emerald-200 rounded-xl text-xs">
+                          <Check className="w-3.5 h-3.5 text-emerald-600 shrink-0 mt-0.5" />
+                          <span className="text-emerald-800 font-medium">Patient profile found — details pre-filled below</span>
+                        </div>
+                      )}
+                      {patientLookupStatus === "not_found" && (
+                        <div className="flex items-start gap-2 px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs">
+                          <Info className="w-3.5 h-3.5 text-slate-400 shrink-0 mt-0.5" />
+                          <span className="text-slate-600">New patient — please fill in details below</span>
+                        </div>
+                      )}
+                    </div>
+                  </div>
+
+                  {/* Substep 2: Name */}
+                  {form.patient_phone.trim() && (
+                    <div className="relative flex gap-3 animate-fade-in-up">
+                      <div className="flex flex-col items-center shrink-0 pt-1">
+                        <div className={`w-7 h-7 rounded-full flex items-center justify-center text-xs font-bold border-2 transition-all shrink-0 ${
+                          form.patient_name.trim()
+                            ? "bg-emerald-500 border-emerald-500 text-white"
+                            : "bg-white border-medical-400 text-medical-600"
+                        }`}>
+                          {form.patient_name.trim() ? <Check className="w-3.5 h-3.5" /> : "2"}
+                        </div>
+                        {form.patient_name.trim() && <div className="w-0.5 flex-1 min-h-4 bg-slate-200 mt-1" />}
+                      </div>
+                      <div className="flex-1 pb-3 min-w-0">
+                        <Input
+                          label="Patient Full Name"
+                          placeholder="e.g. Amara Okonkwo"
+                          value={form.patient_name}
+                          onChange={(e) => set("patient_name", e.target.value)}
+                          error={errors.patient_name}
+                          required
+                        />
+                      </div>
+                    </div>
+                  )}
+
+                  {/* Substep 3: Email */}
+                  {form.patient_phone.trim() && form.patient_name.trim() && (
+                    <div className="relative flex gap-3 animate-fade-in-up">
+                      <div className="flex flex-col items-center shrink-0 pt-1">
+                        <div className={`w-7 h-7 rounded-full flex items-center justify-center text-xs font-bold border-2 transition-all shrink-0 ${
+                          form.patient_email.trim()
+                            ? "bg-emerald-500 border-emerald-500 text-white"
+                            : "bg-white border-slate-300 text-slate-400"
+                        }`}>
+                          {form.patient_email.trim() ? <Check className="w-3.5 h-3.5" /> : "3"}
+                        </div>
+                      </div>
+                      <div className="flex-1 pb-3 min-w-0">
+                        <Input
+                          label="Patient Email"
+                          type="email"
+                          placeholder="patient@example.com"
+                          hint="Optional — used to send results and track request history"
+                          value={form.patient_email}
+                          onChange={(e) => set("patient_email", e.target.value)}
+                          error={errors.patient_email}
+                        />
+                      </div>
+                    </div>
+                  )}
+                </div>
+              </div>
+            )}
           </div>
         )}
       </div>

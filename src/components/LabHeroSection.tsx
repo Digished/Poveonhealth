@@ -57,15 +57,15 @@ function CloudLayer() {
 
 function StarField() {
   const STARS = [
-    { cx: 8,  cy: 12, r: 1.2, d: 0   }, { cx: 22, cy: 5,  r: 0.8, d: 0.5 },
-    { cx: 38, cy: 18, r: 1.4, d: 1   }, { cx: 55, cy: 8,  r: 0.9, d: 0.2 },
-    { cx: 70, cy: 22, r: 1.1, d: 1.5 }, { cx: 85, cy: 6,  r: 0.7, d: 0.8 },
-    { cx: 15, cy: 32, r: 1.3, d: 2   }, { cx: 45, cy: 38, r: 0.8, d: 0.3 },
-    { cx: 62, cy: 42, r: 1.0, d: 1.2 }, { cx: 80, cy: 30, r: 1.2, d: 0.7 },
-    { cx: 93, cy: 16, r: 0.9, d: 1.8 }, { cx: 30, cy: 52, r: 0.7, d: 2.5 },
-    { cx: 75, cy: 55, r: 1.1, d: 0.4 }, { cx: 5,  cy: 58, r: 0.8, d: 1.6 },
-    { cx: 50, cy: 60, r: 1.3, d: 0.9 }, { cx: 90, cy: 60, r: 0.6, d: 2.2 },
-    { cx: 18, cy: 70, r: 1.0, d: 1.3 }, { cx: 65, cy: 72, r: 0.7, d: 0.6 },
+    { cx: 8,  cy: 12, r: 0.55, d: 0   }, { cx: 22, cy: 5,  r: 0.35, d: 0.5 },
+    { cx: 38, cy: 18, r: 0.65, d: 1   }, { cx: 55, cy: 8,  r: 0.4,  d: 0.2 },
+    { cx: 70, cy: 22, r: 0.5,  d: 1.5 }, { cx: 85, cy: 6,  r: 0.3,  d: 0.8 },
+    { cx: 15, cy: 32, r: 0.6,  d: 2   }, { cx: 45, cy: 38, r: 0.35, d: 0.3 },
+    { cx: 62, cy: 42, r: 0.45, d: 1.2 }, { cx: 80, cy: 30, r: 0.55, d: 0.7 },
+    { cx: 93, cy: 16, r: 0.4,  d: 1.8 }, { cx: 30, cy: 52, r: 0.3,  d: 2.5 },
+    { cx: 75, cy: 55, r: 0.5,  d: 0.4 }, { cx: 5,  cy: 58, r: 0.35, d: 1.6 },
+    { cx: 50, cy: 60, r: 0.6,  d: 0.9 }, { cx: 90, cy: 60, r: 0.25, d: 2.2 },
+    { cx: 18, cy: 70, r: 0.45, d: 1.3 }, { cx: 65, cy: 72, r: 0.3,  d: 0.6 },
   ];
   return (
     <div className="absolute inset-0 pointer-events-none overflow-hidden" aria-hidden="true">
@@ -221,14 +221,14 @@ export function LabHeroSection({
         className={`relative overflow-hidden pt-6 pb-8 px-4 transition-colors duration-700 ${
           isDay
             ? "bg-gradient-to-b from-sky-200/70 via-sky-100/50 to-transparent"
-            : "bg-gradient-to-b from-indigo-950 via-slate-900 to-slate-800"
+            : "bg-gradient-to-b from-indigo-200/60 via-slate-100/40 to-transparent"
         }`}
       >
         {/* Hero image background */}
         {heroImageUrl && (
           <div className="absolute inset-0 pointer-events-none" aria-hidden="true">
             <img src={heroImageUrl} alt="" className="w-full h-full object-cover" />
-            <div className={`absolute inset-0 ${isDay ? "bg-sky-200/55" : "bg-indigo-950/75"}`} />
+            <div className={`absolute inset-0 ${isDay ? "bg-sky-200/55" : "bg-indigo-100/35"}`} />
           </div>
         )}
 
@@ -258,16 +258,16 @@ export function LabHeroSection({
 
           {/* Text */}
           <div className="space-y-1">
-            <p className={`text-[10px] font-bold uppercase tracking-[0.24em] ${isDay ? "text-slate-500" : "text-sky-300/80"}`}>
+            <p className="text-[10px] font-bold uppercase tracking-[0.24em] text-slate-500">
               Welcome to
             </p>
-            <h1 className={`text-3xl font-black tracking-tight leading-[1.05] ${isDay ? "text-slate-900" : "text-white"}`}>
+            <h1 className="text-3xl font-black tracking-tight leading-[1.05] text-slate-900">
               {labName}
             </h1>
-            <p className={`text-sm font-semibold ${isDay ? "text-slate-600" : "text-sky-100/90"}`}>
+            <p className="text-sm font-semibold text-slate-600">
               {GREETING[tod]}
             </p>
-            <p className={`text-sm ${isDay ? "text-slate-500" : "text-sky-200/70"}`}>
+            <p className="text-sm text-slate-500">
               How may we assist you today?
             </p>
           </div>
@@ -276,9 +276,7 @@ export function LabHeroSection({
           <button
             type="button"
             onClick={() => setDetailsOpen(true)}
-            className={`text-xs font-semibold underline underline-offset-2 transition-colors ${
-              isDay ? "text-medical-600 hover:text-medical-800" : "text-sky-300 hover:text-sky-100"
-            }`}
+            className="text-xs font-semibold underline underline-offset-2 transition-colors text-medical-600 hover:text-medical-800"
           >
             Learn more
           </button>
