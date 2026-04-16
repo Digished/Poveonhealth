@@ -745,6 +745,7 @@ export function DoctorRequestForm({
   const [needsAmbulance, setNeedsAmbulance] = useState(false);
   const [ambulanceNotes, setAmbulanceNotes] = useState("");
   const [conditionExpanded, setConditionExpanded] = useState(false);
+  const [keyboardHeight, setKeyboardHeight] = useState(0);
   // Step 2: patient contact section active (collapses clinical section)
   const [patientContactActive, setPatientContactActive] = useState(false);
   // Step 4 accordion / lookup states
@@ -953,6 +954,22 @@ export function DoctorRequestForm({
     }
     document.addEventListener("focusin", handleFocusIn);
     return () => document.removeEventListener("focusin", handleFocusIn);
+  }, []);
+
+  // Track virtual keyboard height so the FAB stays above it on mobile
+  useEffect(() => {
+    const vv = window.visualViewport;
+    if (!vv) return;
+    function update() {
+      const kh = Math.max(0, window.innerHeight - vv!.offsetTop - vv!.height);
+      setKeyboardHeight(kh);
+    }
+    vv.addEventListener("resize", update);
+    vv.addEventListener("scroll", update);
+    return () => {
+      vv.removeEventListener("resize", update);
+      vv.removeEventListener("scroll", update);
+    };
   }, []);
 
   // Hero visibility — when a #lab-hero element exists, track whether it's still in view.
@@ -2225,7 +2242,10 @@ export function DoctorRequestForm({
 
       {/* FAB — Next / Submit — fixed bottom-right, appears when step is valid */}
       {stepValid && (
-        <div className="fixed bottom-6 right-5 z-50">
+        <div
+          className="fixed right-5 z-50 transition-[bottom] duration-150 ease-out"
+          style={{ bottom: keyboardHeight > 0 ? `${keyboardHeight + 12}px` : "24px" }}
+        >
           {step < 3 ? (
             <button
               type="button"
