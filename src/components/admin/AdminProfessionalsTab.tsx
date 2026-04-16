@@ -5,6 +5,7 @@ import {
   Plus, X, User, Search, Loader2, CheckCircle, ShieldAlert,
   Building2, Phone, Trash2, RefreshCw, ChevronDown,
   Upload, FileSpreadsheet, AlertTriangle, CheckCircle2, Download,
+  ChevronUp, ChevronsUpDown, Copy, BanknoteIcon,
 } from "lucide-react";
 import { toast } from "react-hot-toast";
 import { PrefixSelect } from "@/components/PrefixSelect";
@@ -746,6 +747,8 @@ export function AdminProfessionalsTab() {
   const [showImport, setShowImport] = useState(false);
   const [deletingEmail, setDeletingEmail] = useState<string | null>(null);
   const [confirmDelete, setConfirmDelete] = useState<Professional | null>(null);
+  const [sort, setSort] = useState<{ col: string; dir: "asc" | "desc" }>({ col: "updated_at", dir: "desc" });
+  const [copiedEmail, setCopiedEmail] = useState<string | null>(null);
 
   const fetchProfessionals = useCallback(async () => {
     setLoading(true);
@@ -787,12 +790,48 @@ export function AdminProfessionalsTab() {
     );
   });
 
+  const sorted = [...filtered].sort((a, b) => {
+    const dir = sort.dir === "asc" ? 1 : -1;
+    if (sort.col === "email")      return dir * a.email.localeCompare(b.email);
+    if (sort.col === "full_name")  return dir * ((a.full_name ?? "").localeCompare(b.full_name ?? ""));
+    if (sort.col === "phone")      return dir * ((a.phone ?? "").localeCompare(b.phone ?? ""));
+    if (sort.col === "hospitals")  return dir * (a.hospitals.join("").localeCompare(b.hospitals.join("")));
+    if (sort.col === "marketer")   return dir * ((a.marketer?.name ?? "").localeCompare(b.marketer?.name ?? ""));
+    if (sort.col === "claimed")    return dir * (Number(a.claimed) - Number(b.claimed));
+    // updated_at default
+    return dir * (new Date(a.updated_at).getTime() - new Date(b.updated_at).getTime());
+  });
+
+  function toggleSort(col: string) {
+    setSort((prev) => prev.col === col ? { col, dir: prev.dir === "asc" ? "desc" : "asc" } : { col, dir: "asc" });
+  }
+
+  function copyEmail(email: string) {
+    navigator.clipboard.writeText(email).then(() => {
+      setCopiedEmail(email);
+      setTimeout(() => setCopiedEmail(null), 1500);
+    }).catch(() => {});
+  }
+
+  function SortIcon({ col }: { col: string }) {
+    if (sort.col !== col) return <ChevronsUpDown className="w-3 h-3 text-slate-600" />;
+    return sort.dir === "asc"
+      ? <ChevronUp className="w-3 h-3 text-slate-300" />
+      : <ChevronDown className="w-3 h-3 text-slate-300" />;
+  }
+
+  const COL_HDR = "px-3 py-2.5 text-left text-[10px] font-semibold uppercase tracking-wider text-slate-500 whitespace-nowrap select-none border-r border-white/5 last:border-r-0";
+  const COL_HDR_BTN = `${COL_HDR} cursor-pointer hover:text-slate-300 hover:bg-white/4 transition-colors`;
+
   return (
-    <div className="animate-fade-in space-y-5">
-      {/* Header */}
+    <div className="animate-fade-in space-y-4">
+      {/* Toolbar */}
       <div className="flex items-center justify-between gap-3 flex-wrap">
         <h2 className="font-semibold text-white">
-          Professionals <span className="text-slate-500 font-normal text-sm">({professionals.length})</span>
+          Professionals{" "}
+          <span className="text-slate-500 font-normal text-sm">
+            {search ? `${sorted.length} of ${professionals.length}` : professionals.length}
+          </span>
         </h2>
         <div className="flex items-center gap-2">
           <button
@@ -833,87 +872,188 @@ export function AdminProfessionalsTab() {
         )}
       </div>
 
-      {/* List */}
-      {loading && professionals.length === 0 ? (
-        <div className="space-y-2">
-          {[...Array(4)].map((_, i) => (
-            <div key={i} className="bg-white/5 border border-white/10 rounded-xl h-20 animate-pulse" />
-          ))}
-        </div>
-      ) : filtered.length === 0 ? (
-        <div className="bg-white/5 border border-white/10 rounded-2xl p-10 text-center">
-          <User className="w-10 h-10 text-slate-600 mx-auto mb-3" />
-          <p className="text-sm font-semibold text-slate-400">
-            {search ? "No professionals match your search" : "No professionals yet"}
-          </p>
-          {!search && (
-            <p className="text-xs text-slate-500 mt-1">Add a doctor profile to get started.</p>
-          )}
-        </div>
-      ) : (
-        <div className="rounded-2xl overflow-hidden border border-white/8 divide-y divide-white/5">
-          {filtered.map((pro) => {
-            const displayName = [pro.prefix, pro.full_name].filter(Boolean).join(" ") || pro.email;
-            return (
-              <div key={pro.email} className="flex items-center gap-3 px-4 py-3.5 bg-white/3 hover:bg-white/5 transition-colors">
-                {/* Avatar */}
-                <div className={`w-9 h-9 rounded-xl flex items-center justify-center shrink-0 ${
-                  pro.claimed ? "bg-emerald-700/30" : "bg-amber-700/20"
-                }`}>
-                  {pro.claimed
-                    ? <CheckCircle className="w-4 h-4 text-emerald-400" />
-                    : <User className="w-4 h-4 text-amber-400" />
-                  }
-                </div>
-
-                {/* Info */}
-                <div className="flex-1 min-w-0">
-                  <div className="flex items-center gap-2 flex-wrap">
-                    <p className="text-sm font-semibold text-white truncate leading-tight">{displayName}</p>
-                    {pro.claimed
-                      ? <span className="text-[10px] bg-emerald-900/40 text-emerald-400 border border-emerald-800/30 px-1.5 py-0.5 rounded-full shrink-0">Verified</span>
-                      : <span className="text-[10px] bg-amber-900/30 text-amber-400 border border-amber-800/20 px-1.5 py-0.5 rounded-full shrink-0">Unclaimed</span>
-                    }
-                  </div>
-                  <p className="text-xs text-slate-500 truncate">{pro.email}</p>
-                  {pro.hospitals.length > 0 && (
-                    <div className="flex items-center gap-1 mt-0.5 flex-wrap">
-                      <Building2 className="w-3 h-3 text-slate-500 shrink-0" />
-                      <span className="text-xs text-slate-500 truncate">{pro.hospitals.join(", ")}</span>
-                    </div>
-                  )}
-                  {pro.marketer && (
-                    <p className="text-xs text-slate-500 mt-0.5">
-                      Marketer: <span className="text-slate-300 font-medium">{pro.marketer.name}</span>
+      {/* Spreadsheet table */}
+      <div className="rounded-xl border border-white/10 overflow-hidden">
+        <div className="overflow-x-auto">
+          <table className="w-full text-xs border-collapse" style={{ minWidth: 860 }}>
+            {/* Sticky header */}
+            <thead className="sticky top-0 z-10">
+              <tr className="bg-slate-800 border-b border-white/10">
+                {/* Row number */}
+                <th className={`${COL_HDR} w-10 text-center`}>#</th>
+                <th className={COL_HDR_BTN} onClick={() => toggleSort("claimed")}>
+                  <div className="flex items-center gap-1">Status <SortIcon col="claimed" /></div>
+                </th>
+                <th className={COL_HDR_BTN} onClick={() => toggleSort("email")}>
+                  <div className="flex items-center gap-1">Email <SortIcon col="email" /></div>
+                </th>
+                <th className={COL_HDR_BTN} onClick={() => toggleSort("full_name")}>
+                  <div className="flex items-center gap-1">Name <SortIcon col="full_name" /></div>
+                </th>
+                <th className={COL_HDR_BTN} onClick={() => toggleSort("phone")}>
+                  <div className="flex items-center gap-1">Phone <SortIcon col="phone" /></div>
+                </th>
+                <th className={COL_HDR_BTN} onClick={() => toggleSort("hospitals")}>
+                  <div className="flex items-center gap-1">Hospitals <SortIcon col="hospitals" /></div>
+                </th>
+                <th className={COL_HDR}>Bank</th>
+                <th className={COL_HDR_BTN} onClick={() => toggleSort("marketer")}>
+                  <div className="flex items-center gap-1">Marketer <SortIcon col="marketer" /></div>
+                </th>
+                <th className={COL_HDR_BTN} onClick={() => toggleSort("updated_at")}>
+                  <div className="flex items-center gap-1">Updated <SortIcon col="updated_at" /></div>
+                </th>
+                <th className={`${COL_HDR} w-10 text-center`}></th>
+              </tr>
+            </thead>
+            <tbody>
+              {loading && professionals.length === 0 ? (
+                [...Array(6)].map((_, i) => (
+                  <tr key={i} className="border-b border-white/5 animate-pulse">
+                    {[...Array(10)].map((__, j) => (
+                      <td key={j} className="px-3 py-2.5 border-r border-white/5 last:border-r-0">
+                        <div className="h-3 bg-white/8 rounded" style={{ width: j === 0 ? 20 : j === 1 ? 48 : "80%" }} />
+                      </td>
+                    ))}
+                  </tr>
+                ))
+              ) : sorted.length === 0 ? (
+                <tr>
+                  <td colSpan={10} className="py-16 text-center">
+                    <User className="w-8 h-8 text-slate-600 mx-auto mb-2" />
+                    <p className="text-sm text-slate-500">
+                      {search ? "No professionals match your search" : "No professionals yet"}
                     </p>
-                  )}
-                </div>
+                  </td>
+                </tr>
+              ) : (
+                sorted.map((pro, i) => {
+                  const displayName = [pro.prefix, pro.full_name].filter(Boolean).join(" ");
+                  const hasBank = !!(pro.bank_name && pro.account_number);
+                  return (
+                    <tr
+                      key={pro.email}
+                      className={`group border-b border-white/5 last:border-b-0 transition-colors hover:bg-white/[0.04] ${
+                        i % 2 === 0 ? "bg-white/[0.015]" : "bg-transparent"
+                      }`}
+                    >
+                      {/* Row # */}
+                      <td className="px-3 py-2.5 text-center text-slate-600 border-r border-white/5 font-mono">{i + 1}</td>
 
-                {/* Updated */}
-                <div className="shrink-0 text-right hidden sm:block">
-                  <p className="text-[10px] text-slate-600">{fmt(pro.updated_at)}</p>
-                </div>
+                      {/* Status */}
+                      <td className="px-3 py-2.5 border-r border-white/5 whitespace-nowrap">
+                        {pro.claimed ? (
+                          <span className="inline-flex items-center gap-1 text-[10px] bg-emerald-900/40 text-emerald-400 border border-emerald-800/30 px-2 py-0.5 rounded-full font-semibold">
+                            <CheckCircle className="w-2.5 h-2.5" />Verified
+                          </span>
+                        ) : (
+                          <span className="inline-flex items-center gap-1 text-[10px] bg-amber-900/30 text-amber-400 border border-amber-800/20 px-2 py-0.5 rounded-full font-semibold">
+                            <User className="w-2.5 h-2.5" />Unclaimed
+                          </span>
+                        )}
+                      </td>
 
-                {/* Delete */}
-                {!pro.claimed && (
-                  <button
-                    type="button"
-                    onClick={() => setConfirmDelete(pro)}
-                    disabled={deletingEmail === pro.email}
-                    title="Delete profile"
-                    className="p-1.5 rounded-lg hover:bg-red-500/15 text-slate-500 hover:text-red-400 transition-colors disabled:opacity-40 shrink-0"
-                  >
-                    {deletingEmail === pro.email
-                      ? <RefreshCw className="w-3.5 h-3.5 animate-spin" />
-                      : <Trash2 className="w-3.5 h-3.5" />
-                    }
-                  </button>
-                )}
-              </div>
-            );
-          })}
+                      {/* Email */}
+                      <td className="px-3 py-2.5 border-r border-white/5 max-w-[180px]">
+                        <div className="flex items-center gap-1.5 group/email">
+                          <span className="text-slate-300 font-mono truncate text-[11px]">{pro.email}</span>
+                          <button
+                            onClick={() => copyEmail(pro.email)}
+                            className="opacity-0 group-hover/email:opacity-100 text-slate-600 hover:text-slate-300 transition-all shrink-0"
+                            title="Copy email"
+                          >
+                            {copiedEmail === pro.email
+                              ? <CheckCircle className="w-3 h-3 text-emerald-400" />
+                              : <Copy className="w-3 h-3" />
+                            }
+                          </button>
+                        </div>
+                      </td>
+
+                      {/* Name */}
+                      <td className="px-3 py-2.5 border-r border-white/5 max-w-[160px]">
+                        <p className="text-white font-medium truncate">{displayName || <span className="text-slate-600 italic">—</span>}</p>
+                      </td>
+
+                      {/* Phone */}
+                      <td className="px-3 py-2.5 border-r border-white/5 whitespace-nowrap">
+                        <span className="text-slate-400 font-mono">{pro.phone || <span className="text-slate-700">—</span>}</span>
+                      </td>
+
+                      {/* Hospitals */}
+                      <td className="px-3 py-2.5 border-r border-white/5 max-w-[200px]">
+                        {pro.hospitals.length > 0 ? (
+                          <div className="flex flex-wrap gap-1">
+                            {pro.hospitals.map((h) => (
+                              <span key={h} className="text-[10px] bg-white/8 text-slate-300 px-1.5 py-0.5 rounded border border-white/10 truncate max-w-[120px]">{h}</span>
+                            ))}
+                          </div>
+                        ) : (
+                          <span className="text-slate-700">—</span>
+                        )}
+                      </td>
+
+                      {/* Bank */}
+                      <td className="px-3 py-2.5 border-r border-white/5 whitespace-nowrap">
+                        {hasBank ? (
+                          <div className="flex items-center gap-1.5">
+                            <BanknoteIcon className="w-3 h-3 text-emerald-400 shrink-0" />
+                            <span className="text-slate-300 truncate max-w-[90px]">{pro.bank_name}</span>
+                          </div>
+                        ) : (
+                          <span className="text-slate-700">—</span>
+                        )}
+                      </td>
+
+                      {/* Marketer */}
+                      <td className="px-3 py-2.5 border-r border-white/5 max-w-[130px]">
+                        {pro.marketer ? (
+                          <span className="text-slate-300 truncate block" title={pro.marketer.email}>{pro.marketer.name}</span>
+                        ) : (
+                          <span className="text-slate-700">—</span>
+                        )}
+                      </td>
+
+                      {/* Updated */}
+                      <td className="px-3 py-2.5 border-r border-white/5 whitespace-nowrap">
+                        <span className="text-slate-600 font-mono">{fmt(pro.updated_at)}</span>
+                      </td>
+
+                      {/* Actions */}
+                      <td className="px-2 py-2.5 text-center">
+                        {!pro.claimed && (
+                          <button
+                            type="button"
+                            onClick={() => setConfirmDelete(pro)}
+                            disabled={deletingEmail === pro.email}
+                            title="Delete profile"
+                            className="p-1.5 rounded-lg opacity-0 group-hover:opacity-100 hover:bg-red-500/15 text-slate-500 hover:text-red-400 transition-all disabled:opacity-40"
+                          >
+                            {deletingEmail === pro.email
+                              ? <RefreshCw className="w-3.5 h-3.5 animate-spin" />
+                              : <Trash2 className="w-3.5 h-3.5" />
+                            }
+                          </button>
+                        )}
+                      </td>
+                    </tr>
+                  );
+                })
+              )}
+            </tbody>
+          </table>
         </div>
-      )}
+
+        {/* Footer count */}
+        {sorted.length > 0 && (
+          <div className="px-4 py-2 bg-slate-800/60 border-t border-white/8 flex items-center gap-4">
+            <span className="text-xs text-slate-600">{sorted.length} row{sorted.length !== 1 ? "s" : ""}</span>
+            <span className="text-xs text-slate-700">·</span>
+            <span className="text-xs text-emerald-600">{professionals.filter((p) => p.claimed).length} verified</span>
+            <span className="text-xs text-amber-700">{professionals.filter((p) => !p.claimed).length} unclaimed</span>
+          </div>
+        )}
+      </div>
 
       {/* Create modal */}
       {showCreate && (
