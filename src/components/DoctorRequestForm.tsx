@@ -759,6 +759,15 @@ export function DoctorRequestForm({
   // Ref for the patient contact section (used for collapse detection)
   const patientContactRef = useRef<HTMLDivElement>(null);
 
+  // ── Input validation ───────────────────────────────────────────────────────
+  type PhoneValState = { status: "idle" | "checking" | "valid" | "invalid"; network?: string; formatted?: string };
+  type EmailValState = { status: "idle" | "checking" | "valid" | "invalid" | "suggestion"; suggestion?: string; reason?: string };
+
+  const [phoneVal, setPhoneVal] = useState<PhoneValState>({ status: "idle" });
+  const [patientEmailVal, setPatientEmailVal] = useState<EmailValState>({ status: "idle" });
+  const [doctorEmailVal, setDoctorEmailVal] = useState<EmailValState>({ status: "idle" });
+
+
   // Step 3: doctor profile check
   const [docProfileStatus, setDocProfileStatus] = useState<"idle" | "checking" | "found_complete" | "found_partial" | "not_found">("idle");
   const [docProfileInfo, setDocProfileInfo] = useState<{ prefix: string | null; full_name: string | null; hospital: string | null; phone: string | null; has_bank: boolean; claimed: boolean } | null>(null);
@@ -971,6 +980,52 @@ export function DoctorRequestForm({
       vv.removeEventListener("scroll", update);
     };
   }, []);
+
+  // Phone validation — runs on debounce after user finishes typing
+  useEffect(() => {
+    const digits = form.patient_phone.replace(/\D/g, "");
+    if (digits.length < 10) { setPhoneVal({ status: "idle" }); return; }
+    setPhoneVal({ status: "checking" });
+    const timer = setTimeout(() => {
+      fetch("/api/validate/phone", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ phone: form.patient_phone }),
+      })
+        .then((r) => r.json())
+        .then((d) => setPhoneVal(d.valid ? { status: "valid", network: d.network, formatted: d.formatted } : { status: "invalid" }))
+        .catch(() => setPhoneVal({ status: "idle" }));
+    }, 700);
+    return () => clearTimeout(timer);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [form.patient_phone]);
+
+  // Reset email validation banners whenever the email value changes
+  useEffect(() => { setPatientEmailVal({ status: "idle" }); }, [form.patient_email]);
+  useEffect(() => { setDoctorEmailVal({ status: "idle" }); }, [form.doctor_email]);
+
+  /** Called onBlur of any email input. Checks typos + MX records. */
+  const validateEmailField = useCallback(
+    async (email: string, setter: (v: EmailValState) => void) => {
+      if (!email.trim()) { setter({ status: "idle" }); return; }
+      if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) { setter({ status: "invalid", reason: "Invalid email format" }); return; }
+      setter({ status: "checking" });
+      try {
+        const res = await fetch("/api/validate/email", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ email }),
+        });
+        const d = await res.json();
+        if (d.valid) setter({ status: "valid" });
+        else if (d.suggestion) setter({ status: "suggestion", suggestion: d.suggestion });
+        else setter({ status: "invalid", reason: d.reason });
+      } catch {
+        setter({ status: "idle" });
+      }
+    },
+    []
+  );
 
   // Hero visibility — when a #lab-hero element exists, track whether it's still in view.
   // Used to hide the logo/name in the sticky header while the hero is prominent.
@@ -1533,6 +1588,7 @@ export function DoctorRequestForm({
                     placeholder="you@hospital.com"
                     value={form.doctor_email}
                     onChange={(e) => set("doctor_email", e.target.value)}
+                    onBlur={() => validateEmailField(form.doctor_email, setDoctorEmailVal)}
                     error={errors.doctor_email}
                   />
                   {savedProfile && form.doctor_email && (
@@ -1541,10 +1597,38 @@ export function DoctorRequestForm({
                       <button type="button" onClick={clearDoctorProfile} className="text-xs text-slate-400 hover:text-slate-600 underline underline-offset-2">Clear</button>
                     </div>
                   )}
-                  {/* Checking spinner */}
+                  {/* Doctor profile lookup spinner */}
                   {docProfileStatus === "checking" && (
                     <div className="flex items-center gap-2 text-xs text-slate-400">
                       <RefreshCw className="w-3 h-3 animate-spin" />Checking…
+                    </div>
+                  )}
+                  {/* Email domain validation feedback */}
+                  {doctorEmailVal.status === "checking" && (
+                    <div className="flex items-center gap-2 text-xs text-slate-400">
+                      <RefreshCw className="w-3 h-3 animate-spin" />Checking email…
+                    </div>
+                  )}
+                  {doctorEmailVal.status === "valid" && (
+                    <div className="flex items-center gap-2 px-3 py-2 bg-emerald-50 border border-emerald-200 rounded-xl text-xs">
+                      <Check className="w-3.5 h-3.5 text-emerald-600 shrink-0" />
+                      <span className="text-emerald-700 font-medium">Email looks good</span>
+                    </div>
+                  )}
+                  {doctorEmailVal.status === "suggestion" && (
+                    <div className="flex items-center justify-between gap-2 px-3 py-2.5 bg-amber-50 border border-amber-200 rounded-xl text-xs">
+                      <div className="flex items-center gap-1.5 min-w-0">
+                        <AlertTriangle className="w-3.5 h-3.5 text-amber-500 shrink-0" />
+                        <span className="text-amber-700 truncate">Did you mean <span className="font-semibold">{doctorEmailVal.suggestion}</span>?</span>
+                      </div>
+                      <button type="button" onClick={() => { set("doctor_email", doctorEmailVal.suggestion!); setDoctorEmailVal({ status: "valid" }); }}
+                        className="text-amber-700 font-bold underline underline-offset-2 shrink-0">Use this</button>
+                    </div>
+                  )}
+                  {doctorEmailVal.status === "invalid" && (
+                    <div className="flex items-center gap-2 px-3 py-2 bg-red-50 border border-red-200 rounded-xl text-xs">
+                      <AlertTriangle className="w-3.5 h-3.5 text-red-500 shrink-0" />
+                      <span className="text-red-700">{doctorEmailVal.reason ?? "Invalid email address"}</span>
                     </div>
                   )}
                 </div>
@@ -2151,6 +2235,27 @@ export function DoctorRequestForm({
                         onChange={(v) => set("patient_phone", v)}
                         error={errors.patient_phone}
                       />
+                      {/* Phone number validation chip */}
+                      {phoneVal.status === "checking" && (
+                        <div className="flex items-center gap-2 text-xs text-slate-400">
+                          <RefreshCw className="w-3 h-3 animate-spin" />
+                          Verifying number…
+                        </div>
+                      )}
+                      {phoneVal.status === "valid" && (
+                        <div className="flex items-center gap-2 px-3 py-2 bg-emerald-50 border border-emerald-200 rounded-xl text-xs">
+                          <Check className="w-3.5 h-3.5 text-emerald-600 shrink-0" />
+                          <span className="font-semibold text-emerald-800">{phoneVal.formatted}</span>
+                          {phoneVal.network && <span className="text-emerald-600">· {phoneVal.network}</span>}
+                        </div>
+                      )}
+                      {phoneVal.status === "invalid" && (
+                        <div className="flex items-center gap-2 px-3 py-2 bg-amber-50 border border-amber-200 rounded-xl text-xs">
+                          <AlertTriangle className="w-3.5 h-3.5 text-amber-500 shrink-0" />
+                          <span className="text-amber-700">This doesn&apos;t look like a valid mobile number</span>
+                        </div>
+                      )}
+                      {/* Patient profile lookup status */}
                       {patientLookupStatus === "checking" && (
                         <div className="flex items-center gap-2 text-xs text-slate-400">
                           <RefreshCw className="w-3 h-3 animate-spin" />
@@ -2210,7 +2315,7 @@ export function DoctorRequestForm({
                           {form.patient_email.trim() ? <Check className="w-3.5 h-3.5" /> : "3"}
                         </div>
                       </div>
-                      <div className="flex-1 pb-3 min-w-0">
+                      <div className="flex-1 pb-3 min-w-0 space-y-2">
                         <Input
                           label="Patient Email"
                           type="email"
@@ -2218,8 +2323,36 @@ export function DoctorRequestForm({
                           hint="Optional — used to send results and track request history"
                           value={form.patient_email}
                           onChange={(e) => set("patient_email", e.target.value)}
+                          onBlur={() => validateEmailField(form.patient_email, setPatientEmailVal)}
                           error={errors.patient_email}
                         />
+                        {patientEmailVal.status === "checking" && (
+                          <div className="flex items-center gap-2 text-xs text-slate-400">
+                            <RefreshCw className="w-3 h-3 animate-spin" />Checking email…
+                          </div>
+                        )}
+                        {patientEmailVal.status === "valid" && (
+                          <div className="flex items-center gap-2 px-3 py-2 bg-emerald-50 border border-emerald-200 rounded-xl text-xs">
+                            <Check className="w-3.5 h-3.5 text-emerald-600 shrink-0" />
+                            <span className="text-emerald-700 font-medium">Email looks good</span>
+                          </div>
+                        )}
+                        {patientEmailVal.status === "suggestion" && (
+                          <div className="flex items-center justify-between gap-2 px-3 py-2.5 bg-amber-50 border border-amber-200 rounded-xl text-xs">
+                            <div className="flex items-center gap-1.5 min-w-0">
+                              <AlertTriangle className="w-3.5 h-3.5 text-amber-500 shrink-0" />
+                              <span className="text-amber-700 truncate">Did you mean <span className="font-semibold">{patientEmailVal.suggestion}</span>?</span>
+                            </div>
+                            <button type="button" onClick={() => { set("patient_email", patientEmailVal.suggestion!); setPatientEmailVal({ status: "valid" }); }}
+                              className="text-amber-700 font-bold underline underline-offset-2 shrink-0">Use this</button>
+                          </div>
+                        )}
+                        {patientEmailVal.status === "invalid" && (
+                          <div className="flex items-center gap-2 px-3 py-2 bg-red-50 border border-red-200 rounded-xl text-xs">
+                            <AlertTriangle className="w-3.5 h-3.5 text-red-500 shrink-0" />
+                            <span className="text-red-700">{patientEmailVal.reason ?? "Invalid email address"}</span>
+                          </div>
+                        )}
                       </div>
                     </div>
                   )}
