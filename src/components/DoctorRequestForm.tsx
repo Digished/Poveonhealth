@@ -2205,12 +2205,14 @@ export function DoctorRequestForm({
                 }}
                 className="pt-4 border-t border-slate-100 space-y-5 animate-fade-in-up"
               >
-                <h2 className="flex items-center gap-3 text-base font-bold text-slate-800 pb-4 border-b border-slate-100">
-                  <div className="w-8 h-8 rounded-xl bg-medical-50 flex items-center justify-center shrink-0">
-                    <User className="w-4 h-4 text-medical-600" />
-                  </div>
-                  Patient Contact
-                </h2>
+                {patientContactActive && (
+                  <h2 className="flex items-center gap-3 text-base font-bold text-slate-800 pb-4 border-b border-slate-100">
+                    <div className="w-8 h-8 rounded-xl bg-medical-50 flex items-center justify-center shrink-0">
+                      <User className="w-4 h-4 text-medical-600" />
+                    </div>
+                    Patient Contact
+                  </h2>
+                )}
 
                 <div className="relative pt-1">
                   {/* Substep 1: Phone */}
