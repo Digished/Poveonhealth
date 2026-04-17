@@ -758,6 +758,8 @@ export function DoctorRequestForm({
   formRef.current = form;
   // Ref for the patient contact section (used for collapse detection)
   const patientContactRef = useRef<HTMLDivElement>(null);
+  // Ref to the top of step content — used to scroll on step transitions
+  const stepContentRef = useRef<HTMLDivElement>(null);
 
   // ── Input validation ───────────────────────────────────────────────────────
   type PhoneValState = { status: "idle" | "checking" | "valid" | "invalid"; network?: string; formatted?: string };
@@ -980,6 +982,16 @@ export function DoctorRequestForm({
       vv.removeEventListener("scroll", update);
     };
   }, []);
+
+  // Scroll step content into view on every step transition
+  useEffect(() => {
+    const el = stepContentRef.current;
+    if (!el) return;
+    const timer = setTimeout(() => {
+      el.scrollIntoView({ behavior: "smooth", block: "start" });
+    }, 60);
+    return () => clearTimeout(timer);
+  }, [step]);
 
   // Phone validation — runs on debounce after user finishes typing
   useEffect(() => {
@@ -1494,7 +1506,7 @@ export function DoctorRequestForm({
       </div>
 
       {/* Step content */}
-      <div className="px-4 pt-3 pb-2">
+      <div ref={stepContentRef} className="px-4 pt-3 pb-2" style={{ scrollMarginTop: "110px" }}>
 
         {/* Step 1: Choose Lab / Branch */}
         {step === 1 && (
