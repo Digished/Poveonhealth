@@ -93,6 +93,32 @@ export async function POST(request: NextRequest) {
       }
     }
 
+    // Auto-create any new hospitals referenced in the rows being imported
+    const allHospitalNames = Array.from(
+      new Set(
+        deduped
+          .flatMap((r) => (Array.isArray(r.hospitals) ? r.hospitals : []))
+          .map((h) => h.trim())
+          .filter(Boolean)
+      )
+    );
+    let hospitals_created = 0;
+    if (allHospitalNames.length > 0) {
+      const existingHospitals = await prisma.hospital.findMany({
+        where: { name: { in: allHospitalNames } },
+        select: { name: true },
+      });
+      const existingNames = new Set(existingHospitals.map((h) => h.name));
+      const newNames = allHospitalNames.filter((n) => !existingNames.has(n));
+      if (newNames.length > 0) {
+        const result = await prisma.hospital.createMany({
+          data: newNames.map((name) => ({ name })),
+          skipDuplicates: true,
+        });
+        hospitals_created = result.count;
+      }
+    }
+
     // Batch create — skipDuplicates as a safety net
     let created = 0;
     const createErrors: { row: number; email: string; reason: string }[] = [];
@@ -144,6 +170,7 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({
       success: true,
       created,
+      hospitals_created,
       skipped_claimed: skipped_claimed.length,
       skipped_duplicate: skipped_duplicate.length + inFileDups.length,
       errors: [...createErrors, ...skipped_claimed, ...skipped_duplicate, ...inFileDups],

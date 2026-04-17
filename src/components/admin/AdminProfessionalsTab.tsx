@@ -469,6 +469,7 @@ function parseCSVText(text: string): CsvRow[] {
 
 type ImportResult = {
   created: number;
+  hospitals_created: number;
   skipped_claimed: number;
   skipped_duplicate: number;
   errors: { row: number; email: string; reason: string }[];
@@ -550,10 +551,14 @@ function CsvImportModal({ onClose, onImported }: { onClose: () => void; onImport
           {/* Results screen */}
           {result ? (
             <div className="p-6 space-y-4">
-              <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+              <div className="grid grid-cols-2 sm:grid-cols-5 gap-3">
                 <div className="bg-emerald-900/30 border border-emerald-800/30 rounded-xl p-4 text-center">
                   <p className="text-2xl font-black text-emerald-400">{result.created}</p>
-                  <p className="text-xs text-emerald-600 mt-0.5">Created</p>
+                  <p className="text-xs text-emerald-600 mt-0.5">Professionals added</p>
+                </div>
+                <div className="bg-teal-900/30 border border-teal-800/30 rounded-xl p-4 text-center">
+                  <p className="text-2xl font-black text-teal-400">{result.hospitals_created ?? 0}</p>
+                  <p className="text-xs text-teal-600 mt-0.5">Hospitals added</p>
                 </div>
                 <div className="bg-amber-900/20 border border-amber-800/20 rounded-xl p-4 text-center">
                   <p className="text-2xl font-black text-amber-400">{result.skipped_duplicate}</p>
