@@ -13,34 +13,12 @@ import {
   AlertTriangle, Truck, MessageCircle, Heart,
 } from "lucide-react";
 
-function MarsIcon({ className }: { className?: string }) {
-  return (
-    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"
-      strokeLinecap="round" strokeLinejoin="round" className={className}>
-      <circle cx="10" cy="14" r="5" />
-      <line x1="14.5" y1="9.5" x2="21" y2="3" />
-      <polyline points="16 3 21 3 21 8" />
-    </svg>
-  );
-}
-
-function VenusIcon({ className }: { className?: string }) {
-  return (
-    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"
-      strokeLinecap="round" strokeLinejoin="round" className={className}>
-      <circle cx="12" cy="9" r="5" />
-      <line x1="12" y1="14" x2="12" y2="21" />
-      <line x1="9" y1="18" x2="15" y2="18" />
-    </svg>
-  );
-}
 import { Button } from "@/components/ui/Button";
-import { Input, Textarea, Select } from "@/components/ui/Input";
+import { Input, Textarea } from "@/components/ui/Input";
 import { TestTagInput, TestTag } from "@/components/ui/TestTagInput";
 import { smartSplitTestNames } from "@/lib/smart-split";
 import { PhoneInput } from "@/components/PhoneInput";
 import { BankAccountInput } from "@/components/BankAccountInput";
-import { DobInput } from "@/components/DobInput";
 import { SuccessScreen } from "@/components/SuccessScreen";
 import { PoveonLogo } from "@/components/PoveonLogo";
 import { PROFESSIONAL_PREFIXES, PrefixSelectModal, PrefixSelect } from "@/components/PrefixSelect";
@@ -94,9 +72,8 @@ const INITIAL: FormData = {
 
 const STEPS = [
   { title: "Location", icon: Building2 },
-  { title: "Clinical", icon: TestTube2 },
-  { title: "Referral", icon: Stethoscope },
   { title: "Patient", icon: User },
+  { title: "Referral", icon: Stethoscope },
 ];
 
 
@@ -767,8 +744,10 @@ export function DoctorRequestForm({
   const [isCritical, setIsCritical] = useState(false);
   const [needsAmbulance, setNeedsAmbulance] = useState(false);
   const [ambulanceNotes, setAmbulanceNotes] = useState("");
-  // Step 2 optional details collapsible (diagnosis + condition combined)
-  const [optionalDetailsOpen, setOptionalDetailsOpen] = useState(false);
+  const [conditionExpanded, setConditionExpanded] = useState(false);
+  const [keyboardHeight, setKeyboardHeight] = useState(0);
+  // Step 2: patient contact section active (collapses clinical section)
+  const [patientContactActive, setPatientContactActive] = useState(false);
   // Step 4 accordion / lookup states
   const [patientInfoOpen, setPatientInfoOpen] = useState(false);
   const [patientLookupStatus, setPatientLookupStatus] = useState<"idle" | "checking" | "found" | "not_found">("idle");
@@ -777,6 +756,19 @@ export function DoctorRequestForm({
   // Always-fresh read of form state for use inside async callbacks
   const formRef = useRef(form);
   formRef.current = form;
+  // Ref for the patient contact section (used for collapse detection)
+  const patientContactRef = useRef<HTMLDivElement>(null);
+  // Ref to the top of step content — used to scroll on step transitions
+  const stepContentRef = useRef<HTMLDivElement>(null);
+
+  // ── Input validation ───────────────────────────────────────────────────────
+  type PhoneValState = { status: "idle" | "checking" | "valid" | "invalid"; network?: string; formatted?: string };
+  type EmailValState = { status: "idle" | "checking" | "valid" | "invalid" | "suggestion"; suggestion?: string; reason?: string };
+
+  const [phoneVal, setPhoneVal] = useState<PhoneValState>({ status: "idle" });
+  const [patientEmailVal, setPatientEmailVal] = useState<EmailValState>({ status: "idle" });
+  const [doctorEmailVal, setDoctorEmailVal] = useState<EmailValState>({ status: "idle" });
+
 
   // Step 3: doctor profile check
   const [docProfileStatus, setDocProfileStatus] = useState<"idle" | "checking" | "found_complete" | "found_partial" | "not_found">("idle");
@@ -962,6 +954,91 @@ export function DoctorRequestForm({
     else setTod("evening");
   }, []);
 
+  // Auto-scroll focused inputs into view on mobile (accounts for keyboard opening)
+  useEffect(() => {
+    function handleFocusIn(e: FocusEvent) {
+      const el = e.target as HTMLElement;
+      if (!el || !["INPUT", "TEXTAREA"].includes(el.tagName)) return;
+      setTimeout(() => {
+        el.scrollIntoView({ behavior: "smooth", block: "center" });
+      }, 320);
+    }
+    document.addEventListener("focusin", handleFocusIn);
+    return () => document.removeEventListener("focusin", handleFocusIn);
+  }, []);
+
+  // Track virtual keyboard height so the FAB stays above it on mobile
+  useEffect(() => {
+    const vv = window.visualViewport;
+    if (!vv) return;
+    function update() {
+      const kh = Math.max(0, window.innerHeight - vv!.offsetTop - vv!.height);
+      setKeyboardHeight(kh);
+    }
+    vv.addEventListener("resize", update);
+    vv.addEventListener("scroll", update);
+    return () => {
+      vv.removeEventListener("resize", update);
+      vv.removeEventListener("scroll", update);
+    };
+  }, []);
+
+  // Scroll step content into view on every step transition
+  useEffect(() => {
+    const el = stepContentRef.current;
+    if (!el) return;
+    const timer = setTimeout(() => {
+      el.scrollIntoView({ behavior: "smooth", block: "start" });
+    }, 60);
+    return () => clearTimeout(timer);
+  }, [step]);
+
+  // Phone validation — runs on debounce after user finishes typing
+  useEffect(() => {
+    const digits = form.patient_phone.replace(/\D/g, "");
+    if (digits.length < 10) { setPhoneVal({ status: "idle" }); return; }
+    setPhoneVal({ status: "checking" });
+    const timer = setTimeout(() => {
+      fetch("/api/validate/phone", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ phone: form.patient_phone }),
+      })
+        .then((r) => r.json())
+        .then((d) => setPhoneVal(d.valid ? { status: "valid", network: d.network, formatted: d.formatted } : { status: "invalid" }))
+        .catch(() => setPhoneVal({ status: "idle" }));
+    }, 700);
+    return () => clearTimeout(timer);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [form.patient_phone]);
+
+  // Reset email validation banners whenever the email value changes
+  useEffect(() => { setPatientEmailVal({ status: "idle" }); }, [form.patient_email]);
+  useEffect(() => { setDoctorEmailVal({ status: "idle" }); }, [form.doctor_email]);
+
+  /** Called onBlur of any email input. Checks typos + MX records. */
+  const validateEmailField = useCallback(
+    async (email: string, setter: (v: EmailValState) => void) => {
+      if (!email.trim()) { setter({ status: "idle" }); return; }
+      if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) { setter({ status: "invalid", reason: "Invalid email format" }); return; }
+      setter({ status: "checking" });
+      try {
+        const res = await fetch("/api/validate/email", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ email }),
+        });
+        const d = await res.json();
+        if (d.valid) setter({ status: "valid" });
+        else if (d.suggestion) setter({ status: "suggestion", suggestion: d.suggestion });
+        else setter({ status: "invalid", reason: d.reason });
+      } catch {
+        setter({ status: "idle" });
+      }
+    },
+    []
+  );
+
   // Hero visibility — when a #lab-hero element exists, track whether it's still in view.
   // Used to hide the logo/name in the sticky header while the hero is prominent.
   const [heroVisible, setHeroVisible] = useState(false);
@@ -1035,17 +1112,15 @@ export function DoctorRequestForm({
     }
     if (s === 2) {
       if (testTags.length === 0 && !testImageUrl) errs.tests = "Required";
-      // diagnosis is always optional
+      if (!form.diagnosis.trim()) errs.diagnosis = "Clinical note is required";
+      if (!form.patient_phone) errs.patient_phone = "Phone number is required";
+      if (!form.patient_name.trim()) errs.patient_name = "Patient name is required";
     }
     if (s === 3) {
       if (!form.doctor_email.trim()) errs.doctor_email = "Email is required";
       else if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(form.doctor_email))
         errs.doctor_email = "Invalid email address";
       if (!form.doctor_name.trim()) errs.doctor_name = "Doctor name is required";
-    }
-    if (s === 4) {
-      if (!form.patient_phone) errs.patient_phone = "Phone number is required";
-      if (!form.patient_name.trim()) errs.patient_name = "Patient name is required";
     }
     setErrors(errs);
     return Object.keys(errs).length === 0;
@@ -1060,8 +1135,7 @@ export function DoctorRequestForm({
 
   function handleNext() {
     if (validateStep(step)) {
-      if (step === 3) persistDoctorProfile();
-      const next = Math.min(4, step + 1);
+      const next = Math.min(3, step + 1);
       setStep(next);
       setMaxStep((m) => Math.max(m, next));
     }
@@ -1072,7 +1146,6 @@ export function DoctorRequestForm({
     if (target === step) return;
     if (target > step) {
       if (!validateStep(step)) return;
-      if (step === 3) persistDoctorProfile();
     } else {
       setErrors({});
     }
@@ -1108,7 +1181,7 @@ export function DoctorRequestForm({
   }, [imageExtracting]);
 
   async function handleSubmit() {
-    if (!validateStep(4)) return;
+    if (!validateStep(2) || !validateStep(3)) return;
     setSubmitting(true);
     try {
       const res = await fetch("/api/requests/create", {
@@ -1272,7 +1345,12 @@ export function DoctorRequestForm({
       return true;
     }
     if (step === 2) {
-      return testTags.length > 0 || !!testImageUrl;
+      return (
+        (testTags.length > 0 || !!testImageUrl) &&
+        !!form.diagnosis.trim() &&
+        !!form.patient_phone.trim() &&
+        !!form.patient_name.trim()
+      );
     }
     if (step === 3) {
       return (
@@ -1280,14 +1358,8 @@ export function DoctorRequestForm({
         /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(form.doctor_email)
       );
     }
-    if (step === 4) {
-      return !!form.patient_phone.trim() && !!form.patient_name.trim();
-    }
     return true;
   })();
-
-  // Whether the clinical section of step 2 is done (drives the connector line)
-  const clinicalDone = testTags.length > 0 || !!testImageUrl;
 
   return (
     <div className="animate-fade-in bg-white -mx-4">
@@ -1434,7 +1506,7 @@ export function DoctorRequestForm({
       </div>
 
       {/* Step content */}
-      <div className="px-4 pt-3 pb-2">
+      <div ref={stepContentRef} className="px-4 pt-3 pb-2" style={{ scrollMarginTop: "110px" }}>
 
         {/* Step 1: Choose Lab / Branch */}
         {step === 1 && (
@@ -1494,16 +1566,255 @@ export function DoctorRequestForm({
           </div>
         )}
 
-        {/* Step 2: Clinical Details */}
+        {/* Step 3: Referral & Review */}
+        {step === 3 && (
+          <div className="space-y-4">
+                    <div className="space-y-5">
+            <h2 className="flex items-center gap-3 text-base font-bold text-slate-800 pb-4 border-b border-slate-100">
+              <div className="w-8 h-8 rounded-xl bg-medical-50 flex items-center justify-center shrink-0">
+                <Stethoscope className="w-4 h-4 text-medical-600" />
+              </div>
+              Referral
+            </h2>
+
+            <div className="relative pt-1">
+              {/* Substep 1: Email — primary identifier */}
+              <div className="relative flex gap-3">
+                <div className="flex flex-col items-center shrink-0 pt-1">
+                  <div className={`w-7 h-7 rounded-full flex items-center justify-center text-xs font-bold border-2 transition-all shrink-0 ${
+                    form.doctor_email.trim()
+                      ? "bg-emerald-500 border-emerald-500 text-white"
+                      : "bg-white border-medical-400 text-medical-600"
+                  }`}>
+                    {form.doctor_email.trim() ? <Check className="w-3.5 h-3.5" /> : "1"}
+                  </div>
+                  {form.doctor_email.trim() && (
+                    <div className="w-0.5 flex-1 min-h-4 bg-slate-200 mt-1" />
+                  )}
+                </div>
+                <div className="flex-1 pb-3 min-w-0 space-y-2">
+                  <Input
+                    label="Your Email"
+                    type="email"
+                    required
+                    placeholder="you@hospital.com"
+                    value={form.doctor_email}
+                    onChange={(e) => set("doctor_email", e.target.value)}
+                    onBlur={() => validateEmailField(form.doctor_email, setDoctorEmailVal)}
+                    error={errors.doctor_email}
+                  />
+                  {savedProfile && form.doctor_email && (
+                    <div className="flex items-center justify-between pt-0.5">
+                      <p className="text-xs text-slate-400">Saved email</p>
+                      <button type="button" onClick={clearDoctorProfile} className="text-xs text-slate-400 hover:text-slate-600 underline underline-offset-2">Clear</button>
+                    </div>
+                  )}
+                  {/* Doctor profile lookup spinner */}
+                  {docProfileStatus === "checking" && (
+                    <div className="flex items-center gap-2 text-xs text-slate-400">
+                      <RefreshCw className="w-3 h-3 animate-spin" />Checking…
+                    </div>
+                  )}
+                  {/* Email domain validation feedback */}
+                  {doctorEmailVal.status === "checking" && (
+                    <div className="flex items-center gap-2 text-xs text-slate-400">
+                      <RefreshCw className="w-3 h-3 animate-spin" />Checking email…
+                    </div>
+                  )}
+                  {doctorEmailVal.status === "valid" && (
+                    <div className="flex items-center gap-2 px-3 py-2 bg-emerald-50 border border-emerald-200 rounded-xl text-xs">
+                      <Check className="w-3.5 h-3.5 text-emerald-600 shrink-0" />
+                      <span className="text-emerald-700 font-medium">Email looks good</span>
+                    </div>
+                  )}
+                  {doctorEmailVal.status === "suggestion" && (
+                    <div className="flex items-center justify-between gap-2 px-3 py-2.5 bg-amber-50 border border-amber-200 rounded-xl text-xs">
+                      <div className="flex items-center gap-1.5 min-w-0">
+                        <AlertTriangle className="w-3.5 h-3.5 text-amber-500 shrink-0" />
+                        <span className="text-amber-700 truncate">Did you mean <span className="font-semibold">{doctorEmailVal.suggestion}</span>?</span>
+                      </div>
+                      <button type="button" onClick={() => { set("doctor_email", doctorEmailVal.suggestion!); setDoctorEmailVal({ status: "valid" }); }}
+                        className="text-amber-700 font-bold underline underline-offset-2 shrink-0">Use this</button>
+                    </div>
+                  )}
+                  {doctorEmailVal.status === "invalid" && (
+                    <div className="flex items-center gap-2 px-3 py-2 bg-red-50 border border-red-200 rounded-xl text-xs">
+                      <AlertTriangle className="w-3.5 h-3.5 text-red-500 shrink-0" />
+                      <span className="text-red-700">{doctorEmailVal.reason ?? "Invalid email address"}</span>
+                    </div>
+                  )}
+                </div>
+              </div>
+
+              {/* Substep 2: Registered doctor — read-only details */}
+              {docProfileStatus === "found_complete" && docProfileInfo && (
+                <div className="relative flex gap-3 animate-fade-in-up">
+                  <div className="flex flex-col items-center shrink-0 pt-1">
+                    <div className="w-7 h-7 rounded-full flex items-center justify-center text-xs font-bold border-2 transition-all shrink-0 bg-emerald-500 border-emerald-500 text-white">
+                      <Check className="w-3.5 h-3.5" />
+                    </div>
+                  </div>
+                  <div className="flex-1 pb-2 min-w-0 space-y-3">
+                    {/* Doctor info — read-only display */}
+                    <div className="space-y-3">
+                      {/* Name row */}
+                      <div className="flex items-start justify-between gap-4 px-4 py-3 bg-emerald-50 border border-emerald-200 rounded-2xl">
+                        <div>
+                          <p className="text-xs font-semibold text-slate-500 uppercase tracking-wide">Name</p>
+                          <p className="text-sm font-semibold text-slate-800 mt-1">
+                            {[docProfileInfo.prefix, docProfileInfo.full_name].filter(Boolean).join(" ")}
+                          </p>
+                        </div>
+                      </div>
+
+                      {/* Email row */}
+                      <div className="flex items-start justify-between gap-4 px-4 py-3 bg-slate-50 border border-slate-200 rounded-2xl">
+                        <div>
+                          <p className="text-xs font-semibold text-slate-500 uppercase tracking-wide">Email</p>
+                          <p className="text-sm font-semibold text-slate-800 mt-1">{form.doctor_email}</p>
+                        </div>
+                      </div>
+
+                      {/* Phone row */}
+                      {docProfileInfo.phone && (
+                        <div className="flex items-start justify-between gap-4 px-4 py-3 bg-slate-50 border border-slate-200 rounded-2xl">
+                          <div>
+                            <p className="text-xs font-semibold text-slate-500 uppercase tracking-wide">Phone</p>
+                            <p className="text-sm font-semibold text-slate-800 mt-1">{docProfileInfo.phone}</p>
+                          </div>
+                        </div>
+                      )}
+
+                    </div>
+                  </div>
+                </div>
+              )}
+
+              {/* Substep 2: Unregistered doctor — name input */}
+              {(docProfileStatus === "not_found" || docProfileStatus === "found_partial") && form.doctor_email.trim() && (
+                <div className="relative flex gap-3 animate-fade-in-up">
+                  <div className="flex flex-col items-center shrink-0 pt-1">
+                    <div className={`w-7 h-7 rounded-full flex items-center justify-center text-xs font-bold border-2 transition-all shrink-0 ${
+                      form.doctor_name.trim()
+                        ? "bg-emerald-500 border-emerald-500 text-white"
+                        : "bg-white border-medical-400 text-medical-600"
+                    }`}>
+                      {form.doctor_name.trim() ? <Check className="w-3.5 h-3.5" /> : "2"}
+                    </div>
+                  </div>
+                  <div className="flex-1 pb-2 min-w-0">
+                    <div className="grid grid-cols-1 sm:grid-cols-4 gap-3">
+                      <div className="sm:col-span-1">
+                        <PrefixSelect
+                          value={form.doctor_prefix || "Dr."}
+                          onChange={(prefix) => set("doctor_prefix", prefix)}
+                        />
+                      </div>
+                      <div className="sm:col-span-3">
+                        <Input
+                          label="Full Name"
+                          placeholder="e.g. Chioma Okafor"
+                          value={form.doctor_name}
+                          onChange={(e) => set("doctor_name", e.target.value)}
+                          error={errors.doctor_name}
+                          required
+                        />
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              )}
+            </div>
+          </div>
+
+          {/* Review summary */}
+          <div className="rounded-2xl border border-slate-200/80 overflow-hidden shadow-sm">
+            <div className="px-4 py-3 bg-gradient-to-r from-slate-50 to-slate-50/60 border-b border-slate-100 flex items-center gap-2">
+              <div className="w-1.5 h-1.5 rounded-full bg-medical-400" />
+              <p className="text-xs font-bold text-slate-600 tracking-wide">Review before sending</p>
+            </div>
+            <div className="divide-y divide-slate-100/80">
+              {/* Lab */}
+              <div className="px-4 py-3.5 flex items-start justify-between gap-4">
+                <p className="text-[11px] font-semibold text-slate-400 uppercase tracking-wide shrink-0 w-20 pt-px">Lab</p>
+                <p className="text-sm font-semibold text-slate-800 text-right truncate">{hasLocations ? (locations[selectedLocIdx]?.name ?? preselectedLabName ?? "") : (selectedLab?.name ?? preselectedLabName ?? "")}</p>
+              </div>
+              {/* Patient */}
+              <div className="px-4 py-3.5 flex items-start justify-between gap-4">
+                <p className="text-[11px] font-semibold text-slate-400 uppercase tracking-wide shrink-0 w-20 pt-px">Patient</p>
+                <div className="text-right min-w-0">
+                  {form.patient_name && <p className="text-sm font-semibold text-slate-800 truncate">{form.patient_name}</p>}
+                  <p className="text-xs text-slate-500 font-mono mt-0.5">{form.patient_phone}</p>
+                  {form.patient_email && <p className="text-xs text-slate-400 mt-0.5">{form.patient_email}</p>}
+                  {form.dob && <p className="text-xs text-slate-400 mt-0.5">DOB {form.dob.split("-").reverse().join(" / ")}{form.sex ? ` · ${form.sex}` : ""}</p>}
+                </div>
+              </div>
+              {/* Clinical */}
+              <div className="px-4 py-3.5 flex items-start justify-between gap-4">
+                <p className="text-[11px] font-semibold text-slate-400 uppercase tracking-wide shrink-0 w-20 pt-px">Clinical</p>
+                <div className="text-right min-w-0">
+                  {testImageUrl && <p className="text-xs text-emerald-600 truncate mb-0.5">Image attached</p>}
+                  {form.diagnosis && <p className="text-xs text-slate-500 truncate mb-0.5">{form.diagnosis}</p>}
+                  <p className="text-sm font-semibold text-slate-800 truncate">{testsString || (testImageUrl ? "See attached image" : "")}</p>
+                </div>
+              </div>
+              {/* Referrer */}
+              <div className="px-4 py-3.5 flex items-start justify-between gap-4">
+                <p className="text-[11px] font-semibold text-slate-400 uppercase tracking-wide shrink-0 w-20 pt-px">Referrer</p>
+                <div className="text-right min-w-0">
+                  <p className="text-sm font-semibold text-slate-800 truncate">{[form.doctor_prefix, form.doctor_name].filter(Boolean).join(" ")}</p>
+                  {form.doctor_hospital && <p className="text-xs text-slate-500 truncate mt-0.5">{form.doctor_hospital}</p>}
+                  <p className="text-xs text-slate-400 truncate mt-0.5">{form.doctor_email}</p>
+                </div>
+              </div>
+              {/* Flags */}
+              {(isCritical || needsAmbulance) && (
+                <div className="px-4 py-3 flex items-center gap-2 flex-wrap bg-slate-50/60">
+                  {isCritical && <span className="inline-flex items-center gap-1 text-xs font-semibold bg-red-50 text-red-600 border border-red-200 px-2.5 py-1 rounded-full"><AlertTriangle className="w-3 h-3" />Critical</span>}
+                  {needsAmbulance && <span className="inline-flex items-center gap-1 text-xs font-semibold bg-orange-50 text-orange-600 border border-orange-200 px-2.5 py-1 rounded-full"><Truck className="w-3 h-3" />Ambulance</span>}
+                </div>
+              )}
+            </div>
+          </div>
+        </div>
+        )}
+
+        {/* Step 2: Tests & Patient */}
         {step === 2 && (
           <div className="space-y-4">
-            {/* Header row: title + camera button in corner */}
-            <div className="flex items-center justify-between pb-3 border-b border-slate-100">
-              <h2 className="flex items-center gap-2 text-base font-semibold text-slate-700">
-                <TestTube2 className="w-4 h-4 text-medical-600" />
-                Clinical Details
-              </h2>
-              {/* Camera button — tap to scan a physical test request slip */}
+
+            {/* Clinical section — collapses to summary when patient contact is focused */}
+            {patientContactActive ? (
+              /* Collapsed summary */
+              <button
+                type="button"
+                onClick={() => setPatientContactActive(false)}
+                className="w-full flex items-center gap-3 px-4 py-3 rounded-xl border border-emerald-200 bg-emerald-50/60 hover:bg-emerald-100/60 transition-colors text-left animate-fade-in"
+              >
+                <div className="w-6 h-6 rounded-full bg-emerald-500 flex items-center justify-center shrink-0">
+                  <Check className="w-3 h-3 text-white" />
+                </div>
+                <div className="flex-1 min-w-0">
+                  <p className="text-xs font-semibold text-emerald-800 truncate">
+                    {testTags.length > 0
+                      ? `${testTags.length} test${testTags.length !== 1 ? "s" : ""}${form.diagnosis.trim() ? ` · ${form.diagnosis.trim().slice(0, 40)}${form.diagnosis.trim().length > 40 ? "…" : ""}` : ""}`
+                      : testImageUrl ? "Image attached" : ""}
+                    {isCritical && " · Critical"}
+                    {needsAmbulance && " · Ambulance"}
+                  </p>
+                </div>
+                <span className="text-xs text-emerald-600 font-medium shrink-0">Edit</span>
+              </button>
+            ) : (
+              /* Full clinical section */
+              <div className="space-y-3">
+                {/* Header: title + camera */}
+                <div className="flex items-center justify-between pb-3 border-b border-slate-100">
+                  <h2 className="flex items-center gap-2 text-base font-semibold text-slate-700">
+                    <TestTube2 className="w-4 h-4 text-medical-600" />
+                    Clinical Details
+                  </h2>
+                  {/* Camera button */}
               <label className="cursor-pointer select-none" aria-label="Scan test request slip">
                 <div className={`flex items-center gap-1.5 py-1.5 px-3 rounded-xl text-xs font-semibold transition-colors active:scale-95 ${testImageUrl ? "bg-emerald-100 text-emerald-700" : "bg-slate-100 text-slate-500 hover:bg-medical-100 hover:text-medical-600"}`}>
                   <Camera className="w-3.5 h-3.5" />
@@ -1623,7 +1934,7 @@ export function DoctorRequestForm({
                                   doctor_name: prev.doctor_name || res.extracted.doctor_name,
                                   doctor_prefix: prev.doctor_prefix || res.extracted.doctor_prefix,
                                 }));
-                                if (res.extracted.diagnosis) setOptionalDetailsOpen(true);
+
                               }
                             })
                             .catch(() => { /* silent — user continues manually */ })
@@ -1651,7 +1962,23 @@ export function DoctorRequestForm({
                   }}
                 />
               </label>
-            </div>
+                </div>
+
+                {/* Substep 1: Tests */}
+                <div className="relative flex gap-3">
+                  <div className="flex flex-col items-center shrink-0 pt-1">
+                    <div className={`w-7 h-7 rounded-full flex items-center justify-center text-xs font-bold border-2 transition-all shrink-0 ${
+                      (testTags.length > 0 || !!testImageUrl)
+                        ? "bg-emerald-500 border-emerald-500 text-white"
+                        : "bg-white border-medical-400 text-medical-600"
+                    }`}>
+                      {(testTags.length > 0 || !!testImageUrl) ? <Check className="w-3.5 h-3.5" /> : "1"}
+                    </div>
+                    {(testTags.length > 0 || !!testImageUrl) && (
+                      <div className="w-0.5 flex-1 min-h-4 bg-slate-200 mt-1" />
+                    )}
+                  </div>
+                  <div className="flex-1 min-w-0">
 
             <div className="space-y-3">
                   {/* Upload / extraction progress — shown while processing the scanned slip */}
@@ -1776,85 +2103,85 @@ export function DoctorRequestForm({
                   />
 
               </div>
+                  </div>
+                </div>
 
-            {/* Sub-steps — revealed progressively once at least one test is added */}
-            {(testTags.length > 0 || !!testImageUrl) && (
-              <div className="space-y-3 animate-fade-in-up">
-                {/* Optional Details — single collapsible for diagnosis + patient condition */}
-                {(() => {
-                  const hasDiagnosis = form.diagnosis.trim().length > 0;
-                  const hasCondition = isCritical || needsAmbulance;
-                  const borderColor = isCritical ? "border-red-200" : needsAmbulance ? "border-orange-200" : hasDiagnosis ? "border-emerald-200" : "border-slate-200";
-                  const bgColor = isCritical ? "bg-red-50/20" : needsAmbulance ? "bg-orange-50/20" : hasDiagnosis ? "bg-emerald-50/30" : "";
-                  return (
-                    <div className={`rounded-xl border-2 overflow-hidden transition-colors ${borderColor} ${bgColor}`}>
-                      <button
-                        type="button"
-                        onClick={() => setOptionalDetailsOpen((v) => !v)}
-                        className="w-full flex items-center justify-between px-4 py-3 hover:bg-black/[0.02] transition-colors bg-slate-50/40"
-                      >
-                        <div className="flex items-center gap-2 text-left">
-                          <FileText className={`w-4 h-4 shrink-0 ${hasDiagnosis || hasCondition ? "text-slate-500" : "text-slate-400"}`} />
-                          <span className="text-sm font-semibold text-slate-700">Optional Details</span>
-                        </div>
-                        <div className="flex items-center gap-1.5">
-                          {hasDiagnosis && <span className="text-xs font-semibold text-emerald-600 bg-emerald-100 px-2 py-0.5 rounded-full">Notes</span>}
-                          {isCritical && <span className="text-xs font-semibold text-red-600 bg-red-100 px-2 py-0.5 rounded-full">Critical</span>}
-                          {needsAmbulance && <span className="text-xs font-semibold text-orange-600 bg-orange-100 px-2 py-0.5 rounded-full">Ambulance</span>}
-                          {!hasDiagnosis && !hasCondition && <span className="text-xs text-slate-400">diagnosis, condition</span>}
-                          <ChevronDown className={`w-4 h-4 shrink-0 transition-transform text-slate-400 ml-1 ${optionalDetailsOpen ? "rotate-180" : ""}`} />
-                        </div>
-                      </button>
-
-                      {optionalDetailsOpen && (
-                        <div className="border-t border-slate-100 divide-y divide-slate-100">
-                          {/* Diagnosis */}
-                          <div className="px-4 py-4 space-y-2">
-                            <p className="text-xs font-semibold text-slate-400 uppercase tracking-wide">Diagnosis / Clinical Notes</p>
-                            <Textarea
-                              label=""
-                              placeholder="Brief clinical summary or working diagnosis…"
-                              rows={3}
-                              value={form.diagnosis}
-                              onChange={(e) => set("diagnosis", e.target.value)}
-                            />
+                {/* Substep 2: Diagnosis + Patient Condition (reveals after tests filled) */}
+                {(testTags.length > 0 || !!testImageUrl) && (
+                  <div className="relative flex gap-3 animate-fade-in-up">
+                    <div className="flex flex-col items-center shrink-0 pt-1">
+                      <div className={`w-7 h-7 rounded-full flex items-center justify-center text-xs font-bold border-2 transition-all shrink-0 ${
+                        form.diagnosis.trim()
+                          ? "bg-emerald-500 border-emerald-500 text-white"
+                          : "bg-white border-medical-400 text-medical-600"
+                      }`}>
+                        {form.diagnosis.trim() ? <Check className="w-3.5 h-3.5" /> : "2"}
+                      </div>
+                    </div>
+                    <div className="flex-1 min-w-0 space-y-3">
+                      <Textarea
+                        label="Clinical Note"
+                        placeholder="e.g. 35 year old man with symptoms suggestive of sepsis"
+                        rows={3}
+                        required
+                        value={form.diagnosis}
+                        onChange={(e) => set("diagnosis", e.target.value)}
+                        error={errors.diagnosis}
+                      />
+                      {/* Patient Condition */}
+                      <div className="space-y-2">
+                        {!conditionExpanded && !isCritical && !needsAmbulance ? (
+                          /* Subtle stable row */
+                          <div className="flex items-center justify-between">
+                            <div className="flex items-center gap-1.5 text-xs text-emerald-600 font-medium">
+                              <Heart className="w-3.5 h-3.5 shrink-0" />
+                              This patient is stable
+                            </div>
+                            <button
+                              type="button"
+                              onClick={() => setConditionExpanded(true)}
+                              className="text-xs text-slate-400 hover:text-slate-600 font-medium underline underline-offset-2 transition-colors"
+                            >
+                              Change
+                            </button>
                           </div>
-
-                          {/* Patient Condition */}
-                          <div className="px-4 py-4 space-y-3">
-                            <p className="text-xs font-semibold text-slate-400 uppercase tracking-wide">Patient Condition</p>
-                            {/* Stable passive indicator */}
-                            {!isCritical && !needsAmbulance && (
-                              <div className="flex items-center gap-2 text-sm text-emerald-600 font-medium">
-                                <Heart className="w-4 h-4 shrink-0" />
-                                Stable
-                              </div>
-                            )}
+                        ) : (
+                          /* Expanded condition toggles */
+                          <div className="space-y-2 animate-fade-in">
                             <div className="flex gap-2">
                               <button
                                 type="button"
                                 onClick={() => setIsCritical((v) => !v)}
-                                className={`flex-1 flex items-center justify-center gap-1.5 py-2.5 px-3 rounded-xl text-sm font-semibold border-2 transition-all ${
+                                className={`flex-1 flex items-center justify-center gap-1.5 py-2 px-3 rounded-xl text-xs font-semibold border-2 transition-all ${
                                   isCritical
                                     ? "bg-red-50 border-red-300 text-red-600 shadow-sm"
                                     : "border-slate-200 text-slate-500 hover:border-slate-300 hover:bg-slate-50"
                                 }`}
                               >
-                                <AlertTriangle className="w-3.5 h-3.5" />
+                                <AlertTriangle className="w-3 h-3" />
                                 Critical
                               </button>
                               <button
                                 type="button"
                                 onClick={() => setNeedsAmbulance((v) => !v)}
-                                className={`flex-1 flex items-center justify-center gap-1.5 py-2.5 px-3 rounded-xl text-sm font-semibold border-2 transition-all ${
+                                className={`flex-1 flex items-center justify-center gap-1.5 py-2 px-3 rounded-xl text-xs font-semibold border-2 transition-all ${
                                   needsAmbulance
                                     ? "bg-orange-50 border-orange-300 text-orange-600 shadow-sm"
                                     : "border-slate-200 text-slate-500 hover:border-slate-300 hover:bg-slate-50"
                                 }`}
                               >
-                                <Truck className="w-3.5 h-3.5" />
+                                <Truck className="w-3 h-3" />
                                 Ambulance
                               </button>
+                              {!isCritical && !needsAmbulance && (
+                                <button
+                                  type="button"
+                                  onClick={() => setConditionExpanded(false)}
+                                  className="px-3 py-2 rounded-xl text-xs text-slate-400 hover:text-slate-600 border-2 border-transparent hover:border-slate-200 transition-all"
+                                >
+                                  Cancel
+                                </button>
+                              )}
                             </div>
                             {needsAmbulance && (
                               <div className="animate-fade-in-up">
@@ -1868,325 +2195,184 @@ export function DoctorRequestForm({
                               </div>
                             )}
                           </div>
-                        </div>
-                      )}
+                        )}
+                      </div>
                     </div>
-                  );
-                })()}
+                  </div>
+                )}
               </div>
             )}
-          </div>
-        )}
 
-        {/* Step 3: Referring Professional */}
-        {step === 3 && (
-          <div className="space-y-5">
-            <h2 className="flex items-center gap-3 text-base font-bold text-slate-800 pb-4 border-b border-slate-100">
-              <div className="w-8 h-8 rounded-xl bg-medical-50 flex items-center justify-center shrink-0">
-                <Stethoscope className="w-4 h-4 text-medical-600" />
-              </div>
-              Referral
-            </h2>
+            {/* Patient Contact — revealed once tests and clinical note are filled */}
+            {(testTags.length > 0 || !!testImageUrl) && !!form.diagnosis.trim() && (
+              <div
+                ref={patientContactRef}
+                onFocus={() => setPatientContactActive(true)}
+                onBlur={() => {
+                  setTimeout(() => {
+                    if (patientContactRef.current && !patientContactRef.current.contains(document.activeElement)) {
+                      setPatientContactActive(false);
+                    }
+                  }, 50);
+                }}
+                className="pt-4 border-t border-slate-100 space-y-5 animate-fade-in-up"
+              >
+                {patientContactActive && (
+                  <h2 className="flex items-center gap-3 text-base font-bold text-slate-800 pb-4 border-b border-slate-100">
+                    <div className="w-8 h-8 rounded-xl bg-medical-50 flex items-center justify-center shrink-0">
+                      <User className="w-4 h-4 text-medical-600" />
+                    </div>
+                    Patient Contact
+                  </h2>
+                )}
 
-            <div className="relative pt-1">
-              {/* Substep 1: Email — primary identifier */}
-              <div className="relative flex gap-3">
-                <div className="flex flex-col items-center shrink-0 pt-1">
-                  <div className={`w-7 h-7 rounded-full flex items-center justify-center text-xs font-bold border-2 transition-all shrink-0 ${
-                    form.doctor_email.trim()
-                      ? "bg-emerald-500 border-emerald-500 text-white"
-                      : "bg-white border-medical-400 text-medical-600"
-                  }`}>
-                    {form.doctor_email.trim() ? <Check className="w-3.5 h-3.5" /> : "1"}
-                  </div>
-                  {form.doctor_email.trim() && (
-                    <div className="w-0.5 flex-1 min-h-4 bg-slate-200 mt-1" />
-                  )}
-                </div>
-                <div className="flex-1 pb-3 min-w-0 space-y-2">
-                  <Input
-                    label="Your Email"
-                    type="email"
-                    required
-                    placeholder="you@hospital.com"
-                    value={form.doctor_email}
-                    onChange={(e) => set("doctor_email", e.target.value)}
-                    error={errors.doctor_email}
-                  />
-                  {savedProfile && form.doctor_email && (
-                    <div className="flex items-center justify-between pt-0.5">
-                      <p className="text-xs text-slate-400">Saved email</p>
-                      <button type="button" onClick={clearDoctorProfile} className="text-xs text-slate-400 hover:text-slate-600 underline underline-offset-2">Clear</button>
-                    </div>
-                  )}
-                  {/* Checking spinner */}
-                  {docProfileStatus === "checking" && (
-                    <div className="flex items-center gap-2 text-xs text-slate-400">
-                      <RefreshCw className="w-3 h-3 animate-spin" />Checking…
-                    </div>
-                  )}
-                </div>
-              </div>
-
-              {/* Substep 2: Registered doctor — read-only details */}
-              {docProfileStatus === "found_complete" && docProfileInfo && (
-                <div className="relative flex gap-3 animate-fade-in-up">
-                  <div className="flex flex-col items-center shrink-0 pt-1">
-                    <div className="w-7 h-7 rounded-full flex items-center justify-center text-xs font-bold border-2 transition-all shrink-0 bg-emerald-500 border-emerald-500 text-white">
-                      <Check className="w-3.5 h-3.5" />
-                    </div>
-                  </div>
-                  <div className="flex-1 pb-2 min-w-0 space-y-3">
-                    {/* Doctor info — read-only display */}
-                    <div className="space-y-3">
-                      {/* Name row */}
-                      <div className="flex items-start justify-between gap-4 px-4 py-3 bg-emerald-50 border border-emerald-200 rounded-2xl">
-                        <div>
-                          <p className="text-xs font-semibold text-slate-500 uppercase tracking-wide">Name</p>
-                          <p className="text-sm font-semibold text-slate-800 mt-1">
-                            {[docProfileInfo.prefix, docProfileInfo.full_name].filter(Boolean).join(" ")}
-                          </p>
-                        </div>
+                <div className="relative pt-1">
+                  {/* Substep 1: Phone */}
+                  <div className="relative flex gap-3">
+                    <div className="flex flex-col items-center shrink-0 pt-1">
+                      <div className={`w-7 h-7 rounded-full flex items-center justify-center text-xs font-bold border-2 transition-all shrink-0 ${
+                        form.patient_phone.trim()
+                          ? "bg-emerald-500 border-emerald-500 text-white"
+                          : "bg-white border-medical-400 text-medical-600"
+                      }`}>
+                        {form.patient_phone.trim() ? <Check className="w-3.5 h-3.5" /> : "1"}
                       </div>
-
-                      {/* Email row */}
-                      <div className="flex items-start justify-between gap-4 px-4 py-3 bg-slate-50 border border-slate-200 rounded-2xl">
-                        <div>
-                          <p className="text-xs font-semibold text-slate-500 uppercase tracking-wide">Email</p>
-                          <p className="text-sm font-semibold text-slate-800 mt-1">{form.doctor_email}</p>
-                        </div>
-                      </div>
-
-                      {/* Phone row */}
-                      {docProfileInfo.phone && (
-                        <div className="flex items-start justify-between gap-4 px-4 py-3 bg-slate-50 border border-slate-200 rounded-2xl">
-                          <div>
-                            <p className="text-xs font-semibold text-slate-500 uppercase tracking-wide">Phone</p>
-                            <p className="text-sm font-semibold text-slate-800 mt-1">{docProfileInfo.phone}</p>
-                          </div>
+                      {form.patient_phone.trim() && (
+                        <div className="w-0.5 flex-1 min-h-4 bg-slate-200 mt-1" />
+                      )}
+                    </div>
+                    <div className="flex-1 pb-3 min-w-0 space-y-2">
+                      <PhoneInput
+                        label="Patient Phone"
+                        required
+                        value={form.patient_phone}
+                        onChange={(v) => set("patient_phone", v)}
+                        error={errors.patient_phone}
+                      />
+                      {/* Phone number validation chip */}
+                      {phoneVal.status === "checking" && (
+                        <div className="flex items-center gap-2 text-xs text-slate-400">
+                          <RefreshCw className="w-3 h-3 animate-spin" />
+                          Verifying number…
                         </div>
                       )}
-
+                      {phoneVal.status === "valid" && (
+                        <div className="flex items-center gap-2 px-3 py-2 bg-emerald-50 border border-emerald-200 rounded-xl text-xs">
+                          <Check className="w-3.5 h-3.5 text-emerald-600 shrink-0" />
+                          <span className="font-semibold text-emerald-800">{phoneVal.formatted}</span>
+                          {phoneVal.network && <span className="text-emerald-600">· {phoneVal.network}</span>}
+                        </div>
+                      )}
+                      {phoneVal.status === "invalid" && (
+                        <div className="flex items-center gap-2 px-3 py-2 bg-amber-50 border border-amber-200 rounded-xl text-xs">
+                          <AlertTriangle className="w-3.5 h-3.5 text-amber-500 shrink-0" />
+                          <span className="text-amber-700">This doesn&apos;t look like a valid mobile number</span>
+                        </div>
+                      )}
+                      {/* Patient profile lookup status */}
+                      {patientLookupStatus === "checking" && (
+                        <div className="flex items-center gap-2 text-xs text-slate-400">
+                          <RefreshCw className="w-3 h-3 animate-spin" />
+                          Looking up patient profile…
+                        </div>
+                      )}
+                      {patientLookupStatus === "found" && (
+                        <div className="flex items-start gap-2 px-3 py-2 bg-emerald-50 border border-emerald-200 rounded-xl text-xs">
+                          <Check className="w-3.5 h-3.5 text-emerald-600 shrink-0 mt-0.5" />
+                          <span className="text-emerald-800 font-medium">Patient profile found — details pre-filled below</span>
+                        </div>
+                      )}
+                      {patientLookupStatus === "not_found" && (
+                        <div className="flex items-start gap-2 px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs">
+                          <Info className="w-3.5 h-3.5 text-slate-400 shrink-0 mt-0.5" />
+                          <span className="text-slate-600">New patient — please fill in details below</span>
+                        </div>
+                      )}
                     </div>
                   </div>
-                </div>
-              )}
 
-              {/* Substep 2: Unregistered doctor — name input */}
-              {(docProfileStatus === "not_found" || docProfileStatus === "found_partial") && form.doctor_email.trim() && (
-                <div className="relative flex gap-3 animate-fade-in-up">
-                  <div className="flex flex-col items-center shrink-0 pt-1">
-                    <div className={`w-7 h-7 rounded-full flex items-center justify-center text-xs font-bold border-2 transition-all shrink-0 ${
-                      form.doctor_name.trim()
-                        ? "bg-emerald-500 border-emerald-500 text-white"
-                        : "bg-white border-medical-400 text-medical-600"
-                    }`}>
-                      {form.doctor_name.trim() ? <Check className="w-3.5 h-3.5" /> : "2"}
-                    </div>
-                  </div>
-                  <div className="flex-1 pb-2 min-w-0">
-                    <div className="grid grid-cols-1 sm:grid-cols-4 gap-3">
-                      <div className="sm:col-span-1">
-                        <PrefixSelect
-                          value={form.doctor_prefix || "Dr."}
-                          onChange={(prefix) => set("doctor_prefix", prefix)}
-                        />
+                  {/* Substep 2: Name */}
+                  {form.patient_phone.trim() && (
+                    <div className="relative flex gap-3 animate-fade-in-up">
+                      <div className="flex flex-col items-center shrink-0 pt-1">
+                        <div className={`w-7 h-7 rounded-full flex items-center justify-center text-xs font-bold border-2 transition-all shrink-0 ${
+                          form.patient_name.trim()
+                            ? "bg-emerald-500 border-emerald-500 text-white"
+                            : "bg-white border-medical-400 text-medical-600"
+                        }`}>
+                          {form.patient_name.trim() ? <Check className="w-3.5 h-3.5" /> : "2"}
+                        </div>
+                        {form.patient_name.trim() && <div className="w-0.5 flex-1 min-h-4 bg-slate-200 mt-1" />}
                       </div>
-                      <div className="sm:col-span-3">
+                      <div className="flex-1 pb-3 min-w-0">
                         <Input
-                          label="Full Name"
-                          placeholder="e.g. Chioma Okafor"
-                          value={form.doctor_name}
-                          onChange={(e) => set("doctor_name", e.target.value)}
-                          error={errors.doctor_name}
+                          label="Patient Full Name"
+                          placeholder="e.g. Amara Okonkwo"
+                          value={form.patient_name}
+                          onChange={(e) => set("patient_name", e.target.value)}
+                          error={errors.patient_name}
                           required
                         />
                       </div>
                     </div>
-                  </div>
-                </div>
-              )}
-            </div>
-          </div>
-        )}
-
-        {/* Step 4: Patient Contact + Details + Review */}
-        {step === 4 && (
-          <div className="space-y-5">
-            <h2 className="flex items-center gap-3 text-base font-bold text-slate-800 pb-4 border-b border-slate-100">
-              <div className="w-8 h-8 rounded-xl bg-medical-50 flex items-center justify-center shrink-0">
-                <User className="w-4 h-4 text-medical-600" />
-              </div>
-              Patient Contact
-            </h2>
-
-            <div className="relative pt-1">
-              {/* Substep 1: Phone — primary identifier, triggers profile lookup */}
-              <div className="relative flex gap-3">
-                <div className="flex flex-col items-center shrink-0 pt-1">
-                  <div className={`w-7 h-7 rounded-full flex items-center justify-center text-xs font-bold border-2 transition-all shrink-0 ${
-                    form.patient_phone.trim()
-                      ? "bg-emerald-500 border-emerald-500 text-white"
-                      : "bg-white border-medical-400 text-medical-600"
-                  }`}>
-                    {form.patient_phone.trim() ? <Check className="w-3.5 h-3.5" /> : "1"}
-                  </div>
-                  {form.patient_phone.trim() && (
-                    <div className="w-0.5 flex-1 min-h-4 bg-slate-200 mt-1" />
                   )}
-                </div>
-                <div className="flex-1 pb-3 min-w-0 space-y-2">
-                  <PhoneInput
-                    label="Patient Phone"
-                    required
-                    value={form.patient_phone}
-                    onChange={(v) => set("patient_phone", v)}
-                    error={errors.patient_phone}
-                  />
-                  {/* Profile lookup feedback */}
-                  {patientLookupStatus === "checking" && (
-                    <div className="flex items-center gap-2 text-xs text-slate-400">
-                      <RefreshCw className="w-3 h-3 animate-spin" />
-                      Looking up patient profile…
-                    </div>
-                  )}
-                  {patientLookupStatus === "found" && (
-                    <div className="flex items-start gap-2 px-3 py-2 bg-emerald-50 border border-emerald-200 rounded-xl text-xs">
-                      <Check className="w-3.5 h-3.5 text-emerald-600 shrink-0 mt-0.5" />
-                      <span className="text-emerald-800 font-medium">Patient profile found — details pre-filled below</span>
-                    </div>
-                  )}
-                  {patientLookupStatus === "not_found" && (
-                    <div className="flex items-start gap-2 px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs">
-                      <Info className="w-3.5 h-3.5 text-slate-400 shrink-0 mt-0.5" />
-                      <span className="text-slate-600">New patient — please fill in details below</span>
-                    </div>
-                  )}
-                </div>
-              </div>
 
-              {/* Substep 2: Name — reveals after phone is entered */}
-              {form.patient_phone.trim() && (
-                <div className="relative flex gap-3 animate-fade-in-up">
-                  <div className="flex flex-col items-center shrink-0 pt-1">
-                    <div className={`w-7 h-7 rounded-full flex items-center justify-center text-xs font-bold border-2 transition-all shrink-0 ${
-                      form.patient_name.trim()
-                        ? "bg-emerald-500 border-emerald-500 text-white"
-                        : "bg-white border-medical-400 text-medical-600"
-                    }`}>
-                      {form.patient_name.trim() ? <Check className="w-3.5 h-3.5" /> : "2"}
-                    </div>
-                    {form.patient_name.trim() && <div className="w-0.5 flex-1 min-h-4 bg-slate-200 mt-1" />}
-                  </div>
-                  <div className="flex-1 pb-3 min-w-0">
-                    <Input
-                      label="Patient Full Name"
-                      placeholder="e.g. Amara Okonkwo"
-                      value={form.patient_name}
-                      onChange={(e) => set("patient_name", e.target.value)}
-                      error={errors.patient_name}
-                      required
-                    />
-                  </div>
-                </div>
-              )}
-
-              {/* Substep 3: Optional details — reveals after name */}
-              {form.patient_phone.trim() && form.patient_name.trim() && (
-                <div className="relative flex gap-3 animate-fade-in-up">
-                  <div className="flex flex-col items-center shrink-0 pt-1">
-                    <div className={`w-7 h-7 rounded-full flex items-center justify-center text-xs font-bold border-2 transition-all shrink-0 ${
-                      (form.patient_email || form.dob || form.sex)
-                        ? "bg-emerald-500 border-emerald-500 text-white"
-                        : "bg-white border-slate-300 text-slate-400"
-                    }`}>
-                      {(form.patient_email || form.dob || form.sex) ? <Check className="w-3.5 h-3.5" /> : "3"}
-                    </div>
-                  </div>
-                  <div className="flex-1 pb-2 min-w-0">
-                    <p className="text-sm font-medium text-slate-500 mb-3">
-                      Optional details
-                    </p>
-                    <div className="space-y-3">
-                      <Input
-                        label="Patient Email"
-                        type="email"
-                        placeholder="patient@example.com"
-                        hint="Optional — used to send results and track request history"
-                        value={form.patient_email}
-                        onChange={(e) => set("patient_email", e.target.value)}
-                        error={errors.patient_email}
-                      />
-                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                        <DobInput value={form.dob} onChange={(iso) => set("dob", iso)} />
-                        <div className="flex flex-col gap-1">
-                          <label className="text-sm font-medium text-slate-700">Sex</label>
-                          <div className="flex gap-2">
-                            {(["male", "female"] as const).map((s) => (
-                              <button key={s} type="button" onClick={() => set("sex", form.sex === s ? "" : s)}
-                                className={`flex items-center gap-2 px-4 py-2.5 rounded-xl border-2 transition-all text-sm font-semibold ${form.sex === s ? "border-medical-400 bg-medical-50 text-medical-700" : "border-slate-200 bg-white/60 text-slate-500 hover:border-slate-300 hover:bg-slate-50"}`}>
-                                {s === "male" ? <MarsIcon className={`w-4 h-4 ${form.sex === s ? "text-medical-500" : "text-slate-400"}`} /> : <VenusIcon className={`w-4 h-4 ${form.sex === s ? "text-medical-500" : "text-slate-400"}`} />}
-                                {s.charAt(0).toUpperCase() + s.slice(1)}
-                              </button>
-                            ))}
-                          </div>
+                  {/* Substep 3: Email */}
+                  {form.patient_phone.trim() && form.patient_name.trim() && (
+                    <div className="relative flex gap-3 animate-fade-in-up">
+                      <div className="flex flex-col items-center shrink-0 pt-1">
+                        <div className={`w-7 h-7 rounded-full flex items-center justify-center text-xs font-bold border-2 transition-all shrink-0 ${
+                          form.patient_email.trim()
+                            ? "bg-emerald-500 border-emerald-500 text-white"
+                            : "bg-white border-slate-300 text-slate-400"
+                        }`}>
+                          {form.patient_email.trim() ? <Check className="w-3.5 h-3.5" /> : "3"}
                         </div>
                       </div>
+                      <div className="flex-1 pb-3 min-w-0 space-y-2">
+                        <Input
+                          label="Patient Email"
+                          type="email"
+                          placeholder="patient@example.com"
+                          hint="Optional — used to send results and track request history"
+                          value={form.patient_email}
+                          onChange={(e) => set("patient_email", e.target.value)}
+                          onBlur={() => validateEmailField(form.patient_email, setPatientEmailVal)}
+                          error={errors.patient_email}
+                        />
+                        {patientEmailVal.status === "checking" && (
+                          <div className="flex items-center gap-2 text-xs text-slate-400">
+                            <RefreshCw className="w-3 h-3 animate-spin" />Checking email…
+                          </div>
+                        )}
+                        {patientEmailVal.status === "valid" && (
+                          <div className="flex items-center gap-2 px-3 py-2 bg-emerald-50 border border-emerald-200 rounded-xl text-xs">
+                            <Check className="w-3.5 h-3.5 text-emerald-600 shrink-0" />
+                            <span className="text-emerald-700 font-medium">Email looks good</span>
+                          </div>
+                        )}
+                        {patientEmailVal.status === "suggestion" && (
+                          <div className="flex items-center justify-between gap-2 px-3 py-2.5 bg-amber-50 border border-amber-200 rounded-xl text-xs">
+                            <div className="flex items-center gap-1.5 min-w-0">
+                              <AlertTriangle className="w-3.5 h-3.5 text-amber-500 shrink-0" />
+                              <span className="text-amber-700 truncate">Did you mean <span className="font-semibold">{patientEmailVal.suggestion}</span>?</span>
+                            </div>
+                            <button type="button" onClick={() => { set("patient_email", patientEmailVal.suggestion!); setPatientEmailVal({ status: "valid" }); }}
+                              className="text-amber-700 font-bold underline underline-offset-2 shrink-0">Use this</button>
+                          </div>
+                        )}
+                        {patientEmailVal.status === "invalid" && (
+                          <div className="flex items-center gap-2 px-3 py-2 bg-red-50 border border-red-200 rounded-xl text-xs">
+                            <AlertTriangle className="w-3.5 h-3.5 text-red-500 shrink-0" />
+                            <span className="text-red-700">{patientEmailVal.reason ?? "Invalid email address"}</span>
+                          </div>
+                        )}
+                      </div>
                     </div>
-                  </div>
+                  )}
                 </div>
-              )}
-            </div>
-
-            {/* Review summary */}
-            <div className="rounded-2xl border border-slate-200/80 overflow-hidden shadow-sm">
-              <div className="px-4 py-3 bg-gradient-to-r from-slate-50 to-slate-50/60 border-b border-slate-100 flex items-center gap-2">
-                <div className="w-1.5 h-1.5 rounded-full bg-medical-400" />
-                <p className="text-xs font-bold text-slate-600 tracking-wide">Review before sending</p>
               </div>
-              <div className="divide-y divide-slate-100/80">
-                {/* Lab */}
-                <div className="px-4 py-3.5 flex items-start justify-between gap-4">
-                  <p className="text-[11px] font-semibold text-slate-400 uppercase tracking-wide shrink-0 w-20 pt-px">Lab</p>
-                  <p className="text-sm font-semibold text-slate-800 text-right truncate">{hasLocations ? (locations[selectedLocIdx]?.name ?? preselectedLabName ?? "") : (selectedLab?.name ?? preselectedLabName ?? "")}</p>
-                </div>
-                {/* Patient */}
-                <div className="px-4 py-3.5 flex items-start justify-between gap-4">
-                  <p className="text-[11px] font-semibold text-slate-400 uppercase tracking-wide shrink-0 w-20 pt-px">Patient</p>
-                  <div className="text-right min-w-0">
-                    {form.patient_name && <p className="text-sm font-semibold text-slate-800 truncate">{form.patient_name}</p>}
-                    <p className="text-xs text-slate-500 font-mono mt-0.5">{form.patient_phone}</p>
-                    {form.patient_email && <p className="text-xs text-slate-400 mt-0.5">{form.patient_email}</p>}
-                    {form.dob && <p className="text-xs text-slate-400 mt-0.5">DOB {form.dob.split("-").reverse().join(" / ")}{form.sex ? ` · ${form.sex}` : ""}</p>}
-                  </div>
-                </div>
-                {/* Clinical */}
-                <div className="px-4 py-3.5 flex items-start justify-between gap-4">
-                  <p className="text-[11px] font-semibold text-slate-400 uppercase tracking-wide shrink-0 w-20 pt-px">Clinical</p>
-                  <div className="text-right min-w-0">
-                    {testImageUrl && <p className="text-xs text-emerald-600 truncate mb-0.5">Image attached</p>}
-                    {form.diagnosis && <p className="text-xs text-slate-500 truncate mb-0.5">{form.diagnosis}</p>}
-                    <p className="text-sm font-semibold text-slate-800 truncate">{testsString || (testImageUrl ? "See attached image" : "")}</p>
-                  </div>
-                </div>
-                {/* Referrer */}
-                <div className="px-4 py-3.5 flex items-start justify-between gap-4">
-                  <p className="text-[11px] font-semibold text-slate-400 uppercase tracking-wide shrink-0 w-20 pt-px">Referrer</p>
-                  <div className="text-right min-w-0">
-                    <p className="text-sm font-semibold text-slate-800 truncate">{[form.doctor_prefix, form.doctor_name].filter(Boolean).join(" ")}</p>
-                    {form.doctor_hospital && <p className="text-xs text-slate-500 truncate mt-0.5">{form.doctor_hospital}</p>}
-                    <p className="text-xs text-slate-400 truncate mt-0.5">{form.doctor_email}</p>
-                  </div>
-                </div>
-                {/* Flags */}
-                {(isCritical || needsAmbulance) && (
-                  <div className="px-4 py-3 flex items-center gap-2 flex-wrap bg-slate-50/60">
-                    {isCritical && <span className="inline-flex items-center gap-1 text-xs font-semibold bg-red-50 text-red-600 border border-red-200 px-2.5 py-1 rounded-full"><AlertTriangle className="w-3 h-3" />Critical</span>}
-                    {needsAmbulance && <span className="inline-flex items-center gap-1 text-xs font-semibold bg-orange-50 text-orange-600 border border-orange-200 px-2.5 py-1 rounded-full"><Truck className="w-3 h-3" />Ambulance</span>}
-                  </div>
-                )}
-              </div>
-            </div>
+            )}
           </div>
         )}
       </div>
@@ -2203,8 +2389,11 @@ export function DoctorRequestForm({
 
       {/* FAB — Next / Submit — fixed bottom-right, appears when step is valid */}
       {stepValid && (
-        <div className="fixed bottom-6 right-5 z-50">
-          {step < 4 ? (
+        <div
+          className="fixed right-5 z-50 transition-[bottom] duration-150 ease-out"
+          style={{ bottom: keyboardHeight > 0 ? `${keyboardHeight + 12}px` : "24px" }}
+        >
+          {step < 3 ? (
             <button
               type="button"
               onClick={handleNext}

@@ -15,6 +15,8 @@ import { testsToCategories } from "@/lib/test-categories";
 import { resolveTests, totalFromBreakdown } from "@/lib/resolve-tests";
 import { logApiCall } from "@/lib/api-logger";
 import { sendSms, buildPatientRequestSms } from "@/lib/sms";
+import { logSmsSend } from "@/lib/sms/log-sms";
+import { isValidNigerianPhone, checkDailySmsCap } from "@/lib/sms-guard";
 
 const SELF_SERVICE_NAME = "Self Service";
 
@@ -71,7 +73,7 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    // Rate-limit: max 10 self-service requests per phone per hour
+    // Rate-limit: max 3 self-service requests per phone per hour
     const recentCount = await prisma.request.count({
       where: {
         patient_phone: data.patient_phone,
@@ -79,7 +81,7 @@ export async function POST(request: NextRequest) {
         created_at: { gt: new Date(Date.now() - 60 * 60 * 1000) },
       },
     });
-    if (recentCount >= 10) {
+    if (recentCount >= 3) {
       return NextResponse.json(
         { success: false, error: "Too many requests. Please try again later." },
         { status: 429, headers: CORS_HEADERS }
@@ -173,27 +175,27 @@ export async function POST(request: NextRequest) {
         .catch((e) => console.error("[email] lab self-service error:", e));
     }
 
-    // SMS the patient their code (fire-and-forget, but with proper error handling)
+    // SMS the patient their code — guarded against pumping fraud
     const phoneValue = data.patient_phone?.trim();
     const patientEmail = data.patient_email?.trim();
-    console.log(`[patient-create] SMS: Attempting to send to ${phoneValue}`);
+    const smsBody = buildPatientRequestSms({ patientName: data.patient_name, labName: lab.name, code });
 
-    let smsSent = false;
-    // Fire-and-forget but log results for debugging
-    sendSms(
-      data.patient_phone,
-      buildPatientRequestSms({ patientName: data.patient_name, labName: lab.name, code })
-    ).then((smsResult) => {
-      console.log(`[patient-create] SMS result:`, JSON.stringify(smsResult));
-      smsSent = !!smsResult.messageId;
-      if (smsSent) {
-        console.log(`[patient-create] ✅ SMS sent successfully to ${phoneValue}. Message ID: ${smsResult.messageId}`);
-      } else {
-        console.warn(`[patient-create] SMS sent but no message ID returned`);
-      }
-    }).catch((smsErr) => {
-      console.error(`[patient-create] SMS failed:`, smsErr instanceof Error ? smsErr.message : String(smsErr));
-    });
+    if (!isValidNigerianPhone(phoneValue)) {
+      console.warn(`[patient-create] SMS skipped — non-Nigerian phone: ${phoneValue}`);
+    } else {
+      checkDailySmsCap().then((daily) => {
+        if (!daily.allowed) {
+          console.error(`[patient-create] SMS blocked — daily cap reached (${daily.count}/${daily.limit})`);
+          return;
+        }
+        sendSms(phoneValue, smsBody)
+          .then(({ messageId }) => {
+            console.log(`[patient-create] ✅ SMS sent to ${phoneValue}${messageId ? ` (${messageId})` : ""}`);
+            return logSmsSend({ provider: "termii", toPhone: phoneValue, messageBody: smsBody, messageId, requestId: newRequest.id });
+          })
+          .catch((e) => console.error(`[patient-create] SMS error:`, e instanceof Error ? e.message : String(e)));
+      }).catch((e) => console.error("[patient-create] circuit-breaker check failed:", e));
+    }
 
     // Send email to patient if provided — wait for confirmation
     if (patientEmail) {

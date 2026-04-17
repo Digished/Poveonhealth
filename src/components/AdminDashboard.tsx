@@ -4270,6 +4270,7 @@ function AdminHospitalsTab() {
   const [editId, setEditId]       = useState<string | null>(null);
   const [editName, setEditName]   = useState("");
   const [editCity, setEditCity]   = useState("");
+  const [syncing, setSyncing]     = useState(false);
 
   async function load() {
     setLoading(true);
@@ -4327,6 +4328,25 @@ function AdminHospitalsTab() {
     load();
   }
 
+  async function handleSyncFromProfiles() {
+    setSyncing(true);
+    try {
+      const res = await fetch("/api/admin/hospitals/sync-from-profiles", { method: "POST" });
+      const d = await res.json();
+      if (d.success) {
+        if (d.created > 0) {
+          toast.success(`${d.created} hospital${d.created !== 1 ? "s" : ""} added from professional profiles`);
+          load();
+        } else {
+          toast.success("All hospitals already up to date");
+        }
+      } else {
+        toast.error(d.error ?? "Sync failed");
+      }
+    } catch { toast.error("Network error"); }
+    finally { setSyncing(false); }
+  }
+
   const filtered = hospitals.filter((h) =>
     !search.trim() ||
     h.name.toLowerCase().includes(search.toLowerCase()) ||
@@ -4342,10 +4362,18 @@ function AdminHospitalsTab() {
           <h2 className="text-base font-bold text-white">Hospitals &amp; Clinics</h2>
           <p className="text-xs text-slate-400 mt-0.5">Manage the list doctors can select from</p>
         </div>
-        <button type="button" onClick={() => setCreating(true)}
-          className="flex items-center gap-1.5 text-xs font-semibold bg-blue-600 hover:bg-blue-700 text-white px-3 py-2 rounded-xl transition">
-          <Plus className="w-3.5 h-3.5" /> Add Hospital
-        </button>
+        <div className="flex items-center gap-2">
+          <button type="button" onClick={handleSyncFromProfiles} disabled={syncing}
+            className="flex items-center gap-1.5 text-xs font-semibold bg-white/8 hover:bg-white/15 disabled:opacity-50 text-slate-300 px-3 py-2 rounded-xl transition border border-white/10"
+            title="Auto-add any hospitals mentioned in professional profiles that aren't in this list yet">
+            {syncing ? <RefreshCw className="w-3.5 h-3.5 animate-spin" /> : <RefreshCw className="w-3.5 h-3.5" />}
+            Sync from Profiles
+          </button>
+          <button type="button" onClick={() => setCreating(true)}
+            className="flex items-center gap-1.5 text-xs font-semibold bg-blue-600 hover:bg-blue-700 text-white px-3 py-2 rounded-xl transition">
+            <Plus className="w-3.5 h-3.5" /> Add Hospital
+          </button>
+        </div>
       </div>
 
       {/* Search */}
