@@ -3,7 +3,7 @@
 import { useState, useEffect, useRef, useCallback } from "react";
 import {
   Plus, X, User, Search, Loader2, CheckCircle, ShieldAlert,
-  Building2, Phone, Trash2, RefreshCw, ChevronDown,
+  Building2, Phone, Trash2, RefreshCw, ChevronDown, Pencil,
   Upload, FileSpreadsheet, AlertTriangle, CheckCircle2, Download,
   ChevronUp, ChevronsUpDown, Copy, BanknoteIcon,
 } from "lucide-react";
@@ -369,6 +369,183 @@ function CreateProfessionalModal({ onClose, onCreated }: { onClose: () => void; 
               >
                 {loading ? <Loader2 className="w-4 h-4 animate-spin" /> : <Plus className="w-4 h-4" />}
                 {loading ? "Saving..." : isExisting ? "Update Professional" : "Add Professional"}
+              </button>
+            </div>
+          </form>
+        )}
+      </div>
+    </div>
+  );
+}
+
+// ── Edit Professional Modal ────────────────────────────────────────────────────
+
+function EditProfessionalModal({
+  professional,
+  onClose,
+  onSaved,
+}: {
+  professional: Professional;
+  onClose: () => void;
+  onSaved: (updated: Professional) => void;
+}) {
+  const [prefix, setPrefix]   = useState(professional.prefix ?? "Dr.");
+  const [fullName, setFullName] = useState(professional.full_name ?? "");
+  const [phone, setPhone]     = useState(professional.phone ?? "");
+  const [hospitals, setHospitals] = useState<string[]>(professional.hospitals);
+  const [bankName, setBankName]   = useState(professional.bank_name ?? "");
+  const [bankCode, setBankCode]   = useState("");
+  const [accountNumber, setAccountNumber] = useState(professional.account_number ?? "");
+  const [accountName, setAccountName]     = useState(professional.account_name ?? "");
+  const [saving, setSaving]   = useState(false);
+  const [error, setError]     = useState("");
+
+  const claimed = professional.claimed;
+
+  async function handleSubmit(e: React.FormEvent) {
+    e.preventDefault();
+    if (!fullName.trim()) { setError("Full name is required."); return; }
+    setError(""); setSaving(true);
+    try {
+      const res = await fetch("/api/admin/professionals", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          email:          professional.email,
+          prefix:         prefix || null,
+          full_name:      fullName.trim(),
+          phone:          phone.trim() || null,
+          hospitals,
+          bank_name:      bankName     || null,
+          account_number: accountNumber || null,
+          account_name:   accountName   || null,
+        }),
+      });
+      const data = await res.json();
+      if (!res.ok) { setError(data.error ?? "Failed to save."); return; }
+      toast.success("Profile updated");
+      onSaved({
+        ...professional,
+        prefix:         prefix || null,
+        full_name:      fullName.trim(),
+        phone:          phone.trim() || null,
+        hospitals,
+        bank_name:      bankName || null,
+        account_number: accountNumber || null,
+        account_name:   accountName || null,
+      });
+    } catch { setError("Network error."); }
+    finally { setSaving(false); }
+  }
+
+  const inputCls = "w-full px-3 py-2.5 rounded-xl border border-white/15 bg-white/8 text-white placeholder-slate-500 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition";
+  const labelCls = "block text-xs font-medium text-slate-300 mb-1.5";
+
+  return (
+    <div className="fixed inset-0 z-50 bg-black/60 backdrop-blur-sm flex items-end sm:items-center justify-center p-0 sm:p-4" onClick={onClose}>
+      <div
+        className="bg-slate-900 border border-white/12 w-full sm:max-w-md rounded-t-3xl sm:rounded-3xl shadow-2xl overflow-hidden flex flex-col max-h-[92dvh]"
+        onClick={(e) => e.stopPropagation()}
+      >
+        {/* Header */}
+        <div className="flex items-center justify-between px-5 py-4 border-b border-white/10 shrink-0">
+          <div className="min-w-0">
+            <p className="text-sm font-bold text-white">Edit Professional</p>
+            <p className="text-xs text-slate-400 mt-0.5 truncate">{professional.email}</p>
+          </div>
+          <div className="flex items-center gap-2 shrink-0 ml-2">
+            <span className={`text-[10px] px-2 py-0.5 rounded-full font-semibold ${claimed ? "bg-emerald-900/40 text-emerald-400 border border-emerald-700/30" : "bg-amber-900/30 text-amber-400 border border-amber-700/30"}`}>
+              {claimed ? "Verified" : "Unclaimed"}
+            </span>
+            <button onClick={onClose} className="w-8 h-8 rounded-xl bg-white/8 hover:bg-white/15 flex items-center justify-center text-slate-400 transition">
+              <X className="w-4 h-4" />
+            </button>
+          </div>
+        </div>
+
+        {claimed ? (
+          /* Read-only view for claimed (doctor-managed) profiles */
+          <div className="flex-1 overflow-y-auto px-5 py-5 space-y-4">
+            <div className="flex items-start gap-3 rounded-2xl border border-amber-700/30 bg-amber-900/15 p-4">
+              <ShieldAlert className="w-4 h-4 text-amber-400 shrink-0 mt-0.5" />
+              <div>
+                <p className="text-sm font-semibold text-amber-300">Active account</p>
+                <p className="text-xs text-amber-500 mt-0.5">This doctor has signed in and manages their own profile. Fields are read-only.</p>
+              </div>
+            </div>
+            <div className="space-y-3">
+              {[
+                { label: "Full Name", value: `${professional.prefix ?? ""} ${professional.full_name ?? ""}`.trim() },
+                { label: "Phone",     value: professional.phone ?? "—" },
+                { label: "Hospitals", value: professional.hospitals.join(", ") || "—" },
+                { label: "Bank",      value: professional.bank_name ? `${professional.bank_name} · ${professional.account_number}` : "—" },
+              ].map(({ label, value }) => (
+                <div key={label}>
+                  <p className="text-xs font-medium text-slate-500 mb-0.5">{label}</p>
+                  <p className="text-sm text-slate-200">{value}</p>
+                </div>
+              ))}
+            </div>
+          </div>
+        ) : (
+          /* Editable form for unclaimed profiles */
+          <form onSubmit={handleSubmit} className="overflow-y-auto flex-1 flex flex-col">
+            <div className="px-5 py-4 space-y-4 flex-1">
+
+              {/* Title + Name */}
+              <div>
+                <label className={labelCls}>Title &amp; Full Name <span className="text-red-400">*</span></label>
+                <PrefixSelect value={prefix} onChange={setPrefix} />
+                <div className="mt-2">
+                  <input
+                    type="text"
+                    placeholder="Full name"
+                    value={fullName}
+                    onChange={(e) => { setFullName(e.target.value); setError(""); }}
+                    className={inputCls}
+                    autoFocus
+                  />
+                </div>
+              </div>
+
+              {/* Phone */}
+              <div>
+                <label className={labelCls}>Phone Number</label>
+                <PhoneInput value={phone} onChange={setPhone} />
+              </div>
+
+              {/* Hospitals */}
+              <div>
+                <label className={labelCls}>Hospital / Clinic</label>
+                <HospitalTagInput value={hospitals} onChange={setHospitals} />
+              </div>
+
+              {/* Bank */}
+              <div className="rounded-2xl border border-white/8 bg-white/3 p-3.5 space-y-1">
+                <p className="text-xs font-semibold text-slate-400 uppercase tracking-wider mb-1">Bank Details <span className="text-slate-600 font-normal normal-case tracking-normal">(optional)</span></p>
+                <BankAccountInput
+                  bankName={bankName} bankCode={bankCode}
+                  accountNumber={accountNumber} accountName={accountName}
+                  onBankChange={(name, code) => { setBankName(name); setBankCode(code); }}
+                  onAccountNumberChange={setAccountNumber}
+                  onAccountNameChange={setAccountName}
+                  optional
+                />
+              </div>
+
+              {error && (
+                <p className="text-xs text-red-400 bg-red-900/20 border border-red-700/30 rounded-xl px-3 py-2">{error}</p>
+              )}
+            </div>
+
+            <div className="px-5 pb-5 pt-2 shrink-0 border-t border-white/8">
+              <button
+                type="submit"
+                disabled={saving}
+                className="w-full flex items-center justify-center gap-2 bg-blue-600 hover:bg-blue-700 disabled:opacity-60 text-white font-semibold text-sm px-4 py-3 rounded-xl transition"
+              >
+                {saving ? <Loader2 className="w-4 h-4 animate-spin" /> : <CheckCircle className="w-4 h-4" />}
+                {saving ? "Saving…" : "Save Changes"}
               </button>
             </div>
           </form>
@@ -752,6 +929,7 @@ export function AdminProfessionalsTab() {
   const [showImport, setShowImport] = useState(false);
   const [deletingEmail, setDeletingEmail] = useState<string | null>(null);
   const [confirmDelete, setConfirmDelete] = useState<Professional | null>(null);
+  const [editProfessional, setEditProfessional] = useState<Professional | null>(null);
   const [sort, setSort] = useState<{ col: string; dir: "asc" | "desc" }>({ col: "updated_at", dir: "desc" });
   const [copiedEmail, setCopiedEmail] = useState<string | null>(null);
   const [allMarketers, setAllMarketers] = useState<{ id: string; name: string; email: string }[]>([]);
@@ -959,7 +1137,7 @@ export function AdminProfessionalsTab() {
                 <th className={COL_HDR_BTN} onClick={() => toggleSort("updated_at")}>
                   <div className="flex items-center gap-1">Updated <SortIcon col="updated_at" /></div>
                 </th>
-                <th className={`${COL_HDR} w-10 text-center`}></th>
+                <th className={`${COL_HDR} w-16 text-center`}></th>
               </tr>
             </thead>
             <tbody>
@@ -1124,20 +1302,30 @@ export function AdminProfessionalsTab() {
 
                       {/* Actions */}
                       <td className="px-2 py-2.5 text-center">
-                        {!pro.claimed && (
+                        <div className="flex items-center justify-center gap-0.5 opacity-0 group-hover:opacity-100 transition-opacity">
                           <button
                             type="button"
-                            onClick={() => setConfirmDelete(pro)}
-                            disabled={deletingEmail === pro.email}
-                            title="Delete profile"
-                            className="p-1.5 rounded-lg opacity-0 group-hover:opacity-100 hover:bg-red-500/15 text-slate-500 hover:text-red-400 transition-all disabled:opacity-40"
+                            onClick={() => setEditProfessional(pro)}
+                            title="Edit profile"
+                            className="p-1.5 rounded-lg hover:bg-blue-500/15 text-slate-500 hover:text-blue-400 transition-all"
                           >
-                            {deletingEmail === pro.email
-                              ? <RefreshCw className="w-3.5 h-3.5 animate-spin" />
-                              : <Trash2 className="w-3.5 h-3.5" />
-                            }
+                            <Pencil className="w-3.5 h-3.5" />
                           </button>
-                        )}
+                          {!pro.claimed && (
+                            <button
+                              type="button"
+                              onClick={() => setConfirmDelete(pro)}
+                              disabled={deletingEmail === pro.email}
+                              title="Delete profile"
+                              className="p-1.5 rounded-lg hover:bg-red-500/15 text-slate-500 hover:text-red-400 transition-all disabled:opacity-40"
+                            >
+                              {deletingEmail === pro.email
+                                ? <RefreshCw className="w-3.5 h-3.5 animate-spin" />
+                                : <Trash2 className="w-3.5 h-3.5" />
+                              }
+                            </button>
+                          )}
+                        </div>
                       </td>
                     </tr>
                   );
@@ -1157,6 +1345,18 @@ export function AdminProfessionalsTab() {
           </div>
         )}
       </div>
+
+      {/* Edit modal */}
+      {editProfessional && (
+        <EditProfessionalModal
+          professional={editProfessional}
+          onClose={() => setEditProfessional(null)}
+          onSaved={(updated) => {
+            setProfessionals((prev) => prev.map((p) => p.email === updated.email ? updated : p));
+            setEditProfessional(null);
+          }}
+        />
+      )}
 
       {/* Create modal */}
       {showCreate && (
