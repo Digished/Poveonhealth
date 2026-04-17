@@ -51,27 +51,39 @@ export async function checkPhoneSmsRateLimit(
   windowMs = 60 * 60 * 1000,
 ): Promise<{ allowed: boolean; count: number }> {
   const variants = phoneVariants(rawPhone);
-  const count = await prisma.request.count({
-    where: {
-      patient_phone: { in: variants },
-      created_at: { gt: new Date(Date.now() - windowMs) },
-    },
-  });
-  return { allowed: count < max, count };
+  try {
+    const count = await prisma.request.count({
+      where: {
+        patient_phone: { in: variants },
+        created_at: { gt: new Date(Date.now() - windowMs) },
+      },
+    });
+    return { allowed: count < max, count };
+  } catch (err) {
+    console.warn("[sms-guard] checkPhoneSmsRateLimit failed, allowing send:", (err as Error).message);
+    return { allowed: true, count: 0 };
+  }
 }
 
 /**
  * Global daily SMS circuit breaker.
  * Uses sms_logs (indexed on created_at) for an accurate SMS-send count.
  * Configured via DAILY_SMS_CAP env var (default 500).
+ * Fails open (allows send) if the table doesn't exist yet.
  */
 export async function checkDailySmsCap(): Promise<{ allowed: boolean; count: number; limit: number }> {
   const limit = parseInt(process.env.DAILY_SMS_CAP ?? "500", 10);
-  const count = await prisma.smsLog.count({
-    where: { created_at: { gt: new Date(Date.now() - 24 * 60 * 60 * 1000) } },
-  });
-  if (count >= Math.floor(limit * 0.8)) {
-    console.warn(`[sms-guard] ⚠️  Daily SMS ${count}/${limit} (${Math.round((count / limit) * 100)}%)`);
+  try {
+    const count = await prisma.smsLog.count({
+      where: { created_at: { gt: new Date(Date.now() - 24 * 60 * 60 * 1000) } },
+    });
+    if (count >= Math.floor(limit * 0.8)) {
+      console.warn(`[sms-guard] ⚠️  Daily SMS ${count}/${limit} (${Math.round((count / limit) * 100)}%)`);
+    }
+    return { allowed: count < limit, count, limit };
+  } catch (err) {
+    // Table may not exist in this environment yet — fail open so SMS still sends
+    console.warn("[sms-guard] checkDailySmsCap failed (table missing?), allowing send:", (err as Error).message);
+    return { allowed: true, count: 0, limit };
   }
-  return { allowed: count < limit, count, limit };
 }
