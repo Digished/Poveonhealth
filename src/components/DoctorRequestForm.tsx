@@ -983,8 +983,10 @@ export function DoctorRequestForm({
     };
   }, []);
 
-  // Scroll step content into view on every step transition
+  // Scroll step content into view on user-driven step transitions (not on initial mount)
+  const isFirstRender = useRef(true);
   useEffect(() => {
+    if (isFirstRender.current) { isFirstRender.current = false; return; }
     const el = stepContentRef.current;
     if (!el) return;
     const timer = setTimeout(() => {
