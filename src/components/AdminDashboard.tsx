@@ -24,7 +24,7 @@ import { format } from "date-fns";
 import { createClient } from "@/lib/supabase/client"; // still used for auth sign-out
 import { useRouter } from "next/navigation";
 
-type AdminTab = "metrics" | "requests" | "referrals" | "labs" | "analytics" | "marketers" | "lab-marketers" | "professionals" | "settings" | "transactions" | "knowledge-base" | "users" | "hospitals" | "agreements";
+type AdminTab = "metrics" | "requests" | "referrals" | "labs" | "analytics" | "marketers" | "lab-marketers" | "professionals" | "settings" | "transactions" | "knowledge-base" | "users" | "hospitals" | "agreements" | "subscription-plans";
 
 interface ReferralGroup {
   key: string; // doctor_email
@@ -80,6 +80,7 @@ export function AdminDashboard() {
   const [sendAgreementLab, setSendAgreementLab] = useState<Lab | null>(null);
   const [transferEmailLab, setTransferEmailLab] = useState<Lab | null>(null);
   const [catalogLab, setCatalogLab] = useState<Lab | null>(null);
+  const [subscriptionLab, setSubscriptionLab] = useState<Lab | null>(null);
   type AgreementRecord = { id: string; version: string; signed_at: string; signer_name: string; signer_email: string; signer_title: string | null; pdf_hash: string; lab: { id: string; name: string; email: string } };
   const [agreements, setAgreements] = useState<AgreementRecord[]>([]);
   const [agreementsLoading, setAgreementsLoading] = useState(false);
@@ -523,6 +524,7 @@ export function AdminDashboard() {
             { key: "users" as AdminTab, label: "Users", icon: <UserCircle className="w-4 h-4" /> },
             { key: "hospitals" as AdminTab, label: "Hospitals", icon: <Building2 className="w-4 h-4" /> },
             { key: "agreements" as AdminTab, label: "Agreements", icon: <FileText className="w-4 h-4" /> },
+            { key: "subscription-plans" as AdminTab, label: "Sub Plans", icon: <CreditCard className="w-4 h-4" /> },
           ];
           const current = tabs.find((t) => t.key === activeTab) ?? tabs[0];
           return (
@@ -642,139 +644,41 @@ export function AdminDashboard() {
                   </div>
                 )}
 
-                {/* ── Poveon Revenue ── */}
+                {/* ── DVA Deposits ── */}
                 {revenueLoading ? (
-                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                    {[...Array(2)].map((_, i) => (
-                      <div key={i} className="bg-white/5 border border-white/10 rounded-2xl p-5 animate-pulse h-24" />
-                    ))}
-                  </div>
-                ) : revenueData && (
-                  <>
-                    {/* Revenue summary cards */}
-                    <div className="grid grid-cols-1 sm:grid-cols-4 gap-4">
-                      <div className="bg-gradient-to-br from-emerald-500/20 to-emerald-600/10 border border-emerald-500/30 rounded-2xl p-5">
-                        <p className="text-xs text-slate-400 font-medium uppercase tracking-wider mb-1">Total Commission Accrued</p>
-                        <p className="text-3xl font-bold text-white">₦{revenueData.total_poveon_earned.toLocaleString()}</p>
-                        <p className="text-xs text-slate-500 mt-1">from all seen/done requests</p>
-                      </div>
-                      <div className="bg-gradient-to-br from-sky-500/20 to-sky-600/10 border border-sky-500/30 rounded-2xl p-5">
-                        <p className="text-xs text-slate-400 font-medium uppercase tracking-wider mb-1">Total Lab Revenue</p>
-                        <p className="text-3xl font-bold text-white">₦{revenueData.total_lab_revenue.toLocaleString()}</p>
-                        <p className="text-xs text-slate-500 mt-1">labs' share of test fees</p>
-                      </div>
-                      <div className="bg-gradient-to-br from-violet-500/20 to-violet-600/10 border border-violet-500/30 rounded-2xl p-5">
-                        <p className="text-xs text-slate-400 font-medium uppercase tracking-wider mb-1">Total Received from Labs</p>
-                        <p className="text-3xl font-bold text-white">₦{revenueData.total_received.toLocaleString()}</p>
-                        <p className="text-xs text-slate-500 mt-1">cash deposited via DVA</p>
-                      </div>
-                      <div className={`bg-gradient-to-br rounded-2xl p-5 border ${revenueData.total_outstanding === 0 ? "from-emerald-500/20 to-emerald-600/10 border-emerald-500/30" : "from-amber-500/20 to-amber-600/10 border-amber-500/30"}`}>
-                        <p className="text-xs text-slate-400 font-medium uppercase tracking-wider mb-1">Net Outstanding</p>
-                        <p className={`text-3xl font-bold ${revenueData.total_outstanding === 0 ? "text-emerald-300" : "text-amber-300"}`}>
-                          ₦{revenueData.total_outstanding.toLocaleString()}
-                        </p>
-                        <p className="text-xs text-slate-500 mt-1">{revenueData.total_outstanding === 0 ? "fully settled" : "still owed to Poveon"}</p>
-                      </div>
+                  <div className="h-20 bg-white/5 border border-white/10 rounded-2xl animate-pulse" />
+                ) : revenueData && revenueData.recent_dva_credits.length > 0 && (
+                  <div className="bg-white/5 border border-white/10 rounded-2xl p-5">
+                    <div className="flex items-center justify-between mb-4">
+                      <h3 className="text-sm font-semibold text-slate-300">Recent DVA Deposits</h3>
+                      <button onClick={fetchRevenue} className="flex items-center gap-1.5 text-xs text-slate-400 hover:text-white transition px-2 py-1 rounded-lg hover:bg-white/10">
+                        <RefreshCw className="w-3 h-3" />Refresh
+                      </button>
                     </div>
-
-                    {/* Per-lab breakdown — sorted by most indebted first */}
-                    {revenueData.by_lab.length > 0 && (
-                      <div className="bg-white/5 border border-white/10 rounded-2xl p-5">
-                        <div className="flex items-center justify-between mb-4">
-                          <h3 className="text-sm font-semibold text-slate-300">Lab Commission Breakdown</h3>
-                          <button onClick={fetchRevenue} className="flex items-center gap-1.5 text-xs text-slate-400 hover:text-white transition px-2 py-1 rounded-lg hover:bg-white/10">
-                            <RefreshCw className="w-3 h-3" />Refresh
-                          </button>
-                        </div>
-                        <div className="space-y-2 max-h-72 overflow-y-auto pr-1">
-                          {revenueData.by_lab.map((row) => (
-                            <div key={row.lab_id} className="flex items-center gap-3 py-2.5 border-b border-white/5 last:border-0">
-                              <div className="flex-1 min-w-0">
-                                <p className="text-sm text-white truncate">{row.lab_name}</p>
-                                <p className="text-xs text-slate-500">
-                                  {row.request_count} request{row.request_count !== 1 ? "s" : ""}
-                                  {row.wallet_balance === null && <span className="ml-1.5 text-amber-500">· no wallet</span>}
-                                </p>
-                              </div>
-                              <div className="flex items-center gap-4 text-xs shrink-0">
-                                <div className="text-right">
-                                  <p className="text-slate-400">Commission</p>
-                                  <p className="text-emerald-400 font-mono font-bold">₦{row.total_poveon_amount.toLocaleString()}</p>
-                                </div>
-                                <div className="text-right">
-                                  <p className="text-slate-400">Deposited</p>
-                                  <p className="text-violet-400 font-mono font-bold">₦{row.total_deposited.toLocaleString()}</p>
-                                </div>
-                                <div className="text-right min-w-[60px]">
-                                  <p className="text-slate-400">Owed</p>
-                                  <p className={`font-mono font-bold ${row.owed === 0 ? "text-emerald-400" : "text-amber-400"}`}>
-                                    {row.owed === 0 ? "Settled" : `₦${row.owed.toLocaleString()}`}
-                                  </p>
-                                </div>
-                              </div>
+                    <div className="space-y-1 max-h-64 overflow-y-auto pr-1">
+                      {revenueData.recent_dva_credits.map((c) => (
+                        <div key={c.id} className="flex items-center gap-3 py-2.5 px-3 rounded-xl hover:bg-white/3 transition-colors">
+                          <div className="w-7 h-7 rounded-full bg-violet-500/15 flex items-center justify-center shrink-0">
+                            <ArrowDownToLine className="w-3.5 h-3.5 text-violet-400" />
+                          </div>
+                          <div className="flex-1 min-w-0">
+                            <div className="flex items-center gap-2">
+                              <p className="text-xs text-white font-medium truncate">{c.lab_name}</p>
+                              {c.channel === "manual" && <span className="text-[10px] text-slate-500 bg-white/5 px-1.5 py-0.5 rounded-full">manual</span>}
                             </div>
-                          ))}
+                            <p className="text-xs text-slate-500 truncate">
+                              {c.sender_name ? `From ${c.sender_name}` : "Bank transfer"}
+                              {c.sender_bank ? ` · ${c.sender_bank}` : ""}
+                            </p>
+                          </div>
+                          <div className="text-right shrink-0">
+                            <p className="text-sm font-bold font-mono text-violet-300">+₦{c.amount.toLocaleString()}</p>
+                            <p className="text-[10px] text-slate-500">{new Date(c.created_at).toLocaleDateString("en-GB", { day: "numeric", month: "short" })}</p>
+                          </div>
                         </div>
-                      </div>
-                    )}
-
-                    {/* DVA deposit history — actual cash received from labs */}
-                    {revenueData.recent_dva_credits.length > 0 && (
-                      <div className="bg-white/5 border border-white/10 rounded-2xl p-5">
-                        <h3 className="text-sm font-semibold text-slate-300 mb-4">Recent DVA Deposits</h3>
-                        <div className="space-y-1 max-h-64 overflow-y-auto pr-1">
-                          {revenueData.recent_dva_credits.map((c) => (
-                            <div key={c.id} className="flex items-center gap-3 py-2.5 px-3 rounded-xl hover:bg-white/3 transition-colors">
-                              <div className="w-7 h-7 rounded-full bg-violet-500/15 flex items-center justify-center shrink-0">
-                                <ArrowDownToLine className="w-3.5 h-3.5 text-violet-400" />
-                              </div>
-                              <div className="flex-1 min-w-0">
-                                <div className="flex items-center gap-2">
-                                  <p className="text-xs text-white font-medium truncate">{c.lab_name}</p>
-                                  {c.channel === "manual" && <span className="text-[10px] text-slate-500 bg-white/5 px-1.5 py-0.5 rounded-full">manual</span>}
-                                </div>
-                                <p className="text-xs text-slate-500 truncate">
-                                  {c.sender_name ? `From ${c.sender_name}` : "Bank transfer"}
-                                  {c.sender_bank ? ` · ${c.sender_bank}` : ""}
-                                </p>
-                              </div>
-                              <div className="text-right shrink-0">
-                                <p className="text-sm font-bold font-mono text-violet-300">+₦{c.amount.toLocaleString()}</p>
-                                <p className="text-[10px] text-slate-500">{new Date(c.created_at).toLocaleDateString("en-GB", { day: "numeric", month: "short" })}</p>
-                              </div>
-                            </div>
-                          ))}
-                        </div>
-                      </div>
-                    )}
-
-                    {/* Recent commission activity — one row per request */}
-                    {revenueData.recent_requests.length > 0 && (
-                      <div className="bg-white/5 border border-white/10 rounded-2xl p-5">
-                        <h3 className="text-sm font-semibold text-slate-300 mb-4">Recent Commission Activity</h3>
-                        <div className="space-y-1 max-h-[32rem] overflow-y-auto pr-1">
-                          {revenueData.recent_requests.map((req) => (
-                            <div key={req.id} className="flex items-center gap-3 py-2.5 px-3 rounded-xl hover:bg-white/3 transition-colors">
-                              <div className="w-7 h-7 rounded-full bg-emerald-500/10 flex items-center justify-center shrink-0">
-                                <CreditCard className="w-3.5 h-3.5 text-emerald-400" />
-                              </div>
-                              <div className="flex-1 min-w-0">
-                                <div className="flex items-center gap-2">
-                                  <p className="text-xs text-white font-medium font-mono">{req.code}</p>
-                                  <p className="text-xs text-slate-500 truncate">{req.lab_name}</p>
-                                </div>
-                                <p className="text-xs text-slate-600 truncate">{req.patient_name ?? "Patient"} · {req.tests.slice(0, 60)}</p>
-                              </div>
-                              <div className="text-right shrink-0">
-                                <p className="text-sm font-bold font-mono text-emerald-400">₦{req.poveon_amount.toLocaleString()}</p>
-                                <p className="text-[10px] text-slate-500">{req.seen_at ? new Date(req.seen_at).toLocaleDateString("en-GB", { day: "numeric", month: "short" }) : ""}</p>
-                              </div>
-                            </div>
-                          ))}
-                        </div>
-                      </div>
-                    )}
-                  </>
+                      ))}
+                    </div>
+                  </div>
                 )}
               </>
             ) : (
@@ -1087,6 +991,9 @@ export function AdminDashboard() {
                             <UserCircle className="w-3.5 h-3.5" />
                           </button>
                           <LabWalletButton labId={lab.id} />
+                          <button onClick={() => setSubscriptionLab(lab)} title="Subscription" className="p-2 rounded-lg hover:bg-indigo-500/15 text-slate-500 hover:text-indigo-400 transition-colors">
+                            <Layers className="w-3.5 h-3.5" />
+                          </button>
                           <button
                             onClick={() => handleToggleFreeTrial(lab)}
                             disabled={togglingFreeTrialId === lab.id}
@@ -1227,6 +1134,9 @@ export function AdminDashboard() {
                               <Search className="w-3.5 h-3.5" />{lab.search_hidden ? "In Search" : "Hide Search"}
                             </button>
                             <div><LabWalletButton labId={lab.id} /></div>
+                            <button onClick={() => setSubscriptionLab(lab)} className="flex items-center justify-center gap-1.5 px-3 py-2 rounded-xl bg-indigo-500/10 hover:bg-indigo-500/20 text-indigo-400 text-xs font-medium transition-colors">
+                              <Layers className="w-3.5 h-3.5" />Subscription
+                            </button>
                             <button onClick={() => setDeleteConfirmLab(lab)} disabled={deletingId === lab.id} className="flex items-center justify-center gap-1.5 px-3 py-2 rounded-xl bg-red-500/10 hover:bg-red-500/20 text-red-400 text-xs font-medium transition-colors">
                               <Trash2 className="w-3.5 h-3.5" />Delete
                             </button>
@@ -1417,33 +1327,6 @@ export function AdminDashboard() {
               </button>
             </div>
 
-            {/* Labs with outstanding Poveon commission */}
-            {labs.filter((l) => (l.poveon_outstanding ?? 0) > 0).length > 0 && (
-              <div className="bg-amber-500/8 border border-amber-500/20 rounded-2xl p-5 space-y-3">
-                <p className="text-sm font-semibold text-amber-400 flex items-center gap-2">
-                  <CreditCard className="w-4 h-4" />
-                  Labs with outstanding Poveon commission
-                </p>
-                {labs.filter((l) => (l.poveon_outstanding ?? 0) > 0).map((lab) => (
-                  <div key={lab.id} className="flex items-center justify-between gap-3 bg-white/5 rounded-xl px-4 py-3">
-                    <div className="min-w-0">
-                      <p className="text-sm font-medium text-white truncate">{lab.name}</p>
-                      <p className="text-xs text-slate-400 truncate">{lab.email}</p>
-                      {parsePhones(lab.phones).length > 0 && (
-                        <p className="text-xs text-slate-500 flex items-center gap-1 mt-0.5">
-                          <Phone className="w-3 h-3 shrink-0" />{parsePhones(lab.phones)[0].number}
-                        </p>
-                      )}
-                    </div>
-                    <div className="flex flex-col items-end gap-1.5 shrink-0">
-                      <span className="text-sm font-bold font-mono text-amber-400">
-                        ₦{(lab.poveon_outstanding ?? 0).toLocaleString()}
-                      </span>
-                    </div>
-                  </div>
-                ))}
-              </div>
-            )}
           </div>
         )}
 
@@ -1606,6 +1489,9 @@ export function AdminDashboard() {
         {/* ── PROFESSIONALS ── */}
         {activeTab === "professionals" && <AdminProfessionalsTab />}
 
+        {/* ── SUBSCRIPTION PLANS ── */}
+        {activeTab === "subscription-plans" && <SubscriptionPlansTab />}
+
         {/* ── AGREEMENTS ── */}
         {activeTab === "agreements" && (
           <AdminAgreementsTab
@@ -1645,6 +1531,9 @@ export function AdminDashboard() {
       )}
       {catalogLab && (
         <AdminLabCatalogModal lab={catalogLab} onClose={() => setCatalogLab(null)} />
+      )}
+      {subscriptionLab && (
+        <LabSubscriptionModal lab={subscriptionLab} onClose={() => setSubscriptionLab(null)} />
       )}
       {selectedReferralGroup && (
         <ReferralDetailModal group={selectedReferralGroup} onClose={() => setSelectedReferralGroup(null)} />
@@ -5294,8 +5183,6 @@ type CatalogTest = {
   raw_name: string;
   category_label: string | null;
   lab_price: number;
-  commission_pct: number | null;
-  poveon_fee: number | null;
   is_active: boolean;
   synonyms: string[];
 };
@@ -5309,13 +5196,11 @@ function AdminLabCatalogModal({ lab, onClose }: { lab: Lab; onClose: () => void 
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const [uploading, setUploading] = useState(false);
   const [addingRow, setAddingRow] = useState(false);
-  const [bulkComm, setBulkComm] = useState("");
-  const [showBulkComm, setShowBulkComm] = useState(false);
   const [bulkSyns, setBulkSyns] = useState("");
   const [showBulkSyns, setShowBulkSyns] = useState(false);
   const [editingId, setEditingId] = useState<string | null>(null);
-  const [editVals, setEditVals] = useState<{ raw_name: string; lab_price: string; commission_pct: string; category_label: string; synonyms: string }>({ raw_name: "", lab_price: "", commission_pct: "", category_label: "", synonyms: "" });
-  const [newRow, setNewRow] = useState({ raw_name: "", lab_price: "", commission_pct: "", category_label: "", synonyms: "" });
+  const [editVals, setEditVals] = useState<{ raw_name: string; lab_price: string; category_label: string; synonyms: string }>({ raw_name: "", lab_price: "", category_label: "", synonyms: "" });
+  const [newRow, setNewRow] = useState({ raw_name: "", lab_price: "", category_label: "", synonyms: "" });
   const [generationProgress, setGenerationProgress] = useState<{ jobId: string; percent: number; completed: number; total: number; status?: string } | null>(null);
   const [uploadProgress, setUploadProgress] = useState<{ operationId: string; percent: number; completed: number; total: number } | null>(null);
   const [isModalMinimized, setIsModalMinimized] = useState(false);
@@ -5468,7 +5353,6 @@ function AdminLabCatalogModal({ lab, onClose }: { lab: Lab; onClose: () => void 
         body: JSON.stringify({
           raw_name: newRow.raw_name.trim(),
           lab_price: parseFloat(newRow.lab_price),
-          commission_pct: newRow.commission_pct ? parseFloat(newRow.commission_pct) : undefined,
           category_label: newRow.category_label.trim() || undefined,
           synonyms: syns.length > 0 ? syns : undefined,
         }),
@@ -5476,7 +5360,7 @@ function AdminLabCatalogModal({ lab, onClose }: { lab: Lab; onClose: () => void 
       const d = await res.json();
       if (!res.ok) { toast.error(d.error ?? "Failed"); return; }
       toast.success("Test added");
-      setNewRow({ raw_name: "", lab_price: "", commission_pct: "", category_label: "", synonyms: "" });
+      setNewRow({ raw_name: "", lab_price: "", category_label: "", synonyms: "" });
       setAddingRow(false);
       await load();
     } catch { toast.error("Network error"); }
@@ -5491,7 +5375,6 @@ function AdminLabCatalogModal({ lab, onClose }: { lab: Lab; onClose: () => void 
         body: JSON.stringify({
           raw_name: editVals.raw_name.trim() || undefined,
           lab_price: editVals.lab_price ? parseFloat(editVals.lab_price) : undefined,
-          commission_pct: editVals.commission_pct ? parseFloat(editVals.commission_pct) : undefined,
           category_label: editVals.category_label.trim() || null,
           synonyms: syns.length > 0 ? syns : undefined,
         }),
@@ -5539,24 +5422,6 @@ function AdminLabCatalogModal({ lab, onClose }: { lab: Lab; onClose: () => void 
       toast.success(`Deleted ${d.deleted} tests`);
       setTests((prev) => prev.filter((t) => !ids.includes(t.id)));
       setSelected(new Set());
-    } catch { toast.error("Network error"); }
-  }
-
-  async function handleBulkCommission() {
-    const pct = parseFloat(bulkComm);
-    if (isNaN(pct) || pct < 0 || pct > 100) { toast.error("Enter a valid commission %"); return; }
-    const ids = Array.from(selected);
-    try {
-      const res = await fetch(`/api/admin/labs/${lab.id}/catalog/bulk`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ action: "set_commission", ids, commission_pct: pct }),
-      });
-      const d = await res.json();
-      if (!res.ok) { toast.error(d.error ?? "Failed"); return; }
-      toast.success(`Updated ${d.updated} tests`);
-      setBulkComm(""); setShowBulkComm(false);
-      await load();
     } catch { toast.error("Network error"); }
   }
 
@@ -5832,10 +5697,6 @@ function AdminLabCatalogModal({ lab, onClose }: { lab: Lab; onClose: () => void 
             <div className="flex items-center gap-2 shrink-0 flex-wrap">
               <span className="text-xs text-slate-400">{selected.size} selected</span>
               <button
-                onClick={() => setShowBulkComm((v) => !v)}
-                className="px-2.5 py-1.5 rounded-lg bg-sky-500/10 hover:bg-sky-500/20 text-sky-400 text-xs transition-colors"
-              >Commission</button>
-              <button
                 onClick={handleGenerateSynonyms}
                 className="px-2.5 py-1.5 rounded-lg bg-emerald-500/10 hover:bg-emerald-500/20 text-emerald-400 text-xs transition-colors flex items-center gap-1"
               ><Sparkles className="w-3 h-3" />Generate AI</button>
@@ -5851,26 +5712,9 @@ function AdminLabCatalogModal({ lab, onClose }: { lab: Lab; onClose: () => void 
           )}
         </div>}
 
-        {/* Bulk commission bar - Hidden when minimized */}
+        {/* Bulk bars - Hidden when minimized */}
         {!isModalMinimized && (
         <>
-        {/* Bulk commission bar */}
-        {showBulkComm && selected.size > 0 && (
-          <div className="flex items-center gap-2 px-6 py-2 bg-sky-500/5 border-b border-white/5 shrink-0">
-            <span className="text-xs text-sky-300">Set commission % for {selected.size} selected:</span>
-            <input
-              type="number"
-              value={bulkComm}
-              onChange={(e) => setBulkComm(e.target.value)}
-              onKeyDown={(e) => e.key === "Enter" && handleBulkCommission()}
-              placeholder="e.g. 15"
-              className="w-24 px-2.5 py-1 rounded-lg bg-white/8 border border-white/15 text-white text-xs focus:outline-none focus:ring-1 focus:ring-sky-400 font-mono"
-            />
-            <button onClick={handleBulkCommission} className="px-2.5 py-1 rounded-lg bg-sky-500/20 hover:bg-sky-500/30 text-sky-300 text-xs transition-colors">Apply</button>
-            <button onClick={() => setShowBulkComm(false)} className="text-slate-500 hover:text-white text-xs transition-colors">Cancel</button>
-          </div>
-        )}
-
         {/* Bulk synonyms bar */}
         {showBulkSyns && selected.size > 0 && (
           <div className="flex items-center gap-2 px-6 py-2 bg-purple-500/5 border-b border-white/5 shrink-0">
@@ -5937,8 +5781,6 @@ function AdminLabCatalogModal({ lab, onClose }: { lab: Lab; onClose: () => void 
                 <th className="px-3 py-3 text-left text-slate-400 font-semibold uppercase tracking-wider">Category</th>
                 <th className="px-3 py-3 text-left text-slate-400 font-semibold uppercase tracking-wider">Synonyms</th>
                 <th className="px-3 py-3 text-right text-slate-400 font-semibold uppercase tracking-wider">Price (₦)</th>
-                <th className="px-3 py-3 text-right text-slate-400 font-semibold uppercase tracking-wider">Comm%</th>
-                <th className="px-3 py-3 text-right text-slate-400 font-semibold uppercase tracking-wider">Fee (₦)</th>
                 <th className="px-3 py-3 text-center text-slate-400 font-semibold uppercase tracking-wider">Active</th>
                 <th className="px-3 py-3 w-16" />
               </tr>
@@ -5967,11 +5809,6 @@ function AdminLabCatalogModal({ lab, onClose }: { lab: Lab; onClose: () => void 
                     <input value={newRow.lab_price} onChange={(e) => setNewRow((p) => ({ ...p, lab_price: e.target.value }))} type="number"
                       placeholder="Price *" className="w-full bg-white/8 border border-teal-500/40 rounded-lg px-2.5 py-1.5 text-white text-xs focus:outline-none text-right font-mono" />
                   </td>
-                  <td className="px-3 py-2">
-                    <input value={newRow.commission_pct} onChange={(e) => setNewRow((p) => ({ ...p, commission_pct: e.target.value }))} type="number"
-                      placeholder="%" className="w-full bg-white/8 border border-white/10 rounded-lg px-2.5 py-1.5 text-white text-xs focus:outline-none text-right font-mono" />
-                  </td>
-                  <td className="px-3 py-2 text-slate-500 text-right text-xs">auto</td>
                   <td className="px-3 py-2" />
                   <td className="px-3 py-2">
                     <div className="flex items-center gap-1">
@@ -6022,11 +5859,6 @@ function AdminLabCatalogModal({ lab, onClose }: { lab: Lab; onClose: () => void 
                           <input value={editVals.lab_price} onChange={(e) => setEditVals((p) => ({ ...p, lab_price: e.target.value }))} type="number"
                             className="w-full bg-white/8 border border-teal-500/40 rounded-lg px-2.5 py-1 text-white text-xs focus:outline-none text-right font-mono" />
                         </td>
-                        <td className="px-3 py-2">
-                          <input value={editVals.commission_pct} onChange={(e) => setEditVals((p) => ({ ...p, commission_pct: e.target.value }))} type="number"
-                            className="w-full bg-white/8 border border-white/10 rounded-lg px-2.5 py-1 text-white text-xs focus:outline-none text-right font-mono" />
-                        </td>
-                        <td className="px-3 py-2 text-slate-500 text-right text-xs">recalc</td>
                         <td />
                         <td className="px-3 py-2">
                           <div className="flex items-center gap-1">
@@ -6061,8 +5893,6 @@ function AdminLabCatalogModal({ lab, onClose }: { lab: Lab; onClose: () => void 
                           )}
                         </td>
                         <td className="px-3 py-2.5 text-right font-mono text-slate-200">{Number(t.lab_price).toLocaleString()}</td>
-                        <td className="px-3 py-2.5 text-right font-mono text-slate-400">{t.commission_pct != null ? `${Number(t.commission_pct)}%` : <span className="text-slate-600">—</span>}</td>
-                        <td className="px-3 py-2.5 text-right font-mono text-slate-400">{t.poveon_fee != null ? Number(t.poveon_fee).toLocaleString() : <span className="text-slate-600">—</span>}</td>
                         <td className="px-3 py-2.5 text-center">
                           <button onClick={() => handleToggleActive(t)}
                             className={`w-8 h-4 rounded-full transition-colors relative inline-flex items-center ${t.is_active ? "bg-teal-500" : "bg-white/10"}`}>
@@ -6072,7 +5902,7 @@ function AdminLabCatalogModal({ lab, onClose }: { lab: Lab; onClose: () => void 
                         <td className="px-3 py-2.5">
                           <div className="flex items-center gap-1">
                             <button
-                              onClick={() => { setEditingId(t.id); setEditVals({ raw_name: t.raw_name, lab_price: String(t.lab_price), commission_pct: t.commission_pct != null ? String(t.commission_pct) : "", category_label: t.category_label ?? "", synonyms: (t.synonyms ?? []).join(", ") }); }}
+                              onClick={() => { setEditingId(t.id); setEditVals({ raw_name: t.raw_name, lab_price: String(t.lab_price), category_label: t.category_label ?? "", synonyms: (t.synonyms ?? []).join(", ") }); }}
                               className="p-1 rounded-lg text-slate-500 hover:text-white hover:bg-white/8 transition-colors"
                             ><Pencil className="w-3 h-3" /></button>
                             <button onClick={() => handleDelete(t.id)} className="p-1 rounded-lg text-slate-500 hover:text-red-400 hover:bg-red-500/10 transition-colors"><Trash2 className="w-3 h-3" /></button>
@@ -6092,7 +5922,7 @@ function AdminLabCatalogModal({ lab, onClose }: { lab: Lab; onClose: () => void 
         {!isModalMinimized && (
         <div className="px-6 py-3 border-t border-white/5 shrink-0 space-y-1.5">
           <p className="text-[10px] text-slate-600">
-            CSV/Excel columns: <span className="font-mono text-slate-500">test_name</span>, <span className="font-mono text-slate-500">price</span> (required) · optional: <span className="font-mono text-slate-500">category</span>, <span className="font-mono text-slate-500">commission_pct</span>, <span className="font-mono text-slate-500">is_active</span>
+            CSV/Excel columns: <span className="font-mono text-slate-500">test_name</span>, <span className="font-mono text-slate-500">price</span> (required) · optional: <span className="font-mono text-slate-500">category</span>, <span className="font-mono text-slate-500">is_active</span>
           </p>
           <p className="text-[10px] text-slate-600">
             Synonyms sync automatically with the Knowledge Base. Edit individual rows or use bulk assignment to set AI synonyms.
@@ -6385,6 +6215,373 @@ function DeleteConfirmModal({
             <Trash2 className="w-3.5 h-3.5" />
             Delete {label}
           </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// =============================================================================
+// Subscription Plans Tab
+// =============================================================================
+type SubPlan = {
+  id: string;
+  name: string;
+  description: string;
+  fee: number;
+  leads_target: number;
+  period_type: string;
+  period_days: number | null;
+  is_active: boolean;
+  sort_order: number;
+};
+
+function SubscriptionPlansTab() {
+  const [plans, setPlans] = useState<SubPlan[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [showForm, setShowForm] = useState(false);
+  const [editPlan, setEditPlan] = useState<SubPlan | null>(null);
+  const [saving, setSaving] = useState(false);
+  const emptyForm = { name: "", description: "", fee: "", leads_target: "", period_type: "quarterly", period_days: "", sort_order: "0" };
+  const [form, setForm] = useState(emptyForm);
+
+  const load = useCallback(async () => {
+    setLoading(true);
+    try {
+      const res = await fetch("/api/admin/subscription-plans");
+      const d = await res.json();
+      if (d.success) setPlans(d.plans ?? []);
+    } catch { /* non-critical */ } finally { setLoading(false); }
+  }, []);
+
+  useEffect(() => { load(); }, [load]);
+
+  function openCreate() { setForm(emptyForm); setEditPlan(null); setShowForm(true); }
+  function openEdit(p: SubPlan) {
+    setForm({ name: p.name, description: p.description, fee: String(p.fee), leads_target: String(p.leads_target), period_type: p.period_type, period_days: p.period_days != null ? String(p.period_days) : "", sort_order: String(p.sort_order) });
+    setEditPlan(p);
+    setShowForm(true);
+  }
+
+  async function handleSave() {
+    if (!form.name.trim() || !form.fee || !form.leads_target) { toast.error("Name, fee, and leads target are required"); return; }
+    if (form.period_type === "custom" && !form.period_days) { toast.error("Period days required for custom type"); return; }
+    setSaving(true);
+    try {
+      const body = {
+        name: form.name.trim(),
+        description: form.description.trim(),
+        fee: parseFloat(form.fee),
+        leads_target: parseFloat(form.leads_target),
+        period_type: form.period_type,
+        period_days: form.period_type === "custom" ? parseInt(form.period_days) : undefined,
+        sort_order: parseInt(form.sort_order) || 0,
+      };
+      const url = editPlan ? `/api/admin/subscription-plans/${editPlan.id}` : "/api/admin/subscription-plans";
+      const res = await fetch(url, { method: editPlan ? "PUT" : "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) });
+      const d = await res.json();
+      if (!res.ok) { toast.error(d.error ?? "Failed"); return; }
+      toast.success(editPlan ? "Plan updated" : "Plan created");
+      setShowForm(false);
+      await load();
+    } catch { toast.error("Network error"); } finally { setSaving(false); }
+  }
+
+  async function handleDeactivate(p: SubPlan) {
+    if (!confirm(`${p.is_active ? "Deactivate" : "Activate"} plan "${p.name}"?`)) return;
+    try {
+      const res = await fetch(`/api/admin/subscription-plans/${p.id}`, { method: "PUT", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ is_active: !p.is_active }) });
+      const d = await res.json();
+      if (!res.ok) { toast.error(d.error ?? "Failed"); return; }
+      await load();
+    } catch { toast.error("Network error"); }
+  }
+
+  const periodLabel = (p: SubPlan) => p.period_type === "custom" ? `${p.period_days}d` : p.period_type.charAt(0).toUpperCase() + p.period_type.slice(1);
+
+  return (
+    <div className="animate-fade-in space-y-6">
+      <div className="flex items-center justify-between">
+        <div>
+          <h2 className="font-semibold text-white">Subscription Plans</h2>
+          <p className="text-xs text-slate-500 mt-0.5">Configure lab subscription tiers — admin assigns plans to individual labs</p>
+        </div>
+        <button onClick={openCreate} className="flex items-center gap-1.5 px-4 py-2 rounded-xl bg-indigo-600 hover:bg-indigo-500 text-white text-sm font-medium transition-colors">
+          <Plus className="w-4 h-4" />New Plan
+        </button>
+      </div>
+
+      {loading ? (
+        <div className="space-y-3">{[1,2,3].map((i) => <div key={i} className="h-20 bg-white/5 border border-white/10 rounded-2xl animate-pulse" />)}</div>
+      ) : plans.length === 0 ? (
+        <div className="bg-white/5 border border-white/10 rounded-2xl p-10 text-center">
+          <Layers className="w-10 h-10 text-slate-600 mx-auto mb-3" />
+          <p className="text-sm font-semibold text-slate-400">No plans yet</p>
+          <p className="text-xs text-slate-500 mt-1">Create your first subscription plan.</p>
+        </div>
+      ) : (
+        <div className="rounded-2xl border border-white/8 overflow-hidden divide-y divide-white/5">
+          {plans.map((p) => (
+            <div key={p.id} className={`flex items-center gap-4 px-5 py-4 bg-white/3 ${!p.is_active ? "opacity-50" : ""}`}>
+              <div className="w-10 h-10 rounded-xl bg-indigo-500/15 flex items-center justify-center shrink-0">
+                <Layers className="w-5 h-5 text-indigo-400" />
+              </div>
+              <div className="flex-1 min-w-0">
+                <div className="flex items-center gap-2 flex-wrap">
+                  <p className="text-sm font-semibold text-white">{p.name}</p>
+                  <span className="text-[10px] bg-indigo-900/40 text-indigo-300 border border-indigo-800/40 px-1.5 py-0.5 rounded-full">{periodLabel(p)}</span>
+                  {!p.is_active && <span className="text-[10px] bg-slate-800 text-slate-500 px-1.5 py-0.5 rounded-full">inactive</span>}
+                </div>
+                {p.description && <p className="text-xs text-slate-500 mt-0.5 truncate">{p.description}</p>}
+              </div>
+              <div className="hidden sm:flex items-center gap-6 text-xs shrink-0">
+                <div className="text-right">
+                  <p className="text-slate-500">Fee</p>
+                  <p className="font-mono font-bold text-white">₦{Number(p.fee).toLocaleString()}</p>
+                </div>
+                <div className="text-right">
+                  <p className="text-slate-500">Leads Target</p>
+                  <p className="font-mono font-bold text-indigo-300">₦{Number(p.leads_target).toLocaleString()}</p>
+                </div>
+              </div>
+              <div className="flex items-center gap-1 shrink-0">
+                <button onClick={() => openEdit(p)} className="p-2 rounded-lg hover:bg-white/8 text-slate-500 hover:text-white transition-colors" title="Edit"><Pencil className="w-3.5 h-3.5" /></button>
+                <button onClick={() => handleDeactivate(p)} className="p-2 rounded-lg hover:bg-white/8 text-slate-500 hover:text-white transition-colors" title={p.is_active ? "Deactivate" : "Activate"}>
+                  {p.is_active ? <EyeOff className="w-3.5 h-3.5" /> : <Eye className="w-3.5 h-3.5" />}
+                </button>
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
+
+      {/* Create / Edit modal */}
+      {showForm && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm" onClick={() => setShowForm(false)}>
+          <div className="bg-slate-900 border border-white/15 rounded-2xl w-full max-w-md shadow-2xl animate-slide-up" onClick={(e) => e.stopPropagation()}>
+            <div className="flex items-center justify-between px-5 py-4 border-b border-white/10">
+              <h2 className="font-semibold text-white">{editPlan ? "Edit Plan" : "New Subscription Plan"}</h2>
+              <button onClick={() => setShowForm(false)} className="p-1.5 rounded-lg hover:bg-white/10 text-slate-400"><X className="w-4 h-4" /></button>
+            </div>
+            <div className="p-5 space-y-4">
+              <div>
+                <label className="text-xs text-slate-400 block mb-1">Plan Name *</label>
+                <input value={form.name} onChange={(e) => setForm((p) => ({ ...p, name: e.target.value }))} placeholder="e.g. Starter Plan" className="w-full bg-white/5 border border-white/10 rounded-xl px-3 py-2.5 text-white text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500/50" />
+              </div>
+              <div>
+                <label className="text-xs text-slate-400 block mb-1">Description</label>
+                <input value={form.description} onChange={(e) => setForm((p) => ({ ...p, description: e.target.value }))} placeholder="Short description" className="w-full bg-white/5 border border-white/10 rounded-xl px-3 py-2.5 text-white text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500/50" />
+              </div>
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="text-xs text-slate-400 block mb-1">Fee (₦) *</label>
+                  <input type="number" value={form.fee} onChange={(e) => setForm((p) => ({ ...p, fee: e.target.value }))} placeholder="250000" className="w-full bg-white/5 border border-white/10 rounded-xl px-3 py-2.5 text-white text-sm font-mono focus:outline-none focus:ring-2 focus:ring-indigo-500/50" />
+                </div>
+                <div>
+                  <label className="text-xs text-slate-400 block mb-1">Leads Target (₦) *</label>
+                  <input type="number" value={form.leads_target} onChange={(e) => setForm((p) => ({ ...p, leads_target: e.target.value }))} placeholder="150000000" className="w-full bg-white/5 border border-white/10 rounded-xl px-3 py-2.5 text-white text-sm font-mono focus:outline-none focus:ring-2 focus:ring-indigo-500/50" />
+                </div>
+              </div>
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="text-xs text-slate-400 block mb-1">Period</label>
+                  <select value={form.period_type} onChange={(e) => setForm((p) => ({ ...p, period_type: e.target.value }))} className="w-full bg-white/5 border border-white/10 rounded-xl px-3 py-2.5 text-white text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500/50">
+                    <option value="monthly">Monthly</option>
+                    <option value="quarterly">Quarterly</option>
+                    <option value="yearly">Yearly</option>
+                    <option value="custom">Custom</option>
+                  </select>
+                </div>
+                {form.period_type === "custom" && (
+                  <div>
+                    <label className="text-xs text-slate-400 block mb-1">Days *</label>
+                    <input type="number" value={form.period_days} onChange={(e) => setForm((p) => ({ ...p, period_days: e.target.value }))} placeholder="90" className="w-full bg-white/5 border border-white/10 rounded-xl px-3 py-2.5 text-white text-sm font-mono focus:outline-none focus:ring-2 focus:ring-indigo-500/50" />
+                  </div>
+                )}
+              </div>
+              <div className="flex gap-3 pt-2">
+                <button onClick={() => setShowForm(false)} className="flex-1 px-4 py-2.5 rounded-xl bg-white/5 hover:bg-white/10 text-slate-300 text-sm transition-colors">Cancel</button>
+                <button onClick={handleSave} disabled={saving} className="flex-1 flex items-center justify-center gap-2 px-4 py-2.5 rounded-xl bg-indigo-600 hover:bg-indigo-500 disabled:opacity-50 text-white text-sm font-medium transition-colors">
+                  {saving ? <RefreshCw className="w-4 h-4 animate-spin" /> : <Check className="w-4 h-4" />}
+                  {editPlan ? "Save Changes" : "Create Plan"}
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+// =============================================================================
+// Lab Subscription Modal — view/assign subscription per lab
+// =============================================================================
+type SubHistory = {
+  id: string;
+  plan_name: string;
+  start_date: string;
+  end_date: string;
+  leads_used: number;
+  leads_target: number;
+  status: string;
+  notes: string | null;
+  assigned_by: string | null;
+};
+
+function LabSubscriptionModal({ lab, onClose }: { lab: Lab; onClose: () => void }) {
+  const [loading, setLoading] = useState(true);
+  const [active, setActive] = useState<SubHistory | null>(null);
+  const [history, setHistory] = useState<SubHistory[]>([]);
+  const [plans, setPlans] = useState<SubPlan[]>([]);
+  const [assignForm, setAssignForm] = useState({ plan_id: "", start_date: new Date().toISOString().split("T")[0], notes: "" });
+  const [assigning, setAssigning] = useState(false);
+
+  const load = useCallback(async () => {
+    setLoading(true);
+    try {
+      const [subRes, plansRes] = await Promise.all([
+        fetch(`/api/admin/labs/${lab.id}/subscription`),
+        fetch("/api/admin/subscription-plans"),
+      ]);
+      const [subData, plansData] = await Promise.all([subRes.json(), plansRes.json()]);
+      if (subData.success) {
+        setActive(subData.active ?? null);
+        setHistory(subData.history ?? []);
+      }
+      if (plansData.success) {
+        const activePlans = (plansData.plans ?? []).filter((p: SubPlan) => p.is_active);
+        setPlans(activePlans);
+        if (activePlans.length > 0 && !assignForm.plan_id) {
+          setAssignForm((f) => ({ ...f, plan_id: activePlans[0].id }));
+        }
+      }
+    } catch { /* non-critical */ } finally { setLoading(false); }
+  }, [lab.id]);
+
+  useEffect(() => { load(); }, [load]);
+
+  async function handleAssign() {
+    if (!assignForm.plan_id) { toast.error("Select a plan"); return; }
+    setAssigning(true);
+    try {
+      const res = await fetch(`/api/admin/labs/${lab.id}/subscription`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ plan_id: assignForm.plan_id, start_date: assignForm.start_date, notes: assignForm.notes.trim() || undefined }),
+      });
+      const d = await res.json();
+      if (!res.ok) { toast.error(d.error ?? "Failed"); return; }
+      toast.success("Subscription assigned");
+      await load();
+    } catch { toast.error("Network error"); } finally { setAssigning(false); }
+  }
+
+  const statusColor = (s: string) => {
+    if (s === "active") return "text-emerald-400 bg-emerald-500/10";
+    if (s === "exceeded") return "text-amber-400 bg-amber-500/10";
+    if (s === "expired") return "text-slate-400 bg-slate-500/10";
+    return "text-slate-400 bg-slate-500/10";
+  };
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm" onClick={onClose}>
+      <div className="bg-slate-900 border border-white/15 rounded-2xl w-full max-w-lg shadow-2xl animate-slide-up overflow-hidden max-h-[90vh] flex flex-col" onClick={(e) => e.stopPropagation()}>
+        <div className="flex items-center justify-between px-5 py-4 border-b border-white/10 shrink-0">
+          <div>
+            <h2 className="font-semibold text-white text-sm flex items-center gap-2"><Layers className="w-4 h-4 text-indigo-400" />Subscription — {lab.name}</h2>
+          </div>
+          <button onClick={onClose} className="p-1.5 rounded-lg hover:bg-white/10 text-slate-400"><X className="w-4 h-4" /></button>
+        </div>
+
+        <div className="flex-1 overflow-y-auto p-5 space-y-5">
+          {loading ? (
+            <div className="space-y-3">{[1,2].map((i) => <div key={i} className="h-16 bg-white/5 rounded-2xl animate-pulse" />)}</div>
+          ) : (
+            <>
+              {/* Current subscription */}
+              <div>
+                <p className="text-xs font-semibold text-slate-400 uppercase tracking-wider mb-2">Current Subscription</p>
+                {active ? (
+                  <div className="bg-white/5 border border-white/10 rounded-2xl p-4 space-y-3">
+                    <div className="flex items-center justify-between gap-3">
+                      <p className="text-sm font-semibold text-white">{active.plan_name}</p>
+                      <span className={`text-[10px] font-semibold px-2 py-0.5 rounded-full ${statusColor(active.status)}`}>{active.status}</span>
+                    </div>
+                    <div className="space-y-1.5">
+                      <div className="flex items-center justify-between text-xs">
+                        <span className="text-slate-400">Leads used</span>
+                        <span className="font-mono text-white">₦{Number(active.leads_used).toLocaleString()} / ₦{Number(active.leads_target).toLocaleString()}</span>
+                      </div>
+                      <div className="w-full h-2 bg-white/10 rounded-full overflow-hidden">
+                        <div
+                          className={`h-full rounded-full transition-all ${active.status === "exceeded" ? "bg-amber-500" : "bg-indigo-500"}`}
+                          style={{ width: `${Math.min(100, (Number(active.leads_used) / Number(active.leads_target)) * 100)}%` }}
+                        />
+                      </div>
+                    </div>
+                    <div className="flex items-center justify-between text-xs text-slate-500">
+                      <span>{new Date(active.start_date).toLocaleDateString("en-GB", { day: "numeric", month: "short", year: "numeric" })}</span>
+                      <span>→ {new Date(active.end_date).toLocaleDateString("en-GB", { day: "numeric", month: "short", year: "numeric" })}</span>
+                    </div>
+                    {active.notes && <p className="text-xs text-slate-500 italic">"{active.notes}"</p>}
+                  </div>
+                ) : (
+                  <div className="bg-white/3 border border-white/8 rounded-2xl p-4 text-center text-slate-500 text-sm">No active subscription</div>
+                )}
+              </div>
+
+              {/* Assign new subscription */}
+              {plans.length > 0 && (
+                <div>
+                  <p className="text-xs font-semibold text-slate-400 uppercase tracking-wider mb-2">Assign Subscription</p>
+                  <div className="bg-white/5 border border-white/10 rounded-2xl p-4 space-y-3">
+                    <div>
+                      <label className="text-xs text-slate-400 block mb-1">Plan</label>
+                      <select value={assignForm.plan_id} onChange={(e) => setAssignForm((f) => ({ ...f, plan_id: e.target.value }))} className="w-full bg-white/5 border border-white/10 rounded-xl px-3 py-2.5 text-white text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500/50">
+                        {plans.map((p) => (
+                          <option key={p.id} value={p.id}>{p.name} — ₦{Number(p.fee).toLocaleString()} / {p.period_type}</option>
+                        ))}
+                      </select>
+                    </div>
+                    <div>
+                      <label className="text-xs text-slate-400 block mb-1">Start Date</label>
+                      <input type="date" value={assignForm.start_date} onChange={(e) => setAssignForm((f) => ({ ...f, start_date: e.target.value }))} className="w-full bg-white/5 border border-white/10 rounded-xl px-3 py-2.5 text-white text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500/50" />
+                    </div>
+                    <div>
+                      <label className="text-xs text-slate-400 block mb-1">Notes (optional)</label>
+                      <input value={assignForm.notes} onChange={(e) => setAssignForm((f) => ({ ...f, notes: e.target.value }))} placeholder="e.g. paid via transfer on Jan 1" className="w-full bg-white/5 border border-white/10 rounded-xl px-3 py-2.5 text-white text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500/50" />
+                    </div>
+                    <button onClick={handleAssign} disabled={assigning || !assignForm.plan_id} className="w-full flex items-center justify-center gap-2 px-4 py-2.5 rounded-xl bg-indigo-600 hover:bg-indigo-500 disabled:opacity-50 text-white text-sm font-medium transition-colors">
+                      {assigning ? <RefreshCw className="w-4 h-4 animate-spin" /> : <Check className="w-4 h-4" />}
+                      {active ? "Re-assign Subscription" : "Assign Subscription"}
+                    </button>
+                  </div>
+                </div>
+              )}
+
+              {/* History */}
+              {history.length > 0 && (
+                <div>
+                  <p className="text-xs font-semibold text-slate-400 uppercase tracking-wider mb-2">History</p>
+                  <div className="space-y-2">
+                    {history.map((h) => (
+                      <div key={h.id} className="flex items-center gap-3 py-2.5 px-3 bg-white/3 border border-white/5 rounded-xl">
+                        <div className="flex-1 min-w-0">
+                          <p className="text-xs text-white font-medium">{h.plan_name}</p>
+                          <p className="text-[10px] text-slate-500">{new Date(h.start_date).toLocaleDateString("en-GB", { day: "numeric", month: "short", year: "numeric" })} → {new Date(h.end_date).toLocaleDateString("en-GB", { day: "numeric", month: "short", year: "numeric" })}</p>
+                        </div>
+                        <div className="text-right shrink-0">
+                          <span className={`text-[10px] font-semibold px-2 py-0.5 rounded-full ${statusColor(h.status)}`}>{h.status}</span>
+                          <p className="text-[10px] text-slate-500 mt-0.5 font-mono">₦{Number(h.leads_used).toLocaleString()} used</p>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+            </>
+          )}
         </div>
       </div>
     </div>

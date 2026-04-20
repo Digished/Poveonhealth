@@ -28,8 +28,6 @@ export interface PriceListTest {
   raw_name: string;
   category_label: string | null;
   lab_price: number;
-  poveon_fee: number | null;
-  commission_pct: number | null;
   is_active: boolean;
   created_at: string;
   updated_at: string;
@@ -355,7 +353,6 @@ export default function LabPriceListManager({ onClose }: LabPriceListManagerProp
       setTests((prev) => prev.map((t) => t.id === testId ? {
         ...t,
         lab_price: data.test.lab_price,
-        poveon_fee: data.test.poveon_fee,
         updated_at: data.test.updated_at,
         recent_change: {
           field_changed: "lab_price",
@@ -599,18 +596,16 @@ export default function LabPriceListManager({ onClose }: LabPriceListManagerProp
               </div>
             </div>
           ) : (
-            <div className="min-w-[640px]">
+            <div className="min-w-[500px]">
               {/* Column headers */}
               <div
                 className="sticky top-0 z-10 grid bg-gray-100 border-b border-gray-300"
-                style={{ gridTemplateColumns: "2fr 1.2fr 1.1fr 1.1fr 0.8fr 0.8fr 1.4fr" }}
+                style={{ gridTemplateColumns: "2fr 1.2fr 1.4fr 0.8fr 1.4fr" }}
               >
                 {([
                   { label: "Test Name",    col: "name"     as SortKey },
                   { label: "Category",     col: "category" as SortKey },
                   { label: "Your Price",   col: "price"    as SortKey },
-                  { label: "Poveon Fee",   col: null },
-                  { label: "Comm %",       col: null },
                   { label: "Active",       col: null },
                   { label: "Last Changed", col: "updated"  as SortKey },
                 ] as { label: string; col: SortKey | null }[]).map(({ label, col }) => (
@@ -643,7 +638,7 @@ export default function LabPriceListManager({ onClose }: LabPriceListManagerProp
                         ${flash === "saved" ? "!bg-emerald-50" : ""}
                         ${flash === "error" ? "!bg-red-50" : ""}
                         hover:bg-blue-50/40`}
-                      style={{ gridTemplateColumns: "2fr 1.2fr 1.1fr 1.1fr 0.8fr 0.8fr 1.4fr" }}
+                      style={{ gridTemplateColumns: "2fr 1.2fr 1.4fr 0.8fr 1.4fr" }}
                     >
                       {/* Test name */}
                       <div className="px-4 py-3.5 flex items-center gap-2 min-w-0">
@@ -672,23 +667,6 @@ export default function LabPriceListManager({ onClose }: LabPriceListManagerProp
                         />
                         {flash === "saved" && <Check className="w-3.5 h-3.5 text-emerald-500 ml-1 shrink-0" />}
                         {flash === "error" && <AlertCircle className="w-3.5 h-3.5 text-red-500 ml-1 shrink-0" />}
-                      </div>
-
-                      {/* Poveon fee */}
-                      <div className="px-4 py-3.5 flex items-center">
-                        <span className="text-sm font-mono font-medium text-amber-600">
-                          {test.poveon_fee != null ? fmt(test.poveon_fee) : <span className="text-gray-300 text-xs not-italic">—</span>}
-                        </span>
-                      </div>
-
-                      {/* Commission % */}
-                      <div className="px-4 py-3.5 flex items-center">
-                        <span className="text-sm text-gray-500">
-                          {test.commission_pct != null
-                            ? `${Number(test.commission_pct).toFixed(1)}%`
-                            : <span className="text-gray-300">—</span>
-                          }
-                        </span>
                       </div>
 
                       {/* Active toggle */}

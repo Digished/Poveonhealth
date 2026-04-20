@@ -7,7 +7,6 @@ import { prisma } from "@/lib/prisma";
 const PatchSchema = z.object({
   raw_name: z.string().min(1).max(300).optional(),
   lab_price: z.number().positive().optional(),
-  commission_pct: z.number().min(0).max(100).optional(),
   is_active: z.boolean().optional(),
   category_label: z.string().max(200).nullable().optional(),
   synonyms: z.array(z.string()).optional(),
@@ -44,18 +43,7 @@ export async function PATCH(
       updates.raw_name = parsed.data.raw_name;
     }
 
-    if (parsed.data.lab_price !== undefined) {
-      updates.lab_price = parsed.data.lab_price;
-      const commission = parsed.data.commission_pct ?? Number(existing.commission_pct ?? 1.5);
-      updates.poveon_fee = parseFloat(((parsed.data.lab_price * commission) / 100).toFixed(2));
-    }
-
-    if (parsed.data.commission_pct !== undefined) {
-      updates.commission_pct = parsed.data.commission_pct;
-      const price = parsed.data.lab_price ?? Number(existing.lab_price);
-      updates.poveon_fee = parseFloat(((price * parsed.data.commission_pct) / 100).toFixed(2));
-    }
-
+    if (parsed.data.lab_price !== undefined) updates.lab_price = parsed.data.lab_price;
     if (parsed.data.is_active !== undefined) updates.is_active = parsed.data.is_active;
     if (parsed.data.category_label !== undefined) updates.category_label = parsed.data.category_label;
     if (parsed.data.synonyms !== undefined) updates.synonyms = parsed.data.synonyms;
@@ -96,8 +84,6 @@ export async function PATCH(
     test: {
       ...test,
       lab_price: Number(test.lab_price),
-      poveon_fee: test.poveon_fee ? Number(test.poveon_fee) : null,
-      commission_pct: test.commission_pct ? Number(test.commission_pct) : null,
       synonyms: Array.isArray(test.synonyms) ? test.synonyms : [],
     },
   });

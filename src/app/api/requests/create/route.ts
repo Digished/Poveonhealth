@@ -184,6 +184,42 @@ export async function POST(request: NextRequest) {
       },
     });
 
+    // Subscription leads tracking — fire-and-forget, non-blocking
+    if (quotedPrice && quotedPrice > 0) {
+      (async () => {
+        try {
+          const now = new Date();
+          const activeSub = await prisma.labSubscription.findFirst({
+            where: {
+              lab_id: data.lab_id,
+              status: { in: ["active"] },
+              start_date: { lte: now },
+              end_date: { gte: now },
+            },
+            include: { plan: true },
+          });
+          if (activeSub) {
+            const updated = await prisma.labSubscription.update({
+              where: { id: activeSub.id },
+              data: {
+                leads_used: { increment: quotedPrice },
+                updated_at: now,
+              },
+            });
+            // Mark exceeded if leads_used has crossed the target
+            if (Number(updated.leads_used) >= Number(activeSub.plan.leads_target)) {
+              await prisma.labSubscription.update({
+                where: { id: activeSub.id },
+                data: { status: "exceeded", updated_at: now },
+              });
+            }
+          }
+        } catch (e) {
+          console.error("[subscription-tracking]", e);
+        }
+      })();
+    }
+
     // Marketer attribution — fire-and-forget, never blocks or fails the request
     if (povRef) {
       (async () => {

@@ -10,10 +10,6 @@ import { randomUUID } from "crypto";
 // Create OpenAI instance once at module level for reuse
 const openai = process.env.OPENAI_API_KEY ? new OpenAI({ apiKey: process.env.OPENAI_API_KEY }) : null;
 
-async function getDefaultCommission(): Promise<number> {
-  const setting = await prisma.systemSetting.findUnique({ where: { key: "default_commission_pct" } });
-  return setting ? parseFloat(setting.value) : 1.5;
-}
 
 async function generateSynonyms(testName: string, categoryLabel?: string): Promise<string[]> {
   if (!openai) return [testName];
@@ -47,7 +43,7 @@ async function generateSynonyms(testName: string, categoryLabel?: string): Promi
   }
 }
 
-type ParsedRow = { test_name: string; price: number; category?: string; commission_pct?: number; is_active?: boolean };
+type ParsedRow = { test_name: string; price: number; category?: string; is_active?: boolean };
 
 function normaliseHeaders(headers: string[]): string[] {
   return headers.map((h) => String(h).toLowerCase().trim().replace(/"/g, ""));
@@ -62,7 +58,6 @@ function rowsFromSheetData(rawRows: string[][]): ParsedRow[] {
   if (nameIdx === -1 || priceIdx === -1) return [];
 
   const catIdx    = headers.findIndex((h) => ["category", "category_label", "type"].includes(h));
-  const commIdx   = headers.findIndex((h) => ["commission_pct", "commission"].includes(h));
   const activeIdx = headers.findIndex((h) => ["is_active", "active"].includes(h));
 
   const rows: ParsedRow[] = [];
@@ -75,7 +70,6 @@ function rowsFromSheetData(rawRows: string[][]): ParsedRow[] {
       test_name,
       price,
       category: catIdx !== -1 ? cols[catIdx]?.trim() || undefined : undefined,
-      commission_pct: commIdx !== -1 ? parseFloat(cols[commIdx] ?? "") || undefined : undefined,
       is_active: activeIdx !== -1 ? cols[activeIdx]?.toLowerCase() !== "false" : true,
     });
   }
@@ -135,7 +129,7 @@ export async function POST(
 
     if (rows.length === 0) {
       return NextResponse.json(
-        { error: "No valid rows found. Ensure columns: test_name, price. Optional: category, commission_pct, is_active" },
+        { error: "No valid rows found. Ensure columns: test_name, price. Optional: category, is_active" },
         { status: 400 }
       );
     }
@@ -151,8 +145,6 @@ export async function POST(
   // Process in background (don't block response)
   (async () => {
     try {
-      const defaultCommission = await getDefaultCommission();
-
       // BATCH OPTIMIZATION: Get all existing tests in ONE query instead of N queries
       const existingTests = await prisma.labOfferedTest.findMany({
         where: { lab_id: id },
@@ -165,9 +157,6 @@ export async function POST(
       const toUpdate: { id: string; data: any }[] = [];
 
       for (const row of rows) {
-        const commission_pct = (!row.commission_pct || isNaN(row.commission_pct)) ? defaultCommission : row.commission_pct;
-        const poveon_fee = parseFloat(((row.price * commission_pct) / 100).toFixed(2));
-
         const existing = existingMap.get(row.test_name);
         if (!existing) {
           toCreate.push({
@@ -176,8 +165,6 @@ export async function POST(
             category_label: row.category ?? null,
             synonyms: [row.test_name],
             lab_price: row.price,
-            poveon_fee,
-            commission_pct,
             is_active: row.is_active ?? true,
           });
         } else {
@@ -185,8 +172,6 @@ export async function POST(
             id: existing.id,
             data: {
               lab_price: row.price,
-              poveon_fee,
-              commission_pct,
               is_active: row.is_active ?? true,
               ...(row.category ? { category_label: row.category } : {}),
             },

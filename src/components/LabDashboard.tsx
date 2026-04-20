@@ -69,7 +69,6 @@ interface LabDashboardProps {
 
 const TABS: { key: RequestStatus; label: string; icon: React.ReactNode }[] = [
   { key: "seen", label: "Patient Seen", icon: <Eye className="w-4 h-4" /> },
-  { key: "done", label: "Done", icon: <CheckCircle className="w-4 h-4" /> },
 ];
 
 function calcAge(dob: string | null): number | null {
@@ -93,8 +92,8 @@ export function LabDashboard({ lab, isOwner = false, roleName = "Lab Owner", can
   const router = useRouter();
   const searchParams = useSearchParams();
   const { isLight, toggle, themeClass } = useDashTheme("lab_dash_theme");
-  type MainView = "requests" | "referrals" | "clients" | "analytics" | "activity" | "feedback" | "poveon" | "price-list" | "marketers";
-  const VALID_TABS: MainView[] = ["requests", "referrals", "clients", "analytics", "activity", "feedback", "poveon", "price-list", "marketers"];
+  type MainView = "requests" | "referrals" | "clients" | "analytics" | "activity" | "feedback" | "subscription" | "price-list" | "marketers";
+  const VALID_TABS: MainView[] = ["requests", "referrals", "clients", "analytics", "activity", "feedback", "subscription", "price-list", "marketers"];
   const tabParam = searchParams.get("tab") as MainView | null;
   const [mainView, setMainView] = useState<MainView>(
     tabParam && VALID_TABS.includes(tabParam) ? tabParam : "requests"
@@ -107,18 +106,17 @@ export function LabDashboard({ lab, isOwner = false, roleName = "Lab Owner", can
   }, [router, searchParams]);
   const [walletData, setWalletData] = useState<WalletData | null>(null);
   const [walletRefreshing, setWalletRefreshing] = useState(false);
-  const [poveonData, setPoveonData] = useState<PoveonViewData>(null);
-  const [poveonLoading, setPoveonLoading] = useState(false);
-  const [priceListData, setPriceListData] = useState<{ category: string; tests: { id: string; name: string; lab_price: number; poveon_fee: number | null; commission_pct: number | null }[] }[] | null>(null);
+  const [subscriptionData, setSubscriptionData] = useState<SubscriptionData | null>(null);
+  const [subscriptionLoading, setSubscriptionLoading] = useState(false);
+  const [subscriptionPlans, setSubscriptionPlans] = useState<SubscriptionPlan[]>([]);
+  const [priceListData, setPriceListData] = useState<{ category: string; tests: { id: string; name: string; lab_price: number }[] }[] | null>(null);
   const [priceListLoading, setPriceListLoading] = useState(false);
   const [priceManagerOpen, setPriceManagerOpen] = useState(false);
   const [mobileNavOpen, setMobileNavOpen] = useState(false);
   // Agreement status — checked once on mount for owners
   const [agreementSigned, setAgreementSigned] = useState<boolean | null>(null);
-  // Eagerly loaded wallet balance for the "amount owed" banner shown on all tabs
-  const [poveonBalance, setPoveonBalance] = useState<number | null>(null);
   // Banner dismissal — persisted per-lab in localStorage
-  const [balanceBannerDismissed, setBalanceBannerDismissed] = useState(false);
+  const [subscriptionExceededBannerDismissed, setSubscriptionExceededBannerDismissed] = useState(false);
   const [agreementBannerDismissed, setAgreementBannerDismissed] = useState(false);
   const [mobileHeaderOpen, setMobileHeaderOpen] = useState(false);
 
@@ -178,7 +176,7 @@ export function LabDashboard({ lab, isOwner = false, roleName = "Lab Owner", can
 
   // Analytics filters
   const [analyticsTestFilter, setAnalyticsTestFilter] = useState("");
-  const [analyticsStatusFilter, setAnalyticsStatusFilter] = useState<"" | "incoming" | "seen" | "done">("");
+  const [analyticsStatusFilter, setAnalyticsStatusFilter] = useState<"" | "incoming" | "seen">("");
   const [analyticsMonthFilter, setAnalyticsMonthFilter] = useState("");
 
   // Patient info edit modal state
@@ -242,7 +240,7 @@ export function LabDashboard({ lab, isOwner = false, roleName = "Lab Owner", can
     return () => clearInterval(interval);
   }, [fetchRequests]);
 
-  // Eagerly fetch Poveon + wallet data so tabs are instant, no per-mount skeleton
+  // Eagerly fetch subscription + wallet data so tabs are instant
   const fetchWallet = useCallback(async (isRefresh = false) => {
     if (isRefresh) setWalletRefreshing(true);
     try {
@@ -254,23 +252,25 @@ export function LabDashboard({ lab, isOwner = false, roleName = "Lab Owner", can
     }
   }, []);
 
-  const fetchPoveon = useCallback(async (showLoading = false) => {
-    if (showLoading) setPoveonLoading(true);
+  const fetchSubscription = useCallback(async (showLoading = false) => {
+    if (showLoading) setSubscriptionLoading(true);
     try {
-      const res = await fetch("/api/lab/poveon");
-      const d = await res.json();
-      if (d.success) {
-        setPoveonData(d);
-        setPoveonBalance(d.wallet_balance ?? null);
-      }
+      const [subRes, plansRes] = await Promise.all([
+        fetch("/api/lab/subscription"),
+        fetch("/api/lab/subscription/plans"),
+      ]);
+      const subData = await subRes.json();
+      const plansData = await plansRes.json();
+      if (subData.success) setSubscriptionData(subData);
+      if (plansData.success) setSubscriptionPlans(plansData.plans ?? []);
     } catch { /* non-critical */ } finally {
-      setPoveonLoading(false);
+      setSubscriptionLoading(false);
     }
   }, []);
 
   useEffect(() => {
     if (!isOwner && !canViewWallet) return;
-    fetchPoveon(true);
+    fetchSubscription(true);
     fetchWallet();
     const walletInterval = setInterval(() => fetchWallet(true), 30_000);
     return () => clearInterval(walletInterval);
@@ -289,16 +289,9 @@ export function LabDashboard({ lab, isOwner = false, roleName = "Lab Owner", can
   // Load banner dismissal state from localStorage
   useEffect(() => {
     if (typeof window === "undefined") return;
-    setBalanceBannerDismissed(localStorage.getItem(`balance_banner_dismissed_${lab.id}`) === "1");
+    setSubscriptionExceededBannerDismissed(localStorage.getItem(`sub_exceeded_banner_dismissed_${lab.id}`) === "1");
     setAgreementBannerDismissed(localStorage.getItem(`agreement_banner_dismissed_${lab.id}`) === "1");
   }, [lab.id]);
-
-  // Poll Poveon data every 30s when on the poveon tab (real-time updates)
-  useEffect(() => {
-    if (mainView !== "poveon" || (!isOwner && !canViewWallet)) return;
-    const interval = setInterval(() => fetchPoveon(), 30_000);
-    return () => clearInterval(interval);
-  }, [mainView, fetchPoveon, isOwner, canViewWallet]);
 
   const fetchClients = useCallback(async () => {
     setClientsLoading(true);
@@ -777,7 +770,7 @@ export function LabDashboard({ lab, isOwner = false, roleName = "Lab Owner", can
         {/* Top-level navigation */}
         {(() => {
           const navItems = [
-            { key: "poveon" as const, label: "Poveon", icon: <CreditCard className="w-4 h-4" />, show: isOwner || canViewWallet },
+            { key: "subscription" as const, label: "Subscription", icon: <CreditCard className="w-4 h-4" />, show: isOwner || canViewWallet },
             { key: "requests" as const, label: "Requests", icon: <FlaskConical className="w-4 h-4" />, show: true },
             { key: "referrals" as const, label: "Referrals", icon: <Users className="w-4 h-4" />, show: isOwner || canViewReferrals },
             { key: "clients" as const, label: "Clients", icon: <UserCircle className="w-4 h-4" />, show: isOwner || canViewClients },
@@ -847,24 +840,22 @@ export function LabDashboard({ lab, isOwner = false, roleName = "Lab Owner", can
           );
         })()}
 
-        {/* Amount owed banner — shown on all tabs when lab has a negative wallet balance */}
-        {poveonBalance !== null && poveonBalance < 0 && (isOwner || canViewWallet) && !balanceBannerDismissed && (
-          <div className="mb-5 flex items-center gap-3 bg-red-500/20 border border-red-500/30 rounded-2xl px-4 py-3">
-            <AlertTriangle className="w-4 h-4 text-red-400 shrink-0" />
+        {/* Subscription exceeded banner */}
+        {subscriptionData?.subscription?.status === "exceeded" && (isOwner || canViewWallet) && !subscriptionExceededBannerDismissed && (
+          <div className="mb-5 flex items-center gap-3 bg-amber-500/20 border border-amber-500/30 rounded-2xl px-4 py-3">
+            <AlertTriangle className="w-4 h-4 text-amber-400 shrink-0" />
             <p className="text-sm text-slate-200 flex-1">
-              Your lab owes Poveon{" "}
-              <span className="font-bold font-mono text-red-400">₦{Math.abs(poveonBalance).toLocaleString()}</span>.
-              {" "}Top up your wallet to settle the balance.
+              You&apos;ve reached your leads target for this period. Renew or upgrade your plan to continue.
             </p>
             <button
-              onClick={() => navigateToTab("poveon")}
-              className="shrink-0 text-xs font-semibold text-red-400 hover:text-red-300 underline underline-offset-2 transition"
+              onClick={() => navigateToTab("subscription")}
+              className="shrink-0 text-xs font-semibold text-amber-400 hover:text-amber-300 underline underline-offset-2 transition"
             >
               View →
             </button>
             <button
-              onClick={() => { setBalanceBannerDismissed(true); localStorage.setItem(`balance_banner_dismissed_${lab.id}`, "1"); }}
-              className="shrink-0 w-6 h-6 rounded-full bg-white/10 hover:bg-white/20 flex items-center justify-center text-red-300 hover:text-white transition"
+              onClick={() => { setSubscriptionExceededBannerDismissed(true); localStorage.setItem(`sub_exceeded_banner_dismissed_${lab.id}`, "1"); }}
+              className="shrink-0 w-6 h-6 rounded-full bg-white/10 hover:bg-white/20 flex items-center justify-center text-amber-300 hover:text-white transition"
               aria-label="Dismiss"
             >
               <X className="w-3 h-3" />
@@ -1347,8 +1338,6 @@ export function LabDashboard({ lab, isOwner = false, roleName = "Lab Owner", can
 
           const analyticsMetrics = (() => {
             const total = filteredRequests.length;
-            const done = filteredRequests.filter((r) => r.status === "done").length;
-            const completionRate = total > 0 ? Math.round((done / total) * 100) : 0;
             const todayStr = new Date().toISOString().slice(0, 10);
             const seenToday = filteredRequests.filter((r) => {
               const sa = (r as any).seen_at;
@@ -1428,44 +1417,8 @@ export function LabDashboard({ lab, isOwner = false, roleName = "Lab Owner", can
               .sort((a, b) => b[1] - a[1])
               .slice(0, 10);
 
-            // Tests completed (done) — all-time count per test name
-            const doneTestCounts: Record<string, number> = {};
-            const doneByMonth: Record<string, Record<string, number>> = {};
-            filteredRequests
-              .filter((r) => r.status === "done")
-              .forEach((r) => {
-                if (!r.tests || r.tests === "See attached image") return;
-                const monthKey = r.created_at.slice(0, 7);
-                r.tests
-                  .split(/[,\n]+/)
-                  .map((t: string) => t.trim())
-                  .filter(Boolean)
-                  .forEach((t: string) => {
-                    doneTestCounts[t] = (doneTestCounts[t] ?? 0) + 1;
-                    if (!doneByMonth[monthKey]) doneByMonth[monthKey] = {};
-                    doneByMonth[monthKey][t] = (doneByMonth[monthKey][t] ?? 0) + 1;
-                  });
-              });
-            const topDoneTests = Object.entries(doneTestCounts)
-              .sort((a, b) => b[1] - a[1])
-              .slice(0, 15);
-
-            // Build last-6-month keys for done tests monthly chart
-            const doneMonthKeys: { key: string; label: string }[] = [];
-            for (let i = 5; i >= 0; i--) {
-              const d = new Date(); d.setDate(1); d.setMonth(d.getMonth() - i);
-              doneMonthKeys.push({
-                key: d.toISOString().slice(0, 7),
-                label: d.toLocaleDateString("en-GB", { month: "short" }),
-              });
-            }
-            // Top 5 done tests for the monthly chart
-            const top5DoneTests = topDoneTests.slice(0, 5).map(([name]) => name);
-            const DONE_COLORS = ["#10b981", "#0e8fe5", "#f59e0b", "#8b5cf6", "#ec4899"];
-
             return {
               total,
-              completionRate,
               seenToday,
               avgPerMonth,
               last6,
@@ -1473,17 +1426,11 @@ export function LabDashboard({ lab, isOwner = false, roleName = "Lab Owner", can
               statusCounts,
               sexCounts,
               top10Tests,
-              topDoneTests,
-              doneByMonth,
-              doneMonthKeys,
-              top5DoneTests,
-              DONE_COLORS,
             };
           })();
 
           const {
             total,
-            completionRate,
             seenToday,
             avgPerMonth,
             last6,
@@ -1491,11 +1438,6 @@ export function LabDashboard({ lab, isOwner = false, roleName = "Lab Owner", can
             statusCounts,
             sexCounts,
             top10Tests,
-            topDoneTests,
-            doneByMonth,
-            doneMonthKeys,
-            top5DoneTests,
-            DONE_COLORS,
           } = analyticsMetrics;
 
           const maxMonthly = Math.max(...last6.map((m) => m.count), 1);
@@ -1529,7 +1471,6 @@ export function LabDashboard({ lab, isOwner = false, roleName = "Lab Owner", can
                   <option value="" className="bg-slate-800">All statuses</option>
                   <option value="incoming" className="bg-slate-800">Incoming</option>
                   <option value="seen" className="bg-slate-800">Patient Seen</option>
-                  <option value="done" className="bg-slate-800">Completed</option>
                 </select>
                 <select
                   value={analyticsTestFilter}
@@ -1558,10 +1499,9 @@ export function LabDashboard({ lab, isOwner = false, roleName = "Lab Owner", can
               </div>
 
               {/* Summary Stats */}
-              <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+              <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
                 {[
                   { label: "Total Requests", value: total },
-                  { label: "Completion Rate", value: `${completionRate}%` },
                   { label: "Seen Today", value: seenToday },
                   { label: "Avg / Month", value: avgPerMonth },
                 ].map((stat) => (
@@ -1785,116 +1725,6 @@ export function LabDashboard({ lab, isOwner = false, roleName = "Lab Owner", can
                 )}
               </div>
 
-              {/* Tests Completed (Done) — All-Time */}
-              <div className="bg-white/5 border border-white/10 rounded-2xl p-5">
-                <div className="flex items-center gap-2 mb-4">
-                  <CheckCircle className="w-4 h-4 text-emerald-400" />
-                  <p className="text-xs font-semibold text-slate-400 uppercase tracking-wider">
-                    Tests Completed — All-Time
-                  </p>
-                </div>
-                {topDoneTests.length === 0 ? (
-                  <p className="text-slate-500 text-sm">No completed tests recorded yet.</p>
-                ) : (
-                  <div className="space-y-2">
-                    {topDoneTests.map(([name, count], idx) => {
-                      const maxDone = topDoneTests[0][1];
-                      const pct = Math.round((count / maxDone) * 100);
-                      return (
-                        <div key={name} className="flex items-center gap-3">
-                          <span className="text-xs text-slate-500 w-5 text-right shrink-0">{idx + 1}</span>
-                          <div className="flex-1 min-w-0">
-                            <div className="flex justify-between text-sm mb-0.5">
-                              <span className="text-slate-300 truncate">{name}</span>
-                              <span className="text-emerald-400 font-semibold ml-2 shrink-0">{count}</span>
-                            </div>
-                            <div className="h-1.5 rounded-full bg-white/10 overflow-hidden">
-                              <div className="h-full rounded-full bg-emerald-500" style={{ width: `${pct}%` }} />
-                            </div>
-                          </div>
-                        </div>
-                      );
-                    })}
-                  </div>
-                )}
-              </div>
-
-              {/* Tests Completed — Monthly Trend (Top 5 Tests) */}
-              {top5DoneTests.length > 0 && (
-                <div className="bg-white/5 border border-white/10 rounded-2xl p-5">
-                  <div className="flex items-center gap-2 mb-1">
-                    <CheckCircle className="w-4 h-4 text-emerald-400" />
-                    <p className="text-xs font-semibold text-slate-400 uppercase tracking-wider">
-                      Tests Completed — Monthly (Top {top5DoneTests.length})
-                    </p>
-                  </div>
-                  {/* Legend */}
-                  <div className="flex flex-wrap gap-x-4 gap-y-1 mb-4 mt-2">
-                    {top5DoneTests.map((name, ci) => (
-                      <div key={name} className="flex items-center gap-1.5">
-                        <span className="w-2.5 h-2.5 rounded-sm shrink-0" style={{ backgroundColor: DONE_COLORS[ci] }} />
-                        <span className="text-xs text-slate-400 truncate max-w-[140px]">{name}</span>
-                      </div>
-                    ))}
-                  </div>
-                  {/* Grouped bar chart */}
-                  {(() => {
-                    const barW = 10;
-                    const gapBetween = 3;
-                    const groupW = top5DoneTests.length * (barW + gapBetween) + 12;
-                    const svgW = doneMonthKeys.length * groupW;
-                    const maxVal = Math.max(
-                      1,
-                      ...doneMonthKeys.flatMap(({ key }) =>
-                        top5DoneTests.map((name) => doneByMonth[key]?.[name] ?? 0)
-                      )
-                    );
-                    const chartH = 80;
-                    const labelY = chartH + 18;
-                    return (
-                      <div className="overflow-x-auto">
-                        <svg
-                          viewBox={`0 0 ${svgW} ${labelY + 4}`}
-                          className="w-full"
-                          style={{ minWidth: `${Math.max(svgW, 280)}px`, height: `${labelY + 8}px` }}
-                          preserveAspectRatio="none"
-                        >
-                          {doneMonthKeys.map(({ key, label }, mi) => {
-                            const groupX = mi * groupW + 6;
-                            return (
-                              <g key={key}>
-                                {top5DoneTests.map((name, ci) => {
-                                  const val = doneByMonth[key]?.[name] ?? 0;
-                                  const barH = val > 0 ? Math.max((val / maxVal) * chartH, 3) : 0;
-                                  const x = groupX + ci * (barW + gapBetween);
-                                  const y = chartH - barH;
-                                  return (
-                                    <g key={name}>
-                                      <rect x={x} y={y} width={barW} height={barH} rx="2" fill={DONE_COLORS[ci]} opacity="0.85" />
-                                      {val > 0 && (
-                                        <text x={x + barW / 2} y={y - 2} textAnchor="middle" fill="white" fontSize="7">{val}</text>
-                                      )}
-                                    </g>
-                                  );
-                                })}
-                                <text
-                                  x={groupX + (top5DoneTests.length * (barW + gapBetween)) / 2}
-                                  y={labelY}
-                                  textAnchor="middle"
-                                  fill="#94a3b8"
-                                  fontSize="9"
-                                >
-                                  {label}
-                                </text>
-                              </g>
-                            );
-                          })}
-                        </svg>
-                      </div>
-                    );
-                  })()}
-                </div>
-              )}
 
               {/* Marketer Analytics */}
               {!marketerLoading && (
@@ -1922,14 +1752,15 @@ export function LabDashboard({ lab, isOwner = false, roleName = "Lab Owner", can
         )}
 
         {/* Poveon commission view */}
-        {mainView === "poveon" && (isOwner || canViewWallet) && (
-          <LabPoveonView
-            data={poveonData}
-            loading={poveonLoading}
+        {mainView === "subscription" && (isOwner || canViewWallet) && (
+          <LabSubscriptionView
+            data={subscriptionData}
+            loading={subscriptionLoading}
+            plans={subscriptionPlans}
             walletData={walletData}
             walletRefreshing={walletRefreshing}
             onRefreshWallet={() => fetchWallet(true)}
-            onLoad={() => fetchPoveon(true)}
+            onLoad={() => fetchSubscription(true)}
           />
         )}
 
@@ -3527,7 +3358,7 @@ function LabFeedbackView({ labId }: { labId: string }) {
 // =============================================================================
 // Lab Price List View
 // =============================================================================
-type PriceListTest = { id: string; name: string; lab_price: number; poveon_fee: number | null; commission_pct: number | null };
+type PriceListTest = { id: string; name: string; lab_price: number };
 type PriceListCategory = { category: string; tests: PriceListTest[] };
 
 function LabPriceListView({ data, loading, onLoad, onManage }: { data: PriceListCategory[] | null; loading: boolean; onLoad: () => void; onManage: () => void }) {
@@ -3594,27 +3425,18 @@ function LabPriceListView({ data, loading, onLoad, onManage }: { data: PriceList
                 <p className="text-xs text-slate-500">{cat.tests.length} test{cat.tests.length !== 1 ? "s" : ""}</p>
               </div>
               {/* Column headers */}
-              <div className="grid grid-cols-4 px-5 py-2 text-[11px] uppercase tracking-wider text-slate-500 border-b border-white/5">
+              <div className="grid grid-cols-3 px-5 py-2 text-[11px] uppercase tracking-wider text-slate-500 border-b border-white/5">
                 <p className="col-span-2">Test Name</p>
                 <p className="text-right">Your Price</p>
-                <p className="text-right">Poveon Fee</p>
               </div>
               {/* Test rows */}
               {cat.tests.map((test, idx) => (
                 <div
                   key={test.id}
-                  className={`grid grid-cols-4 px-5 py-3 items-center ${idx < cat.tests.length - 1 ? "border-b border-white/5" : ""} hover:bg-white/3 transition-colors`}
+                  className={`grid grid-cols-3 px-5 py-3 items-center ${idx < cat.tests.length - 1 ? "border-b border-white/5" : ""} hover:bg-white/3 transition-colors`}
                 >
                   <p className="col-span-2 text-sm text-slate-200 pr-4">{test.name}</p>
                   <p className="text-right text-sm font-mono text-white font-medium">₦{Number(test.lab_price).toLocaleString()}</p>
-                  <div className="text-right">
-                    <p className="text-sm font-mono text-amber-300 font-semibold">
-                      {test.poveon_fee != null ? `₦${Number(test.poveon_fee).toLocaleString()}` : "—"}
-                    </p>
-                    {test.commission_pct != null && (
-                      <p className="text-[10px] text-slate-500">{Number(test.commission_pct).toFixed(1)}%</p>
-                    )}
-                  </div>
                 </div>
               ))}
             </div>
@@ -3632,13 +3454,22 @@ type BreakdownItem = {
   raw: string; canonical_name: string; source?: string;
   unit_price: number; poveon_fee?: number | null;
 };
-type PoveonReq = {
-  id: string; code: string; patient_name: string | null; tests: string;
-  poveon_amount: number; lab_revenue_amount: number; is_paid_to_poveon: boolean;
-  seen_at: string | null; completed_at: string | null;
-  test_breakdown: BreakdownItem[];
+type SubscriptionPlan = {
+  id: string; name: string; description: string;
+  fee: number; leads_target: number; period_type: string; period_days: number | null;
 };
-type PoveonViewData = { total_owed: number; total_lab_revenue: number; total_deposited: number; wallet_balance: number; requests: PoveonReq[] } | null;
+type ActiveSubscription = {
+  id: string;
+  plan: SubscriptionPlan;
+  start_date: string; end_date: string;
+  leads_used: number; leads_target: number;
+  status: string; days_remaining: number;
+};
+type SubscriptionData = {
+  success: boolean;
+  subscription: ActiveSubscription | null;
+  dva: { bank_name: string; account_number: string; account_name: string } | null;
+} | null;
 
 type WalletCredit = { id: string; amount: number; balance_after: number; reference: string; channel: string; sender_name: string | null; sender_bank: string | null; created_at: string };
 type WalletData = { balance: number; dva: { bank_name: string; account_number: string; account_name: string } | null; credits: WalletCredit[] } | null;
@@ -3699,264 +3530,171 @@ function LabWalletPanel({ wallet, refreshing, onRefresh }: {
   );
 }
 
-function LabPoveonView({ data, loading, walletData, walletRefreshing, onRefreshWallet, onLoad }: {
-  data: PoveonViewData; loading: boolean;
+function LabSubscriptionView({ data, loading, plans, walletData, walletRefreshing, onRefreshWallet, onLoad }: {
+  data: SubscriptionData; loading: boolean;
+  plans: SubscriptionPlan[];
   walletData: WalletData | null; walletRefreshing: boolean; onRefreshWallet: () => void;
   onLoad: () => void;
 }) {
-  const [expanded, setExpanded] = useState<Set<string>>(new Set());
-  const [dateFrom, setDateFrom] = useState("");
-  const [dateTo, setDateTo] = useState("");
+  const [copied, setCopied] = useState(false);
   useEffect(() => { if (!data) onLoad(); }, [data, onLoad]);
 
   if (loading) {
     return (
       <div className="space-y-4 animate-pulse">
         <div className="h-32 bg-white/5 rounded-2xl" />
-        <div className="h-20 bg-white/5 rounded-2xl" />
         <div className="h-48 bg-white/5 rounded-2xl" />
+        <div className="h-40 bg-white/5 rounded-2xl" />
       </div>
     );
   }
 
-  const allRequests = data?.requests ?? [];
-  const credits = walletData?.credits ?? [];
+  const sub = data?.subscription ?? null;
+  const dva = data?.dva ?? walletData?.dva ?? null;
 
-  // Apply date filter to requests (by seen_at) and credits (by created_at)
-  const fromDate = dateFrom ? new Date(dateFrom + "T00:00:00") : null;
-  const toDate   = dateTo   ? new Date(dateTo   + "T23:59:59") : null;
-
-  const filteredRequests = allRequests.filter((r) => {
-    if (!r.seen_at) return false;
-    const d = new Date(r.seen_at);
-    if (fromDate && d < fromDate) return false;
-    if (toDate   && d > toDate)   return false;
-    return true;
-  });
-
-  const filteredCredits = credits.filter((c) => {
-    const d = new Date(c.created_at);
-    if (fromDate && d < fromDate) return false;
-    if (toDate   && d > toDate)   return false;
-    return true;
-  });
-
-  const isFiltered = !!dateFrom || !!dateTo;
-  const requests   = isFiltered ? filteredRequests : allRequests;
-  const shownCredits = isFiltered ? filteredCredits : credits;
-
-  // Recompute summary totals from filtered requests / credits
-  const totalLabRevenue = isFiltered
-    ? requests.reduce((s, r) => s + Number(r.lab_revenue_amount ?? 0), 0)
-    : (data?.total_lab_revenue ?? 0);
-  const totalOwed = isFiltered
-    ? requests.reduce((s, r) => s + Number(r.poveon_amount ?? 0), 0)
-    : (data?.total_owed ?? 0);
-  const totalDeposited = isFiltered
-    ? shownCredits.reduce((s, c) => s + Number(c.amount ?? 0), 0)
-    : (data?.total_deposited ?? 0);
-
-  function formatMoney(v: number) {
+  function fmtMoney(v: number) {
+    if (v >= 1_000_000_000) return `₦${(v / 1_000_000_000).toFixed(1)}B`;
     if (v >= 1_000_000) return `₦${(v / 1_000_000).toFixed(1)}M`;
     if (v >= 10_000)    return `₦${(v / 1_000).toFixed(0)}k`;
     if (v >= 1_000)     return `₦${(v / 1_000).toFixed(1)}k`;
     return `₦${v.toLocaleString()}`;
   }
 
-  function toggleExpand(id: string) {
-    setExpanded((prev) => {
-      const next = new Set(prev);
-      next.has(id) ? next.delete(id) : next.add(id);
-      return next;
-    });
+  function periodLabel(type: string, days: number | null) {
+    if (type === "monthly")   return "Monthly";
+    if (type === "quarterly") return "Quarterly";
+    if (type === "yearly")    return "Yearly";
+    if (type === "custom")    return `${days ?? "?"}-day`;
+    return type;
   }
 
   return (
-    <div className="space-y-4">
-      {/* 1 — Wallet balance + DVA */}
-      <LabWalletPanel wallet={walletData} refreshing={walletRefreshing} onRefresh={onRefreshWallet} />
-
-      {/* 2 — Date filter */}
-      <div className="flex flex-wrap items-center gap-2">
-        <div className="flex items-center gap-1.5 text-slate-400">
-          <Calendar className="w-3.5 h-3.5 shrink-0" />
-          <span className="text-xs font-medium">Filter by date</span>
-        </div>
-        <input
-          type="date"
-          value={dateFrom}
-          onChange={(e) => setDateFrom(e.target.value)}
-          className="text-xs bg-white/5 border border-white/10 rounded-lg px-2.5 py-1.5 text-slate-200 focus:outline-none focus:border-white/30"
-          placeholder="From"
-        />
-        <span className="text-xs text-slate-500">to</span>
-        <input
-          type="date"
-          value={dateTo}
-          onChange={(e) => setDateTo(e.target.value)}
-          className="text-xs bg-white/5 border border-white/10 rounded-lg px-2.5 py-1.5 text-slate-200 focus:outline-none focus:border-white/30"
-          placeholder="To"
-        />
-        {isFiltered && (
-          <button
-            onClick={() => { setDateFrom(""); setDateTo(""); }}
-            className="text-xs text-slate-400 hover:text-white underline underline-offset-2 transition"
-          >
-            Clear
-          </button>
-        )}
-      </div>
-
-      {/* 3 — Summary cards */}
-      <div className="grid grid-cols-1 sm:grid-cols-3 gap-2 sm:gap-3">
-        {/* Revenue */}
-        <div className="bg-gradient-to-br from-emerald-500/20 to-emerald-600/10 border border-emerald-500/30 rounded-2xl px-4 py-3 flex sm:flex-col items-center sm:items-center justify-between sm:justify-center gap-2">
-          <div className="sm:text-center">
-            <p className="text-[10px] text-slate-400 uppercase tracking-wide leading-tight">Your Revenue</p>
-            <p className="text-[9px] text-slate-500 leading-tight mt-0.5">Approximate</p>
+    <div className="space-y-5">
+      {/* Current Plan */}
+      {sub ? (
+        <div className="bg-white/5 border border-white/10 rounded-2xl p-5 space-y-4">
+          <div className="flex items-start justify-between gap-4 flex-wrap">
+            <div>
+              <p className="text-xs text-slate-400 uppercase tracking-wider mb-1">Current Plan</p>
+              <p className="text-xl font-bold text-white">{sub.plan.name}</p>
+              {sub.plan.description && <p className="text-xs text-slate-400 mt-1">{sub.plan.description}</p>}
+            </div>
+            <div className="text-right">
+              <span className={`inline-block px-3 py-1 rounded-full text-xs font-semibold ${
+                sub.status === "exceeded"
+                  ? "bg-amber-500/20 text-amber-300 border border-amber-500/30"
+                  : sub.status === "active"
+                    ? "bg-emerald-500/20 text-emerald-300 border border-emerald-500/30"
+                    : "bg-slate-500/20 text-slate-400 border border-slate-500/30"
+              }`}>
+                {sub.status === "exceeded" ? "Target Reached" : sub.status === "active" ? "Active" : sub.status}
+              </span>
+              <p className="text-xs text-slate-500 mt-1">{sub.days_remaining} day{sub.days_remaining !== 1 ? "s" : ""} remaining</p>
+            </div>
           </div>
-          <p className="text-lg sm:text-base font-bold font-mono text-white sm:mt-1">{formatMoney(totalLabRevenue)}</p>
+
+          {/* Progress bar */}
+          <div>
+            <div className="flex justify-between text-xs text-slate-400 mb-1.5">
+              <span>Leads used: {fmtMoney(sub.leads_used)}</span>
+              <span>Target: {fmtMoney(sub.leads_target)}</span>
+            </div>
+            <div className="h-3 bg-white/10 rounded-full overflow-hidden">
+              <div
+                className={`h-full rounded-full transition-all ${sub.status === "exceeded" ? "bg-amber-400" : "bg-emerald-400"}`}
+                style={{ width: `${Math.min(100, (sub.leads_used / sub.leads_target) * 100).toFixed(1)}%` }}
+              />
+            </div>
+            <p className="text-[11px] text-slate-500 mt-1 text-right">
+              {((sub.leads_used / sub.leads_target) * 100).toFixed(1)}% of target used
+            </p>
+          </div>
+
+          {/* Period info */}
+          <div className="flex gap-4 flex-wrap text-xs text-slate-400">
+            <span>Start: <span className="text-slate-200">{new Date(sub.start_date).toLocaleDateString()}</span></span>
+            <span>End: <span className="text-slate-200">{new Date(sub.end_date).toLocaleDateString()}</span></span>
+          </div>
+
+          {/* Exceeded prompt */}
+          {sub.status === "exceeded" && (
+            <div className="bg-amber-500/10 border border-amber-500/20 rounded-xl p-4 flex items-start gap-3">
+              <AlertTriangle className="w-4 h-4 text-amber-400 mt-0.5 shrink-0" />
+              <div>
+                <p className="text-sm font-semibold text-amber-300">Leads target reached</p>
+                <p className="text-xs text-slate-400 mt-1">
+                  You&apos;ve reached your ₦{fmtMoney(sub.leads_target)} target for this period.
+                  New requests are still coming in. Please renew or upgrade your plan for the next period.
+                  Your previous balance will not roll over.
+                </p>
+              </div>
+            </div>
+          )}
         </div>
-        {/* Poveon Fee */}
-        <div className="bg-gradient-to-br from-sky-500/20 to-sky-600/10 border border-sky-500/30 rounded-2xl px-4 py-3 flex sm:flex-col items-center sm:items-center justify-between sm:justify-center gap-2">
-          <p className="text-[10px] text-slate-400 uppercase tracking-wide sm:text-center">Poveon Fee</p>
-          <p className="text-lg sm:text-base font-bold font-mono text-white sm:mt-1">{formatMoney(totalOwed)}</p>
+      ) : (
+        <div className="bg-white/5 border border-white/10 border-dashed rounded-2xl p-8 text-center">
+          <CreditCard className="w-10 h-10 text-slate-600 mx-auto mb-3" />
+          <p className="text-sm font-semibold text-slate-300">No active subscription</p>
+          <p className="text-xs text-slate-500 mt-1">Contact your admin to assign a plan, or choose from the options below and make payment via your dedicated account.</p>
         </div>
-        {/* Deposited */}
-        <div className="bg-gradient-to-br from-violet-500/20 to-violet-600/10 border border-violet-500/30 rounded-2xl px-4 py-3 flex sm:flex-col items-center sm:items-center justify-between sm:justify-center gap-2">
-          <p className="text-[10px] text-slate-400 uppercase tracking-wide sm:text-center">Deposited</p>
-          <p className="text-lg sm:text-base font-bold font-mono text-white sm:mt-1">{formatMoney(totalDeposited)}</p>
+      )}
+
+      {/* DVA Payment Info */}
+      <div className="bg-white/5 border border-white/10 rounded-2xl p-5">
+        <p className="text-xs text-slate-400 uppercase tracking-wider mb-3">Payment Account</p>
+        {dva ? (
+          <div className="flex items-center justify-between gap-3">
+            <div>
+              <p className="text-lg font-bold font-mono text-white tracking-widest">{dva.account_number}</p>
+              <p className="text-xs text-slate-400 mt-0.5">{dva.bank_name} · {dva.account_name}</p>
+              <p className="text-[11px] text-slate-500 mt-2">Transfer your subscription fee to this account. Your plan will be activated by the admin.</p>
+            </div>
+            <button
+              onClick={() => { navigator.clipboard.writeText(dva.account_number).then(() => { setCopied(true); setTimeout(() => setCopied(false), 2000); }); }}
+              className="shrink-0 p-2.5 rounded-xl bg-white/8 hover:bg-white/15 text-slate-300 hover:text-white transition"
+              title="Copy account number"
+            >
+              {copied ? <Check className="w-4 h-4 text-emerald-400" /> : <Copy className="w-4 h-4" />}
+            </button>
+          </div>
+        ) : (
+          <div className="flex items-center gap-3">
+            <Wallet2 className="w-5 h-5 text-slate-500 shrink-0" />
+            <p className="text-sm text-slate-400">No dedicated account provisioned yet. Contact your admin.</p>
+          </div>
+        )}
+        <div className="mt-3 flex items-center gap-2">
+          <button onClick={() => { onLoad(); onRefreshWallet(); }} disabled={walletRefreshing} className="p-1.5 rounded-lg hover:bg-white/10 text-slate-400 hover:text-white transition disabled:opacity-50" title="Refresh">
+            <RefreshCw className={`w-3.5 h-3.5 ${walletRefreshing ? "animate-spin" : ""}`} />
+          </button>
+          <span className="text-xs text-slate-500">Wallet balance: <span className="font-mono text-slate-300">₦{(walletData?.balance ?? 0).toLocaleString()}</span></span>
         </div>
       </div>
 
-      {/* 4 — How Poveon commission works */}
-      <div className="bg-white/5 border border-white/10 rounded-2xl px-5 py-4 flex items-start gap-3">
-        <CreditCard className="w-4 h-4 text-slate-400 mt-0.5 shrink-0" />
-        <div className="space-y-1 flex-1">
-          <p className="text-sm font-semibold text-white">How Poveon commission works</p>
-          <p className="text-xs text-slate-400 leading-relaxed">
-            Each time you mark a request as <strong className="text-white">Seen</strong>, Poveon calculates the commission from your test catalog.
-            The commission rate is set per test in your catalog. Only tests in your price list contribute to the commission.
-            Tests not in your catalog cost ₦0 commission.
-          </p>
-        </div>
-      </div>
-
-      {/* 5 — Payment history */}
-      {shownCredits.length > 0 && (
-        <div className="bg-white/5 border border-white/10 rounded-2xl overflow-hidden">
-          <p className="text-xs font-semibold text-slate-400 uppercase tracking-wider px-4 py-3 border-b border-white/8">Payment History</p>
-          <div className="divide-y divide-white/5">
-            {shownCredits.slice(0, 10).map((c) => (
-              <div key={c.id} className="flex items-center justify-between px-4 py-2.5 gap-3">
-                <div className="flex items-center gap-2.5 min-w-0">
-                  <div className="w-6 h-6 rounded-full bg-emerald-500/15 flex items-center justify-center shrink-0">
-                    <ArrowUpRight className="w-3.5 h-3.5 text-emerald-400" />
-                  </div>
-                  <div className="min-w-0">
-                    <p className="text-xs text-slate-300 truncate">
-                      {c.sender_name ? `From ${c.sender_name}` : "Bank transfer"}
-                      {c.sender_bank ? ` · ${c.sender_bank}` : ""}
-                      {c.channel === "manual" ? " (manual)" : ""}
-                    </p>
-                    <p className="text-[10px] text-slate-500">{new Date(c.created_at).toLocaleDateString()}</p>
-                  </div>
+      {/* Available Plans */}
+      {plans.length > 0 && (
+        <div className="space-y-3">
+          <p className="text-xs text-slate-400 uppercase tracking-wider">Available Plans</p>
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
+            {plans.map((plan) => (
+              <div key={plan.id} className={`bg-white/5 border rounded-2xl p-4 space-y-2 ${sub?.plan.id === plan.id ? "border-emerald-500/40 bg-emerald-500/5" : "border-white/10"}`}>
+                <div className="flex items-start justify-between gap-2">
+                  <p className="text-sm font-semibold text-white">{plan.name}</p>
+                  {sub?.plan.id === plan.id && (
+                    <span className="text-[10px] font-semibold bg-emerald-500/20 text-emerald-300 px-2 py-0.5 rounded-full border border-emerald-500/30 shrink-0">Current</span>
+                  )}
                 </div>
-                <div className="text-right shrink-0">
-                  <p className="text-sm font-semibold font-mono text-emerald-300">+₦{Number(c.amount).toLocaleString()}</p>
-                  <p className="text-[10px] text-slate-500">bal ₦{Number(c.balance_after).toLocaleString()}</p>
+                {plan.description && <p className="text-xs text-slate-400">{plan.description}</p>}
+                <div className="pt-1 border-t border-white/8 space-y-1">
+                  <p className="text-base font-bold font-mono text-white">₦{plan.fee.toLocaleString()}</p>
+                  <p className="text-xs text-slate-400">Leads target: <span className="text-slate-200 font-mono">{fmtMoney(plan.leads_target)}</span></p>
+                  <p className="text-xs text-slate-500">{periodLabel(plan.period_type, plan.period_days)} plan</p>
                 </div>
               </div>
             ))}
           </div>
         </div>
       )}
-
-      {/* 6 — Commission by Request */}
-      <div>
-        <div className="flex items-center justify-between mb-4">
-          <p className="text-sm font-semibold text-white">Commission by Request ({requests.length})</p>
-          <button onClick={onLoad} className="p-1.5 rounded-lg hover:bg-white/10 text-slate-400 hover:text-white transition-colors">
-            <RefreshCw className="w-3.5 h-3.5" />
-          </button>
-        </div>
-
-        {requests.length === 0 ? (
-          <div className="bg-white/5 border border-white/10 rounded-2xl p-10 text-center">
-            <CreditCard className="w-8 h-8 text-slate-600 mx-auto mb-3" />
-            <p className="text-sm text-slate-400">{isFiltered ? "No requests in selected date range" : "No commission data yet"}</p>
-            <p className="text-xs text-slate-500 mt-1">{isFiltered ? "Try adjusting the date filter above" : "Commission appears once requests are marked as Seen"}</p>
-          </div>
-        ) : (
-          <div className="space-y-2">
-            {requests.map((req) => {
-              const isOpen = expanded.has(req.id);
-              const catalogItems = req.test_breakdown.filter((t) => t.source === "lab_catalog");
-              const othersItems = req.test_breakdown.filter((t) => t.source !== "lab_catalog");
-              // Always derive totals from the JSON items — guaranteed to match per-row display
-              const totalPrice = catalogItems.reduce((s, t) => s + Number(t.unit_price ?? 0), 0);
-              const totalCommission = catalogItems.reduce((s, t) => s + Number(t.poveon_fee ?? 0), 0);
-              return (
-                <div key={req.id} className="bg-white/5 border border-white/8 rounded-xl overflow-hidden">
-                  {/* Request row — click to expand */}
-                  <button
-                    onClick={() => toggleExpand(req.id)}
-                    className="w-full flex items-center gap-3 px-4 py-3 hover:bg-white/5 transition-colors text-left"
-                  >
-                    <div className="w-8 h-8 rounded-xl flex items-center justify-center shrink-0 bg-amber-500/15">
-                      <CreditCard className="w-4 h-4 text-amber-400" />
-                    </div>
-                    <div className="flex-1 min-w-0">
-                      <div className="flex items-center gap-2 flex-wrap">
-                        <p className="text-sm text-white font-mono font-medium">{req.code}</p>
-                      </div>
-                      <p className="text-xs text-slate-500 truncate">{req.patient_name ?? "Patient"} · {req.tests.slice(0, 40)}</p>
-                      <p className="text-[10px] text-slate-600 mt-0.5 sm:hidden">{req.seen_at ? format(new Date(req.seen_at), "dd MMM yyyy") : ""}</p>
-                    </div>
-                    <div className="text-right shrink-0 mr-1">
-                      <p className="text-sm font-bold font-mono text-amber-300">₦{req.poveon_amount.toLocaleString()}</p>
-                      <p className="text-xs text-slate-500 hidden sm:block">{req.seen_at ? format(new Date(req.seen_at), "dd MMM yyyy") : ""}</p>
-                    </div>
-                    <ChevronDown className={`w-3.5 h-3.5 text-slate-500 shrink-0 transition-transform ${isOpen ? "rotate-180" : ""}`} />
-                  </button>
-
-                  {/* Expanded breakdown */}
-                  {isOpen && req.test_breakdown.length > 0 && (
-                    <div className="border-t border-white/8 px-3 sm:px-4 py-3 space-y-1 overflow-x-auto">
-                      <div className="min-w-[280px]">
-                        <div className="grid grid-cols-3 gap-2 mb-2 px-1">
-                          <p className="text-[10px] text-slate-500 uppercase tracking-wider">Test</p>
-                          <p className="text-[10px] text-slate-500 uppercase tracking-wider text-right">Price</p>
-                          <p className="text-[10px] text-slate-500 uppercase tracking-wider text-right">Commission</p>
-                        </div>
-                        {catalogItems.map((item, i) => (
-                          <div key={i} className="grid grid-cols-3 gap-2 px-1 py-1 rounded-lg bg-emerald-500/5">
-                            <p className="text-xs text-slate-200 truncate">{item.canonical_name || item.raw}</p>
-                            <p className="text-xs text-slate-300 text-right font-mono">₦{Number(item.unit_price).toLocaleString()}</p>
-                            <p className="text-xs text-amber-300 text-right font-mono font-semibold">₦{Number(item.poveon_fee ?? 0).toLocaleString()}</p>
-                          </div>
-                        ))}
-                        {othersItems.map((item, i) => (
-                          <div key={i} className="grid grid-cols-3 gap-2 px-1 py-1 rounded-lg">
-                            <p className="text-xs text-slate-500 truncate italic">{item.raw}</p>
-                            <p className="text-xs text-slate-600 text-right font-mono">—</p>
-                            <p className="text-xs text-slate-600 text-right font-mono">₦0</p>
-                          </div>
-                        ))}
-                        <div className="grid grid-cols-3 gap-2 px-1 pt-2 border-t border-white/8">
-                          <p className="text-xs text-slate-400 font-semibold">Total</p>
-                          <p className="text-xs text-white text-right font-mono font-semibold">₦{totalPrice.toLocaleString()}</p>
-                          <p className="text-xs text-amber-300 text-right font-mono font-semibold">₦{totalCommission.toLocaleString()}</p>
-                        </div>
-                      </div>
-                    </div>
-                  )}
-                </div>
-              );
-            })}
-          </div>
-        )}
-      </div>
     </div>
   );
 }

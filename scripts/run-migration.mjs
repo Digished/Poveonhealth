@@ -159,6 +159,45 @@ const migrations = [
     sql: `ALTER TABLE labs ADD COLUMN IF NOT EXISTS free_trial BOOLEAN NOT NULL DEFAULT false`,
     continueOnError: true,
   },
+  {
+    desc: "subscription_plans table for admin-configurable plan tiers",
+    sql: `
+      CREATE TABLE IF NOT EXISTS subscription_plans (
+        id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+        name TEXT NOT NULL,
+        description TEXT NOT NULL DEFAULT '',
+        fee NUMERIC(12,2) NOT NULL,
+        leads_target NUMERIC(14,2) NOT NULL,
+        period_type TEXT NOT NULL,
+        period_days INTEGER,
+        is_active BOOLEAN NOT NULL DEFAULT true,
+        sort_order INTEGER NOT NULL DEFAULT 0,
+        created_at TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+        updated_at TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP
+      );
+    `,
+    continueOnError: true,
+  },
+  {
+    desc: "lab_subscriptions table for per-lab subscription periods",
+    sql: `
+      CREATE TABLE IF NOT EXISTS lab_subscriptions (
+        id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+        lab_id UUID NOT NULL REFERENCES labs(id) ON DELETE CASCADE,
+        plan_id UUID NOT NULL REFERENCES subscription_plans(id),
+        start_date TIMESTAMP(3) NOT NULL,
+        end_date TIMESTAMP(3) NOT NULL,
+        leads_used NUMERIC(14,2) NOT NULL DEFAULT 0,
+        status TEXT NOT NULL DEFAULT 'active',
+        notes TEXT,
+        assigned_by TEXT,
+        created_at TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+        updated_at TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP
+      );
+      CREATE INDEX IF NOT EXISTS lab_subscriptions_lab_id_idx ON lab_subscriptions(lab_id);
+    `,
+    continueOnError: true,
+  },
 ];
 
 let failed = false;

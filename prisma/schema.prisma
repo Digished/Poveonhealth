@@ -45,6 +45,7 @@ model Lab {
   synonym_generation_jobs LabSynonymGenerationJob[]
   test_kb_mappings LabTestKnowledgeBaseMapping[]
   marketers       LabMarketer[]       @relation("lab_marketers")
+  subscriptions   LabSubscription[]
 
   @@map("labs")
 }
@@ -663,6 +664,48 @@ model LabMarketer {
   @@index([lab_id])
   @@index([marketer_id])
   @@map("lab_marketers")
+}
+
+// ── Subscription Billing ─────────────────────────────────────────────────────
+
+// Admin-configurable plan tiers (e.g. "Quarterly Standard: ₦250k → ₦150M target")
+model SubscriptionPlan {
+  id            String   @id @default(uuid())
+  name          String
+  description   String   @default("")
+  fee           Decimal  @db.Decimal(12, 2)   // amount the lab pays (₦)
+  leads_target  Decimal  @db.Decimal(14, 2)   // max total request value quota (₦)
+  period_type   String                         // "monthly" | "quarterly" | "yearly" | "custom"
+  period_days   Int?                           // used when period_type = "custom"
+  is_active     Boolean  @default(true)
+  sort_order    Int      @default(0)
+  created_at    DateTime @default(now())
+  updated_at    DateTime @updatedAt
+
+  subscriptions LabSubscription[]
+
+  @@map("subscription_plans")
+}
+
+// A lab's active or historical subscription period
+model LabSubscription {
+  id          String   @id @default(uuid())
+  lab_id      String
+  plan_id     String
+  start_date  DateTime
+  end_date    DateTime
+  leads_used  Decimal  @default(0) @db.Decimal(14, 2)
+  status      String   @default("active")   // "active" | "expired" | "exceeded" | "cancelled"
+  notes       String?
+  assigned_by String?                        // admin email who assigned it
+  created_at  DateTime @default(now())
+  updated_at  DateTime @updatedAt
+
+  lab  Lab              @relation(fields: [lab_id], references: [id], onDelete: Cascade)
+  plan SubscriptionPlan @relation(fields: [plan_id], references: [id])
+
+  @@index([lab_id])
+  @@map("lab_subscriptions")
 }
 
 // ── Lab Agreements ────────────────────────────────────────────────────────────
