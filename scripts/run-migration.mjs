@@ -163,7 +163,7 @@ const migrations = [
     desc: "subscription_plans table for admin-configurable plan tiers",
     sql: `
       CREATE TABLE IF NOT EXISTS subscription_plans (
-        id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+        id TEXT PRIMARY KEY DEFAULT gen_random_uuid()::text,
         name TEXT NOT NULL,
         description TEXT NOT NULL DEFAULT '',
         fee NUMERIC(12,2) NOT NULL,
@@ -182,9 +182,9 @@ const migrations = [
     desc: "lab_subscriptions table for per-lab subscription periods",
     sql: `
       CREATE TABLE IF NOT EXISTS lab_subscriptions (
-        id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-        lab_id UUID NOT NULL REFERENCES labs(id) ON DELETE CASCADE,
-        plan_id UUID NOT NULL REFERENCES subscription_plans(id),
+        id TEXT PRIMARY KEY DEFAULT gen_random_uuid()::text,
+        lab_id TEXT NOT NULL REFERENCES labs(id) ON DELETE CASCADE,
+        plan_id TEXT NOT NULL REFERENCES subscription_plans(id),
         start_date TIMESTAMP(3) NOT NULL,
         end_date TIMESTAMP(3) NOT NULL,
         leads_used NUMERIC(14,2) NOT NULL DEFAULT 0,
