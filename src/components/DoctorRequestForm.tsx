@@ -1128,8 +1128,9 @@ export function DoctorRequestForm({
       if (!form.doctor_email.trim()) errs.doctor_email = "Email is required";
       else if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(form.doctor_email))
         errs.doctor_email = "Invalid email address";
-      if (!form.doctor_name.trim()) errs.doctor_name = "Doctor name is required";
-      if ((docProfileStatus === "not_found" || docProfileStatus === "found_partial") && !form.doctor_hospital.trim())
+      if ((docProfileStatus === "not_found" || docProfileStatus === "found_partial") && !form.doctor_name.trim())
+        errs.doctor_name = "Doctor name is required";
+      if (!form.doctor_hospital.trim())
         errs.doctor_hospital = "Hospital / clinic is required";
     }
     setErrors(errs);
@@ -1139,11 +1140,9 @@ export function DoctorRequestForm({
   function persistDoctorProfile() {
     try {
       const toSave: Record<string, string> = { email: form.doctor_email };
-      if (docProfileStatus === "not_found" || docProfileStatus === "found_partial") {
-        if (form.doctor_name) toSave.name = form.doctor_name;
-        if (form.doctor_prefix) toSave.prefix = form.doctor_prefix;
-        if (form.doctor_hospital) toSave.hospital = form.doctor_hospital;
-      }
+      if (form.doctor_name) toSave.name = form.doctor_name;
+      if (form.doctor_prefix) toSave.prefix = form.doctor_prefix;
+      if (form.doctor_hospital) toSave.hospital = form.doctor_hospital;
       localStorage.setItem(DOCTOR_STORAGE_KEY, JSON.stringify(toSave));
     } catch { /* ignore storage errors */ }
   }
@@ -1369,10 +1368,8 @@ export function DoctorRequestForm({
     }
     if (step === 3) {
       const emailOk = form.doctor_email.trim().length > 0 && /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(form.doctor_email);
-      if (docProfileStatus === "not_found" || docProfileStatus === "found_partial") {
-        return emailOk && !!form.doctor_name.trim() && !!form.doctor_hospital.trim();
-      }
-      return emailOk;
+      const nameOk = docProfileStatus === "found_complete" || !!form.doctor_name.trim();
+      return emailOk && nameOk && !!form.doctor_hospital.trim();
     }
     return true;
   })();
@@ -1744,8 +1741,11 @@ export function DoctorRequestForm({
                 </div>
               )}
 
-              {/* Substep 3: Unregistered doctor — hospital input (compulsory) */}
-              {(docProfileStatus === "not_found" || docProfileStatus === "found_partial") && form.doctor_email.trim() && form.doctor_name.trim() && (
+              {/* Hospital — shows whenever no hospital is attached, for any profile status */}
+              {form.doctor_email.trim() && !form.doctor_hospital.trim() && (
+                docProfileStatus === "found_complete" ||
+                ((docProfileStatus === "not_found" || docProfileStatus === "found_partial") && !!form.doctor_name.trim())
+              ) && (
                 <div className="relative flex gap-3 animate-fade-in-up">
                   <div className="flex flex-col items-center shrink-0 pt-1">
                     <div className={`w-7 h-7 rounded-full flex items-center justify-center text-xs font-bold border-2 transition-all shrink-0 ${
@@ -1753,7 +1753,7 @@ export function DoctorRequestForm({
                         ? "bg-emerald-500 border-emerald-500 text-white"
                         : "bg-white border-medical-400 text-medical-600"
                     }`}>
-                      {form.doctor_hospital.trim() ? <Check className="w-3.5 h-3.5" /> : "3"}
+                      {form.doctor_hospital.trim() ? <Check className="w-3.5 h-3.5" /> : docProfileStatus === "found_complete" ? "2" : "3"}
                     </div>
                   </div>
                   <div className="flex-1 pb-2 min-w-0">
