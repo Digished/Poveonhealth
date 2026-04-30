@@ -215,7 +215,7 @@ export async function POST(request: NextRequest) {
         try {
           await prisma.doctorProfile.update({
             where: { email: data.doctor_email },
-            data: { hospitals: [data.doctor_hospital] },
+            data: { hospitals: [data.doctor_hospital!] },
           });
         } catch (e) {
           console.error("[doctor-profile] hospital back-fill failed:", e);
