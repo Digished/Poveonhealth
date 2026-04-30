@@ -1741,8 +1741,8 @@ export function DoctorRequestForm({
                 </div>
               )}
 
-              {/* Hospital — shows whenever no hospital is attached, for any profile status */}
-              {form.doctor_email.trim() && !form.doctor_hospital.trim() && (
+              {/* Hospital — always shown once email (and name for unregistered) is filled; auto-filled but editable */}
+              {form.doctor_email.trim() && (
                 docProfileStatus === "found_complete" ||
                 ((docProfileStatus === "not_found" || docProfileStatus === "found_partial") && !!form.doctor_name.trim())
               ) && (
