@@ -208,6 +208,21 @@ export async function POST(request: NextRequest) {
       })();
     }
 
+    // If the doctor has a profile but no hospital saved, persist the one they typed so their
+    // dashboard reflects it and they are not prompted again on future requests.
+    if (doctorProfile && doctorProfile.hospitals.length === 0 && data.doctor_hospital) {
+      (async () => {
+        try {
+          await prisma.doctorProfile.update({
+            where: { email: data.doctor_email },
+            data: { hospitals: [data.doctor_hospital!] },
+          });
+        } catch (e) {
+          console.error("[doctor-profile] hospital back-fill failed:", e);
+        }
+      })();
+    }
+
     const labAddress = lab.address ?? "";
     const labPhones = (lab.phones as { number: string; label: string }[]) ?? [];
     // Always brand emails with the lab name (not just when custom email is set)

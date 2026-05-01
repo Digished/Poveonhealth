@@ -169,10 +169,14 @@ function DocLoginInner() {
   const [afterOtp, setAfterOtp] = useState<"dashboard" | "reset-pin" | "onboard" | "claim">("dashboard");
 
   // Onboarding form fields
-  const [obPrefix,    setObPrefix]    = useState("Dr.");
-  const [obName,      setObName]      = useState("");
-  const [obPhone,     setObPhone]     = useState("");
-  const [obHospitals, setObHospitals] = useState<string[]>([]);
+  const [obPrefix,         setObPrefix]         = useState("Dr.");
+  const [obName,           setObName]           = useState("");
+  const [obPhone,          setObPhone]          = useState("");
+  const [obHospitals,      setObHospitals]      = useState<string[]>([]);
+  const [obBankName,       setObBankName]       = useState("");
+  const [obBankCode,       setObBankCode]       = useState("");
+  const [obAccountNumber,  setObAccountNumber]  = useState("");
+  const [obAccountName,    setObAccountName]    = useState("");
 
   // Claim form fields (pre-filled by marketer, doctor can edit)
   const [claimPrefix,        setClaimPrefix]        = useState("Dr.");
@@ -402,16 +406,20 @@ function DocLoginInner() {
     e.preventDefault();
     setError("");
     if (!obName.trim()) { setError("Please enter your full name."); return; }
+    if (!obHospitals.length) { setError("Please add your hospital or clinic."); return; }
     setLoading(true);
     try {
       const res = await fetch("/api/doc-login/profile", {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          prefix:    obPrefix || null,
-          full_name: obName.trim(),
-          phone:     obPhone.trim() || null,
-          hospitals: obHospitals,
+          prefix:         obPrefix || null,
+          full_name:      obName.trim(),
+          phone:          obPhone.trim()          || null,
+          hospitals:      obHospitals,
+          bank_name:      obBankName.trim()        || null,
+          account_number: obAccountNumber.trim()   || null,
+          account_name:   obAccountName.trim()     || null,
         }),
       });
       const data = await res.json();
@@ -650,7 +658,7 @@ function DocLoginInner() {
 
               {/* Prefix + Name */}
               <div>
-                <label className="block text-xs font-medium text-slate-600 mb-1">Title &amp; Full Name <span className="text-red-400">*</span></label>
+                <label className={labelCls}>Title &amp; Full Name <span className="text-red-400">*</span></label>
                 <PrefixSelect value={obPrefix} onChange={setObPrefix} />
                 <div className="mt-2">
                   <input
@@ -658,25 +666,40 @@ function DocLoginInner() {
                     placeholder="Full name"
                     value={obName}
                     onChange={(e) => { setObName(e.target.value); setError(""); }}
-                    className="w-full px-4 py-2.5 rounded-xl border border-slate-200 bg-white text-slate-800 placeholder-slate-400 text-sm focus:outline-none focus:ring-2 focus:ring-medical-400 focus:border-transparent transition"
+                    className={inputCls}
                   />
                 </div>
               </div>
 
               {/* Phone */}
               <div>
-                <label className="block text-xs font-medium text-slate-600 mb-1">Phone Number</label>
+                <label className={labelCls}>Phone Number</label>
                 <PhoneInput value={obPhone} onChange={setObPhone} />
               </div>
 
               {/* Hospital */}
               <div>
-                <label className="block text-xs font-medium text-slate-600 mb-1">Hospital / Clinic</label>
+                <label className={labelCls}>Hospital / Clinic <span className="text-red-400">*</span></label>
                 <HospitalTagInput value={obHospitals} onChange={setObHospitals} />
               </div>
 
+              {/* Bank details */}
+              <div className="rounded-2xl border border-slate-100 bg-slate-50/60 p-3">
+                <p className="text-xs font-semibold text-slate-500 uppercase tracking-wider mb-3">Bank Details <span className="text-slate-400 font-normal normal-case tracking-normal">(optional — for commission payments)</span></p>
+                <BankAccountInput
+                  bankName={obBankName}
+                  bankCode={obBankCode}
+                  accountNumber={obAccountNumber}
+                  accountName={obAccountName}
+                  onBankChange={(name, code) => { setObBankName(name); setObBankCode(code); }}
+                  onAccountNumberChange={setObAccountNumber}
+                  onAccountNameChange={setObAccountName}
+                  onVerifiedChange={() => {}}
+                />
+              </div>
+
               {error && <p className="text-xs text-red-600 bg-red-50 border border-red-100 rounded-xl px-3 py-2">{error}</p>}
-              <button type="submit" disabled={loading || !obName.trim()}
+              <button type="submit" disabled={loading || !obName.trim() || !obHospitals.length}
                 className="w-full flex items-center justify-center gap-2 bg-medical-600 hover:bg-medical-700 disabled:opacity-60 text-white font-semibold text-sm px-4 py-3 rounded-xl transition shadow-md">
                 {loading ? <Spinner /> : <>Continue <ArrowRight className="w-4 h-4" /></>}
               </button>
