@@ -1,171 +1,111 @@
-<!DOCTYPE html>
+export type LabSlaData = {
+  effectiveDate: string;
+  labName: string;
+  labRcNumber: string;
+  labAddress: string;
+  ceoName: string;
+  ceoTitle: string;
+  signatureDataUrl: string | null;
+};
+
+export const EMPTY_LAB_SLA: LabSlaData = {
+  effectiveDate: "",
+  labName: "",
+  labRcNumber: "",
+  labAddress: "",
+  ceoName: "",
+  ceoTitle: "",
+  signatureDataUrl: null,
+};
+
+function esc(value: string): string {
+  return value
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;");
+}
+
+// Render a value, or an underlined blank of the given width when empty.
+function field(value: string, blankCh = 28): string {
+  const trimmed = value.trim();
+  return trimmed ? esc(trimmed) : "&nbsp;".repeat(blankCh);
+}
+
+export function renderLabSla(data: LabSlaData): string {
+  const sigBlock = data.signatureDataUrl
+    ? `<img src="${data.signatureDataUrl}" alt="Signature" style="max-height:40px;max-width:200px;display:block;margin-bottom:2px;" />`
+    : "";
+
+  return `<!DOCTYPE html>
 <html lang="en">
 <head>
 <meta charset="UTF-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1.0" />
 <title>Laboratory Service Level Agreement &mdash; Poveon LTD</title>
 <style>
-  :root {
-    --ink: #111111;
-    --muted: #555555;
-    --line: #d8d8d8;
-    --accent: #000000;
-  }
+  :root { --ink:#111111; --muted:#555555; --line:#d8d8d8; --accent:#000000; }
   * { box-sizing: border-box; }
   html, body {
-    margin: 0;
-    padding: 0;
-    background: #f4f4f4;
-    color: var(--ink);
-    font-family: "Helvetica Neue", Arial, sans-serif;
-    font-size: 12pt;
-    line-height: 1.6;
+    margin: 0; padding: 0; background: #f4f4f4; color: var(--ink);
+    font-family: "Helvetica Neue", Arial, sans-serif; font-size: 12pt; line-height: 1.6;
   }
   .page {
-    max-width: 820px;
-    margin: 24px auto;
-    background: #ffffff;
-    padding: 56px 64px;
-    box-shadow: 0 1px 8px rgba(0, 0, 0, 0.12);
+    max-width: 820px; margin: 24px auto; background: #ffffff;
+    padding: 56px 64px; box-shadow: 0 1px 8px rgba(0,0,0,0.12);
   }
   header.doc-head {
-    display: flex;
-    align-items: center;
-    gap: 20px;
-    border-bottom: 3px solid var(--accent);
-    padding-bottom: 20px;
-    margin-bottom: 8px;
+    display: flex; align-items: center; gap: 20px;
+    border-bottom: 3px solid var(--accent); padding-bottom: 20px; margin-bottom: 8px;
   }
   header.doc-head .logo { width: 64px; height: 64px; flex: none; }
   header.doc-head .logo svg { width: 100%; height: 100%; }
-  header.doc-head .company h1 {
-    margin: 0;
-    font-size: 22pt;
-    letter-spacing: 0.5px;
-  }
+  header.doc-head .company h1 { margin: 0; font-size: 22pt; letter-spacing: 0.5px; }
   header.doc-head .company p {
-    margin: 2px 0 0;
-    color: var(--muted);
-    font-size: 9.5pt;
-    text-transform: uppercase;
-    letter-spacing: 1.2px;
+    margin: 2px 0 0; color: var(--muted); font-size: 9.5pt;
+    text-transform: uppercase; letter-spacing: 1.2px;
   }
   h2.title {
-    text-align: center;
-    font-size: 16pt;
-    margin: 28px 0 4px;
-    text-transform: uppercase;
-    letter-spacing: 1px;
+    text-align: center; font-size: 16pt; margin: 28px 0 4px;
+    text-transform: uppercase; letter-spacing: 1px;
   }
-  p.subtitle {
-    text-align: center;
-    color: var(--muted);
-    margin: 0 0 28px;
-    font-size: 10pt;
-  }
+  p.subtitle { text-align: center; color: var(--muted); margin: 0 0 28px; font-size: 10pt; }
   h3 {
-    font-size: 12pt;
-    margin: 26px 0 6px;
-    text-transform: uppercase;
-    letter-spacing: 0.6px;
-    border-bottom: 1px solid var(--line);
-    padding-bottom: 4px;
+    font-size: 12pt; margin: 26px 0 6px; text-transform: uppercase;
+    letter-spacing: 0.6px; border-bottom: 1px solid var(--line); padding-bottom: 4px;
   }
   p { margin: 8px 0; text-align: justify; }
   ul { margin: 8px 0; padding-left: 22px; }
   li { margin: 5px 0; }
-  table.kv {
-    width: 100%;
-    border-collapse: collapse;
-    margin: 12px 0;
-  }
-  table.kv td {
-    border: 1px solid var(--line);
-    padding: 8px 12px;
-    vertical-align: top;
-  }
-  table.kv td.label {
-    width: 38%;
-    background: #fafafa;
-    font-weight: bold;
-  }
-  .parties {
-    display: flex;
-    gap: 24px;
-    margin: 16px 0;
-  }
-  .parties .party {
-    flex: 1;
-    border: 1px solid var(--line);
-    padding: 12px 16px;
-  }
+  table.kv { width: 100%; border-collapse: collapse; margin: 12px 0; }
+  table.kv td { border: 1px solid var(--line); padding: 8px 12px; vertical-align: top; }
+  table.kv td.label { width: 38%; background: #fafafa; font-weight: bold; }
+  .parties { display: flex; gap: 24px; margin: 16px 0; }
+  .parties .party { flex: 1; border: 1px solid var(--line); padding: 12px 16px; }
   .parties .party h4 {
-    margin: 0 0 6px;
-    font-size: 10pt;
-    text-transform: uppercase;
-    letter-spacing: 0.8px;
-    color: var(--muted);
+    margin: 0 0 6px; font-size: 10pt; text-transform: uppercase;
+    letter-spacing: 0.8px; color: var(--muted);
   }
-  .signatures {
-    display: flex;
-    gap: 48px;
-    margin-top: 48px;
-  }
-  .signatures .sig {
-    flex: 1;
-  }
-  .signatures .line {
-    border-bottom: 1px solid var(--ink);
-    height: 44px;
-    margin-bottom: 6px;
-  }
-  .signatures .field {
-    font-size: 9.5pt;
-    color: var(--muted);
-    margin: 4px 0;
-  }
+  .signatures { display: flex; gap: 48px; margin-top: 48px; }
+  .signatures .sig { flex: 1; }
+  .signatures .line { border-bottom: 1px solid var(--ink); height: 44px; margin-bottom: 6px; }
+  .signatures .field { font-size: 9.5pt; color: var(--muted); margin: 4px 0; }
   footer.doc-foot {
-    margin-top: 40px;
-    border-top: 1px solid var(--line);
-    padding-top: 12px;
-    text-align: center;
-    color: var(--muted);
-    font-size: 8.5pt;
+    margin-top: 40px; border-top: 1px solid var(--line); padding-top: 12px;
+    text-align: center; color: var(--muted); font-size: 8.5pt;
   }
   .note {
-    background: #fafafa;
-    border-left: 3px solid var(--accent);
-    padding: 10px 16px;
-    margin: 14px 0;
-    font-size: 11pt;
-  }
-  .print-btn {
-    display: block;
-    max-width: 820px;
-    margin: 24px auto 0;
-    text-align: right;
-  }
-  .print-btn button {
-    background: #000;
-    color: #fff;
-    border: 0;
-    padding: 10px 22px;
-    font-size: 10pt;
-    letter-spacing: 0.6px;
-    cursor: pointer;
-    text-transform: uppercase;
+    background: #fafafa; border-left: 3px solid var(--accent);
+    padding: 10px 16px; margin: 14px 0; font-size: 11pt;
   }
   @media print {
     body { background: #fff; }
     .page { box-shadow: none; margin: 0; max-width: none; padding: 0; }
-    .print-btn { display: none; }
     h3 { page-break-after: avoid; }
   }
 </style>
 </head>
 <body>
-
-<div class="print-btn"><button onclick="window.print()">Print / Save as PDF</button></div>
 
 <div class="page">
 
@@ -198,9 +138,9 @@
     </div>
     <div class="party">
       <h4>The Laboratory</h4>
-      Name: ______________________________<br />
-      Registration No.: ____________________<br />
-      Address: ____________________________<br />
+      Name: ${field(data.labName)}<br />
+      Registration No.: ${field(data.labRcNumber, 22)}<br />
+      Address: ${field(data.labAddress, 24)}<br />
       (the &ldquo;Laboratory&rdquo;)
     </div>
   </div>
@@ -263,23 +203,24 @@
   <p>By signing below, the Parties confirm that they have read, understood, and agreed to be bound by the terms of this Agreement.</p>
 
   <table class="kv">
-    <tr><td class="label">Effective Date</td><td>____________________________</td></tr>
+    <tr><td class="label">Effective Date</td><td>${field(data.effectiveDate, 30)}</td></tr>
   </table>
 
   <div class="signatures">
     <div class="sig">
+      ${sigBlock}
       <div class="line"></div>
       <p class="field"><strong>For Poveon LTD</strong></p>
-      <p class="field">Name: ____________________</p>
-      <p class="field">Title: _____________________</p>
-      <p class="field">Date: ____________________</p>
+      <p class="field">Name: ${field(data.ceoName, 20)}</p>
+      <p class="field">Title: ${field(data.ceoTitle, 20)}</p>
+      <p class="field">Date: ${field(data.effectiveDate, 20)}</p>
     </div>
     <div class="sig">
-      <div class="line"></div>
+      <div class="line" style="margin-top:46px;"></div>
       <p class="field"><strong>For the Laboratory</strong></p>
-      <p class="field">Name: ____________________</p>
-      <p class="field">Title: _____________________</p>
-      <p class="field">Date: ____________________</p>
+      <p class="field">Name: ${"&nbsp;".repeat(20)}</p>
+      <p class="field">Title: ${"&nbsp;".repeat(20)}</p>
+      <p class="field">Date: ${"&nbsp;".repeat(20)}</p>
     </div>
   </div>
 
@@ -290,4 +231,5 @@
 </div>
 
 </body>
-</html>
+</html>`;
+}
