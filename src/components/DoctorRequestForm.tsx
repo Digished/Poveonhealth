@@ -24,9 +24,11 @@ import { PoveonLogo } from "@/components/PoveonLogo";
 import { PROFESSIONAL_PREFIXES, PrefixSelectModal, PrefixSelect } from "@/components/PrefixSelect";
 import type { Lab, CreateRequestResponse } from "@/lib/types";
 
-// Module-level session cache — labs rarely change; reuse across form mounts
-// without re-fetching for the lifetime of the browser tab.
+// Module-level session cache with a 60-second TTL so newly added labs appear
+// automatically when the modal is opened without requiring a manual refresh.
 let _labsCache: Lab[] | null = null;
+let _labsCacheTime: number | null = null;
+const LABS_CACHE_TTL = 60_000;
 
 interface FormData {
   lab_id: string;
@@ -916,14 +918,16 @@ export function DoctorRequestForm({
   const fetchLabs = useCallback((forceRefresh = false) => {
     // Lab-specific pages never show the search — skip entirely
     if (labPreselected) return;
-    // Return cached data instantly if already fetched this session (unless forced)
-    if (_labsCache && !forceRefresh) { setLabs(_labsCache); setLabsLoading(false); return; }
-    if (forceRefresh) _labsCache = null;
+    // Treat a cache older than TTL the same as no cache so new labs appear automatically
+    const cacheStale = !_labsCacheTime || Date.now() - _labsCacheTime > LABS_CACHE_TTL;
+    if (_labsCache && !forceRefresh && !cacheStale) { setLabs(_labsCache); setLabsLoading(false); return; }
+    if (forceRefresh || cacheStale) _labsCache = null;
     setLabsLoading(true);
     fetch("/api/labs")
       .then((r) => r.json())
       .then((data) => {
         _labsCache = data.labs ?? [];
+        _labsCacheTime = Date.now();
         setLabs(_labsCache!);
       })
       .catch(() => toast.error("Failed to load laboratories"))
@@ -931,10 +935,11 @@ export function DoctorRequestForm({
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [labPreselected]);
 
-  // Idle prefetch — if labs aren't already cached (no SSR data), warm the cache
-  // while the browser is idle so the modal feels instant even without server preload.
+  // Idle prefetch — warm the cache while the browser is idle so the modal feels
+  // instant. Skip if a fresh cache already exists.
   useEffect(() => {
-    if (labPreselected || _labsCache) return;
+    const cacheStale = !_labsCacheTime || Date.now() - _labsCacheTime > LABS_CACHE_TTL;
+    if (labPreselected || (_labsCache && !cacheStale)) return;
     const id = typeof requestIdleCallback !== "undefined"
       ? requestIdleCallback(() => fetchLabs(), { timeout: 3000 })
       : setTimeout(fetchLabs, 800) as unknown as number;
