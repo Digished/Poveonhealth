@@ -8,7 +8,7 @@ import {
   Phone, Upload, Check, MapPin, Users, ChevronRight, ChevronDown, ChevronUp,
   Code2, Key, Copy, TrendingUp, Link, Sun, Moon, Star, GitBranch,
   ArrowUpRight, ArrowDownRight, ArrowDownToLine, Settings, CreditCard, MessageCircle,
-  BookOpen, Database, Sparkles, Search, Layers, UserCircle, Wallet, FileText, AlertCircle, Filter,
+  BookOpen, Database, Sparkles, Search, Layers, UserCircle, Wallet, FileText, AlertCircle, Filter, Download,
 } from "lucide-react";
 import { useDashTheme } from "@/hooks/useDashTheme";
 import { serializeAgreementToText } from "@/lib/agreement/content";
@@ -4840,6 +4840,29 @@ function AdminAgreementsTab({
             </div>
           </div>
         )}
+      </div>
+
+      {/* ── Lab SLA Document ── */}
+      <div className="bg-white/5 border border-white/10 rounded-2xl px-5 py-4 flex items-center justify-between">
+        <div className="flex items-center gap-3">
+          <div className="w-8 h-8 rounded-lg bg-emerald-500/15 flex items-center justify-center">
+            <FileText className="w-4 h-4 text-emerald-400" />
+          </div>
+          <div>
+            <p className="text-sm font-medium text-white">Laboratory Service Level Agreement</p>
+            <p className="text-xs text-slate-500 mt-0.5">
+              Branded SLA — 1-month free trial, 2% commission on fulfilled tests
+            </p>
+          </div>
+        </div>
+        <a
+          href="/lab-service-level-agreement.html"
+          download="Poveon-Lab-Service-Level-Agreement.html"
+          className="flex items-center gap-2 px-4 py-2 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-medium transition-colors"
+        >
+          <Download className="w-3.5 h-3.5" />
+          Download
+        </a>
       </div>
 
       {/* ── Signed Agreements ── */}
