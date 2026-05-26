@@ -8,9 +8,10 @@ import {
   Phone, Upload, Check, MapPin, Users, ChevronRight, ChevronDown, ChevronUp,
   Code2, Key, Copy, TrendingUp, Link, Sun, Moon, Star, GitBranch,
   ArrowUpRight, ArrowDownRight, ArrowDownToLine, Settings, CreditCard, MessageCircle,
-  BookOpen, Database, Sparkles, Search, Layers, UserCircle, Wallet, FileText, AlertCircle, Filter,
+  BookOpen, Database, Sparkles, Search, Layers, UserCircle, Wallet, FileText, AlertCircle, Filter, Download,
 } from "lucide-react";
 import { useDashTheme } from "@/hooks/useDashTheme";
+import { renderLabSla, EMPTY_LAB_SLA, type LabSlaData } from "@/lib/labSlaTemplate";
 import { serializeAgreementToText } from "@/lib/agreement/content";
 import { CreateLabForm } from "@/components/admin/CreateLabForm";
 import { EditLabForm } from "@/components/admin/EditLabForm";
@@ -4715,6 +4716,7 @@ function AdminAgreementsTab({
   onLoad: () => void;
 }) {
   const [downloading, setDownloading] = useState<string | null>(null);
+  const [showSlaModal, setShowSlaModal] = useState(false);
 
   // ── Global template editor state ──
   const [template, setTemplate] = useState<string>("");
@@ -4841,6 +4843,29 @@ function AdminAgreementsTab({
           </div>
         )}
       </div>
+
+      {/* ── Lab SLA Document ── */}
+      <div className="bg-white/5 border border-white/10 rounded-2xl px-5 py-4 flex items-center justify-between">
+        <div className="flex items-center gap-3">
+          <div className="w-8 h-8 rounded-lg bg-emerald-500/15 flex items-center justify-center">
+            <FileText className="w-4 h-4 text-emerald-400" />
+          </div>
+          <div>
+            <p className="text-sm font-medium text-white">Laboratory Service Level Agreement</p>
+            <p className="text-xs text-slate-500 mt-0.5">
+              Fill in lab &amp; signatory details, then print or save as PDF
+            </p>
+          </div>
+        </div>
+        <button
+          onClick={() => setShowSlaModal(true)}
+          className="flex items-center gap-2 px-4 py-2 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-medium transition-colors"
+        >
+          <FileText className="w-3.5 h-3.5" />
+          Edit &amp; Print
+        </button>
+      </div>
+      {showSlaModal && <LabSlaModal onClose={() => setShowSlaModal(false)} />}
 
       {/* ── Signed Agreements ── */}
       <div>
@@ -5159,6 +5184,203 @@ function SendAgreementModal({
                 Send to Lab
               </>
             )}
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ── Lab SLA Editor / Print Modal ─────────────────────────────────────────────
+function LabSlaModal({ onClose }: { onClose: () => void }) {
+  const [data, setData] = useState<LabSlaData>(EMPTY_LAB_SLA);
+  const [sigName, setSigName] = useState("");
+  const iframeRef = useRef<HTMLIFrameElement>(null);
+
+  const html = useMemo(() => renderLabSla(data), [data]);
+
+  function update(patch: Partial<LabSlaData>) {
+    setData((d) => ({ ...d, ...patch }));
+  }
+
+  function handleSignature(e: React.ChangeEvent<HTMLInputElement>) {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    if (file.size > 2 * 1024 * 1024) {
+      toast.error("Signature image must be under 2 MB");
+      return;
+    }
+    const reader = new FileReader();
+    reader.onload = () => {
+      update({ signatureDataUrl: reader.result as string });
+      setSigName(file.name);
+    };
+    reader.readAsDataURL(file);
+  }
+
+  function handlePrint() {
+    const win = iframeRef.current?.contentWindow;
+    if (win) {
+      win.focus();
+      win.print();
+    }
+  }
+
+  const inputCls =
+    "w-full bg-white/5 border border-white/10 rounded-lg px-3 py-2 text-sm text-white placeholder-slate-500 focus:outline-none focus:border-violet-500 transition-colors";
+  const labelCls = "block text-xs font-medium text-slate-400 mb-1";
+
+  return (
+    <div
+      className="fixed inset-0 z-50 flex items-end sm:items-center justify-center p-4"
+      style={{ backgroundColor: "rgba(2,6,23,0.85)", backdropFilter: "blur(6px)" }}
+      onClick={onClose}
+    >
+      <div
+        className="w-full max-w-5xl bg-slate-900 border border-white/10 rounded-3xl shadow-2xl overflow-hidden flex flex-col max-h-[92vh]"
+        onClick={(e) => e.stopPropagation()}
+      >
+        {/* Header */}
+        <div className="flex items-center justify-between px-6 pt-5 pb-4 border-b border-white/8 shrink-0">
+          <div>
+            <h2 className="font-semibold text-white text-sm">Laboratory Service Level Agreement</h2>
+            <p className="text-xs text-slate-400 mt-0.5">
+              Fill in the lab and Poveon details, then print or save as PDF
+            </p>
+          </div>
+          <button onClick={onClose} className="p-2 rounded-lg hover:bg-white/8 text-slate-400 hover:text-white transition-colors">
+            <X className="w-4 h-4" />
+          </button>
+        </div>
+
+        {/* Body */}
+        <div className="flex-1 overflow-y-auto grid md:grid-cols-2 gap-0">
+          {/* Form */}
+          <div className="px-6 py-5 space-y-4 border-r border-white/8">
+            <div>
+              <label className={labelCls}>Effective Date</label>
+              <input
+                type="date"
+                value={data.effectiveDate}
+                onChange={(e) => update({ effectiveDate: e.target.value })}
+                className={inputCls}
+              />
+            </div>
+
+            <div className="pt-2 border-t border-white/8">
+              <p className="text-xs font-semibold text-slate-300 uppercase tracking-wide mb-3">Laboratory</p>
+              <div className="space-y-3">
+                <div>
+                  <label className={labelCls}>Lab Name</label>
+                  <input
+                    type="text"
+                    value={data.labName}
+                    onChange={(e) => update({ labName: e.target.value })}
+                    placeholder="e.g. Bridgepoint Diagnostics"
+                    className={inputCls}
+                  />
+                </div>
+                <div>
+                  <label className={labelCls}>RC Number</label>
+                  <input
+                    type="text"
+                    value={data.labRcNumber}
+                    onChange={(e) => update({ labRcNumber: e.target.value })}
+                    placeholder="e.g. RC1234567"
+                    className={inputCls}
+                  />
+                </div>
+                <div>
+                  <label className={labelCls}>Address</label>
+                  <input
+                    type="text"
+                    value={data.labAddress}
+                    onChange={(e) => update({ labAddress: e.target.value })}
+                    placeholder="Lab registered address"
+                    className={inputCls}
+                  />
+                </div>
+              </div>
+            </div>
+
+            <div className="pt-2 border-t border-white/8">
+              <p className="text-xs font-semibold text-slate-300 uppercase tracking-wide mb-3">Poveon Signatory</p>
+              <div className="space-y-3">
+                <div>
+                  <label className={labelCls}>CEO Name</label>
+                  <input
+                    type="text"
+                    value={data.ceoName}
+                    onChange={(e) => update({ ceoName: e.target.value })}
+                    placeholder="Full name"
+                    className={inputCls}
+                  />
+                </div>
+                <div>
+                  <label className={labelCls}>Title</label>
+                  <input
+                    type="text"
+                    value={data.ceoTitle}
+                    onChange={(e) => update({ ceoTitle: e.target.value })}
+                    placeholder="e.g. Chief Executive Officer"
+                    className={inputCls}
+                  />
+                </div>
+                <div>
+                  <label className={labelCls}>Signature Image</label>
+                  <div className="flex items-center gap-3">
+                    <label className="flex items-center gap-2 px-3 py-2 rounded-lg bg-white/5 border border-white/10 hover:bg-white/8 text-xs text-slate-300 cursor-pointer transition-colors">
+                      <Upload className="w-3.5 h-3.5" />
+                      {data.signatureDataUrl ? "Replace" : "Upload"}
+                      <input type="file" accept="image/*" onChange={handleSignature} className="hidden" />
+                    </label>
+                    {data.signatureDataUrl && (
+                      <>
+                        <span className="text-xs text-slate-500 truncate max-w-[120px]">{sigName}</span>
+                        <button
+                          onClick={() => { update({ signatureDataUrl: null }); setSigName(""); }}
+                          className="text-xs text-red-400 hover:text-red-300 transition-colors"
+                        >
+                          Remove
+                        </button>
+                      </>
+                    )}
+                  </div>
+                  {data.signatureDataUrl && (
+                    <img
+                      src={data.signatureDataUrl}
+                      alt="Signature preview"
+                      className="mt-2 max-h-12 bg-white rounded p-1"
+                    />
+                  )}
+                </div>
+              </div>
+            </div>
+          </div>
+
+          {/* Live preview */}
+          <div className="bg-slate-950/50 p-4">
+            <p className="text-xs text-slate-500 mb-2">Live preview</p>
+            <iframe
+              ref={iframeRef}
+              srcDoc={html}
+              title="SLA preview"
+              className="w-full h-[70vh] bg-white rounded-lg border border-white/10"
+            />
+          </div>
+        </div>
+
+        {/* Footer */}
+        <div className="flex items-center justify-end gap-3 px-6 py-4 border-t border-white/8 shrink-0">
+          <button onClick={onClose} className="px-4 py-2 rounded-xl text-sm text-slate-400 hover:text-white hover:bg-white/8 transition-colors">
+            Close
+          </button>
+          <button
+            onClick={handlePrint}
+            className="flex items-center gap-2 px-5 py-2 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white text-sm font-medium transition-colors"
+          >
+            <Download className="w-3.5 h-3.5" />
+            Print / Save as PDF
           </button>
         </div>
       </div>

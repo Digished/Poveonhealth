@@ -124,7 +124,7 @@ export async function POST(request: NextRequest) {
       if (req.doctor_email) resend.emails.send({
         from: labSender(req.lab),
         to: req.doctor_email,
-        subject: `Patient Arrived — ${req.patient_name ?? "Patient"} is at ${req.lab.name}`,
+        subject: `Order Confirmed — ${req.lab.name} has confirmed the order for ${req.patient_name ?? "Patient"}`,
         html: doctorPatientArrived({
           doctorName: req.doctor_name,
           patientName: req.patient_name ?? "Patient",
