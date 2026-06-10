@@ -6,8 +6,9 @@ import {
   FlaskConical, LogOut, Building2, User,
   CalendarDays, TestTube2, ChevronDown, ChevronUp,
   Clock, CheckCircle, Eye, MapPin, Phone, X, Shield, EyeOff, RefreshCw, MessageCircle, Star, MessageSquare, ExternalLink,
-  Stethoscope, Pencil, Check, CreditCard, ChevronRight, Info,
+  Stethoscope, Pencil, Check, CreditCard, ChevronRight, Info, Send,
 } from "lucide-react";
+import { DoctorReferralsSection } from "@/components/referral/DoctorReferralsSection";
 import { PoveonLogo } from "@/components/PoveonLogo";
 import { PhoneInput } from "@/components/PhoneInput";
 import { HospitalTagInput } from "@/components/ui/HospitalTagInput";
@@ -508,7 +509,7 @@ function DocDashboardInner() {
   const [error, setError] = useState("");
   const [filter, setFilter] = useState<"all" | "incoming" | "seen" | "done">("all");
   const [loggingOut, setLoggingOut] = useState(false);
-  const [activeTab, setActiveTab] = useState<"requests" | "results" | "profile" | "security">("requests");
+  const [activeTab, setActiveTab] = useState<"requests" | "referrals" | "results" | "profile" | "security">("requests");
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -573,8 +574,8 @@ function DocDashboardInner() {
         {/* Tab Navigation */}
         {!loading && (
           <div className="flex gap-1 bg-white/60 rounded-xl p-1 border border-white/60 shadow-sm">
-            {(["requests", "results", "profile", "security"] as const).map((tab) => {
-              const labels = { requests: "Referrals", results: "Results", profile: "Profile", security: "Security" };
+            {(["requests", "referrals", "results", "profile", "security"] as const).map((tab) => {
+              const labels = { requests: "Lab Requests", referrals: "Referrals", results: "Results", profile: "Profile", security: "Security" };
               const resultCount = requests.filter((r) => r.status === "done").length;
               const tabCount = tab === "requests" ? requests.length : tab === "results" ? resultCount : 0;
               const profileIncomplete = tab === "profile" && !profile?.full_name;
@@ -584,11 +585,12 @@ function DocDashboardInner() {
                     activeTab === tab ? "bg-white text-slate-800 shadow-sm" : "text-slate-500 hover:text-slate-700"
                   }`}>
                   {tab === "requests" && <FlaskConical className="w-3 h-3" />}
+                  {tab === "referrals" && <Send className="w-3 h-3" />}
                   {tab === "results" && <CheckCircle className="w-3 h-3" />}
                   {tab === "profile" && <User className="w-3 h-3" />}
                   {tab === "security" && <Shield className="w-3 h-3" />}
                   <span className="hidden sm:inline">{labels[tab]}</span>
-                  <span className="sm:hidden">{tab === "requests" ? "Refs" : tab === "results" ? "Done" : tab === "profile" ? "Me" : "Pin"}</span>
+                  <span className="sm:hidden">{tab === "requests" ? "Labs" : tab === "referrals" ? "Refer" : tab === "results" ? "Done" : tab === "profile" ? "Me" : "Pin"}</span>
                   {tabCount > 0 && (
                     <span className={`text-xs px-1 py-0.5 rounded-full font-bold ${
                       activeTab === tab ? "bg-slate-100 text-slate-600" : "bg-slate-200/60 text-slate-500"
@@ -602,6 +604,9 @@ function DocDashboardInner() {
             })}
           </div>
         )}
+
+        {/* Patient Referrals Tab */}
+        {!loading && activeTab === "referrals" && <DoctorReferralsSection />}
 
         {/* Security Tab */}
         {!loading && activeTab === "security" && doctorEmail && (
