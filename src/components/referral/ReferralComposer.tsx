@@ -172,7 +172,6 @@ export function ReferralComposer() {
   const [patientPhone, setPatientPhone] = useState("");
   const [patientEmail, setPatientEmail] = useState("");
   const [hospitalNumber, setHospitalNumber] = useState("");
-  const [fromHospital, setFromHospital] = useState("");
   const [urgency, setUrgency] = useState<ReferralUrgency>("routine");
 
   // Step 2 — referral note
@@ -197,6 +196,14 @@ export function ReferralComposer() {
   const [doctorEmail, setDoctorEmail] = useState("");
   const [doctorPin, setDoctorPin] = useState("");
   const [showPin, setShowPin] = useState(false);
+  const [verifying, setVerifying] = useState(false);
+  const [verifiedDoctor, setVerifiedDoctor] = useState<{
+    name: string;
+    hospitals: { id: string; name: string; city: string | null; state: string | null }[];
+  } | null>(null);
+  const [fromHospitalId, setFromHospitalId] = useState("");
+  // The hospital the patient is coming from — known once the doctor is verified
+  const fromHospital = verifiedDoctor?.hospitals.find((h) => h.id === fromHospitalId)?.name ?? "";
   const [sending, setSending] = useState(false);
   const [sendError, setSendError] = useState<{ message: string; kind: "auth" | "registration" | "other" } | null>(null);
   const [successData, setSuccessData] = useState<{
@@ -289,25 +296,64 @@ export function ReferralComposer() {
   // ── Validation per step ──────────────────────────────────────────────────────
   const stepValid = (() => {
     if (step === 1) {
-      return (
-        patientName.trim().length >= 2 &&
-        patientPhone.trim().length >= 7 &&
-        fromHospital.trim().length >= 2
-      );
+      return patientName.trim().length >= 2 && patientPhone.trim().length >= 7;
     }
     if (step === 2) return clinicalNote.trim().length >= 20;
     if (step === 3) return !!specialty && !!selectedHospital;
     return true;
   })();
 
-  const canSend =
+  const canVerify =
     /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(doctorEmail.trim()) && /^\d{4}$/.test(doctorPin);
+  const canSend = !!verifiedDoctor && !!fromHospitalId;
 
   function handleNext() {
     const next = step + 1;
     setStep(next);
     setMaxStep((m) => Math.max(m, next));
     window.scrollTo({ top: 0, behavior: "smooth" });
+  }
+
+  // ── Doctor verification ──────────────────────────────────────────────────────
+  // Verifies email + PIN and loads the hospitals that registered this doctor;
+  // the doctor then picks which one the patient is being referred FROM.
+  async function handleVerifyDoctor() {
+    setVerifying(true);
+    setSendError(null);
+    try {
+      const res = await fetch("/api/referrals/verify-doctor", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ email: doctorEmail.trim(), pin: doctorPin }),
+      });
+      const data = await res.json();
+      if (!res.ok || !data.success) {
+        const kind = res.status === 401 ? "auth" : res.status === 403 ? "registration" : "other";
+        setSendError({ message: data.error ?? "Verification failed.", kind });
+        return;
+      }
+      const usable = (data.hospitals as { id: string; name: string; city: string | null; state: string | null }[])
+        .filter((h) => h.id !== selectedHospital?.id);
+      if (usable.length === 0) {
+        setSendError({
+          message: "Your only registered hospital is the one you are referring to. Choose a different receiving hospital.",
+          kind: "registration",
+        });
+        return;
+      }
+      setVerifiedDoctor({ name: data.doctor_name, hospitals: usable });
+      setFromHospitalId(usable.length === 1 ? usable[0].id : "");
+    } catch {
+      setSendError({ message: "Network error — please check your connection and try again.", kind: "other" });
+    } finally {
+      setVerifying(false);
+    }
+  }
+
+  function resetVerification() {
+    setVerifiedDoctor(null);
+    setFromHospitalId("");
+    setSendError(null);
   }
 
   // ── Send ─────────────────────────────────────────────────────────────────────
@@ -328,7 +374,7 @@ export function ReferralComposer() {
           patient_phone: patientPhone.trim(),
           patient_email: patientEmail.trim() || undefined,
           hospital_number: hospitalNumber.trim() || undefined,
-          from_hospital: fromHospital.trim(),
+          from_hospital_id: fromHospitalId,
           to_hospital_id: selectedHospital.id,
           specialty,
           urgency,
@@ -476,19 +522,10 @@ export function ReferralComposer() {
               <div className="w-8 h-8 rounded-xl bg-medical-50 flex items-center justify-center shrink-0">
                 <Building2 className="w-4 h-4 text-medical-600" />
               </div>
-              Referring From
+              Urgency
             </h2>
 
-            <Input
-              label="Hospital / clinic the patient is coming from"
-              placeholder="e.g. St. Mary's Clinic, Surulere"
-              value={fromHospital}
-              onChange={(e) => setFromHospital(e.target.value)}
-              required
-            />
-
             <div>
-              <p className="text-sm font-medium text-slate-700 mb-2">Urgency</p>
               <div className="flex gap-2 flex-wrap">
                 {URGENCY_OPTIONS.map((opt) => (
                   <button
@@ -800,7 +837,9 @@ export function ReferralComposer() {
             <div className="border-b-2 border-slate-800 pb-4 mb-5">
               <div className="flex items-start justify-between gap-3 flex-wrap">
                 <div>
-                  <p className="text-base font-bold text-slate-900 font-serif">{fromHospital}</p>
+                  <p className={`text-base font-bold font-serif ${fromHospital ? "text-slate-900" : "text-slate-300 italic"}`}>
+                    {fromHospital || "Referring hospital — confirmed below"}
+                  </p>
                   <p className="text-xs text-slate-500 mt-0.5">Patient Referral Letter</p>
                 </div>
                 <div className="text-right">
@@ -871,50 +910,123 @@ export function ReferralComposer() {
             <div className="flex items-start gap-2.5 px-3 py-2.5 rounded-xl bg-medical-50 border border-medical-100">
               <Info className="w-4 h-4 text-medical-500 shrink-0 mt-0.5" />
               <p className="text-xs text-medical-700 leading-relaxed">
-                You don&apos;t need an account to write a referral — but to send one, your hospital must have
-                registered your email on the referral network, and you confirm your identity with your
-                doctor portal PIN.
+                You don&apos;t need an account to write a referral — but to send one, the hospital the patient
+                is coming from must have registered your email on the referral network. Verify with your
+                doctor portal PIN, then choose which of your hospitals you are referring from.
               </p>
             </div>
 
-            <Input
-              label="Your doctor email"
-              type="email"
-              placeholder="doctor@hospital.com"
-              value={doctorEmail}
-              onChange={(e) => setDoctorEmail(e.target.value)}
-              required
-              autoComplete="email"
-            />
-
-            <div className="flex flex-col gap-1">
-              <label className="text-sm font-medium text-slate-700">
-                4-digit PIN
-                <span className="inline-block w-1.5 h-1.5 rounded-full bg-amber-400 ml-1.5 align-middle" aria-label="required" />
-              </label>
-              <div className="relative">
-                <input
-                  type={showPin ? "text" : "password"}
-                  inputMode="numeric"
-                  maxLength={4}
-                  value={doctorPin}
-                  onChange={(e) => setDoctorPin(e.target.value.replace(/\D/g, "").slice(0, 4))}
-                  placeholder="••••"
-                  className="w-full rounded-xl border border-slate-200 hover:border-slate-300 bg-white/60 px-4 py-2.5 pr-10 text-sm tracking-[0.5em] focus:outline-none focus:ring-2 focus:ring-medical-500 focus:border-medical-400 transition-colors"
+            {!verifiedDoctor ? (
+              <>
+                <Input
+                  label="Your doctor email"
+                  type="email"
+                  placeholder="doctor@hospital.com"
+                  value={doctorEmail}
+                  onChange={(e) => setDoctorEmail(e.target.value)}
+                  required
+                  autoComplete="email"
                 />
+
+                <div className="flex flex-col gap-1">
+                  <label className="text-sm font-medium text-slate-700">
+                    4-digit PIN
+                    <span className="inline-block w-1.5 h-1.5 rounded-full bg-amber-400 ml-1.5 align-middle" aria-label="required" />
+                  </label>
+                  <div className="relative">
+                    <input
+                      type={showPin ? "text" : "password"}
+                      inputMode="numeric"
+                      maxLength={4}
+                      value={doctorPin}
+                      onChange={(e) => setDoctorPin(e.target.value.replace(/\D/g, "").slice(0, 4))}
+                      placeholder="••••"
+                      className="w-full rounded-xl border border-slate-200 hover:border-slate-300 bg-white/60 px-4 py-2.5 pr-10 text-sm tracking-[0.5em] focus:outline-none focus:ring-2 focus:ring-medical-500 focus:border-medical-400 transition-colors"
+                    />
+                    <button
+                      type="button"
+                      onClick={() => setShowPin((v) => !v)}
+                      className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600 transition"
+                    >
+                      {showPin ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+                    </button>
+                  </div>
+                  <p className="text-xs text-slate-500">
+                    This is the PIN you use on the{" "}
+                    <Link href="/doc-login" className="text-medical-600 underline hover:text-medical-800">doctor portal</Link>.
+                  </p>
+                </div>
+
                 <button
                   type="button"
-                  onClick={() => setShowPin((v) => !v)}
-                  className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600 transition"
+                  onClick={handleVerifyDoctor}
+                  disabled={verifying || !canVerify}
+                  className="w-full flex items-center justify-center gap-2 py-2.5 rounded-xl bg-medical-600 hover:bg-medical-700 active:scale-[0.99] disabled:opacity-50 text-white font-semibold text-sm transition-all"
                 >
-                  {showPin ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+                  {verifying ? <RefreshCw className="w-4 h-4 animate-spin" /> : <ShieldCheck className="w-4 h-4" />}
+                  {verifying ? "Verifying…" : "Verify & choose your hospital"}
                 </button>
-              </div>
-              <p className="text-xs text-slate-500">
-                This is the PIN you use on the{" "}
-                <Link href="/doc-login" className="text-medical-600 underline hover:text-medical-800">doctor portal</Link>.
-              </p>
-            </div>
+              </>
+            ) : (
+              <>
+                <div className="flex items-center justify-between gap-2 px-3 py-2.5 rounded-xl bg-emerald-50 border border-emerald-100">
+                  <p className="text-sm text-emerald-700 font-medium flex items-center gap-2 min-w-0">
+                    <ShieldCheck className="w-4 h-4 shrink-0" />
+                    <span className="truncate">Verified as {verifiedDoctor.name}</span>
+                  </p>
+                  <button
+                    type="button"
+                    onClick={resetVerification}
+                    className="text-xs font-semibold text-emerald-700 underline hover:text-emerald-900 shrink-0"
+                  >
+                    Change
+                  </button>
+                </div>
+
+                <div>
+                  <p className="text-sm font-medium text-slate-700 mb-2">
+                    Referring from
+                    <span className="inline-block w-1.5 h-1.5 rounded-full bg-amber-400 ml-1.5 align-middle" aria-label="required" />
+                  </p>
+                  <p className="text-xs text-slate-500 mb-2.5">
+                    The hospital/clinic the patient is coming from. Only hospitals that registered you are listed.
+                  </p>
+                  <div className="space-y-2">
+                    {verifiedDoctor.hospitals.map((h) => {
+                      const active = fromHospitalId === h.id;
+                      return (
+                        <button
+                          key={h.id}
+                          type="button"
+                          onClick={() => setFromHospitalId(h.id)}
+                          className={`w-full flex items-center gap-3 px-3.5 py-3 rounded-xl border-2 text-left transition-all ${
+                            active
+                              ? "border-medical-500 bg-medical-50/70"
+                              : "border-slate-200 bg-white hover:border-slate-300"
+                          }`}
+                        >
+                          <span
+                            className={`w-4 h-4 rounded-full border-2 shrink-0 flex items-center justify-center ${
+                              active ? "border-medical-600" : "border-slate-300"
+                            }`}
+                          >
+                            {active && <span className="w-2 h-2 rounded-full bg-medical-600" />}
+                          </span>
+                          <span className="min-w-0">
+                            <span className="block text-sm font-semibold text-slate-800 truncate">{h.name}</span>
+                            {(h.city || h.state) && (
+                              <span className="block text-xs text-slate-500 truncate">
+                                {[h.city, h.state].filter(Boolean).join(", ")}
+                              </span>
+                            )}
+                          </span>
+                        </button>
+                      );
+                    })}
+                  </div>
+                </div>
+              </>
+            )}
 
             {sendError && (
               <div className="rounded-xl border border-red-200 bg-red-50 px-4 py-3 space-y-1.5">

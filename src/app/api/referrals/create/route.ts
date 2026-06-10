@@ -20,7 +20,7 @@ const CreateReferralSchema = z.object({
   hospital_number: z.string().trim().max(60).optional().nullable(),
 
   // Referral details
-  from_hospital: z.string().trim().min(2).max(200),
+  from_hospital_id: z.string().uuid("Choose the hospital you are referring from."),
   to_hospital_id: z.string().uuid(),
   specialty: z.string().trim().min(2).max(120),
   urgency: z.enum(["routine", "urgent", "emergency"]).default("routine"),
@@ -54,21 +54,27 @@ export async function POST(req: NextRequest) {
       );
     }
 
-    // 2. The doctor must be registered under at least one hospital on the referral network
+    // 2. The doctor must be registered under the hospital they are referring FROM.
+    //    The receiving hospital only needs to be on the Poveon network.
     const membership = await prisma.hospitalDoctor.findFirst({
-      where: { doctor_email: doctorEmail, hospital: { is_active: true } },
+      where: { doctor_email: doctorEmail, hospital_id: data.from_hospital_id, hospital: { is_active: true } },
+      include: { hospital: { select: { name: true } } },
     });
     if (!membership) {
       return NextResponse.json(
         {
           error:
-            "Your email is not yet registered by any hospital on the Poveon referral network. Ask your hospital to add you from their dashboard.",
+            "You are not registered under the selected hospital. Choose a hospital that has added you to their network, or ask your hospital to add you from their dashboard.",
         },
         { status: 403 }
       );
     }
+    const fromHospitalName = membership.hospital.name;
 
     // 3. Validate the destination hospital
+    if (data.to_hospital_id === data.from_hospital_id) {
+      return NextResponse.json({ error: "The receiving hospital must be different from the referring hospital." }, { status: 400 });
+    }
     const toHospital = await prisma.hospital.findUnique({ where: { id: data.to_hospital_id } });
     if (!toHospital || !toHospital.is_active) {
       return NextResponse.json({ error: "The selected hospital is not available." }, { status: 404 });
@@ -96,7 +102,7 @@ export async function POST(req: NextRequest) {
         doctor_email: doctorEmail,
         doctor_name: doctorName,
         doctor_phone: profile.phone ?? null,
-        from_hospital: data.from_hospital,
+        from_hospital: fromHospitalName,
         to_hospital_id: toHospital.id,
         specialty: data.specialty,
         urgency: data.urgency,
