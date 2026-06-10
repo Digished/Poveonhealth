@@ -5,6 +5,7 @@ import { z } from "zod";
 import { prisma } from "@/lib/prisma";
 import { generateUniqueCode } from "@/lib/code-generator";
 import { notifyReferralCreated } from "@/lib/referral-notify";
+import { isKnownSpecialty } from "@/lib/specialties";
 
 const CreateReferralSchema = z.object({
   // Doctor identity — email + PIN verified at send time (no login required)
@@ -22,7 +23,7 @@ const CreateReferralSchema = z.object({
   // Referral details
   from_hospital_id: z.string().uuid("Choose the hospital you are referring from."),
   to_hospital_id: z.string().uuid(),
-  specialty: z.string().trim().min(2).max(120),
+  specialty: z.string().trim().refine(isKnownSpecialty, "Choose a specialty from the list."),
   urgency: z.enum(["routine", "urgent", "emergency"]).default("routine"),
   clinical_note: z.string().trim().min(20, "The referral note is too short.").max(20000),
   provisional_diagnosis: z.string().trim().max(500).optional().nullable(),

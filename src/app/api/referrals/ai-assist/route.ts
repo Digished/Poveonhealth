@@ -2,7 +2,7 @@ export const dynamic = "force-dynamic";
 import { NextRequest, NextResponse } from "next/server";
 import { z } from "zod";
 import OpenAI from "openai";
-import { MEDICAL_SPECIALTIES } from "@/lib/specialties";
+import { ALL_SPECIALTY_LABELS } from "@/lib/specialties";
 
 const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
 
@@ -44,7 +44,7 @@ RULES:
 - Use clear, formal medical English. Expand obvious abbreviations on first use (e.g. "BP (blood pressure)").
 - Be concise — this is a working clinical letter, not an essay.
 - If important information appears to be missing (e.g. no vital signs, no duration of symptoms, no treatment given), list up to 4 short suggestions of what the doctor could add.
-- Also pick the single most appropriate receiving specialty from this list: ${MEDICAL_SPECIALTIES.join(", ")}.
+- Also pick the single most appropriate receiving specialty from this list: ${ALL_SPECIALTY_LABELS.join(", ")}.
 
 Respond ONLY with valid JSON in this exact shape:
 {"note": "<the rewritten referral note with headings>", "suggestions": ["...", "..."], "specialty": "<one specialty from the list>"}`;
@@ -87,7 +87,7 @@ Respond ONLY with valid JSON in this exact shape:
       success: true,
       note: result.note,
       suggestions: Array.isArray(result.suggestions) ? result.suggestions.slice(0, 4) : [],
-      specialty: result.specialty && (MEDICAL_SPECIALTIES as readonly string[]).includes(result.specialty) ? result.specialty : null,
+      specialty: result.specialty && ALL_SPECIALTY_LABELS.includes(result.specialty) ? result.specialty : null,
     });
   } catch (err) {
     console.error("[referrals/ai-assist]", err);
