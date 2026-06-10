@@ -495,12 +495,125 @@ model LabOfferedTest {
 // ── Hospitals / Medical Workplaces ────────────────────────────────────────────
 
 model Hospital {
-  id         String   @id @default(uuid())
-  name       String   @unique
-  city       String?
-  is_active  Boolean  @default(true)
-  created_at DateTime @default(now())
+  id          String   @id @default(uuid())
+  name        String   @unique
+  city        String?
+  state       String?
+  address     String?
+  email       String?  @unique // contact email — also the login identity for the hospital portal
+  phone       String?
+  specialties Json     @default("[]") // medical specialties offered, from the standard list
+  pin_hash    String?  // SHA-256 of 4-digit PIN; null = no PIN set yet
+  is_active   Boolean  @default(true)
+  created_at  DateTime @default(now())
+
+  doctors            HospitalDoctor[]
+  referrals_received Referral[]       @relation("ReferralToHospital")
+
   @@map("hospitals")
+}
+
+// One-time passcodes for hospital portal login
+model HospitalOtp {
+  id         String   @id @default(uuid())
+  email      String
+  code_hash  String // SHA-256 of the 6-digit OTP
+  expires_at DateTime
+  used       Boolean  @default(false)
+  created_at DateTime @default(now())
+
+  @@index([email])
+  @@map("hospital_otps")
+}
+
+// Active hospital portal sessions
+model HospitalSession {
+  id          String   @id @default(uuid())
+  hospital_id String
+  expires_at  DateTime
+  created_at  DateTime @default(now())
+
+  @@index([hospital_id])
+  @@map("hospital_sessions")
+}
+
+// Doctors registered under a hospital — required before a doctor can send referrals
+model HospitalDoctor {
+  id          String   @id @default(uuid())
+  hospital_id String
+  doctor_email String
+  doctor_name String?
+  added_by    String // hospital email that added the doctor
+  created_at  DateTime @default(now())
+
+  hospital Hospital @relation(fields: [hospital_id], references: [id], onDelete: Cascade)
+
+  @@unique([hospital_id, doctor_email])
+  @@index([doctor_email])
+  @@map("hospital_doctors")
+}
+
+// ── Patient Referrals ─────────────────────────────────────────────────────────
+
+// A doctor's referral of a patient to a hospital
+model Referral {
+  id     String @id @default(uuid())
+  code   String @unique // e.g. "REF-8X4K29Q" — shared with doctor, patient and hospital
+  status String @default("pending") // "pending" | "accepted" | "rejected" | "redirected"
+
+  // Patient details
+  patient_name    String
+  patient_age     Int?
+  patient_sex     String? // "male" | "female" | "other"
+  patient_phone   String
+  patient_email   String?
+  hospital_number String? // patient's number at the referring hospital (optional)
+
+  // Referring doctor
+  doctor_email  String
+  doctor_name   String
+  doctor_phone  String?
+  from_hospital String // hospital/clinic the patient is coming from
+
+  // Destination
+  to_hospital_id        String
+  specialty             String
+  urgency               String  @default("routine") // "routine" | "urgent" | "emergency"
+  clinical_note         String // the referral note (history, findings, treatment given, reason)
+  provisional_diagnosis String?
+
+  // Hospital response
+  response_note String? // note from the hospital on accept/reject/redirect
+  responded_at  DateTime?
+
+  created_at DateTime @default(now())
+  updated_at DateTime @default(now()) @updatedAt
+
+  to_hospital Hospital        @relation("ReferralToHospital", fields: [to_hospital_id], references: [id])
+  events      ReferralEvent[]
+
+  @@index([to_hospital_id, status])
+  @@index([doctor_email])
+  @@index([patient_phone])
+  @@map("referrals")
+}
+
+// Tracking timeline for a referral — created, accepted, rejected, redirected
+model ReferralEvent {
+  id               String   @id @default(uuid())
+  referral_id      String
+  type             String // "created" | "accepted" | "rejected" | "redirected"
+  actor_type       String // "doctor" | "hospital" | "system"
+  actor_label      String // doctor email or hospital name
+  from_hospital_id String? // set on redirect — the hospital that redirected
+  to_hospital_id   String? // set on redirect — the new destination hospital
+  note             String?
+  created_at       DateTime @default(now())
+
+  referral Referral @relation(fields: [referral_id], references: [id], onDelete: Cascade)
+
+  @@index([referral_id, created_at])
+  @@map("referral_events")
 }
 
 // ── Price Change Audit Log ────────────────────────────────────────────────────
