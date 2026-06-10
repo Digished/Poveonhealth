@@ -1,9 +1,9 @@
 "use client";
 
-import { useState, useRef } from "react";
+import { useState, useRef, useMemo } from "react";
 import toast from "react-hot-toast";
-import { Save, Loader2, Building2, Shield, Check } from "lucide-react";
-import { MEDICAL_SPECIALTIES } from "@/lib/specialties";
+import { Save, Loader2, Building2, Shield, Check, ChevronDown, Search } from "lucide-react";
+import { SPECIALTY_TREE, ALL_SPECIALTY_LABELS } from "@/lib/specialties";
 import { HospitalInfo } from "./types";
 
 export function SettingsTab({
@@ -26,9 +26,55 @@ export function SettingsTab({
   const newPinRefs = useRef<(HTMLInputElement | null)[]>([]);
   const confirmPinRefs = useRef<(HTMLInputElement | null)[]>([]);
 
+  // Grouped specialties editor
+  const [specSearch, setSpecSearch] = useState("");
+  const [expanded, setExpanded] = useState<Set<string>>(new Set());
+
   function toggleSpecialty(s: string) {
     setSpecialties((prev) => prev.includes(s) ? prev.filter((x) => x !== s) : [...prev, s]);
   }
+
+  function toggleExpanded(group: string) {
+    setExpanded((prev) => {
+      const next = new Set(prev);
+      if (next.has(group)) next.delete(group); else next.add(group);
+      return next;
+    });
+  }
+
+  function toggleGroupAll(group: string) {
+    const g = SPECIALTY_TREE.find((x) => x.name === group);
+    if (!g) return;
+    const labels = [g.name, ...g.subspecialties];
+    setSpecialties((prev) => {
+      const allSelected = labels.every((l) => prev.includes(l));
+      if (allSelected) return prev.filter((x) => !labels.includes(x));
+      return [...prev, ...labels.filter((l) => !prev.includes(l))];
+    });
+  }
+
+  function selectAllSpecialties() {
+    setSpecialties([...ALL_SPECIALTY_LABELS]);
+  }
+
+  function clearAllSpecialties() {
+    setSpecialties([]);
+  }
+
+  // Filter groups/labels by the search box
+  const specQ = specSearch.trim().toLowerCase();
+  const visibleGroups = useMemo(() => {
+    if (!specQ) {
+      return SPECIALTY_TREE.map((g) => ({ group: g, subs: g.subspecialties, viaSearch: false }));
+    }
+    return SPECIALTY_TREE.flatMap((g) => {
+      if (g.name.toLowerCase().includes(specQ)) {
+        return [{ group: g, subs: g.subspecialties, viaSearch: true }];
+      }
+      const subs = g.subspecialties.filter((s) => s.toLowerCase().includes(specQ));
+      return subs.length > 0 ? [{ group: g, subs, viaSearch: true }] : [];
+    });
+  }, [specQ]);
 
   async function handleSave(e: React.FormEvent) {
     e.preventDefault();
@@ -148,25 +194,111 @@ export function SettingsTab({
         </div>
 
         <div>
-          <label className={labelCls}>
-            Specialties <span className="text-slate-400 font-normal">({specialties.length} selected)</span>
-          </label>
+          <div className="flex items-center justify-between gap-2 flex-wrap mb-1">
+            <label className={labelCls + " !mb-0"}>
+              Specialties <span className="text-medical-600 font-semibold">({specialties.length} selected)</span>
+            </label>
+            <div className="flex items-center gap-2">
+              <button type="button" onClick={selectAllSpecialties}
+                className="text-xs font-semibold text-medical-600 hover:text-medical-800 underline underline-offset-2">
+                Select all
+              </button>
+              <span className="text-slate-200">|</span>
+              <button type="button" onClick={clearAllSpecialties}
+                className="text-xs font-semibold text-slate-500 hover:text-slate-700 underline underline-offset-2">
+                Clear all
+              </button>
+            </div>
+          </div>
           <p className="text-xs text-slate-400 mb-2">
-            Doctors will only see your hospital as a referral option for the specialties you select.
+            Doctors will only see your hospital as a referral option for the specialties and
+            sub-specialties you select.
           </p>
-          <div className="flex flex-wrap gap-1.5">
-            {MEDICAL_SPECIALTIES.map((s) => {
-              const active = specialties.includes(s);
+
+          <div className="relative mb-2">
+            <Search className="w-4 h-4 text-slate-400 absolute left-3 top-1/2 -translate-y-1/2" />
+            <input
+              type="text"
+              value={specSearch}
+              onChange={(e) => setSpecSearch(e.target.value)}
+              placeholder="Search specialties or sub-specialties…"
+              className="w-full pl-9 pr-3 py-2 rounded-xl border border-slate-200 bg-white text-slate-800 placeholder-slate-400 text-sm focus:outline-none focus:ring-2 focus:ring-medical-400 focus:border-transparent transition"
+            />
+          </div>
+
+          <div className="rounded-xl border border-slate-100 divide-y divide-slate-100 max-h-96 overflow-y-auto">
+            {visibleGroups.length === 0 && (
+              <p className="text-xs text-slate-400 text-center py-4 px-3">
+                No specialties match &ldquo;{specSearch}&rdquo;
+              </p>
+            )}
+            {visibleGroups.map(({ group, subs, viaSearch }) => {
+              const parentSelected = specialties.includes(group.name);
+              const groupLabels = [group.name, ...group.subspecialties];
+              const allSelected = groupLabels.every((l) => specialties.includes(l));
+              const selectedInGroup = groupLabels.filter((l) => specialties.includes(l)).length;
+              const showSubs =
+                group.subspecialties.length > 0 &&
+                (viaSearch || expanded.has(group.name) || parentSelected);
               return (
-                <button key={s} type="button" onClick={() => toggleSpecialty(s)}
-                  className={`inline-flex items-center gap-1 text-xs font-semibold px-2.5 py-1.5 rounded-full border transition ${
-                    active
-                      ? "bg-medical-600 text-white border-medical-600"
-                      : "bg-white text-slate-600 border-slate-200 hover:border-medical-300 hover:text-medical-600"
-                  }`}>
-                  {active && <Check className="w-3 h-3" />}
-                  {s}
-                </button>
+                <div key={group.name} className="px-3 py-2.5">
+                  {/* Group header */}
+                  <div className="flex items-center gap-2">
+                    <button type="button" onClick={() => toggleSpecialty(group.name)}
+                      className={`inline-flex items-center gap-1 text-xs font-semibold px-2.5 py-1.5 rounded-full border transition ${
+                        parentSelected
+                          ? "bg-medical-600 text-white border-medical-600"
+                          : "bg-white text-slate-700 border-slate-200 hover:border-medical-300 hover:text-medical-600"
+                      }`}>
+                      {parentSelected && <Check className="w-3 h-3" />}
+                      {group.name}
+                    </button>
+                    {selectedInGroup > 0 && !allSelected && (
+                      <span className="text-[10px] font-semibold text-medical-600 bg-medical-50 border border-medical-100 rounded-full px-1.5 py-0.5">
+                        {selectedInGroup}
+                      </span>
+                    )}
+                    <div className="flex items-center gap-1 ml-auto shrink-0">
+                      {group.subspecialties.length > 0 && (
+                        <>
+                          <button type="button" onClick={() => toggleGroupAll(group.name)}
+                            className={`text-[10px] font-bold uppercase tracking-wide px-2 py-1 rounded-lg border transition ${
+                              allSelected
+                                ? "bg-medical-50 border-medical-200 text-medical-700"
+                                : "bg-white border-slate-200 text-slate-400 hover:text-medical-600 hover:border-medical-200"
+                            }`}>
+                            All
+                          </button>
+                          <button type="button" onClick={() => toggleExpanded(group.name)}
+                            className="p-1 rounded-lg text-slate-400 hover:text-slate-600 hover:bg-slate-50 transition"
+                            aria-label={showSubs ? `Collapse ${group.name}` : `Expand ${group.name}`}>
+                            <ChevronDown className={`w-4 h-4 transition-transform ${showSubs ? "rotate-180" : ""}`} />
+                          </button>
+                        </>
+                      )}
+                    </div>
+                  </div>
+
+                  {/* Sub-specialty chips */}
+                  {showSubs && (
+                    <div className="flex flex-wrap gap-1.5 mt-2 pl-3 sm:pl-5 border-l-2 border-slate-100 ml-1">
+                      {subs.map((s) => {
+                        const active = specialties.includes(s);
+                        return (
+                          <button key={s} type="button" onClick={() => toggleSpecialty(s)}
+                            className={`inline-flex items-center gap-1 text-[11px] font-semibold px-2 py-1 rounded-full border transition ${
+                              active
+                                ? "bg-medical-100 text-medical-700 border-medical-300"
+                                : "bg-white text-slate-500 border-slate-200 hover:border-medical-300 hover:text-medical-600"
+                            }`}>
+                            {active && <Check className="w-3 h-3" />}
+                            {s}
+                          </button>
+                        );
+                      })}
+                    </div>
+                  )}
+                </div>
               );
             })}
           </div>

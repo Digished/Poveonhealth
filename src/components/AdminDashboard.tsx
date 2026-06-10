@@ -8,7 +8,7 @@ import {
   Phone, Upload, Check, MapPin, Users, ChevronRight, ChevronDown, ChevronUp,
   Code2, Key, Copy, TrendingUp, Link, Sun, Moon, Star, GitBranch,
   ArrowUpRight, ArrowDownRight, ArrowDownToLine, Settings, CreditCard, MessageCircle,
-  BookOpen, Database, Sparkles, Search, Layers, UserCircle, Wallet, FileText, AlertCircle, Filter, Download,
+  BookOpen, Database, Sparkles, Search, Layers, UserCircle, Wallet, FileText, AlertCircle, Filter, Download, Stethoscope,
 } from "lucide-react";
 import { useDashTheme } from "@/hooks/useDashTheme";
 import { renderLabSla, EMPTY_LAB_SLA, type LabSlaData } from "@/lib/labSlaTemplate";
@@ -16,12 +16,13 @@ import { serializeAgreementToText } from "@/lib/agreement/content";
 import { CreateLabForm } from "@/components/admin/CreateLabForm";
 import { EditLabForm } from "@/components/admin/EditLabForm";
 import { AdminProfessionalsTab } from "@/components/admin/AdminProfessionalsTab";
+import { SpecialtyTreePicker } from "@/components/admin/SpecialtyTreePicker";
+import { HospitalDoctorsPanel } from "@/components/admin/HospitalDoctorsPanel";
 import { Button } from "@/components/ui/Button";
 import { Input, Textarea } from "@/components/ui/Input";
 import { StatusBadge, Badge } from "@/components/ui/Badge";
 import type { Lab, LabRequest, AdminMetrics, ApiLog, ApiLogSummary, LabApiKey, LabRole, LabMember } from "@/lib/types";
 import { parsePhones } from "@/lib/phones";
-import { MEDICAL_SPECIALTIES } from "@/lib/specialties";
 import { format } from "date-fns";
 import { createClient } from "@/lib/supabase/client"; // still used for auth sign-out
 import { useRouter } from "next/navigation";
@@ -4287,44 +4288,6 @@ const EMPTY_HOSPITAL_FORM: HospitalFormValues = {
   name: "", city: "", state: "", address: "", email: "", phone: "", specialties: [],
 };
 
-function HospitalSpecialtiesPicker({
-  value,
-  onChange,
-}: {
-  value: string[];
-  onChange: (next: string[]) => void;
-}) {
-  function toggle(s: string) {
-    onChange(value.includes(s) ? value.filter((v) => v !== s) : [...value, s]);
-  }
-  return (
-    <div>
-      <p className="text-[11px] font-semibold text-slate-400 uppercase tracking-wider mb-1.5">
-        Specialties offered {value.length > 0 && <span className="text-blue-400">({value.length} selected)</span>}
-      </p>
-      <div className="flex flex-wrap gap-1.5 max-h-36 overflow-y-auto pr-1">
-        {MEDICAL_SPECIALTIES.map((s) => {
-          const selected = value.includes(s);
-          return (
-            <button
-              key={s}
-              type="button"
-              onClick={() => toggle(s)}
-              className={`px-2 py-1 rounded-full text-[11px] font-medium border transition-all ${
-                selected
-                  ? "bg-blue-600 border-blue-600 text-white"
-                  : "bg-white/5 border-white/10 text-slate-400 hover:border-white/25 hover:text-white"
-              }`}
-            >
-              {s}
-            </button>
-          );
-        })}
-      </div>
-    </div>
-  );
-}
-
 function HospitalFormFields({
   values,
   onChange,
@@ -4355,7 +4318,7 @@ function HospitalFormFields({
       </div>
       <input type="tel" placeholder="Phone" value={values.phone}
         onChange={(e) => onChange({ ...values, phone: e.target.value })} className={inputCls} />
-      <HospitalSpecialtiesPicker
+      <SpecialtyTreePicker
         value={values.specialties}
         onChange={(specialties) => onChange({ ...values, specialties })}
       />
@@ -4374,6 +4337,7 @@ function AdminHospitalsTab() {
   const [editId, setEditId]       = useState<string | null>(null);
   const [editForm, setEditForm]   = useState<HospitalFormValues>(EMPTY_HOSPITAL_FORM);
   const [syncing, setSyncing]     = useState(false);
+  const [doctorsFor, setDoctorsFor] = useState<{ id: string; name: string } | null>(null);
 
   async function load() {
     setLoading(true);
@@ -4604,6 +4568,11 @@ function AdminHospitalsTab() {
                     </div>
                   </div>
                   <div className="flex items-center gap-1 shrink-0">
+                    <button onClick={() => setDoctorsFor({ id: h.id, name: h.name })}
+                      className="w-7 h-7 rounded-lg flex items-center justify-center text-slate-400 hover:text-white hover:bg-white/10 transition"
+                      title="Manage doctors registered under this hospital">
+                      <Stethoscope className="w-3.5 h-3.5" />
+                    </button>
                     <button onClick={() => startEdit(h)}
                       className="w-7 h-7 rounded-lg flex items-center justify-center text-slate-400 hover:text-white hover:bg-white/10 transition">
                       <Pencil className="w-3.5 h-3.5" />
@@ -4626,6 +4595,15 @@ function AdminHospitalsTab() {
       )}
 
       <p className="text-xs text-slate-500">{hospitals.length} hospital{hospitals.length !== 1 ? "s" : ""} total · {hospitals.filter(h => h.is_active).length} active · {hospitals.filter(h => h.email).length} on the referral network</p>
+
+      {doctorsFor && (
+        <HospitalDoctorsPanel
+          hospitalId={doctorsFor.id}
+          hospitalName={doctorsFor.name}
+          onClose={() => setDoctorsFor(null)}
+          onChanged={load}
+        />
+      )}
         </>
       )}
     </div>

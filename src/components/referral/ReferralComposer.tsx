@@ -12,7 +12,7 @@ import {
 } from "lucide-react";
 import { Input } from "@/components/ui/Input";
 import { PhoneInput } from "@/components/PhoneInput";
-import { MEDICAL_SPECIALTIES } from "@/lib/specialties";
+import { SPECIALTY_TREE, parentSpecialtyOf, subspecialtiesOf } from "@/lib/specialties";
 import { URGENCY_CONFIG, type ReferralUrgency } from "@/components/referral/shared";
 
 const STEPS = [
@@ -29,6 +29,7 @@ interface SuggestedHospital {
   state: string | null;
   address: string | null;
   specialties: string[] | null;
+  exact_match?: boolean;
 }
 
 const URGENCY_OPTIONS: { value: ReferralUrgency; label: string; icon: React.ReactNode; active: string }[] = [
@@ -184,6 +185,7 @@ export function ReferralComposer() {
 
   // Step 3 — hospital
   const [specialty, setSpecialty] = useState("");
+  const [subSpecialty, setSubSpecialty] = useState("");
   const [specialtyQuery, setSpecialtyQuery] = useState("");
   const [hospitals, setHospitals] = useState<SuggestedHospital[]>([]);
   const [hospitalsLoading, setHospitalsLoading] = useState(false);
@@ -223,15 +225,18 @@ export function ReferralComposer() {
   }, []);
   useEffect(() => { if (step === 2) autoGrow(); }, [step, clinicalNote, autoGrow]);
 
+  // Effective specialty: the sub-specialty when chosen, else the top-level name.
+  const effectiveSpecialty = subSpecialty || specialty;
+
   // Load suggested hospitals when specialty (or search) changes
   useEffect(() => {
-    if (!specialty) { setHospitals([]); return; }
+    if (!effectiveSpecialty) { setHospitals([]); return; }
     let cancelled = false;
     setHospitalsLoading(true);
     setHospitalsError("");
     const t = setTimeout(async () => {
       try {
-        const params = new URLSearchParams({ specialty });
+        const params = new URLSearchParams({ specialty: effectiveSpecialty });
         if (hospitalQuery.trim()) params.set("q", hospitalQuery.trim());
         const res = await fetch(`/api/referrals/suggest?${params.toString()}`);
         const data = await res.json();
@@ -245,7 +250,7 @@ export function ReferralComposer() {
       }
     }, hospitalQuery ? 350 : 0);
     return () => { cancelled = true; clearTimeout(t); };
-  }, [specialty, hospitalQuery, hospitalsRefresh]);
+  }, [effectiveSpecialty, hospitalQuery, hospitalsRefresh]);
 
   // ── AI assist ────────────────────────────────────────────────────────────────
   async function handleAiImprove() {
@@ -265,7 +270,7 @@ export function ReferralComposer() {
             age: patientAge ? parseInt(patientAge) : undefined,
             sex: patientSex || undefined,
           },
-          specialty: specialty || undefined,
+          specialty: effectiveSpecialty || undefined,
           diagnosis: diagnosis || undefined,
         }),
       });
@@ -277,7 +282,16 @@ export function ReferralComposer() {
       setAiPreviousNote(clinicalNote);
       setClinicalNote(data.note);
       setAiSuggestions(Array.isArray(data.suggestions) ? data.suggestions : []);
-      if (data.specialty && !specialty) setSpecialty(data.specialty);
+      if (data.specialty && !specialty) {
+        const parent = parentSpecialtyOf(data.specialty);
+        if (parent) {
+          setSpecialty(parent);
+          setSubSpecialty(data.specialty);
+        } else {
+          setSpecialty(data.specialty);
+          setSubSpecialty("");
+        }
+      }
       toast.success("Note restructured — review it before sending.");
     } catch {
       toast.error("Network error — please try again.");
@@ -376,7 +390,7 @@ export function ReferralComposer() {
           hospital_number: hospitalNumber.trim() || undefined,
           from_hospital_id: fromHospitalId,
           to_hospital_id: selectedHospital.id,
-          specialty,
+          specialty: effectiveSpecialty,
           urgency,
           clinical_note: clinicalNote.trim(),
           provisional_diagnosis: diagnosis.trim() || undefined,
@@ -400,9 +414,18 @@ export function ReferralComposer() {
   if (successData) return <ReferralSuccessScreen data={successData} />;
 
   // ── Step 3 helpers ───────────────────────────────────────────────────────────
-  const filteredSpecialties = specialtyQuery.trim()
-    ? MEDICAL_SPECIALTIES.filter((s) => s.toLowerCase().includes(specialtyQuery.trim().toLowerCase()))
-    : MEDICAL_SPECIALTIES;
+  // Search matches top-level specialty names AND sub-specialty names — a match on
+  // a sub-specialty surfaces its parent (with a hint of which sub matched).
+  const q = specialtyQuery.trim().toLowerCase();
+  const filteredSpecialties: { name: string; matchedSub: string | null }[] = q
+    ? SPECIALTY_TREE.flatMap((g): { name: string; matchedSub: string | null }[] => {
+        if (g.name.toLowerCase().includes(q)) return [{ name: g.name, matchedSub: null }];
+        const sub = g.subspecialties.find((s) => s.toLowerCase().includes(q));
+        return sub ? [{ name: g.name, matchedSub: sub }] : [];
+      })
+    : SPECIALTY_TREE.map((g) => ({ name: g.name, matchedSub: null }));
+
+  const subOptions = specialty ? subspecialtiesOf(specialty) : [];
 
   const today = new Date().toLocaleDateString("en-GB", { day: "numeric", month: "long", year: "numeric" });
 
@@ -667,25 +690,74 @@ export function ReferralComposer() {
             </h2>
 
             {specialty ? (
-              <div className="flex items-center gap-2">
-                <span className="flex items-center gap-1.5 pl-3 pr-2 py-1.5 rounded-full bg-medical-600 text-white text-sm font-semibold">
-                  {specialty}
-                  <button
-                    type="button"
-                    onClick={() => { setSpecialty(""); setSelectedHospital(null); setHospitalQuery(""); }}
-                    className="w-4 h-4 rounded-full bg-white/25 flex items-center justify-center hover:bg-white/40 transition-colors"
-                  >
-                    <X className="w-2.5 h-2.5 text-white" />
-                  </button>
-                </span>
-              </div>
+              <>
+                <div className="flex items-center gap-2 flex-wrap">
+                  <span className="flex items-center gap-1.5 pl-3 pr-2 py-1.5 rounded-full bg-medical-600 text-white text-sm font-semibold">
+                    {specialty}
+                    <button
+                      type="button"
+                      onClick={() => { setSpecialty(""); setSubSpecialty(""); setSelectedHospital(null); setHospitalQuery(""); }}
+                      className="w-4 h-4 rounded-full bg-white/25 flex items-center justify-center hover:bg-white/40 transition-colors"
+                    >
+                      <X className="w-2.5 h-2.5 text-white" />
+                    </button>
+                  </span>
+                  {subSpecialty && (
+                    <span className="flex items-center gap-1.5 pl-3 pr-2 py-1.5 rounded-full bg-medical-100 border border-medical-200 text-medical-700 text-sm font-semibold">
+                      {subSpecialty}
+                      <button
+                        type="button"
+                        onClick={() => setSubSpecialty("")}
+                        className="w-4 h-4 rounded-full bg-medical-200/70 flex items-center justify-center hover:bg-medical-300/70 transition-colors"
+                      >
+                        <X className="w-2.5 h-2.5 text-medical-700" />
+                      </button>
+                    </span>
+                  )}
+                </div>
+
+                {subOptions.length > 0 && (
+                  <div className="pt-1">
+                    <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-1.5">
+                      Narrow down (optional)
+                    </p>
+                    <div className="flex flex-wrap gap-1.5 max-h-32 overflow-y-auto pr-1">
+                      <button
+                        type="button"
+                        onClick={() => setSubSpecialty("")}
+                        className={`px-3 py-1.5 rounded-full border text-xs font-semibold transition-all ${
+                          !subSpecialty
+                            ? "border-medical-500 bg-medical-50 text-medical-700"
+                            : "border-slate-200 bg-white text-slate-600 hover:border-medical-300 hover:bg-medical-50 hover:text-medical-700"
+                        }`}
+                      >
+                        General / Any
+                      </button>
+                      {subOptions.map((sub) => (
+                        <button
+                          key={sub}
+                          type="button"
+                          onClick={() => setSubSpecialty(sub)}
+                          className={`px-3 py-1.5 rounded-full border text-xs font-semibold transition-all ${
+                            subSpecialty === sub
+                              ? "border-medical-500 bg-medical-50 text-medical-700"
+                              : "border-slate-200 bg-white text-slate-600 hover:border-medical-300 hover:bg-medical-50 hover:text-medical-700"
+                          }`}
+                        >
+                          {sub}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+                )}
+              </>
             ) : (
               <>
                 <div className="relative">
                   <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400 pointer-events-none" />
                   <input
                     type="text"
-                    placeholder="Search specialties…"
+                    placeholder="Search specialties or sub-specialties…"
                     value={specialtyQuery}
                     onChange={(e) => setSpecialtyQuery(e.target.value)}
                     className="w-full rounded-xl border border-slate-200 bg-slate-50 pl-9 pr-4 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-medical-500 focus:border-medical-400"
@@ -697,12 +769,20 @@ export function ReferralComposer() {
                   ) : (
                     filteredSpecialties.map((s) => (
                       <button
-                        key={s}
+                        key={s.name}
                         type="button"
-                        onClick={() => { setSpecialty(s); setSelectedHospital(null); setSpecialtyQuery(""); }}
+                        onClick={() => {
+                          setSpecialty(s.name);
+                          setSubSpecialty(s.matchedSub ?? "");
+                          setSelectedHospital(null);
+                          setSpecialtyQuery("");
+                        }}
                         className="px-3 py-1.5 rounded-full border border-slate-200 bg-white text-xs font-semibold text-slate-600 hover:border-medical-300 hover:bg-medical-50 hover:text-medical-700 transition-all"
                       >
-                        {s}
+                        {s.name}
+                        {s.matchedSub && (
+                          <span className="font-medium text-slate-400"> · {s.matchedSub}</span>
+                        )}
                       </button>
                     ))
                   )}
@@ -752,7 +832,7 @@ export function ReferralComposer() {
                 <div className="rounded-xl border border-amber-200 bg-amber-50 px-4 py-5 text-center">
                   <p className="text-sm font-semibold text-amber-800">No hospitals found</p>
                   <p className="text-xs text-amber-600 mt-1">
-                    No hospital on the referral network currently offers {specialty}
+                    No hospital on the referral network currently offers {effectiveSpecialty}
                     {hospitalQuery ? ` matching “${hospitalQuery}”` : ""}. Try another specialty or clear the search.
                   </p>
                 </div>
@@ -796,13 +876,18 @@ export function ReferralComposer() {
                                   <span className="truncate">{h.address}</span>
                                 </p>
                               )}
+                              {subSpecialty && h.exact_match === false && (
+                                <p className="text-[11px] text-slate-400 italic mt-1">
+                                  Offers {specialty} (general)
+                                </p>
+                              )}
                               {specs.length > 0 && (
                                 <div className="flex flex-wrap gap-1 mt-1.5">
                                   {specs.slice(0, 4).map((s) => (
                                     <span
                                       key={s}
                                       className={`text-[10px] px-1.5 py-0.5 rounded-full border ${
-                                        s === specialty
+                                        s === effectiveSpecialty || s === specialty
                                           ? "bg-medical-100 border-medical-200 text-medical-700 font-semibold"
                                           : "bg-slate-50 border-slate-200 text-slate-400"
                                       }`}
@@ -856,7 +941,7 @@ export function ReferralComposer() {
             {/* To block */}
             <div className="mb-5 text-sm font-serif text-slate-800 leading-relaxed">
               <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest font-sans mb-1">To</p>
-              <p className="font-semibold">{specialty} Department</p>
+              <p className="font-semibold">{effectiveSpecialty} Department</p>
               <p>{selectedHospital?.name}</p>
               {(selectedHospital?.city || selectedHospital?.state) && (
                 <p className="text-slate-500">{[selectedHospital?.city, selectedHospital?.state].filter(Boolean).join(", ")}</p>
