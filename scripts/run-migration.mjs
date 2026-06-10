@@ -159,6 +159,143 @@ const migrations = [
     sql: `ALTER TABLE labs ADD COLUMN IF NOT EXISTS free_trial BOOLEAN NOT NULL DEFAULT false`,
     continueOnError: true,
   },
+  // ── Hospital referral network ───────────────────────────────────────────────
+  {
+    desc: "hospitals referral-portal columns (email, phone, address, state, pin, specialties)",
+    sql: `
+      DO $$ BEGIN
+        ALTER TABLE hospitals ADD COLUMN IF NOT EXISTS email TEXT;
+        ALTER TABLE hospitals ADD COLUMN IF NOT EXISTS phone TEXT;
+        ALTER TABLE hospitals ADD COLUMN IF NOT EXISTS address TEXT;
+        ALTER TABLE hospitals ADD COLUMN IF NOT EXISTS state TEXT;
+        ALTER TABLE hospitals ADD COLUMN IF NOT EXISTS pin_hash TEXT;
+        ALTER TABLE hospitals ADD COLUMN IF NOT EXISTS specialties JSONB NOT NULL DEFAULT '[]';
+        CREATE UNIQUE INDEX IF NOT EXISTS hospitals_email_key ON hospitals(email);
+      END $$;
+    `,
+    continueOnError: false,
+  },
+  {
+    desc: "hospital_otps table for hospital portal login codes",
+    sql: `
+      DO $$ BEGIN
+        CREATE TABLE IF NOT EXISTS hospital_otps (
+          id TEXT PRIMARY KEY,
+          email TEXT NOT NULL,
+          code_hash TEXT NOT NULL,
+          expires_at TIMESTAMP(3) NOT NULL,
+          used BOOLEAN NOT NULL DEFAULT false,
+          created_at TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP
+        );
+        CREATE INDEX IF NOT EXISTS hospital_otps_email_idx ON hospital_otps(email);
+      END $$;
+    `,
+    continueOnError: false,
+  },
+  {
+    desc: "hospital_sessions table for hospital portal sessions",
+    sql: `
+      DO $$ BEGIN
+        CREATE TABLE IF NOT EXISTS hospital_sessions (
+          id TEXT PRIMARY KEY,
+          hospital_id TEXT NOT NULL,
+          expires_at TIMESTAMP(3) NOT NULL,
+          created_at TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP
+        );
+        CREATE INDEX IF NOT EXISTS hospital_sessions_hospital_id_idx ON hospital_sessions(hospital_id);
+      END $$;
+    `,
+    continueOnError: false,
+  },
+  {
+    desc: "hospital_doctors table linking doctors to hospitals",
+    sql: `
+      DO $$ BEGIN
+        CREATE TABLE IF NOT EXISTS hospital_doctors (
+          id TEXT PRIMARY KEY,
+          hospital_id TEXT NOT NULL,
+          doctor_email TEXT NOT NULL,
+          doctor_name TEXT,
+          added_by TEXT NOT NULL,
+          created_at TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP
+        );
+        CREATE INDEX IF NOT EXISTS hospital_doctors_doctor_email_idx ON hospital_doctors(doctor_email);
+        CREATE UNIQUE INDEX IF NOT EXISTS hospital_doctors_hospital_id_doctor_email_key ON hospital_doctors(hospital_id, doctor_email);
+        BEGIN
+          ALTER TABLE hospital_doctors ADD CONSTRAINT hospital_doctors_hospital_id_fkey
+            FOREIGN KEY (hospital_id) REFERENCES hospitals(id) ON DELETE CASCADE ON UPDATE CASCADE;
+        EXCEPTION WHEN duplicate_object THEN NULL;
+        END;
+      END $$;
+    `,
+    continueOnError: false,
+  },
+  {
+    desc: "referrals table for patient referrals between hospitals",
+    sql: `
+      DO $$ BEGIN
+        CREATE TABLE IF NOT EXISTS referrals (
+          id TEXT PRIMARY KEY,
+          code TEXT NOT NULL,
+          status TEXT NOT NULL DEFAULT 'pending',
+          patient_name TEXT NOT NULL,
+          patient_age INTEGER,
+          patient_sex TEXT,
+          patient_phone TEXT NOT NULL,
+          patient_email TEXT,
+          hospital_number TEXT,
+          doctor_email TEXT NOT NULL,
+          doctor_name TEXT NOT NULL,
+          doctor_phone TEXT,
+          from_hospital TEXT NOT NULL,
+          to_hospital_id TEXT NOT NULL,
+          specialty TEXT NOT NULL,
+          urgency TEXT NOT NULL DEFAULT 'routine',
+          clinical_note TEXT NOT NULL,
+          provisional_diagnosis TEXT,
+          response_note TEXT,
+          responded_at TIMESTAMP(3),
+          created_at TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+          updated_at TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP
+        );
+        CREATE UNIQUE INDEX IF NOT EXISTS referrals_code_key ON referrals(code);
+        CREATE INDEX IF NOT EXISTS referrals_to_hospital_id_status_idx ON referrals(to_hospital_id, status);
+        CREATE INDEX IF NOT EXISTS referrals_doctor_email_idx ON referrals(doctor_email);
+        CREATE INDEX IF NOT EXISTS referrals_patient_phone_idx ON referrals(patient_phone);
+        BEGIN
+          ALTER TABLE referrals ADD CONSTRAINT referrals_to_hospital_id_fkey
+            FOREIGN KEY (to_hospital_id) REFERENCES hospitals(id) ON DELETE RESTRICT ON UPDATE CASCADE;
+        EXCEPTION WHEN duplicate_object THEN NULL;
+        END;
+      END $$;
+    `,
+    continueOnError: false,
+  },
+  {
+    desc: "referral_events table for referral tracking timeline",
+    sql: `
+      DO $$ BEGIN
+        CREATE TABLE IF NOT EXISTS referral_events (
+          id TEXT PRIMARY KEY,
+          referral_id TEXT NOT NULL,
+          type TEXT NOT NULL,
+          actor_type TEXT NOT NULL,
+          actor_label TEXT NOT NULL,
+          from_hospital_id TEXT,
+          to_hospital_id TEXT,
+          note TEXT,
+          created_at TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP
+        );
+        CREATE INDEX IF NOT EXISTS referral_events_referral_id_created_at_idx ON referral_events(referral_id, created_at);
+        BEGIN
+          ALTER TABLE referral_events ADD CONSTRAINT referral_events_referral_id_fkey
+            FOREIGN KEY (referral_id) REFERENCES referrals(id) ON DELETE CASCADE ON UPDATE CASCADE;
+        EXCEPTION WHEN duplicate_object THEN NULL;
+        END;
+      END $$;
+    `,
+    continueOnError: false,
+  },
 ];
 
 let failed = false;
