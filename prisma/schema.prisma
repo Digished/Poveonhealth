@@ -817,3 +817,34 @@ model LabAgreement {
   @@index([lab_id])
   @@map("lab_agreements")
 }
+
+// ── Async Dermatology Consultations (/skin) ────────────────────────────────────
+
+// A patient-submitted teledermatology consult: photos of the complaint, an
+// AI-guided intake chat, and contact details for a dermatologist to follow up.
+model SkinConsult {
+  id               String   @id @default(uuid())
+  code             String   @unique // e.g. "SKN-8X4K29Q" — shared with patient & admin
+
+  // Patient details (collected at submit time)
+  patient_name     String
+  patient_email    String
+  patient_whatsapp String // dermatologist contacts the patient on WhatsApp
+  patient_age      Int?
+  patient_sex      String? // "male" | "female" | "other"
+
+  image_urls       String[] @default([]) // uploaded photos of the complaint
+  conversation     Json     @default("[]") // [{ role: "assistant"|"user", content: string }]
+  ai_summary       String? // concise clinical summary generated for the dermatologist
+
+  status           String   @default("new") // "new" | "in_review" | "responded" | "closed"
+  admin_note       String? // internal note from the reviewing dermatologist/admin
+
+  created_at       DateTime @default(now())
+  updated_at       DateTime @default(now()) @updatedAt
+  responded_at     DateTime?
+
+  @@index([status, created_at])
+  @@index([patient_email])
+  @@map("skin_consults")
+}

@@ -1189,3 +1189,132 @@ export function referralStatusUpdate({
     <p style="margin:0 0 16px;"><a href="${trackUrl}" style="color:#0259a0;font-size:14px;font-weight:600;">${trackUrl}</a></p>
   `);
 }
+
+// =============================================================================
+// TEMPLATE: Patient — Dermatology Consult Received
+// =============================================================================
+export function skinConsultPatient({
+  patientName,
+  code,
+  trackNote,
+}: {
+  patientName: string;
+  code: string;
+  trackNote?: string;
+}) {
+  return base(`
+    <h2 style="margin:0 0 8px;color:#0259a0;font-size:20px;font-weight:700;">Your Skin Consultation Was Received</h2>
+    <p style="margin:0 0 24px;color:#4b5563;font-size:15px;">
+      Dear ${patientName},<br><br>
+      Thank you — your dermatology consultation has been received. One of our dermatologists
+      will review your photos and answers, and reach out to you on WhatsApp to follow up.
+      Please keep your phone handy.
+    </p>
+
+    ${codeBox(code)}
+
+    <p style="margin:0 0 8px;color:#4b5563;font-size:14px;">
+      Keep this reference code for your records. ${trackNote ?? ""}
+    </p>
+
+    ${divider}
+
+    <p style="margin:12px 0 0;color:#6b7280;font-size:13px;line-height:1.6;">
+      <strong>Please note:</strong> this service connects you with a dermatologist for guidance.
+      It is not a substitute for emergency care. If your condition is rapidly worsening,
+      you have a high fever, difficulty breathing, or widespread blistering, please seek
+      urgent in-person medical attention.
+    </p>
+  `);
+}
+
+// =============================================================================
+// TEMPLATE: Admin — New Dermatology Consult Submitted
+// =============================================================================
+export function skinConsultAdmin({
+  code,
+  patientName,
+  patientEmail,
+  patientWhatsapp,
+  patientAge,
+  patientSex,
+  imageUrls,
+  conversation,
+  aiSummary,
+  dashboardUrl,
+}: {
+  code: string;
+  patientName: string;
+  patientEmail: string;
+  patientWhatsapp: string;
+  patientAge?: number | null;
+  patientSex?: string | null;
+  imageUrls: string[];
+  conversation: { role: string; content: string }[];
+  aiSummary?: string | null;
+  dashboardUrl: string;
+}) {
+  const demographics = [patientAge ? `${patientAge} yrs` : null, patientSex || null].filter(Boolean).join(", ");
+
+  const imagesHtml = imageUrls.length
+    ? `<div style="margin:8px 0 0;">${imageUrls
+        .map(
+          (url, i) =>
+            `<a href="${url}" style="display:inline-block;margin:0 8px 8px 0;"><img src="${url}" alt="Photo ${i + 1}" width="120" style="width:120px;height:120px;object-fit:cover;border-radius:8px;border:1px solid #e0effe;" /></a>`
+        )
+        .join("")}</div>`
+    : `<p style="margin:0;color:#9ca3af;font-size:13px;">No photos uploaded.</p>`;
+
+  const chatHtml = conversation.length
+    ? conversation
+        .map((m) => {
+          const isPatient = m.role === "user";
+          return `<div style="margin:0 0 10px;">
+            <p style="margin:0 0 2px;font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:0.5px;color:${isPatient ? "#0259a0" : "#6b7280"};">${isPatient ? "Patient" : "Assistant"}</p>
+            <p style="margin:0;padding:10px 14px;border-radius:10px;background:${isPatient ? "#f0f7ff" : "#f8fafc"};color:#1e3a5f;font-size:14px;line-height:1.5;white-space:pre-wrap;">${m.content}</p>
+          </div>`;
+        })
+        .join("")
+    : `<p style="margin:0;color:#9ca3af;font-size:13px;">No chat recorded.</p>`;
+
+  return base(`
+    <h2 style="margin:0 0 8px;color:#0259a0;font-size:20px;font-weight:700;">New Dermatology Consultation</h2>
+    <p style="margin:0 0 20px;color:#4b5563;font-size:15px;">
+      A new async skin consultation has been submitted and is awaiting dermatologist review.
+    </p>
+
+    ${codeBox(code)}
+
+    ${divider}
+
+    <h3 style="margin:0 0 12px;color:#0259a0;font-size:15px;font-weight:700;">Patient</h3>
+    ${label("Name")}
+    ${value(`${patientName}${demographics ? ` (${demographics})` : ""}`)}
+    ${label("Email")}
+    ${value(`<a href="mailto:${patientEmail}" style="color:#0259a0;">${patientEmail}</a>`)}
+    ${label("WhatsApp")}
+    ${value(`<a href="https://wa.me/${patientWhatsapp.replace(/[^0-9]/g, "")}" style="color:#16a34a;font-weight:700;">${patientWhatsapp}</a>`)}
+
+    ${divider}
+
+    <h3 style="margin:0 0 8px;color:#0259a0;font-size:15px;font-weight:700;">Photos</h3>
+    ${imagesHtml}
+
+    ${aiSummary ? `
+      ${divider}
+      <h3 style="margin:0 0 8px;color:#0259a0;font-size:15px;font-weight:700;">AI Intake Summary</h3>
+      <p style="margin:0;padding:12px 16px;border-radius:10px;background:#fffbeb;border:1px solid #fde68a;color:#92400e;font-size:14px;line-height:1.6;white-space:pre-wrap;">${aiSummary}</p>
+    ` : ""}
+
+    ${divider}
+
+    <h3 style="margin:0 0 12px;color:#0259a0;font-size:15px;font-weight:700;">Full Conversation</h3>
+    ${chatHtml}
+
+    <div style="text-align:center;margin:28px 0 8px;">
+      <a href="${dashboardUrl}" style="display:inline-block;background:linear-gradient(135deg,#0259a0,#0270c3);color:#ffffff;text-decoration:none;font-size:15px;font-weight:600;padding:14px 36px;border-radius:8px;">
+        Open in Admin Dashboard
+      </a>
+    </div>
+  `);
+}

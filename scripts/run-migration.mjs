@@ -296,6 +296,35 @@ const migrations = [
     `,
     continueOnError: false,
   },
+  // ── Async dermatology consultations (/skin) ─────────────────────────────────
+  {
+    desc: "skin_consults table for async dermatology consultations",
+    sql: `
+      DO $$ BEGIN
+        CREATE TABLE IF NOT EXISTS skin_consults (
+          id TEXT PRIMARY KEY,
+          code TEXT NOT NULL,
+          patient_name TEXT NOT NULL,
+          patient_email TEXT NOT NULL,
+          patient_whatsapp TEXT NOT NULL,
+          patient_age INTEGER,
+          patient_sex TEXT,
+          image_urls TEXT[] NOT NULL DEFAULT ARRAY[]::TEXT[],
+          conversation JSONB NOT NULL DEFAULT '[]',
+          ai_summary TEXT,
+          status TEXT NOT NULL DEFAULT 'new',
+          admin_note TEXT,
+          created_at TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+          updated_at TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+          responded_at TIMESTAMP(3)
+        );
+        CREATE UNIQUE INDEX IF NOT EXISTS skin_consults_code_key ON skin_consults(code);
+        CREATE INDEX IF NOT EXISTS skin_consults_status_created_at_idx ON skin_consults(status, created_at);
+        CREATE INDEX IF NOT EXISTS skin_consults_patient_email_idx ON skin_consults(patient_email);
+      END $$;
+    `,
+    continueOnError: false,
+  },
 ];
 
 let failed = false;
