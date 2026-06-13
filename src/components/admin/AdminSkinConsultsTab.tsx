@@ -302,6 +302,164 @@ function SkeletonList() {
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
+// Stat card
+// ─────────────────────────────────────────────────────────────────────────────
+function StatCard({ label, value, sub }: { label: string; value: string; sub?: string }) {
+  return (
+    <div className="rounded-2xl border border-white/8 bg-white/5 px-4 py-3">
+      <p className="text-[10px] uppercase tracking-wide text-slate-500">{label}</p>
+      <p className="text-lg font-bold text-white mt-0.5 truncate">{value}</p>
+      {sub && <p className="text-[11px] text-slate-500 mt-0.5">{sub}</p>}
+    </div>
+  );
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Settings panel
+// ─────────────────────────────────────────────────────────────────────────────
+function SettingsPanel() {
+  const [open, setOpen] = useState(false);
+  const [loaded, setLoaded] = useState(false);
+  const [loading, setLoading] = useState(false);
+  const [saving, setSaving] = useState(false);
+  const [price, setPrice] = useState("");
+  const [email, setEmail] = useState("");
+  const [savedPrice, setSavedPrice] = useState<string>("");
+
+  const fetchSettings = useCallback(async () => {
+    setLoading(true);
+    try {
+      const res = await fetch("/api/admin/settings");
+      const d = await res.json();
+      if (res.ok && d.settings) {
+        const p = String(d.settings.skin_consult_price ?? "");
+        setPrice(p);
+        setSavedPrice(p);
+        setEmail(String(d.settings.skin_consult_admin_email || DEFAULT_ALERT_EMAIL));
+        setLoaded(true);
+      } else {
+        toast.error(d.error ?? "Failed to load settings");
+      }
+    } catch {
+      toast.error("Network error while loading settings");
+    } finally {
+      setLoading(false);
+    }
+  }, []);
+
+  // Load once on mount so the fee badge can render.
+  useEffect(() => { fetchSettings(); }, [fetchSettings]);
+
+  async function handleSave() {
+    const trimmed = price.trim();
+    if (!/^\d+$/.test(trimmed)) {
+      toast.error("Price must be a non-negative whole number");
+      return;
+    }
+    setSaving(true);
+    try {
+      const res = await fetch("/api/admin/settings", {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          skin_consult_price: trimmed,
+          skin_consult_admin_email: email.trim(),
+        }),
+      });
+      const d = await res.json();
+      if (res.ok && d.success) {
+        const p = String(d.settings?.skin_consult_price ?? trimmed);
+        setPrice(p);
+        setSavedPrice(p);
+        if (d.settings?.skin_consult_admin_email) setEmail(String(d.settings.skin_consult_admin_email));
+        toast.success("Settings saved");
+      } else {
+        toast.error(d.error ?? "Failed to save settings");
+      }
+    } catch {
+      toast.error("Network error while saving settings");
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  const feeNum = Number(savedPrice);
+  const feeBadge = loaded
+    ? (Number.isFinite(feeNum) && feeNum > 0 ? `Fee: ${formatNaira(feeNum)}` : "Free")
+    : null;
+
+  return (
+    <div className="rounded-2xl border border-white/8 bg-white/3">
+      <button
+        onClick={() => setOpen((o) => !o)}
+        className="w-full flex items-center justify-between gap-3 px-4 py-3 text-left"
+      >
+        <span className="flex items-center gap-2">
+          <SettingsIcon className="w-4 h-4 text-slate-400" />
+          <span className="text-sm font-semibold text-white">Settings</span>
+          {feeBadge && (
+            <span className="text-[10px] font-medium border rounded-full px-2 py-0.5 bg-medical-500/15 text-medical-300 border-medical-500/25">
+              {feeBadge}
+            </span>
+          )}
+        </span>
+        <ChevronDown className={`w-4 h-4 text-slate-400 transition-transform ${open ? "rotate-180" : ""}`} />
+      </button>
+
+      {open && (
+        <div className="px-4 pb-4 border-t border-white/8 pt-4 space-y-4">
+          {loading && !loaded ? (
+            <div className="flex items-center gap-2 text-xs text-slate-400">
+              <RefreshCw className="w-3.5 h-3.5 animate-spin" /> Loading settings…
+            </div>
+          ) : (
+            <>
+              <div>
+                <label className="block text-[10px] uppercase tracking-wide text-slate-500 mb-1.5">
+                  Consultation price (₦)
+                </label>
+                <input
+                  type="number"
+                  min={0}
+                  step={1}
+                  value={price}
+                  onChange={(e) => setPrice(e.target.value)}
+                  placeholder="0"
+                  className="w-full px-3 py-2.5 rounded-xl bg-white/5 border border-white/10 text-sm text-white placeholder-slate-500 focus:outline-none focus:ring-2 focus:ring-medical-500 transition"
+                />
+                <p className="text-[11px] text-slate-500 mt-1">Set to 0 to make consultations free</p>
+              </div>
+              <div>
+                <label className="block text-[10px] uppercase tracking-wide text-slate-500 mb-1.5">
+                  Alert email
+                </label>
+                <input
+                  type="email"
+                  value={email}
+                  onChange={(e) => setEmail(e.target.value)}
+                  placeholder={DEFAULT_ALERT_EMAIL}
+                  className="w-full px-3 py-2.5 rounded-xl bg-white/5 border border-white/10 text-sm text-white placeholder-slate-500 focus:outline-none focus:ring-2 focus:ring-medical-500 transition"
+                />
+              </div>
+              <div className="flex justify-end">
+                <button
+                  onClick={handleSave}
+                  disabled={saving}
+                  className="inline-flex items-center gap-1.5 text-xs font-medium px-3 py-1.5 rounded-xl bg-medical-600 text-white hover:bg-medical-500 transition disabled:opacity-50"
+                >
+                  {saving ? <RefreshCw className="w-3.5 h-3.5 animate-spin" /> : <Save className="w-3.5 h-3.5" />}
+                  Save settings
+                </button>
+              </div>
+            </>
+          )}
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
 // Consult card
 // ─────────────────────────────────────────────────────────────────────────────
 function ConsultCard({ consult, onOpen }: { consult: SkinConsult; onOpen: () => void }) {
@@ -365,14 +523,17 @@ function ConsultDetailModal({
   consult,
   onClose,
   onPatched,
+  onDeleted,
 }: {
   consult: SkinConsult;
   onClose: () => void;
   onPatched: (updated: SkinConsult) => void;
+  onDeleted: (id: string) => void;
 }) {
   const [note, setNote] = useState(consult.admin_note ?? "");
   const [savingNote, setSavingNote] = useState(false);
   const [updatingStatus, setUpdatingStatus] = useState(false);
+  const [deleting, setDeleting] = useState(false);
 
   // Reset local note when switching to a different consult
   useEffect(() => { setNote(consult.admin_note ?? ""); }, [consult.id, consult.admin_note]);
@@ -415,6 +576,25 @@ function ConsultDetailModal({
       }
     } finally {
       setSavingNote(false);
+    }
+  }
+
+  async function handleDelete() {
+    if (!window.confirm(`Permanently delete consult ${consult.code}? This cannot be undone.`)) return;
+    setDeleting(true);
+    try {
+      const res = await fetch(`/api/admin/skin/${consult.id}`, { method: "DELETE" });
+      const d = await res.json().catch(() => ({}));
+      if (res.ok && d.success) {
+        toast.success("Consult deleted");
+        onDeleted(consult.id);
+      } else {
+        toast.error(d.error ?? "Delete failed");
+      }
+    } catch {
+      toast.error("Network error while deleting");
+    } finally {
+      setDeleting(false);
     }
   }
 
@@ -584,6 +764,18 @@ function ConsultDetailModal({
                 Save note
               </button>
             </div>
+          </section>
+
+          {/* Danger zone */}
+          <section className="pt-2 border-t border-white/8">
+            <button
+              onClick={handleDelete}
+              disabled={deleting}
+              className="inline-flex items-center gap-1.5 text-xs font-medium text-red-400 hover:text-red-300 transition disabled:opacity-50"
+            >
+              {deleting ? <RefreshCw className="w-3.5 h-3.5 animate-spin" /> : <Trash2 className="w-3.5 h-3.5" />}
+              Delete consult
+            </button>
           </section>
         </div>
       </div>
