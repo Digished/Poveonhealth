@@ -36,3 +36,16 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
   const consult = await prisma.skinConsult.update({ where: { id }, data });
   return NextResponse.json({ success: true, consult });
 }
+
+/** DELETE /api/admin/skin/[id] — permanently remove a consultation */
+export async function DELETE(_req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
+  const admin = await verifyAdmin();
+  if (!admin) return NextResponse.json({ error: "Forbidden" }, { status: 403 });
+  const { id } = await params;
+
+  const existing = await prisma.skinConsult.findUnique({ where: { id }, select: { id: true } });
+  if (!existing) return NextResponse.json({ error: "Consultation not found." }, { status: 404 });
+
+  await prisma.skinConsult.delete({ where: { id } });
+  return NextResponse.json({ success: true });
+}

@@ -837,8 +837,14 @@ model SkinConsult {
   conversation     Json     @default("[]") // [{ role: "assistant"|"user", content: string }]
   ai_summary       String? // concise clinical summary generated for the dermatologist
 
-  status           String   @default("new") // "new" | "in_review" | "responded" | "closed"
+  status           String   @default("new") // "awaiting_payment" | "new" | "in_review" | "responded" | "closed"
   admin_note       String? // internal note from the reviewing dermatologist/admin
+
+  // Payment (only when a consultation price is configured)
+  is_paid           Boolean  @default(false)
+  amount_paid       Decimal? @db.Decimal(12, 2) // amount charged, in Naira
+  payment_reference String?  @unique // Paystack transaction reference
+  paid_at           DateTime?
 
   created_at       DateTime @default(now())
   updated_at       DateTime @default(now()) @updatedAt
@@ -846,5 +852,6 @@ model SkinConsult {
 
   @@index([status, created_at])
   @@index([patient_email])
+  @@index([is_paid, created_at])
   @@map("skin_consults")
 }

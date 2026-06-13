@@ -1,13 +1,14 @@
 export const dynamic = "force-dynamic";
 import { NextRequest, NextResponse } from "next/server";
 import { z } from "zod";
-import OpenAI from "openai";
 import { prisma } from "@/lib/prisma";
 import { generateUniqueCode } from "@/lib/code-generator";
-import { resend, FROM_ADDRESS } from "@/lib/email/resend";
-import { skinConsultPatient, skinConsultAdmin } from "@/lib/email/templates";
-
-const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
+import {
+  buildSkinSummary,
+  getSkinPrice,
+  initSkinPayment,
+  notifySkinConsult,
+} from "@/lib/skin-consult";
 
 const MessageSchema = z.object({
   role: z.enum(["assistant", "user"]),
@@ -24,33 +25,6 @@ const BodySchema = z.object({
   conversation: z.array(MessageSchema).max(40).default([]),
 });
 
-/** Generate a concise clinical summary for the reviewing dermatologist (best-effort). */
-async function buildSummary(conversation: { role: string; content: string }[]): Promise<string | null> {
-  if (conversation.length === 0) return null;
-  try {
-    const transcript = conversation
-      .map((m) => `${m.role === "user" ? "Patient" : "Assistant"}: ${m.content}`)
-      .join("\n");
-    const completion = await openai.chat.completions.create({
-      model: "gpt-4o-mini",
-      temperature: 0.2,
-      max_tokens: 350,
-      messages: [
-        {
-          role: "system",
-          content:
-            "You summarise a teledermatology intake chat for a dermatologist. Write a concise clinical summary (3-6 lines) covering: onset/duration, location, symptoms, progression, triggers, and anything already tried. Use only facts stated by the patient. Do NOT diagnose or recommend treatment. Plain prose, no headings.",
-        },
-        { role: "user", content: transcript },
-      ],
-    });
-    return completion.choices[0]?.message?.content?.trim() || null;
-  } catch (err) {
-    console.error("[skin/submit] summary failed:", err);
-    return null;
-  }
-}
-
 export async function POST(req: NextRequest) {
   try {
     const parsed = BodySchema.safeParse(await req.json());
@@ -62,13 +36,14 @@ export async function POST(req: NextRequest) {
       );
     }
     const data = parsed.data;
+    const price = await getSkinPrice();
 
     const code = await generateUniqueCode("SKN", async (candidate) => {
       const existing = await prisma.skinConsult.findUnique({ where: { code: candidate }, select: { id: true } });
       return !!existing;
     });
 
-    const aiSummary = await buildSummary(data.conversation);
+    const aiSummary = await buildSkinSummary(data.conversation);
 
     const consult = await prisma.skinConsult.create({
       data: {
@@ -81,51 +56,46 @@ export async function POST(req: NextRequest) {
         image_urls: data.image_urls,
         conversation: data.conversation,
         ai_summary: aiSummary,
+        // Paid consults wait for payment before they count or notify anyone
+        status: price > 0 ? "awaiting_payment" : "new",
+        is_paid: price <= 0,
       },
     });
 
-    const appUrl = process.env.NEXT_PUBLIC_APP_URL || "https://poveon.com";
-
-    // Notify the patient (confirmation) — wait so we can report a hard failure
-    try {
-      await resend.emails.send({
-        from: FROM_ADDRESS,
-        to: consult.patient_email,
-        subject: `Your skin consultation — ${code}`,
-        html: skinConsultPatient({ patientName: consult.patient_name, code }),
-      });
-    } catch (e) {
-      console.error("[skin/submit] patient email failed:", e);
+    // Free consult — notify immediately and reveal the code
+    if (price <= 0) {
+      await notifySkinConsult(consult);
+      return NextResponse.json({ success: true, requiresPayment: false, code, consultId: consult.id });
     }
 
-    // Notify admin with the full conversation + photos — fire-and-forget
-    const adminEmail = process.env.ADMIN_ALERT_EMAIL;
-    if (adminEmail) {
-      resend.emails
-        .send({
-          from: FROM_ADDRESS,
-          to: adminEmail,
-          subject: `🩺 New skin consultation — ${code} (${consult.patient_name})`,
-          html: skinConsultAdmin({
-            code,
-            patientName: consult.patient_name,
-            patientEmail: consult.patient_email,
-            patientWhatsapp: consult.patient_whatsapp,
-            patientAge: consult.patient_age,
-            patientSex: consult.patient_sex,
-            imageUrls: consult.image_urls,
-            conversation: data.conversation,
-            aiSummary,
-            dashboardUrl: `${appUrl}/admin`,
-          }),
-        })
-        .then(({ error }) => { if (error) console.error("[skin/submit] admin email:", JSON.stringify(error)); })
-        .catch((e) => console.error("[skin/submit] admin email error:", e));
-    } else {
-      console.warn("[skin/submit] ADMIN_ALERT_EMAIL not set — admin not notified");
+    // Paid consult — initialise Paystack and send the patient to checkout.
+    // No code is revealed and no one is notified until payment is verified.
+    const payment = await initSkinPayment({
+      consultId: consult.id,
+      code: consult.code,
+      email: consult.patient_email,
+      amountNaira: price,
+    });
+    if (!payment) {
+      // Could not start checkout — drop the pending record so it isn't orphaned
+      await prisma.skinConsult.delete({ where: { id: consult.id } }).catch(() => {});
+      return NextResponse.json(
+        { error: "Could not start payment. Please try again in a moment." },
+        { status: 502 }
+      );
     }
 
-    return NextResponse.json({ success: true, code, consultId: consult.id });
+    await prisma.skinConsult.update({
+      where: { id: consult.id },
+      data: { payment_reference: payment.reference, amount_paid: price },
+    });
+
+    return NextResponse.json({
+      success: true,
+      requiresPayment: true,
+      authorizationUrl: payment.authorizationUrl,
+      reference: payment.reference,
+    });
   } catch (err) {
     console.error("[skin/submit]", err);
     return NextResponse.json({ error: "Failed to submit your consultation. Please try again." }, { status: 500 });

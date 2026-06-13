@@ -4,6 +4,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { toast } from "react-hot-toast";
 import {
   RefreshCw, Search, X, Stethoscope, MessageCircle, Mail, Save, ExternalLink,
+  Settings as SettingsIcon, Trash2, ChevronDown,
 } from "lucide-react";
 import { formatDistanceToNow } from "date-fns";
 
@@ -36,6 +37,20 @@ interface SkinConsult {
 }
 
 type StatusCounts = Partial<Record<SkinStatus, number>>;
+
+interface SkinStats {
+  total: number;
+  paid_count: number;
+  revenue_total: number;
+  revenue_month: number;
+  paid_count_month: number;
+}
+
+const DEFAULT_ALERT_EMAIL = "spendbox@gmail.com";
+
+function formatNaira(n: number): string {
+  return `₦${Math.round(n || 0).toLocaleString("en-NG")}`;
+}
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Status helpers
@@ -86,6 +101,7 @@ function StatusPill({ status }: { status: SkinStatus }) {
 export function AdminSkinConsultsTab() {
   const [consults, setConsults] = useState<SkinConsult[]>([]);
   const [counts, setCounts] = useState<StatusCounts>({});
+  const [stats, setStats] = useState<SkinStats | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [filter, setFilter] = useState<"all" | SkinStatus>("all");
@@ -113,6 +129,7 @@ export function AdminSkinConsultsTab() {
       if (res.ok && d.success) {
         setConsults(d.consults ?? []);
         setCounts(d.counts ?? {});
+        setStats(d.stats ?? null);
       } else {
         setError(d.error ?? "Failed to load consults");
       }
@@ -138,6 +155,12 @@ export function AdminSkinConsultsTab() {
     load();
   }, [load]);
 
+  const handleDeleted = useCallback((id: string) => {
+    setActiveId((cur) => (cur === id ? null : cur));
+    setConsults((prev) => prev.filter((c) => c.id !== id));
+    load();
+  }, [load]);
+
   const totalAll = STATUS_ORDER.reduce((sum, s) => sum + (counts[s] ?? 0), 0);
 
   return (
@@ -158,6 +181,21 @@ export function AdminSkinConsultsTab() {
         >
           <RefreshCw className={`w-4 h-4 ${loading ? "animate-spin" : ""}`} />
         </button>
+      </div>
+
+      {/* Settings inline panel */}
+      <SettingsPanel />
+
+      {/* Stats header */}
+      <div className="grid grid-cols-2 sm:grid-cols-4 gap-2.5">
+        <StatCard label="Total consults" value={String(stats?.total ?? 0)} />
+        <StatCard label="Paid" value={String(stats?.paid_count ?? 0)} />
+        <StatCard label="Revenue (all time)" value={formatNaira(stats?.revenue_total ?? 0)} />
+        <StatCard
+          label="Revenue (this month)"
+          value={formatNaira(stats?.revenue_month ?? 0)}
+          sub={`${stats?.paid_count_month ?? 0} paid`}
+        />
       </div>
 
       {/* Status filter pills */}
@@ -234,6 +272,7 @@ export function AdminSkinConsultsTab() {
           consult={activeConsult}
           onClose={() => setActiveId(null)}
           onPatched={handlePatched}
+          onDeleted={handleDeleted}
         />
       )}
     </div>

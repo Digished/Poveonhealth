@@ -325,6 +325,20 @@ const migrations = [
     `,
     continueOnError: false,
   },
+  {
+    desc: "skin_consults payment columns",
+    sql: `
+      DO $$ BEGIN
+        ALTER TABLE skin_consults ADD COLUMN IF NOT EXISTS is_paid BOOLEAN NOT NULL DEFAULT false;
+        ALTER TABLE skin_consults ADD COLUMN IF NOT EXISTS amount_paid DECIMAL(12,2);
+        ALTER TABLE skin_consults ADD COLUMN IF NOT EXISTS payment_reference TEXT;
+        ALTER TABLE skin_consults ADD COLUMN IF NOT EXISTS paid_at TIMESTAMP(3);
+        CREATE UNIQUE INDEX IF NOT EXISTS skin_consults_payment_reference_key ON skin_consults(payment_reference);
+        CREATE INDEX IF NOT EXISTS skin_consults_is_paid_created_at_idx ON skin_consults(is_paid, created_at);
+      END $$;
+    `,
+    continueOnError: false,
+  },
 ];
 
 let failed = false;

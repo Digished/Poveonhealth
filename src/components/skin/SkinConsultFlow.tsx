@@ -10,6 +10,7 @@ import {
 } from "lucide-react";
 import { Input } from "@/components/ui/Input";
 import { PhoneInput } from "@/components/PhoneInput";
+import { SkinSuccessScreen } from "@/components/skin/SkinSuccess";
 
 type ChatMessage = { role: "assistant" | "user"; content: string };
 
@@ -20,80 +21,6 @@ const STEPS = [
 ];
 
 const MAX_PHOTOS = 5;
-
-// ─── Success screen ─────────────────────────────────────────────────────────
-
-function SuccessScreen({ code, patientName }: { code: string; patientName: string }) {
-  const [copied, setCopied] = useState(false);
-  async function copyCode() {
-    try { await navigator.clipboard.writeText(code); } catch { /* ignore */ }
-    setCopied(true);
-    setTimeout(() => setCopied(false), 3000);
-  }
-  return (
-    <div className="animate-slide-up space-y-4 pt-6 pb-12">
-      <div className="text-center py-2">
-        <div className="w-16 h-16 bg-emerald-100 rounded-3xl flex items-center justify-center mx-auto mb-4 shadow-sm">
-          <Check className="w-8 h-8 text-emerald-600" />
-        </div>
-        <h2 className="text-xl font-bold text-slate-800">Consultation Submitted!</h2>
-        <p className="text-sm text-slate-500 mt-1.5 max-w-md mx-auto">
-          Thanks, {patientName.split(" ")[0] || "there"}. A dermatologist will review your photos and
-          reach out to you on WhatsApp. Please keep your phone handy.
-        </p>
-      </div>
-
-      <div className="glass-card p-5">
-        <p className="text-[10px] font-bold text-medical-500 uppercase tracking-widest text-center mb-2">
-          Reference Code
-        </p>
-        <div className="flex items-center justify-center gap-3">
-          <p className="text-3xl sm:text-4xl font-black text-medical-700 font-mono tracking-[0.12em] py-1 break-all text-center">
-            {code}
-          </p>
-          <button
-            onClick={copyCode}
-            className="p-2 rounded-xl bg-medical-50 border border-medical-200 hover:bg-medical-100 transition-colors shrink-0"
-            title={copied ? "Copied!" : "Copy code"}
-          >
-            {copied ? <Check className="w-4 h-4 text-emerald-600" /> : <Copy className="w-4 h-4 text-medical-600" />}
-          </button>
-        </div>
-        <p className="text-xs text-center text-slate-500 mt-2">Keep this code for your records.</p>
-      </div>
-
-      <div className="glass-card p-5">
-        <p className="text-xs font-bold text-slate-400 uppercase tracking-wide mb-3">What happens next</p>
-        <ol className="space-y-3">
-          {[
-            "A dermatologist reviews your photos and answers.",
-            "They reach out to you on WhatsApp to follow up and advise.",
-            "You'll also get a confirmation email with your reference code.",
-          ].map((txt, i) => (
-            <li key={i} className="flex items-start gap-3">
-              <span className="w-6 h-6 rounded-full bg-medical-100 text-medical-700 text-xs font-bold flex items-center justify-center shrink-0 mt-0.5">
-                {i + 1}
-              </span>
-              <p className="text-sm text-slate-700 leading-relaxed">{txt}</p>
-            </li>
-          ))}
-        </ol>
-      </div>
-
-      <div className="flex items-start gap-2.5 px-4 py-3 rounded-xl bg-amber-50 border border-amber-100">
-        <AlertTriangle className="w-4 h-4 text-amber-500 shrink-0 mt-0.5" />
-        <p className="text-xs text-amber-700 leading-relaxed">
-          This service is not for emergencies. If your condition is rapidly worsening, you have a
-          high fever, difficulty breathing, or widespread blistering, please seek urgent in-person care.
-        </p>
-      </div>
-
-      <Link href="/" className="block text-center text-sm font-semibold text-medical-600 hover:text-medical-700 py-2.5 rounded-xl hover:bg-medical-50 transition-colors">
-        Back to home
-      </Link>
-    </div>
-  );
-}
 
 // ─── Main flow ──────────────────────────────────────────────────────────────
 
@@ -122,8 +49,19 @@ export function SkinConsultFlow() {
   const [submitting, setSubmitting] = useState(false);
 
   const [successCode, setSuccessCode] = useState<string | null>(null);
+  const [price, setPrice] = useState<number | null>(null);
   const [mounted, setMounted] = useState(false);
   useEffect(() => { setMounted(true); }, []);
+
+  // Fetch the consultation fee (0 = free)
+  useEffect(() => {
+    fetch("/api/skin/price")
+      .then((r) => r.json())
+      .then((d) => { if (typeof d.price === "number") setPrice(d.price); })
+      .catch(() => setPrice(0));
+  }, []);
+
+  const priceLabel = price && price > 0 ? `₦${price.toLocaleString("en-NG")}` : null;
 
   // ── Photo upload ────────────────────────────────────────────────────────────
   async function handleFiles(files: FileList | null) {
@@ -238,18 +176,25 @@ export function SkinConsultFlow() {
       const data = await res.json();
       if (!res.ok || !data.success) {
         toast.error(data.error ?? "Submission failed. Please try again.");
+        setSubmitting(false);
         return;
       }
+      // Paid consult — hand off to Paystack checkout; the code is revealed after payment
+      if (data.requiresPayment && data.authorizationUrl) {
+        window.location.href = data.authorizationUrl;
+        return; // keep the button in its loading state during the redirect
+      }
+      // Free consult — code issued immediately
       setSuccessCode(data.code);
       window.scrollTo({ top: 0 });
+      setSubmitting(false);
     } catch {
       toast.error("Network error — please check your connection and try again.");
-    } finally {
       setSubmitting(false);
     }
   }
 
-  if (successCode) return <SuccessScreen code={successCode} patientName={name} />;
+  if (successCode) return <SkinSuccessScreen code={successCode} patientName={name} />;
 
   const anyUploading = images.some((i) => i.uploading);
   const step1Valid = uploadedUrls.length >= 1 && !anyUploading;
@@ -482,10 +427,20 @@ export function SkinConsultFlow() {
             </div>
           </div>
 
+          {priceLabel && (
+            <div className="flex items-center justify-between gap-3 px-4 py-3.5 rounded-xl bg-medical-50 border border-medical-100">
+              <div>
+                <p className="text-xs font-semibold text-medical-700">Consultation fee</p>
+                <p className="text-[11px] text-medical-600/80 mt-0.5">Paid securely before a dermatologist reviews your case.</p>
+              </div>
+              <p className="text-lg font-black text-medical-700 shrink-0">{priceLabel}</p>
+            </div>
+          )}
+
           <div className="flex items-start gap-2.5 px-4 py-3 rounded-xl bg-slate-50 border border-slate-100">
             <ShieldCheck className="w-4 h-4 text-slate-400 shrink-0 mt-0.5" />
             <p className="text-xs text-slate-500 leading-relaxed">
-              By submitting, you agree to share your photos and answers with a Poveon dermatologist for review.
+              By submitting{priceLabel ? " and paying" : ""}, you agree to share your photos and answers with a Poveon dermatologist for review.
               See our <Link href="/privacy" className="underline hover:text-slate-700">Privacy Policy</Link>.
             </p>
           </div>
@@ -532,7 +487,9 @@ export function SkinConsultFlow() {
                 className="flex-1 flex items-center justify-center gap-2 py-3.5 rounded-2xl bg-medical-600 hover:bg-medical-700 active:scale-[0.98] disabled:opacity-50 text-white font-bold text-sm shadow-xl shadow-medical-600/35 transition-all"
               >
                 {submitting ? <Loader2 className="w-5 h-5 animate-spin" /> : <Send className="w-5 h-5" />}
-                {submitting ? "Submitting…" : "Submit consultation"}
+                {submitting
+                  ? (priceLabel ? "Redirecting to payment…" : "Submitting…")
+                  : (priceLabel ? `Pay ${priceLabel} & Submit` : "Submit consultation")}
               </button>
             )}
           </div>
