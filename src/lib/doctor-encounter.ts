@@ -41,9 +41,18 @@ export function priceForPlan(profile: DoctorProfile, plan: PlanType): number | n
   return Number.isFinite(n) && n > 0 ? Math.round(n) : null;
 }
 
-/** A doctor can take encounters once they've priced a consult and have a payout subaccount. */
+/**
+ * A doctor can take encounters once they've priced a consult and saved a payout
+ * bank. The Paystack subaccount is provisioned best-effort at save time and, if
+ * that ever failed, lazily at charge time — so it isn't required for readiness.
+ */
 export function isEncounterReady(profile: DoctorProfile | null): boolean {
-  return !!profile && priceForPlan(profile, "single") != null && !!profile.paystack_subaccount_code;
+  return (
+    !!profile &&
+    priceForPlan(profile, "single") != null &&
+    !!profile.account_number &&
+    !!profile.bank_code
+  );
 }
 
 // ── Shareable slug ───────────────────────────────────────────────────────────
@@ -135,7 +144,7 @@ export async function initEncounterPayment(params: {
   code: string;
   email: string;
   amountNaira: number;
-  subaccountCode: string;
+  subaccountCode?: string | null;
   doctorEmail: string;
   planType: PlanType;
 }): Promise<{ authorizationUrl: string; reference: string } | null> {
@@ -152,8 +161,9 @@ export async function initEncounterPayment(params: {
         email: params.email,
         amount: Math.round(params.amountNaira * 100), // kobo
         currency: "NGN",
-        subaccount: params.subaccountCode, // 80/20 split happens here
-        bearer: "account", // Poveon bears the Paystack transaction fee
+        // When a subaccount exists the 80/20 split happens automatically here.
+        // Without one we still charge and record the split for manual settlement.
+        ...(params.subaccountCode ? { subaccount: params.subaccountCode, bearer: "account" } : {}),
         callback_url: `${appUrl()}/d/paid`,
         metadata: {
           purpose: "doctor_encounter",

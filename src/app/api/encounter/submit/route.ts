@@ -9,6 +9,7 @@ import {
   isEncounterReady,
   priceForPlan,
   splitAmount,
+  upsertDoctorSubaccount,
   type PlanType,
 } from "@/lib/doctor-encounter";
 
@@ -81,12 +82,30 @@ export async function POST(req: NextRequest) {
       },
     });
 
+    // Ensure a payout subaccount exists so the 80/20 split happens automatically.
+    // If provisioning ever failed at save time, create it now from the saved bank.
+    let subaccountCode = profile.paystack_subaccount_code;
+    if (!subaccountCode && profile.bank_code && profile.account_number) {
+      subaccountCode = await upsertDoctorSubaccount({
+        existingCode: null,
+        businessName: profile.full_name?.trim() || profile.account_name || profile.email,
+        bankCode: profile.bank_code,
+        accountNumber: profile.account_number,
+      });
+      if (subaccountCode) {
+        await prisma.doctorProfile.update({
+          where: { email: profile.email },
+          data: { paystack_subaccount_code: subaccountCode },
+        }).catch(() => {});
+      }
+    }
+
     const payment = await initEncounterPayment({
       encounterId: encounter.id,
       code: encounter.code,
       email: encounter.patient_email,
       amountNaira: price,
-      subaccountCode: profile.paystack_subaccount_code!,
+      subaccountCode,
       doctorEmail: profile.email,
       planType: plan,
     });

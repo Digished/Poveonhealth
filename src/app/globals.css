@@ -41,6 +41,15 @@
 }
 
 @layer utilities {
+  /* Hide scrollbar while keeping horizontal scroll (used by tab pill bars) */
+  .no-scrollbar {
+    -ms-overflow-style: none;
+    scrollbar-width: none;
+  }
+  .no-scrollbar::-webkit-scrollbar {
+    display: none;
+  }
+
   .animate-fade-in {
     animation: fadeIn 0.5s ease-in-out;
   }

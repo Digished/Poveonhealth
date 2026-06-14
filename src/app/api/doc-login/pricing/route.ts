@@ -66,17 +66,18 @@ export async function PATCH(req: NextRequest) {
     const existing = await prisma.doctorProfile.findUnique({ where: { email } });
 
     // Provision (or update) the Paystack subaccount for the 80/20 split.
-    const subaccountCode = await upsertDoctorSubaccount({
-      existingCode: existing?.paystack_subaccount_code ?? null,
-      businessName: existing?.full_name?.trim() || d.account_name || email,
-      bankCode: d.bank_code,
-      accountNumber: d.account_number,
-    });
-    if (!subaccountCode) {
-      return NextResponse.json(
-        { error: "Could not set up your payout account. Check your bank details and try again." },
-        { status: 502 }
-      );
+    // Best-effort: if it fails we still save the pricing and bank, and the
+    // subaccount is created lazily at the first charge. Saving never blocks.
+    const bankChanged =
+      existing?.bank_code !== d.bank_code || existing?.account_number !== d.account_number;
+    let subaccountCode = existing?.paystack_subaccount_code ?? null;
+    if (!subaccountCode || bankChanged) {
+      subaccountCode = await upsertDoctorSubaccount({
+        existingCode: existing?.paystack_subaccount_code ?? null,
+        businessName: existing?.full_name?.trim() || d.account_name || email,
+        bankCode: d.bank_code,
+        accountNumber: d.account_number,
+      });
     }
 
     // Generate the shareable slug once.

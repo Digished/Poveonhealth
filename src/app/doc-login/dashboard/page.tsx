@@ -510,8 +510,9 @@ function DocDashboardInner() {
   const [error, setError] = useState("");
   const [filter, setFilter] = useState<"all" | "incoming" | "seen" | "done">("all");
   const [loggingOut, setLoggingOut] = useState(false);
-  const [activeTab, setActiveTab] = useState<"requests" | "charging" | "referrals" | "results" | "profile" | "security">("requests");
+  const [activeTab, setActiveTab] = useState<"charging" | "requests" | "referrals" | "results" | "profile" | "security">("charging");
   const [chargingReady, setChargingReady] = useState<boolean | null>(null);
+  const [showEarnModal, setShowEarnModal] = useState(false);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -524,10 +525,16 @@ function DocDashboardInner() {
       setDoctorEmail(data.doctor_email);
       setRequests(data.requests);
       setProfile(data.profile ?? null);
-      // Surface the charging-setup prompt right away (non-blocking)
+      // Surface the earning-setup prompt right away (non-blocking)
       fetch("/api/doc-login/pricing")
         .then((r) => r.json())
-        .then((p) => { if (p.success) setChargingReady(!!p.pricing?.ready); })
+        .then((p) => {
+          if (p.success) {
+            const ready = !!p.pricing?.ready;
+            setChargingReady(ready);
+            if (!ready) setShowEarnModal(true); // prompt on every login until set up
+          }
+        })
         .catch(() => {});
     } catch {
       setError("Network error. Please try again.");
@@ -578,40 +585,42 @@ function DocDashboardInner() {
       </header>
 
       <main className="max-w-2xl mx-auto px-4 py-5 space-y-4">
-        {/* Tab Navigation */}
+        {/* Tab Navigation — scrollable pills, Earn first */}
         {!loading && (
-          <div className="flex gap-1 bg-white/60 rounded-xl p-1 border border-white/60 shadow-sm">
-            {(["requests", "charging", "referrals", "results", "profile", "security"] as const).map((tab) => {
-              const labels = { requests: "Lab Requests", charging: "Charging", referrals: "Referrals", results: "Results", profile: "Profile", security: "Security" };
-              const mobileLabels = { requests: "Labs", charging: "Earn", referrals: "Refer", results: "Done", profile: "Me", security: "Pin" };
-              const resultCount = requests.filter((r) => r.status === "done").length;
-              const tabCount = tab === "requests" ? requests.length : tab === "results" ? resultCount : 0;
-              const profileIncomplete = tab === "profile" && !profile?.full_name;
-              const chargingIncomplete = tab === "charging" && chargingReady === false;
-              return (
-                <button key={tab} onClick={() => setActiveTab(tab)}
-                  className={`flex-1 relative flex items-center justify-center gap-1 py-2 rounded-lg text-xs font-semibold transition-all ${
-                    activeTab === tab ? "bg-white text-slate-800 shadow-sm" : "text-slate-500 hover:text-slate-700"
-                  }`}>
-                  {tab === "requests" && <FlaskConical className="w-3 h-3" />}
-                  {tab === "charging" && <CreditCard className="w-3 h-3" />}
-                  {tab === "referrals" && <Send className="w-3 h-3" />}
-                  {tab === "results" && <CheckCircle className="w-3 h-3" />}
-                  {tab === "profile" && <User className="w-3 h-3" />}
-                  {tab === "security" && <Shield className="w-3 h-3" />}
-                  <span className="hidden sm:inline">{labels[tab]}</span>
-                  <span className="sm:hidden">{mobileLabels[tab]}</span>
-                  {tabCount > 0 && (
-                    <span className={`text-xs px-1 py-0.5 rounded-full font-bold ${
-                      activeTab === tab ? "bg-slate-100 text-slate-600" : "bg-slate-200/60 text-slate-500"
-                    }`}>{tabCount}</span>
-                  )}
-                  {(profileIncomplete || chargingIncomplete) && (
-                    <span className="absolute -top-0.5 -right-0.5 w-2 h-2 bg-amber-400 rounded-full border border-white" />
-                  )}
-                </button>
-              );
-            })}
+          <div className="-mx-4 px-4 overflow-x-auto no-scrollbar">
+            <div className="flex gap-2 min-w-max pb-0.5">
+              {([
+                { key: "charging", label: "Earn", Icon: CreditCard },
+                { key: "requests", label: "Lab Requests", Icon: FlaskConical },
+                { key: "referrals", label: "Referrals", Icon: Send },
+                { key: "results", label: "Results", Icon: CheckCircle },
+                { key: "profile", label: "Profile", Icon: User },
+                { key: "security", label: "Security", Icon: Shield },
+              ] as const).map(({ key, label, Icon }) => {
+                const resultCount = requests.filter((r) => r.status === "done").length;
+                const tabCount = key === "requests" ? requests.length : key === "results" ? resultCount : 0;
+                const profileIncomplete = key === "profile" && !profile?.full_name;
+                const chargingIncomplete = key === "charging" && chargingReady === false;
+                const active = activeTab === key;
+                return (
+                  <button key={key} onClick={() => setActiveTab(key)}
+                    className={`relative flex items-center gap-1.5 px-4 py-2.5 rounded-xl text-xs font-semibold whitespace-nowrap transition-all ${
+                      active
+                        ? "bg-gradient-to-br from-medical-600 to-medical-700 text-white shadow-md shadow-medical-600/25"
+                        : "bg-white text-slate-600 border border-slate-200 hover:border-medical-200 hover:text-slate-800"
+                    }`}>
+                    <Icon className="w-3.5 h-3.5" />
+                    {label}
+                    {tabCount > 0 && (
+                      <span className={`text-[10px] px-1.5 py-0.5 rounded-full font-bold ${active ? "bg-white/20 text-white" : "bg-slate-100 text-slate-500"}`}>{tabCount}</span>
+                    )}
+                    {(profileIncomplete || chargingIncomplete) && (
+                      <span className="absolute -top-0.5 -right-0.5 w-2 h-2 bg-amber-400 rounded-full border border-white" />
+                    )}
+                  </button>
+                );
+              })}
+            </div>
           </div>
         )}
 
@@ -797,6 +806,48 @@ function DocDashboardInner() {
         <PoveonLogo className="w-4 h-4 opacity-40" />
         <span>© {new Date().getFullYear()} Poveon. All rights reserved.</span>
       </div>
+
+      {/* Earn-setup prompt — shown each login until pricing is configured */}
+      {showEarnModal && (
+        <div className="fixed inset-0 z-[300] flex items-end sm:items-center justify-center p-4 bg-slate-900/50 backdrop-blur-sm animate-fade-in"
+          onClick={(e) => { if (e.target === e.currentTarget) setShowEarnModal(false); }}>
+          <div className="w-full sm:max-w-md bg-white rounded-3xl shadow-2xl overflow-hidden animate-slide-up">
+            <div className="bg-gradient-to-br from-medical-600 to-medical-800 px-6 pt-7 pb-8 text-white text-center relative">
+              <button onClick={() => setShowEarnModal(false)} className="absolute top-3 right-3 w-8 h-8 rounded-full bg-white/15 hover:bg-white/25 flex items-center justify-center transition" aria-label="Close">
+                <X className="w-4 h-4" />
+              </button>
+              <div className="w-14 h-14 rounded-2xl bg-white/15 flex items-center justify-center mx-auto mb-3">
+                <CreditCard className="w-7 h-7" />
+              </div>
+              <h3 className="text-lg font-bold">Start earning per encounter</h3>
+              <p className="text-sm text-white/80 mt-1.5 leading-relaxed">
+                Set your consultation fee and payout bank to get a shareable link. Patients are screened by AI and pay you directly — you keep <strong>80%</strong>.
+              </p>
+            </div>
+            <div className="p-5 space-y-3">
+              <div className="flex items-center gap-3 text-sm text-slate-600">
+                <span className="w-6 h-6 rounded-full bg-medical-50 text-medical-600 flex items-center justify-center text-xs font-bold shrink-0">1</span>
+                Set your prices &amp; payout bank
+              </div>
+              <div className="flex items-center gap-3 text-sm text-slate-600">
+                <span className="w-6 h-6 rounded-full bg-medical-50 text-medical-600 flex items-center justify-center text-xs font-bold shrink-0">2</span>
+                Share your link with patients
+              </div>
+              <div className="flex items-center gap-3 text-sm text-slate-600">
+                <span className="w-6 h-6 rounded-full bg-medical-50 text-medical-600 flex items-center justify-center text-xs font-bold shrink-0">3</span>
+                Get paid automatically
+              </div>
+              <button onClick={() => { setActiveTab("charging"); setShowEarnModal(false); }}
+                className="w-full mt-2 flex items-center justify-center gap-2 py-3.5 rounded-2xl bg-medical-600 hover:bg-medical-700 active:scale-[0.98] text-white font-bold text-sm shadow-lg shadow-medical-600/30 transition-all">
+                Set up earning <ChevronRight className="w-4 h-4" />
+              </button>
+              <button onClick={() => setShowEarnModal(false)} className="w-full py-2 text-xs font-semibold text-slate-400 hover:text-slate-600 transition">
+                Maybe later
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
