@@ -19,18 +19,20 @@ const config: Config = {
         sans: ["Inter", "system-ui", "sans-serif"],
       },
       colors: {
+        // Backed by CSS variables so a theme wrapper (.theme-*) can recolour every
+        // medical-* utility at once. Defaults live in globals.css :root.
         medical: {
-          50: "#f0f7ff",
-          100: "#e0effe",
-          200: "#bae0fd",
-          300: "#7dc8fb",
-          400: "#38aaf5",
-          500: "#0e8fe5",
-          600: "#0270c3",
-          700: "#0259a0",
-          800: "#064b84",
-          900: "#0a3f6e",
-          950: "#072849",
+          50: "rgb(var(--medical-50) / <alpha-value>)",
+          100: "rgb(var(--medical-100) / <alpha-value>)",
+          200: "rgb(var(--medical-200) / <alpha-value>)",
+          300: "rgb(var(--medical-300) / <alpha-value>)",
+          400: "rgb(var(--medical-400) / <alpha-value>)",
+          500: "rgb(var(--medical-500) / <alpha-value>)",
+          600: "rgb(var(--medical-600) / <alpha-value>)",
+          700: "rgb(var(--medical-700) / <alpha-value>)",
+          800: "rgb(var(--medical-800) / <alpha-value>)",
+          900: "rgb(var(--medical-900) / <alpha-value>)",
+          950: "rgb(var(--medical-950) / <alpha-value>)",
         },
       },
       backdropBlur: {

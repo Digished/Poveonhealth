@@ -76,7 +76,7 @@ type Revenue = {
 
 const PLAN_LABEL: Record<string, string> = { single: "Single", monthly: "Monthly", yearly: "Yearly" };
 
-export function DoctorEncounterSection({ onReadyChange }: { onReadyChange?: (ready: boolean) => void }) {
+export function DoctorEncounterSection({ onReadyChange, onThemeChange }: { onReadyChange?: (ready: boolean) => void; onThemeChange?: (theme: string | null) => void }) {
   const [view, setView] = useState<"overview" | "encounters" | "patients" | "pricing">("overview");
   const [pricing, setPricing] = useState<Pricing | null>(null);
   const [encounters, setEncounters] = useState<EncounterItem[]>([]);
@@ -95,12 +95,13 @@ export function DoctorEncounterSection({ onReadyChange }: { onReadyChange?: (rea
       if (d.success) {
         setPricing(d.pricing);
         onReadyChange?.(!!d.pricing?.ready);
+        onThemeChange?.(d.pricing?.theme ?? null);
         if (d.pricing?.needs_setup) setView("pricing");
       }
     } catch { /* non-blocking */ } finally {
       setPricingLoading(false);
     }
-  }, [onReadyChange]);
+  }, [onReadyChange, onThemeChange]);
 
   const loadData = useCallback(async () => {
     setDataLoading(true);
@@ -159,7 +160,7 @@ export function DoctorEncounterSection({ onReadyChange }: { onReadyChange?: (rea
       {view === "overview" && <OverviewView pricing={pricing} revenue={revenue} loading={dataLoading} onSetup={() => setView("pricing")} />}
       {view === "encounters" && (dataLoading ? <CardSkeleton /> : <EncountersView encounters={encounters} onChanged={loadData} />)}
       {view === "patients" && (dataLoading ? <CardSkeleton /> : <PatientsView patients={patients} />)}
-      {view === "pricing" && (pricingLoading ? <CardSkeleton /> : <PricingView key={pricing?.slug ?? "new"} pricing={pricing} onSaved={reloadAll} />)}
+      {view === "pricing" && (pricingLoading ? <CardSkeleton /> : <PricingView key={pricing?.slug ?? "new"} pricing={pricing} onSaved={reloadAll} onThemeChange={onThemeChange} />)}
     </div>
   );
 }
@@ -392,7 +393,7 @@ function PatientsView({ patients }: { patients: PatientItem[] }) {
 }
 
 // ── Pricing setup ────────────────────────────────────────────────────────────
-function PricingView({ pricing, onSaved }: { pricing: Pricing | null; onSaved: () => void }) {
+function PricingView({ pricing, onSaved, onThemeChange }: { pricing: Pricing | null; onSaved: () => void; onThemeChange?: (theme: string | null) => void }) {
   const [consult, setConsult] = useState(pricing?.consultation_fee ? String(pricing.consultation_fee) : "");
   const [monthly, setMonthly] = useState(pricing?.retainer_monthly ? String(pricing.retainer_monthly) : "");
   const [yearly, setYearly] = useState(pricing?.retainer_yearly ? String(pricing.retainer_yearly) : "");
@@ -471,7 +472,7 @@ function PricingView({ pricing, onSaved }: { pricing: Pricing | null; onSaved: (
         </div>
 
         {/* Page customization — avatar + theme */}
-        <EncounterPageCard pricing={pricing} />
+        <EncounterPageCard pricing={pricing} onThemeChange={onThemeChange} />
       </div>
     );
   }
@@ -503,7 +504,7 @@ function PricingView({ pricing, onSaved }: { pricing: Pricing | null; onSaved: (
       </div>
 
       {/* Page customization — avatar + theme */}
-      <EncounterPageCard pricing={pricing} />
+      <EncounterPageCard pricing={pricing} onThemeChange={onThemeChange} />
 
       <div className="flex items-center gap-2">
         {pricing?.ready && (
@@ -542,7 +543,7 @@ function FeeInput({ label, value, onChange, hint, required }: { label: string; v
 
 // ── Encounter page customization: profile photo + colour theme ────────────────
 // Self-contained: persists changes inline without reloading the whole section.
-function EncounterPageCard({ pricing }: { pricing: Pricing | null }) {
+function EncounterPageCard({ pricing, onThemeChange }: { pricing: Pricing | null; onThemeChange?: (theme: string | null) => void }) {
   const [avatar, setAvatar] = useState<string | null>(pricing?.avatar_url ?? null);
   const [theme, setTheme] = useState<string>(pricing?.theme ?? DEFAULT_THEME_ID);
   const [uploading, setUploading] = useState(false);
@@ -573,6 +574,7 @@ function EncounterPageCard({ pricing }: { pricing: Pricing | null }) {
 
   async function pickTheme(id: string) {
     setTheme(id);
+    onThemeChange?.(id); // live-recolour the dashboard accent immediately
     try {
       const res = await fetch("/api/doc-login/encounter-page", {
         method: "PATCH",

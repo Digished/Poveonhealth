@@ -23,6 +23,7 @@ interface EncounterFlowProps {
   pricing: { single: number | null; monthly: number | null; yearly: number | null };
   avatarUrl?: string | null;
   heroGradient?: string;
+  accentClass?: string;
 }
 
 const STEPS = [
@@ -35,7 +36,7 @@ const STEPS = [
 const MAX_PHOTOS = 5;
 const naira = (n: number) => `₦${n.toLocaleString("en-NG")}`;
 
-export function EncounterFlow({ slug, doctorName, specialty, hospitals, patientCount, pricing, avatarUrl, heroGradient = "from-medical-500 to-medical-700" }: EncounterFlowProps) {
+export function EncounterFlow({ slug, doctorName, specialty, hospitals, patientCount, pricing, avatarUrl, heroGradient = "from-medical-500 to-medical-700", accentClass = "" }: EncounterFlowProps) {
   const [step, setStep] = useState(1);
 
   // Step 1 — details (email first, auto-fill the rest)
@@ -443,7 +444,7 @@ export function EncounterFlow({ slug, doctorName, specialty, hospitals, patientC
 
       {/* ── Floating action bar ── */}
       {mounted && createPortal(
-        <div className="fixed bottom-0 inset-x-0 z-[200] px-4 pb-6 pt-3 pointer-events-none">
+        <div className={`fixed bottom-0 inset-x-0 z-[200] px-4 pb-6 pt-3 pointer-events-none ${accentClass}`}>
           <div className="max-w-2xl mx-auto flex items-center gap-3 pointer-events-auto">
             {step > 1 && (
               <button onClick={goBack} className="flex items-center gap-1.5 px-4 py-3.5 rounded-2xl bg-white border border-slate-200 text-slate-600 hover:bg-slate-50 text-sm font-semibold transition-all shadow-lg shadow-slate-900/5 shrink-0">

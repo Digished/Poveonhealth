@@ -10,6 +10,7 @@ import {
 } from "lucide-react";
 import { DoctorReferralsSection } from "@/components/referral/DoctorReferralsSection";
 import { DoctorEncounterSection } from "@/components/doctor/DoctorEncounterSection";
+import { themeClass } from "@/lib/encounter-themes";
 import { PoveonLogo } from "@/components/PoveonLogo";
 import { PhoneInput } from "@/components/PhoneInput";
 import { HospitalTagInput } from "@/components/ui/HospitalTagInput";
@@ -513,6 +514,7 @@ function DocDashboardInner() {
   const [activeTab, setActiveTab] = useState<"charging" | "requests" | "referrals" | "results" | "profile" | "security">("charging");
   const [chargingReady, setChargingReady] = useState<boolean | null>(null);
   const [showEarnModal, setShowEarnModal] = useState(false);
+  const [docTheme, setDocTheme] = useState<string | null>(null);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -532,6 +534,7 @@ function DocDashboardInner() {
           if (p.success) {
             const ready = !!p.pricing?.ready;
             setChargingReady(ready);
+            setDocTheme(p.pricing?.theme ?? null);
             if (!ready) setShowEarnModal(true); // prompt on every login until set up
           }
         })
@@ -561,7 +564,7 @@ function DocDashboardInner() {
   };
 
   return (
-    <div className="min-h-dvh bg-gradient-to-br from-sky-50 via-blue-50 to-indigo-50">
+    <div className={`min-h-dvh bg-gradient-to-br from-sky-50 via-blue-50 to-indigo-50 ${themeClass(docTheme)}`}>
       {/* Header */}
       <header className="sticky top-0 z-10 bg-white/80 backdrop-blur-md border-b border-white/60">
         <div className="max-w-2xl mx-auto px-4 py-3 flex items-center gap-3">
@@ -626,7 +629,7 @@ function DocDashboardInner() {
 
         {/* Per-encounter Charging Tab */}
         {!loading && activeTab === "charging" && (
-          <DoctorEncounterSection onReadyChange={setChargingReady} />
+          <DoctorEncounterSection onReadyChange={setChargingReady} onThemeChange={setDocTheme} />
         )}
 
         {/* Patient Referrals Tab */}

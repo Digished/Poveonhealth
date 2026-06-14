@@ -65,3 +65,8 @@ export const DEFAULT_THEME_ID = "ocean";
 export function getEncounterTheme(id: string | null | undefined): EncounterTheme {
   return ENCOUNTER_THEMES.find((t) => t.id === id) ?? ENCOUNTER_THEMES[0];
 }
+
+/** CSS class that overrides the medical-* accent variables (recolours buttons etc.). */
+export function themeClass(id: string | null | undefined): string {
+  return `theme-${getEncounterTheme(id).id}`;
+}
