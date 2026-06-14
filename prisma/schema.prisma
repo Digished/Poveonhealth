@@ -219,6 +219,8 @@ model DoctorProfile {
   retainer_yearly  Decimal? @db.Decimal(12, 2) // yearly retainership fee, Naira
   encounter_slug   String?  @unique // short shareable handle, e.g. "dr-ada-obi"
   paystack_subaccount_code String? // Paystack subaccount for the 80/20 split payout
+  avatar_url       String?  // optional profile photo shown on the encounter page
+  encounter_theme  String?  // colour theme id for the encounter page (e.g. "ocean")
 
   updated_at     DateTime @updatedAt
 

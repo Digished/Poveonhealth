@@ -1,14 +1,16 @@
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { toast } from "react-hot-toast";
 import {
   Loader2, Copy, Check, CreditCard, Users, Wallet, Stethoscope, Link2,
   ChevronDown, ChevronUp, Send, ShieldCheck, TrendingUp, AlertTriangle, ExternalLink,
+  ImagePlus, X, Palette, Image as ImageIcon,
 } from "lucide-react";
 import { Input } from "@/components/ui/Input";
 import { BankAccountInput } from "@/components/BankAccountInput";
 import { NIGERIAN_BANKS } from "@/lib/nigerian-banks";
+import { ENCOUNTER_THEMES, DEFAULT_THEME_ID } from "@/lib/encounter-themes";
 
 const naira = (n: number) => `₦${Math.round(n).toLocaleString("en-NG")}`;
 
@@ -30,6 +32,8 @@ type Pricing = {
   has_subaccount: boolean;
   slug: string | null;
   share_url: string | null;
+  avatar_url: string | null;
+  theme: string | null;
   ready: boolean;
   needs_setup: boolean;
 };
@@ -78,42 +82,47 @@ export function DoctorEncounterSection({ onReadyChange }: { onReadyChange?: (rea
   const [encounters, setEncounters] = useState<EncounterItem[]>([]);
   const [patients, setPatients] = useState<PatientItem[]>([]);
   const [revenue, setRevenue] = useState<Revenue | null>(null);
-  const [loading, setLoading] = useState(true);
+  // Two independent loads so the tab renders instantly: pricing is quick and
+  // drives the setup state; the heavier encounters/revenue fills in after.
+  const [pricingLoading, setPricingLoading] = useState(true);
+  const [dataLoading, setDataLoading] = useState(true);
 
-  const load = useCallback(async () => {
-    setLoading(true);
+  const loadPricing = useCallback(async () => {
+    setPricingLoading(true);
     try {
-      const [pRes, eRes] = await Promise.all([
-        fetch("/api/doc-login/pricing"),
-        fetch("/api/doc-login/encounters"),
-      ]);
-      const pData = await pRes.json();
-      const eData = await eRes.json();
-      if (pData.success) {
-        setPricing(pData.pricing);
-        onReadyChange?.(!!pData.pricing?.ready);
-        if (pData.pricing?.needs_setup) setView("pricing");
+      const r = await fetch("/api/doc-login/pricing");
+      const d = await r.json();
+      if (d.success) {
+        setPricing(d.pricing);
+        onReadyChange?.(!!d.pricing?.ready);
+        if (d.pricing?.needs_setup) setView("pricing");
       }
-      if (eData.success) {
-        setEncounters(eData.encounters);
-        setPatients(eData.patients);
-        setRevenue(eData.revenue);
-      }
-    } catch {
-      toast.error("Failed to load your charging data.");
-    } finally {
-      setLoading(false);
+    } catch { /* non-blocking */ } finally {
+      setPricingLoading(false);
     }
   }, [onReadyChange]);
 
-  useEffect(() => { load(); }, [load]);
+  const loadData = useCallback(async () => {
+    setDataLoading(true);
+    try {
+      const r = await fetch("/api/doc-login/encounters");
+      const d = await r.json();
+      if (d.success) {
+        setEncounters(d.encounters);
+        setPatients(d.patients);
+        setRevenue(d.revenue);
+      }
+    } catch { /* non-blocking */ } finally {
+      setDataLoading(false);
+    }
+  }, []);
 
-  if (loading) {
-    return <div className="py-16 text-center"><Loader2 className="w-6 h-6 text-medical-500 animate-spin mx-auto" /></div>;
-  }
+  const reloadAll = useCallback(() => { loadPricing(); loadData(); }, [loadPricing, loadData]);
+
+  useEffect(() => { loadPricing(); loadData(); }, [loadPricing, loadData]);
 
   return (
-    <div className="space-y-4">
+    <div className="space-y-4 animate-fade-in">
       {/* Setup prompt */}
       {pricing?.needs_setup && view !== "pricing" && (
         <button onClick={() => setView("pricing")} className="w-full flex items-center gap-3 px-4 py-3.5 rounded-2xl bg-amber-50 border border-amber-200 text-left hover:bg-amber-100/70 transition">
@@ -147,16 +156,29 @@ export function DoctorEncounterSection({ onReadyChange }: { onReadyChange?: (rea
         </div>
       </div>
 
-      {view === "overview" && <OverviewView pricing={pricing} revenue={revenue} onSetup={() => setView("pricing")} />}
-      {view === "encounters" && <EncountersView encounters={encounters} onChanged={load} />}
-      {view === "patients" && <PatientsView patients={patients} />}
-      {view === "pricing" && <PricingView pricing={pricing} onSaved={load} />}
+      {view === "overview" && <OverviewView pricing={pricing} revenue={revenue} loading={dataLoading} onSetup={() => setView("pricing")} />}
+      {view === "encounters" && (dataLoading ? <CardSkeleton /> : <EncountersView encounters={encounters} onChanged={loadData} />)}
+      {view === "patients" && (dataLoading ? <CardSkeleton /> : <PatientsView patients={patients} />)}
+      {view === "pricing" && (pricingLoading ? <CardSkeleton /> : <PricingView key={pricing?.slug ?? "new"} pricing={pricing} onSaved={reloadAll} />)}
+    </div>
+  );
+}
+
+function CardSkeleton() {
+  return (
+    <div className="space-y-3">
+      {[0, 1, 2].map((i) => (
+        <div key={i} className="bg-white rounded-2xl border border-slate-100 p-4 animate-pulse">
+          <div className="h-3 w-28 bg-slate-100 rounded" />
+          <div className="h-3 w-40 bg-slate-100 rounded mt-2" />
+        </div>
+      ))}
     </div>
   );
 }
 
 // ── Overview / revenue ───────────────────────────────────────────────────────
-function OverviewView({ pricing, revenue, onSetup }: { pricing: Pricing | null; revenue: Revenue | null; onSetup: () => void }) {
+function OverviewView({ pricing, revenue, loading, onSetup }: { pricing: Pricing | null; revenue: Revenue | null; loading: boolean; onSetup: () => void }) {
   const [copied, setCopied] = useState(false);
   const shareUrl = pricing?.share_url;
 
@@ -191,10 +213,10 @@ function OverviewView({ pricing, revenue, onSetup }: { pricing: Pricing | null; 
 
       {/* Revenue cards */}
       <div className="grid grid-cols-2 gap-3">
-        <Stat label="Total earned (80%)" value={naira(revenue?.total ?? 0)} icon={Wallet} accent="emerald" />
-        <Stat label="This month" value={naira(revenue?.this_month ?? 0)} icon={TrendingUp} accent="medical" />
-        <Stat label="Encounters" value={String(revenue?.encounter_count ?? 0)} icon={Stethoscope} accent="slate" />
-        <Stat label="Active subscribers" value={String(revenue?.active_subscribers ?? 0)} icon={Users} accent="indigo" />
+        <Stat label="Total earned (80%)" value={loading ? "…" : naira(revenue?.total ?? 0)} icon={Wallet} accent="emerald" />
+        <Stat label="This month" value={loading ? "…" : naira(revenue?.this_month ?? 0)} icon={TrendingUp} accent="medical" />
+        <Stat label="Encounters" value={loading ? "…" : String(revenue?.encounter_count ?? 0)} icon={Stethoscope} accent="slate" />
+        <Stat label="Active subscribers" value={loading ? "…" : String(revenue?.active_subscribers ?? 0)} icon={Users} accent="indigo" />
       </div>
 
       <div className="flex items-start gap-2.5 px-4 py-3 rounded-xl bg-slate-50 border border-slate-100">
@@ -444,6 +466,9 @@ function PricingView({ pricing, onSaved }: { pricing: Pricing | null; onSaved: (
         />
       </div>
 
+      {/* Page customization — avatar + theme */}
+      <EncounterPageCard pricing={pricing} onSaved={onSaved} />
+
       <button onClick={save} disabled={!canSave || saving}
         className="w-full flex items-center justify-center gap-2 py-3.5 rounded-2xl bg-medical-600 hover:bg-medical-700 active:scale-[0.98] disabled:opacity-50 text-white font-bold text-sm shadow-xl shadow-medical-600/30 transition-all">
         {saving ? <Loader2 className="w-5 h-5 animate-spin" /> : <Check className="w-5 h-5" />}
@@ -459,6 +484,105 @@ function FeeInput({ label, value, onChange, hint, required }: { label: string; v
       <Input label={label} required={required} inputMode="numeric" placeholder="e.g. 5000" value={value}
         onChange={(e) => onChange(e.target.value.replace(/\D/g, "").slice(0, 9))} hint={hint} className="pl-7" />
       <span className="absolute left-3 top-[34px] text-sm text-slate-400 font-semibold">₦</span>
+    </div>
+  );
+}
+
+// ── Encounter page customization: profile photo + colour theme ────────────────
+function EncounterPageCard({ pricing, onSaved }: { pricing: Pricing | null; onSaved: () => void }) {
+  const [avatar, setAvatar] = useState<string | null>(pricing?.avatar_url ?? null);
+  const [theme, setTheme] = useState<string>(pricing?.theme ?? DEFAULT_THEME_ID);
+  const [uploading, setUploading] = useState(false);
+  const fileRef = useRef<HTMLInputElement>(null);
+
+  async function upload(file: File) {
+    setUploading(true);
+    try {
+      const fd = new FormData();
+      fd.append("file", file);
+      const res = await fetch("/api/doc-login/avatar", { method: "POST", body: fd });
+      const d = await res.json();
+      if (!res.ok || !d.success) { toast.error(d.error ?? "Upload failed."); return; }
+      setAvatar(d.url);
+      toast.success("Photo updated");
+      onSaved();
+    } catch {
+      toast.error("Network error.");
+    } finally {
+      setUploading(false);
+      if (fileRef.current) fileRef.current.value = "";
+    }
+  }
+
+  async function removeAvatar() {
+    setAvatar(null);
+    await fetch("/api/doc-login/avatar", { method: "DELETE" }).catch(() => {});
+    onSaved();
+  }
+
+  async function pickTheme(id: string) {
+    setTheme(id);
+    try {
+      const res = await fetch("/api/doc-login/encounter-page", {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ theme: id }),
+      });
+      const d = await res.json();
+      if (!res.ok || !d.success) { toast.error(d.error ?? "Failed to update theme."); return; }
+      onSaved();
+    } catch {
+      toast.error("Network error.");
+    }
+  }
+
+  return (
+    <div className="bg-white rounded-2xl border border-slate-100 p-4 sm:p-5 space-y-4">
+      <div>
+        <h3 className="text-sm font-bold text-slate-800 flex items-center gap-2"><ImageIcon className="w-4 h-4 text-medical-500" /> Your page</h3>
+        <p className="text-xs text-slate-400 mt-1">Personalise the page patients see. Optional.</p>
+      </div>
+
+      {/* Avatar */}
+      <div className="flex items-center gap-4">
+        <input ref={fileRef} type="file" accept="image/jpeg,image/png,image/webp" className="hidden"
+          onChange={(e) => { const f = e.target.files?.[0]; if (f) upload(f); }} />
+        <div className="w-16 h-16 rounded-2xl bg-slate-100 overflow-hidden shrink-0 flex items-center justify-center border border-slate-200">
+          {uploading ? <Loader2 className="w-5 h-5 text-medical-500 animate-spin" />
+            : avatar ? (
+              // eslint-disable-next-line @next/next/no-img-element
+              <img src={avatar} alt="Profile" className="w-full h-full object-cover" />
+            ) : <ImagePlus className="w-6 h-6 text-slate-300" />}
+        </div>
+        <div className="flex-1 min-w-0">
+          <p className="text-sm font-semibold text-slate-700">Profile photo</p>
+          <div className="flex items-center gap-2 mt-1.5">
+            <button onClick={() => fileRef.current?.click()} disabled={uploading}
+              className="text-xs font-semibold px-3 py-1.5 rounded-lg bg-medical-50 text-medical-700 hover:bg-medical-100 disabled:opacity-50 transition">
+              {avatar ? "Change" : "Upload"}
+            </button>
+            {avatar && (
+              <button onClick={removeAvatar} className="text-xs font-semibold px-3 py-1.5 rounded-lg text-slate-400 hover:text-red-600 hover:bg-red-50 transition flex items-center gap-1">
+                <X className="w-3 h-3" /> Remove
+              </button>
+            )}
+          </div>
+        </div>
+      </div>
+
+      {/* Theme */}
+      <div>
+        <p className="text-sm font-semibold text-slate-700 flex items-center gap-1.5 mb-2"><Palette className="w-3.5 h-3.5 text-medical-500" /> Page theme</p>
+        <div className="grid grid-cols-3 gap-2">
+          {ENCOUNTER_THEMES.map((t) => (
+            <button key={t.id} onClick={() => pickTheme(t.id)}
+              className={`relative h-14 rounded-xl ${t.swatch} border-2 transition ${theme === t.id ? "border-slate-800 scale-[1.02]" : "border-transparent hover:border-slate-300"}`}>
+              <span className="absolute bottom-1 left-0 right-0 text-[10px] font-bold text-white/90 drop-shadow">{t.label}</span>
+              {theme === t.id && <span className="absolute top-1 right-1 w-4 h-4 rounded-full bg-white flex items-center justify-center"><Check className="w-3 h-3 text-slate-800" /></span>}
+            </button>
+          ))}
+        </div>
+      </div>
     </div>
   );
 }

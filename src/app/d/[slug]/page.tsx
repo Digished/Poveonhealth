@@ -3,6 +3,7 @@ import { notFound } from "next/navigation";
 import { PoveonLogo } from "@/components/PoveonLogo";
 import { prisma } from "@/lib/prisma";
 import { getDoctorPatientCount, isEncounterReady, priceForPlan } from "@/lib/doctor-encounter";
+import { getEncounterTheme } from "@/lib/encounter-themes";
 import { EncounterFlow } from "@/components/encounter/EncounterFlow";
 
 export const dynamic = "force-dynamic";
@@ -38,9 +39,10 @@ export default async function DoctorEncounterPage({ params }: { params: { slug: 
 
   const { profile, ready, patientCount, pricing } = data;
   const doctorName = [profile.prefix, profile.full_name].filter(Boolean).join(" ").trim() || "Your doctor";
+  const theme = getEncounterTheme(profile.encounter_theme);
 
   return (
-    <div className="min-h-dvh bg-gradient-to-br from-sky-50 via-indigo-50 to-emerald-50">
+    <div className={`min-h-dvh ${theme.pageBg}`}>
       <header className="bg-white/80 backdrop-blur-sm border-b border-white/60 shadow-sm">
         <div className="max-w-2xl mx-auto px-4 py-3 flex items-center justify-between gap-3">
           <Link href="/" className="flex items-center gap-2 min-w-0">
@@ -63,6 +65,8 @@ export default async function DoctorEncounterPage({ params }: { params: { slug: 
             hospitals={profile.hospitals ?? []}
             patientCount={patientCount}
             pricing={pricing}
+            avatarUrl={profile.avatar_url ?? null}
+            heroGradient={theme.heroGradient}
           />
         ) : (
           <div className="py-24 text-center animate-fade-in">
