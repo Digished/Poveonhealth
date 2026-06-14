@@ -33,8 +33,17 @@ function pricingPayload(profile: Awaited<ReturnType<typeof prisma.doctorProfile.
 export async function GET(req: NextRequest) {
   const email = await getDoctorEmailFromRequest(req);
   if (!email) return NextResponse.json({ error: "Not authenticated." }, { status: 401 });
-  const profile = await prisma.doctorProfile.findUnique({ where: { email } });
-  return NextResponse.json({ success: true, pricing: pricingPayload(profile) });
+  try {
+    const profile = await prisma.doctorProfile.findUnique({ where: { email } });
+    return NextResponse.json({ success: true, pricing: pricingPayload(profile) });
+  } catch (err) {
+    // Charging columns may not exist yet — ensure schema then retry once.
+    console.error("[doc-login/pricing GET] failed, ensuring schema:", err);
+    const { ensureEncounterSchema } = await import("@/lib/startup/ensure-encounter-schema");
+    await ensureEncounterSchema();
+    const profile = await prisma.doctorProfile.findUnique({ where: { email } });
+    return NextResponse.json({ success: true, pricing: pricingPayload(profile) });
+  }
 }
 
 const BodySchema = z.object({
@@ -97,11 +106,25 @@ export async function PATCH(req: NextRequest) {
       encounter_slug: slug,
     };
 
-    const profile = await prisma.doctorProfile.upsert({
-      where: { email },
-      create: { email, claimed: true, ...data },
-      update: data,
-    });
+    let profile;
+    try {
+      profile = await prisma.doctorProfile.upsert({
+        where: { email },
+        create: { email, claimed: true, ...data },
+        update: data,
+      });
+    } catch (dbErr) {
+      // Self-heal if the charging columns/tables aren't in the DB yet
+      // (Vercel doesn't auto-run migrations — the startup hook normally does this).
+      console.error("[doc-login/pricing] upsert failed, ensuring schema then retrying:", dbErr);
+      const { ensureEncounterSchema } = await import("@/lib/startup/ensure-encounter-schema");
+      await ensureEncounterSchema();
+      profile = await prisma.doctorProfile.upsert({
+        where: { email },
+        create: { email, claimed: true, ...data },
+        update: data,
+      });
+    }
 
     return NextResponse.json({ success: true, pricing: pricingPayload(profile) });
   } catch (err) {
