@@ -12,11 +12,15 @@ async function verifyAdmin() {
 }
 
 // default_request_price: flat fallback charge for old/image-only requests that have no quoted_price
-const ALLOWED_KEYS = ["default_request_price"] as const;
+// skin_consult_price: dermatology consultation fee in Naira (0 = free)
+// skin_consult_admin_email: where new skin-consult alerts are sent
+const ALLOWED_KEYS = ["default_request_price", "skin_consult_price", "skin_consult_admin_email"] as const;
 type SettingKey = (typeof ALLOWED_KEYS)[number];
 
 const DEFAULTS: Record<SettingKey, string> = {
   default_request_price: "500",
+  skin_consult_price: "10000",
+  skin_consult_admin_email: "spendbox@gmail.com",
 };
 
 /** GET /api/admin/settings */

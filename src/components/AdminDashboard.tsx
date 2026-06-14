@@ -8,7 +8,7 @@ import {
   Phone, Upload, Check, MapPin, Users, ChevronRight, ChevronDown, ChevronUp,
   Code2, Key, Copy, TrendingUp, Link, Sun, Moon, Star, GitBranch,
   ArrowUpRight, ArrowDownRight, ArrowDownToLine, Settings, CreditCard, MessageCircle,
-  BookOpen, Database, Sparkles, Search, Layers, UserCircle, Wallet, FileText, AlertCircle, Filter, Download,
+  BookOpen, Database, Sparkles, Search, Layers, UserCircle, Wallet, FileText, AlertCircle, Filter, Download, Stethoscope,
 } from "lucide-react";
 import { useDashTheme } from "@/hooks/useDashTheme";
 import { renderLabSla, EMPTY_LAB_SLA, type LabSlaData } from "@/lib/labSlaTemplate";
@@ -16,6 +16,9 @@ import { serializeAgreementToText } from "@/lib/agreement/content";
 import { CreateLabForm } from "@/components/admin/CreateLabForm";
 import { EditLabForm } from "@/components/admin/EditLabForm";
 import { AdminProfessionalsTab } from "@/components/admin/AdminProfessionalsTab";
+import { AdminSkinConsultsTab } from "@/components/admin/AdminSkinConsultsTab";
+import { SpecialtyTreePicker } from "@/components/admin/SpecialtyTreePicker";
+import { HospitalDoctorsPanel } from "@/components/admin/HospitalDoctorsPanel";
 import { Button } from "@/components/ui/Button";
 import { Input, Textarea } from "@/components/ui/Input";
 import { StatusBadge, Badge } from "@/components/ui/Badge";
@@ -25,7 +28,7 @@ import { format } from "date-fns";
 import { createClient } from "@/lib/supabase/client"; // still used for auth sign-out
 import { useRouter } from "next/navigation";
 
-type AdminTab = "metrics" | "requests" | "referrals" | "labs" | "analytics" | "marketers" | "lab-marketers" | "professionals" | "settings" | "transactions" | "knowledge-base" | "users" | "hospitals" | "agreements";
+type AdminTab = "metrics" | "requests" | "referrals" | "labs" | "analytics" | "marketers" | "lab-marketers" | "professionals" | "settings" | "transactions" | "knowledge-base" | "users" | "hospitals" | "agreements" | "skin";
 
 interface ReferralGroup {
   key: string; // doctor_email
@@ -524,6 +527,7 @@ export function AdminDashboard() {
             { key: "users" as AdminTab, label: "Users", icon: <UserCircle className="w-4 h-4" /> },
             { key: "hospitals" as AdminTab, label: "Hospitals", icon: <Building2 className="w-4 h-4" /> },
             { key: "agreements" as AdminTab, label: "Agreements", icon: <FileText className="w-4 h-4" /> },
+            { key: "skin" as AdminTab, label: "Skin Consults", icon: <Stethoscope className="w-4 h-4" /> },
           ];
           const current = tabs.find((t) => t.key === activeTab) ?? tabs[0];
           return (
@@ -1606,6 +1610,9 @@ export function AdminDashboard() {
 
         {/* ── PROFESSIONALS ── */}
         {activeTab === "professionals" && <AdminProfessionalsTab />}
+
+        {/* ── SKIN CONSULTS ── */}
+        {activeTab === "skin" && <AdminSkinConsultsTab />}
 
         {/* ── AGREEMENTS ── */}
         {activeTab === "agreements" && (
@@ -4256,22 +4263,86 @@ function AdminUsersTab() {
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// AdminHospitalsTab — full CRUD for the hospitals/clinics list
+// AdminHospitalsTab — full CRUD for the hospitals/clinics list + referral
+// network details, plus a "Patient Referrals" oversight sub-view.
 // ─────────────────────────────────────────────────────────────────────────────
-interface HospitalRow { id: string; name: string; city: string | null; is_active: boolean; doctor_count: number }
+interface HospitalRow {
+  id: string;
+  name: string;
+  city: string | null;
+  state: string | null;
+  address: string | null;
+  email: string | null;
+  phone: string | null;
+  specialties: string[] | null;
+  is_active: boolean;
+  doctor_count: number;
+}
+
+interface HospitalFormValues {
+  name: string;
+  city: string;
+  state: string;
+  address: string;
+  email: string;
+  phone: string;
+  specialties: string[];
+}
+
+const EMPTY_HOSPITAL_FORM: HospitalFormValues = {
+  name: "", city: "", state: "", address: "", email: "", phone: "", specialties: [],
+};
+
+function HospitalFormFields({
+  values,
+  onChange,
+  inputCls,
+}: {
+  values: HospitalFormValues;
+  onChange: (v: HospitalFormValues) => void;
+  inputCls: string;
+}) {
+  return (
+    <>
+      <input type="text" placeholder="Hospital name *" value={values.name}
+        onChange={(e) => onChange({ ...values, name: e.target.value })} className={inputCls} required />
+      <div className="grid grid-cols-2 gap-2">
+        <input type="text" placeholder="City" value={values.city}
+          onChange={(e) => onChange({ ...values, city: e.target.value })} className={inputCls} />
+        <input type="text" placeholder="State" value={values.state}
+          onChange={(e) => onChange({ ...values, state: e.target.value })} className={inputCls} />
+      </div>
+      <input type="text" placeholder="Address" value={values.address}
+        onChange={(e) => onChange({ ...values, address: e.target.value })} className={inputCls} />
+      <div>
+        <input type="email" placeholder="Referral portal login email" value={values.email}
+          onChange={(e) => onChange({ ...values, email: e.target.value })} className={inputCls} />
+        <p className="text-[10px] text-slate-500 mt-1">
+          Adding an email puts this hospital on the referral network and sends them a portal invite automatically.
+        </p>
+      </div>
+      <input type="tel" placeholder="Phone" value={values.phone}
+        onChange={(e) => onChange({ ...values, phone: e.target.value })} className={inputCls} />
+      <SpecialtyTreePicker
+        value={values.specialties}
+        onChange={(specialties) => onChange({ ...values, specialties })}
+      />
+    </>
+  );
+}
 
 function AdminHospitalsTab() {
+  const [view, setView]           = useState<"hospitals" | "patient-referrals">("hospitals");
   const [hospitals, setHospitals] = useState<HospitalRow[]>([]);
   const [loading, setLoading]     = useState(true);
   const [search, setSearch]       = useState("");
   const [creating, setCreating]   = useState(false);
-  const [newName, setNewName]     = useState("");
-  const [newCity, setNewCity]     = useState("");
+  const [newForm, setNewForm]     = useState<HospitalFormValues>(EMPTY_HOSPITAL_FORM);
   const [saving, setSaving]       = useState(false);
   const [editId, setEditId]       = useState<string | null>(null);
-  const [editName, setEditName]   = useState("");
-  const [editCity, setEditCity]   = useState("");
+  const [editForm, setEditForm]   = useState<HospitalFormValues>(EMPTY_HOSPITAL_FORM);
   const [syncing, setSyncing]     = useState(false);
+  const [doctorsFor, setDoctorsFor] = useState<{ id: string; name: string } | null>(null);
 
   async function load() {
     setLoading(true);
@@ -4284,32 +4355,62 @@ function AdminHospitalsTab() {
 
   useEffect(() => { load(); }, []);
 
+  function formPayload(f: HospitalFormValues) {
+    return {
+      name: f.name.trim(),
+      city: f.city.trim() || null,
+      state: f.state.trim() || null,
+      address: f.address.trim() || null,
+      email: f.email.trim() || null,
+      phone: f.phone.trim() || null,
+      specialties: f.specialties,
+    };
+  }
+
   async function handleCreate(e: React.FormEvent) {
     e.preventDefault();
-    if (!newName.trim()) return;
+    if (!newForm.name.trim()) return;
     setSaving(true);
     try {
       const res = await fetch("/api/admin/hospitals", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ name: newName.trim(), city: newCity.trim() || null }),
+        body: JSON.stringify(formPayload(newForm)),
       });
       const d = await res.json();
-      if (d.success) { setNewName(""); setNewCity(""); setCreating(false); load(); }
-      else toast.error(d.error ?? "Failed to create");
+      if (d.success) {
+        toast.success(newForm.email.trim() ? "Hospital added — referral portal invite sent" : "Hospital added");
+        setNewForm(EMPTY_HOSPITAL_FORM);
+        setCreating(false);
+        load();
+      } else toast.error(d.error ?? "Failed to create");
     } finally { setSaving(false); }
   }
 
+  function startEdit(h: HospitalRow) {
+    setEditId(h.id);
+    setEditForm({
+      name: h.name,
+      city: h.city ?? "",
+      state: h.state ?? "",
+      address: h.address ?? "",
+      email: h.email ?? "",
+      phone: h.phone ?? "",
+      specialties: Array.isArray(h.specialties) ? h.specialties : [],
+    });
+  }
+
   async function handleEdit(id: string) {
+    if (!editForm.name.trim()) return;
     setSaving(true);
     try {
       const res = await fetch(`/api/admin/hospitals/${id}`, {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ name: editName.trim(), city: editCity.trim() || null }),
+        body: JSON.stringify(formPayload(editForm)),
       });
       const d = await res.json();
-      if (d.success) { setEditId(null); load(); }
+      if (d.success) { toast.success("Hospital updated"); setEditId(null); load(); }
       else toast.error(d.error ?? "Failed to update");
     } finally { setSaving(false); }
   }
@@ -4351,17 +4452,38 @@ function AdminHospitalsTab() {
   const filtered = hospitals.filter((h) =>
     !search.trim() ||
     h.name.toLowerCase().includes(search.toLowerCase()) ||
-    (h.city ?? "").toLowerCase().includes(search.toLowerCase())
+    (h.city ?? "").toLowerCase().includes(search.toLowerCase()) ||
+    (h.state ?? "").toLowerCase().includes(search.toLowerCase())
   );
 
   const inputCls = "w-full px-3 py-2 rounded-xl border border-white/10 bg-white/5 text-white placeholder-slate-500 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500/50 transition";
 
   return (
     <div className="space-y-4 max-w-2xl">
+      {/* Sub-view toggle */}
+      <div className="flex gap-1 bg-white/5 p-1 rounded-xl w-fit">
+        {([
+          { key: "hospitals" as const, label: "Hospitals" },
+          { key: "patient-referrals" as const, label: "Patient Referrals" },
+        ]).map((t) => (
+          <button
+            key={t.key}
+            onClick={() => setView(t.key)}
+            className={`px-3 py-1.5 rounded-lg text-xs font-medium transition-all ${view === t.key ? "bg-white/15 text-white" : "text-slate-400 hover:text-white"}`}
+          >
+            {t.label}
+          </button>
+        ))}
+      </div>
+
+      {view === "patient-referrals" ? (
+        <AdminPatientReferralsView />
+      ) : (
+        <>
       <div className="flex items-center justify-between gap-3 flex-wrap">
         <div>
           <h2 className="text-base font-bold text-white">Hospitals &amp; Clinics</h2>
-          <p className="text-xs text-slate-400 mt-0.5">Manage the list doctors can select from</p>
+          <p className="text-xs text-slate-400 mt-0.5">Manage the list doctors can select from and the referral network</p>
         </div>
         <div className="flex items-center gap-2">
           <button type="button" onClick={handleSyncFromProfiles} disabled={syncing}
@@ -4389,14 +4511,13 @@ function AdminHospitalsTab() {
       {creating && (
         <form onSubmit={handleCreate} className="bg-white/5 border border-white/10 rounded-2xl p-4 space-y-3">
           <p className="text-xs font-semibold text-slate-300 uppercase tracking-wider">New Hospital / Clinic</p>
-          <input type="text" placeholder="Hospital name *" value={newName} onChange={(e) => setNewName(e.target.value)} className={inputCls} required />
-          <input type="text" placeholder="City (optional)" value={newCity} onChange={(e) => setNewCity(e.target.value)} className={inputCls} />
+          <HospitalFormFields values={newForm} onChange={setNewForm} inputCls={inputCls} />
           <div className="flex gap-2">
-            <button type="submit" disabled={saving || !newName.trim()}
+            <button type="submit" disabled={saving || !newForm.name.trim()}
               className="flex-1 flex items-center justify-center gap-1.5 bg-blue-600 hover:bg-blue-700 disabled:opacity-50 text-white text-xs font-semibold py-2 rounded-xl transition">
               {saving ? <RefreshCw className="w-3.5 h-3.5 animate-spin" /> : <Check className="w-3.5 h-3.5" />} Save
             </button>
-            <button type="button" onClick={() => { setCreating(false); setNewName(""); setNewCity(""); }}
+            <button type="button" onClick={() => { setCreating(false); setNewForm(EMPTY_HOSPITAL_FORM); }}
               className="px-4 text-xs font-semibold text-slate-400 hover:text-white bg-white/5 rounded-xl transition">
               Cancel
             </button>
@@ -4415,30 +4536,49 @@ function AdminHospitalsTab() {
             <div className="py-10 text-center text-sm text-slate-500">No hospitals found</div>
           )}
           {filtered.map((h) => (
-            <div key={h.id} className={`flex items-center gap-3 px-4 py-3 ${!h.is_active ? "opacity-50" : ""}`}>
+            <div key={h.id} className={`px-4 py-3 ${!h.is_active ? "opacity-50" : ""}`}>
               {editId === h.id ? (
-                <div className="flex-1 flex gap-2 flex-wrap">
-                  <input value={editName} onChange={(e) => setEditName(e.target.value)}
-                    className="flex-1 min-w-0 px-2 py-1.5 rounded-lg border border-white/10 bg-white/5 text-white text-sm focus:outline-none focus:ring-2 focus:ring-blue-500/50" />
-                  <input value={editCity} onChange={(e) => setEditCity(e.target.value)} placeholder="City"
-                    className="w-32 px-2 py-1.5 rounded-lg border border-white/10 bg-white/5 text-white text-sm focus:outline-none focus:ring-2 focus:ring-blue-500/50" />
-                  <button onClick={() => handleEdit(h.id)} disabled={saving}
-                    className="px-3 py-1.5 text-xs font-semibold bg-blue-600 hover:bg-blue-700 text-white rounded-lg transition">Save</button>
-                  <button onClick={() => setEditId(null)}
-                    className="px-3 py-1.5 text-xs font-semibold text-slate-400 hover:text-white bg-white/5 rounded-lg transition">Cancel</button>
+                <div className="space-y-3">
+                  <p className="text-xs font-semibold text-slate-300 uppercase tracking-wider">Edit Hospital</p>
+                  <HospitalFormFields values={editForm} onChange={setEditForm} inputCls={inputCls} />
+                  <div className="flex gap-2">
+                    <button onClick={() => handleEdit(h.id)} disabled={saving || !editForm.name.trim()}
+                      className="flex-1 flex items-center justify-center gap-1.5 px-3 py-2 text-xs font-semibold bg-blue-600 hover:bg-blue-700 disabled:opacity-50 text-white rounded-lg transition">
+                      {saving ? <RefreshCw className="w-3.5 h-3.5 animate-spin" /> : <Check className="w-3.5 h-3.5" />} Save
+                    </button>
+                    <button onClick={() => setEditId(null)}
+                      className="px-4 py-2 text-xs font-semibold text-slate-400 hover:text-white bg-white/5 rounded-lg transition">Cancel</button>
+                  </div>
                 </div>
               ) : (
-                <>
+                <div className="flex items-center gap-3">
                   <div className="flex-1 min-w-0">
-                    <p className="text-sm font-semibold text-white truncate">{h.name}</p>
-                    <div className="flex items-center gap-2 mt-0.5">
-                      {h.city && <span className="text-xs text-slate-400">{h.city}</span>}
+                    <div className="flex items-center gap-2 flex-wrap">
+                      <p className="text-sm font-semibold text-white truncate">{h.name}</p>
+                      {h.email && (
+                        <span className="text-[10px] bg-emerald-500/15 text-emerald-400 border border-emerald-500/20 rounded-full px-1.5 py-0.5 shrink-0">
+                          Referral portal ✓
+                        </span>
+                      )}
+                    </div>
+                    <div className="flex items-center gap-2 mt-0.5 flex-wrap">
+                      {(h.city || h.state) && (
+                        <span className="text-xs text-slate-400">{[h.city, h.state].filter(Boolean).join(", ")}</span>
+                      )}
                       <span className="text-xs text-slate-500">{h.doctor_count} doctor{h.doctor_count !== 1 ? "s" : ""}</span>
+                      {Array.isArray(h.specialties) && h.specialties.length > 0 && (
+                        <span className="text-xs text-slate-500">{h.specialties.length} specialt{h.specialties.length !== 1 ? "ies" : "y"}</span>
+                      )}
                       {!h.is_active && <span className="text-xs text-amber-500">inactive</span>}
                     </div>
                   </div>
                   <div className="flex items-center gap-1 shrink-0">
-                    <button onClick={() => { setEditId(h.id); setEditName(h.name); setEditCity(h.city ?? ""); }}
+                    <button onClick={() => setDoctorsFor({ id: h.id, name: h.name })}
+                      className="w-7 h-7 rounded-lg flex items-center justify-center text-slate-400 hover:text-white hover:bg-white/10 transition"
+                      title="Manage doctors registered under this hospital">
+                      <Stethoscope className="w-3.5 h-3.5" />
+                    </button>
+                    <button onClick={() => startEdit(h)}
                       className="w-7 h-7 rounded-lg flex items-center justify-center text-slate-400 hover:text-white hover:bg-white/10 transition">
                       <Pencil className="w-3.5 h-3.5" />
                     </button>
@@ -4452,14 +4592,157 @@ function AdminHospitalsTab() {
                       <Trash2 className="w-3.5 h-3.5" />
                     </button>
                   </div>
-                </>
+                </div>
               )}
             </div>
           ))}
         </div>
       )}
 
-      <p className="text-xs text-slate-500">{hospitals.length} hospital{hospitals.length !== 1 ? "s" : ""} total · {hospitals.filter(h => h.is_active).length} active</p>
+      <p className="text-xs text-slate-500">{hospitals.length} hospital{hospitals.length !== 1 ? "s" : ""} total · {hospitals.filter(h => h.is_active).length} active · {hospitals.filter(h => h.email).length} on the referral network</p>
+
+      {doctorsFor && (
+        <HospitalDoctorsPanel
+          hospitalId={doctorsFor.id}
+          hospitalName={doctorsFor.name}
+          onClose={() => setDoctorsFor(null)}
+          onChanged={load}
+        />
+      )}
+        </>
+      )}
+    </div>
+  );
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// AdminPatientReferralsView — platform-wide patient referral oversight
+// (sub-view inside the Hospitals tab; distinct from doctor lab-referrer analytics)
+// ─────────────────────────────────────────────────────────────────────────────
+interface AdminPatientReferral {
+  id: string;
+  code: string;
+  status: string;
+  patient_name: string;
+  doctor_name: string;
+  doctor_email: string;
+  from_hospital: string;
+  specialty: string;
+  urgency: string;
+  created_at: string;
+  to_hospital: { name: string; city: string | null; state: string | null } | null;
+}
+
+const PATIENT_REFERRAL_STATUSES = ["", "pending", "accepted", "rejected", "redirected"] as const;
+
+const PATIENT_REFERRAL_STATUS_STYLES: Record<string, string> = {
+  pending: "bg-blue-500/15 text-blue-400 border border-blue-500/20",
+  accepted: "bg-emerald-500/15 text-emerald-400 border border-emerald-500/20",
+  rejected: "bg-rose-500/15 text-rose-400 border border-rose-500/20",
+  redirected: "bg-amber-500/15 text-amber-400 border border-amber-500/20",
+};
+
+function AdminPatientReferralsView() {
+  const [referrals, setReferrals] = useState<AdminPatientReferral[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [status, setStatus] = useState("");
+  const [query, setQuery] = useState("");
+
+  const loadReferrals = useCallback(async (statusFilter: string, q: string) => {
+    setLoading(true);
+    try {
+      const params = new URLSearchParams();
+      if (statusFilter) params.set("status", statusFilter);
+      if (q.trim()) params.set("q", q.trim());
+      const res = await fetch(`/api/admin/referrals?${params.toString()}`);
+      const d = await res.json();
+      if (d.success) setReferrals(d.referrals);
+      else toast.error(d.error ?? "Failed to load referrals");
+    } catch {
+      toast.error("Network error loading referrals");
+    } finally {
+      setLoading(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    const t = setTimeout(() => loadReferrals(status, query), query ? 350 : 0);
+    return () => clearTimeout(t);
+  }, [status, query, loadReferrals]);
+
+  return (
+    <div className="space-y-4">
+      <div className="flex items-center justify-between gap-3 flex-wrap">
+        <div>
+          <h2 className="text-base font-bold text-white">Patient Referrals</h2>
+          <p className="text-xs text-slate-400 mt-0.5">All referrals sent across the hospital network</p>
+        </div>
+        <button onClick={() => loadReferrals(status, query)} className="p-2 rounded-xl text-slate-400 hover:text-white hover:bg-white/8 transition">
+          <RefreshCw className="w-4 h-4" />
+        </button>
+      </div>
+
+      {/* Status filter */}
+      <div className="flex gap-1 bg-white/5 p-1 rounded-xl w-fit flex-wrap">
+        {PATIENT_REFERRAL_STATUSES.map((s) => (
+          <button
+            key={s || "all"}
+            onClick={() => setStatus(s)}
+            className={`px-3 py-1.5 rounded-lg text-xs font-medium capitalize transition-all ${status === s ? "bg-white/15 text-white" : "text-slate-400 hover:text-white"}`}
+          >
+            {s || "All"}
+          </button>
+        ))}
+      </div>
+
+      {/* Search */}
+      <div className="relative">
+        <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-slate-500 pointer-events-none" />
+        <input
+          type="text" placeholder="Search by code, patient or doctor…" value={query}
+          onChange={(e) => setQuery(e.target.value)}
+          className="w-full pl-9 pr-3 py-2.5 rounded-xl border border-white/10 bg-white/5 text-white placeholder-slate-500 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500/50 transition"
+        />
+      </div>
+
+      {loading ? (
+        <div className="space-y-2">
+          {[1,2,3].map((i) => <div key={i} className="h-16 bg-white/5 rounded-2xl animate-pulse" />)}
+        </div>
+      ) : referrals.length === 0 ? (
+        <div className="py-12 text-center text-slate-500 rounded-2xl border border-white/8">
+          <FileText className="w-8 h-8 mx-auto mb-2 opacity-40" />
+          <p className="text-sm">No patient referrals{status ? ` with status “${status}”` : ""}{query ? " matching the search" : ""}</p>
+        </div>
+      ) : (
+        <div className="rounded-2xl border border-white/8 overflow-hidden divide-y divide-white/5">
+          {referrals.map((r) => (
+            <div key={r.id} className="px-4 py-3 bg-white/3 hover:bg-white/5 transition-colors">
+              <div className="flex items-center gap-2 flex-wrap">
+                <span className="text-xs font-mono font-bold text-slate-300 tracking-wider">{r.code}</span>
+                <span className={`text-[10px] rounded-full px-1.5 py-0.5 capitalize ${PATIENT_REFERRAL_STATUS_STYLES[r.status] ?? "bg-white/10 text-slate-300 border border-white/10"}`}>
+                  {r.status}
+                </span>
+                {r.urgency !== "routine" && (
+                  <span className={`text-[10px] rounded-full px-1.5 py-0.5 capitalize ${r.urgency === "emergency" ? "bg-rose-500/15 text-rose-400 border border-rose-500/20" : "bg-amber-500/15 text-amber-400 border border-amber-500/20"}`}>
+                    {r.urgency}
+                  </span>
+                )}
+                <span className="text-[10px] text-slate-500 ml-auto shrink-0">{format(new Date(r.created_at), "d MMM yyyy")}</span>
+              </div>
+              <p className="text-sm font-semibold text-white mt-1 truncate">
+                {r.patient_name}
+                <span className="text-slate-500 font-normal"> → {r.to_hospital?.name ?? "—"}</span>
+              </p>
+              <p className="text-xs text-slate-400 truncate mt-0.5">
+                {r.specialty} · by {r.doctor_name} ({r.from_hospital})
+              </p>
+            </div>
+          ))}
+        </div>
+      )}
+
+      <p className="text-xs text-slate-500">{referrals.length} referral{referrals.length !== 1 ? "s" : ""} shown</p>
     </div>
   );
 }

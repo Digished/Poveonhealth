@@ -29,6 +29,27 @@ export async function POST(req: NextRequest) {
   const channel = String(data.channel ?? "");
   console.log(`[webhook] event=${event} channel=${channel} amount=${data.amount} ref=${data.reference}`);
 
+  // Skin consultation payments — finalise even if the patient never returns to the callback page
+  const skinMeta = data.metadata as Record<string, unknown> | null;
+  if (event === "charge.success" && skinMeta?.purpose === "skin_consult") {
+    const reference = String(data.reference ?? "");
+    const amountNaira = Number(data.amount ?? 0) / 100;
+    if (reference) {
+      const updated = await prisma.skinConsult.updateMany({
+        where: { payment_reference: reference, status: "awaiting_payment" },
+        data: { is_paid: true, status: "new", amount_paid: amountNaira, paid_at: new Date() },
+      });
+      if (updated.count === 1) {
+        const consult = await prisma.skinConsult.findUnique({ where: { payment_reference: reference } });
+        if (consult) {
+          const { notifySkinConsult } = await import("@/lib/skin-consult");
+          await notifySkinConsult(consult).catch((e) => console.error("[webhook] skin notify:", e));
+        }
+      }
+    }
+    return NextResponse.json({ ok: true });
+  }
+
   if (event !== "charge.success" || channel !== "dedicated_nuban") {
     return NextResponse.json({ ok: true });
   }

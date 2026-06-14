@@ -4,13 +4,18 @@ import { Navbar } from "@/components/Navbar";
 import { HomePageContent } from "@/components/HomePageContent";
 import { prisma } from "@/lib/prisma";
 
+// Render per-request — querying the database during static prerender makes
+// `next build` fail whenever the DB is unreachable from the build container
+export const dynamic = "force-dynamic";
+
 export default async function HomePage() {
   // Fetch labs at SSR time — data arrives with the HTML, search modal is instant
-  const labsData = await prisma.lab.findMany({
-    where: { hidden: false, search_hidden: false },
-    select: { id: true, name: true, slug: true, prefix: true, address: true, logo_url: true, phones: true, whatsapp: true, service_categories: true },
-    orderBy: { name: "asc" },
-  });
+  let labsData: Awaited<ReturnType<typeof fetchLabs>> = [];
+  try {
+    labsData = await fetchLabs();
+  } catch (err) {
+    console.error("[home] failed to load labs:", err instanceof Error ? err.message : err);
+  }
   return (
     <div className="relative h-dvh flex flex-col bg-sky-50 overflow-hidden">
       {/* Full-page gradient wash — deep sky at top, pale blue through the form */}
@@ -49,4 +54,12 @@ export default async function HomePage() {
       </main>
     </div>
   );
+}
+
+function fetchLabs() {
+  return prisma.lab.findMany({
+    where: { hidden: false, search_hidden: false },
+    select: { id: true, name: true, slug: true, prefix: true, address: true, logo_url: true, phones: true, whatsapp: true, service_categories: true },
+    orderBy: { name: "asc" },
+  });
 }

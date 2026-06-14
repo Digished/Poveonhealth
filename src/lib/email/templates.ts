@@ -910,3 +910,411 @@ export function agreementSignedConfirmationEmail({
     </p>
   `);
 }
+
+// =============================================================================
+// TEMPLATE: Hospital — One-Time Passcode for Portal Login
+// =============================================================================
+export function hospitalOtpEmail({
+  email,
+  otp,
+}: {
+  email: string;
+  otp: string;
+}) {
+  return base(`
+    <h2 style="margin:0 0 8px;color:#0259a0;font-size:20px;font-weight:700;">Your Login Code</h2>
+    <p style="margin:0 0 24px;color:#4b5563;font-size:15px;">
+      Use the code below to sign in to your Poveon hospital portal. It expires in <strong>10 minutes</strong>.
+    </p>
+
+    <div style="background:#f0f7ff;border:2px dashed #0270c3;border-radius:8px;padding:24px;text-align:center;margin:24px 0;">
+      <p style="margin:0 0 6px;color:#0259a0;font-size:12px;font-weight:600;text-transform:uppercase;letter-spacing:1px;">One-Time Passcode</p>
+      <p style="margin:0;color:#0259a0;font-size:40px;font-weight:800;letter-spacing:10px;font-family:monospace;">${otp}</p>
+    </div>
+
+    ${divider}
+
+    <p style="margin:0 0 8px;color:#6b7280;font-size:13px;">Signing in as: <strong style="color:#1e3a5f;">${email}</strong></p>
+
+    <p style="margin:12px 0 0;color:#dc2626;font-size:13px;font-weight:500;">
+      If you did not request this code, you can safely ignore this email.
+    </p>
+  `);
+}
+
+// =============================================================================
+// TEMPLATE: Hospital — Account Created by Admin
+// =============================================================================
+export function hospitalAccountCreated({
+  hospitalName,
+  email,
+  loginUrl,
+}: {
+  hospitalName: string;
+  email: string;
+  loginUrl: string;
+}) {
+  return base(`
+    <h2 style="margin:0 0 8px;color:#0259a0;font-size:20px;font-weight:700;">Welcome to Poveon Referrals</h2>
+    <p style="margin:0 0 24px;color:#4b5563;font-size:15px;">
+      <strong>${hospitalName}</strong> has been registered on the Poveon patient referral network.
+      You can now receive patient referrals from doctors, manage your registered doctors,
+      and respond to referrals from your hospital dashboard.
+    </p>
+
+    ${label("Login Email")}
+    ${value(email)}
+
+    <p style="margin:0 0 24px;color:#4b5563;font-size:15px;">
+      To sign in for the first time, request a one-time code with the email above and set your 4-digit PIN.
+    </p>
+
+    <div style="text-align:center;margin:28px 0;">
+      <a href="${loginUrl}" style="display:inline-block;background:linear-gradient(135deg,#0259a0,#0270c3);color:#ffffff;text-decoration:none;font-size:15px;font-weight:600;padding:14px 36px;border-radius:8px;">
+        Open Hospital Portal
+      </a>
+    </div>
+
+    ${divider}
+
+    <p style="margin:0;color:#6b7280;font-size:13px;">
+      New patient referrals will also be sent to this email address so you never miss one.
+    </p>
+  `);
+}
+
+// =============================================================================
+// TEMPLATE: Hospital — New Patient Referral Received
+// =============================================================================
+export function hospitalNewReferral({
+  hospitalName,
+  code,
+  patientName,
+  patientAge,
+  patientSex,
+  specialty,
+  urgency,
+  doctorName,
+  fromHospital,
+  dashboardUrl,
+  redirectedFrom,
+}: {
+  hospitalName: string;
+  code: string;
+  patientName: string;
+  patientAge?: number | null;
+  patientSex?: string | null;
+  specialty: string;
+  urgency: string;
+  doctorName: string;
+  fromHospital: string;
+  dashboardUrl: string;
+  redirectedFrom?: string;
+}) {
+  const urgencyBadge =
+    urgency === "emergency"
+      ? `<span style="display:inline-block;background:#fee2e2;color:#dc2626;font-size:12px;font-weight:700;padding:4px 12px;border-radius:99px;text-transform:uppercase;letter-spacing:0.5px;">🚨 Emergency</span>`
+      : urgency === "urgent"
+      ? `<span style="display:inline-block;background:#fef3c7;color:#b45309;font-size:12px;font-weight:700;padding:4px 12px;border-radius:99px;text-transform:uppercase;letter-spacing:0.5px;">⚠️ Urgent</span>`
+      : "";
+  const demographics = [patientAge ? `${patientAge} yrs` : null, patientSex || null].filter(Boolean).join(", ");
+  return base(`
+    <h2 style="margin:0 0 8px;color:#0259a0;font-size:20px;font-weight:700;">
+      ${redirectedFrom ? "Referral Redirected to You" : "New Patient Referral"}
+    </h2>
+    ${urgencyBadge ? `<p style="margin:0 0 16px;">${urgencyBadge}</p>` : ""}
+    <p style="margin:0 0 24px;color:#4b5563;font-size:15px;">
+      Dear ${hospitalName},<br><br>
+      ${redirectedFrom
+        ? `<strong>${redirectedFrom}</strong> has redirected a patient referral to your hospital.`
+        : `<strong>${doctorName}</strong> has referred a patient to your hospital.`}
+      Please review and respond from your dashboard.
+    </p>
+
+    ${codeBox(code)}
+
+    ${divider}
+
+    ${label("Patient")}
+    ${value(`${patientName}${demographics ? ` (${demographics})` : ""}`)}
+
+    ${label("Specialty Requested")}
+    ${value(specialty)}
+
+    ${label("Referring Doctor")}
+    ${value(doctorName)}
+
+    ${label("Referring From")}
+    ${value(fromHospital)}
+
+    <div style="text-align:center;margin:28px 0 8px;">
+      <a href="${dashboardUrl}" style="display:inline-block;background:linear-gradient(135deg,#0259a0,#0270c3);color:#ffffff;text-decoration:none;font-size:15px;font-weight:600;padding:14px 36px;border-radius:8px;">
+        Review Referral
+      </a>
+    </div>
+
+    <p style="margin:16px 0 0;color:#6b7280;font-size:13px;text-align:center;">
+      The full referral note and patient contact details are available on your dashboard.
+    </p>
+  `);
+}
+
+// =============================================================================
+// TEMPLATE: Doctor — Referral Sent Confirmation
+// =============================================================================
+export function referralDoctorConfirmation({
+  doctorName,
+  patientName,
+  hospitalName,
+  code,
+  specialty,
+  trackUrl,
+}: {
+  doctorName: string;
+  patientName: string;
+  hospitalName: string;
+  code: string;
+  specialty: string;
+  trackUrl: string;
+}) {
+  return base(`
+    <h2 style="margin:0 0 8px;color:#0259a0;font-size:20px;font-weight:700;">Referral Sent</h2>
+    <p style="margin:0 0 24px;color:#4b5563;font-size:15px;">
+      Dear ${doctorName},<br><br>
+      Your referral for <strong>${patientName}</strong> has been sent to <strong>${hospitalName}</strong>
+      (${specialty}). You will be notified when the hospital responds.
+    </p>
+
+    ${codeBox(code)}
+
+    <p style="margin:0 0 8px;color:#4b5563;font-size:14px;">
+      Use this code to track the referral at any time:
+    </p>
+    <p style="margin:0 0 16px;"><a href="${trackUrl}" style="color:#0259a0;font-size:14px;font-weight:600;">${trackUrl}</a></p>
+  `);
+}
+
+// =============================================================================
+// TEMPLATE: Patient — Referral Notice
+// =============================================================================
+export function referralPatientNotice({
+  patientName,
+  doctorName,
+  hospitalName,
+  code,
+  specialty,
+  trackUrl,
+}: {
+  patientName: string;
+  doctorName: string;
+  hospitalName: string;
+  code: string;
+  specialty: string;
+  trackUrl: string;
+}) {
+  return base(`
+    <h2 style="margin:0 0 8px;color:#0259a0;font-size:20px;font-weight:700;">You Have Been Referred</h2>
+    <p style="margin:0 0 24px;color:#4b5563;font-size:15px;">
+      Dear ${patientName},<br><br>
+      <strong>${doctorName}</strong> has referred you to <strong>${hospitalName}</strong> (${specialty}).
+      The hospital will review the referral, and you will be notified once they respond.
+      Keep the referral code below — you may be asked for it at the hospital.
+    </p>
+
+    ${codeBox(code)}
+
+    <p style="margin:0 0 8px;color:#4b5563;font-size:14px;">
+      Track the status of your referral here:
+    </p>
+    <p style="margin:0 0 16px;"><a href="${trackUrl}" style="color:#0259a0;font-size:14px;font-weight:600;">${trackUrl}</a></p>
+  `);
+}
+
+// =============================================================================
+// TEMPLATE: Doctor / Patient — Referral Status Update
+// =============================================================================
+export function referralStatusUpdate({
+  recipientName,
+  status,
+  code,
+  patientName,
+  hospitalName,
+  newHospitalName,
+  responseNote,
+  trackUrl,
+  isPatient,
+}: {
+  recipientName: string;
+  status: "accepted" | "rejected" | "redirected";
+  code: string;
+  patientName: string;
+  hospitalName: string;
+  newHospitalName?: string;
+  responseNote?: string | null;
+  trackUrl: string;
+  isPatient: boolean;
+}) {
+  const subject =
+    status === "accepted"
+      ? { title: "Referral Accepted ✅", color: "#16a34a" }
+      : status === "rejected"
+      ? { title: "Referral Not Accepted", color: "#dc2626" }
+      : { title: "Referral Redirected", color: "#b45309" };
+
+  const who = isPatient ? "Your referral" : `The referral for <strong>${patientName}</strong>`;
+  const bodyLine =
+    status === "accepted"
+      ? `${who} has been <strong style="color:#16a34a;">accepted</strong> by <strong>${hospitalName}</strong>.${isPatient ? " You may now proceed to the hospital with your referral code." : ""}`
+      : status === "rejected"
+      ? `${who} was <strong style="color:#dc2626;">not accepted</strong> by <strong>${hospitalName}</strong>.${isPatient ? " Please contact your doctor for the next steps." : " You may refer the patient to another hospital."}`
+      : `${who} has been <strong style="color:#b45309;">redirected</strong> by <strong>${hospitalName}</strong> to <strong>${newHospitalName ?? "another hospital"}</strong>, which will now review it.`;
+
+  return base(`
+    <h2 style="margin:0 0 8px;color:${subject.color};font-size:20px;font-weight:700;">${subject.title}</h2>
+    <p style="margin:0 0 24px;color:#4b5563;font-size:15px;">
+      Dear ${recipientName},<br><br>
+      ${bodyLine}
+    </p>
+
+    ${codeBox(code)}
+
+    ${responseNote ? `
+      ${label("Note from the hospital")}
+      ${value(responseNote)}
+    ` : ""}
+
+    <p style="margin:0 0 8px;color:#4b5563;font-size:14px;">
+      Track this referral at any time:
+    </p>
+    <p style="margin:0 0 16px;"><a href="${trackUrl}" style="color:#0259a0;font-size:14px;font-weight:600;">${trackUrl}</a></p>
+  `);
+}
+
+// =============================================================================
+// TEMPLATE: Patient — Dermatology Consult Received
+// =============================================================================
+export function skinConsultPatient({
+  patientName,
+  code,
+  trackNote,
+}: {
+  patientName: string;
+  code: string;
+  trackNote?: string;
+}) {
+  return base(`
+    <h2 style="margin:0 0 8px;color:#0259a0;font-size:20px;font-weight:700;">Your Skin Consultation Was Received</h2>
+    <p style="margin:0 0 24px;color:#4b5563;font-size:15px;">
+      Dear ${patientName},<br><br>
+      Thank you — your dermatology consultation has been received. One of our dermatologists
+      will review your photos and answers, and reach out to you on WhatsApp to follow up.
+      Please keep your phone handy.
+    </p>
+
+    ${codeBox(code)}
+
+    <p style="margin:0 0 8px;color:#4b5563;font-size:14px;">
+      Keep this reference code for your records. ${trackNote ?? ""}
+    </p>
+
+    ${divider}
+
+    <p style="margin:12px 0 0;color:#6b7280;font-size:13px;line-height:1.6;">
+      <strong>Please note:</strong> this service connects you with a dermatologist for guidance.
+      It is not a substitute for emergency care. If your condition is rapidly worsening,
+      you have a high fever, difficulty breathing, or widespread blistering, please seek
+      urgent in-person medical attention.
+    </p>
+  `);
+}
+
+// =============================================================================
+// TEMPLATE: Admin — New Dermatology Consult Submitted
+// =============================================================================
+export function skinConsultAdmin({
+  code,
+  patientName,
+  patientEmail,
+  patientWhatsapp,
+  patientAge,
+  patientSex,
+  imageUrls,
+  conversation,
+  aiSummary,
+  dashboardUrl,
+}: {
+  code: string;
+  patientName: string;
+  patientEmail: string;
+  patientWhatsapp: string;
+  patientAge?: number | null;
+  patientSex?: string | null;
+  imageUrls: string[];
+  conversation: { role: string; content: string }[];
+  aiSummary?: string | null;
+  dashboardUrl: string;
+}) {
+  const demographics = [patientAge ? `${patientAge} yrs` : null, patientSex || null].filter(Boolean).join(", ");
+
+  const imagesHtml = imageUrls.length
+    ? `<div style="margin:8px 0 0;">${imageUrls
+        .map(
+          (url, i) =>
+            `<a href="${url}" style="display:inline-block;margin:0 8px 8px 0;"><img src="${url}" alt="Photo ${i + 1}" width="120" style="width:120px;height:120px;object-fit:cover;border-radius:8px;border:1px solid #e0effe;" /></a>`
+        )
+        .join("")}</div>`
+    : `<p style="margin:0;color:#9ca3af;font-size:13px;">No photos uploaded.</p>`;
+
+  const chatHtml = conversation.length
+    ? conversation
+        .map((m) => {
+          const isPatient = m.role === "user";
+          return `<div style="margin:0 0 10px;">
+            <p style="margin:0 0 2px;font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:0.5px;color:${isPatient ? "#0259a0" : "#6b7280"};">${isPatient ? "Patient" : "Assistant"}</p>
+            <p style="margin:0;padding:10px 14px;border-radius:10px;background:${isPatient ? "#f0f7ff" : "#f8fafc"};color:#1e3a5f;font-size:14px;line-height:1.5;white-space:pre-wrap;">${m.content}</p>
+          </div>`;
+        })
+        .join("")
+    : `<p style="margin:0;color:#9ca3af;font-size:13px;">No chat recorded.</p>`;
+
+  return base(`
+    <h2 style="margin:0 0 8px;color:#0259a0;font-size:20px;font-weight:700;">New Dermatology Consultation</h2>
+    <p style="margin:0 0 20px;color:#4b5563;font-size:15px;">
+      A new async skin consultation has been submitted and is awaiting dermatologist review.
+    </p>
+
+    ${codeBox(code)}
+
+    ${divider}
+
+    <h3 style="margin:0 0 12px;color:#0259a0;font-size:15px;font-weight:700;">Patient</h3>
+    ${label("Name")}
+    ${value(`${patientName}${demographics ? ` (${demographics})` : ""}`)}
+    ${label("Email")}
+    ${value(`<a href="mailto:${patientEmail}" style="color:#0259a0;">${patientEmail}</a>`)}
+    ${label("WhatsApp")}
+    ${value(`<a href="https://wa.me/${patientWhatsapp.replace(/[^0-9]/g, "")}" style="color:#16a34a;font-weight:700;">${patientWhatsapp}</a>`)}
+
+    ${divider}
+
+    <h3 style="margin:0 0 8px;color:#0259a0;font-size:15px;font-weight:700;">Photos</h3>
+    ${imagesHtml}
+
+    ${aiSummary ? `
+      ${divider}
+      <h3 style="margin:0 0 8px;color:#0259a0;font-size:15px;font-weight:700;">AI Intake Summary</h3>
+      <p style="margin:0;padding:12px 16px;border-radius:10px;background:#fffbeb;border:1px solid #fde68a;color:#92400e;font-size:14px;line-height:1.6;white-space:pre-wrap;">${aiSummary}</p>
+    ` : ""}
+
+    ${divider}
+
+    <h3 style="margin:0 0 12px;color:#0259a0;font-size:15px;font-weight:700;">Full Conversation</h3>
+    ${chatHtml}
+
+    <div style="text-align:center;margin:28px 0 8px;">
+      <a href="${dashboardUrl}" style="display:inline-block;background:linear-gradient(135deg,#0259a0,#0270c3);color:#ffffff;text-decoration:none;font-size:15px;font-weight:600;padding:14px 36px;border-radius:8px;">
+        Open in Admin Dashboard
+      </a>
+    </div>
+  `);
+}
