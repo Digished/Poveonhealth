@@ -1,14 +1,24 @@
 import { prisma } from "@/lib/prisma";
 
+let ensured: Promise<void> | null = null;
+
 /**
  * Ensures the doctor per-encounter charging schema exists in the production
  * database (new doctor_profiles columns + encounters + doctor_patients).
  *
- * Vercel doesn't auto-run Prisma migrations, so this runs on every server start
- * and creates anything missing. All statements use IF NOT EXISTS — fully
- * idempotent, costs ~1 ms once everything is present.
+ * Vercel doesn't auto-run Prisma migrations, so this runs on server start AND
+ * can be called defensively from the charging routes. Memoised per process so
+ * repeated calls are free after the first. All statements use IF NOT EXISTS.
+ *
+ * @param force re-run even if already ensured this process (used by route retries)
  */
-export async function ensureEncounterSchema() {
+export async function ensureEncounterSchema(force = false): Promise<void> {
+  if (ensured && !force) return ensured;
+  ensured = runEnsure();
+  return ensured;
+}
+
+async function runEnsure(): Promise<void> {
   try {
     await prisma.$executeRawUnsafe(`
       ALTER TABLE doctor_profiles ADD COLUMN IF NOT EXISTS bank_code TEXT;
@@ -86,5 +96,7 @@ export async function ensureEncounterSchema() {
     console.log("[startup] ensure-encounter-schema: schema ready");
   } catch (err) {
     console.error("[startup] ensure-encounter-schema failed:", err);
+    ensured = null; // allow a later call to retry
+    throw err;
   }
 }

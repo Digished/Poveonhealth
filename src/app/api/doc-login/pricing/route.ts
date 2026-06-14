@@ -10,6 +10,7 @@ import {
   priceForPlan,
   upsertDoctorSubaccount,
 } from "@/lib/doctor-encounter";
+import { ensureEncounterSchema } from "@/lib/startup/ensure-encounter-schema";
 
 function pricingPayload(profile: Awaited<ReturnType<typeof prisma.doctorProfile.findUnique>>) {
   if (!profile) return null;
@@ -34,15 +35,13 @@ export async function GET(req: NextRequest) {
   const email = await getDoctorEmailFromRequest(req);
   if (!email) return NextResponse.json({ error: "Not authenticated." }, { status: 401 });
   try {
+    // Guarantee the charging columns exist before we query them.
+    await ensureEncounterSchema().catch(() => {});
     const profile = await prisma.doctorProfile.findUnique({ where: { email } });
     return NextResponse.json({ success: true, pricing: pricingPayload(profile) });
   } catch (err) {
-    // Charging columns may not exist yet — ensure schema then retry once.
-    console.error("[doc-login/pricing GET] failed, ensuring schema:", err);
-    const { ensureEncounterSchema } = await import("@/lib/startup/ensure-encounter-schema");
-    await ensureEncounterSchema();
-    const profile = await prisma.doctorProfile.findUnique({ where: { email } });
-    return NextResponse.json({ success: true, pricing: pricingPayload(profile) });
+    console.error("[doc-login/pricing GET]", err);
+    return NextResponse.json({ error: "Failed to load pricing." }, { status: 500 });
   }
 }
 
@@ -71,6 +70,11 @@ export async function PATCH(req: NextRequest) {
     if (d.consultation_fee <= 0) {
       return NextResponse.json({ error: "Set a consultation fee greater than zero." }, { status: 400 });
     }
+
+    // Guarantee the charging columns/tables exist before any read/write — the
+    // startup hook normally does this, but ensure it here so saving never fails
+    // just because the migration hasn't reached this DB yet.
+    await ensureEncounterSchema().catch((e) => console.error("[doc-login/pricing] ensure schema:", e));
 
     const existing = await prisma.doctorProfile.findUnique({ where: { email } });
 
@@ -114,11 +118,9 @@ export async function PATCH(req: NextRequest) {
         update: data,
       });
     } catch (dbErr) {
-      // Self-heal if the charging columns/tables aren't in the DB yet
-      // (Vercel doesn't auto-run migrations — the startup hook normally does this).
-      console.error("[doc-login/pricing] upsert failed, ensuring schema then retrying:", dbErr);
-      const { ensureEncounterSchema } = await import("@/lib/startup/ensure-encounter-schema");
-      await ensureEncounterSchema();
+      // Self-heal: force a fresh schema-ensure (in case columns are still missing) and retry once.
+      console.error("[doc-login/pricing] upsert failed, forcing schema ensure then retrying:", dbErr);
+      await ensureEncounterSchema(true);
       profile = await prisma.doctorProfile.upsert({
         where: { email },
         create: { email, claimed: true, ...data },
@@ -129,6 +131,7 @@ export async function PATCH(req: NextRequest) {
     return NextResponse.json({ success: true, pricing: pricingPayload(profile) });
   } catch (err) {
     console.error("[doc-login/pricing]", err);
-    return NextResponse.json({ error: "Failed to save pricing." }, { status: 500 });
+    const detail = err instanceof Error ? err.message : String(err);
+    return NextResponse.json({ error: `Failed to save pricing: ${detail.slice(0, 300)}` }, { status: 500 });
   }
 }
