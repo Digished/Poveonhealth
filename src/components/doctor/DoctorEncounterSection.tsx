@@ -34,6 +34,7 @@ type Pricing = {
   share_url: string | null;
   avatar_url: string | null;
   theme: string | null;
+  show_workplace: boolean;
   ready: boolean;
   needs_setup: boolean;
 };
@@ -546,8 +547,25 @@ function FeeInput({ label, value, onChange, hint, required }: { label: string; v
 function EncounterPageCard({ pricing, onThemeChange }: { pricing: Pricing | null; onThemeChange?: (theme: string | null) => void }) {
   const [avatar, setAvatar] = useState<string | null>(pricing?.avatar_url ?? null);
   const [theme, setTheme] = useState<string>(pricing?.theme ?? DEFAULT_THEME_ID);
+  const [showWorkplace, setShowWorkplace] = useState<boolean>(pricing?.show_workplace ?? true);
   const [uploading, setUploading] = useState(false);
   const fileRef = useRef<HTMLInputElement>(null);
+
+  async function toggleWorkplace(next: boolean) {
+    setShowWorkplace(next);
+    try {
+      const res = await fetch("/api/doc-login/encounter-page", {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ show_workplace: next }),
+      });
+      const d = await res.json();
+      if (!res.ok || !d.success) { toast.error(d.error ?? "Failed to update."); setShowWorkplace(!next); }
+    } catch {
+      toast.error("Network error.");
+      setShowWorkplace(!next);
+    }
+  }
 
   async function upload(file: File) {
     setUploading(true);
@@ -643,6 +661,17 @@ function EncounterPageCard({ pricing, onThemeChange }: { pricing: Pricing | null
           })}
         </div>
       </div>
+
+      {/* Show workplace toggle */}
+      <button onClick={() => toggleWorkplace(!showWorkplace)} className="w-full flex items-center gap-3 pt-1 text-left">
+        <div className="flex-1 min-w-0">
+          <p className="text-sm font-semibold text-slate-700">Show my workplace</p>
+          <p className="text-[11px] text-slate-400">Display your hospital(s) on your encounter page.</p>
+        </div>
+        <span className={`relative w-11 h-6 rounded-full transition-colors shrink-0 ${showWorkplace ? "bg-medical-600" : "bg-slate-200"}`}>
+          <span className={`absolute top-0.5 left-0.5 w-5 h-5 rounded-full bg-white shadow transition-transform ${showWorkplace ? "translate-x-5" : ""}`} />
+        </span>
+      </button>
     </div>
   );
 }

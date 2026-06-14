@@ -221,6 +221,7 @@ model DoctorProfile {
   paystack_subaccount_code String? // Paystack subaccount for the 80/20 split payout
   avatar_url       String?  // optional profile photo shown on the encounter page
   encounter_theme  String?  // colour theme id for the encounter page (e.g. "ocean")
+  encounter_show_workplace Boolean @default(true) // show the doctor's hospitals on the page
 
   updated_at     DateTime @updatedAt
 

@@ -62,7 +62,7 @@ export default async function DoctorEncounterPage({ params }: { params: { slug: 
             slug={params.slug.toLowerCase()}
             doctorName={doctorName}
             specialty={profile.specialty}
-            hospitals={profile.hospitals ?? []}
+            hospitals={profile.encounter_show_workplace ? (profile.hospitals ?? []) : []}
             patientCount={patientCount}
             pricing={pricing}
             avatarUrl={profile.avatar_url ?? null}
