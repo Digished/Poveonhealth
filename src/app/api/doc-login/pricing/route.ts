@@ -32,6 +32,9 @@ function pricingPayload(profile: Awaited<ReturnType<typeof prisma.doctorProfile.
     has_subaccount: !!profile.paystack_subaccount_code,
     slug: profile.encounter_slug ?? null,
     share_url: profile.encounter_slug ? `${appUrl()}/d/${profile.encounter_slug}` : null,
+    avatar_url: profile.avatar_url ?? null,
+    theme: profile.encounter_theme ?? null,
+    show_workplace: profile.encounter_show_workplace ?? true,
     ready: isEncounterReady(profile),
     needs_setup: priceForPlan(profile, "single") == null,
   };

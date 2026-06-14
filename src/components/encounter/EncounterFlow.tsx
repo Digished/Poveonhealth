@@ -21,6 +21,9 @@ interface EncounterFlowProps {
   hospitals: string[];
   patientCount: number;
   pricing: { single: number | null; monthly: number | null; yearly: number | null };
+  avatarUrl?: string | null;
+  heroGradient?: string;
+  accentClass?: string;
 }
 
 const STEPS = [
@@ -33,7 +36,7 @@ const STEPS = [
 const MAX_PHOTOS = 5;
 const naira = (n: number) => `₦${n.toLocaleString("en-NG")}`;
 
-export function EncounterFlow({ slug, doctorName, specialty, hospitals, patientCount, pricing }: EncounterFlowProps) {
+export function EncounterFlow({ slug, doctorName, specialty, hospitals, patientCount, pricing, avatarUrl, heroGradient = "from-medical-500 to-medical-700", accentClass = "" }: EncounterFlowProps) {
   const [step, setStep] = useState(1);
 
   // Step 1 — details (email first, auto-fill the rest)
@@ -232,9 +235,14 @@ export function EncounterFlow({ slug, doctorName, specialty, hospitals, patientC
     <div className="animate-fade-in pb-32">
       {/* ── Doctor hero + trust badge ── */}
       <div className="mt-5 mb-3 text-center">
-        <div className="inline-flex items-center justify-center w-14 h-14 rounded-2xl bg-gradient-to-br from-medical-500 to-medical-700 text-white shadow-lg shadow-medical-600/30 mb-3">
-          <Stethoscope className="w-7 h-7" />
-        </div>
+        {avatarUrl ? (
+          // eslint-disable-next-line @next/next/no-img-element
+          <img src={avatarUrl} alt={doctorName} className="w-20 h-20 rounded-2xl object-cover mx-auto mb-3 shadow-lg ring-2 ring-white" />
+        ) : (
+          <div className={`inline-flex items-center justify-center w-16 h-16 rounded-2xl bg-gradient-to-br ${heroGradient} text-white shadow-lg mb-3`}>
+            <Stethoscope className="w-8 h-8" />
+          </div>
+        )}
         <h1 className="text-xl font-bold text-slate-800">{doctorName}</h1>
         {specialty && <p className="text-sm text-medical-600 font-medium mt-0.5">{specialty}</p>}
         {hospitals.length > 0 && <p className="text-xs text-slate-400 mt-0.5 truncate">{hospitals.join(" · ")}</p>}
@@ -436,7 +444,7 @@ export function EncounterFlow({ slug, doctorName, specialty, hospitals, patientC
 
       {/* ── Floating action bar ── */}
       {mounted && createPortal(
-        <div className="fixed bottom-0 inset-x-0 z-[200] px-4 pb-6 pt-3 pointer-events-none">
+        <div className={`fixed bottom-0 inset-x-0 z-[200] px-4 pb-6 pt-3 pointer-events-none ${accentClass}`}>
           <div className="max-w-2xl mx-auto flex items-center gap-3 pointer-events-auto">
             {step > 1 && (
               <button onClick={goBack} className="flex items-center gap-1.5 px-4 py-3.5 rounded-2xl bg-white border border-slate-200 text-slate-600 hover:bg-slate-50 text-sm font-semibold transition-all shadow-lg shadow-slate-900/5 shrink-0">

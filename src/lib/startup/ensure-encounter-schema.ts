@@ -39,6 +39,15 @@ async function runEnsure(): Promise<void> {
       ALTER TABLE doctor_profiles ADD COLUMN IF NOT EXISTS paystack_subaccount_code TEXT;
     `);
     await prisma.$executeRawUnsafe(`
+      ALTER TABLE doctor_profiles ADD COLUMN IF NOT EXISTS avatar_url TEXT;
+    `);
+    await prisma.$executeRawUnsafe(`
+      ALTER TABLE doctor_profiles ADD COLUMN IF NOT EXISTS encounter_theme TEXT;
+    `);
+    await prisma.$executeRawUnsafe(`
+      ALTER TABLE doctor_profiles ADD COLUMN IF NOT EXISTS encounter_show_workplace BOOLEAN NOT NULL DEFAULT true;
+    `);
+    await prisma.$executeRawUnsafe(`
       CREATE UNIQUE INDEX IF NOT EXISTS doctor_profiles_encounter_slug_key ON doctor_profiles(encounter_slug);
     `);
 

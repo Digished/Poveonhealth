@@ -4,6 +4,61 @@
 @tailwind components;
 @tailwind utilities;
 
+/* ── Accent palette (drives every medical-* utility) ──────────────────────────
+   Defaults = the Poveon brand blue. A .theme-* wrapper overrides these vars so
+   the doctor's chosen colour theme recolours buttons, rings, links, etc. */
+:root {
+  --medical-50: 240 247 255;
+  --medical-100: 224 239 254;
+  --medical-200: 186 224 253;
+  --medical-300: 125 200 251;
+  --medical-400: 56 170 245;
+  --medical-500: 14 143 229;
+  --medical-600: 2 112 195;
+  --medical-700: 2 89 160;
+  --medical-800: 6 75 132;
+  --medical-900: 10 63 110;
+  --medical-950: 7 40 73;
+}
+
+/* ocean = the default brand palette (explicit so it can be re-applied) */
+.theme-ocean {
+  --medical-50: 240 247 255;  --medical-100: 224 239 254; --medical-200: 186 224 253;
+  --medical-300: 125 200 251; --medical-400: 56 170 245;  --medical-500: 14 143 229;
+  --medical-600: 2 112 195;   --medical-700: 2 89 160;    --medical-800: 6 75 132;
+  --medical-900: 10 63 110;   --medical-950: 7 40 73;
+}
+.theme-emerald {
+  --medical-50: 236 253 245;  --medical-100: 209 250 229; --medical-200: 167 243 208;
+  --medical-300: 110 231 183; --medical-400: 52 211 153;  --medical-500: 16 185 129;
+  --medical-600: 5 150 105;   --medical-700: 4 120 87;    --medical-800: 6 95 70;
+  --medical-900: 6 78 59;     --medical-950: 2 44 34;
+}
+.theme-rose {
+  --medical-50: 255 241 242;  --medical-100: 255 228 230; --medical-200: 254 205 211;
+  --medical-300: 253 164 175; --medical-400: 251 113 133; --medical-500: 244 63 94;
+  --medical-600: 225 29 72;   --medical-700: 190 18 60;   --medical-800: 159 18 57;
+  --medical-900: 136 19 55;   --medical-950: 76 5 25;
+}
+.theme-violet {
+  --medical-50: 245 243 255;  --medical-100: 237 233 254; --medical-200: 221 214 254;
+  --medical-300: 196 181 253; --medical-400: 167 139 250; --medical-500: 139 92 246;
+  --medical-600: 124 58 237;  --medical-700: 109 40 217;  --medical-800: 91 33 182;
+  --medical-900: 76 29 149;   --medical-950: 46 16 101;
+}
+.theme-amber {
+  --medical-50: 255 251 235;  --medical-100: 254 243 199; --medical-200: 253 230 138;
+  --medical-300: 252 211 77;  --medical-400: 251 191 36;  --medical-500: 245 158 11;
+  --medical-600: 217 119 6;   --medical-700: 180 83 9;    --medical-800: 146 64 14;
+  --medical-900: 120 53 15;   --medical-950: 69 26 3;
+}
+.theme-slate {
+  --medical-50: 248 250 252;  --medical-100: 241 245 249; --medical-200: 226 232 240;
+  --medical-300: 203 213 225; --medical-400: 148 163 184; --medical-500: 100 116 139;
+  --medical-600: 71 85 105;   --medical-700: 51 65 85;    --medical-800: 30 41 59;
+  --medical-900: 15 23 42;    --medical-950: 2 6 23;
+}
+
 @layer base {
   * {
     box-sizing: border-box;
