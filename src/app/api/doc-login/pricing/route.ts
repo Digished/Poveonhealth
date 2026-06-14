@@ -11,6 +11,13 @@ import {
   upsertDoctorSubaccount,
 } from "@/lib/doctor-encounter";
 import { ensureEncounterSchema } from "@/lib/startup/ensure-encounter-schema";
+import { NIGERIAN_BANKS } from "@/lib/nigerian-banks";
+
+/** Resolve a Paystack bank code from a bank name (older profiles stored name but no code). */
+function codeForBankName(name: string): string {
+  const target = name.trim().toLowerCase();
+  return NIGERIAN_BANKS.find((b) => b.name.toLowerCase() === target)?.code ?? "";
+}
 
 function pricingPayload(profile: Awaited<ReturnType<typeof prisma.doctorProfile.findUnique>>) {
   if (!profile) return null;
@@ -50,7 +57,7 @@ const BodySchema = z.object({
   retainer_monthly: z.coerce.number().min(0).max(100_000_000).optional().nullable(),
   retainer_yearly: z.coerce.number().min(0).max(100_000_000).optional().nullable(),
   bank_name: z.string().trim().min(1),
-  bank_code: z.string().trim().min(1),
+  bank_code: z.string().trim().optional().default(""),
   account_number: z.string().trim().regex(/^\d{10}$/, "Account number must be 10 digits"),
   account_name: z.string().trim().min(2),
 });
@@ -78,17 +85,20 @@ export async function PATCH(req: NextRequest) {
 
     const existing = await prisma.doctorProfile.findUnique({ where: { email } });
 
+    // Resolve the settlement bank code (older profiles may only have the name).
+    const bankCode = d.bank_code || codeForBankName(d.bank_name);
+
     // Provision (or update) the Paystack subaccount for the 80/20 split.
-    // Best-effort: if it fails we still save the pricing and bank, and the
-    // subaccount is created lazily at the first charge. Saving never blocks.
+    // Best-effort: if it fails (or the bank code is unknown) we still save the
+    // pricing and bank — the subaccount is created lazily at the first charge.
     const bankChanged =
-      existing?.bank_code !== d.bank_code || existing?.account_number !== d.account_number;
+      existing?.bank_code !== bankCode || existing?.account_number !== d.account_number;
     let subaccountCode = existing?.paystack_subaccount_code ?? null;
-    if (!subaccountCode || bankChanged) {
+    if (bankCode && (!subaccountCode || bankChanged)) {
       subaccountCode = await upsertDoctorSubaccount({
         existingCode: existing?.paystack_subaccount_code ?? null,
         businessName: existing?.full_name?.trim() || d.account_name || email,
-        bankCode: d.bank_code,
+        bankCode,
         accountNumber: d.account_number,
       });
     }
@@ -103,7 +113,7 @@ export async function PATCH(req: NextRequest) {
       retainer_monthly: d.retainer_monthly && d.retainer_monthly > 0 ? d.retainer_monthly : null,
       retainer_yearly: d.retainer_yearly && d.retainer_yearly > 0 ? d.retainer_yearly : null,
       bank_name: d.bank_name,
-      bank_code: d.bank_code,
+      bank_code: bankCode || null,
       account_number: d.account_number,
       account_name: d.account_name,
       paystack_subaccount_code: subaccountCode,

@@ -8,8 +8,16 @@ import {
 } from "lucide-react";
 import { Input } from "@/components/ui/Input";
 import { BankAccountInput } from "@/components/BankAccountInput";
+import { NIGERIAN_BANKS } from "@/lib/nigerian-banks";
 
 const naira = (n: number) => `₦${Math.round(n).toLocaleString("en-NG")}`;
+
+/** Resolve a Paystack bank code from a saved bank name (older profiles stored name but no code). */
+function codeForBankName(name: string | null | undefined): string {
+  if (!name) return "";
+  const target = name.trim().toLowerCase();
+  return NIGERIAN_BANKS.find((b) => b.name.toLowerCase() === target)?.code ?? "";
+}
 
 type Pricing = {
   consultation_fee: number | null;
@@ -367,14 +375,20 @@ function PricingView({ pricing, onSaved }: { pricing: Pricing | null; onSaved: (
   const [monthly, setMonthly] = useState(pricing?.retainer_monthly ? String(pricing.retainer_monthly) : "");
   const [yearly, setYearly] = useState(pricing?.retainer_yearly ? String(pricing.retainer_yearly) : "");
   const [bankName, setBankName] = useState(pricing?.bank_name ?? "");
-  const [bankCode, setBankCode] = useState(pricing?.bank_code ?? "");
+  // Older profiles saved bank_name without a code — derive it so autofilled
+  // bank details are valid immediately (no need to re-pick the bank to save).
+  const [bankCode, setBankCode] = useState(pricing?.bank_code || codeForBankName(pricing?.bank_name));
   const [accountNumber, setAccountNumber] = useState(pricing?.account_number ?? "");
   const [accountName, setAccountName] = useState(pricing?.account_name ?? "");
   const [verified, setVerified] = useState(!!pricing?.account_name);
   const [saving, setSaving] = useState(false);
 
   const num = (s: string) => { const n = parseInt(s.replace(/\D/g, ""), 10); return Number.isFinite(n) ? n : 0; };
-  const canSave = num(consult) > 0 && !!bankCode && accountNumber.length === 10 && (verified || !!accountName);
+  // Allow saving once we have a fee + a 10-digit account + a confirmed account name.
+  // bankCode is needed for the payout subaccount, but if an older profile has the
+  // name/number/name verified we still let them save (subaccount is best-effort).
+  const haveBank = !!bankCode || (!!bankName && accountNumber.length === 10 && !!accountName);
+  const canSave = num(consult) > 0 && haveBank && accountNumber.length === 10 && (verified || !!accountName);
 
   async function save() {
     if (!canSave || saving) return;
