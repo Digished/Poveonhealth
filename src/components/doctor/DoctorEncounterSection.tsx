@@ -1,0 +1,446 @@
+"use client";
+
+import { useCallback, useEffect, useState } from "react";
+import { toast } from "react-hot-toast";
+import {
+  Loader2, Copy, Check, CreditCard, Users, Wallet, Stethoscope, Link2,
+  ChevronDown, ChevronUp, Send, ShieldCheck, TrendingUp, AlertTriangle, ExternalLink,
+} from "lucide-react";
+import { Input } from "@/components/ui/Input";
+import { BankAccountInput } from "@/components/BankAccountInput";
+
+const naira = (n: number) => `₦${Math.round(n).toLocaleString("en-NG")}`;
+
+type Pricing = {
+  consultation_fee: number | null;
+  retainer_monthly: number | null;
+  retainer_yearly: number | null;
+  bank_name: string | null;
+  bank_code: string | null;
+  account_number: string | null;
+  account_name: string | null;
+  has_subaccount: boolean;
+  slug: string | null;
+  share_url: string | null;
+  ready: boolean;
+  needs_setup: boolean;
+};
+
+type EncounterItem = {
+  id: string;
+  code: string;
+  patient_name: string;
+  patient_email: string;
+  patient_phone: string;
+  patient_age: number | null;
+  patient_sex: string | null;
+  image_urls: string[];
+  conversation: { role: string; content: string }[];
+  ai_summary: string | null;
+  plan_type: string;
+  status: string;
+  doctor_note: string | null;
+  amount_paid: number;
+  doctor_share: number;
+  paid_at: string | null;
+  created_at: string;
+};
+
+type PatientItem = {
+  id: string;
+  patient_name: string | null;
+  patient_email: string;
+  patient_phone: string | null;
+  subscription_type: string;
+  subscription_expires_at: string | null;
+  active: boolean;
+  total_paid: number;
+  encounter_count: number;
+};
+
+type Revenue = {
+  total: number; this_month: number; encounter_count: number; patient_count: number; active_subscribers: number;
+};
+
+const PLAN_LABEL: Record<string, string> = { single: "Single", monthly: "Monthly", yearly: "Yearly" };
+
+export function DoctorEncounterSection({ onReadyChange }: { onReadyChange?: (ready: boolean) => void }) {
+  const [view, setView] = useState<"overview" | "encounters" | "patients" | "pricing">("overview");
+  const [pricing, setPricing] = useState<Pricing | null>(null);
+  const [encounters, setEncounters] = useState<EncounterItem[]>([]);
+  const [patients, setPatients] = useState<PatientItem[]>([]);
+  const [revenue, setRevenue] = useState<Revenue | null>(null);
+  const [loading, setLoading] = useState(true);
+
+  const load = useCallback(async () => {
+    setLoading(true);
+    try {
+      const [pRes, eRes] = await Promise.all([
+        fetch("/api/doc-login/pricing"),
+        fetch("/api/doc-login/encounters"),
+      ]);
+      const pData = await pRes.json();
+      const eData = await eRes.json();
+      if (pData.success) {
+        setPricing(pData.pricing);
+        onReadyChange?.(!!pData.pricing?.ready);
+        if (pData.pricing?.needs_setup) setView("pricing");
+      }
+      if (eData.success) {
+        setEncounters(eData.encounters);
+        setPatients(eData.patients);
+        setRevenue(eData.revenue);
+      }
+    } catch {
+      toast.error("Failed to load your charging data.");
+    } finally {
+      setLoading(false);
+    }
+  }, [onReadyChange]);
+
+  useEffect(() => { load(); }, [load]);
+
+  if (loading) {
+    return <div className="py-16 text-center"><Loader2 className="w-6 h-6 text-medical-500 animate-spin mx-auto" /></div>;
+  }
+
+  return (
+    <div className="space-y-4">
+      {/* Setup prompt */}
+      {pricing?.needs_setup && view !== "pricing" && (
+        <button onClick={() => setView("pricing")} className="w-full flex items-center gap-3 px-4 py-3.5 rounded-2xl bg-amber-50 border border-amber-200 text-left hover:bg-amber-100/70 transition">
+          <AlertTriangle className="w-5 h-5 text-amber-500 shrink-0" />
+          <div className="flex-1 min-w-0">
+            <p className="text-sm font-bold text-amber-800">Set your prices to start charging</p>
+            <p className="text-xs text-amber-700">Add your consultation fee and payout bank to activate your link.</p>
+          </div>
+          <span className="text-xs font-semibold text-amber-700 shrink-0">Set up →</span>
+        </button>
+      )}
+
+      {/* Sub-nav */}
+      <div className="flex gap-1 bg-white/60 rounded-xl p-1 border border-white/60 shadow-sm">
+        {([
+          ["overview", "Revenue", TrendingUp],
+          ["encounters", "Encounters", Stethoscope],
+          ["patients", "Patients", Users],
+          ["pricing", "Pricing", CreditCard],
+        ] as const).map(([key, label, Icon]) => (
+          <button key={key} onClick={() => setView(key)}
+            className={`flex-1 flex items-center justify-center gap-1 py-2 rounded-lg text-xs font-semibold transition-all ${
+              view === key ? "bg-white text-slate-800 shadow-sm" : "text-slate-500 hover:text-slate-700"
+            }`}>
+            <Icon className="w-3.5 h-3.5" /> <span className="hidden sm:inline">{label}</span>
+          </button>
+        ))}
+      </div>
+
+      {view === "overview" && <OverviewView pricing={pricing} revenue={revenue} onSetup={() => setView("pricing")} />}
+      {view === "encounters" && <EncountersView encounters={encounters} onChanged={load} />}
+      {view === "patients" && <PatientsView patients={patients} />}
+      {view === "pricing" && <PricingView pricing={pricing} onSaved={load} />}
+    </div>
+  );
+}
+
+// ── Overview / revenue ───────────────────────────────────────────────────────
+function OverviewView({ pricing, revenue, onSetup }: { pricing: Pricing | null; revenue: Revenue | null; onSetup: () => void }) {
+  const [copied, setCopied] = useState(false);
+  const shareUrl = pricing?.share_url;
+
+  function copy() {
+    if (!shareUrl) return;
+    navigator.clipboard.writeText(shareUrl).then(() => { setCopied(true); toast.success("Link copied"); setTimeout(() => setCopied(false), 1500); });
+  }
+
+  return (
+    <div className="space-y-4">
+      {/* Share link */}
+      {pricing?.ready && shareUrl ? (
+        <div className="bg-gradient-to-br from-medical-600 to-medical-800 rounded-2xl p-4 text-white shadow-lg shadow-medical-600/20">
+          <p className="text-[11px] font-semibold uppercase tracking-wider text-white/70 flex items-center gap-1.5"><Link2 className="w-3.5 h-3.5" /> Your patient link</p>
+          <div className="flex items-center gap-2 mt-2">
+            <code className="flex-1 text-sm font-semibold bg-white/15 rounded-lg px-3 py-2 truncate">{shareUrl}</code>
+            <button onClick={copy} className="shrink-0 w-9 h-9 rounded-lg bg-white/20 hover:bg-white/30 flex items-center justify-center transition" aria-label="Copy link">
+              {copied ? <Check className="w-4 h-4" /> : <Copy className="w-4 h-4" />}
+            </button>
+            <a href={shareUrl} target="_blank" rel="noreferrer" className="shrink-0 w-9 h-9 rounded-lg bg-white/20 hover:bg-white/30 flex items-center justify-center transition" aria-label="Open link">
+              <ExternalLink className="w-4 h-4" />
+            </a>
+          </div>
+          <p className="text-[11px] text-white/70 mt-2">Share this with patients to screen and charge them. You keep 80% of every payment.</p>
+        </div>
+      ) : (
+        <button onClick={onSetup} className="w-full bg-white rounded-2xl border border-slate-100 p-6 text-center hover:border-medical-200 transition">
+          <CreditCard className="w-9 h-9 text-slate-200 mx-auto mb-2" />
+          <p className="text-sm font-semibold text-slate-600">Set up charging to get your shareable link</p>
+        </button>
+      )}
+
+      {/* Revenue cards */}
+      <div className="grid grid-cols-2 gap-3">
+        <Stat label="Total earned (80%)" value={naira(revenue?.total ?? 0)} icon={Wallet} accent="emerald" />
+        <Stat label="This month" value={naira(revenue?.this_month ?? 0)} icon={TrendingUp} accent="medical" />
+        <Stat label="Encounters" value={String(revenue?.encounter_count ?? 0)} icon={Stethoscope} accent="slate" />
+        <Stat label="Active subscribers" value={String(revenue?.active_subscribers ?? 0)} icon={Users} accent="indigo" />
+      </div>
+
+      <div className="flex items-start gap-2.5 px-4 py-3 rounded-xl bg-slate-50 border border-slate-100">
+        <ShieldCheck className="w-4 h-4 text-slate-400 shrink-0 mt-0.5" />
+        <p className="text-xs text-slate-500 leading-relaxed">Payments are split automatically at checkout: 80% to your bank, 20% to Poveon. Payouts follow your bank&apos;s settlement schedule.</p>
+      </div>
+    </div>
+  );
+}
+
+function Stat({ label, value, icon: Icon, accent }: { label: string; value: string; icon: typeof Wallet; accent: "emerald" | "medical" | "slate" | "indigo" }) {
+  const colors = {
+    emerald: "text-emerald-600 bg-emerald-50",
+    medical: "text-medical-600 bg-medical-50",
+    slate: "text-slate-600 bg-slate-100",
+    indigo: "text-indigo-600 bg-indigo-50",
+  }[accent];
+  return (
+    <div className="bg-white rounded-2xl border border-slate-100 p-4">
+      <div className={`w-8 h-8 rounded-lg flex items-center justify-center mb-2 ${colors}`}><Icon className="w-4 h-4" /></div>
+      <p className="text-xl font-black text-slate-800">{value}</p>
+      <p className="text-[11px] text-slate-400 font-medium">{label}</p>
+    </div>
+  );
+}
+
+// ── Encounters ───────────────────────────────────────────────────────────────
+function EncountersView({ encounters, onChanged }: { encounters: EncounterItem[]; onChanged: () => void }) {
+  if (encounters.length === 0) {
+    return (
+      <div className="bg-white rounded-2xl border border-slate-100 p-8 text-center">
+        <Stethoscope className="w-10 h-10 text-slate-200 mx-auto mb-3" />
+        <p className="text-sm font-semibold text-slate-600">No encounters yet</p>
+        <p className="text-xs text-slate-400 mt-1">Share your link to start receiving patient requests.</p>
+      </div>
+    );
+  }
+  return <div className="space-y-3">{encounters.map((e) => <EncounterCard key={e.id} enc={e} onChanged={onChanged} />)}</div>;
+}
+
+function EncounterCard({ enc, onChanged }: { enc: EncounterItem; onChanged: () => void }) {
+  const [open, setOpen] = useState(false);
+  const [note, setNote] = useState("");
+  const [sending, setSending] = useState(false);
+
+  async function sendNote() {
+    const text = note.trim();
+    if (!text || sending) return;
+    setSending(true);
+    try {
+      const res = await fetch(`/api/doc-login/encounters/${enc.id}/note`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ note: text }),
+      });
+      const data = await res.json();
+      if (!res.ok || !data.success) { toast.error(data.error ?? "Failed to send."); return; }
+      toast.success("Note sent to patient");
+      setNote("");
+      onChanged();
+    } catch {
+      toast.error("Network error.");
+    } finally {
+      setSending(false);
+    }
+  }
+
+  const demographics = [enc.patient_age ? `${enc.patient_age} yrs` : null, enc.patient_sex].filter(Boolean).join(", ");
+
+  return (
+    <div className="bg-white rounded-2xl border border-slate-100 overflow-hidden">
+      <button onClick={() => setOpen((v) => !v)} className="w-full flex items-center gap-3 p-4 text-left">
+        <div className="flex-1 min-w-0">
+          <div className="flex items-center gap-2">
+            <p className="text-sm font-bold text-slate-800 truncate">{enc.patient_name}</p>
+            <span className="text-[10px] font-bold px-1.5 py-0.5 rounded-full bg-medical-50 text-medical-600 shrink-0">{PLAN_LABEL[enc.plan_type] ?? enc.plan_type}</span>
+            {enc.status === "responded" && <span className="text-[10px] font-bold px-1.5 py-0.5 rounded-full bg-emerald-50 text-emerald-600 shrink-0">Replied</span>}
+          </div>
+          <p className="text-xs text-slate-400 truncate">{enc.code} · {demographics || enc.patient_email}</p>
+        </div>
+        <p className="text-sm font-black text-emerald-600 shrink-0">{naira(enc.doctor_share)}</p>
+        {open ? <ChevronUp className="w-4 h-4 text-slate-400 shrink-0" /> : <ChevronDown className="w-4 h-4 text-slate-400 shrink-0" />}
+      </button>
+
+      {open && (
+        <div className="px-4 pb-4 space-y-3 border-t border-slate-100 pt-3">
+          <div className="grid grid-cols-2 gap-2 text-xs">
+            <a href={`mailto:${enc.patient_email}`} className="text-medical-600 truncate">{enc.patient_email}</a>
+            <a href={`tel:${enc.patient_phone}`} className="text-medical-600 truncate">{enc.patient_phone}</a>
+          </div>
+
+          {enc.image_urls.length > 0 && (
+            <div className="flex gap-2 flex-wrap">
+              {enc.image_urls.map((url, i) => (
+                // eslint-disable-next-line @next/next/no-img-element
+                <a key={i} href={url} target="_blank" rel="noreferrer"><img src={url} alt={`Photo ${i + 1}`} className="w-16 h-16 object-cover rounded-lg border border-slate-200" /></a>
+              ))}
+            </div>
+          )}
+
+          {enc.ai_summary && (
+            <div className="px-3 py-2.5 rounded-xl bg-amber-50 border border-amber-100">
+              <p className="text-[10px] font-bold uppercase tracking-wide text-amber-600 mb-1">AI summary</p>
+              <p className="text-xs text-amber-800 leading-relaxed whitespace-pre-wrap">{enc.ai_summary}</p>
+            </div>
+          )}
+
+          {enc.conversation.length > 0 && (
+            <div className="space-y-1.5">
+              <p className="text-[10px] font-bold uppercase tracking-wide text-slate-400">Questions &amp; answers</p>
+              {enc.conversation.map((m, i) => (
+                <div key={i} className={`text-xs px-3 py-2 rounded-lg ${m.role === "user" ? "bg-medical-50 text-medical-800" : "bg-slate-50 text-slate-600"}`}>
+                  <span className="font-bold">{m.role === "user" ? "Patient: " : "Assistant: "}</span>{m.content}
+                </div>
+              ))}
+            </div>
+          )}
+
+          {enc.doctor_note && (
+            <div className="px-3 py-2.5 rounded-xl bg-emerald-50 border border-emerald-100">
+              <p className="text-[10px] font-bold uppercase tracking-wide text-emerald-600 mb-1">Your note</p>
+              <p className="text-xs text-emerald-800 leading-relaxed whitespace-pre-wrap">{enc.doctor_note}</p>
+            </div>
+          )}
+
+          <div className="flex items-end gap-2">
+            <textarea value={note} onChange={(e) => setNote(e.target.value)} rows={2} placeholder="Write a note to the patient…"
+              className="flex-1 resize-none rounded-xl border border-slate-200 bg-white px-3 py-2 text-xs focus:outline-none focus:ring-2 focus:ring-medical-500 focus:border-medical-400 transition" />
+            <button onClick={sendNote} disabled={!note.trim() || sending}
+              className="shrink-0 flex items-center gap-1.5 px-3 py-2 rounded-xl bg-medical-600 hover:bg-medical-700 disabled:opacity-40 text-white text-xs font-semibold transition">
+              {sending ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Send className="w-3.5 h-3.5" />} Send
+            </button>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ── Patients ─────────────────────────────────────────────────────────────────
+function PatientsView({ patients }: { patients: PatientItem[] }) {
+  if (patients.length === 0) {
+    return (
+      <div className="bg-white rounded-2xl border border-slate-100 p-8 text-center">
+        <Users className="w-10 h-10 text-slate-200 mx-auto mb-3" />
+        <p className="text-sm font-semibold text-slate-600">No patients yet</p>
+        <p className="text-xs text-slate-400 mt-1">Patients appear here after their first paid encounter.</p>
+      </div>
+    );
+  }
+  return (
+    <div className="space-y-2.5">
+      {patients.map((p) => (
+        <div key={p.id} className="bg-white rounded-2xl border border-slate-100 p-4 flex items-center gap-3">
+          <div className="flex-1 min-w-0">
+            <p className="text-sm font-bold text-slate-800 truncate">{p.patient_name || p.patient_email}</p>
+            <p className="text-xs text-slate-400 truncate">{p.patient_phone || p.patient_email} · {p.encounter_count} encounter{p.encounter_count === 1 ? "" : "s"}</p>
+          </div>
+          <div className="text-right shrink-0">
+            {p.subscription_type !== "none" && p.active ? (
+              <span className="text-[10px] font-bold px-2 py-1 rounded-full bg-emerald-50 text-emerald-600">{PLAN_LABEL[p.subscription_type]} · active</span>
+            ) : p.subscription_type !== "none" ? (
+              <span className="text-[10px] font-bold px-2 py-1 rounded-full bg-slate-100 text-slate-500">Expired</span>
+            ) : (
+              <span className="text-[10px] font-bold px-2 py-1 rounded-full bg-slate-100 text-slate-500">Pay-per-visit</span>
+            )}
+            <p className="text-xs font-black text-slate-700 mt-1">{naira(p.total_paid)}</p>
+          </div>
+        </div>
+      ))}
+    </div>
+  );
+}
+
+// ── Pricing setup ────────────────────────────────────────────────────────────
+function PricingView({ pricing, onSaved }: { pricing: Pricing | null; onSaved: () => void }) {
+  const [consult, setConsult] = useState(pricing?.consultation_fee ? String(pricing.consultation_fee) : "");
+  const [monthly, setMonthly] = useState(pricing?.retainer_monthly ? String(pricing.retainer_monthly) : "");
+  const [yearly, setYearly] = useState(pricing?.retainer_yearly ? String(pricing.retainer_yearly) : "");
+  const [bankName, setBankName] = useState(pricing?.bank_name ?? "");
+  const [bankCode, setBankCode] = useState(pricing?.bank_code ?? "");
+  const [accountNumber, setAccountNumber] = useState(pricing?.account_number ?? "");
+  const [accountName, setAccountName] = useState(pricing?.account_name ?? "");
+  const [verified, setVerified] = useState(!!pricing?.account_name);
+  const [saving, setSaving] = useState(false);
+
+  const num = (s: string) => { const n = parseInt(s.replace(/\D/g, ""), 10); return Number.isFinite(n) ? n : 0; };
+  const canSave = num(consult) > 0 && !!bankCode && accountNumber.length === 10 && (verified || !!accountName);
+
+  async function save() {
+    if (!canSave || saving) return;
+    setSaving(true);
+    try {
+      const res = await fetch("/api/doc-login/pricing", {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          consultation_fee: num(consult),
+          retainer_monthly: monthly ? num(monthly) : null,
+          retainer_yearly: yearly ? num(yearly) : null,
+          bank_name: bankName,
+          bank_code: bankCode,
+          account_number: accountNumber,
+          account_name: accountName,
+        }),
+      });
+      const data = await res.json();
+      if (!res.ok || !data.success) { toast.error(data.error ?? "Failed to save."); return; }
+      toast.success("Pricing saved — your link is live!");
+      onSaved();
+    } catch {
+      toast.error("Network error.");
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  return (
+    <div className="space-y-4">
+      <div className="bg-white rounded-2xl border border-slate-100 p-4 sm:p-5 space-y-4">
+        <div>
+          <h3 className="text-sm font-bold text-slate-800 flex items-center gap-2"><CreditCard className="w-4 h-4 text-medical-500" /> Your prices</h3>
+          <p className="text-xs text-slate-400 mt-1">Set what patients pay. You keep 80% of every payment.</p>
+        </div>
+        <FeeInput label="Consultation fee (per encounter)" required value={consult} onChange={setConsult} hint="Charged for a single encounter." />
+        <FeeInput label="Monthly retainership" value={monthly} onChange={setMonthly} hint="Optional — leave blank to disable." />
+        <FeeInput label="Yearly retainership" value={yearly} onChange={setYearly} hint="Optional — leave blank to disable." />
+      </div>
+
+      <div className="bg-white rounded-2xl border border-slate-100 p-4 sm:p-5 space-y-4">
+        <div>
+          <h3 className="text-sm font-bold text-slate-800 flex items-center gap-2"><Wallet className="w-4 h-4 text-medical-500" /> Payout account</h3>
+          <p className="text-xs text-slate-400 mt-1">Your 80% share is paid here automatically by Paystack.</p>
+        </div>
+        <BankAccountInput
+          bankName={bankName} bankCode={bankCode} accountNumber={accountNumber} accountName={accountName}
+          onBankChange={(name, code) => { setBankName(name); setBankCode(code); }}
+          onAccountNumberChange={setAccountNumber}
+          onAccountNameChange={setAccountName}
+          onVerifiedChange={setVerified}
+        />
+      </div>
+
+      <button onClick={save} disabled={!canSave || saving}
+        className="w-full flex items-center justify-center gap-2 py-3.5 rounded-2xl bg-medical-600 hover:bg-medical-700 active:scale-[0.98] disabled:opacity-50 text-white font-bold text-sm shadow-xl shadow-medical-600/30 transition-all">
+        {saving ? <Loader2 className="w-5 h-5 animate-spin" /> : <Check className="w-5 h-5" />}
+        {saving ? "Saving…" : pricing?.ready ? "Update pricing" : "Save & activate my link"}
+      </button>
+    </div>
+  );
+}
+
+function FeeInput({ label, value, onChange, hint, required }: { label: string; value: string; onChange: (v: string) => void; hint?: string; required?: boolean }) {
+  return (
+    <div className="relative">
+      <Input label={label} required={required} inputMode="numeric" placeholder="e.g. 5000" value={value}
+        onChange={(e) => onChange(e.target.value.replace(/\D/g, "").slice(0, 9))} hint={hint} className="pl-7" />
+      <span className="absolute left-3 top-[34px] text-sm text-slate-400 font-semibold">₦</span>
+    </div>
+  );
+}

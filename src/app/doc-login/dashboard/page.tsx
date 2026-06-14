@@ -9,6 +9,7 @@ import {
   Stethoscope, Pencil, Check, CreditCard, ChevronRight, Info, Send,
 } from "lucide-react";
 import { DoctorReferralsSection } from "@/components/referral/DoctorReferralsSection";
+import { DoctorEncounterSection } from "@/components/doctor/DoctorEncounterSection";
 import { PoveonLogo } from "@/components/PoveonLogo";
 import { PhoneInput } from "@/components/PhoneInput";
 import { HospitalTagInput } from "@/components/ui/HospitalTagInput";
@@ -509,7 +510,8 @@ function DocDashboardInner() {
   const [error, setError] = useState("");
   const [filter, setFilter] = useState<"all" | "incoming" | "seen" | "done">("all");
   const [loggingOut, setLoggingOut] = useState(false);
-  const [activeTab, setActiveTab] = useState<"requests" | "referrals" | "results" | "profile" | "security">("requests");
+  const [activeTab, setActiveTab] = useState<"requests" | "charging" | "referrals" | "results" | "profile" | "security">("requests");
+  const [chargingReady, setChargingReady] = useState<boolean | null>(null);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -522,6 +524,11 @@ function DocDashboardInner() {
       setDoctorEmail(data.doctor_email);
       setRequests(data.requests);
       setProfile(data.profile ?? null);
+      // Surface the charging-setup prompt right away (non-blocking)
+      fetch("/api/doc-login/pricing")
+        .then((r) => r.json())
+        .then((p) => { if (p.success) setChargingReady(!!p.pricing?.ready); })
+        .catch(() => {});
     } catch {
       setError("Network error. Please try again.");
     } finally {
@@ -574,35 +581,43 @@ function DocDashboardInner() {
         {/* Tab Navigation */}
         {!loading && (
           <div className="flex gap-1 bg-white/60 rounded-xl p-1 border border-white/60 shadow-sm">
-            {(["requests", "referrals", "results", "profile", "security"] as const).map((tab) => {
-              const labels = { requests: "Lab Requests", referrals: "Referrals", results: "Results", profile: "Profile", security: "Security" };
+            {(["requests", "charging", "referrals", "results", "profile", "security"] as const).map((tab) => {
+              const labels = { requests: "Lab Requests", charging: "Charging", referrals: "Referrals", results: "Results", profile: "Profile", security: "Security" };
+              const mobileLabels = { requests: "Labs", charging: "Earn", referrals: "Refer", results: "Done", profile: "Me", security: "Pin" };
               const resultCount = requests.filter((r) => r.status === "done").length;
               const tabCount = tab === "requests" ? requests.length : tab === "results" ? resultCount : 0;
               const profileIncomplete = tab === "profile" && !profile?.full_name;
+              const chargingIncomplete = tab === "charging" && chargingReady === false;
               return (
                 <button key={tab} onClick={() => setActiveTab(tab)}
                   className={`flex-1 relative flex items-center justify-center gap-1 py-2 rounded-lg text-xs font-semibold transition-all ${
                     activeTab === tab ? "bg-white text-slate-800 shadow-sm" : "text-slate-500 hover:text-slate-700"
                   }`}>
                   {tab === "requests" && <FlaskConical className="w-3 h-3" />}
+                  {tab === "charging" && <CreditCard className="w-3 h-3" />}
                   {tab === "referrals" && <Send className="w-3 h-3" />}
                   {tab === "results" && <CheckCircle className="w-3 h-3" />}
                   {tab === "profile" && <User className="w-3 h-3" />}
                   {tab === "security" && <Shield className="w-3 h-3" />}
                   <span className="hidden sm:inline">{labels[tab]}</span>
-                  <span className="sm:hidden">{tab === "requests" ? "Labs" : tab === "referrals" ? "Refer" : tab === "results" ? "Done" : tab === "profile" ? "Me" : "Pin"}</span>
+                  <span className="sm:hidden">{mobileLabels[tab]}</span>
                   {tabCount > 0 && (
                     <span className={`text-xs px-1 py-0.5 rounded-full font-bold ${
                       activeTab === tab ? "bg-slate-100 text-slate-600" : "bg-slate-200/60 text-slate-500"
                     }`}>{tabCount}</span>
                   )}
-                  {profileIncomplete && (
+                  {(profileIncomplete || chargingIncomplete) && (
                     <span className="absolute -top-0.5 -right-0.5 w-2 h-2 bg-amber-400 rounded-full border border-white" />
                   )}
                 </button>
               );
             })}
           </div>
+        )}
+
+        {/* Per-encounter Charging Tab */}
+        {!loading && activeTab === "charging" && (
+          <DoctorEncounterSection onReadyChange={setChargingReady} />
         )}
 
         {/* Patient Referrals Tab */}

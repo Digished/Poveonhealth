@@ -50,6 +50,33 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ ok: true });
   }
 
+  // Doctor per-encounter payments — finalise even if the patient never returns
+  // to the callback page. The split itself is handled by Paystack via subaccount.
+  if (event === "charge.success" && skinMeta?.purpose === "doctor_encounter") {
+    const reference = String(data.reference ?? "");
+    const amountNaira = Number(data.amount ?? 0) / 100;
+    if (reference) {
+      const { splitAmount, recordPatientForDoctor, notifyEncounter } = await import("@/lib/doctor-encounter");
+      const { doctor, poveon } = splitAmount(amountNaira);
+      const updated = await prisma.encounter.updateMany({
+        where: { payment_reference: reference, status: "awaiting_payment" },
+        data: {
+          is_paid: true, status: "new", amount_paid: amountNaira,
+          doctor_share: doctor, poveon_share: poveon, paid_at: new Date(),
+        },
+      });
+      if (updated.count === 1) {
+        const encounter = await prisma.encounter.findUnique({ where: { payment_reference: reference } });
+        if (encounter) {
+          await recordPatientForDoctor(encounter).catch((e) => console.error("[webhook] encounter patient:", e));
+          const profile = await prisma.doctorProfile.findUnique({ where: { email: encounter.doctor_email } });
+          await notifyEncounter(encounter, profile).catch((e) => console.error("[webhook] encounter notify:", e));
+        }
+      }
+    }
+    return NextResponse.json({ ok: true });
+  }
+
   if (event !== "charge.success" || channel !== "dedicated_nuban") {
     return NextResponse.json({ ok: true });
   }

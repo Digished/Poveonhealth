@@ -17,6 +17,7 @@ import { CreateLabForm } from "@/components/admin/CreateLabForm";
 import { EditLabForm } from "@/components/admin/EditLabForm";
 import { AdminProfessionalsTab } from "@/components/admin/AdminProfessionalsTab";
 import { AdminSkinConsultsTab } from "@/components/admin/AdminSkinConsultsTab";
+import { AdminEncountersTab } from "@/components/admin/AdminEncountersTab";
 import { SpecialtyTreePicker } from "@/components/admin/SpecialtyTreePicker";
 import { HospitalDoctorsPanel } from "@/components/admin/HospitalDoctorsPanel";
 import { Button } from "@/components/ui/Button";
@@ -28,7 +29,7 @@ import { format } from "date-fns";
 import { createClient } from "@/lib/supabase/client"; // still used for auth sign-out
 import { useRouter } from "next/navigation";
 
-type AdminTab = "metrics" | "requests" | "referrals" | "labs" | "analytics" | "marketers" | "lab-marketers" | "professionals" | "settings" | "transactions" | "knowledge-base" | "users" | "hospitals" | "agreements" | "skin";
+type AdminTab = "metrics" | "requests" | "referrals" | "labs" | "analytics" | "marketers" | "lab-marketers" | "professionals" | "settings" | "transactions" | "knowledge-base" | "users" | "hospitals" | "agreements" | "skin" | "encounters";
 
 interface ReferralGroup {
   key: string; // doctor_email
@@ -528,6 +529,7 @@ export function AdminDashboard() {
             { key: "hospitals" as AdminTab, label: "Hospitals", icon: <Building2 className="w-4 h-4" /> },
             { key: "agreements" as AdminTab, label: "Agreements", icon: <FileText className="w-4 h-4" /> },
             { key: "skin" as AdminTab, label: "Skin Consults", icon: <Stethoscope className="w-4 h-4" /> },
+            { key: "encounters" as AdminTab, label: "Doctor Encounters", icon: <CreditCard className="w-4 h-4" /> },
           ];
           const current = tabs.find((t) => t.key === activeTab) ?? tabs[0];
           return (
@@ -1613,6 +1615,8 @@ export function AdminDashboard() {
 
         {/* ── SKIN CONSULTS ── */}
         {activeTab === "skin" && <AdminSkinConsultsTab />}
+
+        {activeTab === "encounters" && <AdminEncountersTab />}
 
         {/* ── AGREEMENTS ── */}
         {activeTab === "agreements" && (

@@ -207,13 +207,81 @@ model DoctorProfile {
   phone          String?  // with country code e.g. "+2348001234567"
   hospitals      String[] @default([]) // hospitals or clinics
   bank_name      String?  // bank name for referral payment
+  bank_code      String?  // Paystack bank code (for split-payment subaccount)
   account_number String?  // bank account number
   account_name   String?  // account holder name (verified)
   claimed        Boolean  @default(true) // false = pre-created by marketer, not yet verified by doctor
   created_by_marketer_id String? // marketer who pre-created this profile
+
+  // ── Per-encounter charging (prices set by the doctor in their dashboard) ──
+  consultation_fee Decimal? @db.Decimal(12, 2) // single encounter fee, Naira
+  retainer_monthly Decimal? @db.Decimal(12, 2) // monthly retainership fee, Naira
+  retainer_yearly  Decimal? @db.Decimal(12, 2) // yearly retainership fee, Naira
+  encounter_slug   String?  @unique // short shareable handle, e.g. "dr-ada-obi"
+  paystack_subaccount_code String? // Paystack subaccount for the 80/20 split payout
+
   updated_at     DateTime @updatedAt
 
   @@map("doctor_profiles")
+}
+
+// A paid screening encounter a patient requests through a doctor's shared link.
+// Mirrors SkinConsult: AI screens, patient pays, doctor + patient are notified.
+model Encounter {
+  id               String   @id @default(uuid())
+  code             String   @unique // e.g. "ENC-8X4K29Q" — shared with patient & doctor
+  doctor_email     String
+
+  // Patient details (collected at submit time; auto-filled when the patient exists)
+  patient_name     String
+  patient_email    String
+  patient_phone    String
+  patient_age      Int?
+  patient_sex      String? // "male" | "female" | "other"
+
+  image_urls       String[] @default([]) // optional photos uploaded with the request
+  conversation     Json     @default("[]") // [{ role: "assistant"|"user", content: string }]
+  ai_summary       String? // concise summary generated for the doctor
+
+  plan_type        String   @default("single") // "single" | "monthly" | "yearly"
+  status           String   @default("awaiting_payment") // awaiting_payment | new | in_review | responded | closed
+  doctor_note      String? // note the doctor sends back to the patient
+
+  is_paid           Boolean  @default(false)
+  amount_paid       Decimal? @db.Decimal(12, 2) // total charged, Naira
+  doctor_share      Decimal? @db.Decimal(12, 2) // 80% of the charge
+  poveon_share      Decimal? @db.Decimal(12, 2) // 20% of the charge
+  payment_reference String?  @unique // Paystack transaction reference
+  paid_at           DateTime?
+
+  created_at       DateTime @default(now())
+  updated_at       DateTime @default(now()) @updatedAt
+  responded_at     DateTime?
+
+  @@index([doctor_email, created_at])
+  @@index([patient_email])
+  @@index([status, created_at])
+  @@map("encounters")
+}
+
+// A patient in a doctor's network, with retainership subscription status.
+// Powers the doctor's "patients" view and the public trust badge count.
+model DoctorPatient {
+  id                      String    @id @default(uuid())
+  doctor_email            String
+  patient_email           String
+  patient_name            String?
+  patient_phone           String?
+  subscription_type       String    @default("none") // "none" | "monthly" | "yearly"
+  subscription_expires_at DateTime?
+  total_paid              Decimal   @default(0) @db.Decimal(12, 2) // doctor's 80% share to date
+  encounter_count         Int       @default(0)
+  created_at              DateTime  @default(now())
+  updated_at              DateTime  @default(now()) @updatedAt
+
+  @@unique([doctor_email, patient_email])
+  @@index([doctor_email])
+  @@map("doctor_patients")
 }
 
 // One-time passcodes for doctor portal login
