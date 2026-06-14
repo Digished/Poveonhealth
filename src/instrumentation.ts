@@ -11,4 +11,7 @@ export async function register() {
 
   const { ensurePriceChangeLogsTable } = await import("@/lib/startup/ensure-price-change-logs");
   await ensurePriceChangeLogsTable();
+
+  const { ensureEncounterSchema } = await import("@/lib/startup/ensure-encounter-schema");
+  await ensureEncounterSchema();
 }

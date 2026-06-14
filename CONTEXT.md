@@ -210,6 +210,32 @@ Key files:
 
 ---
 
+## Doctor Per-Encounter Charging (`/d/[slug]`)
+
+A doctor shares a short link (`/d/dr-ada-obi`). A patient enters their email (auto-fills
+saved name/phone/age/sex from `PatientProfile`), optionally uploads photos, is screened by
+an AI intake chat, then chooses a **single encounter**, **monthly retainership**, or
+**yearly retainership** and pays. Payment splits automatically **80% doctor / 20% Poveon**
+via a Paystack **subaccount** (created from the doctor's verified bank details when they
+set pricing). On a verified payment the doctor is emailed the full Q&A + photos and the
+patient gets a confirmation; the patient is added to the doctor's network (with retainer
+expiry tracked).
+
+- **Patient page:** `src/app/d/[slug]/page.tsx` + `src/components/encounter/EncounterFlow.tsx`
+  (trust badge shows the doctor's managed-patient count). Payment return: `src/app/d/paid`.
+- **Public APIs:** `src/app/api/encounter/{[slug],lookup,upload,chat,submit,verify}/route.ts`
+- **Doctor dashboard:** "Charging" tab → `src/components/doctor/DoctorEncounterSection.tsx`
+  (Revenue / Encounters / Patients / Pricing). Doctors set fees + payout bank, get their
+  share link, see revenue, and send notes to patients. APIs: `src/app/api/doc-login/{pricing,encounters,encounters/[id]/note}`.
+- **Admin:** "Doctor Encounters" tab → `src/components/admin/AdminEncountersTab.tsx`
+  (gross, Poveon 20% revenue, doctor payouts, per-doctor breakdown). API: `src/app/api/admin/encounters`.
+- **Core logic:** `src/lib/doctor-encounter.ts` (pricing, slug, subaccount, split, notify, AI summary).
+- **Schema:** `DoctorProfile` gains `consultation_fee/retainer_monthly/retainer_yearly/encounter_slug/bank_code/paystack_subaccount_code`; new `Encounter` and `DoctorPatient` models. Production columns/tables added in `scripts/run-migration.mjs`.
+- **Webhook backup:** `/api/paystack/webhook` finalises `doctor_encounter` payments if the
+  patient never returns to the callback page (mirrors the skin-consult path).
+
+---
+
 ## Next Tasks
 1. Improve admin test catalog modal (current task)
    - Add category filtering (dynamic dropdown)

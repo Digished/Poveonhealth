@@ -1318,3 +1318,181 @@ export function skinConsultAdmin({
     </div>
   `);
 }
+
+// =============================================================================
+// TEMPLATE: Patient — Encounter request received (doctor per-encounter charging)
+// =============================================================================
+const naira = (n: number) => `₦${Math.round(n).toLocaleString("en-NG")}`;
+
+export function encounterPatientEmail({
+  patientName,
+  doctorName,
+  code,
+  planLabel,
+  amount,
+}: {
+  patientName: string;
+  doctorName: string;
+  code: string;
+  planLabel: string;
+  amount: number;
+}) {
+  return base(`
+    <h2 style="margin:0 0 8px;color:#0259a0;font-size:20px;font-weight:700;">Your Request Was Received</h2>
+    <p style="margin:0 0 24px;color:#4b5563;font-size:15px;">
+      Dear ${patientName},<br><br>
+      Thank you — your request to <strong>${doctorName}</strong> has been received and your payment confirmed.
+      ${doctorName} will review your answers${planLabel.includes("retainer") ? " and your retainership is now active" : ""} and follow up with you shortly.
+    </p>
+
+    ${codeBox(code)}
+
+    ${label("Plan")}
+    ${value(planLabel)}
+    ${label("Amount paid")}
+    ${value(naira(amount))}
+
+    ${divider}
+
+    <p style="margin:12px 0 0;color:#6b7280;font-size:13px;line-height:1.6;">
+      <strong>Please note:</strong> this service connects you with your doctor for guidance. It is not a
+      substitute for emergency care. If your condition is rapidly worsening or this is an emergency,
+      please seek urgent in-person medical attention.
+    </p>
+  `);
+}
+
+// =============================================================================
+// TEMPLATE: Doctor — New paid encounter (questions, answers, photos)
+// =============================================================================
+export function encounterDoctorEmail({
+  code,
+  patientName,
+  patientEmail,
+  patientPhone,
+  patientAge,
+  patientSex,
+  planLabel,
+  amount,
+  doctorShare,
+  imageUrls,
+  conversation,
+  aiSummary,
+  dashboardUrl,
+}: {
+  code: string;
+  patientName: string;
+  patientEmail: string;
+  patientPhone: string;
+  patientAge?: number | null;
+  patientSex?: string | null;
+  planLabel: string;
+  amount: number;
+  doctorShare: number;
+  imageUrls: string[];
+  conversation: { role: string; content: string }[];
+  aiSummary?: string | null;
+  dashboardUrl: string;
+}) {
+  const demographics = [patientAge ? `${patientAge} yrs` : null, patientSex || null].filter(Boolean).join(", ");
+
+  const imagesHtml = imageUrls.length
+    ? `<div style="margin:8px 0 0;">${imageUrls
+        .map(
+          (url, i) =>
+            `<a href="${url}" style="display:inline-block;margin:0 8px 8px 0;"><img src="${url}" alt="Photo ${i + 1}" width="120" style="width:120px;height:120px;object-fit:cover;border-radius:8px;border:1px solid #e0effe;" /></a>`
+        )
+        .join("")}</div>`
+    : `<p style="margin:0;color:#9ca3af;font-size:13px;">No photos uploaded.</p>`;
+
+  const chatHtml = conversation.length
+    ? conversation
+        .map((m) => {
+          const isPatient = m.role === "user";
+          return `<div style="margin:0 0 10px;">
+            <p style="margin:0 0 2px;font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:0.5px;color:${isPatient ? "#0259a0" : "#6b7280"};">${isPatient ? "Patient" : "Assistant"}</p>
+            <p style="margin:0;padding:10px 14px;border-radius:10px;background:${isPatient ? "#f0f7ff" : "#f8fafc"};color:#1e3a5f;font-size:14px;line-height:1.5;white-space:pre-wrap;">${m.content}</p>
+          </div>`;
+        })
+        .join("")
+    : `<p style="margin:0;color:#9ca3af;font-size:13px;">No chat recorded.</p>`;
+
+  return base(`
+    <h2 style="margin:0 0 8px;color:#0259a0;font-size:20px;font-weight:700;">New Patient Encounter</h2>
+    <p style="margin:0 0 20px;color:#4b5563;font-size:15px;">
+      A patient has submitted a paid encounter through your Poveon link.
+    </p>
+
+    ${codeBox(code)}
+
+    <div style="display:flex;gap:12px;margin:0 0 8px;">
+      <div style="flex:1;background:#f0fdf4;border:1px solid #bbf7d0;border-radius:10px;padding:12px 16px;">
+        <p style="margin:0;color:#15803d;font-size:11px;font-weight:700;text-transform:uppercase;">You earn (80%)</p>
+        <p style="margin:4px 0 0;color:#166534;font-size:20px;font-weight:800;">${naira(doctorShare)}</p>
+      </div>
+      <div style="flex:1;background:#f8fafc;border:1px solid #e2e8f0;border-radius:10px;padding:12px 16px;">
+        <p style="margin:0;color:#64748b;font-size:11px;font-weight:700;text-transform:uppercase;">${planLabel}</p>
+        <p style="margin:4px 0 0;color:#334155;font-size:20px;font-weight:800;">${naira(amount)}</p>
+      </div>
+    </div>
+
+    ${divider}
+
+    <h3 style="margin:0 0 12px;color:#0259a0;font-size:15px;font-weight:700;">Patient</h3>
+    ${label("Name")}
+    ${value(`${patientName}${demographics ? ` (${demographics})` : ""}`)}
+    ${label("Email")}
+    ${value(`<a href="mailto:${patientEmail}" style="color:#0259a0;">${patientEmail}</a>`)}
+    ${label("Phone")}
+    ${value(`<a href="tel:${patientPhone.replace(/[^0-9+]/g, "")}" style="color:#0259a0;">${patientPhone}</a>`)}
+
+    <h3 style="margin:16px 0 8px;color:#0259a0;font-size:15px;font-weight:700;">Photos</h3>
+    ${imagesHtml}
+
+    ${aiSummary ? `
+      ${divider}
+      <h3 style="margin:0 0 8px;color:#0259a0;font-size:15px;font-weight:700;">AI Intake Summary</h3>
+      <p style="margin:0;padding:12px 16px;border-radius:10px;background:#fffbeb;border:1px solid #fde68a;color:#92400e;font-size:14px;line-height:1.6;white-space:pre-wrap;">${aiSummary}</p>
+    ` : ""}
+
+    ${divider}
+
+    <h3 style="margin:0 0 12px;color:#0259a0;font-size:15px;font-weight:700;">Questions &amp; Answers</h3>
+    ${chatHtml}
+
+    <div style="text-align:center;margin:28px 0 8px;">
+      <a href="${dashboardUrl}" style="display:inline-block;background:linear-gradient(135deg,#0259a0,#0270c3);color:#ffffff;text-decoration:none;font-size:15px;font-weight:600;padding:14px 36px;border-radius:8px;">
+        Open in your dashboard
+      </a>
+    </div>
+  `);
+}
+
+// =============================================================================
+// TEMPLATE: Patient — Note from the doctor
+// =============================================================================
+export function encounterNoteEmail({
+  patientName,
+  doctorName,
+  code,
+  note,
+}: {
+  patientName: string;
+  doctorName: string;
+  code: string;
+  note: string;
+}) {
+  return base(`
+    <h2 style="margin:0 0 8px;color:#0259a0;font-size:20px;font-weight:700;">A Note From ${doctorName}</h2>
+    <p style="margin:0 0 20px;color:#4b5563;font-size:15px;">
+      Dear ${patientName}, ${doctorName} has sent you a note regarding your encounter <strong>${code}</strong>:
+    </p>
+
+    <div style="margin:0 0 20px;padding:16px 20px;border-radius:10px;background:#f0f7ff;border-left:4px solid #0270c3;color:#1e3a5f;font-size:15px;line-height:1.65;white-space:pre-wrap;">${note}</div>
+
+    <p style="margin:12px 0 0;color:#6b7280;font-size:13px;line-height:1.6;">
+      If you need to follow up, simply reply to this email. This is general guidance and not a substitute
+      for emergency care.
+    </p>
+  `);
+}
