@@ -5,7 +5,7 @@ import { toast } from "react-hot-toast";
 import {
   Loader2, Copy, Check, CreditCard, Users, Wallet, Stethoscope, Link2,
   ChevronDown, ChevronUp, Send, ShieldCheck, TrendingUp, AlertTriangle, ExternalLink,
-  ImagePlus, X, Palette, Image as ImageIcon,
+  ImagePlus, X, Palette, Image as ImageIcon, Pencil,
 } from "lucide-react";
 import { Input } from "@/components/ui/Input";
 import { BankAccountInput } from "@/components/BankAccountInput";
@@ -404,6 +404,8 @@ function PricingView({ pricing, onSaved }: { pricing: Pricing | null; onSaved: (
   const [accountName, setAccountName] = useState(pricing?.account_name ?? "");
   const [verified, setVerified] = useState(!!pricing?.account_name);
   const [saving, setSaving] = useState(false);
+  // Once configured, show a read-only summary with an Edit button.
+  const [editing, setEditing] = useState(false);
 
   const num = (s: string) => { const n = parseInt(s.replace(/\D/g, ""), 10); return Number.isFinite(n) ? n : 0; };
   // Allow saving once we have a fee + a 10-digit account + a confirmed account name.
@@ -432,12 +434,46 @@ function PricingView({ pricing, onSaved }: { pricing: Pricing | null; onSaved: (
       const data = await res.json();
       if (!res.ok || !data.success) { toast.error(data.error ?? "Failed to save."); return; }
       toast.success("Pricing saved — your link is live!");
+      setEditing(false);
       onSaved();
     } catch {
       toast.error("Network error.");
     } finally {
       setSaving(false);
     }
+  }
+
+  // Configured doctors see a summary card; editing reveals the full form.
+  if (pricing?.ready && !editing) {
+    const acct = pricing.account_number ? `•••• ${pricing.account_number.slice(-4)}` : "";
+    return (
+      <div className="space-y-4">
+        <div className="bg-white rounded-2xl border border-slate-100 p-4 sm:p-5">
+          <div className="flex items-start justify-between gap-3">
+            <h3 className="text-sm font-bold text-slate-800 flex items-center gap-2"><CreditCard className="w-4 h-4 text-medical-500" /> Pricing &amp; payout</h3>
+            <button onClick={() => setEditing(true)} className="flex items-center gap-1.5 text-xs font-semibold px-3 py-1.5 rounded-lg bg-medical-50 text-medical-700 hover:bg-medical-100 transition shrink-0">
+              <Pencil className="w-3.5 h-3.5" /> Edit
+            </button>
+          </div>
+          <div className="mt-3 grid grid-cols-3 gap-2">
+            <SummaryStat label="Per encounter" value={naira(pricing.consultation_fee ?? 0)} />
+            <SummaryStat label="Monthly" value={pricing.retainer_monthly ? naira(pricing.retainer_monthly) : "—"} />
+            <SummaryStat label="Yearly" value={pricing.retainer_yearly ? naira(pricing.retainer_yearly) : "—"} />
+          </div>
+          <div className="mt-3 pt-3 border-t border-slate-100 flex items-center gap-2.5">
+            <div className="w-8 h-8 rounded-lg bg-emerald-50 text-emerald-600 flex items-center justify-center shrink-0"><Wallet className="w-4 h-4" /></div>
+            <div className="min-w-0">
+              <p className="text-sm font-semibold text-slate-700 truncate">{pricing.account_name || pricing.bank_name || "Payout account"}</p>
+              <p className="text-[11px] text-slate-400 truncate">{[pricing.bank_name, acct].filter(Boolean).join(" · ")}</p>
+            </div>
+            {pricing.has_subaccount && <span className="ml-auto text-[10px] font-bold px-2 py-1 rounded-full bg-emerald-50 text-emerald-600 shrink-0">Auto-split on</span>}
+          </div>
+        </div>
+
+        {/* Page customization — avatar + theme */}
+        <EncounterPageCard pricing={pricing} />
+      </div>
+    );
   }
 
   return (
@@ -467,13 +503,29 @@ function PricingView({ pricing, onSaved }: { pricing: Pricing | null; onSaved: (
       </div>
 
       {/* Page customization — avatar + theme */}
-      <EncounterPageCard pricing={pricing} onSaved={onSaved} />
+      <EncounterPageCard pricing={pricing} />
 
-      <button onClick={save} disabled={!canSave || saving}
-        className="w-full flex items-center justify-center gap-2 py-3.5 rounded-2xl bg-medical-600 hover:bg-medical-700 active:scale-[0.98] disabled:opacity-50 text-white font-bold text-sm shadow-xl shadow-medical-600/30 transition-all">
-        {saving ? <Loader2 className="w-5 h-5 animate-spin" /> : <Check className="w-5 h-5" />}
-        {saving ? "Saving…" : pricing?.ready ? "Update pricing" : "Save & activate my link"}
-      </button>
+      <div className="flex items-center gap-2">
+        {pricing?.ready && (
+          <button onClick={() => setEditing(false)} className="px-4 py-3.5 rounded-2xl bg-white border border-slate-200 text-slate-600 hover:bg-slate-50 text-sm font-semibold transition shrink-0">
+            Cancel
+          </button>
+        )}
+        <button onClick={save} disabled={!canSave || saving}
+          className="flex-1 flex items-center justify-center gap-2 py-3.5 rounded-2xl bg-medical-600 hover:bg-medical-700 active:scale-[0.98] disabled:opacity-50 text-white font-bold text-sm shadow-xl shadow-medical-600/30 transition-all">
+          {saving ? <Loader2 className="w-5 h-5 animate-spin" /> : <Check className="w-5 h-5" />}
+          {saving ? "Saving…" : pricing?.ready ? "Save changes" : "Save & activate my link"}
+        </button>
+      </div>
+    </div>
+  );
+}
+
+function SummaryStat({ label, value }: { label: string; value: string }) {
+  return (
+    <div className="rounded-xl bg-slate-50 border border-slate-100 px-3 py-2.5">
+      <p className="text-[10px] uppercase tracking-wide text-slate-400">{label}</p>
+      <p className="text-sm font-black text-slate-800 mt-0.5 truncate">{value}</p>
     </div>
   );
 }
@@ -489,7 +541,8 @@ function FeeInput({ label, value, onChange, hint, required }: { label: string; v
 }
 
 // ── Encounter page customization: profile photo + colour theme ────────────────
-function EncounterPageCard({ pricing, onSaved }: { pricing: Pricing | null; onSaved: () => void }) {
+// Self-contained: persists changes inline without reloading the whole section.
+function EncounterPageCard({ pricing }: { pricing: Pricing | null }) {
   const [avatar, setAvatar] = useState<string | null>(pricing?.avatar_url ?? null);
   const [theme, setTheme] = useState<string>(pricing?.theme ?? DEFAULT_THEME_ID);
   const [uploading, setUploading] = useState(false);
@@ -505,7 +558,6 @@ function EncounterPageCard({ pricing, onSaved }: { pricing: Pricing | null; onSa
       if (!res.ok || !d.success) { toast.error(d.error ?? "Upload failed."); return; }
       setAvatar(d.url);
       toast.success("Photo updated");
-      onSaved();
     } catch {
       toast.error("Network error.");
     } finally {
@@ -517,7 +569,6 @@ function EncounterPageCard({ pricing, onSaved }: { pricing: Pricing | null; onSa
   async function removeAvatar() {
     setAvatar(null);
     await fetch("/api/doc-login/avatar", { method: "DELETE" }).catch(() => {});
-    onSaved();
   }
 
   async function pickTheme(id: string) {
@@ -530,7 +581,6 @@ function EncounterPageCard({ pricing, onSaved }: { pricing: Pricing | null; onSa
       });
       const d = await res.json();
       if (!res.ok || !d.success) { toast.error(d.error ?? "Failed to update theme."); return; }
-      onSaved();
     } catch {
       toast.error("Network error.");
     }
@@ -570,17 +620,25 @@ function EncounterPageCard({ pricing, onSaved }: { pricing: Pricing | null; onSa
         </div>
       </div>
 
-      {/* Theme */}
+      {/* Theme — mini page previews */}
       <div>
         <p className="text-sm font-semibold text-slate-700 flex items-center gap-1.5 mb-2"><Palette className="w-3.5 h-3.5 text-medical-500" /> Page theme</p>
-        <div className="grid grid-cols-3 gap-2">
-          {ENCOUNTER_THEMES.map((t) => (
-            <button key={t.id} onClick={() => pickTheme(t.id)}
-              className={`relative h-14 rounded-xl ${t.swatch} border-2 transition ${theme === t.id ? "border-slate-800 scale-[1.02]" : "border-transparent hover:border-slate-300"}`}>
-              <span className="absolute bottom-1 left-0 right-0 text-[10px] font-bold text-white/90 drop-shadow">{t.label}</span>
-              {theme === t.id && <span className="absolute top-1 right-1 w-4 h-4 rounded-full bg-white flex items-center justify-center"><Check className="w-3 h-3 text-slate-800" /></span>}
-            </button>
-          ))}
+        <div className="grid grid-cols-3 gap-2.5">
+          {ENCOUNTER_THEMES.map((t) => {
+            const selected = theme === t.id;
+            return (
+              <button key={t.id} onClick={() => pickTheme(t.id)}
+                className={`rounded-xl overflow-hidden border-2 transition ${selected ? "border-medical-600 ring-2 ring-medical-100" : "border-slate-200 hover:border-slate-300"}`}>
+                <div className={`h-12 ${t.pageBg} flex items-center justify-center gap-1`}>
+                  <span className={`w-6 h-6 rounded-lg bg-gradient-to-br ${t.heroGradient} shadow-sm`} />
+                </div>
+                <div className="flex items-center justify-center gap-1 py-1.5 bg-white">
+                  <span className="text-[10px] font-semibold text-slate-600">{t.label}</span>
+                  {selected && <Check className="w-3 h-3 text-medical-600" />}
+                </div>
+              </button>
+            );
+          })}
         </div>
       </div>
     </div>

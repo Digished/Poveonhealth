@@ -5,6 +5,13 @@ const config: Config = {
     "./src/pages/**/*.{js,ts,jsx,tsx,mdx}",
     "./src/components/**/*.{js,ts,jsx,tsx,mdx}",
     "./src/app/**/*.{js,ts,jsx,tsx,mdx}",
+    "./src/lib/**/*.{js,ts,jsx,tsx,mdx}",
+  ],
+  // Theme classes are built as literal strings in src/lib/encounter-themes.ts —
+  // safelist the dynamic gradient families so they survive purge regardless.
+  safelist: [
+    { pattern: /^(from|via|to)-(sky|indigo|emerald|teal|cyan|rose|pink|fuchsia|violet|purple|amber|orange|slate|gray|zinc)-(50|400|500|600|700|800)$/ },
+    "bg-gradient-to-br",
   ],
   theme: {
     extend: {
