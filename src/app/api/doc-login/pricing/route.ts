@@ -10,6 +10,14 @@ import {
   priceForPlan,
   upsertDoctorSubaccount,
 } from "@/lib/doctor-encounter";
+import { ensureEncounterSchema } from "@/lib/startup/ensure-encounter-schema";
+import { NIGERIAN_BANKS } from "@/lib/nigerian-banks";
+
+/** Resolve a Paystack bank code from a bank name (older profiles stored name but no code). */
+function codeForBankName(name: string): string {
+  const target = name.trim().toLowerCase();
+  return NIGERIAN_BANKS.find((b) => b.name.toLowerCase() === target)?.code ?? "";
+}
 
 function pricingPayload(profile: Awaited<ReturnType<typeof prisma.doctorProfile.findUnique>>) {
   if (!profile) return null;
@@ -34,15 +42,13 @@ export async function GET(req: NextRequest) {
   const email = await getDoctorEmailFromRequest(req);
   if (!email) return NextResponse.json({ error: "Not authenticated." }, { status: 401 });
   try {
+    // Guarantee the charging columns exist before we query them.
+    await ensureEncounterSchema().catch(() => {});
     const profile = await prisma.doctorProfile.findUnique({ where: { email } });
     return NextResponse.json({ success: true, pricing: pricingPayload(profile) });
   } catch (err) {
-    // Charging columns may not exist yet — ensure schema then retry once.
-    console.error("[doc-login/pricing GET] failed, ensuring schema:", err);
-    const { ensureEncounterSchema } = await import("@/lib/startup/ensure-encounter-schema");
-    await ensureEncounterSchema();
-    const profile = await prisma.doctorProfile.findUnique({ where: { email } });
-    return NextResponse.json({ success: true, pricing: pricingPayload(profile) });
+    console.error("[doc-login/pricing GET]", err);
+    return NextResponse.json({ error: "Failed to load pricing." }, { status: 500 });
   }
 }
 
@@ -51,7 +57,7 @@ const BodySchema = z.object({
   retainer_monthly: z.coerce.number().min(0).max(100_000_000).optional().nullable(),
   retainer_yearly: z.coerce.number().min(0).max(100_000_000).optional().nullable(),
   bank_name: z.string().trim().min(1),
-  bank_code: z.string().trim().min(1),
+  bank_code: z.string().trim().optional().default(""),
   account_number: z.string().trim().regex(/^\d{10}$/, "Account number must be 10 digits"),
   account_name: z.string().trim().min(2),
 });
@@ -72,19 +78,27 @@ export async function PATCH(req: NextRequest) {
       return NextResponse.json({ error: "Set a consultation fee greater than zero." }, { status: 400 });
     }
 
+    // Guarantee the charging columns/tables exist before any read/write — the
+    // startup hook normally does this, but ensure it here so saving never fails
+    // just because the migration hasn't reached this DB yet.
+    await ensureEncounterSchema().catch((e) => console.error("[doc-login/pricing] ensure schema:", e));
+
     const existing = await prisma.doctorProfile.findUnique({ where: { email } });
 
+    // Resolve the settlement bank code (older profiles may only have the name).
+    const bankCode = d.bank_code || codeForBankName(d.bank_name);
+
     // Provision (or update) the Paystack subaccount for the 80/20 split.
-    // Best-effort: if it fails we still save the pricing and bank, and the
-    // subaccount is created lazily at the first charge. Saving never blocks.
+    // Best-effort: if it fails (or the bank code is unknown) we still save the
+    // pricing and bank — the subaccount is created lazily at the first charge.
     const bankChanged =
-      existing?.bank_code !== d.bank_code || existing?.account_number !== d.account_number;
+      existing?.bank_code !== bankCode || existing?.account_number !== d.account_number;
     let subaccountCode = existing?.paystack_subaccount_code ?? null;
-    if (!subaccountCode || bankChanged) {
+    if (bankCode && (!subaccountCode || bankChanged)) {
       subaccountCode = await upsertDoctorSubaccount({
         existingCode: existing?.paystack_subaccount_code ?? null,
         businessName: existing?.full_name?.trim() || d.account_name || email,
-        bankCode: d.bank_code,
+        bankCode,
         accountNumber: d.account_number,
       });
     }
@@ -99,7 +113,7 @@ export async function PATCH(req: NextRequest) {
       retainer_monthly: d.retainer_monthly && d.retainer_monthly > 0 ? d.retainer_monthly : null,
       retainer_yearly: d.retainer_yearly && d.retainer_yearly > 0 ? d.retainer_yearly : null,
       bank_name: d.bank_name,
-      bank_code: d.bank_code,
+      bank_code: bankCode || null,
       account_number: d.account_number,
       account_name: d.account_name,
       paystack_subaccount_code: subaccountCode,
@@ -114,11 +128,9 @@ export async function PATCH(req: NextRequest) {
         update: data,
       });
     } catch (dbErr) {
-      // Self-heal if the charging columns/tables aren't in the DB yet
-      // (Vercel doesn't auto-run migrations — the startup hook normally does this).
-      console.error("[doc-login/pricing] upsert failed, ensuring schema then retrying:", dbErr);
-      const { ensureEncounterSchema } = await import("@/lib/startup/ensure-encounter-schema");
-      await ensureEncounterSchema();
+      // Self-heal: force a fresh schema-ensure (in case columns are still missing) and retry once.
+      console.error("[doc-login/pricing] upsert failed, forcing schema ensure then retrying:", dbErr);
+      await ensureEncounterSchema(true);
       profile = await prisma.doctorProfile.upsert({
         where: { email },
         create: { email, claimed: true, ...data },
@@ -129,6 +141,7 @@ export async function PATCH(req: NextRequest) {
     return NextResponse.json({ success: true, pricing: pricingPayload(profile) });
   } catch (err) {
     console.error("[doc-login/pricing]", err);
-    return NextResponse.json({ error: "Failed to save pricing." }, { status: 500 });
+    const detail = err instanceof Error ? err.message : String(err);
+    return NextResponse.json({ error: `Failed to save pricing: ${detail.slice(0, 300)}` }, { status: 500 });
   }
 }
