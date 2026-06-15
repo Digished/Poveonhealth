@@ -473,7 +473,7 @@ function DocLoginInner() {
             <PoveonLogo className="w-full h-full text-white" />
           </div>
           <h1 className="text-xl font-bold text-slate-800">Doctor Portal</h1>
-          <p className="text-sm text-slate-500 mt-1">View and track your submitted test requests</p>
+          <p className="text-sm text-slate-500 mt-1">Charge per consultation, send referrals, and track your lab requests &amp; results</p>
         </div>
 
         <div className="bg-white/80 backdrop-blur-sm border border-white/60 rounded-3xl shadow-xl p-6">
