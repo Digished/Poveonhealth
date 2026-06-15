@@ -11,6 +11,7 @@ import {
 import { DoctorReferralsSection } from "@/components/referral/DoctorReferralsSection";
 import { DoctorEncounterSection } from "@/components/doctor/DoctorEncounterSection";
 import { themeClass } from "@/lib/encounter-themes";
+import { SupportFab } from "@/components/SupportFab";
 import { PoveonLogo } from "@/components/PoveonLogo";
 import { PhoneInput } from "@/components/PhoneInput";
 import { HospitalTagInput } from "@/components/ui/HospitalTagInput";
@@ -851,6 +852,8 @@ function DocDashboardInner() {
           </div>
         </div>
       )}
+
+      <SupportFab />
     </div>
   );
 }

@@ -90,6 +90,7 @@ export function AdminDashboard() {
   const [agreements, setAgreements] = useState<AgreementRecord[]>([]);
   const [agreementsLoading, setAgreementsLoading] = useState(false);
   const [defaultRequestPrice, setDefaultRequestPrice] = useState<string>("500");
+  const [supportEmail, setSupportEmail] = useState<string>("spendbox@gmail.com");
   const [savingSettings, setSavingSettings] = useState(false);
 
   // Lab marketers state
@@ -208,6 +209,7 @@ export function AdminDashboard() {
       const data = await res.json();
       if (data.success) {
         setDefaultRequestPrice(data.settings.default_request_price ?? "500");
+        setSupportEmail(data.settings.support_email ?? "spendbox@gmail.com");
       }
     } catch { /* non-critical */ }
   }, []);
@@ -227,6 +229,10 @@ export function AdminDashboard() {
       toast.error("Enter a valid default request price");
       return;
     }
+    if (supportEmail.trim() && !supportEmail.includes("@")) {
+      toast.error("Enter a valid support email");
+      return;
+    }
     setSavingSettings(true);
     try {
       const res = await fetch("/api/admin/settings", {
@@ -234,12 +240,14 @@ export function AdminDashboard() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           default_request_price: defaultRequestPrice,
+          support_email: supportEmail.trim(),
         }),
       });
       const data = await res.json();
       if (data.success) {
         toast.success("Settings saved");
         setDefaultRequestPrice(data.settings.default_request_price);
+        setSupportEmail(data.settings.support_email ?? supportEmail);
       } else {
         toast.error(data.error ?? "Failed to update");
       }
@@ -1412,6 +1420,18 @@ export function AdminDashboard() {
                     onChange={(e) => setDefaultRequestPrice(e.target.value)}
                     className="w-full bg-white/5 border border-white/10 rounded-xl px-3 py-2.5 text-white text-sm placeholder-slate-500 outline-none focus:ring-2 focus:ring-violet-500/50"
                     placeholder="e.g. 500"
+                  />
+                </div>
+                <div>
+                  <label className="text-xs text-slate-400 mb-1 block">
+                    Support email — where dashboard help &amp; feedback messages are sent
+                  </label>
+                  <input
+                    type="email"
+                    value={supportEmail}
+                    onChange={(e) => setSupportEmail(e.target.value)}
+                    className="w-full bg-white/5 border border-white/10 rounded-xl px-3 py-2.5 text-white text-sm placeholder-slate-500 outline-none focus:ring-2 focus:ring-violet-500/50"
+                    placeholder="spendbox@gmail.com"
                   />
                 </div>
               </div>

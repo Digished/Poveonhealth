@@ -333,22 +333,34 @@ export function EncounterFlow({ slug, doctorName, specialty, hospitals, patientC
                 <Check className="w-3.5 h-3.5" /> Welcome back — we filled in your saved details.
               </div>
             )}
-            <Input label="Full name" placeholder="e.g. Ada Obi" value={name} onChange={(e) => setName(e.target.value)} required />
-            <PhoneInput label="Phone number" required value={phone} onChange={setPhone} hint="Your doctor will reach you here." />
-            <div className="grid grid-cols-2 gap-3">
-              <Input label="Age" type="number" inputMode="numeric" placeholder="e.g. 28" value={age} onChange={(e) => setAge(e.target.value.replace(/\D/g, "").slice(0, 3))} />
-              <div className="flex flex-col gap-1">
-                <label className="text-sm font-medium text-slate-700">Sex</label>
-                <div className="flex gap-2">
-                  {(["male", "female", "other"] as const).map((opt) => (
-                    <button key={opt} type="button" onClick={() => setSex(sex === opt ? "" : opt)}
-                      className={`flex-1 capitalize px-2 py-2.5 rounded-xl text-xs font-semibold border-2 transition ${
-                        sex === opt ? "bg-medical-600 border-medical-600 text-white" : "bg-white border-slate-200 text-slate-600 hover:border-slate-300"
-                      }`}>{opt}</button>
-                  ))}
+
+            {/* Reveal the next field only once the previous one is filled */}
+            {emailValid && (
+              <div className="animate-fade-in">
+                <Input label="Full name" placeholder="e.g. Ada Obi" value={name} onChange={(e) => setName(e.target.value)} required />
+              </div>
+            )}
+            {emailValid && name.trim().length >= 2 && (
+              <div className="animate-fade-in">
+                <PhoneInput label="Phone number" required value={phone} onChange={setPhone} hint="Your doctor will reach you here." />
+              </div>
+            )}
+            {emailValid && name.trim().length >= 2 && phone.trim().length >= 7 && (
+              <div className="grid grid-cols-2 gap-3 animate-fade-in">
+                <Input label="Age" type="number" inputMode="numeric" placeholder="e.g. 28" value={age} onChange={(e) => setAge(e.target.value.replace(/\D/g, "").slice(0, 3))} />
+                <div className="flex flex-col gap-1">
+                  <label className="text-sm font-medium text-slate-700">Sex</label>
+                  <div className="flex gap-2">
+                    {(["male", "female", "other"] as const).map((opt) => (
+                      <button key={opt} type="button" onClick={() => setSex(sex === opt ? "" : opt)}
+                        className={`flex-1 capitalize px-2 py-2.5 rounded-xl text-xs font-semibold border-2 transition ${
+                          sex === opt ? "bg-medical-600 border-medical-600 text-white" : "bg-white border-slate-200 text-slate-600 hover:border-slate-300"
+                        }`}>{opt}</button>
+                    ))}
+                  </div>
                 </div>
               </div>
-            </div>
+            )}
           </div>
         </div>
       )}

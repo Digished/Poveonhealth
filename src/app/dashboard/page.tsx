@@ -3,6 +3,7 @@
 import { useEffect, useState, useCallback, useRef } from "react";
 import { useRouter } from "next/navigation";
 import { PoveonLogo } from "@/components/PoveonLogo";
+import { SupportFab } from "@/components/SupportFab";
 import { parsePhones } from "@/lib/phones";
 import { DobInput } from "@/components/DobInput";
 import { PhoneInput } from "@/components/PhoneInput";
@@ -1310,6 +1311,8 @@ export default function DashboardPage() {
         <PoveonLogo className="w-4 h-4 opacity-30" />
         <span className="text-xs text-slate-400">Powered by Poveon</span>
       </footer>
+
+      <SupportFab />
     </div>
   );
 }

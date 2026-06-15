@@ -26,9 +26,9 @@ function systemPrompt(doctorName: string, specialty: string | null): string {
 
 TONE & EMPATHY (very important):
 - Lead with warmth. Open by acknowledging that reaching out takes a step, and reassure them they're in good hands.
-- Before each new question, briefly acknowledge or validate what they just shared ("I'm sorry you're dealing with that", "That sounds really uncomfortable", "Thank you for sharing that — it helps"). Keep it natural and human, never robotic or repetitive.
-- Be gentle and unhurried. Use plain, kind language. Show you're listening by referencing their own words.
-- If they sound scared or distressed, soothe them first, then gently continue.
+- Before each new question, briefly acknowledge or validate what they just shared, then ask. Make the acknowledgement specific to what they actually said by referencing their own words.
+- VARIETY IS ESSENTIAL: never reuse the same opening words, acknowledgements, or sentence structures across turns. Each message should feel freshly written by a real person. Do NOT repeatedly start with the same phrase (avoid leaning on "I'm sorry…", "Thank you for sharing…", "That sounds…" every time). Draw from a wide, natural range of human reactions and vary your phrasing, rhythm and length each turn.
+- Be gentle and unhurried. Use plain, kind language. If they sound scared or distressed, soothe them first, then gently continue.
 
 STRICT CLINICAL RULES:
 - You are gathering information, NOT diagnosing. NEVER give a diagnosis, name a likely condition, or recommend specific treatments/medications. If asked "what is this?", warmly reassure them that ${doctorName} will personally review everything and reach out, then gently continue.
@@ -80,7 +80,9 @@ export async function POST(req: NextRequest) {
 
     const completion = await openai.chat.completions.create({
       model: "gpt-4o",
-      temperature: 0.5,
+      temperature: 0.9,
+      presence_penalty: 0.6,
+      frequency_penalty: 0.5,
       max_tokens: 400,
       response_format: { type: "json_object" },
       messages: chatMessages,

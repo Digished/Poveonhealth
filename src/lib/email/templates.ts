@@ -1508,3 +1508,28 @@ export function broadcastEmail({ bodyHtml }: { bodyHtml: string }) {
     </div>
   `);
 }
+
+// =============================================================================
+// TEMPLATE: Support — dashboard help / feedback message
+// =============================================================================
+export function supportFeedbackEmail({
+  role, senderEmail, senderName, category, message,
+}: {
+  role: string;
+  senderEmail: string | null;
+  senderName: string | null;
+  category: string;
+  message: string;
+}) {
+  return base(`
+    <h2 style="margin:0 0 8px;color:#0259a0;font-size:20px;font-weight:700;">New ${category} message</h2>
+    <p style="margin:0 0 20px;color:#4b5563;font-size:15px;">A ${role} sent a message from their Poveon dashboard.</p>
+    ${label("From")}
+    ${value(`${senderName ? `${senderName} · ` : ""}${senderEmail ? `<a href="mailto:${senderEmail}" style="color:#0259a0;">${senderEmail}</a>` : "unknown"} <span style="color:#9ca3af;">(${role})</span>`)}
+    ${label("Type")}
+    ${value(category)}
+    ${divider}
+    ${label("Message")}
+    <p style="margin:4px 0 0;padding:14px 16px;border-radius:10px;background:#f0f7ff;color:#1e3a5f;font-size:15px;line-height:1.6;white-space:pre-wrap;">${message}</p>
+  `);
+}
