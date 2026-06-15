@@ -8,7 +8,7 @@ import {
   Phone, Upload, Check, MapPin, Users, ChevronRight, ChevronDown, ChevronUp,
   Code2, Key, Copy, TrendingUp, Link, Sun, Moon, Star, GitBranch,
   ArrowUpRight, ArrowDownRight, ArrowDownToLine, Settings, CreditCard, MessageCircle,
-  BookOpen, Database, Sparkles, Search, Layers, UserCircle, Wallet, FileText, AlertCircle, Filter, Download, Stethoscope,
+  BookOpen, Database, Sparkles, Search, Layers, UserCircle, Wallet, FileText, AlertCircle, Filter, Download, Stethoscope, Mail,
 } from "lucide-react";
 import { useDashTheme } from "@/hooks/useDashTheme";
 import { renderLabSla, EMPTY_LAB_SLA, type LabSlaData } from "@/lib/labSlaTemplate";
@@ -18,6 +18,7 @@ import { EditLabForm } from "@/components/admin/EditLabForm";
 import { AdminProfessionalsTab } from "@/components/admin/AdminProfessionalsTab";
 import { AdminSkinConsultsTab } from "@/components/admin/AdminSkinConsultsTab";
 import { AdminEncountersTab } from "@/components/admin/AdminEncountersTab";
+import { AdminBroadcastTab } from "@/components/admin/AdminBroadcastTab";
 import { SpecialtyTreePicker } from "@/components/admin/SpecialtyTreePicker";
 import { HospitalDoctorsPanel } from "@/components/admin/HospitalDoctorsPanel";
 import { Button } from "@/components/ui/Button";
@@ -29,7 +30,7 @@ import { format } from "date-fns";
 import { createClient } from "@/lib/supabase/client"; // still used for auth sign-out
 import { useRouter } from "next/navigation";
 
-type AdminTab = "metrics" | "requests" | "referrals" | "labs" | "analytics" | "marketers" | "lab-marketers" | "professionals" | "settings" | "transactions" | "knowledge-base" | "users" | "hospitals" | "agreements" | "skin" | "encounters";
+type AdminTab = "metrics" | "requests" | "referrals" | "labs" | "analytics" | "marketers" | "lab-marketers" | "professionals" | "settings" | "transactions" | "knowledge-base" | "users" | "hospitals" | "agreements" | "skin" | "encounters" | "broadcast";
 
 interface ReferralGroup {
   key: string; // doctor_email
@@ -89,6 +90,7 @@ export function AdminDashboard() {
   const [agreements, setAgreements] = useState<AgreementRecord[]>([]);
   const [agreementsLoading, setAgreementsLoading] = useState(false);
   const [defaultRequestPrice, setDefaultRequestPrice] = useState<string>("500");
+  const [supportEmail, setSupportEmail] = useState<string>("spendbox@gmail.com");
   const [savingSettings, setSavingSettings] = useState(false);
 
   // Lab marketers state
@@ -207,6 +209,7 @@ export function AdminDashboard() {
       const data = await res.json();
       if (data.success) {
         setDefaultRequestPrice(data.settings.default_request_price ?? "500");
+        setSupportEmail(data.settings.support_email ?? "spendbox@gmail.com");
       }
     } catch { /* non-critical */ }
   }, []);
@@ -226,6 +229,10 @@ export function AdminDashboard() {
       toast.error("Enter a valid default request price");
       return;
     }
+    if (supportEmail.trim() && !supportEmail.includes("@")) {
+      toast.error("Enter a valid support email");
+      return;
+    }
     setSavingSettings(true);
     try {
       const res = await fetch("/api/admin/settings", {
@@ -233,12 +240,14 @@ export function AdminDashboard() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           default_request_price: defaultRequestPrice,
+          support_email: supportEmail.trim(),
         }),
       });
       const data = await res.json();
       if (data.success) {
         toast.success("Settings saved");
         setDefaultRequestPrice(data.settings.default_request_price);
+        setSupportEmail(data.settings.support_email ?? supportEmail);
       } else {
         toast.error(data.error ?? "Failed to update");
       }
@@ -530,6 +539,7 @@ export function AdminDashboard() {
             { key: "agreements" as AdminTab, label: "Agreements", icon: <FileText className="w-4 h-4" /> },
             { key: "skin" as AdminTab, label: "Skin Consults", icon: <Stethoscope className="w-4 h-4" /> },
             { key: "encounters" as AdminTab, label: "Doctor Encounters", icon: <CreditCard className="w-4 h-4" /> },
+            { key: "broadcast" as AdminTab, label: "Bulk Email", icon: <Mail className="w-4 h-4" /> },
           ];
           const current = tabs.find((t) => t.key === activeTab) ?? tabs[0];
           return (
@@ -1412,6 +1422,18 @@ export function AdminDashboard() {
                     placeholder="e.g. 500"
                   />
                 </div>
+                <div>
+                  <label className="text-xs text-slate-400 mb-1 block">
+                    Support email — where dashboard help &amp; feedback messages are sent
+                  </label>
+                  <input
+                    type="email"
+                    value={supportEmail}
+                    onChange={(e) => setSupportEmail(e.target.value)}
+                    className="w-full bg-white/5 border border-white/10 rounded-xl px-3 py-2.5 text-white text-sm placeholder-slate-500 outline-none focus:ring-2 focus:ring-violet-500/50"
+                    placeholder="spendbox@gmail.com"
+                  />
+                </div>
               </div>
 
               <button
@@ -1617,6 +1639,8 @@ export function AdminDashboard() {
         {activeTab === "skin" && <AdminSkinConsultsTab />}
 
         {activeTab === "encounters" && <AdminEncountersTab />}
+
+        {activeTab === "broadcast" && <AdminBroadcastTab />}
 
         {/* ── AGREEMENTS ── */}
         {activeTab === "agreements" && (

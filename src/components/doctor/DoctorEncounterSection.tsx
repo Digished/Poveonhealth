@@ -5,7 +5,7 @@ import { toast } from "react-hot-toast";
 import {
   Loader2, Copy, Check, CreditCard, Users, Wallet, Stethoscope, Link2,
   ChevronDown, ChevronUp, Send, ShieldCheck, TrendingUp, AlertTriangle, ExternalLink,
-  ImagePlus, X, Palette, Image as ImageIcon, Pencil,
+  ImagePlus, X, Palette, Image as ImageIcon, Pencil, Tag, Plus, Power,
 } from "lucide-react";
 import { Input } from "@/components/ui/Input";
 import { BankAccountInput } from "@/components/BankAccountInput";
@@ -78,7 +78,7 @@ type Revenue = {
 const PLAN_LABEL: Record<string, string> = { single: "Single", monthly: "Monthly", yearly: "Yearly" };
 
 export function DoctorEncounterSection({ onReadyChange, onThemeChange }: { onReadyChange?: (ready: boolean) => void; onThemeChange?: (theme: string | null) => void }) {
-  const [view, setView] = useState<"overview" | "encounters" | "patients" | "pricing">("overview");
+  const [view, setView] = useState<"overview" | "encounters" | "patients" | "coupons" | "pricing">("overview");
   const [pricing, setPricing] = useState<Pricing | null>(null);
   const [encounters, setEncounters] = useState<EncounterItem[]>([]);
   const [patients, setPatients] = useState<PatientItem[]>([]);
@@ -144,6 +144,7 @@ export function DoctorEncounterSection({ onReadyChange, onThemeChange }: { onRea
             ["overview", "Revenue", TrendingUp],
             ["encounters", "Encounters", Stethoscope],
             ["patients", "Patients", Users],
+            ["coupons", "Coupons", Tag],
             ["pricing", "Pricing", CreditCard],
           ] as const).map(([key, label, Icon]) => (
             <button key={key} onClick={() => setView(key)}
@@ -161,6 +162,7 @@ export function DoctorEncounterSection({ onReadyChange, onThemeChange }: { onRea
       {view === "overview" && <OverviewView pricing={pricing} revenue={revenue} loading={dataLoading} onSetup={() => setView("pricing")} />}
       {view === "encounters" && (dataLoading ? <CardSkeleton /> : <EncountersView encounters={encounters} onChanged={loadData} />)}
       {view === "patients" && (dataLoading ? <CardSkeleton /> : <PatientsView patients={patients} />)}
+      {view === "coupons" && <CouponsView />}
       {view === "pricing" && (pricingLoading ? <CardSkeleton /> : <PricingView key={pricing?.slug ?? "new"} pricing={pricing} onSaved={reloadAll} onThemeChange={onThemeChange} />)}
     </div>
   );
@@ -393,7 +395,121 @@ function PatientsView({ patients }: { patients: PatientItem[] }) {
   );
 }
 
+// ── Coupons ──────────────────────────────────────────────────────────────────
+type Coupon = { id: string; code: string; percent_off: number; active: boolean; times_used: number };
+
+function CouponsView() {
+  const [coupons, setCoupons] = useState<Coupon[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [code, setCode] = useState("");
+  const [percent, setPercent] = useState("");
+  const [creating, setCreating] = useState(false);
+
+  const load = useCallback(async () => {
+    setLoading(true);
+    try {
+      const r = await fetch("/api/doc-login/coupons");
+      const d = await r.json();
+      if (d.success) setCoupons(d.coupons);
+    } catch { /* */ } finally { setLoading(false); }
+  }, []);
+  useEffect(() => { load(); }, [load]);
+
+  async function create() {
+    const c = code.trim().toUpperCase();
+    const p = parseInt(percent, 10);
+    if (c.length < 2 || !(p >= 1 && p <= 90) || creating) return;
+    setCreating(true);
+    try {
+      const res = await fetch("/api/doc-login/coupons", {
+        method: "POST", headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ code: c, percent_off: p }),
+      });
+      const d = await res.json();
+      if (!res.ok || !d.success) { toast.error(d.error ?? "Failed to create coupon."); return; }
+      setCode(""); setPercent("");
+      toast.success("Coupon created");
+      load();
+    } catch { toast.error("Network error."); } finally { setCreating(false); }
+  }
+
+  async function toggle(cp: Coupon) {
+    setCoupons((prev) => prev.map((x) => x.id === cp.id ? { ...x, active: !x.active } : x));
+    await fetch(`/api/doc-login/coupons/${cp.id}`, {
+      method: "PATCH", headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ active: !cp.active }),
+    }).catch(() => load());
+  }
+
+  async function remove(cp: Coupon) {
+    if (!window.confirm(`Delete coupon ${cp.code}?`)) return;
+    setCoupons((prev) => prev.filter((x) => x.id !== cp.id));
+    await fetch(`/api/doc-login/coupons/${cp.id}`, { method: "DELETE" }).catch(() => load());
+  }
+
+  const canCreate = code.trim().length >= 2 && (() => { const p = parseInt(percent, 10); return p >= 1 && p <= 90; })();
+
+  return (
+    <div className="space-y-4">
+      <div className="bg-white rounded-2xl border border-slate-100 p-4 sm:p-5 space-y-3">
+        <div>
+          <h3 className="text-sm font-bold text-slate-800 flex items-center gap-2"><Tag className="w-4 h-4 text-medical-500" /> New discount code</h3>
+          <p className="text-xs text-slate-400 mt-1">Patients enter the code at checkout. Up to 90% off.</p>
+        </div>
+        <div className="flex items-end gap-2">
+          <div className="flex-1">
+            <label className="text-xs font-medium text-slate-600">Code</label>
+            <input value={code} onChange={(e) => setCode(e.target.value.toUpperCase().replace(/[^A-Z0-9]/g, "").slice(0, 24))}
+              placeholder="WELCOME10" className="w-full mt-1 rounded-xl border border-slate-200 px-3 py-2.5 text-sm uppercase focus:outline-none focus:ring-2 focus:ring-medical-500 focus:border-medical-400 transition" />
+          </div>
+          <div className="w-24">
+            <label className="text-xs font-medium text-slate-600">% off</label>
+            <input value={percent} inputMode="numeric" onChange={(e) => setPercent(e.target.value.replace(/\D/g, "").slice(0, 2))}
+              placeholder="10" className="w-full mt-1 rounded-xl border border-slate-200 px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-medical-500 focus:border-medical-400 transition" />
+          </div>
+          <button onClick={create} disabled={!canCreate || creating}
+            className="shrink-0 flex items-center gap-1.5 px-3.5 py-2.5 rounded-xl bg-medical-600 hover:bg-medical-700 disabled:opacity-40 text-white text-sm font-semibold transition">
+            {creating ? <Loader2 className="w-4 h-4 animate-spin" /> : <Plus className="w-4 h-4" />}
+          </button>
+        </div>
+      </div>
+
+      {loading ? <CardSkeleton /> : coupons.length === 0 ? (
+        <div className="bg-white rounded-2xl border border-slate-100 p-8 text-center">
+          <Tag className="w-10 h-10 text-slate-200 mx-auto mb-3" />
+          <p className="text-sm font-semibold text-slate-600">No discount codes yet</p>
+          <p className="text-xs text-slate-400 mt-1">Create one above to offer patients a discount.</p>
+        </div>
+      ) : (
+        <div className="space-y-2.5">
+          {coupons.map((cp) => (
+            <div key={cp.id} className="bg-white rounded-2xl border border-slate-100 p-4 flex items-center gap-3">
+              <div className="flex-1 min-w-0">
+                <div className="flex items-center gap-2">
+                  <p className="text-sm font-black tracking-wide text-slate-800 font-mono">{cp.code}</p>
+                  <span className="text-[10px] font-bold px-1.5 py-0.5 rounded-full bg-medical-50 text-medical-600">{cp.percent_off}% off</span>
+                  {!cp.active && <span className="text-[10px] font-bold px-1.5 py-0.5 rounded-full bg-slate-100 text-slate-400">Off</span>}
+                </div>
+                <p className="text-[11px] text-slate-400 mt-0.5">Used {cp.times_used} time{cp.times_used === 1 ? "" : "s"}</p>
+              </div>
+              <button onClick={() => toggle(cp)} title={cp.active ? "Turn off" : "Turn on"}
+                className={`shrink-0 w-9 h-9 rounded-lg flex items-center justify-center transition ${cp.active ? "bg-emerald-50 text-emerald-600 hover:bg-emerald-100" : "bg-slate-100 text-slate-400 hover:bg-slate-200"}`}>
+                <Power className="w-4 h-4" />
+              </button>
+              <button onClick={() => remove(cp)} title="Delete"
+                className="shrink-0 w-9 h-9 rounded-lg flex items-center justify-center text-slate-400 hover:text-red-600 hover:bg-red-50 transition">
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
 // ── Pricing setup ────────────────────────────────────────────────────────────
+const MIN_FEE = 1000;
 function PricingView({ pricing, onSaved, onThemeChange }: { pricing: Pricing | null; onSaved: () => void; onThemeChange?: (theme: string | null) => void }) {
   const [consult, setConsult] = useState(pricing?.consultation_fee ? String(pricing.consultation_fee) : "");
   const [monthly, setMonthly] = useState(pricing?.retainer_monthly ? String(pricing.retainer_monthly) : "");
@@ -414,7 +530,8 @@ function PricingView({ pricing, onSaved, onThemeChange }: { pricing: Pricing | n
   // bankCode is needed for the payout subaccount, but if an older profile has the
   // name/number/name verified we still let them save (subaccount is best-effort).
   const haveBank = !!bankCode || (!!bankName && accountNumber.length === 10 && !!accountName);
-  const canSave = num(consult) > 0 && haveBank && accountNumber.length === 10 && (verified || !!accountName);
+  const feeOk = num(consult) >= MIN_FEE && (!monthly || num(monthly) >= MIN_FEE) && (!yearly || num(yearly) >= MIN_FEE);
+  const canSave = feeOk && haveBank && accountNumber.length === 10 && (verified || !!accountName);
 
   async function save() {
     if (!canSave || saving) return;
@@ -485,7 +602,7 @@ function PricingView({ pricing, onSaved, onThemeChange }: { pricing: Pricing | n
           <h3 className="text-sm font-bold text-slate-800 flex items-center gap-2"><CreditCard className="w-4 h-4 text-medical-500" /> Your prices</h3>
           <p className="text-xs text-slate-400 mt-1">Set what patients pay. You keep 80% of every payment.</p>
         </div>
-        <FeeInput label="Consultation fee (per encounter)" required value={consult} onChange={setConsult} hint="Charged for a single encounter." />
+        <FeeInput label="Consultation fee (per encounter)" required value={consult} onChange={setConsult} hint={`Charged for a single encounter. Minimum ₦${MIN_FEE.toLocaleString("en-NG")}.`} />
         <FeeInput label="Monthly retainership" value={monthly} onChange={setMonthly} hint="Optional — leave blank to disable." />
         <FeeInput label="Yearly retainership" value={yearly} onChange={setYearly} hint="Optional — leave blank to disable." />
       </div>

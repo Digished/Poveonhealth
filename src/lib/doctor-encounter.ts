@@ -20,8 +20,20 @@ export const DOCTOR_PERCENTAGE = 100 - POVEON_PERCENTAGE;
 
 export type PlanType = "single" | "monthly" | "yearly";
 
+// Floor for any fee a doctor sets (Naira).
+export const MIN_CONSULT_FEE = 1000;
+// Largest discount a coupon may grant.
+export const MAX_COUPON_PERCENT = 90;
+
 export function appUrl(): string {
   return process.env.NEXT_PUBLIC_APP_URL || "https://poveon.com";
+}
+
+/** Apply a percent discount to an amount, never below the Paystack floor (₦100). */
+export function applyDiscount(amountNaira: number, percentOff: number): number {
+  const off = Math.max(0, Math.min(MAX_COUPON_PERCENT, percentOff));
+  const discounted = Math.round(amountNaira * (1 - off / 100));
+  return Math.max(100, discounted);
 }
 
 /** Split a charged amount into the doctor's and Poveon's shares (Naira). */
