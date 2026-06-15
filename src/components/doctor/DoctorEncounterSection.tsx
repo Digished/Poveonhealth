@@ -5,7 +5,7 @@ import { toast } from "react-hot-toast";
 import {
   Loader2, Copy, Check, CreditCard, Users, Wallet, Stethoscope, Link2,
   ChevronDown, ChevronUp, Send, ShieldCheck, TrendingUp, AlertTriangle, ExternalLink,
-  ImagePlus, X, Palette, Image as ImageIcon, Pencil, Tag, Plus, Power,
+  ImagePlus, X, Palette, Image as ImageIcon, Pencil, Tag, Plus, Power, Banknote, Clock, CheckCircle2,
 } from "lucide-react";
 import { Input } from "@/components/ui/Input";
 import { BankAccountInput } from "@/components/BankAccountInput";
@@ -78,7 +78,7 @@ type Revenue = {
 const PLAN_LABEL: Record<string, string> = { single: "Single", monthly: "Monthly", yearly: "Yearly" };
 
 export function DoctorEncounterSection({ onReadyChange, onThemeChange }: { onReadyChange?: (ready: boolean) => void; onThemeChange?: (theme: string | null) => void }) {
-  const [view, setView] = useState<"overview" | "encounters" | "patients" | "coupons" | "pricing">("overview");
+  const [view, setView] = useState<"overview" | "encounters" | "patients" | "payouts" | "coupons" | "pricing">("overview");
   const [pricing, setPricing] = useState<Pricing | null>(null);
   const [encounters, setEncounters] = useState<EncounterItem[]>([]);
   const [patients, setPatients] = useState<PatientItem[]>([]);
@@ -144,6 +144,7 @@ export function DoctorEncounterSection({ onReadyChange, onThemeChange }: { onRea
             ["overview", "Revenue", TrendingUp],
             ["encounters", "Encounters", Stethoscope],
             ["patients", "Patients", Users],
+            ["payouts", "Payouts", Banknote],
             ["coupons", "Coupons", Tag],
             ["pricing", "Pricing", CreditCard],
           ] as const).map(([key, label, Icon]) => (
@@ -162,6 +163,7 @@ export function DoctorEncounterSection({ onReadyChange, onThemeChange }: { onRea
       {view === "overview" && <OverviewView pricing={pricing} revenue={revenue} loading={dataLoading} onSetup={() => setView("pricing")} />}
       {view === "encounters" && (dataLoading ? <CardSkeleton /> : <EncountersView encounters={encounters} onChanged={loadData} />)}
       {view === "patients" && (dataLoading ? <CardSkeleton /> : <PatientsView patients={patients} />)}
+      {view === "payouts" && <PayoutsView />}
       {view === "coupons" && <CouponsView />}
       {view === "pricing" && (pricingLoading ? <CardSkeleton /> : <PricingView key={pricing?.slug ?? "new"} pricing={pricing} onSaved={reloadAll} onThemeChange={onThemeChange} />)}
     </div>
@@ -391,6 +393,109 @@ function PatientsView({ patients }: { patients: PatientItem[] }) {
           </div>
         </div>
       ))}
+    </div>
+  );
+}
+
+// ── Payouts (Paystack settlements) ───────────────────────────────────────────
+type Settlement = { id: string; status: string; amountNaira: number; settlementDate: string | null; createdAt: string | null };
+type PayoutData = {
+  configured: boolean;
+  unavailable?: boolean;
+  bank_name?: string | null;
+  account_number?: string | null;
+  summary?: { total_settled: number; pending_amount: number; pending_count: number; next_payout_estimate: string };
+  settlements: Settlement[];
+};
+
+const SETTLE_META: Record<string, { label: string; cls: string; Icon: typeof Clock }> = {
+  success: { label: "Paid", cls: "bg-emerald-50 text-emerald-700 border-emerald-100", Icon: CheckCircle2 },
+  processing: { label: "Processing", cls: "bg-sky-50 text-sky-700 border-sky-100", Icon: Clock },
+  pending: { label: "Pending", cls: "bg-amber-50 text-amber-700 border-amber-100", Icon: Clock },
+  failed: { label: "Failed", cls: "bg-red-50 text-red-700 border-red-100", Icon: X },
+  reversed: { label: "Reversed", cls: "bg-slate-50 text-slate-500 border-slate-100", Icon: X },
+};
+
+function fmtDate(iso: string | null): string {
+  if (!iso) return "";
+  try { return new Date(iso).toLocaleDateString("en-NG", { day: "numeric", month: "short", year: "numeric" }); } catch { return ""; }
+}
+
+function PayoutsView() {
+  const [data, setData] = useState<PayoutData | null>(null);
+  const [loading, setLoading] = useState(true);
+
+  const load = useCallback(async () => {
+    setLoading(true);
+    try {
+      const r = await fetch("/api/doc-login/settlements");
+      const d = await r.json();
+      if (d.success) setData(d);
+    } catch { /* */ } finally { setLoading(false); }
+  }, []);
+  useEffect(() => { load(); }, [load]);
+
+  if (loading) return <CardSkeleton />;
+
+  if (!data?.configured) {
+    return (
+      <div className="bg-white rounded-2xl border border-slate-100 p-8 text-center">
+        <Banknote className="w-10 h-10 text-slate-200 mx-auto mb-3" />
+        <p className="text-sm font-semibold text-slate-600">No payout account yet</p>
+        <p className="text-xs text-slate-400 mt-1">Set your payout bank in Pricing to start receiving settlements.</p>
+      </div>
+    );
+  }
+
+  return (
+    <div className="space-y-4">
+      {/* Summary */}
+      <div className="grid grid-cols-2 gap-3">
+        <Stat label="Total paid out" value={naira(data.summary?.total_settled ?? 0)} icon={Banknote} accent="emerald" />
+        <Stat label="Pending" value={naira(data.summary?.pending_amount ?? 0)} icon={Clock} accent="medical" />
+      </div>
+
+      <div className="bg-white rounded-2xl border border-slate-100 p-4 flex items-center gap-3">
+        <div className="w-10 h-10 rounded-xl bg-medical-50 text-medical-600 flex items-center justify-center shrink-0"><Clock className="w-5 h-5" /></div>
+        <div className="flex-1 min-w-0">
+          <p className="text-sm font-bold text-slate-800">Next payout (estimated)</p>
+          <p className="text-[11px] text-slate-400">
+            {data.summary?.next_payout_estimate ? fmtDate(data.summary.next_payout_estimate) : "—"} · settles to {data.bank_name || "your bank"} {data.account_number || ""}
+          </p>
+        </div>
+      </div>
+      <p className="text-[11px] text-slate-400 px-1 -mt-1">
+        Paystack settles earnings T+1 working day. Weekends and public holidays push payouts to the next working day.
+      </p>
+
+      {data.unavailable ? (
+        <div className="bg-white rounded-2xl border border-slate-100 p-6 text-center">
+          <p className="text-sm text-slate-500">Payout history is temporarily unavailable. Please check back shortly.</p>
+        </div>
+      ) : data.settlements.length === 0 ? (
+        <div className="bg-white rounded-2xl border border-slate-100 p-8 text-center">
+          <Banknote className="w-10 h-10 text-slate-200 mx-auto mb-3" />
+          <p className="text-sm font-semibold text-slate-600">No payouts yet</p>
+          <p className="text-xs text-slate-400 mt-1">Your first settlement appears here once a patient pays.</p>
+        </div>
+      ) : (
+        <div className="space-y-2.5">
+          {data.settlements.map((s) => {
+            const meta = SETTLE_META[s.status] ?? SETTLE_META.pending;
+            const Icon = meta.Icon;
+            return (
+              <div key={s.id} className="bg-white rounded-2xl border border-slate-100 p-4 flex items-center gap-3">
+                <div className={`w-9 h-9 rounded-lg flex items-center justify-center shrink-0 border ${meta.cls}`}><Icon className="w-4 h-4" /></div>
+                <div className="flex-1 min-w-0">
+                  <p className="text-sm font-bold text-slate-800">{naira(s.amountNaira)}</p>
+                  <p className="text-[11px] text-slate-400">{fmtDate(s.settlementDate || s.createdAt)}</p>
+                </div>
+                <span className={`text-[10px] font-semibold border rounded-full px-2 py-0.5 shrink-0 ${meta.cls}`}>{meta.label}</span>
+              </div>
+            );
+          })}
+        </div>
+      )}
     </div>
   );
 }

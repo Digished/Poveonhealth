@@ -77,6 +77,30 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ ok: true });
   }
 
+  // Doctor payout settled — notify the doctor (best-effort, mapped by subaccount).
+  if (event === "settlement.success") {
+    const sub = data.subaccount as Record<string, unknown> | null;
+    const subCode = String(sub?.subaccount_code ?? data.subaccount_code ?? "");
+    const amountNaira = Number(data.total_amount ?? data.effective_amount ?? 0) / 100;
+    if (subCode && amountNaira > 0) {
+      const profile = await prisma.doctorProfile.findFirst({ where: { paystack_subaccount_code: subCode } }).catch(() => null);
+      if (profile) {
+        const { resend, FROM_ADDRESS } = await import("@/lib/email/resend");
+        const { doctorPayoutEmail } = await import("@/lib/email/templates");
+        const doctorName = [profile.prefix, profile.full_name].filter(Boolean).join(" ").trim();
+        resend.emails
+          .send({
+            from: FROM_ADDRESS,
+            to: profile.email,
+            subject: `Your Poveon payout of ₦${Math.round(amountNaira).toLocaleString("en-NG")} has settled`,
+            html: doctorPayoutEmail({ doctorName, amount: amountNaira, bankName: profile.bank_name }),
+          })
+          .catch((e) => console.error("[webhook] payout email:", e));
+      }
+    }
+    return NextResponse.json({ ok: true });
+  }
+
   if (event !== "charge.success" || channel !== "dedicated_nuban") {
     return NextResponse.json({ ok: true });
   }
