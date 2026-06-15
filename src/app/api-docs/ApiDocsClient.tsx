@@ -966,35 +966,63 @@ function DataModelSection() {
     { name: "completed_at", type: "datetime | null", desc: "Set when status → done." },
   ];
 
+  const labFields: { name: string; type: string; desc: string }[] = [
+    { name: "id", type: "string (uuid)", desc: "Lab identifier (use as lab_id when creating requests)." },
+    { name: "name", type: "string", desc: "Laboratory display name." },
+    { name: "slug", type: "string | null", desc: "URL slug for the lab's branded page." },
+    { name: "address", type: "string | null", desc: "Primary address." },
+    { name: "phones", type: "{number,label}[]", desc: "Contact numbers." },
+    { name: "whatsapp", type: "string | null", desc: "WhatsApp number (E.164)." },
+    { name: "service_categories", type: "string[]", desc: "Test categories the lab offers." },
+    { name: "branches", type: "LabBranch[]", desc: "Physical branches (name, address, phones)." },
+  ];
+  const catalogFields: { name: string; type: string; desc: string }[] = [
+    { name: "id", type: "string (uuid)", desc: "Catalog entry id." },
+    { name: "raw_name", type: "string", desc: "Test name as the lab provides it." },
+    { name: "category_label", type: "string | null", desc: "Category grouping." },
+    { name: "synonyms", type: "string[]", desc: "Alternate names used to match free-text requests." },
+    { name: "lab_price", type: "decimal (₦)", desc: "Patient-facing price for the test." },
+  ];
+
+  const Table = ({ rows }: { rows: { name: string; type: string; desc: string }[] }) => (
+    <div className="overflow-x-auto rounded-xl border border-slate-200">
+      <table className="w-full text-xs">
+        <thead className="bg-slate-50 text-slate-500">
+          <tr>
+            <th className="text-left font-semibold px-3 py-2">Field</th>
+            <th className="text-left font-semibold px-3 py-2">Type</th>
+            <th className="text-left font-semibold px-3 py-2">Description</th>
+          </tr>
+        </thead>
+        <tbody className="divide-y divide-slate-100">
+          {rows.map((f) => (
+            <tr key={f.name} className="align-top">
+              <td className="px-3 py-2 font-mono text-medical-700 whitespace-nowrap">{f.name}</td>
+              <td className="px-3 py-2 font-mono text-slate-500 whitespace-nowrap">{f.type}</td>
+              <td className="px-3 py-2 text-slate-600">{f.desc}</td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+    </div>
+  );
+
   return (
     <div className="glass-card p-5 sm:p-6">
       <h2 className="text-lg font-bold text-slate-800 mb-1">Data Model</h2>
       <p className="text-sm text-slate-500 mb-4">
-        The <code className="text-medical-700 bg-medical-50 px-1 rounded">Request</code> object is the
-        entity your LIMS reads and updates. For the full database schema (labs, catalog, results,
-        doctors, commission and more), see <code className="text-medical-700 bg-medical-50 px-1 rounded">SCHEMA.md</code> in the repository.
+        These are the entities your LIMS reads and updates over the API.
+        The <code className="text-medical-700 bg-medical-50 px-1 rounded">Request</code> object is the core record.
       </p>
 
-      <div className="overflow-x-auto rounded-xl border border-slate-200">
-        <table className="w-full text-xs">
-          <thead className="bg-slate-50 text-slate-500">
-            <tr>
-              <th className="text-left font-semibold px-3 py-2">Field</th>
-              <th className="text-left font-semibold px-3 py-2">Type</th>
-              <th className="text-left font-semibold px-3 py-2">Description</th>
-            </tr>
-          </thead>
-          <tbody className="divide-y divide-slate-100">
-            {requestFields.map((f) => (
-              <tr key={f.name} className="align-top">
-                <td className="px-3 py-2 font-mono text-medical-700 whitespace-nowrap">{f.name}</td>
-                <td className="px-3 py-2 font-mono text-slate-500 whitespace-nowrap">{f.type}</td>
-                <td className="px-3 py-2 text-slate-600">{f.desc}</td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
-      </div>
+      <p className="text-xs font-semibold text-slate-600 mb-2">Lab <span className="text-slate-400 font-normal">— returned by <code>GET /api/labs</code></span></p>
+      <Table rows={labFields} />
+
+      <p className="text-xs font-semibold text-slate-600 mb-2 mt-5">Price list entry <span className="text-slate-400 font-normal">— the lab's test catalog</span></p>
+      <Table rows={catalogFields} />
+
+      <p className="text-xs font-semibold text-slate-600 mb-2 mt-5">Request <span className="text-slate-400 font-normal">— the central record</span></p>
+      <Table rows={requestFields} />
 
       <div className="grid sm:grid-cols-3 gap-3 mt-5">
         {[

@@ -160,7 +160,7 @@ export function DoctorEncounterSection({ onReadyChange, onThemeChange }: { onRea
         </div>
       </div>
 
-      {view === "overview" && <OverviewView pricing={pricing} revenue={revenue} loading={dataLoading} onSetup={() => setView("pricing")} />}
+      {view === "overview" && <OverviewView pricing={pricing} revenue={revenue} loading={dataLoading} pricingLoading={pricingLoading} onSetup={() => setView("pricing")} />}
       {view === "encounters" && (dataLoading ? <CardSkeleton /> : <EncountersView encounters={encounters} onChanged={loadData} />)}
       {view === "patients" && (dataLoading ? <CardSkeleton /> : <PatientsView patients={patients} />)}
       {view === "payouts" && <PayoutsView />}
@@ -184,7 +184,7 @@ function CardSkeleton() {
 }
 
 // ── Overview / revenue ───────────────────────────────────────────────────────
-function OverviewView({ pricing, revenue, loading, onSetup }: { pricing: Pricing | null; revenue: Revenue | null; loading: boolean; onSetup: () => void }) {
+function OverviewView({ pricing, revenue, loading, pricingLoading, onSetup }: { pricing: Pricing | null; revenue: Revenue | null; loading: boolean; pricingLoading: boolean; onSetup: () => void }) {
   const [copied, setCopied] = useState(false);
   const shareUrl = pricing?.share_url;
 
@@ -196,7 +196,13 @@ function OverviewView({ pricing, revenue, loading, onSetup }: { pricing: Pricing
   return (
     <div className="space-y-4">
       {/* Share link */}
-      {pricing?.ready && shareUrl ? (
+      {pricingLoading ? (
+        <div className="bg-white rounded-2xl border border-slate-100 p-4 animate-pulse">
+          <div className="h-3 w-28 bg-slate-100 rounded" />
+          <div className="h-10 bg-slate-100 rounded-lg mt-2" />
+          <div className="h-3 w-40 bg-slate-100 rounded mt-2" />
+        </div>
+      ) : pricing?.ready && shareUrl ? (
         <div className="bg-gradient-to-br from-medical-600 to-medical-800 rounded-2xl p-4 text-white shadow-lg shadow-medical-600/20">
           <p className="text-[11px] font-semibold uppercase tracking-wider text-white/70 flex items-center gap-1.5"><Link2 className="w-3.5 h-3.5" /> Your patient link</p>
           <div className="flex items-center gap-2 mt-2">
