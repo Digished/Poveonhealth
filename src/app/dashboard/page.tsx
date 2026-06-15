@@ -21,6 +21,29 @@ interface Lab {
   phones?: unknown;
 }
 
+interface PatientEncounter {
+  id: string;
+  code: string;
+  doctor_name: string;
+  doctor_specialty: string | null;
+  doctor_avatar: string | null;
+  plan_type: string;
+  status: string;
+  doctor_note: string | null;
+  amount_paid: number;
+  image_urls: string[];
+  created_at: string;
+  responded_at: string | null;
+}
+
+interface PatientSubscription {
+  doctor_name: string;
+  doctor_specialty: string | null;
+  subscription_type: string;
+  expires_at: string | null;
+  active: boolean;
+}
+
 interface LabRequest {
   id: string;
   code: string;
@@ -872,6 +895,95 @@ function PatientSecuritySection({ email }: { email: string }) {
   );
 }
 
+const PLAN_LABEL: Record<string, string> = { single: "Single visit", monthly: "Monthly retainer", yearly: "Yearly retainer" };
+const STATUS_META: Record<string, { label: string; cls: string }> = {
+  new: { label: "Received", cls: "bg-sky-50 text-sky-700 border-sky-100" },
+  in_review: { label: "In review", cls: "bg-amber-50 text-amber-700 border-amber-100" },
+  responded: { label: "Replied", cls: "bg-emerald-50 text-emerald-700 border-emerald-100" },
+  closed: { label: "Closed", cls: "bg-slate-50 text-slate-500 border-slate-100" },
+};
+
+function PatientEncountersSection({
+  encounters, subscriptions, onBrowse,
+}: {
+  encounters: PatientEncounter[];
+  subscriptions: PatientSubscription[];
+  onBrowse: () => void;
+}) {
+  const naira = (n: number) => `₦${Math.round(n).toLocaleString("en-NG")}`;
+
+  return (
+    <div className="space-y-4">
+      {/* Active retainerships */}
+      {subscriptions.filter((s) => s.active).length > 0 && (
+        <div className="space-y-2">
+          <h2 className="text-sm font-bold text-slate-700 px-0.5">Your memberships</h2>
+          {subscriptions.filter((s) => s.active).map((s, i) => (
+            <div key={i} className="flex items-center gap-3 bg-gradient-to-br from-emerald-500 to-teal-600 rounded-2xl px-4 py-3.5 text-white shadow-sm">
+              <div className="w-10 h-10 rounded-xl bg-white/20 flex items-center justify-center shrink-0"><BadgeCheck className="w-5 h-5" /></div>
+              <div className="flex-1 min-w-0">
+                <p className="text-sm font-bold truncate">{s.doctor_name}</p>
+                <p className="text-[11px] text-white/80">{PLAN_LABEL[s.subscription_type] ?? "Retainer"} · active</p>
+              </div>
+              {s.expires_at && <p className="text-[11px] text-white/80 shrink-0">until {formatDate(s.expires_at)}</p>}
+            </div>
+          ))}
+        </div>
+      )}
+
+      {encounters.length === 0 ? (
+        <div className="flex flex-col items-center justify-center py-16 text-center">
+          <div className="w-14 h-14 rounded-2xl bg-white border border-slate-100 shadow-sm flex items-center justify-center mb-3">
+            <Stethoscope className="w-7 h-7 text-slate-200" />
+          </div>
+          <h2 className="text-slate-700 font-semibold text-sm mb-1">No doctor visits yet</h2>
+          <p className="text-slate-400 text-xs max-w-xs">When you consult a doctor through their Poveon link, your visits and replies appear here.</p>
+        </div>
+      ) : (
+        <div className="space-y-3">
+          {encounters.map((e) => (
+            <div key={e.id} className="bg-white rounded-2xl border border-slate-100 shadow-sm p-4">
+              <div className="flex items-center gap-3">
+                <div className="w-11 h-11 rounded-xl overflow-hidden bg-slate-100 flex items-center justify-center shrink-0">
+                  {e.doctor_avatar
+                    // eslint-disable-next-line @next/next/no-img-element
+                    ? <img src={e.doctor_avatar} alt={e.doctor_name} className="w-full h-full object-cover" />
+                    : <Stethoscope className="w-5 h-5 text-slate-300" />}
+                </div>
+                <div className="flex-1 min-w-0">
+                  <p className="text-sm font-bold text-slate-800 truncate">{e.doctor_name}</p>
+                  <p className="text-[11px] text-slate-400 truncate">{e.doctor_specialty || PLAN_LABEL[e.plan_type]} · {formatDate(e.created_at)}</p>
+                </div>
+                <span className={`text-[10px] font-semibold border rounded-full px-2 py-0.5 shrink-0 ${STATUS_META[e.status]?.cls ?? "bg-slate-50 text-slate-500 border-slate-100"}`}>
+                  {STATUS_META[e.status]?.label ?? e.status}
+                </span>
+              </div>
+
+              <div className="flex items-center gap-3 mt-3 text-[11px] text-slate-400">
+                <span className="font-mono">{e.code}</span>
+                <span>·</span>
+                <span>{PLAN_LABEL[e.plan_type] ?? e.plan_type}</span>
+                <span className="ml-auto font-semibold text-slate-600">{naira(e.amount_paid)}</span>
+              </div>
+
+              {e.doctor_note && (
+                <div className="mt-3 px-3 py-2.5 rounded-xl bg-emerald-50 border border-emerald-100">
+                  <p className="text-[10px] font-bold uppercase tracking-wide text-emerald-600 mb-1 flex items-center gap-1"><MessageCircle className="w-3 h-3" /> Note from your doctor</p>
+                  <p className="text-xs text-emerald-800 leading-relaxed whitespace-pre-wrap">{e.doctor_note}</p>
+                </div>
+              )}
+            </div>
+          ))}
+        </div>
+      )}
+
+      <button onClick={onBrowse} className="w-full flex items-center justify-center gap-2 py-3 px-4 rounded-xl bg-white border border-slate-200 text-slate-600 font-semibold text-sm hover:border-slate-300 transition">
+        <ClipboardList className="w-4 h-4" /> Back to lab requests
+      </button>
+    </div>
+  );
+}
+
 export default function DashboardPage() {
   const router = useRouter();
   const [requests, setRequests] = useState<LabRequest[]>([]);
@@ -880,7 +992,9 @@ export default function DashboardPage() {
   const [loading, setLoading] = useState(true);
   const [loggingOut, setLoggingOut] = useState(false);
   const [editingProfile, setEditingProfile] = useState(false);
-  const [activeTab, setActiveTab] = useState<"tests" | "results" | "security">("tests");
+  const [activeTab, setActiveTab] = useState<"tests" | "encounters" | "results" | "security">("tests");
+  const [encounters, setEncounters] = useState<PatientEncounter[]>([]);
+  const [subscriptions, setSubscriptions] = useState<PatientSubscription[]>([]);
   const [statusFilter, setStatusFilter] = useState<string>("all");
   const [labFilter, setLabFilter] = useState<string>("all");
   const [searchQuery, setSearchQuery] = useState("");
@@ -902,6 +1016,16 @@ export default function DashboardPage() {
     fetch("/api/patient/profile")
       .then((res) => res.ok ? res.json() : null)
       .then((data) => { if (data?.success) setProfile(data.profile); })
+      .catch(() => null);
+
+    fetch("/api/patient/encounters")
+      .then((res) => res.ok ? res.json() : null)
+      .then((data) => {
+        if (data?.success) {
+          setEncounters(data.encounters ?? []);
+          setSubscriptions(data.subscriptions ?? []);
+        }
+      })
       .catch(() => null);
   }, [router]);
 
@@ -937,7 +1061,7 @@ export default function DashboardPage() {
               <ClipboardList className="w-4 h-4 text-sky-300" />
             </div>
             <div className="min-w-0">
-              <h1 className="text-sm font-bold text-slate-800 leading-tight">My Tests</h1>
+              <h1 className="text-sm font-bold text-slate-800 leading-tight">My Health</h1>
               {patientEmail && <p className="text-xs text-slate-400 truncate max-w-[160px] sm:max-w-none">{patientEmail}</p>}
             </div>
           </div>
@@ -998,30 +1122,45 @@ export default function DashboardPage() {
           </>
         )}
 
-        {/* Tab Navigation */}
+        {/* Tab Navigation — scrollable pills */}
         {!loading && patientEmail && (
-          <div className="flex gap-1 bg-white/60 rounded-xl p-1 border border-white/60 shadow-sm">
-            {(["tests", "results", "security"] as const).map((tab) => {
-              const labels = { tests: "My Tests", results: "Results", security: "Security" };
-              const counts = { tests: requests.length, results: requests.filter((r) => r.status === "done").length, security: 0 };
-              return (
-                <button key={tab} onClick={() => setActiveTab(tab)}
-                  className={`flex-1 flex items-center justify-center gap-1.5 py-2 rounded-lg text-xs font-semibold transition-all ${
-                    activeTab === tab ? "bg-white text-slate-800 shadow-sm" : "text-slate-500 hover:text-slate-700"
-                  }`}>
-                  {tab === "tests" && <ClipboardList className="w-3.5 h-3.5" />}
-                  {tab === "results" && <BadgeCheck className="w-3.5 h-3.5" />}
-                  {tab === "security" && <Shield className="w-3.5 h-3.5" />}
-                  {labels[tab]}
-                  {counts[tab] > 0 && (
-                    <span className={`text-xs px-1.5 py-0.5 rounded-full font-bold ${
-                      activeTab === tab ? "bg-slate-100 text-slate-600" : "bg-slate-200/60 text-slate-500"
-                    }`}>{counts[tab]}</span>
-                  )}
-                </button>
-              );
-            })}
+          <div className="-mx-4 px-4 overflow-x-auto no-scrollbar">
+            <div className="flex gap-2 min-w-max pb-0.5">
+              {([
+                { key: "tests", label: "Lab Tests", Icon: ClipboardList },
+                { key: "encounters", label: "Doctor Visits", Icon: Stethoscope },
+                { key: "results", label: "Results", Icon: BadgeCheck },
+                { key: "security", label: "Security", Icon: Shield },
+              ] as const).map(({ key, label, Icon }) => {
+                const counts = {
+                  tests: requests.length,
+                  encounters: encounters.length,
+                  results: requests.filter((r) => r.status === "done").length,
+                  security: 0,
+                };
+                const active = activeTab === key;
+                return (
+                  <button key={key} onClick={() => setActiveTab(key)}
+                    className={`relative flex items-center gap-1.5 px-4 py-2.5 rounded-xl text-xs font-semibold whitespace-nowrap transition-all ${
+                      active
+                        ? "bg-gradient-to-br from-sky-600 to-indigo-600 text-white shadow-md shadow-sky-600/25"
+                        : "bg-white text-slate-600 border border-slate-200 hover:border-sky-200 hover:text-slate-800"
+                    }`}>
+                    <Icon className="w-3.5 h-3.5" />
+                    {label}
+                    {counts[key] > 0 && (
+                      <span className={`text-[10px] px-1.5 py-0.5 rounded-full font-bold ${active ? "bg-white/20 text-white" : "bg-slate-100 text-slate-500"}`}>{counts[key]}</span>
+                    )}
+                  </button>
+                );
+              })}
+            </div>
           </div>
+        )}
+
+        {/* Encounters Tab */}
+        {!loading && patientEmail && activeTab === "encounters" && (
+          <PatientEncountersSection encounters={encounters} subscriptions={subscriptions} onBrowse={() => router.push("/")} />
         )}
 
         {/* Security Tab */}
