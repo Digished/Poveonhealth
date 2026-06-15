@@ -9,6 +9,7 @@ import {
   isEncounterReady,
   priceForPlan,
   upsertDoctorSubaccount,
+  MIN_CONSULT_FEE,
 } from "@/lib/doctor-encounter";
 import { ensureEncounterSchema } from "@/lib/startup/ensure-encounter-schema";
 import { NIGERIAN_BANKS } from "@/lib/nigerian-banks";
@@ -77,8 +78,13 @@ export async function PATCH(req: NextRequest) {
       return NextResponse.json({ error: first?.message ?? "Invalid pricing." }, { status: 400 });
     }
     const d = parsed.data;
-    if (d.consultation_fee <= 0) {
-      return NextResponse.json({ error: "Set a consultation fee greater than zero." }, { status: 400 });
+    if (d.consultation_fee < MIN_CONSULT_FEE) {
+      return NextResponse.json({ error: `Consultation fee must be at least ₦${MIN_CONSULT_FEE.toLocaleString("en-NG")}.` }, { status: 400 });
+    }
+    for (const [label, v] of [["Monthly retainership", d.retainer_monthly], ["Yearly retainership", d.retainer_yearly]] as const) {
+      if (v != null && v > 0 && v < MIN_CONSULT_FEE) {
+        return NextResponse.json({ error: `${label} must be at least ₦${MIN_CONSULT_FEE.toLocaleString("en-NG")}.` }, { status: 400 });
+      }
     }
 
     // Guarantee the charging columns/tables exist before any read/write — the

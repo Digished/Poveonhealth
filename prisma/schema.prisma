@@ -250,6 +250,9 @@ model Encounter {
   status           String   @default("awaiting_payment") // awaiting_payment | new | in_review | responded | closed
   doctor_note      String? // note the doctor sends back to the patient
 
+  coupon_code      String? // discount code applied at checkout
+  discount_percent Int? // percent discount applied (for the record)
+
   is_paid           Boolean  @default(false)
   amount_paid       Decimal? @db.Decimal(12, 2) // total charged, Naira
   doctor_share      Decimal? @db.Decimal(12, 2) // 80% of the charge
@@ -285,6 +288,21 @@ model DoctorPatient {
   @@unique([doctor_email, patient_email])
   @@index([doctor_email])
   @@map("doctor_patients")
+}
+
+// Discount / coupon codes a doctor creates for their encounter page.
+model EncounterCoupon {
+  id           String   @id @default(uuid())
+  doctor_email String
+  code         String   // stored uppercase
+  percent_off  Int      // 1-90
+  active       Boolean  @default(true)
+  times_used   Int      @default(0)
+  created_at   DateTime @default(now())
+
+  @@unique([doctor_email, code])
+  @@index([doctor_email])
+  @@map("encounter_coupons")
 }
 
 // One-time passcodes for doctor portal login

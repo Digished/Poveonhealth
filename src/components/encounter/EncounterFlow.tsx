@@ -6,7 +6,7 @@ import { toast } from "react-hot-toast";
 import Link from "next/link";
 import {
   ImagePlus, X, Send, Check, ChevronLeft, ChevronRight, Loader2, ShieldCheck,
-  MessageCircle, Sparkles, User, Camera, Stethoscope, Users, CalendarClock, CreditCard,
+  MessageCircle, Sparkles, User, Camera, Stethoscope, Users, CalendarClock, CreditCard, Tag,
 } from "lucide-react";
 import { Input } from "@/components/ui/Input";
 import { PhoneInput } from "@/components/PhoneInput";
@@ -66,6 +66,36 @@ export function EncounterFlow({ slug, doctorName, specialty, hospitals, patientC
   const defaultPlan: Plan = pricing.single != null ? "single" : pricing.monthly != null ? "monthly" : "yearly";
   const [plan, setPlan] = useState<Plan>(defaultPlan);
   const [submitting, setSubmitting] = useState(false);
+
+  // Coupon
+  const [couponInput, setCouponInput] = useState("");
+  const [coupon, setCoupon] = useState<{ code: string; percent: number } | null>(null);
+  const [couponChecking, setCouponChecking] = useState(false);
+
+  async function applyCoupon() {
+    const c = couponInput.trim();
+    if (!c || couponChecking) return;
+    setCouponChecking(true);
+    try {
+      const res = await fetch("/api/encounter/coupon", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ slug, code: c }),
+      });
+      const d = await res.json();
+      if (d.valid) {
+        setCoupon({ code: d.code, percent: d.percent_off });
+        toast.success(`${d.percent_off}% discount applied`);
+      } else {
+        setCoupon(null);
+        toast.error("That code isn't valid.");
+      }
+    } catch {
+      toast.error("Couldn't check that code.");
+    } finally {
+      setCouponChecking(false);
+    }
+  }
 
   const [mounted, setMounted] = useState(false);
   useEffect(() => { setMounted(true); }, []);
@@ -182,7 +212,8 @@ export function EncounterFlow({ slug, doctorName, specialty, hospitals, patientC
 
   // ── Submit ──────────────────────────────────────────────────────────────────
   const detailsValid = name.trim().length >= 2 && emailValid && phone.trim().length >= 7;
-  const planPrice = pricing[plan] ?? 0;
+  const listPrice = pricing[plan] ?? 0;
+  const planPrice = coupon ? Math.max(100, Math.round(listPrice * (1 - coupon.percent / 100))) : listPrice;
 
   async function handleSubmit() {
     if (!detailsValid || submitting) return;
@@ -201,6 +232,7 @@ export function EncounterFlow({ slug, doctorName, specialty, hospitals, patientC
           patient_sex: sex || undefined,
           image_urls: uploadedUrls,
           conversation: messages,
+          coupon_code: coupon?.code,
         }),
       });
       const data = await res.json();
@@ -432,6 +464,37 @@ export function EncounterFlow({ slug, doctorName, specialty, hospitals, patientC
               );
             })}
           </div>
+
+          {/* Coupon */}
+          <div className="rounded-xl border border-slate-200 bg-white p-3">
+            {coupon ? (
+              <div className="flex items-center gap-2">
+                <Tag className="w-4 h-4 text-emerald-600 shrink-0" />
+                <p className="text-sm font-semibold text-emerald-700 flex-1 min-w-0 truncate">
+                  {coupon.code} · {coupon.percent}% off applied
+                </p>
+                <button onClick={() => { setCoupon(null); setCouponInput(""); }} className="text-xs font-semibold text-slate-400 hover:text-red-600 transition">Remove</button>
+              </div>
+            ) : (
+              <div className="flex items-center gap-2">
+                <input value={couponInput} onChange={(e) => setCouponInput(e.target.value.toUpperCase().replace(/[^A-Z0-9]/g, ""))}
+                  onKeyDown={(e) => { if (e.key === "Enter") applyCoupon(); }}
+                  placeholder="Discount code (optional)"
+                  className="flex-1 min-w-0 rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-medical-500 focus:border-medical-400 transition uppercase" />
+                <button onClick={applyCoupon} disabled={!couponInput.trim() || couponChecking}
+                  className="shrink-0 px-3 py-2 rounded-lg bg-slate-800 hover:bg-slate-900 disabled:opacity-40 text-white text-xs font-semibold transition">
+                  {couponChecking ? "…" : "Apply"}
+                </button>
+              </div>
+            )}
+            {coupon && (
+              <div className="flex items-center justify-between mt-2.5 pt-2.5 border-t border-slate-100 text-sm">
+                <span className="text-slate-400 line-through">{naira(listPrice)}</span>
+                <span className="font-black text-medical-700">You pay {naira(planPrice)}</span>
+              </div>
+            )}
+          </div>
+
           <div className="flex items-start gap-2.5 px-4 py-3 rounded-xl bg-slate-50 border border-slate-100">
             <ShieldCheck className="w-4 h-4 text-slate-400 shrink-0 mt-0.5" />
             <p className="text-xs text-slate-500 leading-relaxed">

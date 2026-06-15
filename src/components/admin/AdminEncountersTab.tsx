@@ -1,7 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useRef, useState } from "react";
-import { RefreshCw, Search, X, Stethoscope, Mail, Phone } from "lucide-react";
+import { RefreshCw, Search, X, Stethoscope, Mail, Phone, ChevronDown, ExternalLink, CheckCircle2 } from "lucide-react";
 import { formatDistanceToNow } from "date-fns";
 
 const naira = (n: number) => `₦${Math.round(n || 0).toLocaleString("en-NG")}`;
@@ -122,6 +122,9 @@ export function AdminEncountersTab() {
         )}
       </div>
 
+      {/* Doctors who have created encounter pages */}
+      <DoctorPagesPanel />
+
       {/* Per-doctor breakdown */}
       {perDoctor.length > 0 && (
         <div className="rounded-2xl border border-white/8 bg-white/3 overflow-hidden">
@@ -191,6 +194,83 @@ function Stat({ label, value, sub, accent }: { label: string; value: string; sub
       <p className="text-[10px] uppercase tracking-wide text-slate-500">{label}</p>
       <p className={`text-lg font-bold mt-0.5 truncate ${accent ? "text-medical-200" : "text-white"}`}>{value}</p>
       {sub && <p className="text-[11px] text-slate-500 mt-0.5">{sub}</p>}
+    </div>
+  );
+}
+
+interface DoctorPage {
+  email: string;
+  name: string;
+  specialty: string | null;
+  slug: string | null;
+  ready: boolean;
+  consultation_fee: number | null;
+  has_subaccount: boolean;
+  patient_count: number;
+  encounter_count: number;
+  gross: number;
+  doctor_earned: number;
+  updated_at: string;
+}
+
+function DoctorPagesPanel() {
+  const [doctors, setDoctors] = useState<DoctorPage[]>([]);
+  const [stats, setStats] = useState<{ total: number; live: number } | null>(null);
+  const [open, setOpen] = useState(false);
+  const [loaded, setLoaded] = useState(false);
+
+  const load = useCallback(async () => {
+    try {
+      const r = await fetch("/api/admin/doctor-pages");
+      const d = await r.json();
+      if (d.success) { setDoctors(d.doctors); setStats(d.stats); }
+    } catch { /* */ } finally { setLoaded(true); }
+  }, []);
+  useEffect(() => { load(); }, [load]);
+
+  return (
+    <div className="rounded-2xl border border-white/8 bg-white/3 overflow-hidden">
+      <button onClick={() => setOpen((o) => !o)} className="w-full flex items-center gap-2 px-4 py-3 text-left">
+        <Stethoscope className="w-4 h-4 text-slate-400" />
+        <span className="text-sm font-semibold text-white">Doctor encounter pages</span>
+        {stats && <span className="text-[10px] font-medium border rounded-full px-2 py-0.5 bg-emerald-500/15 text-emerald-300 border-emerald-500/25">{stats.live} live / {stats.total}</span>}
+        <ChevronDown className={`w-4 h-4 text-slate-400 ml-auto transition-transform ${open ? "rotate-180" : ""}`} />
+      </button>
+      {open && (
+        <div className="px-4 pb-4 border-t border-white/8 pt-3">
+          {!loaded ? (
+            <p className="text-xs text-slate-500 py-4 text-center">Loading…</p>
+          ) : doctors.length === 0 ? (
+            <p className="text-xs text-slate-500 py-4 text-center">No doctors have set up a page yet.</p>
+          ) : (
+            <div className="divide-y divide-white/5">
+              {doctors.map((d) => (
+                <div key={d.email} className="flex items-center gap-3 py-2.5">
+                  <div className="flex-1 min-w-0">
+                    <div className="flex items-center gap-1.5">
+                      <p className="text-sm font-semibold text-white truncate">{d.name}</p>
+                      {d.ready
+                        ? <CheckCircle2 className="w-3.5 h-3.5 text-emerald-400 shrink-0" />
+                        : <span className="text-[10px] text-amber-300 shrink-0">setup incomplete</span>}
+                    </div>
+                    <p className="text-[11px] text-slate-500 truncate">
+                      {d.specialty ? `${d.specialty} · ` : ""}{d.patient_count} patients · {d.encounter_count} encounters
+                    </p>
+                  </div>
+                  <div className="text-right shrink-0">
+                    <p className="text-sm font-bold text-white">{`₦${Math.round(d.gross).toLocaleString("en-NG")}`}</p>
+                    {d.slug && (
+                      <a href={`/d/${d.slug}`} target="_blank" rel="noreferrer" className="text-[11px] text-medical-300 hover:underline inline-flex items-center gap-0.5">
+                        /d/{d.slug} <ExternalLink className="w-2.5 h-2.5" />
+                      </a>
+                    )}
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+      )}
     </div>
   );
 }

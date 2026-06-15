@@ -1496,3 +1496,15 @@ export function encounterNoteEmail({
     </p>
   `);
 }
+
+// =============================================================================
+// TEMPLATE: Generic branded broadcast (admin bulk email)
+// bodyHtml is trusted HTML (composed by an admin) wrapped in the Poveon shell.
+// =============================================================================
+export function broadcastEmail({ bodyHtml }: { bodyHtml: string }) {
+  return base(`
+    <div style="color:#1e3a5f;font-size:15px;line-height:1.7;">
+      ${bodyHtml}
+    </div>
+  `);
+}

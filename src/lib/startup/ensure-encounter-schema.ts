@@ -102,6 +102,23 @@ async function runEnsure(): Promise<void> {
     await prisma.$executeRawUnsafe(`CREATE UNIQUE INDEX IF NOT EXISTS doctor_patients_doctor_email_patient_email_key ON doctor_patients(doctor_email, patient_email);`);
     await prisma.$executeRawUnsafe(`CREATE INDEX IF NOT EXISTS doctor_patients_doctor_email_idx ON doctor_patients(doctor_email);`);
 
+    await prisma.$executeRawUnsafe(`ALTER TABLE encounters ADD COLUMN IF NOT EXISTS coupon_code TEXT;`);
+    await prisma.$executeRawUnsafe(`ALTER TABLE encounters ADD COLUMN IF NOT EXISTS discount_percent INTEGER;`);
+
+    await prisma.$executeRawUnsafe(`
+      CREATE TABLE IF NOT EXISTS encounter_coupons (
+        id TEXT PRIMARY KEY,
+        doctor_email TEXT NOT NULL,
+        code TEXT NOT NULL,
+        percent_off INTEGER NOT NULL,
+        active BOOLEAN NOT NULL DEFAULT true,
+        times_used INTEGER NOT NULL DEFAULT 0,
+        created_at TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP
+      );
+    `);
+    await prisma.$executeRawUnsafe(`CREATE UNIQUE INDEX IF NOT EXISTS encounter_coupons_doctor_email_code_key ON encounter_coupons(doctor_email, code);`);
+    await prisma.$executeRawUnsafe(`CREATE INDEX IF NOT EXISTS encounter_coupons_doctor_email_idx ON encounter_coupons(doctor_email);`);
+
     console.log("[startup] ensure-encounter-schema: schema ready");
   } catch (err) {
     console.error("[startup] ensure-encounter-schema failed:", err);

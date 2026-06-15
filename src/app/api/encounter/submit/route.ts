@@ -4,6 +4,7 @@ import { z } from "zod";
 import { prisma } from "@/lib/prisma";
 import { generateUniqueCode } from "@/lib/code-generator";
 import {
+  applyDiscount,
   buildEncounterSummary,
   initEncounterPayment,
   isEncounterReady,
@@ -28,6 +29,7 @@ const BodySchema = z.object({
   patient_sex: z.enum(["male", "female", "other"]).optional().nullable(),
   image_urls: z.array(z.string().url()).max(5).default([]),
   conversation: z.array(MessageSchema).max(40).default([]),
+  coupon_code: z.string().trim().max(24).optional().nullable(),
 });
 
 export async function POST(req: NextRequest) {
@@ -49,9 +51,24 @@ export async function POST(req: NextRequest) {
     }
 
     const plan = data.plan_type as PlanType;
-    const price = priceForPlan(profile, plan);
-    if (!price) {
+    const listPrice = priceForPlan(profile, plan);
+    if (!listPrice) {
       return NextResponse.json({ error: "That plan isn't available from this doctor." }, { status: 409 });
+    }
+
+    // Apply a discount code if supplied and active.
+    let price = listPrice;
+    let appliedCoupon: string | null = null;
+    let discountPercent: number | null = null;
+    if (data.coupon_code) {
+      const coupon = await prisma.encounterCoupon.findUnique({
+        where: { doctor_email_code: { doctor_email: profile.email, code: data.coupon_code.toUpperCase() } },
+      }).catch(() => null);
+      if (coupon?.active) {
+        price = applyDiscount(listPrice, coupon.percent_off);
+        appliedCoupon = coupon.code;
+        discountPercent = coupon.percent_off;
+      }
     }
 
     const code = await generateUniqueCode("ENC", async (candidate) => {
@@ -76,11 +93,21 @@ export async function POST(req: NextRequest) {
         ai_summary: aiSummary,
         plan_type: plan,
         status: "awaiting_payment",
+        coupon_code: appliedCoupon,
+        discount_percent: discountPercent,
         amount_paid: price,
         doctor_share: doctor,
         poveon_share: poveon,
       },
     });
+
+    // Best-effort usage counter for the coupon
+    if (appliedCoupon) {
+      prisma.encounterCoupon.updateMany({
+        where: { doctor_email: profile.email, code: appliedCoupon },
+        data: { times_used: { increment: 1 } },
+      }).catch(() => {});
+    }
 
     // Ensure a payout subaccount exists so the 80/20 split happens automatically.
     // If provisioning ever failed at save time, create it now from the saved bank.
