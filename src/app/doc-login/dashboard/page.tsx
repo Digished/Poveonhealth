@@ -12,6 +12,7 @@ import { DoctorReferralsSection } from "@/components/referral/DoctorReferralsSec
 import { DoctorEncounterSection } from "@/components/doctor/DoctorEncounterSection";
 import { themeClass } from "@/lib/encounter-themes";
 import { SupportFab } from "@/components/SupportFab";
+import { SectionLoader } from "@/components/PageLoader";
 import { PoveonLogo } from "@/components/PoveonLogo";
 import { PhoneInput } from "@/components/PhoneInput";
 import { HospitalTagInput } from "@/components/ui/HospitalTagInput";
@@ -589,6 +590,7 @@ function DocDashboardInner() {
       </header>
 
       <main className="max-w-2xl mx-auto px-4 py-5 space-y-4">
+        {loading && <SectionLoader label="Loading your dashboard…" />}
         {/* Tab Navigation — scrollable pills, Earn first */}
         {!loading && (
           <div className="-mx-4 px-4 overflow-x-auto no-scrollbar">

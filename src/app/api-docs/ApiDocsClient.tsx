@@ -941,6 +941,77 @@ function CustomEmailSection() {
   );
 }
 
+function DataModelSection() {
+  const requestFields: { name: string; type: string; desc: string }[] = [
+    { name: "id", type: "string (uuid)", desc: "Internal request identifier." },
+    { name: "code", type: "string", desc: "Unique, shareable code (e.g. LABA-8X4K29Q). Patient presents this at the lab." },
+    { name: "lab_id", type: "string", desc: "The lab this request belongs to." },
+    { name: "status", type: "enum", desc: "incoming | seen | done." },
+    { name: "doctor_email", type: "string | null", desc: "NULL = self-service patient; set = doctor-referred." },
+    { name: "doctor_name", type: "string | null", desc: "Referring doctor's name." },
+    { name: "patient_name", type: "string | null", desc: "Patient's full name." },
+    { name: "patient_phone", type: "string | null", desc: "E.164 phone, e.g. +2348001234567." },
+    { name: "patient_email", type: "string | null", desc: "Used for result delivery and portal auto-fill." },
+    { name: "tests", type: "string", desc: "Requested tests (comma-separated / free text)." },
+    { name: "condition", type: "string | null", desc: "Symptoms or clinical note." },
+    { name: "schedule", type: "string | null", desc: "Requested appointment time." },
+    { name: "test_image_url", type: "string | null", desc: "Uploaded request slip / image." },
+    { name: "result_link", type: "string | null", desc: "External results URL (set when done)." },
+    { name: "result_note", type: "string | null", desc: "Free-text result summary." },
+    { name: "result_file_urls", type: "string[]", desc: "Attached result PDFs / images." },
+    { name: "poveon_amount", type: "decimal | null", desc: "Poveon commission for this request (computed at 'seen')." },
+    { name: "lab_revenue_amount", type: "decimal | null", desc: "Lab's revenue after commission." },
+    { name: "created_at", type: "datetime", desc: "When the request was created." },
+    { name: "seen_at", type: "datetime | null", desc: "Set when status → seen." },
+    { name: "completed_at", type: "datetime | null", desc: "Set when status → done." },
+  ];
+
+  return (
+    <div className="glass-card p-5 sm:p-6">
+      <h2 className="text-lg font-bold text-slate-800 mb-1">Data Model</h2>
+      <p className="text-sm text-slate-500 mb-4">
+        The <code className="text-medical-700 bg-medical-50 px-1 rounded">Request</code> object is the
+        entity your LIMS reads and updates. For the full database schema (labs, catalog, results,
+        doctors, commission and more), see <code className="text-medical-700 bg-medical-50 px-1 rounded">SCHEMA.md</code> in the repository.
+      </p>
+
+      <div className="overflow-x-auto rounded-xl border border-slate-200">
+        <table className="w-full text-xs">
+          <thead className="bg-slate-50 text-slate-500">
+            <tr>
+              <th className="text-left font-semibold px-3 py-2">Field</th>
+              <th className="text-left font-semibold px-3 py-2">Type</th>
+              <th className="text-left font-semibold px-3 py-2">Description</th>
+            </tr>
+          </thead>
+          <tbody className="divide-y divide-slate-100">
+            {requestFields.map((f) => (
+              <tr key={f.name} className="align-top">
+                <td className="px-3 py-2 font-mono text-medical-700 whitespace-nowrap">{f.name}</td>
+                <td className="px-3 py-2 font-mono text-slate-500 whitespace-nowrap">{f.type}</td>
+                <td className="px-3 py-2 text-slate-600">{f.desc}</td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+
+      <div className="grid sm:grid-cols-3 gap-3 mt-5">
+        {[
+          { k: "incoming", d: "Created; patient not yet at the lab." },
+          { k: "seen", d: "Patient arrived / acknowledged. Commission computed." },
+          { k: "done", d: "Tests complete; results attached & delivered." },
+        ].map((s) => (
+          <div key={s.k} className="rounded-xl border border-slate-200 bg-white/60 p-3">
+            <p className="text-xs font-mono font-bold text-medical-700">{s.k}</p>
+            <p className="text-xs text-slate-500 mt-1 leading-relaxed">{s.d}</p>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
 function StatusFlow() {
   return (
     <div className="glass-card p-5 sm:p-6">
@@ -1261,6 +1332,7 @@ export default function ApiDocsClient() {
                   { id: "auth-section", label: "Authentication", icon: "🔑" },
                   { id: "custom-email", label: "Custom Lab Email", icon: "✉️" },
                   { id: "status-flow", label: "Status Workflow", icon: "🔄" },
+                  { id: "data-model", label: "Data Model", icon: "🗂️" },
                   ...sections.map((s) => ({ id: s.id, label: s.label, icon: s.icon })),
                   { id: "errors", label: "Status Codes", icon: "⚠️" },
                   { id: "rate-limiting", label: "Rate Limiting", icon: "⏱️" },
@@ -1325,6 +1397,10 @@ export default function ApiDocsClient() {
             {/* Status workflow */}
             <section id="status-flow">
               <StatusFlow />
+            </section>
+
+            <section id="data-model">
+              <DataModelSection />
             </section>
 
             {/* Endpoint sections */}
