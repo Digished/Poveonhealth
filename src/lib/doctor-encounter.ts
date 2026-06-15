@@ -217,6 +217,51 @@ export async function verifyEncounterPayment(
   }
 }
 
+// ── Settlements (Paystack payout tracking) ───────────────────────────────────
+
+export type SettlementItem = {
+  id: string;
+  status: string; // "pending" | "processing" | "success" | "failed" | "reversed"
+  amountNaira: number;
+  settlementDate: string | null;
+  createdAt: string | null;
+};
+
+/** Fetch a doctor subaccount's settlement history from Paystack. */
+export async function fetchSubaccountSettlements(subaccountCode: string, limit = 50): Promise<SettlementItem[] | null> {
+  const secret = process.env.PAYSTACK_SECRET_KEY;
+  if (!secret) return null;
+  try {
+    const res = await fetch(
+      `https://api.paystack.co/settlement?subaccount=${encodeURIComponent(subaccountCode)}&perPage=${limit}`,
+      { headers: { Authorization: `Bearer ${secret}` }, signal: AbortSignal.timeout(12000) }
+    );
+    const data = await res.json();
+    if (!data.status || !Array.isArray(data.data)) {
+      console.error("[encounter] settlements list failed:", JSON.stringify(data).slice(0, 300));
+      return null;
+    }
+    return data.data.map((s: Record<string, unknown>): SettlementItem => ({
+      id: String(s.id ?? ""),
+      status: String(s.status ?? "pending"),
+      amountNaira: Number(s.total_amount ?? s.effective_amount ?? 0) / 100,
+      settlementDate: (s.settlement_date as string) ?? null,
+      createdAt: (s.created_at as string) ?? null,
+    }));
+  } catch (e) {
+    console.error("[encounter] settlements fetch error:", e);
+    return null;
+  }
+}
+
+/** Estimate the next payout date: T+1 working day (skips weekends). */
+export function nextWorkingDay(from = new Date()): Date {
+  const d = new Date(from);
+  d.setDate(d.getDate() + 1);
+  while (d.getDay() === 0 || d.getDay() === 6) d.setDate(d.getDate() + 1);
+  return d;
+}
+
 // ── AI screening summary ─────────────────────────────────────────────────────
 
 type ChatMessage = { role: string; content: string };

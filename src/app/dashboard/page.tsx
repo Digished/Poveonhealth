@@ -4,6 +4,7 @@ import { useEffect, useState, useCallback, useRef } from "react";
 import { useRouter } from "next/navigation";
 import { PoveonLogo } from "@/components/PoveonLogo";
 import { SupportFab } from "@/components/SupportFab";
+import { SectionLoader } from "@/components/PageLoader";
 import { parsePhones } from "@/lib/phones";
 import { DobInput } from "@/components/DobInput";
 import { PhoneInput } from "@/components/PhoneInput";
@@ -1078,6 +1079,7 @@ export default function DashboardPage() {
       </header>
 
       <main className="max-w-2xl mx-auto px-4 py-5 space-y-4 pb-12">
+        {loading && <SectionLoader label="Loading your dashboard…" />}
         {!loading && patientEmail && (
           <>
             {editingProfile ? (
