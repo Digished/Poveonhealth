@@ -90,10 +90,12 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    // Fast Mode: the doctor sent plain language — sort it into fields here (in the
-    // background). Only empty fields are filled, so anything explicitly sent wins.
+    // Fast Mode: the doctor sent plain language. The AI sorting, pricing, row
+    // update and emails are all DEFERRED to after the response (see below) so the
+    // code is generated and returned immediately. This helper sorts the raw text
+    // into `data` and enriches from a saved patient profile; it runs in the bg.
     const rawInput = (data.raw_input || "").trim();
-    if (data.fast_mode && rawInput) {
+    const enrichFromRawInput = async () => {
       try {
         const baseUrl = process.env.NEXT_PUBLIC_APP_URL || new URL(request.url).origin;
         const { parsed: p } = await parseReferralText(rawInput, data.lab_id, baseUrl);
@@ -103,16 +105,12 @@ export async function POST(request: NextRequest) {
         if (!data.patient_phone) data.patient_phone = p.patient_phone;
         if (!data.patient_email && p.patient_email) data.patient_email = p.patient_email;
         if (!data.diagnosis) data.diagnosis = p.diagnosis;
-        if (!data.tests) data.tests = p.tests.length ? p.tests.join("\n") : rawInput;
+        data.tests = p.tests.length ? p.tests.join("\n") : rawInput;
       } catch (e) {
-        // Sorting failed — still create the request with the raw text as the tests
-        // so nothing is lost; the lab gets the original note in the email.
         console.error("[create] fast-mode parse failed:", e);
         if (!data.tests) data.tests = rawInput;
       }
-
-      // Background patient enrichment (cached "step 2"): fill any still-missing
-      // patient details from a saved PatientProfile, matched by email then phone.
+      // Cached "step 2": fill still-missing patient details from a saved profile.
       try {
         const emailKey = data.patient_email?.trim().toLowerCase();
         const phoneDigits = (data.patient_phone || "").replace(/\D/g, "");
@@ -146,7 +144,7 @@ export async function POST(request: NextRequest) {
       } catch (e) {
         console.error("[create] fast-mode patient enrichment skipped:", e);
       }
-    }
+    };
 
     // Enrich doctor fields from DoctorProfile if not provided in the request body
     const doctorProfile = await prisma.doctorProfile.findUnique({
@@ -190,9 +188,10 @@ export async function POST(request: NextRequest) {
     // Resolve marketer attribution from pov_ref cookie (first-touch, non-blocking)
     const povRef = request.cookies.get("pov_ref")?.value;
 
-    // Build final tests string from resolved tests or raw tests
-    let finalTests = data.tests || "See attached image";
-    if (data.resolvedTests && data.resolvedTests.length > 0) {
+    // Build final tests string. For Fast Mode the AI sorting is deferred, so we
+    // store the raw text now and refine + price it in the background.
+    let finalTests = data.tests || rawInput || "See attached image";
+    if (!data.fast_mode && data.resolvedTests && data.resolvedTests.length > 0) {
       // Format resolved tests as newline-separated canonical names
       finalTests = data.resolvedTests
         .filter((t) => t.status === "resolved" || t.status === "ambiguous")
@@ -205,10 +204,10 @@ export async function POST(request: NextRequest) {
         .join("\n");
     }
 
-    // Resolve tests → quoted_price + breakdown (non-blocking fallback to null)
+    // Resolve tests → quoted_price + breakdown. Skipped for Fast Mode (done in bg).
     let quotedPrice: number | null = null;
     let testBreakdown: unknown = null;
-    if (finalTests && finalTests !== "See attached image") {
+    if (!data.fast_mode && finalTests && finalTests !== "See attached image") {
       try {
         const breakdown = await resolveTests(finalTests, data.lab_id);
         quotedPrice = totalFromBreakdown(breakdown);
@@ -297,117 +296,140 @@ export async function POST(request: NextRequest) {
     const labPhones = (lab.phones as { number: string; label: string }[]) ?? [];
     // Always brand emails with the lab name (not just when custom email is set)
     const brand = { name: lab.name };
+    const envUrl = process.env.NEXT_PUBLIC_APP_URL ?? "";
+    const reqHost = request.headers.get("x-forwarded-host") || request.headers.get("host") || "";
+    const reqProto = request.headers.get("x-forwarded-proto") || "https";
+    const appUrl = envUrl || (reqHost ? `${reqProto}://${reqHost}` : "https://poveon.com");
 
-    // Send emails — failures are logged but never block the request response
-    const sends: Promise<void>[] = [
-      resend.emails.send({
-        from: labSender(lab),
-        to: data.doctor_email,
-        subject: `Lab Request Confirmed — Code: ${code}`,
-        html: doctorRequestConfirmation({
-          doctorName: doctorName || "Medical Professional",
-          patientName: data.patient_name || "Patient",
-          code,
-          labName: lab.name,
-          labAddress,
-          labPhones,
-          tests: data.tests || "See attached image",
-          brand,
-        }),
-      }).then(({ error }) => { if (error) console.error("[email] doctor confirmation:", JSON.stringify(error)); }),
-    ];
-
-    const patientEmail = data.patient_email?.trim();
-    if (patientEmail) {
-      // Derive the app base URL — env var preferred, fallback to inferred origin
-      const envUrl = process.env.NEXT_PUBLIC_APP_URL ?? "";
-      const reqHost = request.headers.get("x-forwarded-host") || request.headers.get("host") || "";
-      const reqProto = request.headers.get("x-forwarded-proto") || "https";
-      const patientAppUrl = envUrl || (reqHost ? `${reqProto}://${reqHost}` : "");
-      sends.push(
+    // Send the confirmation/notification emails + patient SMS. Reads the latest
+    // `data` (after any Fast Mode sorting). Failures are logged, never thrown.
+    const sendNotifications = async () => {
+      const sends: Promise<void>[] = [
         resend.emails.send({
           from: labSender(lab),
-          to: patientEmail,
-          subject: `Your Lab Request Code — ${code}`,
-          html: patientRequestCode({
-            patientName: data.patient_name || "",
-            code,
-            labName: lab.name,
-            labAddress,
-            labPhones,
-            testCategories: testsToCategories(data.tests || ""),
+          to: data.doctor_email,
+          subject: `Lab Request Confirmed — Code: ${code}`,
+          html: doctorRequestConfirmation({
+            doctorName: doctorName || "Medical Professional",
+            patientName: data.patient_name || "Patient",
+            code, labName: lab.name, labAddress, labPhones,
+            tests: data.tests || "See attached image",
             brand,
-            requestPageUrl: patientAppUrl ? `${patientAppUrl}/r/${code}` : undefined,
           }),
-        }).then(({ error }) => { if (error) console.error("[email] patient code:", JSON.stringify(error)); })
-      );
-    }
+        }).then(({ error }) => { if (error) console.error("[email] doctor confirmation:", JSON.stringify(error)); }),
+      ];
 
-    // Send new-request notification to the lab's request_email (fire-and-forget)
-    if (lab.request_email) {
-      const isUrgent = data.needs_ambulance || data.is_critical;
-      const envUrl = process.env.NEXT_PUBLIC_APP_URL ?? "";
-      const reqHost = request.headers.get("x-forwarded-host") || request.headers.get("host") || "";
-      const reqProto = request.headers.get("x-forwarded-proto") || "https";
-      const appUrl = envUrl || (reqHost ? `${reqProto}://${reqHost}` : "https://poveon.com");
-      resend.emails.send({
-        from: labSender(lab),
-        to: lab.request_email,
-        subject: `New Lab Request${isUrgent ? " — URGENT" : ""}`,
-        html: labNewRequest({
-          labName: lab.name,
-          patientName: data.patient_name || "",
-          patientPhone: data.patient_phone || undefined,
-          doctorName: doctorName || "Medical Professional",
-          doctorPhone: doctorPhone || undefined,
-          doctorHospital: doctorHospital || undefined,
-          tests: data.tests || "See attached image",
-          diagnosis: data.diagnosis || undefined,
-          schedule: data.schedule || undefined,
-          isUrgent,
-          isCritical: data.is_critical,
-          needsAmbulance: data.needs_ambulance,
-          ambulanceNotes: data.ambulance_notes || undefined,
-          testImageUrl: data.test_image_url || undefined,
-          fastMode: data.fast_mode || undefined,
-          rawInput: rawInput || undefined,
-          appUrl,
-          code,
-        }),
-      })
-        .then(({ error }) => { if (error) console.error("[email] lab new request:", JSON.stringify(error)); })
-        .catch((e) => console.error("[email] lab new request error:", e));
-    }
+      const patientEmail = data.patient_email?.trim();
+      if (patientEmail) {
+        sends.push(
+          resend.emails.send({
+            from: labSender(lab),
+            to: patientEmail,
+            subject: `Your Lab Request Code — ${code}`,
+            html: patientRequestCode({
+              patientName: data.patient_name || "",
+              code, labName: lab.name, labAddress, labPhones,
+              testCategories: testsToCategories(data.tests || ""),
+              brand,
+              requestPageUrl: appUrl ? `${appUrl}/r/${code}` : undefined,
+            }),
+          }).then(({ error }) => { if (error) console.error("[email] patient code:", JSON.stringify(error)); })
+        );
+      }
 
-    await Promise.all(sends).catch((e) => console.error("[email] send error:", e));
+      if (lab.request_email) {
+        const isUrgent = data.needs_ambulance || data.is_critical;
+        sends.push(
+          resend.emails.send({
+            from: labSender(lab),
+            to: lab.request_email,
+            subject: `New Lab Request${isUrgent ? " — URGENT" : ""}`,
+            html: labNewRequest({
+              labName: lab.name,
+              patientName: data.patient_name || "",
+              patientPhone: data.patient_phone || undefined,
+              doctorName: doctorName || "Medical Professional",
+              doctorPhone: doctorPhone || undefined,
+              doctorHospital: doctorHospital || undefined,
+              tests: data.tests || "See attached image",
+              diagnosis: data.diagnosis || undefined,
+              schedule: data.schedule || undefined,
+              isUrgent,
+              isCritical: data.is_critical,
+              needsAmbulance: data.needs_ambulance,
+              ambulanceNotes: data.ambulance_notes || undefined,
+              testImageUrl: data.test_image_url || undefined,
+              fastMode: data.fast_mode || undefined,
+              rawInput: rawInput || undefined,
+              appUrl, code,
+            }),
+          }).then(({ error }) => { if (error) console.error("[email] lab new request:", JSON.stringify(error)); })
+        );
+      }
 
-    // Send SMS to patient if phone provided — guarded against pumping fraud
-    if (data.patient_phone) {
-      const phone = data.patient_phone;
-      const smsBody = buildPatientRequestSms({ patientName: data.patient_name ?? "", labName: lab.name, code });
+      await Promise.all(sends).catch((e) => console.error("[email] send error:", e));
 
-      // Layer 1: must be a valid Nigerian number (blocks international premium-route abuse)
-      if (!isValidNigerianPhone(phone)) {
-        console.warn(`[api/requests/create] SMS skipped — non-Nigerian phone: ${phone}`);
-      } else {
-        // Layer 2: per-phone hourly cap (max 3 SMS to same number per hour)
-        const phoneLimit = await checkPhoneSmsRateLimit(phone);
-        if (!phoneLimit.allowed) {
-          console.warn(`[api/requests/create] SMS skipped — phone rate limit (${phoneLimit.count}/hr): ${phone}`);
+      // Send SMS to patient if phone provided — guarded against pumping fraud
+      if (data.patient_phone) {
+        const phone = data.patient_phone;
+        const smsBody = buildPatientRequestSms({ patientName: data.patient_name ?? "", labName: lab.name, code });
+        if (!isValidNigerianPhone(phone)) {
+          console.warn(`[api/requests/create] SMS skipped — non-Nigerian phone: ${phone}`);
         } else {
-          // Layer 3: global daily circuit breaker
-          const daily = await checkDailySmsCap();
-          if (!daily.allowed) {
-            console.error(`[api/requests/create] SMS blocked — daily cap reached (${daily.count}/${daily.limit})`);
+          const phoneLimit = await checkPhoneSmsRateLimit(phone);
+          if (!phoneLimit.allowed) {
+            console.warn(`[api/requests/create] SMS skipped — phone rate limit (${phoneLimit.count}/hr): ${phone}`);
           } else {
-            sendSms(phone, smsBody)
-              .then(({ messageId }) => logSmsSend({ provider: "termii", toPhone: phone, messageBody: smsBody, messageId, requestId: newRequest.id }))
-              .catch((e) => console.error("[api/requests/create] SMS error:", e));
+            const daily = await checkDailySmsCap();
+            if (!daily.allowed) {
+              console.error(`[api/requests/create] SMS blocked — daily cap reached (${daily.count}/${daily.limit})`);
+            } else {
+              sendSms(phone, smsBody)
+                .then(({ messageId }) => logSmsSend({ provider: "termii", toPhone: phone, messageBody: smsBody, messageId, requestId: newRequest.id }))
+                .catch((e) => console.error("[api/requests/create] SMS error:", e));
+            }
           }
         }
       }
+    };
+
+    if (data.fast_mode) {
+      // Fast Mode: return the code NOW; sort the text, price it, update the row
+      // and send notifications in the background so the doctor isn't kept waiting.
+      void (async () => {
+        try {
+          if (rawInput) {
+            await enrichFromRawInput();
+            finalTests = data.tests || rawInput;
+            let qp: number | null = null;
+            let tb: unknown = null;
+            try {
+              const breakdown = await resolveTests(finalTests, data.lab_id);
+              qp = totalFromBreakdown(breakdown);
+              tb = breakdown;
+            } catch (e) { console.error("[resolve-tests] fast-mode:", e); }
+            await prisma.request.update({
+              where: { id: newRequest.id },
+              data: {
+                patient_name: data.patient_name || null,
+                patient_age: data.patient_age ?? null,
+                sex: data.sex || null,
+                patient_email: data.patient_email || null,
+                patient_phone: data.patient_phone || null,
+                diagnosis: data.diagnosis || null,
+                tests: finalTests,
+                quoted_price: qp,
+                test_breakdown: tb ?? undefined,
+              },
+            }).catch((e) => console.error("[create] fast-mode update failed:", e));
+          }
+          await sendNotifications();
+        } catch (e) {
+          console.error("[create] fast-mode finalize error:", e);
+        }
+      })();
     } else {
-      console.log("[api/requests/create] No patient phone provided, SMS skipped");
+      await sendNotifications();
     }
 
     logApiCall({ method: "POST", path: "/api/requests/create", status: 200, duration_ms: Date.now() - start });
