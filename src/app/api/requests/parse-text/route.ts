@@ -13,6 +13,7 @@ export interface ParsedReferral {
   dob: string; // YYYY-MM-DD if a real DOB is given, else ""
   sex: "male" | "female" | "";
   patient_phone: string; // digits only if dictated, else ""
+  patient_email: string; // patient email if dictated, else ""
   schedule_hint: "today" | "this_week" | "this_month" | "";
 }
 
@@ -34,6 +35,7 @@ Rules:
 - Age: if the doctor states an age in years, put the number in "patient_age". Only fill "dob" if an actual date of birth is given.
 - "sex": "male" or "female" only if clearly indicated, else "".
 - "patient_phone": digits only, if a phone number is dictated; else "".
+- "patient_email": the patient's email if dictated. Spoken emails use words for symbols — convert "at" → "@" and "dot" → "." and remove spaces (e.g. "ada dot okafor at gmail dot com" → "ada.okafor@gmail.com"). Return "" if none.
 - "schedule_hint": "today" if marked urgent/stat/today, "this_week", "this_month", else "".
 Return ONLY the JSON object, no prose, no markdown.`;
 
@@ -51,6 +53,7 @@ Return a JSON object with exactly these keys:
   "dob": "YYYY-MM-DD or empty string",
   "sex": "male, female, or empty string",
   "patient_phone": "digits only or empty string",
+  "patient_email": "patient email or empty string",
   "schedule_hint": "today, this_week, this_month, or empty string"
 }`;
 
@@ -118,6 +121,9 @@ export async function POST(req: NextRequest) {
         ? (String(parsed.sex).toLowerCase() as "male" | "female")
         : "",
       patient_phone: String(parsed.patient_phone ?? "").replace(/[^\d+]/g, ""),
+      patient_email: /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(String(parsed.patient_email ?? "").trim())
+        ? String(parsed.patient_email).trim().toLowerCase()
+        : "",
       schedule_hint: ["today", "this_week", "this_month"].includes(String(parsed.schedule_hint))
         ? (String(parsed.schedule_hint) as ParsedReferral["schedule_hint"])
         : "",

@@ -11,6 +11,7 @@ export interface ParsedReferral {
   patient_age: number | null;
   sex: "male" | "female" | "";
   patient_phone: string;
+  patient_email: string;
   schedule_hint: "today" | "this_week" | "this_month" | "";
 }
 

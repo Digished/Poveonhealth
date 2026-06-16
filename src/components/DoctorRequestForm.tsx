@@ -1211,6 +1211,7 @@ export function DoctorRequestForm({
       patient_age: prev.patient_age || (parsed.patient_age != null ? String(parsed.patient_age) : ""),
       sex: prev.sex || parsed.sex || "",
       patient_phone: prev.patient_phone || parsed.patient_phone || "",
+      patient_email: prev.patient_email || parsed.patient_email || "",
     }));
     if (parsed.patient_name) setPatientInfoOpen(true);
     setDictateOpen(false);
@@ -1954,6 +1955,7 @@ export function DoctorRequestForm({
                   { label: "Age", value: form.patient_age.trim() ? `${form.patient_age} yrs` : "" },
                   { label: "Sex", value: form.sex },
                   { label: "Phone", value: form.patient_phone.trim(), required: true },
+                  { label: "Email", value: form.patient_email.trim() },
                 ]}
               />
             )}
@@ -2538,7 +2540,7 @@ export function DoctorRequestForm({
                   )}
 
                   {/* Substep 3: Email */}
-                  {form.patient_name.trim() && (
+                  {(form.patient_name.trim() || form.patient_email.trim()) && (
                     <div className="relative flex gap-3 animate-fade-in-up">
                       <div className="flex flex-col items-center shrink-0 pt-1">
                         <div className={`w-7 h-7 rounded-full flex items-center justify-center text-xs font-bold border-2 transition-all shrink-0 ${
