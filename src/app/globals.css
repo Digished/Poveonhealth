@@ -144,6 +144,12 @@
 .animate-dictate-glow {
   animation: dictate-glow 2.4s ease-in-out infinite;
 }
+
+/* Fast Mode undo grace — progress bar fills over the cancel window */
+@keyframes fastmode-progress {
+  from { width: 0%; }
+  to   { width: 100%; }
+}
 @media (prefers-reduced-motion: reduce) {
   .animate-dictate-glow { animation: none; }
 }

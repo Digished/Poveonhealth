@@ -5,6 +5,7 @@ import { createPortal } from "react-dom";
 import { toast } from "react-hot-toast";
 import {
   Zap, Building2, MapPin, Search, X, ChevronDown, RefreshCw, Loader2, Send, FlaskConical, Info,
+  Check, ShieldCheck, Undo2,
 } from "lucide-react";
 import { Input } from "@/components/ui/Input";
 import { SuccessScreen } from "@/components/SuccessScreen";
@@ -59,7 +60,13 @@ export function FastModeComposer({
   const [rawText, setRawText] = useState("");
   const [doctorEmail, setDoctorEmail] = useState("");
   const [doctorHospital, setDoctorHospital] = useState("");
+  // Cached doctor recognition (mirrors the full form's step 3).
+  const [docStatus, setDocStatus] = useState<"idle" | "checking" | "recognized" | "unknown">("idle");
+  const [docInfo, setDocInfo] = useState<{ prefix: string | null; name: string | null; hospital: string | null } | null>(null);
 
+  const [confirmOpen, setConfirmOpen] = useState(false);
+  const [pending, setPending] = useState(false); // 1s undo window before the request fires
+  const pendingTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const [submitting, setSubmitting] = useState(false);
   const [result, setResult] = useState<CreateRequestResponse | null>(null);
 
@@ -87,6 +94,30 @@ export function FastModeComposer({
       .finally(() => setLabsLoading(false));
   }, [labPreselected, initialLabs]);
 
+  // Recognise a registered doctor by email (same cached step-3 lookup as the full
+  // form) so their hospital is auto-filled and they don't re-enter it.
+  useEffect(() => {
+    const email = doctorEmail.trim();
+    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) { setDocStatus("idle"); setDocInfo(null); return; }
+    setDocStatus("checking");
+    const ctrl = new AbortController();
+    const t = setTimeout(() => {
+      fetch(`/api/doc-profile/check?email=${encodeURIComponent(email)}`, { signal: ctrl.signal })
+        .then((r) => (r.ok ? r.json() : null))
+        .then((d) => {
+          if (!d || !d.exists) { setDocStatus("unknown"); setDocInfo(null); return; }
+          setDocInfo({ prefix: d.prefix ?? null, name: d.full_name ?? null, hospital: d.hospital ?? null });
+          setDocStatus("recognized");
+          if (d.hospital) setDoctorHospital((h) => h || d.hospital);
+        })
+        .catch(() => setDocStatus("idle"));
+    }, 500);
+    return () => { clearTimeout(t); ctrl.abort(); };
+  }, [doctorEmail]);
+
+  // Clean up a pending undo timer on unmount.
+  useEffect(() => () => { if (pendingTimer.current) clearTimeout(pendingTimer.current); }, []);
+
   const selectedLab = labs.find((l) => l.id === labId);
   const selectedLoc = labPreselected && locations.length > 0 ? locations[selectedLocIdx] : null;
   const labName = selectedLoc?.name || selectedLab?.name || "";
@@ -97,13 +128,31 @@ export function FastModeComposer({
     rawText.trim().length >= 3 &&
     /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(doctorEmail.trim());
 
-  async function handleSubmit() {
+  // Tap submit → review/confirm first.
+  function openConfirm() {
     if (!canSubmit) {
       if (!labId) toast.error("Choose the laboratory first.");
       else if (rawText.trim().length < 3) toast.error("Type the test(s) needed.");
       else toast.error("Enter a valid email for your confirmation.");
       return;
     }
+    setConfirmOpen(true);
+  }
+
+  // Confirm → 1-second undo window before the request actually fires.
+  function confirmAndQueue() {
+    setConfirmOpen(false);
+    setPending(true);
+    pendingTimer.current = setTimeout(() => { setPending(false); void actualSubmit(); }, 1200);
+  }
+
+  function undoSubmit() {
+    if (pendingTimer.current) clearTimeout(pendingTimer.current);
+    pendingTimer.current = null;
+    setPending(false);
+  }
+
+  async function actualSubmit() {
     setSubmitting(true);
     try {
       const res = await fetch("/api/requests/create", {
@@ -236,7 +285,7 @@ export function FastModeComposer({
         </div>
       </div>
 
-      {/* Step 2 — the doctor's details */}
+      {/* Step 2 — the doctor's details (cached / recognised automatically) */}
       <div className="mt-4 rounded-2xl border border-slate-200 bg-white p-4 space-y-3">
         <h2 className="text-sm font-bold text-slate-800">Your details</h2>
         <Input
@@ -249,26 +298,93 @@ export function FastModeComposer({
           autoComplete="email"
           hint="Your confirmation goes here. Registered doctors are recognised automatically."
         />
-        <Input
-          label="Hospital / clinic (optional)"
-          placeholder="e.g. Lagos University Teaching Hospital"
-          value={doctorHospital}
-          onChange={(e) => setDoctorHospital(e.target.value)}
-        />
+
+        {docStatus === "checking" && (
+          <p className="flex items-center gap-2 text-xs text-slate-400"><RefreshCw className="w-3 h-3 animate-spin" /> Checking your profile…</p>
+        )}
+
+        {docStatus === "recognized" && docInfo ? (
+          <div className="flex items-start gap-2.5 px-3 py-2.5 rounded-xl bg-emerald-50 border border-emerald-100">
+            <ShieldCheck className="w-4 h-4 text-emerald-600 shrink-0 mt-0.5" />
+            <div className="min-w-0">
+              <p className="text-sm font-semibold text-emerald-800 truncate">
+                Recognised{docInfo.name ? ` as ${[docInfo.prefix, docInfo.name].filter(Boolean).join(" ")}` : ""}
+              </p>
+              {docInfo.hospital && <p className="text-xs text-emerald-600 truncate">{docInfo.hospital}</p>}
+              <p className="text-[11px] text-emerald-600/80 mt-0.5">Your saved details are filled in automatically.</p>
+            </div>
+          </div>
+        ) : (
+          <Input
+            label="Hospital / clinic (optional)"
+            placeholder="e.g. Lagos University Teaching Hospital"
+            value={doctorHospital}
+            onChange={(e) => setDoctorHospital(e.target.value)}
+          />
+        )}
       </div>
 
-      {/* Submit bar */}
+      {/* Submit bar — becomes an Undo bar during the 1s grace window */}
       {mounted && createPortal(
         <div className="fixed bottom-0 inset-x-0 z-[200] px-4 pb-6 pt-3 pointer-events-none">
           <div className="max-w-2xl mx-auto pointer-events-auto">
-            <button
-              type="button"
-              onClick={handleSubmit}
-              disabled={!canSubmit}
-              className="w-full flex items-center justify-center gap-2 py-3.5 rounded-2xl bg-medical-600 hover:bg-medical-700 active:scale-[0.98] disabled:opacity-50 text-white font-bold text-sm shadow-xl shadow-medical-600/35 transition-all"
-            >
-              <Send className="w-5 h-5" /> Submit &amp; get code
-            </button>
+            {pending ? (
+              <button
+                type="button"
+                onClick={undoSubmit}
+                className="relative w-full overflow-hidden flex items-center justify-center gap-2 py-3.5 rounded-2xl bg-slate-800 text-white font-bold text-sm shadow-xl transition-all"
+              >
+                <span className="absolute left-0 bottom-0 h-1 bg-medical-400/80 animate-[fastmode-progress_1.2s_linear_forwards]" />
+                <Undo2 className="w-5 h-5" /> Sending… tap to undo
+              </button>
+            ) : (
+              <button
+                type="button"
+                onClick={openConfirm}
+                disabled={!canSubmit}
+                className="w-full flex items-center justify-center gap-2 py-3.5 rounded-2xl bg-medical-600 hover:bg-medical-700 active:scale-[0.98] disabled:opacity-50 text-white font-bold text-sm shadow-xl shadow-medical-600/35 transition-all"
+              >
+                <Send className="w-5 h-5" /> Submit &amp; get code
+              </button>
+            )}
+          </div>
+        </div>,
+        document.body
+      )}
+
+      {/* Confirmation sheet */}
+      {mounted && confirmOpen && createPortal(
+        <div className="fixed inset-0 z-[9999] flex flex-col justify-end sm:justify-center sm:items-center">
+          <div className="absolute inset-0 bg-black/40 backdrop-blur-[2px]" onClick={() => setConfirmOpen(false)} />
+          <div className="relative w-full sm:w-[460px] sm:mx-4 bg-white sm:rounded-2xl rounded-t-2xl shadow-2xl animate-slide-up">
+            <div className="px-5 py-4 border-b border-slate-100 flex items-center gap-2">
+              <Zap className="w-4 h-4 text-medical-600" />
+              <h2 className="text-base font-semibold text-slate-800">Confirm Fast Mode request</h2>
+            </div>
+            <div className="px-5 py-4 space-y-3 max-h-[55vh] overflow-y-auto">
+              <div>
+                <p className="text-[11px] font-bold text-slate-400 uppercase tracking-wide">Laboratory</p>
+                <p className="text-sm font-semibold text-slate-800">{labName || "—"}</p>
+              </div>
+              <div>
+                <p className="text-[11px] font-bold text-slate-400 uppercase tracking-wide">What you typed</p>
+                <p className="text-sm text-slate-700 whitespace-pre-wrap leading-relaxed bg-slate-50 border border-slate-100 rounded-xl px-3 py-2 mt-1">{rawText.trim()}</p>
+              </div>
+              <div>
+                <p className="text-[11px] font-bold text-slate-400 uppercase tracking-wide">Your email</p>
+                <p className="text-sm font-medium text-slate-800">{doctorEmail.trim()}</p>
+              </div>
+              <div className="flex items-start gap-2 px-3 py-2.5 rounded-xl bg-medical-50 border border-medical-100">
+                <Info className="w-4 h-4 text-medical-500 shrink-0 mt-0.5" />
+                <p className="text-xs text-medical-700 leading-relaxed">Submitting generates a code now. The patient details are sorted for the lab in the background — you don&apos;t need to fill them in.</p>
+              </div>
+            </div>
+            <div className="px-5 py-4 border-t border-slate-100 flex gap-3">
+              <button type="button" onClick={() => setConfirmOpen(false)} className="flex-1 py-2.5 rounded-xl border border-slate-200 text-slate-600 font-semibold text-sm hover:bg-slate-50 transition">Cancel</button>
+              <button type="button" onClick={confirmAndQueue} className="flex-1 flex items-center justify-center gap-2 py-2.5 rounded-xl bg-medical-600 hover:bg-medical-700 text-white font-bold text-sm transition shadow-sm">
+                <Check className="w-4 h-4" /> Looks good — submit
+              </button>
+            </div>
           </div>
         </div>,
         document.body

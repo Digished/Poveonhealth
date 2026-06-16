@@ -110,6 +110,42 @@ export async function POST(request: NextRequest) {
         console.error("[create] fast-mode parse failed:", e);
         if (!data.tests) data.tests = rawInput;
       }
+
+      // Background patient enrichment (cached "step 2"): fill any still-missing
+      // patient details from a saved PatientProfile, matched by email then phone.
+      try {
+        const emailKey = data.patient_email?.trim().toLowerCase();
+        const phoneDigits = (data.patient_phone || "").replace(/\D/g, "");
+        let profile = emailKey
+          ? await prisma.patientProfile.findUnique({ where: { email: emailKey }, select: { name: true, dob: true, sex: true, phone: true } })
+          : null;
+        if (!profile && phoneDigits.length >= 7) {
+          const candidates = await prisma.patientProfile.findMany({
+            where: { phone: { not: null } },
+            select: { name: true, dob: true, sex: true, phone: true },
+          });
+          profile = candidates.find((c) => {
+            const stored = (c.phone || "").replace(/\D/g, "");
+            return stored && (stored === phoneDigits || stored.endsWith(phoneDigits) || phoneDigits.endsWith(stored));
+          }) ?? null;
+        }
+        if (profile) {
+          if (!data.patient_name && profile.name) data.patient_name = profile.name;
+          if (!data.sex && (profile.sex === "male" || profile.sex === "female")) data.sex = profile.sex;
+          if (data.patient_age == null && profile.dob) {
+            const d = new Date(profile.dob);
+            if (!Number.isNaN(d.getTime())) {
+              const now = new Date();
+              let age = now.getFullYear() - d.getFullYear();
+              const m = now.getMonth() - d.getMonth();
+              if (m < 0 || (m === 0 && now.getDate() < d.getDate())) age--;
+              if (age >= 0 && age < 130) data.patient_age = age;
+            }
+          }
+        }
+      } catch (e) {
+        console.error("[create] fast-mode patient enrichment skipped:", e);
+      }
     }
 
     // Enrich doctor fields from DoctorProfile if not provided in the request body
