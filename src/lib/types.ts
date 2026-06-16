@@ -143,6 +143,7 @@ export interface LabRequest {
   lab_id: string;
   patient_name: string | null;
   dob: string | null;
+  patient_age: number | null;
   sex: Sex | null;
   address: string | null;
   patient_email: string | null;
@@ -178,6 +179,7 @@ export interface LabRequest {
 export interface CreateRequestPayload {
   patient_name?: string;
   dob?: string;
+  patient_age?: number;
   sex?: Sex;
   address?: string;
   patient_email?: string;

@@ -22,10 +22,20 @@ import { BankAccountInput } from "@/components/BankAccountInput";
 import { SuccessScreen } from "@/components/SuccessScreen";
 import { PoveonLogo } from "@/components/PoveonLogo";
 import { PROFESSIONAL_PREFIXES, PrefixSelectModal, PrefixSelect } from "@/components/PrefixSelect";
-import { FastReferralComposer } from "@/components/FastReferralComposer";
+import { DictationPanel, type ParsedReferral, type ResolvedTest } from "@/components/DictationPanel";
 import type { Lab, CreateRequestResponse } from "@/lib/types";
 
-const FAST_MODE_KEY = "poveon_fast_mode";
+/** Whole-years age from an ISO "YYYY-MM-DD" date of birth, or "" if not derivable. */
+function ageFromIso(iso: string): string {
+  if (!iso || !/^\d{4}-\d{2}-\d{2}/.test(iso)) return "";
+  const birth = new Date(iso);
+  if (Number.isNaN(birth.getTime())) return "";
+  const now = new Date();
+  let age = now.getFullYear() - birth.getFullYear();
+  const m = now.getMonth() - birth.getMonth();
+  if (m < 0 || (m === 0 && now.getDate() < birth.getDate())) age--;
+  return age >= 0 && age < 130 ? String(age) : "";
+}
 
 // Module-level session cache with a 60-second TTL so newly added labs appear
 // automatically when the modal is opened without requiring a manual refresh.
@@ -36,7 +46,7 @@ const LABS_CACHE_TTL = 60_000;
 interface FormData {
   lab_id: string;
   patient_name: string;
-  dob: string;
+  patient_age: string;
   sex: string;
   patient_email: string;
   address: string;
@@ -56,7 +66,7 @@ interface FormData {
 const INITIAL: FormData = {
   lab_id: "",
   patient_name: "",
-  dob: "",
+  patient_age: "",
   sex: "",
   patient_email: "",
   address: "",
@@ -707,20 +717,8 @@ export function DoctorRequestForm({
   const defaultLocIdx = locations.length > 0 ? Math.max(0, locations.findIndex((l) => l.is_main)) : 0;
   const startStep = !labPreselected ? 1 : hasLocations ? 1 : 2;
   const [step, setStep] = useState(startStep);
-  // Fast mode — single-screen voice/text dictation flow. Remembers the doctor's
-  // last choice so power users stay in it across visits.
-  const [fastMode, setFastMode] = useState(false);
-  useEffect(() => {
-    try { if (localStorage.getItem(FAST_MODE_KEY) === "1") setFastMode(true); } catch { /* ignore */ }
-  }, []);
-  const enterFastMode = useCallback(() => {
-    setFastMode(true);
-    try { localStorage.setItem(FAST_MODE_KEY, "1"); } catch { /* ignore */ }
-  }, []);
-  const exitFastMode = useCallback(() => {
-    setFastMode(false);
-    try { localStorage.setItem(FAST_MODE_KEY, "0"); } catch { /* ignore */ }
-  }, []);
+  // Fast mode — voice/text dictation companion shown inside the clinical step.
+  const [dictateOpen, setDictateOpen] = useState(false);
   const [form, setForm] = useState<FormData>(() => ({
     ...INITIAL,
     // Use the default location's lab_id when preselected, otherwise empty
@@ -750,7 +748,7 @@ export function DoctorRequestForm({
   const [imageExtracting, setImageExtracting] = useState(false);
   const [extractionResult, setExtractionResult] = useState<{
     tests_text: string; tests: string[]; diagnosis: string;
-    patient_name: string; dob: string; sex: string;
+    patient_name: string; dob: string; patient_age: number | null; sex: string;
     doctor_name: string; doctor_prefix: string; schedule_hint: string;
     confidence: "high" | "medium" | "low"; low_confidence_items: string[];
   } | null>(null);
@@ -771,7 +769,7 @@ export function DoctorRequestForm({
   const [patientInfoOpen, setPatientInfoOpen] = useState(false);
   const [patientLookupStatus, setPatientLookupStatus] = useState<"idle" | "checking" | "found" | "not_found">("idle");
   // Track what was auto-filled by the last phone lookup so we can clear it when phone changes
-  const phoneAutofillRef = useRef<{ phone: string; name: string; dob: string; sex: string }>({ phone: "", name: "", dob: "", sex: "" });
+  const phoneAutofillRef = useRef<{ phone: string; name: string; age: string; sex: string }>({ phone: "", name: "", age: "", sex: "" });
   // Always-fresh read of form state for use inside async callbacks
   const formRef = useRef(form);
   formRef.current = form;
@@ -810,7 +808,8 @@ export function DoctorRequestForm({
         .then((data) => {
           if (data?.success) {
             if (data.name && !form.patient_name) { set("patient_name", data.name); setPatientInfoOpen(true); }
-            if (data.dob && !form.dob) set("dob", data.dob);
+            const age = data.age != null ? String(data.age) : ageFromIso(data.dob ?? "");
+            if (age && !form.patient_age) set("patient_age", age);
             if (data.sex && !form.sex) set("sex", data.sex);
           }
         })
@@ -828,9 +827,9 @@ export function DoctorRequestForm({
     const prev = phoneAutofillRef.current;
     if (prev.phone !== phone) {
       if (prev.name) set("patient_name", "");
-      if (prev.dob) set("dob", "");
+      if (prev.age) set("patient_age", "");
       if (prev.sex) set("sex", "");
-      phoneAutofillRef.current = { phone, name: "", dob: "", sex: "" };
+      phoneAutofillRef.current = { phone, name: "", age: "", sex: "" };
     }
 
     const digits = phone.replace(/\D/g, "");
@@ -846,9 +845,10 @@ export function DoctorRequestForm({
           if (data?.success) {
             setPatientLookupStatus("found");
             const f = formRef.current;
-            const written = { phone, name: "", dob: "", sex: "" };
+            const written = { phone, name: "", age: "", sex: "" };
             if (data.name && !f.patient_name) { set("patient_name", data.name); written.name = data.name; setPatientInfoOpen(true); }
-            if (data.dob && !f.dob) { set("dob", data.dob); written.dob = data.dob; }
+            const age = data.age != null ? String(data.age) : ageFromIso(data.dob ?? "");
+            if (age && !f.patient_age) { set("patient_age", age); written.age = age; }
             if (data.sex && !f.sex) { set("sex", data.sex); written.sex = data.sex; }
             phoneAutofillRef.current = written;
           } else {
@@ -1126,6 +1126,38 @@ export function DoctorRequestForm({
     if (errors[field]) setErrors((prev) => ({ ...prev, [field]: undefined }));
   }
 
+  // Apply a dictated/parsed referral to the form. Mirrors the photo-extraction
+  // path: fills empty fields only, so it never clobbers what the doctor typed.
+  function applyDictation(parsed: ParsedReferral, resolved: ResolvedTest[] | null) {
+    if (parsed.tests.length > 0) {
+      const byInput = new Map((resolved ?? []).map((r) => [r.input.toLowerCase(), r]));
+      setTestTags((prev) => {
+        if (prev.length > 0) return prev; // keep what's already there
+        const seen = new Set<string>();
+        const tags: TestTag[] = [];
+        for (const raw of parsed.tests) {
+          const name = raw.trim();
+          if (!name || seen.has(name.toLowerCase())) continue;
+          seen.add(name.toLowerCase());
+          const match = byInput.get(name.toLowerCase());
+          tags.push({ name: match?.canonical || name, catalog_test_id: null, low_confidence: match ? match.status === "unknown" : true });
+        }
+        return tags;
+      });
+    }
+    setForm((prev) => ({
+      ...prev,
+      diagnosis: prev.diagnosis || parsed.diagnosis || "",
+      patient_name: prev.patient_name || parsed.patient_name || "",
+      patient_age: prev.patient_age || (parsed.patient_age != null ? String(parsed.patient_age) : ""),
+      sex: prev.sex || parsed.sex || "",
+      patient_phone: prev.patient_phone || parsed.patient_phone || "",
+    }));
+    if (parsed.patient_name) setPatientInfoOpen(true);
+    setDictateOpen(false);
+    setErrors({});
+  }
+
   function clearDoctorProfile() {
     try { localStorage.removeItem(DOCTOR_STORAGE_KEY); } catch { /* ignore */ }
     setSavedProfile(null);
@@ -1339,22 +1371,6 @@ export function DoctorRequestForm({
     );
   }
 
-  // Fast mode replaces the whole stepper with a single dictation-driven screen.
-  // Rendered after all hooks so hook order stays stable across the toggle.
-  if (fastMode) {
-    return (
-      <div className="animate-fade-in px-4">
-        <FastReferralComposer
-          preselectedLabId={preselectedLabId}
-          preselectedLabName={preselectedLabName}
-          locations={locations}
-          initialLabs={initialLabs}
-          onExit={exitFastMode}
-        />
-      </div>
-    );
-  }
-
   const selectedLab = labs.find((l) => l.id === form.lab_id);
 
   // When preselected with locations, the "effective lab" for display is the selected location.
@@ -1508,22 +1524,6 @@ export function DoctorRequestForm({
               );
             })() : null}
         </div>}
-
-        {/* Fast mode entry — speak/type the whole referral in one screen */}
-        <button
-          type="button"
-          onClick={enterFastMode}
-          className="group w-full mb-3 flex items-center gap-2.5 px-3.5 py-2.5 rounded-xl border border-medical-200 bg-gradient-to-r from-medical-50 via-white to-indigo-50 hover:border-medical-400 transition-all text-left"
-        >
-          <span className="w-7 h-7 rounded-lg bg-medical-600 text-white flex items-center justify-center shrink-0 shadow-sm shadow-medical-600/30">
-            <Mic className="w-3.5 h-3.5" />
-          </span>
-          <span className="min-w-0 flex-1">
-            <span className="block text-xs font-bold text-slate-800 leading-tight">Try Fast mode — speak it, send it</span>
-            <span className="block text-[11px] text-slate-500 leading-tight">Dictate the whole referral; AI fills the form. Faster than paper.</span>
-          </span>
-          <ChevronRight className="w-4 h-4 text-medical-400 group-hover:translate-x-0.5 transition-transform shrink-0" />
-        </button>
 
         {/* Step indicator */}
         <div className="flex items-center">
@@ -1844,7 +1844,7 @@ export function DoctorRequestForm({
                   {form.patient_name && <p className="text-sm font-semibold text-slate-800 truncate">{form.patient_name}</p>}
                   <p className="text-xs text-slate-500 font-mono mt-0.5">{form.patient_phone}</p>
                   {form.patient_email && <p className="text-xs text-slate-400 mt-0.5">{form.patient_email}</p>}
-                  {form.dob && <p className="text-xs text-slate-400 mt-0.5">DOB {form.dob.split("-").reverse().join(" / ")}{form.sex ? ` · ${form.sex}` : ""}</p>}
+                  {(form.patient_age || form.sex) && <p className="text-xs text-slate-400 mt-0.5">{form.patient_age ? `${form.patient_age} yrs` : ""}{form.patient_age && form.sex ? " · " : ""}{form.sex}</p>}
                 </div>
               </div>
               {/* Clinical */}
@@ -1912,6 +1912,16 @@ export function DoctorRequestForm({
                     <TestTube2 className="w-4 h-4 text-medical-600" />
                     Clinical Details
                   </h2>
+                  <div className="flex items-center gap-2">
+                  {/* Dictate (Fast mode) — speak/type the whole referral */}
+                  <button
+                    type="button"
+                    onClick={() => setDictateOpen((v) => !v)}
+                    className={`flex items-center gap-1.5 py-1.5 px-3 rounded-xl text-xs font-semibold transition-colors active:scale-95 ${dictateOpen ? "bg-medical-600 text-white" : "bg-slate-100 text-slate-500 hover:bg-medical-100 hover:text-medical-600"}`}
+                  >
+                    <Mic className="w-3.5 h-3.5" />
+                    Dictate
+                  </button>
                   {/* Camera button */}
               <label className="cursor-pointer select-none" aria-label="Scan test request slip">
                 <div className={`flex items-center gap-1.5 py-1.5 px-3 rounded-xl text-xs font-semibold transition-colors active:scale-95 ${testImageUrl ? "bg-emerald-100 text-emerald-700" : "bg-slate-100 text-slate-500 hover:bg-medical-100 hover:text-medical-600"}`}>
@@ -2027,7 +2037,7 @@ export function DoctorRequestForm({
                                   ...prev,
                                   diagnosis: res.extracted.diagnosis || prev.diagnosis,
                                   patient_name: prev.patient_name || res.extracted.patient_name,
-                                  dob: prev.dob || res.extracted.dob,
+                                  patient_age: prev.patient_age || (res.extracted.patient_age != null ? String(res.extracted.patient_age) : ageFromIso(res.extracted.dob || "")),
                                   sex: prev.sex || res.extracted.sex,
                                   doctor_name: prev.doctor_name || res.extracted.doctor_name,
                                   doctor_prefix: prev.doctor_prefix || res.extracted.doctor_prefix,
@@ -2060,7 +2070,17 @@ export function DoctorRequestForm({
                   }}
                 />
               </label>
+                  </div>
                 </div>
+
+                {/* Dictation panel (Fast mode) — fills the fields below */}
+                {dictateOpen && (
+                  <DictationPanel
+                    labId={form.lab_id || undefined}
+                    onParsed={applyDictation}
+                    onClose={() => setDictateOpen(false)}
+                  />
+                )}
 
                 {/* Substep 1: Tests */}
                 <div className="relative flex gap-3">
@@ -2402,7 +2422,7 @@ export function DoctorRequestForm({
                         </div>
                         {form.patient_name.trim() && <div className="w-0.5 flex-1 min-h-4 bg-slate-200 mt-1" />}
                       </div>
-                      <div className="flex-1 pb-3 min-w-0">
+                      <div className="flex-1 pb-3 min-w-0 space-y-3">
                         <Input
                           label="Patient Full Name"
                           placeholder="e.g. Amara Okonkwo"
@@ -2411,6 +2431,29 @@ export function DoctorRequestForm({
                           error={errors.patient_name}
                           required
                         />
+                        <div className="grid grid-cols-2 gap-3">
+                          <Input
+                            label="Age"
+                            type="number"
+                            min="0"
+                            max="130"
+                            placeholder="e.g. 42"
+                            value={form.patient_age}
+                            onChange={(e) => set("patient_age", e.target.value)}
+                          />
+                          <div className="flex flex-col gap-1.5">
+                            <label className="text-sm font-medium text-slate-700">Sex</label>
+                            <select
+                              value={form.sex}
+                              onChange={(e) => set("sex", e.target.value)}
+                              className="w-full rounded-xl border border-slate-200 hover:border-slate-300 bg-white/60 px-3 py-2.5 text-sm text-slate-800 focus:outline-none focus:ring-2 focus:ring-medical-500 focus:border-medical-400 transition-colors"
+                            >
+                              <option value="">Not specified</option>
+                              <option value="male">Male</option>
+                              <option value="female">Female</option>
+                            </select>
+                          </div>
+                        </div>
                       </div>
                     </div>
                   )}

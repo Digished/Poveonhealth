@@ -156,7 +156,8 @@ model Request {
   lab_id                String
   branch_id             String? // Optional — set when a specific lab branch is selected
   patient_name          String?
-  dob                   DateTime? @db.Date
+  dob                   DateTime? @db.Date // legacy — retained for historical records; new requests use patient_age
+  patient_age           Int? // patient age in years at time of request
   sex                   String?
   address               String?
   patient_email         String?

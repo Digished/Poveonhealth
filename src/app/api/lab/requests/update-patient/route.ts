@@ -4,12 +4,21 @@ import { getLabAuth } from "@/lib/lab-auth";
 import { prisma } from "@/lib/prisma";
 import { z } from "zod";
 
+/** Approximate ISO dob from an age in years (1 Jan of the birth year). */
+function dobFromAge(age: number): string {
+  return `${new Date().getFullYear() - age}-01-01`;
+}
+
 const Schema = z.object({
   requestId: z.string().uuid(),
   patient_name: z.string().min(1).max(200).optional().or(z.literal("")),
   patient_phone: z.string().max(50).optional().or(z.literal("")),
   patient_email: z.string().email().optional().or(z.literal("")),
   dob: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional().or(z.literal("")),
+  age: z.preprocess(
+    (v) => (v === "" || v == null ? undefined : v),
+    z.coerce.number().int().min(0).max(130).optional()
+  ),
   sex: z.enum(["male", "female", "other"]).optional().or(z.literal("")),
   address: z.string().max(500).optional().or(z.literal("")),
 });
@@ -40,6 +49,7 @@ export async function PATCH(request: NextRequest) {
   if (fields.patient_phone !== undefined) updateData.patient_phone = fields.patient_phone || null;
   if (fields.patient_email !== undefined) updateData.patient_email = fields.patient_email || null;
   if (fields.dob !== undefined) updateData.dob = fields.dob ? new Date(fields.dob) : null;
+  if (fields.age !== undefined) updateData.patient_age = fields.age ?? null;
   if (fields.sex !== undefined) updateData.sex = fields.sex || null;
   if (fields.address !== undefined) updateData.address = fields.address || null;
 
@@ -54,6 +64,7 @@ export async function PATCH(request: NextRequest) {
     if (fields.patient_name !== undefined && fields.patient_name) globalUpdate.patient_name = fields.patient_name;
     if (fields.patient_phone !== undefined && fields.patient_phone) globalUpdate.patient_phone = fields.patient_phone;
     if (fields.dob !== undefined && fields.dob) globalUpdate.dob = new Date(fields.dob);
+    if (fields.age != null) globalUpdate.patient_age = fields.age;
     if (fields.sex !== undefined && fields.sex) globalUpdate.sex = fields.sex;
     if (fields.address !== undefined && fields.address) globalUpdate.address = fields.address;
     if (Object.keys(globalUpdate).length > 0) {
@@ -71,6 +82,7 @@ export async function PATCH(request: NextRequest) {
     if (fields.patient_name !== undefined && fields.patient_name) profileUpdate.name = fields.patient_name;
     if (fields.patient_phone !== undefined) profileUpdate.phone = fields.patient_phone || null;
     if (fields.dob !== undefined) profileUpdate.dob = fields.dob || null;
+    else if (fields.age != null) profileUpdate.dob = dobFromAge(fields.age);
     if (fields.sex !== undefined) profileUpdate.sex = fields.sex || null;
     if (fields.address !== undefined) profileUpdate.address = fields.address || null;
 

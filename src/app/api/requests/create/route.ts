@@ -14,6 +14,11 @@ import { isValidNigerianPhone, checkPhoneSmsRateLimit, checkDailySmsCap } from "
 const CreateRequestSchema = z.object({
   patient_name: z.string().min(1).max(200).optional().or(z.literal("")),
   dob: z.string().regex(/^\d{4}-\d{2}-\d{2}$/, "Invalid date format").optional().or(z.literal("")),
+  // Age in years — preferred over dob for new requests. Accepts number or numeric string; "" → undefined.
+  patient_age: z.preprocess(
+    (v) => (v === "" || v == null ? undefined : v),
+    z.coerce.number().int().min(0).max(130).optional()
+  ),
   sex: z.enum(["male", "female"]).optional().or(z.literal("")),
   address: z.string().max(500).optional().or(z.literal("")),
   patient_email: z.string().email().optional().or(z.literal("")),
@@ -159,6 +164,7 @@ export async function POST(request: NextRequest) {
         branch_id: data.branch_id || null,
         patient_name: data.patient_name || null,
         dob: data.dob ? new Date(data.dob) : null,
+        patient_age: data.patient_age ?? null,
         sex: data.sex || null,
         address: data.address || null,
         patient_email: data.patient_email || null,

@@ -16,6 +16,11 @@ const prisma = new PrismaClient();
 
 const migrations = [
   {
+    desc: "requests.patient_age column (age replaces dob for new requests)",
+    sql: `ALTER TABLE requests ADD COLUMN IF NOT EXISTS patient_age INTEGER`,
+    continueOnError: true,
+  },
+  {
     desc: "labs.search_hidden column",
     sql: `ALTER TABLE labs ADD COLUMN IF NOT EXISTS search_hidden BOOLEAN NOT NULL DEFAULT false`,
     continueOnError: true, // Prepared statement caching can cause conflicts; ignore if already applied
