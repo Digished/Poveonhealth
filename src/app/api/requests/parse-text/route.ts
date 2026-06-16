@@ -19,6 +19,13 @@ export interface ParsedReferral {
 const SYSTEM_PROMPT = `You are a clinical scribe for a Nigerian laboratory referral platform.
 A doctor dictates or types, in free natural language, a request for laboratory tests for a patient.
 Your job is to turn that into a single structured JSON object — nothing else.
+The input is often an imperfect speech-to-text transcription of a Nigerian-accented doctor, so
+silently correct obvious mis-hearings of lab terms before extracting. Common corrections:
+"wider"/"why doll"/"vidal" → WIDAL; "if B C"/"FBC"/"full blood count" → Full Blood Count (FBC);
+"you and E"/"U and E"/"urea and electrolyte(s)" → U/E/Cr; "magnesium parasite"/"malaria parasites" → Malaria Parasite (MP);
+"liver function" → Liver Function Test (LFT); "renal function" → Renal Function Test (RFT);
+"PCV"/"packed cell volume", "ESR", "RBS"/"random blood sugar", "FBS"/"fasting blood sugar",
+"HbA1c"/"H B A one C", "genotype", "blood group", "urinalysis", "lipid profile". Use clinical judgement.
 Rules:
 - Extract EVERY laboratory test the doctor mentions as a separate entry in "tests".
 - Use full test names. When a standard abbreviation is clear (FBC, LFT, RFT, U/E, E/U/Cr, PCV, ESR, WIDAL, MP/MPS, RBS/FBS, HbA1c, PSA, RVS/HIV, HBsAg, Urinalysis, etc.) expand it but keep the abbreviation, e.g. "Full Blood Count (FBC)", "Malaria Parasite (MP)".

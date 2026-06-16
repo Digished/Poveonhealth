@@ -1992,7 +1992,7 @@ export function DoctorRequestForm({
                   <button
                     type="button"
                     onClick={() => setDictateOpen((v) => !v)}
-                    className={`flex items-center gap-1.5 py-1.5 px-3 rounded-xl text-xs font-semibold transition-colors active:scale-95 ${dictateOpen ? "bg-medical-600 text-white" : "bg-slate-100 text-slate-500 hover:bg-medical-100 hover:text-medical-600"}`}
+                    className={`flex items-center gap-1.5 py-1.5 px-3 rounded-xl text-xs font-semibold transition-colors active:scale-95 ${dictateOpen ? "bg-medical-600 text-white" : "bg-slate-100 text-slate-500 hover:bg-medical-100 hover:text-medical-600 animate-dictate-glow"}`}
                   >
                     <Mic className="w-3.5 h-3.5" />
                     Dictate
