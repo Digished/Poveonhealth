@@ -5,10 +5,11 @@ import { createPortal } from "react-dom";
 import { toast } from "react-hot-toast";
 import {
   Zap, Building2, MapPin, Search, X, ChevronDown, RefreshCw, Loader2, Send, FlaskConical, Info,
-  Check, ShieldCheck, Undo2,
+  Check, ShieldCheck, Undo2, HelpCircle,
 } from "lucide-react";
 import { Input } from "@/components/ui/Input";
 import { SuccessScreen } from "@/components/SuccessScreen";
+import { FastModeTutorial, FASTMODE_TUTORIAL_KEY } from "@/components/FastModeTutorial";
 import type { Lab, CreateRequestResponse } from "@/lib/types";
 import type { PhoneEntry } from "@/lib/phones";
 
@@ -74,6 +75,17 @@ export function FastModeComposer({
 
   const [mounted, setMounted] = useState(false);
   useEffect(() => { setMounted(true); }, []);
+
+  // First-run tutorial — auto-plays once, then cached. Replayable from the header.
+  const [tutorialOpen, setTutorialOpen] = useState(false);
+  useEffect(() => {
+    try {
+      if (!localStorage.getItem(FASTMODE_TUTORIAL_KEY)) {
+        setTutorialOpen(true);
+        localStorage.setItem(FASTMODE_TUTORIAL_KEY, "1");
+      }
+    } catch { /* ignore */ }
+  }, []);
 
   // Prefill the doctor's saved identity (same store the full form uses).
   useEffect(() => {
@@ -219,15 +231,26 @@ export function FastModeComposer({
     <div className="animate-fade-in pb-28">
       {/* Header */}
       <div className="flex items-center justify-between gap-2 pt-3 pb-1">
-        <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-medical-600 text-white text-xs font-bold shadow-sm shadow-medical-600/30">
-          <Zap className="w-3.5 h-3.5" /> Fast mode
-        </span>
+        <div className="flex items-center gap-2">
+          <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-medical-600 text-white text-xs font-bold shadow-sm shadow-medical-600/30">
+            <Zap className="w-3.5 h-3.5" /> Fast mode
+          </span>
+          <button
+            type="button"
+            onClick={() => setTutorialOpen(true)}
+            className="inline-flex items-center gap-1 text-xs font-semibold text-medical-600 hover:text-medical-800 transition-colors"
+          >
+            <HelpCircle className="w-3.5 h-3.5" /> How it works
+          </button>
+        </div>
         {onExit && (
           <button type="button" onClick={onExit} className="text-xs font-semibold text-slate-500 hover:text-slate-700 underline underline-offset-2">
             Use full form
           </button>
         )}
       </div>
+
+      <FastModeTutorial open={tutorialOpen} onClose={() => setTutorialOpen(false)} />
 
       {/* Lab selector */}
       {labPreselected ? (
