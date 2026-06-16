@@ -10,7 +10,7 @@ import {
   TestTube2, ChevronRight, ChevronLeft, Building2, Check,
   Search, X, PhoneCall, RefreshCw, ChevronDown, Mail,
   Award, Info, Layers, Pencil, Camera, FileText,
-  AlertTriangle, Truck, MessageCircle, Heart, Mic,
+  AlertTriangle, Truck, MessageCircle, Heart, Mic, Sparkles,
 } from "lucide-react";
 
 import { Button } from "@/components/ui/Button";
@@ -696,6 +696,61 @@ function BranchSearchDropdown({
   );
 }
 
+// ─── Dictation capture checklist ──────────────────────────────────────────────
+// Shown after a dictation is parsed: a quick, glanceable summary of what was
+// captured vs. what still needs the doctor's attention before continuing.
+type CaptureItem = { label: string; value: string; required?: boolean };
+
+function CaptureChecklist({ items, onDismiss }: { items: CaptureItem[]; onDismiss: () => void }) {
+  const pending = items.filter((i) => !i.value);
+  const allDone = pending.length === 0;
+  return (
+    <div className="rounded-2xl border border-medical-200 bg-white shadow-xl shadow-medical-600/10 overflow-hidden animate-slide-up">
+      <div className="flex items-center justify-between px-4 py-3 bg-gradient-to-r from-medical-600 to-indigo-600 text-white">
+        <div className="flex items-center gap-2 min-w-0">
+          <Sparkles className="w-4 h-4 shrink-0" />
+          <p className="text-sm font-bold truncate">Captured from your dictation</p>
+        </div>
+        <button type="button" onClick={onDismiss} className="p-1 -mr-1 rounded-lg hover:bg-white/15 transition-colors shrink-0" aria-label="Dismiss">
+          <X className="w-4 h-4" />
+        </button>
+      </div>
+
+      <div className="px-3 py-3 grid grid-cols-1 sm:grid-cols-2 gap-1.5">
+        {items.map((it) => {
+          const done = !!it.value;
+          return (
+            <div
+              key={it.label}
+              className={`flex items-center gap-2.5 px-2.5 py-2 rounded-xl border ${
+                done ? "border-emerald-100 bg-emerald-50/60" : "border-amber-200 bg-amber-50/70"
+              }`}
+            >
+              <span className={`w-5 h-5 rounded-full flex items-center justify-center shrink-0 ${done ? "bg-emerald-500" : "bg-amber-400/20 border border-amber-300"}`}>
+                {done ? <Check className="w-3 h-3 text-white" /> : <span className="w-1.5 h-1.5 rounded-full bg-amber-500" />}
+              </span>
+              <div className="min-w-0 flex-1">
+                <p className={`text-[11px] font-semibold uppercase tracking-wide ${done ? "text-emerald-600" : "text-amber-600"}`}>{it.label}</p>
+                <p className={`text-xs truncate ${done ? "text-slate-700 font-medium" : "text-amber-700/80 italic"}`}>
+                  {done ? it.value : (it.required ? "Needed — add below" : "Not captured")}
+                </p>
+              </div>
+            </div>
+          );
+        })}
+      </div>
+
+      <div className={`px-4 py-2.5 border-t text-xs font-medium flex items-center gap-2 ${allDone ? "bg-emerald-50 border-emerald-100 text-emerald-700" : "bg-amber-50 border-amber-100 text-amber-700"}`}>
+        {allDone ? (
+          <><Check className="w-3.5 h-3.5 shrink-0" /> All set — review the details and continue.</>
+        ) : (
+          <><AlertTriangle className="w-3.5 h-3.5 shrink-0" /> Add the {pending.length} highlighted detail{pending.length > 1 ? "s" : ""} below to continue.</>
+        )}
+      </div>
+    </div>
+  );
+}
+
 export function DoctorRequestForm({
   preselectedLabId,
   preselectedLabName,
@@ -719,6 +774,8 @@ export function DoctorRequestForm({
   const [step, setStep] = useState(startStep);
   // Fast mode — voice/text dictation companion shown inside the clinical step.
   const [dictateOpen, setDictateOpen] = useState(false);
+  // Capture checklist shown at the top of step 2 after a dictation is parsed.
+  const [showCapture, setShowCapture] = useState(false);
   const [form, setForm] = useState<FormData>(() => ({
     ...INITIAL,
     // Use the default location's lab_id when preselected, otherwise empty
@@ -1155,7 +1212,10 @@ export function DoctorRequestForm({
     }));
     if (parsed.patient_name) setPatientInfoOpen(true);
     setDictateOpen(false);
+    setShowCapture(true);
     setErrors({});
+    // Bring the checklist + filled fields into view.
+    setTimeout(() => stepContentRef.current?.scrollIntoView({ behavior: "smooth", block: "start" }), 60);
   }
 
   function clearDoctorProfile() {
@@ -1881,6 +1941,21 @@ export function DoctorRequestForm({
         {step === 2 && (
           <div className="space-y-4">
 
+            {/* Dictation capture checklist — what was filled vs. still pending */}
+            {showCapture && (
+              <CaptureChecklist
+                onDismiss={() => setShowCapture(false)}
+                items={[
+                  { label: "Tests", value: testTags.length ? `${testTags.length} test${testTags.length > 1 ? "s" : ""}` : "", required: true },
+                  { label: "Clinical note", value: form.diagnosis.trim(), required: true },
+                  { label: "Patient name", value: form.patient_name.trim(), required: true },
+                  { label: "Age", value: form.patient_age.trim() ? `${form.patient_age} yrs` : "" },
+                  { label: "Sex", value: form.sex },
+                  { label: "Phone", value: form.patient_phone.trim(), required: true },
+                ]}
+              />
+            )}
+
             {/* Clinical section — collapses to summary when patient contact is focused */}
             {patientContactActive ? (
               /* Collapsed summary */
@@ -2321,8 +2396,10 @@ export function DoctorRequestForm({
               </div>
             )}
 
-            {/* Patient Contact — revealed once tests and clinical note are filled */}
-            {(testTags.length > 0 || !!testImageUrl) && !!form.diagnosis.trim() && (
+            {/* Patient Contact — revealed once tests/clinical note are filled, or once
+                dictation has populated any patient field. */}
+            {(testTags.length > 0 || !!testImageUrl) &&
+              (!!form.diagnosis.trim() || !!form.patient_name.trim() || !!form.patient_phone.trim() || !!form.patient_age.trim() || !!form.sex) && (
               <div
                 ref={patientContactRef}
                 onFocus={() => setPatientContactActive(true)}
@@ -2409,8 +2486,8 @@ export function DoctorRequestForm({
                     </div>
                   </div>
 
-                  {/* Substep 2: Name */}
-                  {form.patient_phone.trim() && (
+                  {/* Substep 2: Name (also revealed when dictation pre-fills patient details) */}
+                  {(form.patient_phone.trim() || form.patient_name.trim() || form.patient_age.trim() || !!form.sex) && (
                     <div className="relative flex gap-3 animate-fade-in-up">
                       <div className="flex flex-col items-center shrink-0 pt-1">
                         <div className={`w-7 h-7 rounded-full flex items-center justify-center text-xs font-bold border-2 transition-all shrink-0 ${
@@ -2459,7 +2536,7 @@ export function DoctorRequestForm({
                   )}
 
                   {/* Substep 3: Email */}
-                  {form.patient_phone.trim() && form.patient_name.trim() && (
+                  {form.patient_name.trim() && (
                     <div className="relative flex gap-3 animate-fade-in-up">
                       <div className="flex flex-col items-center shrink-0 pt-1">
                         <div className={`w-7 h-7 rounded-full flex items-center justify-center text-xs font-bold border-2 transition-all shrink-0 ${
