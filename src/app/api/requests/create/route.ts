@@ -394,40 +394,37 @@ export async function POST(request: NextRequest) {
     };
 
     if (data.fast_mode) {
-      // Fast Mode: return the code NOW; sort the text, price it, update the row
-      // and send notifications in the background so the doctor isn't kept waiting.
-      void (async () => {
+      // Fast Mode: the code + row are already created. Now sort the text, price
+      // it, update the row and send the emails/SMS. This is AWAITED (not fired in
+      // the background) because this runtime has no waitUntil/after primitive —
+      // a background task would be killed once the response is sent, so the
+      // emails would never go out.
+      if (rawInput) {
+        await enrichFromRawInput();
+        finalTests = data.tests || rawInput;
+        let qp: number | null = null;
+        let tb: unknown = null;
         try {
-          if (rawInput) {
-            await enrichFromRawInput();
-            finalTests = data.tests || rawInput;
-            let qp: number | null = null;
-            let tb: unknown = null;
-            try {
-              const breakdown = await resolveTests(finalTests, data.lab_id);
-              qp = totalFromBreakdown(breakdown);
-              tb = breakdown;
-            } catch (e) { console.error("[resolve-tests] fast-mode:", e); }
-            await prisma.request.update({
-              where: { id: newRequest.id },
-              data: {
-                patient_name: data.patient_name || null,
-                patient_age: data.patient_age ?? null,
-                sex: data.sex || null,
-                patient_email: data.patient_email || null,
-                patient_phone: data.patient_phone || null,
-                diagnosis: data.diagnosis || null,
-                tests: finalTests,
-                quoted_price: qp,
-                test_breakdown: tb ?? undefined,
-              },
-            }).catch((e) => console.error("[create] fast-mode update failed:", e));
-          }
-          await sendNotifications();
-        } catch (e) {
-          console.error("[create] fast-mode finalize error:", e);
-        }
-      })();
+          const breakdown = await resolveTests(finalTests, data.lab_id);
+          qp = totalFromBreakdown(breakdown);
+          tb = breakdown;
+        } catch (e) { console.error("[resolve-tests] fast-mode:", e); }
+        await prisma.request.update({
+          where: { id: newRequest.id },
+          data: {
+            patient_name: data.patient_name || null,
+            patient_age: data.patient_age ?? null,
+            sex: data.sex || null,
+            patient_email: data.patient_email || null,
+            patient_phone: data.patient_phone || null,
+            diagnosis: data.diagnosis || null,
+            tests: finalTests,
+            quoted_price: qp,
+            test_breakdown: tb ?? undefined,
+          },
+        }).catch((e) => console.error("[create] fast-mode update failed:", e));
+      }
+      await sendNotifications();
     } else {
       await sendNotifications();
     }
