@@ -10,7 +10,7 @@ import {
   TestTube2, ChevronRight, ChevronLeft, Building2, Check,
   Search, X, PhoneCall, RefreshCw, ChevronDown, Mail,
   Award, Info, Layers, Pencil, Camera, FileText,
-  AlertTriangle, Truck, MessageCircle, Heart, Mic, Sparkles,
+  AlertTriangle, Truck, MessageCircle, Heart, Zap,
 } from "lucide-react";
 
 import { Button } from "@/components/ui/Button";
@@ -22,8 +22,10 @@ import { BankAccountInput } from "@/components/BankAccountInput";
 import { SuccessScreen } from "@/components/SuccessScreen";
 import { PoveonLogo } from "@/components/PoveonLogo";
 import { PROFESSIONAL_PREFIXES, PrefixSelectModal, PrefixSelect } from "@/components/PrefixSelect";
-import { DictationPanel, type ParsedReferral, type ResolvedTest } from "@/components/DictationPanel";
+import { FastModeComposer } from "@/components/FastModeComposer";
 import type { Lab, CreateRequestResponse } from "@/lib/types";
+
+const FAST_MODE_KEY = "poveon_fast_mode";
 
 /** Whole-years age from an ISO "YYYY-MM-DD" date of birth, or "" if not derivable. */
 function ageFromIso(iso: string): string {
@@ -696,61 +698,6 @@ function BranchSearchDropdown({
   );
 }
 
-// ─── Dictation capture checklist ──────────────────────────────────────────────
-// Shown after a dictation is parsed: a quick, glanceable summary of what was
-// captured vs. what still needs the doctor's attention before continuing.
-type CaptureItem = { label: string; value: string; required?: boolean };
-
-function CaptureChecklist({ items, onDismiss }: { items: CaptureItem[]; onDismiss: () => void }) {
-  const pending = items.filter((i) => !i.value);
-  const allDone = pending.length === 0;
-  return (
-    <div className="rounded-2xl border border-medical-200 bg-white shadow-xl shadow-medical-600/10 overflow-hidden animate-slide-up">
-      <div className="flex items-center justify-between px-4 py-3 bg-gradient-to-r from-medical-600 to-indigo-600 text-white">
-        <div className="flex items-center gap-2 min-w-0">
-          <Sparkles className="w-4 h-4 shrink-0" />
-          <p className="text-sm font-bold truncate">Captured from your dictation</p>
-        </div>
-        <button type="button" onClick={onDismiss} className="p-1 -mr-1 rounded-lg hover:bg-white/15 transition-colors shrink-0" aria-label="Dismiss">
-          <X className="w-4 h-4" />
-        </button>
-      </div>
-
-      <div className="px-3 py-3 grid grid-cols-1 sm:grid-cols-2 gap-1.5">
-        {items.map((it) => {
-          const done = !!it.value;
-          return (
-            <div
-              key={it.label}
-              className={`flex items-center gap-2.5 px-2.5 py-2 rounded-xl border ${
-                done ? "border-emerald-100 bg-emerald-50/60" : "border-amber-200 bg-amber-50/70"
-              }`}
-            >
-              <span className={`w-5 h-5 rounded-full flex items-center justify-center shrink-0 ${done ? "bg-emerald-500" : "bg-amber-400/20 border border-amber-300"}`}>
-                {done ? <Check className="w-3 h-3 text-white" /> : <span className="w-1.5 h-1.5 rounded-full bg-amber-500" />}
-              </span>
-              <div className="min-w-0 flex-1">
-                <p className={`text-[11px] font-semibold uppercase tracking-wide ${done ? "text-emerald-600" : "text-amber-600"}`}>{it.label}</p>
-                <p className={`text-xs truncate ${done ? "text-slate-700 font-medium" : "text-amber-700/80 italic"}`}>
-                  {done ? it.value : (it.required ? "Needed — add below" : "Not captured")}
-                </p>
-              </div>
-            </div>
-          );
-        })}
-      </div>
-
-      <div className={`px-4 py-2.5 border-t text-xs font-medium flex items-center gap-2 ${allDone ? "bg-emerald-50 border-emerald-100 text-emerald-700" : "bg-amber-50 border-amber-100 text-amber-700"}`}>
-        {allDone ? (
-          <><Check className="w-3.5 h-3.5 shrink-0" /> All set — review the details and continue.</>
-        ) : (
-          <><AlertTriangle className="w-3.5 h-3.5 shrink-0" /> Add the {pending.length} highlighted detail{pending.length > 1 ? "s" : ""} below to continue.</>
-        )}
-      </div>
-    </div>
-  );
-}
-
 export function DoctorRequestForm({
   preselectedLabId,
   preselectedLabName,
@@ -772,10 +719,19 @@ export function DoctorRequestForm({
   const defaultLocIdx = locations.length > 0 ? Math.max(0, locations.findIndex((l) => l.is_main)) : 0;
   const startStep = !labPreselected ? 1 : hasLocations ? 1 : 2;
   const [step, setStep] = useState(startStep);
-  // Fast mode — voice/text dictation companion shown inside the clinical step.
-  const [dictateOpen, setDictateOpen] = useState(false);
-  // Capture checklist shown at the top of step 2 after a dictation is parsed.
-  const [showCapture, setShowCapture] = useState(false);
+  // Fast Mode — type the tests/patient in plain language and submit instantly.
+  const [fastMode, setFastMode] = useState(false);
+  useEffect(() => {
+    try { if (localStorage.getItem(FAST_MODE_KEY) === "1") setFastMode(true); } catch { /* ignore */ }
+  }, []);
+  const enterFastMode = useCallback(() => {
+    setFastMode(true);
+    try { localStorage.setItem(FAST_MODE_KEY, "1"); } catch { /* ignore */ }
+  }, []);
+  const exitFastMode = useCallback(() => {
+    setFastMode(false);
+    try { localStorage.setItem(FAST_MODE_KEY, "0"); } catch { /* ignore */ }
+  }, []);
   const [form, setForm] = useState<FormData>(() => ({
     ...INITIAL,
     // Use the default location's lab_id when preselected, otherwise empty
@@ -813,8 +769,6 @@ export function DoctorRequestForm({
   const [extractionProgress, setExtractionProgress] = useState(0);
   const [testTags, setTestTags] = useState<TestTag[]>([]);
   const testsString = testTags.map((t) => t.name).join(", ");
-  // Tests captured but not matched to this lab's catalogue — still sent as written.
-  const offCatalogTests = testTags.filter((t) => !t.catalog_test_id && t.low_confidence).length;
 
   // Critical / ambulance state
   const [isCritical, setIsCritical] = useState(false);
@@ -1185,42 +1139,6 @@ export function DoctorRequestForm({
     if (errors[field]) setErrors((prev) => ({ ...prev, [field]: undefined }));
   }
 
-  // Apply a dictated/parsed referral to the form. Mirrors the photo-extraction
-  // path: fills empty fields only, so it never clobbers what the doctor typed.
-  function applyDictation(parsed: ParsedReferral, resolved: ResolvedTest[] | null) {
-    if (parsed.tests.length > 0) {
-      const byInput = new Map((resolved ?? []).map((r) => [r.input.toLowerCase(), r]));
-      setTestTags((prev) => {
-        if (prev.length > 0) return prev; // keep what's already there
-        const seen = new Set<string>();
-        const tags: TestTag[] = [];
-        for (const raw of parsed.tests) {
-          const name = raw.trim();
-          if (!name || seen.has(name.toLowerCase())) continue;
-          seen.add(name.toLowerCase());
-          const match = byInput.get(name.toLowerCase());
-          tags.push({ name: match?.canonical || name, catalog_test_id: null, low_confidence: match ? match.status === "unknown" : true });
-        }
-        return tags;
-      });
-    }
-    setForm((prev) => ({
-      ...prev,
-      diagnosis: prev.diagnosis || parsed.diagnosis || "",
-      patient_name: prev.patient_name || parsed.patient_name || "",
-      patient_age: prev.patient_age || (parsed.patient_age != null ? String(parsed.patient_age) : ""),
-      sex: prev.sex || parsed.sex || "",
-      patient_phone: prev.patient_phone || parsed.patient_phone || "",
-      patient_email: prev.patient_email || parsed.patient_email || "",
-    }));
-    if (parsed.patient_name) setPatientInfoOpen(true);
-    setDictateOpen(false);
-    setShowCapture(true);
-    setErrors({});
-    // Bring the checklist + filled fields into view.
-    setTimeout(() => stepContentRef.current?.scrollIntoView({ behavior: "smooth", block: "start" }), 60);
-  }
-
   function clearDoctorProfile() {
     try { localStorage.removeItem(DOCTOR_STORAGE_KEY); } catch { /* ignore */ }
     setSavedProfile(null);
@@ -1434,6 +1352,22 @@ export function DoctorRequestForm({
     );
   }
 
+  // Fast Mode replaces the whole form with a single type-and-submit screen.
+  // Rendered after all hooks so hook order stays stable across the toggle.
+  if (fastMode) {
+    return (
+      <div className="animate-fade-in px-4">
+        <FastModeComposer
+          preselectedLabId={preselectedLabId}
+          preselectedLabName={preselectedLabName}
+          locations={locations}
+          initialLabs={initialLabs}
+          onExit={exitFastMode}
+        />
+      </div>
+    );
+  }
+
   const selectedLab = labs.find((l) => l.id === form.lab_id);
 
   // When preselected with locations, the "effective lab" for display is the selected location.
@@ -1587,6 +1521,22 @@ export function DoctorRequestForm({
               );
             })() : null}
         </div>}
+
+        {/* Fast Mode entry — type the tests in plain language and submit instantly */}
+        <button
+          type="button"
+          onClick={enterFastMode}
+          className="group w-full mb-3 flex items-center gap-2.5 px-3.5 py-2.5 rounded-xl border border-medical-200 bg-gradient-to-r from-medical-50 via-white to-indigo-50 hover:border-medical-400 transition-all text-left animate-dictate-glow"
+        >
+          <span className="w-7 h-7 rounded-lg bg-medical-600 text-white flex items-center justify-center shrink-0 shadow-sm shadow-medical-600/30">
+            <Zap className="w-3.5 h-3.5" />
+          </span>
+          <span className="min-w-0 flex-1">
+            <span className="block text-xs font-bold text-slate-800 leading-tight">Fast Mode — type it, submit instantly</span>
+            <span className="block text-[11px] text-slate-500 leading-tight">Just type the tests in plain English. We sort the details for the lab.</span>
+          </span>
+          <ChevronRight className="w-4 h-4 text-medical-400 group-hover:translate-x-0.5 transition-transform shrink-0" />
+        </button>
 
         {/* Step indicator */}
         <div className="flex items-center">
@@ -1944,22 +1894,6 @@ export function DoctorRequestForm({
         {step === 2 && (
           <div className="space-y-4">
 
-            {/* Dictation capture checklist — what was filled vs. still pending */}
-            {showCapture && (
-              <CaptureChecklist
-                onDismiss={() => setShowCapture(false)}
-                items={[
-                  { label: "Tests", value: testTags.length ? `${testTags.length} test${testTags.length > 1 ? "s" : ""}${offCatalogTests > 0 ? ` · ${offCatalogTests} not in lab list (sent)` : ""}` : "", required: true },
-                  { label: "Clinical note", value: form.diagnosis.trim(), required: true },
-                  { label: "Patient name", value: form.patient_name.trim(), required: true },
-                  { label: "Age", value: form.patient_age.trim() ? `${form.patient_age} yrs` : "" },
-                  { label: "Sex", value: form.sex },
-                  { label: "Phone", value: form.patient_phone.trim(), required: true },
-                  { label: "Email", value: form.patient_email.trim() },
-                ]}
-              />
-            )}
-
             {/* Clinical section — collapses to summary when patient contact is focused */}
             {patientContactActive ? (
               /* Collapsed summary */
@@ -1991,16 +1925,6 @@ export function DoctorRequestForm({
                     <TestTube2 className="w-4 h-4 text-medical-600" />
                     Clinical Details
                   </h2>
-                  <div className="flex items-center gap-2">
-                  {/* Dictate (Fast mode) — speak/type the whole referral */}
-                  <button
-                    type="button"
-                    onClick={() => setDictateOpen((v) => !v)}
-                    className={`flex items-center gap-1.5 py-1.5 px-3 rounded-xl text-xs font-semibold transition-colors active:scale-95 ${dictateOpen ? "bg-medical-600 text-white" : "bg-slate-100 text-slate-500 hover:bg-medical-100 hover:text-medical-600 animate-dictate-glow"}`}
-                  >
-                    <Mic className="w-3.5 h-3.5" />
-                    Dictate
-                  </button>
                   {/* Camera button */}
               <label className="cursor-pointer select-none" aria-label="Scan test request slip">
                 <div className={`flex items-center gap-1.5 py-1.5 px-3 rounded-xl text-xs font-semibold transition-colors active:scale-95 ${testImageUrl ? "bg-emerald-100 text-emerald-700" : "bg-slate-100 text-slate-500 hover:bg-medical-100 hover:text-medical-600"}`}>
@@ -2149,17 +2073,7 @@ export function DoctorRequestForm({
                   }}
                 />
               </label>
-                  </div>
                 </div>
-
-                {/* Dictation panel (Fast mode) — fills the fields below */}
-                {dictateOpen && (
-                  <DictationPanel
-                    labId={form.lab_id || undefined}
-                    onParsed={applyDictation}
-                    onClose={() => setDictateOpen(false)}
-                  />
-                )}
 
                 {/* Substep 1: Tests */}
                 <div className="relative flex gap-3">

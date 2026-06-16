@@ -10,6 +10,7 @@ import { logApiCall } from "@/lib/api-logger";
 import { sendSms, buildPatientRequestSms } from "@/lib/sms";
 import { logSmsSend } from "@/lib/sms/log-sms";
 import { isValidNigerianPhone, checkPhoneSmsRateLimit, checkDailySmsCap } from "@/lib/sms-guard";
+import { parseReferralText } from "@/lib/parse-referral";
 
 const CreateRequestSchema = z.object({
   patient_name: z.string().min(1).max(200).optional().or(z.literal("")),
@@ -41,6 +42,9 @@ const CreateRequestSchema = z.object({
   needs_ambulance: z.boolean().optional().default(false),
   ambulance_notes: z.string().max(500).optional().or(z.literal("")),
   test_image_url: z.string().url().optional().or(z.literal("")),
+  // Fast Mode: doctor's plain-language input, sorted into fields server-side.
+  fast_mode: z.boolean().optional().default(false),
+  raw_input: z.string().max(4000).optional().or(z.literal("")),
   // New: resolved tests from KB validation (frontend sends this)
   resolvedTests: z.array(
     z.object({
@@ -84,6 +88,28 @@ export async function POST(request: NextRequest) {
         { success: false, error: "Selected laboratory not found" },
         { status: 404 }
       );
+    }
+
+    // Fast Mode: the doctor sent plain language — sort it into fields here (in the
+    // background). Only empty fields are filled, so anything explicitly sent wins.
+    const rawInput = (data.raw_input || "").trim();
+    if (data.fast_mode && rawInput) {
+      try {
+        const baseUrl = process.env.NEXT_PUBLIC_APP_URL || new URL(request.url).origin;
+        const { parsed: p } = await parseReferralText(rawInput, data.lab_id, baseUrl);
+        if (!data.patient_name) data.patient_name = p.patient_name;
+        if (data.patient_age == null) data.patient_age = p.patient_age ?? undefined;
+        if (!data.sex && (p.sex === "male" || p.sex === "female")) data.sex = p.sex;
+        if (!data.patient_phone) data.patient_phone = p.patient_phone;
+        if (!data.patient_email && p.patient_email) data.patient_email = p.patient_email;
+        if (!data.diagnosis) data.diagnosis = p.diagnosis;
+        if (!data.tests) data.tests = p.tests.length ? p.tests.join("\n") : rawInput;
+      } catch (e) {
+        // Sorting failed — still create the request with the raw text as the tests
+        // so nothing is lost; the lab gets the original note in the email.
+        console.error("[create] fast-mode parse failed:", e);
+        if (!data.tests) data.tests = rawInput;
+      }
     }
 
     // Enrich doctor fields from DoctorProfile if not provided in the request body
@@ -186,6 +212,8 @@ export async function POST(request: NextRequest) {
         needs_ambulance: data.needs_ambulance,
         ambulance_notes: data.ambulance_notes || null,
         test_image_url: data.test_image_url || null,
+        fast_mode: data.fast_mode ?? false,
+        raw_input: rawInput || null,
         status: "incoming",
       },
     });
@@ -305,6 +333,8 @@ export async function POST(request: NextRequest) {
           needsAmbulance: data.needs_ambulance,
           ambulanceNotes: data.ambulance_notes || undefined,
           testImageUrl: data.test_image_url || undefined,
+          fastMode: data.fast_mode || undefined,
+          rawInput: rawInput || undefined,
           appUrl,
           code,
         }),

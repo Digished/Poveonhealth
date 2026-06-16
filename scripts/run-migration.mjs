@@ -21,6 +21,12 @@ const migrations = [
     continueOnError: true,
   },
   {
+    desc: "requests.fast_mode + raw_input columns (Fast Mode plain-language submit)",
+    sql: `ALTER TABLE requests ADD COLUMN IF NOT EXISTS fast_mode BOOLEAN NOT NULL DEFAULT false;
+          ALTER TABLE requests ADD COLUMN IF NOT EXISTS raw_input TEXT`,
+    continueOnError: true,
+  },
+  {
     desc: "labs.search_hidden column",
     sql: `ALTER TABLE labs ADD COLUMN IF NOT EXISTS search_hidden BOOLEAN NOT NULL DEFAULT false`,
     continueOnError: true, // Prepared statement caching can cause conflicts; ignore if already applied
