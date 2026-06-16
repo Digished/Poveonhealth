@@ -168,7 +168,7 @@ export function DictationPanel({
         <div className="rounded-xl border border-medical-200 bg-medical-50/60 px-4 py-6 flex flex-col items-center gap-3">
           <Loader2 className="w-7 h-7 text-medical-600 animate-spin" />
           <p className="text-sm font-semibold text-medical-700">Transcribing your dictation…</p>
-          <p className="text-[11px] text-slate-400">Tuning for Nigerian accents &amp; lab terms.</p>
+          <p className="text-[11px] text-slate-400">This takes just a moment.</p>
         </div>
       ) : listening ? (
         /* Recording — animated, NO transcript shown */

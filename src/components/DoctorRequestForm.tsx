@@ -813,6 +813,8 @@ export function DoctorRequestForm({
   const [extractionProgress, setExtractionProgress] = useState(0);
   const [testTags, setTestTags] = useState<TestTag[]>([]);
   const testsString = testTags.map((t) => t.name).join(", ");
+  // Tests captured but not matched to this lab's catalogue — still sent as written.
+  const offCatalogTests = testTags.filter((t) => !t.catalog_test_id && t.low_confidence).length;
 
   // Critical / ambulance state
   const [isCritical, setIsCritical] = useState(false);
@@ -1946,7 +1948,7 @@ export function DoctorRequestForm({
               <CaptureChecklist
                 onDismiss={() => setShowCapture(false)}
                 items={[
-                  { label: "Tests", value: testTags.length ? `${testTags.length} test${testTags.length > 1 ? "s" : ""}` : "", required: true },
+                  { label: "Tests", value: testTags.length ? `${testTags.length} test${testTags.length > 1 ? "s" : ""}${offCatalogTests > 0 ? ` · ${offCatalogTests} not in lab list (sent)` : ""}` : "", required: true },
                   { label: "Clinical note", value: form.diagnosis.trim(), required: true },
                   { label: "Patient name", value: form.patient_name.trim(), required: true },
                   { label: "Age", value: form.patient_age.trim() ? `${form.patient_age} yrs` : "" },
