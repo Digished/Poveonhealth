@@ -21,9 +21,13 @@ const migrations = [
     continueOnError: true,
   },
   {
-    desc: "requests.fast_mode + raw_input columns (Fast Mode plain-language submit)",
-    sql: `ALTER TABLE requests ADD COLUMN IF NOT EXISTS fast_mode BOOLEAN NOT NULL DEFAULT false;
-          ALTER TABLE requests ADD COLUMN IF NOT EXISTS raw_input TEXT`,
+    desc: "requests.fast_mode column (Fast Mode plain-language submit)",
+    sql: `ALTER TABLE requests ADD COLUMN IF NOT EXISTS fast_mode BOOLEAN NOT NULL DEFAULT false`,
+    continueOnError: true,
+  },
+  {
+    desc: "requests.raw_input column (Fast Mode original text)",
+    sql: `ALTER TABLE requests ADD COLUMN IF NOT EXISTS raw_input TEXT`,
     continueOnError: true,
   },
   {
