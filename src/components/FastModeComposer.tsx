@@ -63,6 +63,8 @@ export function FastModeComposer({
   // Cached doctor recognition (mirrors the full form's step 3).
   const [docStatus, setDocStatus] = useState<"idle" | "checking" | "recognized" | "unknown">("idle");
   const [docInfo, setDocInfo] = useState<{ prefix: string | null; name: string | null; hospital: string | null } | null>(null);
+  // When the doctor's details come from cache we don't re-ask — show a chip instead.
+  const [editingDoctor, setEditingDoctor] = useState(true);
 
   const [confirmOpen, setConfirmOpen] = useState(false);
   const [pending, setPending] = useState(false); // 1s undo window before the request fires
@@ -79,7 +81,11 @@ export function FastModeComposer({
       const raw = localStorage.getItem(DOCTOR_STORAGE_KEY);
       if (raw) {
         const p = JSON.parse(raw) as { email?: string; hospital?: string };
-        if (p.email) setDoctorEmail(p.email);
+        if (p.email) {
+          setDoctorEmail(p.email);
+          // Already on file — don't re-ask; show it as an editable chip.
+          if (/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(p.email)) setEditingDoctor(false);
+        }
         if (p.hospital) setDoctorHospital(p.hospital);
       }
     } catch { /* ignore */ }
@@ -285,44 +291,58 @@ export function FastModeComposer({
         </div>
       </div>
 
-      {/* Step 2 — the doctor's details (cached / recognised automatically) */}
-      <div className="mt-4 rounded-2xl border border-slate-200 bg-white p-4 space-y-3">
-        <h2 className="text-sm font-bold text-slate-800">Your details</h2>
-        <Input
-          label="Your email"
-          type="email"
-          placeholder="you@hospital.com"
-          value={doctorEmail}
-          onChange={(e) => setDoctorEmail(e.target.value)}
-          required
-          autoComplete="email"
-          hint="Your confirmation goes here. Registered doctors are recognised automatically."
-        />
-
-        {docStatus === "checking" && (
-          <p className="flex items-center gap-2 text-xs text-slate-400"><RefreshCw className="w-3 h-3 animate-spin" /> Checking your profile…</p>
-        )}
-
-        {docStatus === "recognized" && docInfo ? (
-          <div className="flex items-start gap-2.5 px-3 py-2.5 rounded-xl bg-emerald-50 border border-emerald-100">
-            <ShieldCheck className="w-4 h-4 text-emerald-600 shrink-0 mt-0.5" />
-            <div className="min-w-0">
-              <p className="text-sm font-semibold text-emerald-800 truncate">
-                Recognised{docInfo.name ? ` as ${[docInfo.prefix, docInfo.name].filter(Boolean).join(" ")}` : ""}
-              </p>
-              {docInfo.hospital && <p className="text-xs text-emerald-600 truncate">{docInfo.hospital}</p>}
-              <p className="text-[11px] text-emerald-600/80 mt-0.5">Your saved details are filled in automatically.</p>
-            </div>
+      {/* The doctor's details are auto-filled from the saved profile — only a
+          first-time doctor (no cache) is asked, and only once. */}
+      {!editingDoctor && /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(doctorEmail.trim()) ? (
+        <div className="mt-4 flex items-center gap-2.5 px-3.5 py-3 rounded-2xl bg-emerald-50 border border-emerald-100">
+          <ShieldCheck className="w-4 h-4 text-emerald-600 shrink-0" />
+          <div className="min-w-0 flex-1">
+            <p className="text-sm font-semibold text-emerald-800 truncate">
+              {docInfo?.name ? `Submitting as ${[docInfo.prefix, docInfo.name].filter(Boolean).join(" ")}` : `Submitting as ${doctorEmail.trim()}`}
+            </p>
+            <p className="text-[11px] text-emerald-600/80 truncate">
+              {docStatus === "checking" ? "Confirming your saved details…" : `Your saved details${docInfo?.hospital ? ` · ${docInfo.hospital}` : ""} are used automatically.`}
+            </p>
           </div>
-        ) : (
+          <button type="button" onClick={() => setEditingDoctor(true)} className="text-xs font-semibold text-emerald-700 underline underline-offset-2 shrink-0">Change</button>
+        </div>
+      ) : (
+        <div className="mt-4 rounded-2xl border border-slate-200 bg-white p-4 space-y-3">
+          <h2 className="text-sm font-bold text-slate-800">Your details</h2>
           <Input
-            label="Hospital / clinic (optional)"
-            placeholder="e.g. Lagos University Teaching Hospital"
-            value={doctorHospital}
-            onChange={(e) => setDoctorHospital(e.target.value)}
+            label="Your email"
+            type="email"
+            placeholder="you@hospital.com"
+            value={doctorEmail}
+            onChange={(e) => setDoctorEmail(e.target.value)}
+            required
+            autoComplete="email"
+            hint="Asked once — we remember it next time."
           />
-        )}
-      </div>
+          {docStatus === "checking" && (
+            <p className="flex items-center gap-2 text-xs text-slate-400"><RefreshCw className="w-3 h-3 animate-spin" /> Checking your profile…</p>
+          )}
+          {docStatus === "recognized" && docInfo ? (
+            <div className="flex items-start gap-2.5 px-3 py-2.5 rounded-xl bg-emerald-50 border border-emerald-100">
+              <ShieldCheck className="w-4 h-4 text-emerald-600 shrink-0 mt-0.5" />
+              <div className="min-w-0">
+                <p className="text-sm font-semibold text-emerald-800 truncate">
+                  Recognised{docInfo.name ? ` as ${[docInfo.prefix, docInfo.name].filter(Boolean).join(" ")}` : ""}
+                </p>
+                {docInfo.hospital && <p className="text-xs text-emerald-600 truncate">{docInfo.hospital}</p>}
+                <p className="text-[11px] text-emerald-600/80 mt-0.5">Your saved details are filled in automatically.</p>
+              </div>
+            </div>
+          ) : (
+            <Input
+              label="Hospital / clinic (optional)"
+              placeholder="e.g. Lagos University Teaching Hospital"
+              value={doctorHospital}
+              onChange={(e) => setDoctorHospital(e.target.value)}
+            />
+          )}
+        </div>
+      )}
 
       {/* Submit bar — becomes an Undo bar during the 1s grace window */}
       {mounted && createPortal(
