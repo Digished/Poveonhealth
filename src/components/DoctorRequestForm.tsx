@@ -10,7 +10,7 @@ import {
   TestTube2, ChevronRight, ChevronLeft, Building2, Check,
   Search, X, PhoneCall, RefreshCw, ChevronDown, Mail,
   Award, Info, Layers, Pencil, Camera, FileText,
-  AlertTriangle, Truck, MessageCircle, Heart,
+  AlertTriangle, Truck, MessageCircle, Heart, Mic,
 } from "lucide-react";
 
 import { Button } from "@/components/ui/Button";
@@ -22,7 +22,10 @@ import { BankAccountInput } from "@/components/BankAccountInput";
 import { SuccessScreen } from "@/components/SuccessScreen";
 import { PoveonLogo } from "@/components/PoveonLogo";
 import { PROFESSIONAL_PREFIXES, PrefixSelectModal, PrefixSelect } from "@/components/PrefixSelect";
+import { FastReferralComposer } from "@/components/FastReferralComposer";
 import type { Lab, CreateRequestResponse } from "@/lib/types";
+
+const FAST_MODE_KEY = "poveon_fast_mode";
 
 // Module-level session cache with a 60-second TTL so newly added labs appear
 // automatically when the modal is opened without requiring a manual refresh.
@@ -704,6 +707,20 @@ export function DoctorRequestForm({
   const defaultLocIdx = locations.length > 0 ? Math.max(0, locations.findIndex((l) => l.is_main)) : 0;
   const startStep = !labPreselected ? 1 : hasLocations ? 1 : 2;
   const [step, setStep] = useState(startStep);
+  // Fast mode — single-screen voice/text dictation flow. Remembers the doctor's
+  // last choice so power users stay in it across visits.
+  const [fastMode, setFastMode] = useState(false);
+  useEffect(() => {
+    try { if (localStorage.getItem(FAST_MODE_KEY) === "1") setFastMode(true); } catch { /* ignore */ }
+  }, []);
+  const enterFastMode = useCallback(() => {
+    setFastMode(true);
+    try { localStorage.setItem(FAST_MODE_KEY, "1"); } catch { /* ignore */ }
+  }, []);
+  const exitFastMode = useCallback(() => {
+    setFastMode(false);
+    try { localStorage.setItem(FAST_MODE_KEY, "0"); } catch { /* ignore */ }
+  }, []);
   const [form, setForm] = useState<FormData>(() => ({
     ...INITIAL,
     // Use the default location's lab_id when preselected, otherwise empty
@@ -1322,6 +1339,22 @@ export function DoctorRequestForm({
     );
   }
 
+  // Fast mode replaces the whole stepper with a single dictation-driven screen.
+  // Rendered after all hooks so hook order stays stable across the toggle.
+  if (fastMode) {
+    return (
+      <div className="animate-fade-in px-4">
+        <FastReferralComposer
+          preselectedLabId={preselectedLabId}
+          preselectedLabName={preselectedLabName}
+          locations={locations}
+          initialLabs={initialLabs}
+          onExit={exitFastMode}
+        />
+      </div>
+    );
+  }
+
   const selectedLab = labs.find((l) => l.id === form.lab_id);
 
   // When preselected with locations, the "effective lab" for display is the selected location.
@@ -1475,6 +1508,22 @@ export function DoctorRequestForm({
               );
             })() : null}
         </div>}
+
+        {/* Fast mode entry — speak/type the whole referral in one screen */}
+        <button
+          type="button"
+          onClick={enterFastMode}
+          className="group w-full mb-3 flex items-center gap-2.5 px-3.5 py-2.5 rounded-xl border border-medical-200 bg-gradient-to-r from-medical-50 via-white to-indigo-50 hover:border-medical-400 transition-all text-left"
+        >
+          <span className="w-7 h-7 rounded-lg bg-medical-600 text-white flex items-center justify-center shrink-0 shadow-sm shadow-medical-600/30">
+            <Mic className="w-3.5 h-3.5" />
+          </span>
+          <span className="min-w-0 flex-1">
+            <span className="block text-xs font-bold text-slate-800 leading-tight">Try Fast mode — speak it, send it</span>
+            <span className="block text-[11px] text-slate-500 leading-tight">Dictate the whole referral; AI fills the form. Faster than paper.</span>
+          </span>
+          <ChevronRight className="w-4 h-4 text-medical-400 group-hover:translate-x-0.5 transition-transform shrink-0" />
+        </button>
 
         {/* Step indicator */}
         <div className="flex items-center">
