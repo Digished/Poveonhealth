@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useRef, useState } from "react";
 import { toast } from "react-hot-toast";
-import { Mic, Square, Wand2, Loader2, X, Info, Keyboard } from "lucide-react";
+import { Mic, Square, Wand2, Loader2, X, Info, Keyboard, Check } from "lucide-react";
 
 export interface ParsedReferral {
   tests: string[];
@@ -53,6 +53,7 @@ export function DictationPanel({
   const [typed, setTyped] = useState("");
   const [listening, setListening] = useState(false);
   const [processing, setProcessing] = useState(false); // transcribing + parsing
+  const [procStage, setProcStage] = useState(0);        // staged progress for perceived speed
   const [parsing, setParsing] = useState(false);        // typed-only parse
 
   const recorderRef = useRef<MediaRecorder | null>(null);
@@ -69,6 +70,16 @@ export function DictationPanel({
     try { recorderRef.current?.state !== "inactive" && recorderRef.current?.stop(); } catch { /* ignore */ }
     stopTracks();
   }, [stopTracks]);
+
+  // Advance the staged progress while transcribing+parsing so the wait reads as
+  // active motion rather than a blank spinner.
+  useEffect(() => {
+    if (!processing) { setProcStage(0); return; }
+    setProcStage(0);
+    const t1 = setTimeout(() => setProcStage(1), 1300);
+    const t2 = setTimeout(() => setProcStage(2), 3300);
+    return () => { clearTimeout(t1); clearTimeout(t2); };
+  }, [processing]);
 
   // Parse free text (typed and/or transcribed) into structured fields.
   const buildFromText = useCallback(async (text: string) => {
@@ -93,28 +104,35 @@ export function DictationPanel({
     try { await buildFromText(typed); } finally { setParsing(false); }
   }
 
-  // Send the recorded audio for transcription, then parse it.
+  // Transcribe + parse in a single round-trip. The /transcribe route returns the
+  // structured fields already, so we don't make a second parse call.
   const transcribeAndBuild = useCallback(async (blob: Blob) => {
     setProcessing(true);
     try {
       const fd = new FormData();
       const ext = blob.type.includes("mp4") ? "mp4" : blob.type.includes("ogg") ? "ogg" : "webm";
       fd.append("audio", blob, `dictation.${ext}`);
+      if (labId) fd.append("labId", labId);
       const res = await fetch("/api/requests/transcribe", { method: "POST", body: fd });
       const data = await res.json();
       if (!res.ok || !data.success || !data.text) {
         toast.error(data.error ?? "Didn't catch that — try again or type it.");
         return;
       }
-      // Merge with anything already typed, then parse.
-      const merged = [typed.trim(), String(data.text).trim()].filter(Boolean).join(". ");
-      await buildFromText(merged);
+      if (typed.trim()) {
+        // Doctor both typed and spoke — re-parse the combined text.
+        await buildFromText([typed.trim(), String(data.text).trim()].filter(Boolean).join(". "));
+      } else if (data.parsed) {
+        onParsed(data.parsed as ParsedReferral, (data.resolvedTests as ResolvedTest[] | null) ?? null);
+      } else {
+        await buildFromText(String(data.text));
+      }
     } catch {
       toast.error("Network error during transcription. You can type the details instead.");
     } finally {
       setProcessing(false);
     }
-  }, [typed, buildFromText]);
+  }, [typed, buildFromText, labId, onParsed]);
 
   async function startRecording() {
     if (!canRecord) { toast.error("Recording isn't supported on this browser — type instead."); return; }
@@ -165,11 +183,27 @@ export function DictationPanel({
       </div>
 
       {processing ? (
-        /* Transcribing + parsing — no transcript shown */
-        <div className="rounded-xl border border-medical-200 bg-medical-50/60 px-4 py-6 flex flex-col items-center gap-3">
-          <Loader2 className="w-7 h-7 text-medical-600 animate-spin" />
-          <p className="text-sm font-semibold text-medical-700">Transcribing your dictation…</p>
-          <p className="text-[11px] text-slate-400">This takes just a moment.</p>
+        /* Transcribing + parsing — staged progress, no transcript shown */
+        <div className="rounded-xl border border-medical-200 bg-medical-50/50 px-4 py-5">
+          <div className="space-y-2">
+            {["Transcribing your dictation", "Understanding the request", "Filling in the form"].map((label, i) => {
+              const done = i < procStage;
+              const active = i === procStage;
+              return (
+                <div
+                  key={label}
+                  className={`flex items-center gap-3 px-3 py-2 rounded-xl border transition-all duration-500 ${
+                    done ? "bg-emerald-50 border-emerald-100" : active ? "bg-white border-medical-200 shadow-sm" : "bg-transparent border-transparent opacity-45"
+                  }`}
+                >
+                  <span className={`w-6 h-6 rounded-full flex items-center justify-center shrink-0 ${done ? "bg-emerald-500" : active ? "bg-medical-100" : "bg-slate-100"}`}>
+                    {done ? <Check className="w-3.5 h-3.5 text-white" /> : active ? <Loader2 className="w-3.5 h-3.5 text-medical-600 animate-spin" /> : <span className="w-1.5 h-1.5 rounded-full bg-slate-300" />}
+                  </span>
+                  <span className={`text-sm font-medium ${done ? "text-emerald-700" : active ? "text-slate-800" : "text-slate-400"}`}>{label}…</span>
+                </div>
+              );
+            })}
+          </div>
         </div>
       ) : listening ? (
         /* Recording — animated, NO transcript shown */

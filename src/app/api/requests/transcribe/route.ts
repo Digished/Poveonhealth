@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import OpenAI, { toFile } from "openai";
+import { parseReferralText } from "@/lib/parse-referral";
 
 export const runtime = "nodejs";
 export const maxDuration = 60;
@@ -17,6 +18,7 @@ export async function POST(req: NextRequest) {
   try {
     const form = await req.formData();
     const audio = form.get("audio");
+    const labId = (form.get("labId") as string) || undefined;
     if (!(audio instanceof Blob) || audio.size === 0) {
       return NextResponse.json({ success: false, error: "No audio received." }, { status: 400 });
     }
@@ -58,7 +60,18 @@ export async function POST(req: NextRequest) {
     if (!text) {
       return NextResponse.json({ success: false, error: "Didn't catch that — please try again." }, { status: 422 });
     }
-    return NextResponse.json({ success: true, text });
+
+    // Parse in the same request so the client only makes one round-trip.
+    try {
+      const baseUrl = process.env.NEXT_PUBLIC_APP_URL || new URL(req.url).origin;
+      const { parsed, resolvedTests } = await parseReferralText(text, labId, baseUrl);
+      return NextResponse.json({ success: true, text, parsed, resolvedTests });
+    } catch (parseErr) {
+      // Transcription worked but parsing failed — return the text so the client
+      // can still fall back to the typed parse path.
+      console.error("[transcribe] parse step failed:", parseErr);
+      return NextResponse.json({ success: true, text, parsed: null, resolvedTests: null });
+    }
   } catch (err) {
     console.error("[transcribe]", err);
     if (err && typeof err === "object" && "status" in err && (err as { status: number }).status === 429) {
