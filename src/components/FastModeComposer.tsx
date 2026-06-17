@@ -71,10 +71,21 @@ export function FastModeComposer({
   const [pending, setPending] = useState(false); // 1s undo window before the request fires
   const pendingTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const [submitting, setSubmitting] = useState(false);
+  const [elapsed, setElapsed] = useState(0); // seconds since submit started — drives the live progress
   const [result, setResult] = useState<CreateRequestResponse | null>(null);
 
   const [mounted, setMounted] = useState(false);
   useEffect(() => { setMounted(true); }, []);
+
+  // Tick a live timer while submitting so the loading screen shows real progress
+  // (steps + countdown) instead of an endless spinner.
+  useEffect(() => {
+    if (!submitting) { setElapsed(0); return; }
+    setElapsed(0);
+    const started = Date.now();
+    const id = setInterval(() => setElapsed((Date.now() - started) / 1000), 100);
+    return () => clearInterval(id);
+  }, [submitting]);
 
   // First-run tutorial — auto-plays once, then cached. Replayable from the header.
   const [tutorialOpen, setTutorialOpen] = useState(false);
@@ -222,11 +233,66 @@ export function FastModeComposer({
   }
 
   if (submitting) {
+    const EST = 6; // generous estimate (s) — the request usually finishes sooner
+    const STEPS = [
+      { label: "Generating your code", at: 0 },
+      { label: "Sorting the patient details", at: 1.5 },
+      { label: "Pricing & matching the lab catalogue", at: 3.5 },
+      { label: "Notifying the lab", at: 5 },
+    ];
+    const stage = STEPS.reduce((acc, s, i) => (elapsed >= s.at ? i : acc), 0);
+    const remaining = Math.max(0, EST - elapsed);
+    const pct = Math.min(95, (elapsed / EST) * 100);
+    const overdue = remaining <= 0.4;
+
     return (
-      <div className="flex flex-col items-center justify-center py-16 px-6 gap-4 animate-fade-in min-h-[280px]">
-        <Loader2 className="w-9 h-9 text-medical-600 animate-spin" />
-        <p className="text-base font-bold text-slate-800">Submitting & sorting for the lab…</p>
-        <p className="text-xs text-slate-400 text-center max-w-xs">Generating your code and organising the details for {labName || "the laboratory"}.</p>
+      <div className="flex flex-col items-center justify-center py-12 px-6 animate-fade-in min-h-[320px]">
+        {/* Countdown ring */}
+        <div className="relative w-24 h-24 mb-5">
+          <svg className="w-24 h-24 -rotate-90" viewBox="0 0 100 100">
+            <circle cx="50" cy="50" r="44" fill="none" stroke="#e2e8f0" strokeWidth="7" />
+            <circle
+              cx="50" cy="50" r="44" fill="none" stroke="#0259a0" strokeWidth="7" strokeLinecap="round"
+              strokeDasharray={2 * Math.PI * 44}
+              strokeDashoffset={(2 * Math.PI * 44) * (1 - pct / 100)}
+              style={{ transition: "stroke-dashoffset 0.2s linear" }}
+            />
+          </svg>
+          <div className="absolute inset-0 flex flex-col items-center justify-center">
+            {overdue ? (
+              <Loader2 className="w-6 h-6 text-medical-600 animate-spin" />
+            ) : (
+              <>
+                <span className="text-2xl font-black text-slate-800 leading-none">{Math.ceil(remaining)}</span>
+                <span className="text-[10px] font-semibold text-slate-400 uppercase tracking-wide">sec</span>
+              </>
+            )}
+          </div>
+        </div>
+
+        <p className="text-base font-bold text-slate-800">{overdue ? "Almost there…" : "Submitting your request"}</p>
+        <p className="text-xs text-slate-400 mb-5">{overdue ? "Wrapping up" : "This usually takes a few seconds"}</p>
+
+        {/* Live steps */}
+        <div className="w-full max-w-xs space-y-2">
+          {STEPS.map((s, i) => {
+            const done = i < stage || (overdue && i <= stage);
+            const active = i === stage && !overdue;
+            return (
+              <div
+                key={s.label}
+                className={`flex items-center gap-3 px-3.5 py-2.5 rounded-xl border transition-all duration-500 ${
+                  done ? "bg-emerald-50 border-emerald-100" : active ? "bg-medical-50 border-medical-100" : "bg-slate-50 border-slate-100 opacity-50"
+                }`}
+              >
+                <span className={`w-5 h-5 rounded-full flex items-center justify-center shrink-0 ${done ? "bg-emerald-500" : active ? "bg-medical-100" : "bg-slate-200"}`}>
+                  {done ? <Check className="w-3 h-3 text-white" /> : active ? <Loader2 className="w-3 h-3 text-medical-600 animate-spin" /> : <span className="w-1.5 h-1.5 rounded-full bg-slate-300" />}
+                </span>
+                <span className={`text-sm font-medium ${done ? "text-emerald-700" : active ? "text-slate-800" : "text-slate-400"}`}>{s.label}</span>
+              </div>
+            );
+          })}
+        </div>
       </div>
     );
   }
