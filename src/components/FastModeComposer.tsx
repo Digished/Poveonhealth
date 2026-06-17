@@ -5,7 +5,7 @@ import { createPortal } from "react-dom";
 import { toast } from "react-hot-toast";
 import {
   Zap, Building2, MapPin, Search, X, ChevronDown, RefreshCw, Loader2, Send, FlaskConical, Info,
-  Check, ShieldCheck, Undo2, HelpCircle, Phone,
+  Check, ShieldCheck, Undo2, HelpCircle, AlertCircle,
 } from "lucide-react";
 import { Input } from "@/components/ui/Input";
 import { SuccessScreen } from "@/components/SuccessScreen";
@@ -14,6 +14,9 @@ import type { Lab, CreateRequestResponse } from "@/lib/types";
 import type { PhoneEntry } from "@/lib/phones";
 
 const DOCTOR_STORAGE_KEY = "poveon_doctor_profile";
+// Rolling average (ms) of how long a Fast Mode submit actually takes — drives an
+// accurate countdown that adapts to this device/network instead of a fixed guess.
+const ESTIMATE_KEY = "poveon_fastmode_est_ms";
 
 interface Location {
   lab_id: string;
@@ -72,6 +75,7 @@ export function FastModeComposer({
   const pendingTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const [submitting, setSubmitting] = useState(false);
   const [elapsed, setElapsed] = useState(0); // seconds since submit started — drives the live progress
+  const [estimateSec, setEstimateSec] = useState(6); // adaptive estimate for the countdown
   const [result, setResult] = useState<CreateRequestResponse | null>(null);
 
   const [mounted, setMounted] = useState(false);
@@ -86,6 +90,14 @@ export function FastModeComposer({
     const id = setInterval(() => setElapsed((Date.now() - started) / 1000), 100);
     return () => clearInterval(id);
   }, [submitting]);
+
+  // Load the learned submit-duration estimate so the first countdown is realistic.
+  useEffect(() => {
+    try {
+      const v = parseInt(localStorage.getItem(ESTIMATE_KEY) || "");
+      if (v >= 2500 && v <= 25000) setEstimateSec(v / 1000);
+    } catch { /* ignore */ }
+  }, []);
 
   // First-run tutorial — auto-plays once, then cached. Replayable from the header.
   const [tutorialOpen, setTutorialOpen] = useState(false);
@@ -157,9 +169,11 @@ export function FastModeComposer({
     rawText.trim().length >= 3 &&
     /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(doctorEmail.trim());
 
-  // Rough check for a phone number in the typed text (a run of 7+ digits, ignoring
-  // spaces/dashes) so we can nudge the doctor to add one — it helps the patient.
+  // Rough checks for a phone (7+ digit run) and an email in the typed text so we
+  // can nudge the doctor to add them — phone lets the lab reach the patient, email
+  // lets the code be sent to the patient.
   const phoneLikelyPresent = /\d{7,}/.test(rawText.replace(/[\s().+-]/g, ""));
+  const emailLikelyPresent = /[^\s@]+@[^\s@]+\.[^\s@]+/.test(rawText);
 
   // Tap submit → review/confirm first.
   function openConfirm() {
@@ -187,6 +201,7 @@ export function FastModeComposer({
 
   async function actualSubmit() {
     setSubmitting(true);
+    const t0 = Date.now();
     try {
       const res = await fetch("/api/requests/create", {
         method: "POST",
@@ -201,6 +216,14 @@ export function FastModeComposer({
       });
       const data: CreateRequestResponse = await res.json();
       if (data.success) {
+        // Learn how long submits actually take so the next countdown is accurate.
+        try {
+          const durMs = Date.now() - t0;
+          const prev = parseInt(localStorage.getItem(ESTIMATE_KEY) || "") || durMs;
+          const next = Math.min(25000, Math.max(2500, Math.round(prev * 0.5 + durMs * 0.5)));
+          localStorage.setItem(ESTIMATE_KEY, String(next));
+          setEstimateSec(next / 1000);
+        } catch { /* ignore */ }
         try {
           const toSave: Record<string, string> = { email: doctorEmail.trim() };
           if (doctorHospital.trim()) toSave.hospital = doctorHospital.trim();
@@ -233,12 +256,12 @@ export function FastModeComposer({
   }
 
   if (submitting) {
-    const EST = 6; // generous estimate (s) — the request usually finishes sooner
+    const EST = estimateSec; // learned from past submits on this device
     const STEPS = [
       { label: "Generating your code", at: 0 },
-      { label: "Sorting the patient details", at: 1.5 },
-      { label: "Pricing & matching the lab catalogue", at: 3.5 },
-      { label: "Notifying the lab", at: 5 },
+      { label: "Sorting the patient details", at: EST * 0.22 },
+      { label: "Pricing & matching the lab catalogue", at: EST * 0.5 },
+      { label: "Notifying the lab", at: EST * 0.8 },
     ];
     const stage = STEPS.reduce((acc, s, i) => (elapsed >= s.at ? i : acc), 0);
     const remaining = Math.max(0, EST - elapsed);
@@ -489,26 +512,30 @@ export function FastModeComposer({
               </div>
               <div className="flex items-start gap-2 px-3 py-2.5 rounded-xl bg-medical-50 border border-medical-100">
                 <Info className="w-4 h-4 text-medical-500 shrink-0 mt-0.5" />
-                <p className="text-xs text-medical-700 leading-relaxed">Submitting generates a code now. The patient details are sorted for the lab in the background — you don&apos;t need to fill them in.</p>
+                <p className="text-xs text-medical-700 leading-relaxed">Submitting generates a code now. The patient details are sorted for the lab in the background.</p>
               </div>
 
-              {!phoneLikelyPresent && (
+              {(!emailLikelyPresent || !phoneLikelyPresent) && (
                 <div className="flex items-start gap-2 px-3 py-2.5 rounded-xl bg-amber-50 border border-amber-200">
-                  <Phone className="w-4 h-4 text-amber-500 shrink-0 mt-0.5" />
-                  <p className="text-xs text-amber-800 leading-relaxed">
-                    <span className="font-semibold">No patient phone number spotted.</span> Adding it lets the lab reach the patient directly — to confirm details, arrange the test, or follow up. Tap “Add phone” to include it, or submit without it.
-                  </p>
+                  <AlertCircle className="w-4 h-4 text-amber-500 shrink-0 mt-0.5" />
+                  <div className="min-w-0">
+                    <p className="text-xs font-semibold text-amber-800">Add the patient&apos;s contact if you can</p>
+                    <ul className="text-xs text-amber-700 mt-1 space-y-0.5 list-disc pl-4 leading-relaxed">
+                      {!emailLikelyPresent && <li>Their <span className="font-semibold">email</span> — so the code can be sent to the patient</li>}
+                      {!phoneLikelyPresent && <li>Their <span className="font-semibold">phone</span> — so the lab can reach the patient</li>}
+                    </ul>
+                  </div>
                 </div>
               )}
             </div>
             <div className="px-5 py-4 border-t border-slate-100 flex gap-3">
-              {!phoneLikelyPresent ? (
-                <button type="button" onClick={() => setConfirmOpen(false)} className="flex-1 py-2.5 rounded-xl border border-amber-300 bg-amber-50 text-amber-700 font-semibold text-sm hover:bg-amber-100 transition">Add phone</button>
+              {(!emailLikelyPresent || !phoneLikelyPresent) ? (
+                <button type="button" onClick={() => setConfirmOpen(false)} className="flex-1 py-2.5 rounded-xl border border-amber-300 bg-amber-50 text-amber-700 font-semibold text-sm hover:bg-amber-100 transition">Go back &amp; add</button>
               ) : (
                 <button type="button" onClick={() => setConfirmOpen(false)} className="flex-1 py-2.5 rounded-xl border border-slate-200 text-slate-600 font-semibold text-sm hover:bg-slate-50 transition">Cancel</button>
               )}
               <button type="button" onClick={confirmAndQueue} className="flex-1 flex items-center justify-center gap-2 py-2.5 rounded-xl bg-medical-600 hover:bg-medical-700 text-white font-bold text-sm transition shadow-sm">
-                <Check className="w-4 h-4" /> {phoneLikelyPresent ? "Looks good — submit" : "Submit anyway"}
+                <Check className="w-4 h-4" /> {(!emailLikelyPresent || !phoneLikelyPresent) ? "Submit anyway" : "Looks good — submit"}
               </button>
             </div>
           </div>

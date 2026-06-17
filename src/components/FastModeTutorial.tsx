@@ -176,6 +176,12 @@ export function FastModeTutorial({ open, onClose }: { open: boolean; onClose: ()
               />
             ))}
           </div>
+
+          {/* Full-form hint — Fast Mode is the default, so point out the way back */}
+          <p className="mt-3 text-center text-[11px] text-slate-400">
+            Prefer the step-by-step form? Tap{" "}
+            <span className="font-semibold text-medical-600">“Use full form”</span> at the top right anytime.
+          </p>
         </div>
 
         {/* Footer */}

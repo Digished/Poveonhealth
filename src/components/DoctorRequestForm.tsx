@@ -1358,10 +1358,10 @@ export function DoctorRequestForm({
     return (
       <div className="animate-fade-in px-4">
         <FastModeComposer
-          preselectedLabId={preselectedLabId}
+          preselectedLabId={preselectedLabId ?? (form.lab_id || undefined)}
           preselectedLabName={preselectedLabName}
           locations={locations}
-          initialLabs={initialLabs}
+          initialLabs={labs.length ? labs : initialLabs}
           onExit={exitFastMode}
         />
       </div>
@@ -1522,21 +1522,25 @@ export function DoctorRequestForm({
             })() : null}
         </div>}
 
-        {/* Fast Mode entry — type the tests in plain language and submit instantly */}
-        <button
-          type="button"
-          onClick={enterFastMode}
-          className="group w-full mb-3 flex items-center gap-2.5 px-3.5 py-2.5 rounded-xl border border-medical-200 bg-gradient-to-r from-medical-50 via-white to-indigo-50 hover:border-medical-400 transition-all text-left animate-dictate-glow"
-        >
-          <span className="w-7 h-7 rounded-lg bg-medical-600 text-white flex items-center justify-center shrink-0 shadow-sm shadow-medical-600/30">
-            <Zap className="w-3.5 h-3.5" />
-          </span>
-          <span className="min-w-0 flex-1">
-            <span className="block text-xs font-bold text-slate-800 leading-tight">Fast Mode — type it, submit instantly</span>
-            <span className="block text-[11px] text-slate-500 leading-tight">Just type the tests in plain English. We sort the details for the lab.</span>
-          </span>
-          <ChevronRight className="w-4 h-4 text-medical-400 group-hover:translate-x-0.5 transition-transform shrink-0" />
-        </button>
+        {/* Fast Mode entry — type the tests in plain language and submit instantly.
+            On the home page it only appears once a lab is chosen, so the lab
+            selector is always the first step. */}
+        {(labPreselected || !!form.lab_id) && (
+          <button
+            type="button"
+            onClick={enterFastMode}
+            className="group w-full mb-3 flex items-center gap-2.5 px-3.5 py-2.5 rounded-xl border border-medical-200 bg-gradient-to-r from-medical-50 via-white to-indigo-50 hover:border-medical-400 transition-all text-left animate-dictate-glow"
+          >
+            <span className="w-7 h-7 rounded-lg bg-medical-600 text-white flex items-center justify-center shrink-0 shadow-sm shadow-medical-600/30">
+              <Zap className="w-3.5 h-3.5" />
+            </span>
+            <span className="min-w-0 flex-1">
+              <span className="block text-xs font-bold text-slate-800 leading-tight">Fast Mode — type it, submit instantly</span>
+              <span className="block text-[11px] text-slate-500 leading-tight">Just type the tests in plain English. We sort the details for the lab.</span>
+            </span>
+            <ChevronRight className="w-4 h-4 text-medical-400 group-hover:translate-x-0.5 transition-transform shrink-0" />
+          </button>
+        )}
 
         {/* Step indicator */}
         <div className="flex items-center">
