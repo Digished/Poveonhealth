@@ -496,7 +496,7 @@ export function FastModeComposer({
                 <div className="flex items-start gap-2 px-3 py-2.5 rounded-xl bg-amber-50 border border-amber-200">
                   <Phone className="w-4 h-4 text-amber-500 shrink-0 mt-0.5" />
                   <p className="text-xs text-amber-800 leading-relaxed">
-                    <span className="font-semibold">No patient phone number spotted.</span> Adding it lets the patient get their code &amp; results by SMS and makes things easier for them. Tap “Add phone” to include it — or submit without it.
+                    <span className="font-semibold">No patient phone number spotted.</span> Adding it lets the lab reach the patient directly — to confirm details, arrange the test, or follow up. Tap “Add phone” to include it, or submit without it.
                   </p>
                 </div>
               )}
