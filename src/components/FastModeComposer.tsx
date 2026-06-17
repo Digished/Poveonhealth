@@ -5,7 +5,7 @@ import { createPortal } from "react-dom";
 import { toast } from "react-hot-toast";
 import {
   Zap, Building2, MapPin, Search, X, ChevronDown, RefreshCw, Loader2, Send, FlaskConical, Info,
-  Check, ShieldCheck, Undo2, HelpCircle,
+  Check, ShieldCheck, Undo2, HelpCircle, Phone,
 } from "lucide-react";
 import { Input } from "@/components/ui/Input";
 import { SuccessScreen } from "@/components/SuccessScreen";
@@ -145,6 +145,10 @@ export function FastModeComposer({
     !!labId &&
     rawText.trim().length >= 3 &&
     /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(doctorEmail.trim());
+
+  // Rough check for a phone number in the typed text (a run of 7+ digits, ignoring
+  // spaces/dashes) so we can nudge the doctor to add one — it helps the patient.
+  const phoneLikelyPresent = /\d{7,}/.test(rawText.replace(/[\s().+-]/g, ""));
 
   // Tap submit → review/confirm first.
   function openConfirm() {
@@ -421,11 +425,24 @@ export function FastModeComposer({
                 <Info className="w-4 h-4 text-medical-500 shrink-0 mt-0.5" />
                 <p className="text-xs text-medical-700 leading-relaxed">Submitting generates a code now. The patient details are sorted for the lab in the background — you don&apos;t need to fill them in.</p>
               </div>
+
+              {!phoneLikelyPresent && (
+                <div className="flex items-start gap-2 px-3 py-2.5 rounded-xl bg-amber-50 border border-amber-200">
+                  <Phone className="w-4 h-4 text-amber-500 shrink-0 mt-0.5" />
+                  <p className="text-xs text-amber-800 leading-relaxed">
+                    <span className="font-semibold">No patient phone number spotted.</span> Adding it lets the patient get their code &amp; results by SMS and makes things easier for them. Tap “Add phone” to include it — or submit without it.
+                  </p>
+                </div>
+              )}
             </div>
             <div className="px-5 py-4 border-t border-slate-100 flex gap-3">
-              <button type="button" onClick={() => setConfirmOpen(false)} className="flex-1 py-2.5 rounded-xl border border-slate-200 text-slate-600 font-semibold text-sm hover:bg-slate-50 transition">Cancel</button>
+              {!phoneLikelyPresent ? (
+                <button type="button" onClick={() => setConfirmOpen(false)} className="flex-1 py-2.5 rounded-xl border border-amber-300 bg-amber-50 text-amber-700 font-semibold text-sm hover:bg-amber-100 transition">Add phone</button>
+              ) : (
+                <button type="button" onClick={() => setConfirmOpen(false)} className="flex-1 py-2.5 rounded-xl border border-slate-200 text-slate-600 font-semibold text-sm hover:bg-slate-50 transition">Cancel</button>
+              )}
               <button type="button" onClick={confirmAndQueue} className="flex-1 flex items-center justify-center gap-2 py-2.5 rounded-xl bg-medical-600 hover:bg-medical-700 text-white font-bold text-sm transition shadow-sm">
-                <Check className="w-4 h-4" /> Looks good — submit
+                <Check className="w-4 h-4" /> {phoneLikelyPresent ? "Looks good — submit" : "Submit anyway"}
               </button>
             </div>
           </div>
