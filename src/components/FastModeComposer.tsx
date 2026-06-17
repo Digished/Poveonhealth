@@ -75,7 +75,7 @@ export function FastModeComposer({
   const pendingTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const [submitting, setSubmitting] = useState(false);
   const [elapsed, setElapsed] = useState(0); // seconds since submit started — drives the live progress
-  const [estimateSec, setEstimateSec] = useState(6); // adaptive estimate for the countdown
+  const [estimateSec, setEstimateSec] = useState(20); // adaptive estimate for the countdown (starts long on purpose)
   const [result, setResult] = useState<CreateRequestResponse | null>(null);
 
   const [mounted, setMounted] = useState(false);
@@ -95,7 +95,7 @@ export function FastModeComposer({
   useEffect(() => {
     try {
       const v = parseInt(localStorage.getItem(ESTIMATE_KEY) || "");
-      if (v >= 2500 && v <= 25000) setEstimateSec(v / 1000);
+      if (v >= 8000 && v <= 30000) setEstimateSec(v / 1000);
     } catch { /* ignore */ }
   }, []);
 
@@ -216,11 +216,14 @@ export function FastModeComposer({
       });
       const data: CreateRequestResponse = await res.json();
       if (data.success) {
-        // Learn how long submits actually take so the next countdown is accurate.
+        // Learn how long submits actually take, but deliberately bias the shown
+        // countdown LONGER (pad ~40% + 2s) so it tends to finish early rather than
+        // run past the number. Clamped to 8–30s, starting from the 20s default.
         try {
           const durMs = Date.now() - t0;
-          const prev = parseInt(localStorage.getItem(ESTIMATE_KEY) || "") || durMs;
-          const next = Math.min(25000, Math.max(2500, Math.round(prev * 0.5 + durMs * 0.5)));
+          const padded = Math.round(durMs * 1.4) + 2000;
+          const prev = parseInt(localStorage.getItem(ESTIMATE_KEY) || "") || 20000;
+          const next = Math.min(30000, Math.max(8000, Math.round(prev * 0.5 + padded * 0.5)));
           localStorage.setItem(ESTIMATE_KEY, String(next));
           setEstimateSec(next / 1000);
         } catch { /* ignore */ }

@@ -167,6 +167,8 @@ export interface LabRequest {
   test_image_url: string | null;
   is_critical: boolean | null;
   needs_ambulance: boolean | null;
+  fast_mode?: boolean | null;
+  raw_input?: string | null;
   // Joined field from lab relation (Prisma relation name is "lab")
   lab?: {
     name: string;

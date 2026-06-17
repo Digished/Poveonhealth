@@ -2220,7 +2220,7 @@ export function LabDashboard({ lab, isOwner = false, roleName = "Lab Owner", can
                 </div>
                 <div>
                   <p className="text-xs text-slate-400">Tests</p>
-                  <p className="text-white font-medium line-clamp-1">{retrievedRequest.tests}</p>
+                  <p className="text-white font-medium line-clamp-1">{displayTests(retrievedRequest.tests)}</p>
                 </div>
               </div>
               {(retrievedRequest.address || retrievedRequest.patient_phone) && (
@@ -2305,6 +2305,9 @@ export function LabDashboard({ lab, isOwner = false, roleName = "Lab Owner", can
                               <span className="text-xs bg-slate-700/80 text-slate-300 px-2 py-0.5 rounded capitalize">
                                 {req.sex ?? "—"}{displayAge(req) != null ? ` · ${displayAge(req)} yrs` : ""}
                               </span>
+                              {req.fast_mode && (
+                                <span className="inline-flex items-center gap-1 text-[10px] font-bold uppercase tracking-wide bg-indigo-500/20 text-indigo-300 px-1.5 py-0.5 rounded-full">⚡ Fast Mode</span>
+                              )}
                             </div>
                             <div className="mt-1.5">
                               <p className="text-xs text-slate-500 font-semibold uppercase tracking-wider mb-1">Tests Requested</p>
@@ -2373,8 +2376,13 @@ export function LabDashboard({ lab, isOwner = false, roleName = "Lab Owner", can
                     {/* Tests & Diagnosis — prominent at top */}
                     <div className="bg-medical-900/30 border border-medical-700/30 rounded-xl p-3 space-y-2">
                       <div>
-                        <p className="text-xs text-medical-400 font-semibold uppercase tracking-wider mb-1">Tests Requested</p>
-                        <p className="text-white font-semibold leading-snug">{selectedRequest.tests}</p>
+                        <div className="flex items-center gap-2 mb-1">
+                      <p className="text-xs text-medical-400 font-semibold uppercase tracking-wider">Tests Requested</p>
+                      {selectedRequest.fast_mode && (
+                        <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded-full bg-indigo-500/20 text-indigo-300 text-[10px] font-bold uppercase tracking-wide">⚡ Fast Mode</span>
+                      )}
+                    </div>
+                        <p className="text-white font-semibold leading-snug">{displayTests(selectedRequest.tests)}</p>
                       </div>
                       {selectedRequest.diagnosis && (
                         <div>
@@ -2976,8 +2984,13 @@ export function LabDashboard({ lab, isOwner = false, roleName = "Lab Owner", can
                 {/* Tests & Diagnosis — prominent at top */}
                 <div className="bg-medical-900/30 border border-medical-700/30 rounded-xl p-3 space-y-2">
                   <div>
-                    <p className="text-xs text-medical-400 font-semibold uppercase tracking-wider mb-1">Tests Requested</p>
-                    <p className="text-white font-semibold leading-snug">{selectedRequest.tests}</p>
+                    <div className="flex items-center gap-2 mb-1">
+                      <p className="text-xs text-medical-400 font-semibold uppercase tracking-wider">Tests Requested</p>
+                      {selectedRequest.fast_mode && (
+                        <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded-full bg-indigo-500/20 text-indigo-300 text-[10px] font-bold uppercase tracking-wide">⚡ Fast Mode</span>
+                      )}
+                    </div>
+                    <p className="text-white font-semibold leading-snug">{displayTests(selectedRequest.tests)}</p>
                   </div>
                   {selectedRequest.diagnosis && (
                     <div>
