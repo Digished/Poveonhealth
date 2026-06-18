@@ -87,6 +87,14 @@ export function FastModeTutorial({ open, onClose }: { open: boolean; onClose: ()
     return () => { document.body.style.overflow = prev; };
   }, [open]);
 
+  // Dismiss the on-screen keyboard when the tutorial opens, otherwise it can sit
+  // over the popup on mobile (e.g. when the input was autofocused underneath).
+  useEffect(() => {
+    if (open && typeof document !== "undefined") {
+      (document.activeElement as HTMLElement | null)?.blur?.();
+    }
+  }, [open]);
+
   function go(next: number) {
     setPlaying(false);
     setStep(Math.max(0, Math.min(last, next)));
@@ -95,9 +103,9 @@ export function FastModeTutorial({ open, onClose }: { open: boolean; onClose: ()
   if (!mounted || !open) return null;
 
   return createPortal(
-    <div className="fixed inset-0 z-[10000] flex items-end sm:items-center justify-center">
+    <div className="fixed inset-0 z-[10000] flex items-center justify-center p-4">
       <div className="absolute inset-0 bg-slate-900/55 backdrop-blur-sm" onClick={onClose} />
-      <div className="relative w-full sm:w-[440px] sm:mx-4 bg-white rounded-t-3xl sm:rounded-3xl shadow-2xl overflow-hidden animate-slide-up">
+      <div className="relative w-full max-w-[440px] max-h-[90dvh] overflow-y-auto bg-white rounded-3xl shadow-2xl animate-slide-up">
         {/* Header */}
         <div className="flex items-center justify-between px-5 py-4 bg-gradient-to-r from-medical-600 to-indigo-600 text-white">
           <div className="flex items-center gap-2">

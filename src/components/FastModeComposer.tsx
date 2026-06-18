@@ -62,6 +62,7 @@ export function FastModeComposer({
   const [labPickerOpen, setLabPickerOpen] = useState(false);
 
   const [rawText, setRawText] = useState("");
+  const rawRef = useRef<HTMLTextAreaElement>(null);
   const [doctorEmail, setDoctorEmail] = useState("");
   const [doctorHospital, setDoctorHospital] = useState("");
   // Cached doctor recognition (mirrors the full form's step 3).
@@ -100,14 +101,19 @@ export function FastModeComposer({
   }, []);
 
   // First-run tutorial — auto-plays once, then cached. Replayable from the header.
+  // We only autofocus the input when the tutorial is NOT showing, so the keyboard
+  // doesn't pop up under (and hide) the tutorial on mobile.
   const [tutorialOpen, setTutorialOpen] = useState(false);
   useEffect(() => {
     try {
       if (!localStorage.getItem(FASTMODE_TUTORIAL_KEY)) {
         setTutorialOpen(true);
         localStorage.setItem(FASTMODE_TUTORIAL_KEY, "1");
+        return;
       }
     } catch { /* ignore */ }
+    // Returning doctor (no tutorial) — focus the input for quick typing.
+    setTimeout(() => rawRef.current?.focus(), 120);
   }, []);
 
   // Prefill the doctor's saved identity (same store the full form uses).
@@ -346,7 +352,7 @@ export function FastModeComposer({
         )}
       </div>
 
-      <FastModeTutorial open={tutorialOpen} onClose={() => setTutorialOpen(false)} />
+      <FastModeTutorial open={tutorialOpen} onClose={() => { setTutorialOpen(false); setTimeout(() => rawRef.current?.focus(), 120); }} />
 
       {/* Lab selector */}
       {labPreselected ? (
@@ -395,10 +401,10 @@ export function FastModeComposer({
           <h2 className="text-sm font-bold text-slate-800">What does the patient need?</h2>
         </div>
         <textarea
+          ref={rawRef}
           value={rawText}
           onChange={(e) => setRawText(e.target.value)}
           rows={4}
-          autoFocus
           placeholder="e.g. FBC, malaria parasite and widal for Mrs Okafor, 42, 0801 234 5678, query typhoid"
           className="w-full rounded-xl border border-slate-200 bg-white px-3 py-2.5 text-[15px] leading-7 text-slate-800 placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-medical-500 focus:border-medical-400 resize-none"
         />
