@@ -489,12 +489,26 @@ const migrations = [
     continueOnError: true,
   },
   {
-    desc: "LIMS: lab_roles new permission flags (roles / professionals / templates)",
+    desc: "LIMS: lab_roles permission flags complete (defensive — fixes legacy can_view_marketers gap)",
     sql: `
       DO $$ BEGIN
+        ALTER TABLE lab_roles ADD COLUMN IF NOT EXISTS can_view_requests BOOLEAN NOT NULL DEFAULT true;
+        ALTER TABLE lab_roles ADD COLUMN IF NOT EXISTS can_mark_seen BOOLEAN NOT NULL DEFAULT false;
+        ALTER TABLE lab_roles ADD COLUMN IF NOT EXISTS can_mark_done BOOLEAN NOT NULL DEFAULT false;
+        ALTER TABLE lab_roles ADD COLUMN IF NOT EXISTS can_send_results BOOLEAN NOT NULL DEFAULT false;
+        ALTER TABLE lab_roles ADD COLUMN IF NOT EXISTS can_manage_team BOOLEAN NOT NULL DEFAULT false;
+        ALTER TABLE lab_roles ADD COLUMN IF NOT EXISTS can_manage_api_keys BOOLEAN NOT NULL DEFAULT false;
+        ALTER TABLE lab_roles ADD COLUMN IF NOT EXISTS can_view_referrals BOOLEAN NOT NULL DEFAULT false;
+        ALTER TABLE lab_roles ADD COLUMN IF NOT EXISTS can_view_clients BOOLEAN NOT NULL DEFAULT false;
+        ALTER TABLE lab_roles ADD COLUMN IF NOT EXISTS can_view_analytics BOOLEAN NOT NULL DEFAULT false;
+        ALTER TABLE lab_roles ADD COLUMN IF NOT EXISTS can_view_activity BOOLEAN NOT NULL DEFAULT false;
+        ALTER TABLE lab_roles ADD COLUMN IF NOT EXISTS can_view_feedback BOOLEAN NOT NULL DEFAULT false;
+        ALTER TABLE lab_roles ADD COLUMN IF NOT EXISTS can_view_wallet BOOLEAN NOT NULL DEFAULT false;
+        ALTER TABLE lab_roles ADD COLUMN IF NOT EXISTS can_view_marketers BOOLEAN NOT NULL DEFAULT false;
         ALTER TABLE lab_roles ADD COLUMN IF NOT EXISTS can_manage_roles BOOLEAN NOT NULL DEFAULT false;
         ALTER TABLE lab_roles ADD COLUMN IF NOT EXISTS can_manage_professionals BOOLEAN NOT NULL DEFAULT false;
         ALTER TABLE lab_roles ADD COLUMN IF NOT EXISTS can_manage_templates BOOLEAN NOT NULL DEFAULT false;
+        CREATE UNIQUE INDEX IF NOT EXISTS lab_roles_lab_id_name_key ON lab_roles(lab_id, name);
       END $$;
     `,
     continueOnError: false,
@@ -612,7 +626,7 @@ const migrations = [
         END LOOP;
       END $$;
     `,
-    continueOnError: false,
+    continueOnError: true, // preset seeding is a convenience — never block a deploy
   },
 ];
 
