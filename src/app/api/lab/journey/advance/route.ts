@@ -43,9 +43,15 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ error: "Your role is limited to the " + auth.department + " department" }, { status: 403 });
   }
 
-  const req = await prisma.request.findUnique({ where: { id: requestId }, select: { id: true, lab_id: true, code: true } });
+  const req = await prisma.request.findUnique({ where: { id: requestId }, select: { id: true, lab_id: true, code: true, is_paid: true } });
   if (!req) return NextResponse.json({ error: "Request not found" }, { status: 404 });
   if (req.lab_id !== auth.lab_id) return NextResponse.json({ error: "Forbidden" }, { status: 403 });
+
+  // Registration gate: a request cannot move down the pipeline until the client
+  // has been confirmed & marked as paid.
+  if (stage !== "registered" && !req.is_paid) {
+    return NextResponse.json({ error: "Confirm the tests and mark the client as paid before advancing." }, { status: 409 });
+  }
 
   await addJourneyEvent({ requestId, stage, department: department ?? null, sampleLabel: sample_label ?? null, actorEmail: auth.actor_email, note: note ?? null });
 

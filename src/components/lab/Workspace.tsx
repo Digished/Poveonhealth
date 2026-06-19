@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useState, useCallback, useMemo } from "react";
-import { Loader2, Search, X, ArrowRight, Plus, Workflow, QrCode, UserPlus, Printer, Send, Check, FlaskConical, Pencil, Stethoscope } from "lucide-react";
+import { Loader2, Search, X, ArrowRight, Plus, Workflow, QrCode, UserPlus, Printer, Send, Check, FlaskConical, Pencil, Stethoscope, AlertTriangle, CreditCard } from "lucide-react";
 import toast from "react-hot-toast";
 import { SourceBadge, SOURCE_OPTIONS } from "@/components/lab/SourceBadge";
 import { OnboardingPanel } from "@/components/lab/OnboardingPanel";
@@ -14,14 +14,32 @@ function fmtDateTime(iso: string | null | undefined): string {
   return new Date(iso).toLocaleString(undefined, { month: "short", day: "numeric", year: "numeric", hour: "numeric", minute: "2-digit" });
 }
 
+/** Compact day + time, e.g. "Mar 5, 2:30 PM" — used for milestone timestamps. */
+function fmtDayTime(iso: string | null | undefined): string {
+  if (!iso) return "—";
+  return new Date(iso).toLocaleString(undefined, { month: "short", day: "numeric", hour: "numeric", minute: "2-digit" });
+}
+
 interface JEvent { id: string; stage: string; department: string | null; sample_label: string | null; note: string | null; actor_email: string | null; created_at: string }
 interface WReq {
   id: string; code: string; status: string; source: string; current_stage: string | null;
   patient_name: string | null; patient_phone: string | null; patient_email: string | null;
   patient_age: number | null; sex: string | null;
   doctor_name: string | null; doctor_email: string | null; tests: string;
+  is_paid: boolean; tests_confirmed: boolean;
   created_at: string; seen_at: string | null; completed_at: string | null;
   test_breakdown: unknown; journey_events: JEvent[];
+}
+
+interface TestPill { name: string; recognized: boolean }
+
+/** Derive display pills for a request's tests, flagging catalog-recognized ones. */
+function testPills(r: WReq): TestPill[] {
+  const items = Array.isArray(r.test_breakdown) ? (r.test_breakdown as { raw?: string; canonical_name?: string; source?: string }[]) : [];
+  if (items.length > 0) {
+    return items.map((it) => ({ name: it.canonical_name || it.raw || "", recognized: it.source === "lab_catalog" })).filter((p) => p.name);
+  }
+  return (r.tests || "").split(",").map((s) => s.trim()).filter(Boolean).map((name) => ({ name, recognized: false }));
 }
 interface Track { department: string; workflow: string; currentStage: string; events: JEvent[]; collections: JEvent[]; tests: string[] }
 interface ResultTemplate { id: string; name: string; department: string | null; parameters: { name: string; unit?: string; reference_range?: string; group?: string }[] }
@@ -131,21 +149,23 @@ export function Workspace({
   }), [requests, statusF, sourceF, deptF, query, hideCompleted]);
   const completedCount = useMemo(() => requests.filter((r) => r.status === "done").length, [requests]);
 
-  // Actionable insights across active (not-done) work.
+  // Actionable insights across active (not-done) work, scoped to the selected
+  // pipeline (department) when one is chosen.
   const active = useMemo(() => requests.filter((r) => r.status !== "done"), [requests]);
   const stats = useMemo(() => {
-    let incoming = 0, awaitingCollection = 0, inAnalysis = 0, imagingPending = 0, readyToReport = 0;
+    let toRegister = 0, awaitingCollection = 0, inProgress = 0, readyToReport = 0;
     for (const r of active) {
-      if (r.status === "incoming") incoming++;
-      for (const t of tracksFor(r)) {
-        if (t.workflow === "specimen" && t.currentStage === "registered") awaitingCollection++;
-        if (t.currentStage === "in_analysis") inAnalysis++;
-        if (t.currentStage === "verified") readyToReport++;
-        if (t.workflow === "imaging" && t.currentStage !== "reported" && t.currentStage !== "registered") imagingPending++;
+      const tracks = tracksFor(r).filter((t) => !deptF || t.department === deptF);
+      if (tracks.length === 0) continue;
+      if (!r.is_paid) toRegister++;
+      for (const t of tracks) {
+        if (t.currentStage === "registered") awaitingCollection++;
+        else if (t.currentStage === "verified") readyToReport++;
+        else if (t.currentStage !== "reported") inProgress++;
       }
     }
-    return { incoming, awaitingCollection, inAnalysis, imagingPending, readyToReport, activeCount: active.length };
-  }, [active]);
+    return { toRegister, awaitingCollection, inProgress, readyToReport };
+  }, [active, deptF]);
 
   // Per-department active workload (for the quick department switcher).
   const deptCounts = useMemo(() => {
@@ -180,6 +200,21 @@ export function Workspace({
       toast.success(`${track.department}: ${stageLabel(stage)}`);
       await load();
       setSelected((s) => (s ? requests.find((x) => x.id === s.id) ?? s : s));
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : "Failed");
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function registration(r: WReq, flags: { tests_confirmed?: boolean; is_paid?: boolean }) {
+    setBusy(true);
+    try {
+      const res = await fetch("/api/lab/requests/registration", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ requestId: r.id, ...flags }) });
+      const data = await res.json();
+      if (!res.ok || data.success === false) throw new Error(data.error || "Failed");
+      toast.success(flags.is_paid ? "Marked as paid" : flags.tests_confirmed ? "Tests confirmed" : "Updated");
+      await load();
     } catch (e) {
       toast.error(e instanceof Error ? e.message : "Failed");
     } finally {
@@ -250,16 +285,12 @@ export function Workspace({
         {intakeOpen && <div className="mt-4"><OnboardingPanel labId={labId} labName={labName} slug={labSlug} /></div>}
       </div>
 
-      {/* Actionable insights */}
-      <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-6">
-        <StatCard label="Active" value={stats.activeCount} accent="medical" icon={<Workflow className="h-4 w-4" />} />
-        <button onClick={() => { setStatusF("incoming"); setHideCompleted(true); }} className="text-left">
-          <StatCard label="Incoming" value={stats.incoming} accent="amber" icon={<UserPlus className="h-4 w-4" />} />
-        </button>
-        <StatCard label="Awaiting collection" value={stats.awaitingCollection} accent="amber" icon={<FlaskConical className="h-4 w-4" />} />
-        <StatCard label="In analysis" value={stats.inAnalysis} accent="violet" icon={<Workflow className="h-4 w-4" />} />
+      {/* Actionable insights — only the essentials, scoped to the selected pipeline */}
+      <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
+        <StatCard label="To register" hint={deptF || "All pipelines"} value={stats.toRegister} accent="amber" icon={<UserPlus className="h-4 w-4" />} />
+        <StatCard label={deptF === "Radiology" || deptF === "Sonography" ? "Awaiting scan" : "Awaiting collection"} value={stats.awaitingCollection} accent="amber" icon={<FlaskConical className="h-4 w-4" />} />
+        <StatCard label="In progress" value={stats.inProgress} accent="violet" icon={<Workflow className="h-4 w-4" />} />
         <StatCard label="Ready to report" value={stats.readyToReport} accent="emerald" icon={<Send className="h-4 w-4" />} />
-        <StatCard label="Imaging pending" value={stats.imagingPending} accent="violet" icon={<Printer className="h-4 w-4" />} />
       </div>
 
       {/* Quick department switcher */}
@@ -357,6 +388,7 @@ export function Workspace({
           busy={busy}
           onMarkSeen={() => markSeen(selected)}
           onAdvance={(track, stage, label, note) => advance(selected, track, stage, label, note)}
+          onRegistration={(flags) => registration(selected, flags)}
           onChanged={load}
         />
       )}
@@ -365,7 +397,7 @@ export function Workspace({
 }
 
 function WorkspaceDrawer({
-  request, labId, onClose, canAdvance, canEnterResults, canSendResults, memberDepartment, busy, onMarkSeen, onAdvance, onChanged,
+  request, labId, onClose, canAdvance, canEnterResults, canSendResults, memberDepartment, busy, onMarkSeen, onAdvance, onRegistration, onChanged,
 }: {
   request: WReq;
   labId: string;
@@ -377,6 +409,7 @@ function WorkspaceDrawer({
   busy: boolean;
   onMarkSeen: () => void;
   onAdvance: (track: Track, stage: string, label?: string, note?: string) => Promise<void> | void;
+  onRegistration: (flags: { tests_confirmed?: boolean; is_paid?: boolean }) => Promise<void> | void;
   onChanged: () => void;
 }) {
   const tracks = tracksFor(request).filter((t) => !memberDepartment || t.department === memberDepartment);
@@ -399,7 +432,13 @@ function WorkspaceDrawer({
           <div>
             <h3 className="text-lg font-semibold text-white">{request.patient_name || "Patient"}</h3>
             <p className="font-mono text-xs text-slate-400">{request.code} · {request.status}</p>
-            <p className="mt-1 text-xs text-slate-400">{request.tests}</p>
+            <div className="mt-1.5 flex flex-wrap gap-1.5">
+              {testPills(request).map((p, i) => (
+                <span key={i} className={`inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[11px] ${p.recognized ? "border border-medical-500/30 bg-medical-600/20 text-medical-200" : "border border-white/10 bg-white/5 text-slate-400"}`} title={p.recognized ? "Recognised in your catalog" : "Not in your catalog"}>
+                  {p.recognized && <Check className="h-3 w-3" />}{p.name}
+                </span>
+              ))}
+            </div>
             <p className="mt-1.5 text-[11px] text-slate-500">
               Registered {fmtDateTime(request.created_at)}
               {request.seen_at ? ` · Seen ${fmtDateTime(request.seen_at)}` : ""}
@@ -429,10 +468,31 @@ function WorkspaceDrawer({
           <button onClick={onClose} className="text-slate-400 hover:text-white"><X className="h-5 w-5" /></button>
         </div>
 
-        {request.status === "incoming" && canAdvance && (
-          <button onClick={onMarkSeen} disabled={busy} className="mb-4 inline-flex w-full items-center justify-center gap-2 rounded-xl bg-sky-600 py-2.5 text-sm font-semibold text-white hover:bg-sky-700 disabled:opacity-50">
-            {busy ? <Loader2 className="h-4 w-4 animate-spin" /> : <Check className="h-4 w-4" />} Mark patient seen
-          </button>
+        {/* Registration gate — confirm tests & take payment before the pipeline */}
+        {request.status !== "done" && canAdvance && !request.is_paid && (
+          <div className="mb-4 rounded-2xl border border-amber-500/25 bg-amber-500/10 p-4">
+            <p className="flex items-center gap-2 text-sm font-semibold text-amber-200"><AlertTriangle className="h-4 w-4" /> Registration checklist</p>
+            <p className="mt-1 text-xs text-amber-100/80">Confirm the tests and take payment before the sample can move down the pipeline.</p>
+            <div className="mt-3 flex flex-wrap gap-2">
+              <button onClick={() => onRegistration({ tests_confirmed: !request.tests_confirmed })} disabled={busy}
+                className={`inline-flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-xs font-semibold disabled:opacity-50 ${request.tests_confirmed ? "border border-emerald-500/30 bg-emerald-600/20 text-emerald-300" : "bg-white/10 text-slate-200 hover:bg-white/15"}`}>
+                {request.tests_confirmed ? <Check className="h-3.5 w-3.5" /> : <FlaskConical className="h-3.5 w-3.5" />} {request.tests_confirmed ? "Tests confirmed" : "Confirm tests"}
+              </button>
+              <button onClick={() => setTestsOpen(true)} className="inline-flex items-center gap-1.5 rounded-lg border border-white/10 px-3 py-1.5 text-xs font-medium text-slate-200 hover:bg-white/5">
+                <Pencil className="h-3.5 w-3.5" /> Edit tests
+              </button>
+              <button onClick={() => onRegistration({ is_paid: true })} disabled={busy || !request.tests_confirmed}
+                className="inline-flex items-center gap-1.5 rounded-lg bg-medical-600 px-3 py-1.5 text-xs font-semibold text-white hover:bg-medical-700 disabled:opacity-50">
+                {busy ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <CreditCard className="h-3.5 w-3.5" />} Mark as paid
+              </button>
+            </div>
+            {!request.tests_confirmed && <p className="mt-2 text-[11px] text-amber-100/60">Confirm the tests to enable “Mark as paid”.</p>}
+          </div>
+        )}
+        {request.is_paid && request.status !== "done" && (
+          <div className="mb-4 flex items-center gap-2 rounded-xl bg-emerald-500/10 px-3 py-2 text-xs font-medium text-emerald-300">
+            <Check className="h-4 w-4" /> Confirmed &amp; paid — pipeline unlocked
+          </div>
         )}
 
         {/* Department tracks */}
@@ -466,7 +526,7 @@ function WorkspaceDrawer({
                 {track.workflow === "specimen" && track.collections.length > 0 && (
                   <div className="mt-3 flex flex-wrap gap-1.5">
                     {track.collections.map((c) => (
-                      <span key={c.id} className="rounded-full bg-white/10 px-2 py-0.5 text-[10px] text-slate-300">{c.sample_label || "Sample"} · {new Date(c.created_at).toLocaleDateString(undefined, { month: "short", day: "numeric" })}</span>
+                      <span key={c.id} className="rounded-full bg-white/10 px-2 py-0.5 text-[10px] text-slate-300">{c.sample_label || "Sample"} · {fmtDayTime(c.created_at)}</span>
                     ))}
                   </div>
                 )}
@@ -477,7 +537,7 @@ function WorkspaceDrawer({
                     {track.events.filter((e) => e.note && e.stage !== "collected").map((e) => (
                       <p key={e.id} className="text-[11px] text-slate-400">
                         <span className="text-slate-300">{stageLabel(e.stage)}:</span> {e.note}
-                        <span className="text-slate-600"> · {new Date(e.created_at).toLocaleDateString(undefined, { month: "short", day: "numeric" })}</span>
+                        <span className="text-slate-600"> · {fmtDayTime(e.created_at)}</span>
                       </p>
                     ))}
                   </div>
@@ -488,7 +548,8 @@ function WorkspaceDrawer({
                     {ns ? (
                       <button
                         onClick={() => { if (ns === "collected") setCollectFor(track); else setMilestone({ track, stage: ns }); }}
-                        disabled={busy}
+                        disabled={busy || !request.is_paid}
+                        title={!request.is_paid ? "Confirm tests & mark as paid first" : undefined}
                         className="inline-flex items-center gap-1.5 rounded-lg bg-medical-600 px-3 py-1.5 text-xs font-semibold text-white hover:bg-medical-700 disabled:opacity-50"
                       >
                         <ArrowRight className="h-3.5 w-3.5" /> {MILESTONE_ACTIONS[ns]?.cta ?? `Advance to ${stageLabel(ns)}`}
@@ -497,7 +558,8 @@ function WorkspaceDrawer({
                     {track.workflow === "specimen" && (
                       <button
                         onClick={() => setCollectFor(track)}
-                        disabled={busy}
+                        disabled={busy || !request.is_paid}
+                        title={!request.is_paid ? "Confirm tests & mark as paid first" : undefined}
                         className="inline-flex items-center gap-1.5 rounded-lg border border-white/10 px-3 py-1.5 text-xs font-medium text-slate-200 hover:bg-white/5 disabled:opacity-50"
                       >
                         <Plus className="h-3.5 w-3.5" /> Add collection

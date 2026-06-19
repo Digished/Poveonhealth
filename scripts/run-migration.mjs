@@ -626,6 +626,24 @@ const migrations = [
     continueOnError: false,
   },
   {
+    desc: "requests.is_paid + tests_confirmed (registration gate before pipeline)",
+    sql: `
+      ALTER TABLE requests ADD COLUMN IF NOT EXISTS is_paid BOOLEAN NOT NULL DEFAULT false;
+      ALTER TABLE requests ADD COLUMN IF NOT EXISTS tests_confirmed BOOLEAN NOT NULL DEFAULT false;
+    `,
+    continueOnError: true,
+  },
+  {
+    desc: "backfill is_paid/tests_confirmed for already-progressed requests (avoid locking the pipeline)",
+    sql: `
+      UPDATE requests
+      SET is_paid = true, tests_confirmed = true
+      WHERE is_paid = false
+        AND (status IN ('seen', 'done') OR (current_stage IS NOT NULL AND current_stage <> 'registered'));
+    `,
+    continueOnError: true,
+  },
+  {
     desc: "LIMS: request_results document/link columns",
     sql: `
       ALTER TABLE request_results ADD COLUMN IF NOT EXISTS kind TEXT NOT NULL DEFAULT 'panel';
