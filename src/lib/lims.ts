@@ -1,5 +1,6 @@
 import { prisma } from "@/lib/prisma";
 import { requestDepartments, JourneyStage } from "@/lib/lims-shared";
+import { resolveTests } from "@/lib/resolve-tests";
 
 /**
  * Server-side LIMS helpers (DB): the sample / client-journey timeline and the
@@ -61,6 +62,71 @@ export async function reportAllTracks(requestId: string, testBreakdown: unknown,
     }).catch(() => {});
   }
   await prisma.request.update({ where: { id: requestId }, data: { current_stage: "reported" } }).catch(() => {});
+}
+
+/**
+ * Promote an `incoming` request to `seen`, computing & recording Poveon
+ * commission and (if a wallet exists and the lab isn't on free trial) deducting
+ * the fee. Idempotent — only acts while the request is still `incoming`, so it
+ * is safe whether triggered by the manual "mark seen" action or automatically
+ * by the first journey advance. Returns true if it promoted the request.
+ */
+export async function markSeenWithCommission(requestId: string): Promise<boolean> {
+  const req = await prisma.request.findUnique({
+    where: { id: requestId },
+    select: {
+      id: true, lab_id: true, tests: true, test_breakdown: true, status: true, doctor_email: true,
+      lab: { select: { free_trial: true } },
+    },
+  });
+  if (!req || req.status !== "incoming") return false;
+
+  const testsString = req.tests && req.tests !== "See attached image" ? req.tests : null;
+  type BreakdownItem = { source?: string; poveon_fee?: number | null; unit_price?: number };
+  let breakdown: BreakdownItem[] = [];
+  if (testsString) {
+    try { breakdown = (await resolveTests(testsString, req.lab_id)) as BreakdownItem[]; } catch { /* non-fatal */ }
+  } else if (Array.isArray(req.test_breakdown)) {
+    breakdown = req.test_breakdown as BreakdownItem[];
+  }
+
+  let poveonFee = 0;
+  let labRevenue = 0;
+  for (const item of breakdown) {
+    if (item.source === "lab_catalog") {
+      poveonFee += Number(item.poveon_fee ?? 0);
+      labRevenue += Number(item.unit_price ?? 0);
+    }
+  }
+
+  // Deduct commission from wallet — balance may go negative (lab owes Poveon).
+  // Skipped only if the lab has no wallet provisioned, or is on free trial.
+  let isPaidToPoveon = false;
+  if (poveonFee > 0 && !req.lab.free_trial) {
+    const wallet = await prisma.labWallet.findUnique({ where: { lab_id: req.lab_id } });
+    if (wallet) {
+      await prisma.labWallet.update({ where: { lab_id: req.lab_id }, data: { balance: { decrement: poveonFee } } });
+      isPaidToPoveon = true;
+    }
+  }
+
+  // Guarded UPDATE (status='incoming') keeps the wallet deduction single-shot
+  // even under a concurrent manual + journey-driven trigger.
+  const breakdownJson = breakdown.length > 0 ? JSON.stringify(breakdown) : null;
+  if (breakdownJson) {
+    await prisma.$executeRawUnsafe(
+      `UPDATE requests SET status='seen', seen_at=NOW(), test_breakdown=$1::jsonb, poveon_amount=$2, lab_revenue_amount=$3, is_paid_to_poveon=$4 WHERE id=$5 AND status='incoming'`,
+      breakdownJson, poveonFee, labRevenue, isPaidToPoveon, requestId,
+    );
+  } else {
+    await prisma.$executeRawUnsafe(
+      `UPDATE requests SET status='seen', seen_at=NOW(), poveon_amount=$1, lab_revenue_amount=$2, is_paid_to_poveon=$3 WHERE id=$4 AND status='incoming'`,
+      poveonFee, labRevenue, isPaidToPoveon, requestId,
+    );
+  }
+
+  await accrueProfessionalCommission({ labId: req.lab_id, requestId, doctorEmail: req.doctor_email, labRevenue });
+  return true;
 }
 
 /** Map the coarse request status to its canonical journey stage. */

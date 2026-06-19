@@ -4,7 +4,7 @@ import { z } from "zod";
 import { prisma } from "@/lib/prisma";
 import { getLabAuth } from "@/lib/lab-auth";
 import { logLabActivity } from "@/lib/lab-activity";
-import { addJourneyEvent, WORKFLOWS, workflowForDepartment, stageLabel } from "@/lib/lims";
+import { addJourneyEvent, markSeenWithCommission, WORKFLOWS, workflowForDepartment, stageLabel } from "@/lib/lims";
 
 const Schema = z.object({
   requestId: z.string().uuid(),
@@ -48,6 +48,14 @@ export async function POST(request: NextRequest) {
   if (req.lab_id !== auth.lab_id) return NextResponse.json({ error: "Forbidden" }, { status: 403 });
 
   await addJourneyEvent({ requestId, stage, department: department ?? null, sampleLabel: sample_label ?? null, actorEmail: auth.actor_email, note: note ?? null });
+
+  // Derive coarse status from journey progress: any advance past registration
+  // marks the patient "seen" (and accrues commission) — so a separate manual
+  // "mark seen" step is no longer required. Idempotent. (Completion to "done"
+  // is handled when results are reported.)
+  if (stage !== "registered" && auth.permissions.can_mark_seen) {
+    await markSeenWithCommission(requestId).catch((e) => console.error("[journey/advance] auto-seen failed:", e));
+  }
 
   if (auth.actor_email) {
     logLabActivity({

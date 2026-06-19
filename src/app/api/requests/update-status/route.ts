@@ -8,8 +8,7 @@ import { doctorTestsCompleted } from "@/lib/email/templates";
 import { logApiCall } from "@/lib/api-logger";
 import { logLabActivity } from "@/lib/lab-activity";
 import { createServerClient } from "@/lib/supabase/server";
-import { resolveTests } from "@/lib/resolve-tests";
-import { reportAllTracks, accrueProfessionalCommission } from "@/lib/lims";
+import { reportAllTracks, markSeenWithCommission } from "@/lib/lims";
 
 const UpdateStatusSchema = z.object({
   requestId: z.string().uuid(),
@@ -46,55 +45,8 @@ export async function POST(request: NextRequest) {
     }
 
     if (status === "seen") {
-      const testsString = req.tests && req.tests !== "See attached image" ? req.tests : null;
-
-      type BreakdownItem = { source?: string; poveon_fee?: number | null; unit_price?: number };
-      let breakdown: BreakdownItem[] = [];
-      if (testsString) {
-        try { breakdown = await resolveTests(testsString, req.lab_id) as BreakdownItem[]; } catch { /* non-fatal */ }
-      } else if (Array.isArray(req.test_breakdown)) {
-        breakdown = req.test_breakdown as BreakdownItem[];
-      }
-
-      let poveonFee = 0;
-      let labRevenue = 0;
-      for (const item of breakdown) {
-        if (item.source === "lab_catalog") {
-          poveonFee  += Number(item.poveon_fee ?? 0);
-          labRevenue += Number(item.unit_price ?? 0);
-        }
-      }
-
-      // Deduct commission from wallet — balance is allowed to go negative (lab owes Poveon).
-      // Only skipped if the lab has no wallet provisioned at all, OR if lab is on free trial.
-      let isPaidToPoveon = false;
-      if (poveonFee > 0 && !req.lab.free_trial) {
-        const wallet = await prisma.labWallet.findUnique({ where: { lab_id: req.lab_id } });
-        if (wallet) {
-          await prisma.labWallet.update({
-            where: { lab_id: req.lab_id },
-            data: { balance: { decrement: poveonFee } },
-          });
-          isPaidToPoveon = true;
-        }
-      }
-
-      const breakdownJson = breakdown.length > 0 ? JSON.stringify(breakdown) : null;
-      if (breakdownJson) {
-        await prisma.$executeRawUnsafe(
-          `UPDATE requests SET status='seen', seen_at=NOW(), test_breakdown=$1::jsonb, poveon_amount=$2, lab_revenue_amount=$3, is_paid_to_poveon=$4 WHERE id=$5`,
-          breakdownJson, poveonFee, labRevenue, isPaidToPoveon, requestId,
-        );
-      } else {
-        await prisma.$executeRawUnsafe(
-          `UPDATE requests SET status='seen', seen_at=NOW(), poveon_amount=$1, lab_revenue_amount=$2, is_paid_to_poveon=$3 WHERE id=$4`,
-          poveonFee, labRevenue, isPaidToPoveon, requestId,
-        );
-      }
-
-      // LIMS: accrue any professional referral commission (non-fatal).
-      // Per-department journey tracks are advanced manually in the Workspace.
-      await accrueProfessionalCommission({ labId: req.lab_id, requestId, doctorEmail: req.doctor_email, labRevenue });
+      // Single source of truth: same routine the journey uses to auto-promote.
+      await markSeenWithCommission(requestId);
     } else {
       await prisma.request.update({ where: { id: requestId }, data: { status: "done", completed_at: new Date() } });
       // LIMS: results delivered — close out every department track.
