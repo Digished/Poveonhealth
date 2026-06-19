@@ -11,6 +11,8 @@ import { sendSms, buildPatientRequestSms } from "@/lib/sms";
 import { logSmsSend } from "@/lib/sms/log-sms";
 import { isValidNigerianPhone, checkPhoneSmsRateLimit, checkDailySmsCap } from "@/lib/sms-guard";
 import { parseReferralText } from "@/lib/parse-referral";
+import { detectTests } from "@/lib/test-dictionary";
+import { getSegmentIndex } from "@/lib/test-segment-cache";
 
 const CreateRequestSchema = z.object({
   patient_name: z.string().min(1).max(200).optional().or(z.literal("")),
@@ -95,22 +97,9 @@ export async function POST(request: NextRequest) {
     // code is generated and returned immediately. This helper sorts the raw text
     // into `data` and enriches from a saved patient profile; it runs in the bg.
     const rawInput = (data.raw_input || "").trim();
-    const enrichFromRawInput = async () => {
-      try {
-        const baseUrl = process.env.NEXT_PUBLIC_APP_URL || new URL(request.url).origin;
-        const { parsed: p } = await parseReferralText(rawInput, data.lab_id, baseUrl);
-        if (!data.patient_name) data.patient_name = p.patient_name;
-        if (data.patient_age == null) data.patient_age = p.patient_age ?? undefined;
-        if (!data.sex && (p.sex === "male" || p.sex === "female")) data.sex = p.sex;
-        if (!data.patient_phone) data.patient_phone = p.patient_phone;
-        if (!data.patient_email && p.patient_email) data.patient_email = p.patient_email;
-        if (!data.diagnosis) data.diagnosis = p.diagnosis;
-        data.tests = p.tests.length ? p.tests.join("\n") : rawInput;
-      } catch (e) {
-        console.error("[create] fast-mode parse failed:", e);
-        if (!data.tests) data.tests = rawInput;
-      }
-      // Cached "step 2": fill still-missing patient details from a saved profile.
+
+    // Cached "step 2": fill still-missing patient details from a saved profile.
+    const fillPatientFromProfile = async () => {
       try {
         const emailKey = data.patient_email?.trim().toLowerCase();
         const phoneDigits = (data.patient_phone || "").replace(/\D/g, "");
@@ -144,6 +133,59 @@ export async function POST(request: NextRequest) {
       } catch (e) {
         console.error("[create] fast-mode patient enrichment skipped:", e);
       }
+    };
+
+    // Full Fast Mode sort (no client-side test chips): the LLM splits tests AND
+    // patient details out of the raw text, then we fill from a saved profile.
+    const enrichFromRawInput = async () => {
+      try {
+        const baseUrl = process.env.NEXT_PUBLIC_APP_URL || new URL(request.url).origin;
+        const { parsed: p } = await parseReferralText(rawInput, data.lab_id, baseUrl);
+        if (!data.patient_name) data.patient_name = p.patient_name;
+        if (data.patient_age == null) data.patient_age = p.patient_age ?? undefined;
+        if (!data.sex && (p.sex === "male" || p.sex === "female")) data.sex = p.sex;
+        if (!data.patient_phone) data.patient_phone = p.patient_phone;
+        if (!data.patient_email && p.patient_email) data.patient_email = p.patient_email;
+        if (!data.diagnosis) data.diagnosis = p.diagnosis;
+        data.tests = p.tests.length ? p.tests.join("\n") : rawInput;
+      } catch (e) {
+        console.error("[create] fast-mode parse failed:", e);
+        if (!data.tests) data.tests = rawInput;
+      }
+      await fillPatientFromProfile();
+    };
+
+    // Fast path: the client already separated the tests (chips) and sent them.
+    // Tests are authoritative — we DON'T re-split them. We only run the LLM to
+    // pull patient details out of the leftover text, and only when there IS
+    // leftover (so a pure test list submits with no LLM call at all).
+    const providedTests = data.fast_mode ? (data.tests || "").trim() : "";
+    const enrichWithProvidedTests = async () => {
+      let remainder = "";
+      try {
+        const index = await getSegmentIndex(data.lab_id);
+        remainder = detectTests(rawInput, index).remainder;
+      } catch (e) {
+        console.error("[create] fast-mode segment failed:", e);
+        remainder = rawInput; // be safe — parse for patient details
+      }
+      // Only the leftover (non-test) text can carry patient details/notes.
+      if (/[a-z0-9]/i.test(remainder)) {
+        try {
+          const baseUrl = process.env.NEXT_PUBLIC_APP_URL || new URL(request.url).origin;
+          const { parsed: p } = await parseReferralText(rawInput, data.lab_id, baseUrl);
+          if (!data.patient_name) data.patient_name = p.patient_name;
+          if (data.patient_age == null) data.patient_age = p.patient_age ?? undefined;
+          if (!data.sex && (p.sex === "male" || p.sex === "female")) data.sex = p.sex;
+          if (!data.patient_phone) data.patient_phone = p.patient_phone;
+          if (!data.patient_email && p.patient_email) data.patient_email = p.patient_email;
+          if (!data.diagnosis) data.diagnosis = p.diagnosis;
+        } catch (e) {
+          console.error("[create] fast-mode patient parse failed:", e);
+        }
+        await fillPatientFromProfile();
+      }
+      data.tests = providedTests; // chips stay authoritative
     };
 
     // Enrich doctor fields from DoctorProfile if not provided in the request body
@@ -400,7 +442,9 @@ export async function POST(request: NextRequest) {
       // a background task would be killed once the response is sent, so the
       // emails would never go out.
       if (rawInput) {
-        await enrichFromRawInput();
+        // Chips path when the client separated the tests; full LLM sort otherwise.
+        if (providedTests) await enrichWithProvidedTests();
+        else await enrichFromRawInput();
         finalTests = data.tests || rawInput;
         let qp: number | null = null;
         let tb: unknown = null;

@@ -12,6 +12,7 @@ import { SuccessScreen } from "@/components/SuccessScreen";
 import { FastModeTutorial, FASTMODE_TUTORIAL_KEY } from "@/components/FastModeTutorial";
 import type { Lab, CreateRequestResponse } from "@/lib/types";
 import type { PhoneEntry } from "@/lib/phones";
+import type { DetectedTest } from "@/lib/test-dictionary";
 
 const DOCTOR_STORAGE_KEY = "poveon_doctor_profile";
 // Rolling average (ms) of how long a Fast Mode submit actually takes — drives an
@@ -63,6 +64,11 @@ export function FastModeComposer({
 
   const [rawText, setRawText] = useState("");
   const rawRef = useRef<HTMLTextAreaElement>(null);
+  // Live, comma-free test separation — detected against the lab catalogue + a
+  // built-in abbreviation dictionary as the doctor types (see segment-tests API).
+  const [detected, setDetected] = useState<DetectedTest[]>([]);
+  const [detecting, setDetecting] = useState(false);
+  const [removedTests, setRemovedTests] = useState<Set<string>>(new Set());
   const [doctorEmail, setDoctorEmail] = useState("");
   const [doctorHospital, setDoctorHospital] = useState("");
   // Cached doctor recognition (mirrors the full form's step 3).
@@ -165,10 +171,45 @@ export function FastModeComposer({
   // Clean up a pending undo timer on unmount.
   useEffect(() => () => { if (pendingTimer.current) clearTimeout(pendingTimer.current); }, []);
 
+  // Live test separation — debounced call to the fast (no-LLM) segment endpoint
+  // so the tests are split out and shown as chips while the doctor types, even
+  // without commas. Re-runs when the text or the selected lab changes.
+  useEffect(() => {
+    const text = rawText.trim();
+    if (text.length < 2) { setDetected([]); setDetecting(false); return; }
+    setDetecting(true);
+    const ctrl = new AbortController();
+    const t = setTimeout(async () => {
+      try {
+        const res = await fetch("/api/requests/segment-tests", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ text, labId: labId || undefined }),
+          signal: ctrl.signal,
+        });
+        if (res.ok) {
+          const d = await res.json();
+          setDetected(Array.isArray(d.tests) ? d.tests : []);
+        }
+      } catch { /* aborted or network — keep last result */ }
+      finally { setDetecting(false); }
+    }, 300);
+    return () => { clearTimeout(t); ctrl.abort(); };
+  }, [rawText, labId]);
+
+  function removeDetected(name: string) {
+    setRemovedTests((prev) => new Set(prev).add(name.toLowerCase()));
+  }
+
   const selectedLab = labs.find((l) => l.id === labId);
   const selectedLoc = labPreselected && locations.length > 0 ? locations[selectedLocIdx] : null;
   const labName = selectedLoc?.name || selectedLab?.name || "";
   const labAddress = selectedLoc?.address || selectedLab?.address || "";
+
+  // Tests the doctor hasn't removed — these are sent verbatim so the slow LLM
+  // test-split is skipped server-side.
+  const visibleTests = detected.filter((t) => !removedTests.has(t.name.toLowerCase()));
+  const testsForSubmit = visibleTests.map((t) => t.name).join("\n");
 
   const canSubmit =
     !!labId &&
@@ -216,6 +257,9 @@ export function FastModeComposer({
           lab_id: labId,
           fast_mode: true,
           raw_input: rawText.trim(),
+          // Tests already separated client-side → sent verbatim so the server
+          // skips the slow AI test-split. Omitted if nothing was detected.
+          tests: testsForSubmit || undefined,
           doctor_email: doctorEmail.trim(),
           doctor_hospital: doctorHospital.trim() || undefined,
         }),
@@ -259,7 +303,7 @@ export function FastModeComposer({
         labAddress={result.lab?.address ?? labAddress}
         labPhones={result.lab?.phones ?? []}
         labWhatsapp={result.lab?.whatsapp ?? null}
-        onReset={() => { setResult(null); setRawText(""); }}
+        onReset={() => { setResult(null); setRawText(""); setDetected([]); setRemovedTests(new Set()); }}
       />
     );
   }
@@ -414,6 +458,49 @@ export function FastModeComposer({
             Just the test is required. Add the patient name, age, phone or email if you have them — we sort it for the lab automatically. You can leave anything out.
           </p>
         </div>
+
+        {/* Live test separation — chips detected as you type (even without commas) */}
+        {(visibleTests.length > 0 || (detecting && rawText.trim().length >= 2)) && (
+          <div className="mt-3 pt-3 border-t border-slate-100">
+            <div className="flex items-center gap-1.5 mb-2">
+              <FlaskConical className="w-3.5 h-3.5 text-medical-500 shrink-0" />
+              <span className="text-[11px] font-bold text-slate-500 uppercase tracking-wide">
+                {visibleTests.length > 0 ? `${visibleTests.length} test${visibleTests.length !== 1 ? "s" : ""} detected` : "Finding tests…"}
+              </span>
+              {detecting && <Loader2 className="w-3 h-3 text-slate-300 animate-spin" />}
+            </div>
+            {visibleTests.length > 0 && (
+              <>
+                <div className="flex flex-wrap gap-1.5">
+                  {visibleTests.map((t) => (
+                    <span
+                      key={t.name}
+                      className={`inline-flex items-center gap-1 text-xs px-2.5 py-1 rounded-full font-medium border ${
+                        t.catalog_test_id
+                          ? "bg-medical-100 text-medical-800 border-medical-200"
+                          : "bg-slate-100 text-slate-700 border-slate-200"
+                      }`}
+                      title={t.catalog_test_id ? "Matched in this lab's catalogue" : "Common test — matched by name"}
+                    >
+                      {t.name}
+                      <button
+                        type="button"
+                        onClick={() => removeDetected(t.name)}
+                        className="opacity-50 hover:opacity-100 transition-opacity shrink-0"
+                        aria-label={`Remove ${t.name}`}
+                      >
+                        <X className="w-3 h-3" />
+                      </button>
+                    </span>
+                  ))}
+                </div>
+                <p className="text-[11px] text-slate-400 mt-2 leading-relaxed">
+                  Separated automatically from your text — tap × on anything that isn&apos;t a test. Patient details are read for the lab on submit.
+                </p>
+              </>
+            )}
+          </div>
+        )}
       </div>
 
       {/* The doctor's details are auto-filled from the saved profile — only a
@@ -515,6 +602,18 @@ export function FastModeComposer({
                 <p className="text-[11px] font-bold text-slate-400 uppercase tracking-wide">What you typed</p>
                 <p className="text-sm text-slate-700 whitespace-pre-wrap leading-relaxed bg-slate-50 border border-slate-100 rounded-xl px-3 py-2 mt-1">{rawText.trim()}</p>
               </div>
+              {visibleTests.length > 0 && (
+                <div>
+                  <p className="text-[11px] font-bold text-slate-400 uppercase tracking-wide">Tests detected ({visibleTests.length})</p>
+                  <div className="flex flex-wrap gap-1.5 mt-1.5">
+                    {visibleTests.map((t) => (
+                      <span key={t.name} className={`inline-flex items-center text-xs px-2.5 py-1 rounded-full font-medium border ${t.catalog_test_id ? "bg-medical-100 text-medical-800 border-medical-200" : "bg-slate-100 text-slate-700 border-slate-200"}`}>
+                        {t.name}
+                      </span>
+                    ))}
+                  </div>
+                </div>
+              )}
               <div>
                 <p className="text-[11px] font-bold text-slate-400 uppercase tracking-wide">Your email</p>
                 <p className="text-sm font-medium text-slate-800">{doctorEmail.trim()}</p>
