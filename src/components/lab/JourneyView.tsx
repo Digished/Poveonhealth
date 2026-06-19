@@ -5,7 +5,7 @@ import { Loader2, Search, X, ArrowRight, Activity } from "lucide-react";
 import toast from "react-hot-toast";
 import { JourneyMap, JourneyTimeline, JourneyEvent } from "@/components/lab/JourneyMap";
 import { StatCard } from "@/components/lab/StatCard";
-import { JOURNEY_STAGES, STAGE_LABELS, stageIndex, JourneyStage } from "@/lib/lims";
+import { JOURNEY_STAGES, STAGE_LABELS, stageIndex, JourneyStage } from "@/lib/lims-shared";
 
 interface JourneyRequest {
   id: string;

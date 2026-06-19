@@ -1,54 +1,33 @@
 import { prisma } from "@/lib/prisma";
+import { requestDepartments, JourneyStage } from "@/lib/lims-shared";
 
 /**
- * Shared LIMS helpers: the sample / client-journey timeline and the
- * professional referral-commission accrual ledger.
+ * Server-side LIMS helpers (DB): the sample / client-journey timeline and the
+ * professional referral-commission accrual ledger. Pure constants/helpers live
+ * in `lims-shared.ts` and are re-exported here for existing server imports.
  */
-
-/** Ordered journey stages a sample/request moves through. */
-export const JOURNEY_STAGES = [
-  "registered",
-  "collected",
-  "received",
-  "in_analysis",
-  "verified",
-  "reported",
-] as const;
-
-export type JourneyStage = (typeof JOURNEY_STAGES)[number];
-
-export const STAGE_LABELS: Record<JourneyStage, string> = {
-  registered: "Registered",
-  collected: "Collected",
-  received: "Received",
-  in_analysis: "In analysis",
-  verified: "Verified",
-  reported: "Reported",
-};
-
-export function isJourneyStage(value: string): value is JourneyStage {
-  return (JOURNEY_STAGES as readonly string[]).includes(value);
-}
-
-export function stageIndex(stage: string): number {
-  return (JOURNEY_STAGES as readonly string[]).indexOf(stage);
-}
+export * from "@/lib/lims-shared";
+export type { JourneyStage } from "@/lib/lims-shared";
 
 /**
  * Append a journey event for a request and denormalize the latest stage onto
- * the request. Fire-and-forget safe: callers may await or ignore.
+ * the request.
  */
 export async function addJourneyEvent(params: {
   requestId: string;
-  stage: JourneyStage;
+  stage: string;
+  department?: string | null;
+  sampleLabel?: string | null;
   actorEmail?: string | null;
   note?: string | null;
 }): Promise<void> {
-  const { requestId, stage, actorEmail, note } = params;
+  const { requestId, stage, department, sampleLabel, actorEmail, note } = params;
   await prisma.requestJourneyEvent.create({
     data: {
       request_id: requestId,
       stage,
+      department: department ?? null,
+      sample_label: sampleLabel ?? null,
       actor_email: actorEmail ?? null,
       note: note ?? null,
     },
@@ -57,6 +36,31 @@ export async function addJourneyEvent(params: {
     where: { id: requestId },
     data: { current_stage: stage },
   });
+}
+
+/** Seed a `registered` event for each department a request touches. */
+export async function seedDepartmentTracks(params: {
+  requestId: string;
+  testBreakdown: unknown;
+  actorEmail?: string | null;
+}): Promise<void> {
+  const depts = requestDepartments(params.testBreakdown);
+  for (const { department } of depts) {
+    await prisma.requestJourneyEvent.create({
+      data: { request_id: params.requestId, stage: "registered", department, actor_email: params.actorEmail ?? null },
+    }).catch(() => {});
+  }
+}
+
+/** Push every department track of a request to its workflow's terminal "reported" stage. */
+export async function reportAllTracks(requestId: string, testBreakdown: unknown, actorEmail?: string | null): Promise<void> {
+  const depts = requestDepartments(testBreakdown);
+  for (const { department } of depts) {
+    await prisma.requestJourneyEvent.create({
+      data: { request_id: requestId, stage: "reported", department, actor_email: actorEmail ?? null, note: "Results delivered" },
+    }).catch(() => {});
+  }
+  await prisma.request.update({ where: { id: requestId }, data: { current_stage: "reported" } }).catch(() => {});
 }
 
 /** Map the coarse request status to its canonical journey stage. */
@@ -70,7 +74,7 @@ export function stageForStatus(status: string): JourneyStage | null {
 /**
  * Accrue a referral commission for the professional linked to a request
  * (matched by doctor_email within the same lab). Idempotent per (professional,
- * request): a second call for the same request is a no-op. Never throws.
+ * request). Never throws.
  */
 export async function accrueProfessionalCommission(params: {
   labId: string;

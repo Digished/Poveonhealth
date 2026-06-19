@@ -49,6 +49,8 @@ export interface LabAuthResult {
   permissions: LabPermissions;
   /** Email of the authenticated actor — used for audit trails (undefined for API-key auth) */
   actor_email?: string;
+  /** Department this member's role is scoped to (null = all departments / owner / api key) */
+  department?: string | null;
 }
 
 /**
@@ -92,6 +94,7 @@ export async function getLabAuth(request: NextRequest): Promise<LabAuthResult | 
             email:  true,
             role: {
               select: {
+                department:           true,
                 can_view_requests:    true,
                 can_mark_seen:        true,
                 can_mark_done:        true,
@@ -113,11 +116,13 @@ export async function getLabAuth(request: NextRequest): Promise<LabAuthResult | 
           },
         });
         if (member) {
+          const { department, ...permissions } = member.role;
           return {
             lab_id:      member.lab_id,
             auth_method: "member",
-            permissions: member.role,
+            permissions,
             actor_email: member.email ?? user.email,
+            department:  department ?? null,
           };
         }
       }

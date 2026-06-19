@@ -38,9 +38,10 @@ export async function GET(request: NextRequest) {
       created_at: true,
       seen_at: true,
       completed_at: true,
+      test_breakdown: true,
       journey_events: {
         orderBy: { created_at: "asc" },
-        select: { id: true, stage: true, note: true, actor_email: true, created_at: true },
+        select: { id: true, stage: true, department: true, sample_label: true, note: true, actor_email: true, created_at: true },
       },
     },
   });

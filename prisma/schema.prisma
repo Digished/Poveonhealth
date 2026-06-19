@@ -48,6 +48,8 @@ model Lab {
   test_templates  LabTestTemplate[]
   professionals   LabProfessional[]
   professional_commissions ProfessionalCommission[]
+  result_templates LabResultTemplate[]
+  request_results  RequestResult[]
 
   @@map("labs")
 }
@@ -118,7 +120,8 @@ model LabRole {
   can_view_marketers     Boolean  @default(false)
   can_manage_roles       Boolean  @default(false) // create/edit lab roles & assign members
   can_manage_professionals Boolean @default(false) // manage referring professionals & commission ledger
-  can_manage_templates   Boolean  @default(false) // create/edit test templates (panels)
+  can_manage_templates   Boolean  @default(false) // create/edit test & result templates
+  department             String? // optional: scopes this role to one department (e.g. "Radiology")
   created_at             DateTime @default(now())
 
   lab     Lab         @relation(fields: [lab_id], references: [id], onDelete: Cascade)
@@ -206,6 +209,7 @@ model Request {
   lab    Lab        @relation(fields: [lab_id], references: [id], onDelete: Cascade)
   branch LabBranch? @relation(fields: [branch_id], references: [id])
   journey_events RequestJourneyEvent[]
+  results        RequestResult[]
 
   @@map("requests")
 }
@@ -215,7 +219,9 @@ model Request {
 model RequestJourneyEvent {
   id          String   @id @default(uuid())
   request_id  String
-  stage       String // registered | collected | received | in_analysis | verified | reported
+  stage       String // registered | collected | received | in_analysis | verified | reported (or imaging/procedure stages)
+  department  String? // department/track this event belongs to (e.g. Hematology, Radiology); null = legacy single track
+  sample_label String? // for multiple collections on one request, e.g. "FBS", "2HPP"
   note        String?
   actor_email String?
   created_at  DateTime @default(now())
@@ -1040,4 +1046,49 @@ model ProfessionalCommission {
   @@index([lab_id, status])
   @@index([professional_id])
   @@map("professional_commissions")
+}
+
+// A reusable result-report template: a named set of parameters (analytes) with
+// units and reference ranges, used to enter & print/send structured results.
+model LabResultTemplate {
+  id             String   @id @default(uuid())
+  lab_id         String
+  name           String
+  department     String?
+  parameters     Json     @default("[]") // [{ name, unit, reference_range, group? }]
+  interpretation String?  // optional default interpretation/comment
+  created_by     String?
+  created_at     DateTime @default(now())
+  updated_at     DateTime @default(now()) @updatedAt
+
+  lab Lab @relation(fields: [lab_id], references: [id], onDelete: Cascade)
+
+  @@unique([lab_id, name])
+  @@index([lab_id])
+  @@map("lab_result_templates")
+}
+
+// A structured result entered for a request (optionally per department/template),
+// rendered into a branded PDF and sent/printed for the patient.
+model RequestResult {
+  id          String    @id @default(uuid())
+  lab_id      String
+  request_id  String
+  template_id String?
+  department  String?
+  values      Json      @default("[]") // [{ name, value, unit, reference_range, flag }]
+  comment     String?
+  status      String    @default("draft") // draft | verified | reported
+  verified_by String?
+  verified_at DateTime?
+  pdf_url     String?
+  created_at  DateTime  @default(now())
+  updated_at  DateTime  @default(now()) @updatedAt
+
+  lab     Lab     @relation(fields: [lab_id], references: [id], onDelete: Cascade)
+  request Request @relation(fields: [request_id], references: [id], onDelete: Cascade)
+
+  @@index([request_id])
+  @@index([lab_id, status])
+  @@map("request_results")
 }

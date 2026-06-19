@@ -36,6 +36,8 @@ export interface PresetRole {
   permissions: PermissionMap;
   /** Dashboard tab a member with this role lands on when no ?tab= is present. */
   default_tab: string;
+  /** Optional department this role is scoped to. */
+  department?: string;
 }
 
 /**
@@ -48,7 +50,7 @@ export const PRESET_ROLES: PresetRole[] = [
     name: "Lab Admin",
     description: "Full access to everything, including roles, team and API keys.",
     permissions: grant(...ROLE_PERMISSION_KEYS),
-    default_tab: "requests",
+    default_tab: "workspace",
   },
   {
     name: "Lab Manager",
@@ -59,25 +61,39 @@ export const PRESET_ROLES: PresetRole[] = [
       "can_view_feedback", "can_view_wallet", "can_view_marketers",
       "can_manage_professionals", "can_manage_templates",
     ),
-    default_tab: "requests",
+    default_tab: "workspace",
   },
   {
     name: "Front Desk",
     description: "Onboard clients (QR + walk-in), check patients in, view clients.",
     permissions: grant("can_view_requests", "can_mark_seen", "can_view_clients"),
-    default_tab: "onboarding",
+    default_tab: "workspace",
   },
   {
     name: "Sample Collector",
     description: "Move samples through the journey; check patients in.",
     permissions: grant("can_view_requests", "can_mark_seen"),
-    default_tab: "journey",
+    default_tab: "workspace",
   },
   {
     name: "Lab Scientist",
-    description: "Verify and report results; manage test templates.",
-    permissions: grant("can_view_requests", "can_mark_done", "can_send_results", "can_manage_templates"),
-    default_tab: "journey",
+    description: "Verify and report results; manage result templates.",
+    permissions: grant("can_view_requests", "can_mark_seen", "can_mark_done", "can_send_results", "can_manage_templates"),
+    default_tab: "workspace",
+  },
+  {
+    name: "Sonographer",
+    description: "Run the Sonography (ultrasound) department: perform scans, verify & send reports.",
+    permissions: grant("can_view_requests", "can_mark_seen", "can_mark_done", "can_send_results", "can_manage_templates"),
+    default_tab: "workspace",
+    department: "Sonography",
+  },
+  {
+    name: "Radiographer",
+    description: "Run the Radiology (X-ray/CT/MRI) department: perform imaging, verify & send reports.",
+    permissions: grant("can_view_requests", "can_mark_seen", "can_mark_done", "can_send_results", "can_manage_templates"),
+    default_tab: "workspace",
+    department: "Radiology",
   },
   {
     name: "Accountant",
@@ -99,7 +115,7 @@ export function defaultTabForRole(roleName: string | null | undefined): string |
  */
 export async function seedPresetRoles(labId: string): Promise<void> {
   await prisma.labRole.createMany({
-    data: PRESET_ROLES.map((r) => ({ lab_id: labId, name: r.name, ...r.permissions })),
+    data: PRESET_ROLES.map((r) => ({ lab_id: labId, name: r.name, ...r.permissions, department: r.department ?? null })),
     skipDuplicates: true,
   });
 }

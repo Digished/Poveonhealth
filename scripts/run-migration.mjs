@@ -585,6 +585,47 @@ const migrations = [
     continueOnError: false,
   },
   {
+    desc: "LIMS: multi-department journey + result-report schema",
+    sql: `
+      DO $$ BEGIN
+        ALTER TABLE request_journey_events ADD COLUMN IF NOT EXISTS department TEXT;
+        ALTER TABLE request_journey_events ADD COLUMN IF NOT EXISTS sample_label TEXT;
+        ALTER TABLE lab_roles ADD COLUMN IF NOT EXISTS department TEXT;
+        CREATE TABLE IF NOT EXISTS lab_result_templates (
+          id TEXT PRIMARY KEY,
+          lab_id TEXT NOT NULL,
+          name TEXT NOT NULL,
+          department TEXT,
+          parameters JSONB NOT NULL DEFAULT '[]',
+          interpretation TEXT,
+          created_by TEXT,
+          created_at TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+          updated_at TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP
+        );
+        CREATE UNIQUE INDEX IF NOT EXISTS lab_result_templates_lab_id_name_key ON lab_result_templates(lab_id, name);
+        CREATE INDEX IF NOT EXISTS lab_result_templates_lab_id_idx ON lab_result_templates(lab_id);
+        CREATE TABLE IF NOT EXISTS request_results (
+          id TEXT PRIMARY KEY,
+          lab_id TEXT NOT NULL,
+          request_id TEXT NOT NULL,
+          template_id TEXT,
+          department TEXT,
+          "values" JSONB NOT NULL DEFAULT '[]',
+          comment TEXT,
+          status TEXT NOT NULL DEFAULT 'draft',
+          verified_by TEXT,
+          verified_at TIMESTAMP(3),
+          pdf_url TEXT,
+          created_at TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+          updated_at TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP
+        );
+        CREATE INDEX IF NOT EXISTS request_results_request_id_idx ON request_results(request_id);
+        CREATE INDEX IF NOT EXISTS request_results_lab_id_status_idx ON request_results(lab_id, status);
+      END $$;
+    `,
+    continueOnError: false,
+  },
+  {
     desc: "LIMS: seed preset roles for every existing lab (idempotent)",
     // Columns: can_view_requests, can_mark_seen, can_mark_done, can_send_results,
     //   can_manage_team, can_manage_api_keys, can_view_referrals, can_view_clients,
@@ -599,6 +640,8 @@ const migrations = [
           {"name":"Front Desk","p":[true,true,false,false,false,false,false,true,false,false,false,false,false,false,false,false]},
           {"name":"Sample Collector","p":[true,true,false,false,false,false,false,false,false,false,false,false,false,false,false,false]},
           {"name":"Lab Scientist","p":[true,false,true,true,false,false,false,false,false,false,false,false,false,false,false,true]},
+          {"name":"Sonographer","d":"Sonography","p":[true,true,true,true,false,false,false,false,false,false,false,false,false,false,false,true]},
+          {"name":"Radiographer","d":"Radiology","p":[true,true,true,true,false,false,false,false,false,false,false,false,false,false,false,true]},
           {"name":"Accountant","p":[false,false,false,false,false,false,false,false,true,false,false,true,false,false,true,false]}
         ]'::jsonb;
         preset JSONB;
@@ -612,7 +655,7 @@ const migrations = [
             can_manage_team, can_manage_api_keys, can_view_referrals, can_view_clients,
             can_view_analytics, can_view_activity, can_view_feedback, can_view_wallet,
             can_view_marketers, can_manage_roles, can_manage_professionals, can_manage_templates,
-            created_at
+            department, created_at
           )
           SELECT
             gen_random_uuid(), labs.id, preset->>'name',
@@ -620,7 +663,7 @@ const migrations = [
             (p->>4)::boolean, (p->>5)::boolean, (p->>6)::boolean, (p->>7)::boolean,
             (p->>8)::boolean, (p->>9)::boolean, (p->>10)::boolean, (p->>11)::boolean,
             (p->>12)::boolean, (p->>13)::boolean, (p->>14)::boolean, (p->>15)::boolean,
-            NOW()
+            preset->>'d', NOW()
           FROM labs
           ON CONFLICT (lab_id, name) DO NOTHING;
         END LOOP;

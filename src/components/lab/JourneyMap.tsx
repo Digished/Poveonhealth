@@ -2,7 +2,7 @@
 
 import clsx from "clsx";
 import { Check } from "lucide-react";
-import { JOURNEY_STAGES, STAGE_LABELS, stageIndex, JourneyStage } from "@/lib/lims";
+import { JOURNEY_STAGES, STAGE_LABELS, stageIndex, JourneyStage } from "@/lib/lims-shared";
 
 export interface JourneyEvent {
   id: string;

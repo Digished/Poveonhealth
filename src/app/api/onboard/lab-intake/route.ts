@@ -12,7 +12,7 @@ import { z } from "zod";
 import { prisma } from "@/lib/prisma";
 import { generateUniqueCode } from "@/lib/code-generator";
 import { resolveTests, totalFromBreakdown } from "@/lib/resolve-tests";
-import { addJourneyEvent } from "@/lib/lims";
+import { seedDepartmentTracks } from "@/lib/lims";
 import { logApiCall } from "@/lib/api-logger";
 
 const Schema = z.object({
@@ -116,8 +116,8 @@ export async function POST(request: NextRequest) {
       },
     });
 
-    // Seed the journey timeline.
-    await addJourneyEvent({ requestId: newRequest.id, stage: "registered", note: data.source === "walk_in" ? "Walk-in registered" : "Self-registered via QR" }).catch(() => {});
+    // Seed one "registered" journey event per department the request touches.
+    await seedDepartmentTracks({ requestId: newRequest.id, testBreakdown: testBreakdown }).catch(() => {});
 
     // Upsert the global patient profile for future auto-fill (non-fatal).
     if (email) {

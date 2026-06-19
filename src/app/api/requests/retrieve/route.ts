@@ -7,7 +7,7 @@ import { doctorPatientArrived } from "@/lib/email/templates";
 import { logApiCall } from "@/lib/api-logger";
 import { getLabAuth } from "@/lib/lab-auth";
 import { resolveTests } from "@/lib/resolve-tests";
-import { addJourneyEvent, accrueProfessionalCommission } from "@/lib/lims";
+import { accrueProfessionalCommission } from "@/lib/lims";
 
 const RetrieveSchema = z.object({
   code: z.string().min(1).max(50).transform((s) => s.trim().toUpperCase()),
@@ -122,8 +122,7 @@ export async function POST(request: NextRequest) {
         );
       }
 
-      // LIMS: mark the sample "received" and accrue professional commission.
-      await addJourneyEvent({ requestId: req.id, stage: "received", actorEmail: auth.actor_email, note: "Patient seen" }).catch(() => {});
+      // LIMS: accrue professional commission (journey tracks advanced manually).
       await accrueProfessionalCommission({ labId: req.lab_id, requestId: req.id, doctorEmail: req.doctor_email, labRevenue });
 
       if (req.doctor_email) resend.emails.send({

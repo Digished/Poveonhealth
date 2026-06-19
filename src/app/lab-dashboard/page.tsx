@@ -36,6 +36,7 @@ export default async function LabDashboardPage() {
   let canMarkDone = true;
   let canSendResults = true;
   let defaultTab: string | null = null;
+  let memberDepartment: string | null = null;
 
   if (role === "lab") {
     const labUser = await prisma.labUser.findUnique({
@@ -53,7 +54,7 @@ export default async function LabDashboardPage() {
       where: { user_id: user.id },
       select: {
         lab_id: true,
-        role: { select: { name: true, can_view_requests: true, can_mark_seen: true, can_mark_done: true, can_send_results: true, can_view_referrals: true, can_view_clients: true, can_view_analytics: true, can_view_activity: true, can_view_feedback: true, can_view_wallet: true, can_view_marketers: true, can_manage_roles: true, can_manage_professionals: true, can_manage_templates: true } },
+        role: { select: { name: true, department: true, can_view_requests: true, can_mark_seen: true, can_mark_done: true, can_send_results: true, can_view_referrals: true, can_view_clients: true, can_view_analytics: true, can_view_activity: true, can_view_feedback: true, can_view_wallet: true, can_view_marketers: true, can_manage_roles: true, can_manage_professionals: true, can_manage_templates: true } },
       },
     });
     labId = member?.lab_id ?? null;
@@ -72,6 +73,7 @@ export default async function LabDashboardPage() {
     canManageRoles = member?.role.can_manage_roles ?? false;
     canManageProfessionals = member?.role.can_manage_professionals ?? false;
     canManageTemplates = member?.role.can_manage_templates ?? false;
+    memberDepartment = member?.role.department ?? null;
     defaultTab = defaultTabForRole(roleName);
   }
 
@@ -114,6 +116,7 @@ export default async function LabDashboardPage() {
       canMarkDone={canMarkDone}
       canSendResults={canSendResults}
       defaultTab={defaultTab}
+      memberDepartment={memberDepartment}
       lab={{
         id: lab.id,
         name: lab.name,

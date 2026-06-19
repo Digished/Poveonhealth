@@ -21,6 +21,8 @@ const OnboardingPanel = dynamic(() => import("@/components/lab/OnboardingPanel")
 const TatPanel = dynamic(() => import("@/components/lab/TatPanel").then(m => ({ default: m.TatPanel })), { ssr: false });
 const RolesManager = dynamic(() => import("@/components/lab/RolesManager").then(m => ({ default: m.RolesManager })), { ssr: false });
 const TemplatesManager = dynamic(() => import("@/components/lab/TemplatesManager").then(m => ({ default: m.TemplatesManager })), { ssr: false });
+const Workspace = dynamic(() => import("@/components/lab/Workspace").then(m => ({ default: m.Workspace })), { ssr: false });
+const ResultTemplatesManager = dynamic(() => import("@/components/lab/ResultTemplatesManager").then(m => ({ default: m.ResultTemplatesManager })), { ssr: false });
 import { useDashTheme } from "@/hooks/useDashTheme";
 import { Button } from "@/components/ui/Button";
 import { Input } from "@/components/ui/Input";
@@ -81,6 +83,7 @@ interface LabDashboardProps {
   canMarkDone?: boolean;
   canSendResults?: boolean;
   defaultTab?: string | null;
+  memberDepartment?: string | null;
 }
 
 const TABS: { key: RequestStatus; label: string; icon: React.ReactNode }[] = [
@@ -109,18 +112,22 @@ function displayTests(raw: string | null | undefined): string {
 }
 
 
-export function LabDashboard({ lab, isOwner = false, roleName = "Lab Owner", canViewReferrals = false, canViewClients = false, canViewAnalytics = false, canViewActivity = false, canViewFeedback = false, canViewWallet = false, canViewMarketers = false, canManageRoles = false, canManageProfessionals = false, canManageTemplates = false, canViewRequests = true, canMarkSeen = false, canMarkDone = false, canSendResults = false, defaultTab = null }: LabDashboardProps) {
-  void canSendResults; // reserved for future result-action gating
+export function LabDashboard({ lab, isOwner = false, roleName = "Lab Owner", canViewReferrals = false, canViewClients = false, canViewAnalytics = false, canViewActivity = false, canViewFeedback = false, canViewWallet = false, canViewMarketers = false, canManageRoles = false, canManageProfessionals = false, canManageTemplates = false, canViewRequests = true, canMarkSeen = false, canMarkDone = false, canSendResults = false, defaultTab = null, memberDepartment = null }: LabDashboardProps) {
   const canViewRequestsEff = isOwner || canViewRequests;
   const canAdvanceJourney = isOwner || canMarkSeen || canMarkDone;
+  const canEnterResults = isOwner || canMarkDone;
+  const canSendResultsEff = isOwner || canSendResults;
   const { name: labName, logo_url: labLogoUrl } = lab;
   const router = useRouter();
   const searchParams = useSearchParams();
   const { isLight, toggle, themeClass } = useDashTheme("lab_dash_theme");
-  type MainView = "requests" | "journey" | "onboarding" | "templates" | "referrals" | "professionals" | "clients" | "analytics" | "activity" | "feedback" | "poveon" | "price-list" | "marketers";
-  const VALID_TABS: MainView[] = ["requests", "journey", "onboarding", "templates", "referrals", "professionals", "clients", "analytics", "activity", "feedback", "poveon", "price-list", "marketers"];
+  type MainView = "workspace" | "requests" | "journey" | "onboarding" | "templates" | "referrals" | "professionals" | "clients" | "analytics" | "activity" | "feedback" | "poveon" | "price-list" | "marketers";
+  const VALID_TABS: MainView[] = ["workspace", "requests", "journey", "onboarding", "templates", "referrals", "professionals", "clients", "analytics", "activity", "feedback", "poveon", "price-list", "marketers"];
+  // Legacy tabs now fold into the unified Workspace.
+  const LEGACY_TO_WORKSPACE = new Set(["requests", "journey", "onboarding"]);
   // Which permission gates each tab (used by the sidebar and the initial landing).
   const tabVisible: Record<MainView, boolean> = {
+    workspace: canViewRequestsEff,
     requests: canViewRequestsEff,
     journey: canViewRequestsEff,
     onboarding: canViewRequestsEff,
@@ -135,8 +142,10 @@ export function LabDashboard({ lab, isOwner = false, roleName = "Lab Owner", can
     "price-list": isOwner || canViewWallet,
     marketers: isOwner || canViewMarketers,
   };
-  const firstVisibleTab = (VALID_TABS.find((t) => tabVisible[t]) ?? "requests") as MainView;
-  const tabParam = searchParams.get("tab") as MainView | null;
+  const firstVisibleTab = (VALID_TABS.find((t) => t !== "requests" && t !== "journey" && t !== "onboarding" && tabVisible[t]) ?? "workspace") as MainView;
+  const rawTabParam = searchParams.get("tab") as MainView | null;
+  // Old deep links (requests/journey/onboarding) resolve to the Workspace.
+  const tabParam: MainView | null = rawTabParam && LEGACY_TO_WORKSPACE.has(rawTabParam) ? "workspace" : rawTabParam;
   const initialTab: MainView =
     tabParam && VALID_TABS.includes(tabParam) && tabVisible[tabParam]
       ? tabParam
@@ -849,10 +858,8 @@ export function LabDashboard({ lab, isOwner = false, roleName = "Lab Owner", can
         {(() => {
           const RAW_SECTIONS: { label: string; items: { key: MainView; label: string; icon: React.ReactNode; show: boolean }[] }[] = [
             { label: "Operations", items: [
-              { key: "requests", label: "Requests", icon: <FlaskConical className="w-4 h-4" />, show: tabVisible.requests },
-              { key: "journey", label: "Journey", icon: <Workflow className="w-4 h-4" />, show: tabVisible.journey },
-              { key: "onboarding", label: "Onboarding", icon: <QrCode className="w-4 h-4" />, show: tabVisible.onboarding },
-              { key: "templates", label: "Templates", icon: <Layers className="w-4 h-4" />, show: tabVisible.templates },
+              { key: "workspace", label: "Workspace", icon: <Workflow className="w-4 h-4" />, show: tabVisible.workspace },
+              { key: "templates", label: "Result Templates", icon: <FileText className="w-4 h-4" />, show: tabVisible.templates },
               { key: "clients", label: "Clients", icon: <UserCircle className="w-4 h-4" />, show: tabVisible.clients },
             ] },
             { label: "Network", items: [
@@ -2110,14 +2117,33 @@ export function LabDashboard({ lab, isOwner = false, roleName = "Lab Owner", can
           </>
         )}
 
-        {/* Templates / panels view */}
+        {/* Result report templates view */}
         {mainView === "templates" && (isOwner || canViewRequestsEff || canManageTemplates) && (
           <div className="space-y-5">
             <div>
-              <h2 className="text-lg font-semibold text-white">Test templates</h2>
-              <p className="text-sm text-slate-400 mt-1">Group common tests into reusable panels with optional turnaround targets.</p>
+              <h2 className="text-lg font-semibold text-white">Result templates</h2>
+              <p className="text-sm text-slate-400 mt-1">Define result reports (parameters + reference ranges) used to enter, print and send results.</p>
             </div>
-            <TemplatesManager labId={lab.id} canManage={isOwner || canManageTemplates} />
+            <ResultTemplatesManager canManage={isOwner || canManageTemplates} />
+          </div>
+        )}
+
+        {/* Unified Workspace — intake + requests + multi-department journey + results */}
+        {mainView === "workspace" && canViewRequestsEff && (
+          <div className="space-y-5">
+            <div>
+              <h2 className="text-lg font-semibold text-white">Workspace</h2>
+              <p className="text-sm text-slate-400 mt-1">Onboard clients, track every sample across departments, and deliver results — in one place.</p>
+            </div>
+            <Workspace
+              labId={lab.id}
+              labName={lab.name}
+              labSlug={lab.slug ?? null}
+              canAdvance={canAdvanceJourney}
+              canEnterResults={canEnterResults}
+              canSendResults={canSendResultsEff}
+              memberDepartment={memberDepartment}
+            />
           </div>
         )}
 
