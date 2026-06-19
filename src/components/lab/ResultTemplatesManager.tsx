@@ -1,9 +1,16 @@
 "use client";
 
-import { useEffect, useState, useCallback } from "react";
-import { Loader2, Plus, Trash2, FileText, X } from "lucide-react";
+import { useEffect, useState, useCallback, useRef } from "react";
+import { Loader2, Plus, Trash2, FileText, X, Upload, Wand2, Download } from "lucide-react";
 import toast from "react-hot-toast";
 import { DEPARTMENTS } from "@/lib/lims-shared";
+
+const SAMPLE_CSV = `template,department,parameter,unit,reference_range,group
+Full Blood Count (FBC),Hematology,Haemoglobin,g/dL,M 13-17 / F 12-15,
+Full Blood Count (FBC),Hematology,White Cell Count,x10^9/L,4.0-11.0,
+Lipid Profile,Chemistry,Total Cholesterol,mg/dL,< 200,
+Lipid Profile,Chemistry,HDL Cholesterol,mg/dL,> 40,
+`;
 
 interface Param { name: string; unit?: string; reference_range?: string; group?: string }
 interface ResultTemplate {
@@ -27,6 +34,9 @@ export function ResultTemplatesManager({ canManage }: { canManage: boolean }) {
   const [interpretation, setInterpretation] = useState("");
   const [params, setParams] = useState<Param[]>([{ name: "", unit: "", reference_range: "", group: "" }]);
   const [saving, setSaving] = useState(false);
+  const [seeding, setSeeding] = useState(false);
+  const [importing, setImporting] = useState(false);
+  const fileRef = useRef<HTMLInputElement | null>(null);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -78,6 +88,54 @@ export function ResultTemplatesManager({ canManage }: { canManage: boolean }) {
     }
   }
 
+  async function seedStandard() {
+    if (!confirm("Add the standard set of result templates (FBC, Lipid Profile, LFT, U&E, etc.)? Existing templates with the same name are kept.")) return;
+    setSeeding(true);
+    try {
+      const res = await fetch("/api/lab/result-templates/seed", { method: "POST" });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || "Failed");
+      toast.success(data.created > 0 ? `Added ${data.created} template${data.created === 1 ? "" : "s"}${data.skipped ? ` (${data.skipped} already existed)` : ""}` : "All standard templates already present");
+      await load();
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : "Failed to seed");
+    } finally {
+      setSeeding(false);
+    }
+  }
+
+  async function onCsvFile(e: React.ChangeEvent<HTMLInputElement>) {
+    const file = e.target.files?.[0];
+    e.target.value = ""; // allow re-selecting the same file
+    if (!file) return;
+    setImporting(true);
+    try {
+      const csv = await file.text();
+      const res = await fetch("/api/lab/result-templates/import-csv", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ csv }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || "Import failed");
+      toast.success(`Imported ${data.templates} template${data.templates === 1 ? "" : "s"} (${data.created} new, ${data.replaced} updated)`);
+      await load();
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : "Import failed");
+    } finally {
+      setImporting(false);
+    }
+  }
+
+  function downloadSample() {
+    const blob = new Blob([SAMPLE_CSV], { type: "text/csv" });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url; a.download = "result-templates-sample.csv";
+    a.click();
+    URL.revokeObjectURL(url);
+  }
+
   async function remove(t: ResultTemplate) {
     if (!confirm(`Delete result template "${t.name}"?`)) return;
     try {
@@ -92,9 +150,23 @@ export function ResultTemplatesManager({ canManage }: { canManage: boolean }) {
 
   return (
     <div className="space-y-4">
-      <div className="flex items-center justify-between">
+      <div className="flex flex-wrap items-center justify-between gap-2">
         <p className="flex items-center gap-2 text-sm font-semibold text-white"><FileText className="h-4 w-4 text-medical-300" /> Result report templates</p>
-        {canManage && <button onClick={openNew} className="inline-flex items-center gap-1.5 rounded-lg bg-medical-600 px-3 py-1.5 text-xs font-semibold text-white hover:bg-medical-700"><Plus className="h-3.5 w-3.5" /> New template</button>}
+        {canManage && (
+          <div className="flex flex-wrap items-center gap-2">
+            <button onClick={seedStandard} disabled={seeding} className="inline-flex items-center gap-1.5 rounded-lg border border-white/10 px-3 py-1.5 text-xs font-medium text-slate-200 hover:bg-white/5 disabled:opacity-50">
+              {seeding ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Wand2 className="h-3.5 w-3.5" />} Seed standard
+            </button>
+            <button onClick={() => fileRef.current?.click()} disabled={importing} className="inline-flex items-center gap-1.5 rounded-lg border border-white/10 px-3 py-1.5 text-xs font-medium text-slate-200 hover:bg-white/5 disabled:opacity-50">
+              {importing ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Upload className="h-3.5 w-3.5" />} Import CSV
+            </button>
+            <button onClick={downloadSample} className="inline-flex items-center gap-1.5 rounded-lg px-2 py-1.5 text-xs font-medium text-slate-400 hover:text-slate-200" title="Download a sample CSV">
+              <Download className="h-3.5 w-3.5" /> Sample
+            </button>
+            <button onClick={openNew} className="inline-flex items-center gap-1.5 rounded-lg bg-medical-600 px-3 py-1.5 text-xs font-semibold text-white hover:bg-medical-700"><Plus className="h-3.5 w-3.5" /> New template</button>
+            <input ref={fileRef} type="file" accept=".csv,text/csv" onChange={onCsvFile} className="hidden" />
+          </div>
+        )}
       </div>
 
       {loading ? (
