@@ -121,8 +121,8 @@ export function LabDashboard({ lab, isOwner = false, roleName = "Lab Owner", can
   const router = useRouter();
   const searchParams = useSearchParams();
   const { isLight, toggle, themeClass } = useDashTheme("lab_dash_theme");
-  type MainView = "workspace" | "requests" | "journey" | "onboarding" | "templates" | "referrals" | "professionals" | "clients" | "analytics" | "activity" | "feedback" | "poveon" | "price-list" | "marketers";
-  const VALID_TABS: MainView[] = ["workspace", "requests", "journey", "onboarding", "templates", "referrals", "professionals", "clients", "analytics", "activity", "feedback", "poveon", "price-list", "marketers"];
+  type MainView = "workspace" | "requests" | "journey" | "onboarding" | "templates" | "network" | "referrals" | "professionals" | "clients" | "analytics" | "activity" | "feedback" | "poveon" | "price-list" | "marketers";
+  const VALID_TABS: MainView[] = ["workspace", "requests", "journey", "onboarding", "templates", "network", "referrals", "professionals", "clients", "analytics", "activity", "feedback", "poveon", "price-list", "marketers"];
   // Legacy tabs now fold into the unified Workspace.
   const LEGACY_TO_WORKSPACE = new Set(["requests", "journey", "onboarding"]);
   // Which permission gates each tab (used by the sidebar and the initial landing).
@@ -132,6 +132,7 @@ export function LabDashboard({ lab, isOwner = false, roleName = "Lab Owner", can
     journey: canViewRequestsEff,
     onboarding: canViewRequestsEff,
     templates: canViewRequestsEff || isOwner || canManageTemplates,
+    network: isOwner || canViewReferrals || canManageProfessionals,
     referrals: isOwner || canViewReferrals,
     professionals: isOwner || canManageProfessionals,
     clients: isOwner || canViewClients,
@@ -142,7 +143,8 @@ export function LabDashboard({ lab, isOwner = false, roleName = "Lab Owner", can
     "price-list": isOwner || canViewWallet,
     marketers: isOwner || canViewMarketers,
   };
-  const firstVisibleTab = (VALID_TABS.find((t) => t !== "requests" && t !== "journey" && t !== "onboarding" && tabVisible[t]) ?? "workspace") as MainView;
+  const STANDALONE_NETWORK = new Set(["referrals", "professionals"]);
+  const firstVisibleTab = (VALID_TABS.find((t) => t !== "requests" && t !== "journey" && t !== "onboarding" && !STANDALONE_NETWORK.has(t) && tabVisible[t]) ?? "workspace") as MainView;
   const rawTabParam = searchParams.get("tab") as MainView | null;
   // Old deep links (requests/journey/onboarding) resolve to the Workspace.
   const tabParam: MainView | null = rawTabParam && LEGACY_TO_WORKSPACE.has(rawTabParam) ? "workspace" : rawTabParam;
@@ -167,6 +169,10 @@ export function LabDashboard({ lab, isOwner = false, roleName = "Lab Owner", can
   const [priceListLoading, setPriceListLoading] = useState(false);
   const [priceManagerOpen, setPriceManagerOpen] = useState(false);
   const [mobileNavOpen, setMobileNavOpen] = useState(false);
+  // Sub-tab within the combined "Network" tab (Referrals + Professionals)
+  const [networkSub, setNetworkSub] = useState<"referrals" | "professionals">(
+    (isOwner || canViewReferrals) ? "referrals" : "professionals"
+  );
   // Agreement status — checked once on mount for owners
   const [agreementSigned, setAgreementSigned] = useState<boolean | null>(null);
   // Eagerly loaded wallet balance for the "amount owed" banner shown on all tabs
@@ -416,10 +422,11 @@ export function LabDashboard({ lab, isOwner = false, roleName = "Lab Owner", can
   }, [lab.id]);
 
   useEffect(() => {
-    if (mainView === "referrals" && (isOwner || canViewReferrals)) fetchReferrals();
+    const onReferrals = mainView === "referrals" || (mainView === "network" && networkSub === "referrals");
+    if (onReferrals && (isOwner || canViewReferrals)) fetchReferrals();
     if (mainView === "clients" && (isOwner || canViewClients)) fetchClients();
     if ((mainView === "marketers" || mainView === "analytics") && (isOwner || canViewMarketers)) fetchMarketers();
-  }, [mainView, fetchReferrals, fetchClients, fetchMarketers, isOwner, canViewReferrals, canViewClients, canViewMarketers]);
+  }, [mainView, networkSub, fetchReferrals, fetchClients, fetchMarketers, isOwner, canViewReferrals, canViewClients, canViewMarketers]);
 
   // Load the lab's roles for the team member role-assignment dropdown.
   useEffect(() => {
@@ -863,8 +870,7 @@ export function LabDashboard({ lab, isOwner = false, roleName = "Lab Owner", can
               { key: "clients", label: "Clients", icon: <UserCircle className="w-4 h-4" />, show: tabVisible.clients },
             ] },
             { label: "Network", items: [
-              { key: "referrals", label: "Referrals", icon: <Users className="w-4 h-4" />, show: tabVisible.referrals },
-              { key: "professionals", label: "Professionals", icon: <Stethoscope className="w-4 h-4" />, show: tabVisible.professionals },
+              { key: "network", label: "Referrals & Professionals", icon: <Stethoscope className="w-4 h-4" />, show: tabVisible.network },
               { key: "marketers", label: "Marketers", icon: <Users className="w-4 h-4" />, show: tabVisible.marketers },
             ] },
             { label: "Insights", items: [
@@ -889,7 +895,9 @@ export function LabDashboard({ lab, isOwner = false, roleName = "Lab Owner", can
           };
 
           const allItems = NAV_SECTIONS.flatMap((s) => s.items);
-          const currentItem = allItems.find((n) => n.key === mainView) ?? allItems[0];
+          // Treat the standalone referrals/professionals deep links as the combined Network tab.
+          const isItemActive = (key: MainView) => key === mainView || (key === "network" && STANDALONE_NETWORK.has(mainView));
+          const currentItem = allItems.find((n) => isItemActive(n.key)) ?? allItems[0];
 
           const itemClass = (active: boolean) =>
             `flex items-center gap-2.5 w-full px-3 py-2 rounded-lg text-sm font-medium transition-colors ${
@@ -906,8 +914,8 @@ export function LabDashboard({ lab, isOwner = false, roleName = "Lab Owner", can
                       <p className="px-3 mb-1.5 text-[11px] font-semibold uppercase tracking-wider text-slate-500">{sec.label}</p>
                       <div className="space-y-0.5">
                         {sec.items.map((item) => (
-                          <button key={item.key} onClick={() => onNav(item.key)} className={itemClass(mainView === item.key)}>
-                            <span className={mainView === item.key ? "text-medical-300" : "text-slate-500"}>{item.icon}</span>
+                          <button key={item.key} onClick={() => onNav(item.key)} className={itemClass(isItemActive(item.key))}>
+                            <span className={isItemActive(item.key) ? "text-medical-300" : "text-slate-500"}>{item.icon}</span>
                             {item.label}
                           </button>
                         ))}
@@ -936,11 +944,11 @@ export function LabDashboard({ lab, isOwner = false, roleName = "Lab Owner", can
                           {sec.items.map((item) => (
                             <button key={item.key} onClick={() => onNav(item.key)}
                               className={`flex items-center gap-3 w-full px-4 py-3 text-sm font-medium transition-colors border-b border-white/5 ${
-                                mainView === item.key ? "bg-white/12 text-white" : "text-slate-300 active:bg-white/8"
+                                isItemActive(item.key) ? "bg-white/12 text-white" : "text-slate-300 active:bg-white/8"
                               }`}>
-                              <span className={mainView === item.key ? "text-white" : "text-slate-500"}>{item.icon}</span>
+                              <span className={isItemActive(item.key) ? "text-white" : "text-slate-500"}>{item.icon}</span>
                               {item.label}
-                              {mainView === item.key && <ChevronRight className="w-3.5 h-3.5 ml-auto text-white/40" />}
+                              {isItemActive(item.key) && <ChevronRight className="w-3.5 h-3.5 ml-auto text-white/40" />}
                             </button>
                           ))}
                         </div>
@@ -998,8 +1006,30 @@ export function LabDashboard({ lab, isOwner = false, roleName = "Lab Owner", can
           </div>
         )}
 
+        {/* Combined Network tab: sub-tab switcher for Referrals + Professionals */}
+        {mainView === "network" && (
+          <div className="mb-5 inline-flex rounded-xl border border-white/10 bg-white/5 p-1">
+            {(isOwner || canViewReferrals) && (
+              <button
+                onClick={() => setNetworkSub("referrals")}
+                className={`inline-flex items-center gap-1.5 rounded-lg px-4 py-1.5 text-sm font-medium transition-colors ${networkSub === "referrals" ? "bg-medical-600 text-white" : "text-slate-300 hover:text-white"}`}
+              >
+                <Users className="w-4 h-4" /> Referrals
+              </button>
+            )}
+            {(isOwner || canManageProfessionals) && (
+              <button
+                onClick={() => setNetworkSub("professionals")}
+                className={`inline-flex items-center gap-1.5 rounded-lg px-4 py-1.5 text-sm font-medium transition-colors ${networkSub === "professionals" ? "bg-medical-600 text-white" : "text-slate-300 hover:text-white"}`}
+              >
+                <Stethoscope className="w-4 h-4" /> Professionals
+              </button>
+            )}
+          </div>
+        )}
+
         {/* Referrals view */}
-        {mainView === "referrals" && (
+        {(mainView === "referrals" || (mainView === "network" && networkSub === "referrals")) && (
           <div>
             {/* Filters */}
             <div className="flex flex-wrap gap-3 mb-6">
@@ -2065,7 +2095,7 @@ export function LabDashboard({ lab, isOwner = false, roleName = "Lab Owner", can
         )}
 
         {/* Professionals & commission view */}
-        {mainView === "professionals" && (isOwner || canManageProfessionals) && (
+        {(mainView === "professionals" || (mainView === "network" && networkSub === "professionals")) && (isOwner || canManageProfessionals) && (
           <div className="space-y-5">
             <div>
               <h2 className="text-lg font-semibold text-white">Medical professionals</h2>
