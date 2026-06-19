@@ -9,12 +9,18 @@ import {
   Users, CreditCard, Filter, ChevronDown, AlertTriangle, Truck, ExternalLink,
   MessageCircle, ChevronLeft, FileImage, Sun, Moon, Pencil, Save, BarChart3, Lock,
   Menu, Activity, KeyRound, ArrowRight, Star, MessageSquare, Wallet2, Copy, ArrowUpRight,
-  Settings2, FileText, Plus,
+  Settings2, FileText, Plus, Workflow, QrCode,
 } from "lucide-react";
 import dynamic from "next/dynamic";
 
 const LabPriceListManager = dynamic(() => import("@/components/LabPriceListManager"), { ssr: false });
 const LabMarketerAnalytics = dynamic(() => import("@/components/LabMarketerAnalytics").then(m => ({ default: m.LabMarketerAnalytics })), { ssr: false });
+const JourneyView = dynamic(() => import("@/components/lab/JourneyView").then(m => ({ default: m.JourneyView })), { ssr: false });
+const ProfessionalsView = dynamic(() => import("@/components/lab/ProfessionalsView").then(m => ({ default: m.ProfessionalsView })), { ssr: false });
+const OnboardingPanel = dynamic(() => import("@/components/lab/OnboardingPanel").then(m => ({ default: m.OnboardingPanel })), { ssr: false });
+const TatPanel = dynamic(() => import("@/components/lab/TatPanel").then(m => ({ default: m.TatPanel })), { ssr: false });
+const RolesManager = dynamic(() => import("@/components/lab/RolesManager").then(m => ({ default: m.RolesManager })), { ssr: false });
+const TemplatesManager = dynamic(() => import("@/components/lab/TemplatesManager").then(m => ({ default: m.TemplatesManager })), { ssr: false });
 import { useDashTheme } from "@/hooks/useDashTheme";
 import { Button } from "@/components/ui/Button";
 import { Input } from "@/components/ui/Input";
@@ -47,6 +53,7 @@ interface LabDashboardProps {
   lab: {
     id: string;
     name: string;
+    slug?: string | null;
     logo_url: string | null;
     address: string;
     description: string;
@@ -65,6 +72,9 @@ interface LabDashboardProps {
   canViewFeedback?: boolean;
   canViewWallet?: boolean;
   canViewMarketers?: boolean;
+  canManageRoles?: boolean;
+  canManageProfessionals?: boolean;
+  canManageTemplates?: boolean;
 }
 
 const TABS: { key: RequestStatus; label: string; icon: React.ReactNode }[] = [
@@ -93,13 +103,13 @@ function displayTests(raw: string | null | undefined): string {
 }
 
 
-export function LabDashboard({ lab, isOwner = false, roleName = "Lab Owner", canViewReferrals = false, canViewClients = false, canViewAnalytics = false, canViewActivity = false, canViewFeedback = false, canViewWallet = false, canViewMarketers = false }: LabDashboardProps) {
+export function LabDashboard({ lab, isOwner = false, roleName = "Lab Owner", canViewReferrals = false, canViewClients = false, canViewAnalytics = false, canViewActivity = false, canViewFeedback = false, canViewWallet = false, canViewMarketers = false, canManageRoles = false, canManageProfessionals = false, canManageTemplates = false }: LabDashboardProps) {
   const { name: labName, logo_url: labLogoUrl } = lab;
   const router = useRouter();
   const searchParams = useSearchParams();
   const { isLight, toggle, themeClass } = useDashTheme("lab_dash_theme");
-  type MainView = "requests" | "referrals" | "clients" | "analytics" | "activity" | "feedback" | "poveon" | "price-list" | "marketers";
-  const VALID_TABS: MainView[] = ["requests", "referrals", "clients", "analytics", "activity", "feedback", "poveon", "price-list", "marketers"];
+  type MainView = "requests" | "journey" | "onboarding" | "referrals" | "professionals" | "clients" | "analytics" | "activity" | "feedback" | "poveon" | "price-list" | "marketers";
+  const VALID_TABS: MainView[] = ["requests", "journey", "onboarding", "referrals", "professionals", "clients", "analytics", "activity", "feedback", "poveon", "price-list", "marketers"];
   const tabParam = searchParams.get("tab") as MainView | null;
   const [mainView, setMainView] = useState<MainView>(
     tabParam && VALID_TABS.includes(tabParam) ? tabParam : "requests"
@@ -784,7 +794,10 @@ export function LabDashboard({ lab, isOwner = false, roleName = "Lab Owner", can
           const navItems = [
             { key: "poveon" as const, label: "Poveon", icon: <CreditCard className="w-4 h-4" />, show: isOwner || canViewWallet },
             { key: "requests" as const, label: "Requests", icon: <FlaskConical className="w-4 h-4" />, show: true },
+            { key: "journey" as const, label: "Journey", icon: <Workflow className="w-4 h-4" />, show: true },
+            { key: "onboarding" as const, label: "Onboarding", icon: <QrCode className="w-4 h-4" />, show: true },
             { key: "referrals" as const, label: "Referrals", icon: <Users className="w-4 h-4" />, show: isOwner || canViewReferrals },
+            { key: "professionals" as const, label: "Professionals", icon: <Stethoscope className="w-4 h-4" />, show: isOwner || canManageProfessionals },
             { key: "clients" as const, label: "Clients", icon: <UserCircle className="w-4 h-4" />, show: isOwner || canViewClients },
             { key: "analytics" as const, label: "Analytics", icon: <BarChart3 className="w-4 h-4" />, show: isOwner || canViewAnalytics },
             { key: "activity" as const, label: "Activity", icon: <Activity className="w-4 h-4" />, show: isOwner || canViewActivity },
@@ -1512,6 +1525,12 @@ export function LabDashboard({ lab, isOwner = false, roleName = "Lab Owner", can
 
           return (
             <div className="space-y-5">
+              {/* Turnaround time (TAT) */}
+              <div className="space-y-3">
+                <h3 className="text-sm font-semibold text-white">Turnaround time</h3>
+                <TatPanel />
+              </div>
+
               {/* Filter row */}
               <div className="flex flex-wrap gap-2">
                 <select
@@ -1916,6 +1935,39 @@ export function LabDashboard({ lab, isOwner = false, roleName = "Lab Owner", can
           );
         })()}
 
+        {/* Journey / sample tracking view */}
+        {mainView === "journey" && (
+          <div className="space-y-5">
+            <div>
+              <h2 className="text-lg font-semibold text-white">Sample journey</h2>
+              <p className="text-sm text-slate-400 mt-1">Track every client and sample from registration to reported results.</p>
+            </div>
+            <JourneyView canAdvance={true} />
+          </div>
+        )}
+
+        {/* Onboarding (QR + walk-in) view */}
+        {mainView === "onboarding" && (
+          <div className="space-y-5">
+            <div>
+              <h2 className="text-lg font-semibold text-white">Client onboarding</h2>
+              <p className="text-sm text-slate-400 mt-1">Let clients self-register via QR, or register a walk-in in seconds.</p>
+            </div>
+            <OnboardingPanel labId={lab.id} labName={lab.name} slug={lab.slug ?? null} />
+          </div>
+        )}
+
+        {/* Professionals & commission view */}
+        {mainView === "professionals" && (isOwner || canManageProfessionals) && (
+          <div className="space-y-5">
+            <div>
+              <h2 className="text-lg font-semibold text-white">Medical professionals</h2>
+              <p className="text-sm text-slate-400 mt-1">Add referring professionals and track referral commissions.</p>
+            </div>
+            <ProfessionalsView />
+          </div>
+        )}
+
         {/* Activity view */}
         {mainView === "activity" && (isOwner || canViewActivity) && (
           <LabActivityView />
@@ -1955,6 +2007,9 @@ export function LabDashboard({ lab, isOwner = false, roleName = "Lab Owner", can
             {priceManagerOpen && (
               <LabPriceListManager onClose={() => setPriceManagerOpen(false)} />
             )}
+            <div className="mt-8 border-t border-white/10 pt-6">
+              <TemplatesManager labId={lab.id} canManage={isOwner || canManageTemplates} />
+            </div>
           </>
         )}
 
@@ -2963,6 +3018,13 @@ export function LabDashboard({ lab, isOwner = false, roleName = "Lab Owner", can
                         ))}
                       </div>
                     )}
+                  </div>
+                )}
+
+                {/* Roles & permissions — lab admins only */}
+                {(isOwner || canManageRoles) && (
+                  <div className="mt-6 border-t border-white/10 pt-5">
+                    <RolesManager />
                   </div>
                 )}
               </div>

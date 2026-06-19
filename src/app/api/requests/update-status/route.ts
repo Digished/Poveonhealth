@@ -9,6 +9,7 @@ import { logApiCall } from "@/lib/api-logger";
 import { logLabActivity } from "@/lib/lab-activity";
 import { createServerClient } from "@/lib/supabase/server";
 import { resolveTests } from "@/lib/resolve-tests";
+import { addJourneyEvent, accrueProfessionalCommission } from "@/lib/lims";
 
 const UpdateStatusSchema = z.object({
   requestId: z.string().uuid(),
@@ -90,8 +91,15 @@ export async function POST(request: NextRequest) {
           poveonFee, labRevenue, isPaidToPoveon, requestId,
         );
       }
+
+      // LIMS: mark the sample "received" on the journey and accrue any
+      // professional referral commission (non-fatal).
+      await addJourneyEvent({ requestId, stage: "received", actorEmail: auth.actor_email, note: "Patient seen" }).catch(() => {});
+      await accrueProfessionalCommission({ labId: req.lab_id, requestId, doctorEmail: req.doctor_email, labRevenue });
     } else {
       await prisma.request.update({ where: { id: requestId }, data: { status: "done", completed_at: new Date() } });
+      // LIMS: results delivered — close out the journey.
+      await addJourneyEvent({ requestId, stage: "reported", actorEmail: auth.actor_email, note: "Results delivered" }).catch(() => {});
     }
 
     // Activity log (non-critical)

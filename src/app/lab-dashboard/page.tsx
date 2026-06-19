@@ -26,6 +26,9 @@ export default async function LabDashboardPage() {
   let canViewFeedback = true;
   let canViewWallet = true;
   let canViewMarketers = false;
+  let canManageRoles = false;
+  let canManageProfessionals = false;
+  let canManageTemplates = false;
 
   if (role === "lab") {
     const labUser = await prisma.labUser.findUnique({
@@ -34,13 +37,16 @@ export default async function LabDashboardPage() {
     });
     labId = labUser?.lab_id ?? null;
     canViewMarketers = true; // Lab owners can manage marketers
+    canManageRoles = true;
+    canManageProfessionals = true;
+    canManageTemplates = true;
   } else {
     // lab_member — look up via LabMember table
     const member = await prisma.labMember.findUnique({
       where: { user_id: user.id },
       select: {
         lab_id: true,
-        role: { select: { name: true, can_view_referrals: true, can_view_clients: true, can_view_analytics: true, can_view_activity: true, can_view_feedback: true, can_view_wallet: true, can_view_marketers: true } },
+        role: { select: { name: true, can_view_referrals: true, can_view_clients: true, can_view_analytics: true, can_view_activity: true, can_view_feedback: true, can_view_wallet: true, can_view_marketers: true, can_manage_roles: true, can_manage_professionals: true, can_manage_templates: true } },
       },
     });
     labId = member?.lab_id ?? null;
@@ -52,6 +58,9 @@ export default async function LabDashboardPage() {
     canViewFeedback = member?.role.can_view_feedback ?? false;
     canViewWallet = member?.role.can_view_wallet ?? false;
     canViewMarketers = member?.role.can_view_marketers ?? false;
+    canManageRoles = member?.role.can_manage_roles ?? false;
+    canManageProfessionals = member?.role.can_manage_professionals ?? false;
+    canManageTemplates = member?.role.can_manage_templates ?? false;
   }
 
   if (!labId) redirect("/lab-login");
@@ -61,6 +70,7 @@ export default async function LabDashboardPage() {
     select: {
       id: true,
       name: true,
+      slug: true,
       logo_url: true,
       address: true,
       description: true,
@@ -84,9 +94,13 @@ export default async function LabDashboardPage() {
       canViewFeedback={canViewFeedback}
       canViewWallet={canViewWallet}
       canViewMarketers={canViewMarketers}
+      canManageRoles={canManageRoles}
+      canManageProfessionals={canManageProfessionals}
+      canManageTemplates={canManageTemplates}
       lab={{
         id: lab.id,
         name: lab.name,
+        slug: lab.slug,
         logo_url: lab.logo_url,
         address: lab.address,
         description: lab.description,

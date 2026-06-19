@@ -455,6 +455,121 @@ const migrations = [
     `,
     continueOnError: false,
   },
+  {
+    desc: "LIMS: requests source / journey-stage / consent columns",
+    sql: `
+      DO $$ BEGIN
+        ALTER TABLE requests ADD COLUMN IF NOT EXISTS source TEXT NOT NULL DEFAULT 'poveon';
+        ALTER TABLE requests ADD COLUMN IF NOT EXISTS current_stage TEXT;
+        ALTER TABLE requests ADD COLUMN IF NOT EXISTS consent_at TIMESTAMP(3);
+      END $$;
+    `,
+    continueOnError: false,
+  },
+  {
+    desc: "LIMS: request_journey_events table (sample / client journey timeline)",
+    sql: `
+      DO $$ BEGIN
+        CREATE TABLE IF NOT EXISTS request_journey_events (
+          id TEXT PRIMARY KEY,
+          request_id TEXT NOT NULL,
+          stage TEXT NOT NULL,
+          note TEXT,
+          actor_email TEXT,
+          created_at TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP
+        );
+        CREATE INDEX IF NOT EXISTS request_journey_events_request_id_created_at_idx ON request_journey_events(request_id, created_at);
+      END $$;
+    `,
+    continueOnError: false,
+  },
+  {
+    desc: "LIMS: lab_offered_tests.tat_hours column (per-test SLA)",
+    sql: `ALTER TABLE lab_offered_tests ADD COLUMN IF NOT EXISTS tat_hours INTEGER`,
+    continueOnError: true,
+  },
+  {
+    desc: "LIMS: lab_roles new permission flags (roles / professionals / templates)",
+    sql: `
+      DO $$ BEGIN
+        ALTER TABLE lab_roles ADD COLUMN IF NOT EXISTS can_manage_roles BOOLEAN NOT NULL DEFAULT false;
+        ALTER TABLE lab_roles ADD COLUMN IF NOT EXISTS can_manage_professionals BOOLEAN NOT NULL DEFAULT false;
+        ALTER TABLE lab_roles ADD COLUMN IF NOT EXISTS can_manage_templates BOOLEAN NOT NULL DEFAULT false;
+      END $$;
+    `,
+    continueOnError: false,
+  },
+  {
+    desc: "LIMS: lab_test_templates table (reusable panels)",
+    sql: `
+      DO $$ BEGIN
+        CREATE TABLE IF NOT EXISTS lab_test_templates (
+          id TEXT PRIMARY KEY,
+          lab_id TEXT NOT NULL,
+          name TEXT NOT NULL,
+          description TEXT,
+          category_label TEXT,
+          test_names JSONB NOT NULL DEFAULT '[]',
+          tat_hours INTEGER,
+          created_by TEXT,
+          created_at TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+          updated_at TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP
+        );
+        CREATE UNIQUE INDEX IF NOT EXISTS lab_test_templates_lab_id_name_key ON lab_test_templates(lab_id, name);
+        CREATE INDEX IF NOT EXISTS lab_test_templates_lab_id_idx ON lab_test_templates(lab_id);
+      END $$;
+    `,
+    continueOnError: false,
+  },
+  {
+    desc: "LIMS: lab_professionals table (referring professionals + commission rate)",
+    sql: `
+      DO $$ BEGIN
+        CREATE TABLE IF NOT EXISTS lab_professionals (
+          id TEXT PRIMARY KEY,
+          lab_id TEXT NOT NULL,
+          name TEXT NOT NULL,
+          email TEXT,
+          phone TEXT,
+          specialty TEXT,
+          hospital TEXT,
+          commission_type TEXT NOT NULL DEFAULT 'percent',
+          commission_value DECIMAL(12,2) NOT NULL DEFAULT 0,
+          bank_name TEXT,
+          account_number TEXT,
+          account_name TEXT,
+          active BOOLEAN NOT NULL DEFAULT true,
+          created_at TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+          updated_at TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP
+        );
+        CREATE UNIQUE INDEX IF NOT EXISTS lab_professionals_lab_id_email_key ON lab_professionals(lab_id, email);
+        CREATE INDEX IF NOT EXISTS lab_professionals_lab_id_idx ON lab_professionals(lab_id);
+      END $$;
+    `,
+    continueOnError: false,
+  },
+  {
+    desc: "LIMS: professional_commissions ledger table",
+    sql: `
+      DO $$ BEGIN
+        CREATE TABLE IF NOT EXISTS professional_commissions (
+          id TEXT PRIMARY KEY,
+          lab_id TEXT NOT NULL,
+          professional_id TEXT NOT NULL,
+          request_id TEXT,
+          basis_amount DECIMAL(12,2),
+          amount DECIMAL(12,2) NOT NULL,
+          status TEXT NOT NULL DEFAULT 'accrued',
+          paid_at TIMESTAMP(3),
+          note TEXT,
+          created_at TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP
+        );
+        CREATE INDEX IF NOT EXISTS professional_commissions_lab_id_status_idx ON professional_commissions(lab_id, status);
+        CREATE INDEX IF NOT EXISTS professional_commissions_professional_id_idx ON professional_commissions(professional_id);
+      END $$;
+    `,
+    continueOnError: false,
+  },
 ];
 
 let failed = false;
