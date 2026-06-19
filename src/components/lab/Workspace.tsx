@@ -5,6 +5,7 @@ import { Loader2, Search, X, ArrowRight, Plus, Workflow, QrCode, UserPlus, Print
 import toast from "react-hot-toast";
 import { SourceBadge, SOURCE_OPTIONS } from "@/components/lab/SourceBadge";
 import { OnboardingPanel } from "@/components/lab/OnboardingPanel";
+import { StatCard } from "@/components/lab/StatCard";
 import { requestDepartments, categoryToDepartment, WORKFLOWS, workflowForDepartment, stageLabel, DEPARTMENTS } from "@/lib/lims-shared";
 
 function fmtDateTime(iso: string | null | undefined): string {
@@ -54,6 +55,20 @@ const STATUS_OPTIONS = [
   { value: "seen", label: "Seen" },
   { value: "done", label: "Done" },
 ];
+
+/**
+ * Per-milestone action config. Every stage advance opens a short action sheet
+ * that captures the relevant detail (who/what/when) rather than blindly moving
+ * the track forward. "collected" is handled separately by the sample picker.
+ */
+const MILESTONE_ACTIONS: Record<string, { cta: string; title: string; field: string; placeholder: string; required?: boolean; prompt: string }> = {
+  scheduled:   { cta: "Schedule",       title: "Schedule appointment", field: "Date / time",            placeholder: "e.g. Tue 10:00am",            required: true, prompt: "When is the patient scheduled to come in?" },
+  received:    { cta: "Mark received",  title: "Specimen received",    field: "Received by / condition", placeholder: "e.g. Received in good condition",                prompt: "Confirm the specimen has arrived in the lab." },
+  performed:   { cta: "Mark performed", title: "Procedure performed",  field: "Scan / procedure done",   placeholder: "e.g. Chest X-ray PA view done", required: true, prompt: "Record the scan or procedure that was performed." },
+  in_analysis: { cta: "Start analysis", title: "Begin analysis",       field: "Analyst / instrument",    placeholder: "e.g. Analyst: J. Doe",                          prompt: "Record who or what is running the analysis." },
+  verified:    { cta: "Verify",         title: "Verify results",       field: "Note (optional)",         placeholder: "Reviewed & verified",                           prompt: "Confirm the results have been checked and are correct." },
+  reported:    { cta: "Mark reported",  title: "Mark reported",        field: "Note (optional)",         placeholder: "Results delivered",                             prompt: "Confirm the report has been delivered to the patient." },
+};
 
 export function Workspace({
   labId,
@@ -115,6 +130,30 @@ export function Workspace({
   }), [requests, statusF, sourceF, deptF, query, hideCompleted]);
   const completedCount = useMemo(() => requests.filter((r) => r.status === "done").length, [requests]);
 
+  // Actionable insights across active (not-done) work.
+  const active = useMemo(() => requests.filter((r) => r.status !== "done"), [requests]);
+  const stats = useMemo(() => {
+    let incoming = 0, awaitingCollection = 0, inAnalysis = 0, imagingPending = 0, readyToReport = 0;
+    for (const r of active) {
+      if (r.status === "incoming") incoming++;
+      for (const t of tracksFor(r)) {
+        if (t.workflow === "specimen" && t.currentStage === "registered") awaitingCollection++;
+        if (t.currentStage === "in_analysis") inAnalysis++;
+        if (t.currentStage === "verified") readyToReport++;
+        if (t.workflow === "imaging" && t.currentStage !== "reported" && t.currentStage !== "registered") imagingPending++;
+      }
+    }
+    return { incoming, awaitingCollection, inAnalysis, imagingPending, readyToReport, activeCount: active.length };
+  }, [active]);
+
+  // Per-department active workload (for the quick department switcher).
+  const deptCounts = useMemo(() => {
+    const m = new Map<string, number>();
+    for (const r of active) for (const t of tracksFor(r)) m.set(t.department, (m.get(t.department) ?? 0) + 1);
+    return m;
+  }, [active]);
+  const activeDepartments = DEPARTMENTS.filter((d) => (deptCounts.get(d) ?? 0) > 0);
+
   async function markSeen(r: WReq) {
     setBusy(true);
     try {
@@ -131,10 +170,10 @@ export function Workspace({
     }
   }
 
-  async function advance(r: WReq, track: Track, stage: string, sampleLabel?: string) {
+  async function advance(r: WReq, track: Track, stage: string, sampleLabel?: string, note?: string) {
     setBusy(true);
     try {
-      const res = await fetch("/api/lab/journey/advance", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ requestId: r.id, department: track.department, stage, sample_label: sampleLabel }) });
+      const res = await fetch("/api/lab/journey/advance", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ requestId: r.id, department: track.department, stage, sample_label: sampleLabel, note }) });
       const data = await res.json();
       if (!res.ok) throw new Error(data.error || "Failed");
       toast.success(`${track.department}: ${stageLabel(stage)}`);
@@ -210,6 +249,40 @@ export function Workspace({
         {intakeOpen && <div className="mt-4"><OnboardingPanel labId={labId} labName={labName} slug={labSlug} /></div>}
       </div>
 
+      {/* Actionable insights */}
+      <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-6">
+        <StatCard label="Active" value={stats.activeCount} accent="medical" icon={<Workflow className="h-4 w-4" />} />
+        <button onClick={() => { setStatusF("incoming"); setHideCompleted(true); }} className="text-left">
+          <StatCard label="Incoming" value={stats.incoming} accent="amber" icon={<UserPlus className="h-4 w-4" />} />
+        </button>
+        <StatCard label="Awaiting collection" value={stats.awaitingCollection} accent="amber" icon={<FlaskConical className="h-4 w-4" />} />
+        <StatCard label="In analysis" value={stats.inAnalysis} accent="violet" icon={<Workflow className="h-4 w-4" />} />
+        <StatCard label="Ready to report" value={stats.readyToReport} accent="emerald" icon={<Send className="h-4 w-4" />} />
+        <StatCard label="Imaging pending" value={stats.imagingPending} accent="violet" icon={<Printer className="h-4 w-4" />} />
+      </div>
+
+      {/* Quick department switcher */}
+      {!memberDepartment && activeDepartments.length > 0 && (
+        <div className="-mx-1 flex gap-1.5 overflow-x-auto px-1 pb-1 no-scrollbar">
+          <button
+            onClick={() => setDeptF("")}
+            className={`shrink-0 rounded-full border px-3 py-1.5 text-xs font-medium transition ${deptF === "" ? "border-medical-400 bg-medical-600/25 text-white" : "border-white/10 bg-white/5 text-slate-300 hover:bg-white/10"}`}
+          >
+            All departments
+          </button>
+          {activeDepartments.map((d) => (
+            <button
+              key={d}
+              onClick={() => setDeptF(d)}
+              className={`inline-flex shrink-0 items-center gap-1.5 rounded-full border px-3 py-1.5 text-xs font-medium transition ${deptF === d ? "border-medical-400 bg-medical-600/25 text-white" : "border-white/10 bg-white/5 text-slate-300 hover:bg-white/10"}`}
+            >
+              {d}
+              <span className="rounded-full bg-white/10 px-1.5 text-[10px] text-slate-300">{deptCounts.get(d)}</span>
+            </button>
+          ))}
+        </div>
+      )}
+
       {/* Filters */}
       <div className="flex flex-wrap items-center gap-2">
         <div className="relative min-w-[200px] flex-1">
@@ -282,7 +355,7 @@ export function Workspace({
           memberDepartment={memberDepartment}
           busy={busy}
           onMarkSeen={() => markSeen(selected)}
-          onAdvance={(track, stage, label) => advance(selected, track, stage, label)}
+          onAdvance={(track, stage, label, note) => advance(selected, track, stage, label, note)}
           onChanged={load}
         />
       )}
@@ -302,12 +375,13 @@ function WorkspaceDrawer({
   memberDepartment: string | null;
   busy: boolean;
   onMarkSeen: () => void;
-  onAdvance: (track: Track, stage: string, label?: string) => Promise<void> | void;
+  onAdvance: (track: Track, stage: string, label?: string, note?: string) => Promise<void> | void;
   onChanged: () => void;
 }) {
   const tracks = tracksFor(request).filter((t) => !memberDepartment || t.department === memberDepartment);
   const [resultsFor, setResultsFor] = useState<{ department: string } | null>(null);
   const [collectFor, setCollectFor] = useState<Track | null>(null);
+  const [milestone, setMilestone] = useState<{ track: Track; stage: string } | null>(null);
   const [editOpen, setEditOpen] = useState(false);
 
   function nextStage(track: Track): string | null {
@@ -388,11 +462,27 @@ function WorkspaceDrawer({
                   </div>
                 )}
 
+                {/* milestone action notes */}
+                {track.events.some((e) => e.note && e.stage !== "collected") && (
+                  <div className="mt-3 space-y-1 border-t border-white/5 pt-3">
+                    {track.events.filter((e) => e.note && e.stage !== "collected").map((e) => (
+                      <p key={e.id} className="text-[11px] text-slate-400">
+                        <span className="text-slate-300">{stageLabel(e.stage)}:</span> {e.note}
+                        <span className="text-slate-600"> · {new Date(e.created_at).toLocaleDateString(undefined, { month: "short", day: "numeric" })}</span>
+                      </p>
+                    ))}
+                  </div>
+                )}
+
                 {canAdvance && (
                   <div className="mt-3 flex flex-wrap gap-2">
                     {ns ? (
-                      <button onClick={() => onAdvance(track, ns)} disabled={busy} className="inline-flex items-center gap-1.5 rounded-lg bg-medical-600 px-3 py-1.5 text-xs font-semibold text-white hover:bg-medical-700 disabled:opacity-50">
-                        <ArrowRight className="h-3.5 w-3.5" /> Advance to {stageLabel(ns)}
+                      <button
+                        onClick={() => { if (ns === "collected") setCollectFor(track); else setMilestone({ track, stage: ns }); }}
+                        disabled={busy}
+                        className="inline-flex items-center gap-1.5 rounded-lg bg-medical-600 px-3 py-1.5 text-xs font-semibold text-white hover:bg-medical-700 disabled:opacity-50"
+                      >
+                        <ArrowRight className="h-3.5 w-3.5" /> {MILESTONE_ACTIONS[ns]?.cta ?? `Advance to ${stageLabel(ns)}`}
                       </button>
                     ) : <span className="rounded-lg bg-emerald-500/10 px-3 py-1.5 text-xs font-medium text-emerald-300">Track complete</span>}
                     {track.workflow === "specimen" && (
@@ -442,6 +532,19 @@ function WorkspaceDrawer({
           />
         )}
 
+        {milestone && (
+          <MilestoneModal
+            track={milestone.track}
+            stage={milestone.stage}
+            busy={busy}
+            onClose={() => setMilestone(null)}
+            onConfirm={async (note) => {
+              await onAdvance(milestone.track, milestone.stage, undefined, note);
+              setMilestone(null);
+            }}
+          />
+        )}
+
         {editOpen && (
           <PatientEditForm
             request={request}
@@ -449,6 +552,55 @@ function WorkspaceDrawer({
             onSaved={() => { setEditOpen(false); onChanged(); }}
           />
         )}
+      </div>
+    </div>
+  );
+}
+
+/** Short action sheet that captures the detail for a single journey milestone. */
+function MilestoneModal({
+  track, stage, busy, onClose, onConfirm,
+}: {
+  track: Track;
+  stage: string;
+  busy: boolean;
+  onClose: () => void;
+  onConfirm: (note?: string) => void;
+}) {
+  const cfg = MILESTONE_ACTIONS[stage] ?? { cta: `Advance to ${stageLabel(stage)}`, title: `Advance to ${stageLabel(stage)}`, field: "Note (optional)", placeholder: "", prompt: "" };
+  const [note, setNote] = useState("");
+  const inputCls = "w-full rounded-xl border border-white/10 bg-white/5 px-3 py-2 text-sm text-white placeholder:text-slate-500 focus:border-medical-400 focus:outline-none";
+
+  return (
+    <div className="fixed inset-0 z-[10000] flex items-end justify-center bg-black/70 backdrop-blur-sm sm:items-center" onClick={onClose}>
+      <div className="w-full max-w-md rounded-t-3xl border border-white/10 bg-slate-900 p-5 sm:rounded-3xl" onClick={(e) => e.stopPropagation()}>
+        <div className="mb-3 flex items-start justify-between">
+          <div>
+            <h3 className="text-lg font-semibold text-white">{cfg.title}</h3>
+            <p className="text-xs text-slate-400">{track.department} · {stageLabel(stage)}</p>
+          </div>
+          <button onClick={onClose} className="text-slate-400 hover:text-white"><X className="h-5 w-5" /></button>
+        </div>
+        {cfg.prompt && <p className="mb-3 text-sm text-slate-300">{cfg.prompt}</p>}
+        <label className="mb-1 block text-xs font-medium text-slate-400">{cfg.field}{cfg.required ? " *" : ""}</label>
+        <input
+          autoFocus
+          className={inputCls}
+          value={note}
+          onChange={(e) => setNote(e.target.value)}
+          onKeyDown={(e) => { if (e.key === "Enter" && (!cfg.required || note.trim())) onConfirm(note.trim() || undefined); }}
+          placeholder={cfg.placeholder}
+        />
+        <div className="mt-5 flex justify-end gap-2">
+          <button onClick={onClose} className="rounded-xl border border-white/10 px-3 py-2 text-sm text-slate-200 hover:bg-white/5">Cancel</button>
+          <button
+            onClick={() => onConfirm(note.trim() || undefined)}
+            disabled={busy || (cfg.required && !note.trim())}
+            className="inline-flex items-center gap-1.5 rounded-xl bg-medical-600 px-4 py-2 text-sm font-semibold text-white hover:bg-medical-700 disabled:opacity-50"
+          >
+            {busy ? <Loader2 className="h-4 w-4 animate-spin" /> : <Check className="h-4 w-4" />} {cfg.cta}
+          </button>
+        </div>
       </div>
     </div>
   );
