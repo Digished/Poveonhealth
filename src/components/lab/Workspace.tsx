@@ -6,6 +6,7 @@ import toast from "react-hot-toast";
 import { SourceBadge, SOURCE_OPTIONS } from "@/components/lab/SourceBadge";
 import { OnboardingPanel } from "@/components/lab/OnboardingPanel";
 import { StatCard } from "@/components/lab/StatCard";
+import { TestTagInput, TestTag } from "@/components/ui/TestTagInput";
 import { requestDepartments, categoryToDepartment, WORKFLOWS, workflowForDepartment, stageLabel, DEPARTMENTS } from "@/lib/lims-shared";
 
 function fmtDateTime(iso: string | null | undefined): string {
@@ -383,6 +384,7 @@ function WorkspaceDrawer({
   const [collectFor, setCollectFor] = useState<Track | null>(null);
   const [milestone, setMilestone] = useState<{ track: Track; stage: string } | null>(null);
   const [editOpen, setEditOpen] = useState(false);
+  const [testsOpen, setTestsOpen] = useState(false);
 
   function nextStage(track: Track): string | null {
     const stages = WORKFLOWS[track.workflow as keyof typeof WORKFLOWS] ?? WORKFLOWS.specimen;
@@ -412,9 +414,16 @@ function WorkspaceDrawer({
               </p>
             )}
             {canAdvance && (
-              <button onClick={() => setEditOpen(true)} className="mt-2 inline-flex items-center gap-1.5 rounded-lg border border-white/10 px-2.5 py-1 text-xs font-medium text-medical-300 hover:bg-white/5">
-                <Pencil className="h-3.5 w-3.5" /> Edit client details
-              </button>
+              <div className="mt-2 flex flex-wrap gap-2">
+                <button onClick={() => setEditOpen(true)} className="inline-flex items-center gap-1.5 rounded-lg border border-white/10 px-2.5 py-1 text-xs font-medium text-medical-300 hover:bg-white/5">
+                  <Pencil className="h-3.5 w-3.5" /> Edit client details
+                </button>
+                {request.status !== "done" && (
+                  <button onClick={() => setTestsOpen(true)} className="inline-flex items-center gap-1.5 rounded-lg border border-white/10 px-2.5 py-1 text-xs font-medium text-medical-300 hover:bg-white/5">
+                    <FlaskConical className="h-3.5 w-3.5" /> Edit tests
+                  </button>
+                )}
+              </div>
             )}
           </div>
           <button onClick={onClose} className="text-slate-400 hover:text-white"><X className="h-5 w-5" /></button>
@@ -552,6 +561,67 @@ function WorkspaceDrawer({
             onSaved={() => { setEditOpen(false); onChanged(); }}
           />
         )}
+
+        {testsOpen && (
+          <TestsEditForm
+            request={request}
+            labId={labId}
+            onClose={() => setTestsOpen(false)}
+            onSaved={() => { setTestsOpen(false); onChanged(); }}
+          />
+        )}
+      </div>
+    </div>
+  );
+}
+
+/** Add or remove the tests to be done on a registered request (walk-in/Poveon/QR). */
+function TestsEditForm({
+  request, labId, onClose, onSaved,
+}: {
+  request: WReq;
+  labId: string;
+  onClose: () => void;
+  onSaved: () => void;
+}) {
+  const [tests, setTests] = useState<TestTag[]>(
+    (request.tests || "").split(",").map((s) => s.trim()).filter(Boolean).map((n) => ({ name: n, catalog_test_id: null }))
+  );
+  const [saving, setSaving] = useState(false);
+
+  async function save() {
+    if (tests.length === 0) { toast.error("Add at least one test"); return; }
+    setSaving(true);
+    try {
+      const res = await fetch("/api/lab/requests/update-tests", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ requestId: request.id, tests: tests.map((t) => t.name).join(", ") }),
+      });
+      const data = await res.json();
+      if (!res.ok || data.success === false) throw new Error(data.error || "Failed");
+      toast.success("Tests updated");
+      onSaved();
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : "Failed");
+    } finally { setSaving(false); }
+  }
+
+  return (
+    <div className="fixed inset-0 z-[10000] flex items-end justify-center bg-black/70 backdrop-blur-sm sm:items-center" onClick={onClose}>
+      <div className="max-h-[88vh] w-full max-w-md overflow-y-auto rounded-t-3xl border border-white/10 bg-slate-900 p-5 sm:rounded-3xl" onClick={(e) => e.stopPropagation()}>
+        <div className="mb-4 flex items-center justify-between">
+          <h3 className="text-lg font-semibold text-white">Edit tests</h3>
+          <button onClick={onClose} className="text-slate-400 hover:text-white"><X className="h-5 w-5" /></button>
+        </div>
+        <p className="mb-2 text-xs text-slate-400">Add or remove the investigations to be done. Department tracks update automatically.</p>
+        <TestTagInput value={tests} onChange={setTests} labId={labId} />
+        <div className="mt-5 flex justify-end gap-2">
+          <button onClick={onClose} className="rounded-xl border border-white/10 px-3 py-2 text-sm text-slate-200 hover:bg-white/5">Cancel</button>
+          <button onClick={save} disabled={saving || tests.length === 0} className="inline-flex items-center gap-1.5 rounded-xl bg-medical-600 px-4 py-2 text-sm font-semibold text-white hover:bg-medical-700 disabled:opacity-50">
+            {saving ? <Loader2 className="h-4 w-4 animate-spin" /> : <Check className="h-4 w-4" />} Save tests
+          </button>
+        </div>
       </div>
     </div>
   );
