@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useState, useCallback, useMemo } from "react";
-import { Loader2, Search, X, ArrowRight, Plus, Workflow, QrCode, UserPlus, Printer, Send, Check, FlaskConical } from "lucide-react";
+import { Loader2, Search, X, ArrowRight, Plus, Workflow, QrCode, UserPlus, Printer, Send, Check, FlaskConical, Pencil } from "lucide-react";
 import toast from "react-hot-toast";
 import { SourceBadge, SOURCE_OPTIONS } from "@/components/lab/SourceBadge";
 import { OnboardingPanel } from "@/components/lab/OnboardingPanel";
@@ -15,7 +15,8 @@ function fmtDateTime(iso: string | null | undefined): string {
 interface JEvent { id: string; stage: string; department: string | null; sample_label: string | null; note: string | null; actor_email: string | null; created_at: string }
 interface WReq {
   id: string; code: string; status: string; source: string; current_stage: string | null;
-  patient_name: string | null; patient_phone: string | null; tests: string;
+  patient_name: string | null; patient_phone: string | null; patient_email: string | null;
+  patient_age: number | null; sex: string | null; tests: string;
   created_at: string; seen_at: string | null; completed_at: string | null;
   test_breakdown: unknown; journey_events: JEvent[];
 }
@@ -294,6 +295,7 @@ function WorkspaceDrawer({
   const tracks = tracksFor(request).filter((t) => !memberDepartment || t.department === memberDepartment);
   const [resultsFor, setResultsFor] = useState<{ department: string } | null>(null);
   const [collectFor, setCollectFor] = useState<Track | null>(null);
+  const [editOpen, setEditOpen] = useState(false);
 
   function nextStage(track: Track): string | null {
     const stages = WORKFLOWS[track.workflow as keyof typeof WORKFLOWS] ?? WORKFLOWS.specimen;
@@ -314,6 +316,14 @@ function WorkspaceDrawer({
               {request.seen_at ? ` · Seen ${fmtDateTime(request.seen_at)}` : ""}
               {request.completed_at ? ` · Done ${fmtDateTime(request.completed_at)}` : ""}
             </p>
+            <p className="mt-1 text-xs text-slate-400">
+              {[request.patient_phone, request.patient_email, request.sex, request.patient_age != null ? `${request.patient_age}y` : null].filter(Boolean).join(" · ") || "No contact details on file"}
+            </p>
+            {canAdvance && (
+              <button onClick={() => setEditOpen(true)} className="mt-2 inline-flex items-center gap-1.5 rounded-lg border border-white/10 px-2.5 py-1 text-xs font-medium text-medical-300 hover:bg-white/5">
+                <Pencil className="h-3.5 w-3.5" /> Edit client details
+              </button>
+            )}
           </div>
           <button onClick={onClose} className="text-slate-400 hover:text-white"><X className="h-5 w-5" /></button>
         </div>
@@ -413,6 +423,106 @@ function WorkspaceDrawer({
             }}
           />
         )}
+
+        {editOpen && (
+          <PatientEditForm
+            request={request}
+            onClose={() => setEditOpen(false)}
+            onSaved={() => { setEditOpen(false); onChanged(); }}
+          />
+        )}
+      </div>
+    </div>
+  );
+}
+
+/** Register / correct a client's details (name, age, sex, phone, email). */
+function PatientEditForm({
+  request, onClose, onSaved,
+}: {
+  request: WReq;
+  onClose: () => void;
+  onSaved: () => void;
+}) {
+  const [name, setName] = useState(request.patient_name ?? "");
+  const [age, setAge] = useState(request.patient_age != null ? String(request.patient_age) : "");
+  const [sex, setSex] = useState((request.sex ?? "").toLowerCase());
+  const [phone, setPhone] = useState(request.patient_phone ?? "");
+  const [email, setEmail] = useState(request.patient_email ?? "");
+  const [saving, setSaving] = useState(false);
+
+  const inputCls = "w-full rounded-xl border border-white/10 bg-white/5 px-3 py-2 text-sm text-white placeholder:text-slate-500 focus:border-medical-400 focus:outline-none";
+
+  async function save() {
+    setSaving(true);
+    try {
+      const res = await fetch("/api/lab/requests/update-patient", {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          requestId: request.id,
+          patient_name: name.trim(),
+          age: age.trim() === "" ? "" : Number(age),
+          sex: sex || "",
+          patient_phone: phone.trim(),
+          patient_email: email.trim(),
+        }),
+      });
+      const data = await res.json();
+      if (!res.ok || data.success === false) throw new Error(data.error || "Failed");
+      toast.success("Client details updated");
+      onSaved();
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : "Failed");
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  return (
+    <div className="fixed inset-0 z-[10000] flex items-end justify-center bg-black/70 backdrop-blur-sm sm:items-center" onClick={onClose}>
+      <div className="max-h-[88vh] w-full max-w-md overflow-y-auto rounded-t-3xl border border-white/10 bg-slate-900 p-5 sm:rounded-3xl" onClick={(e) => e.stopPropagation()}>
+        <div className="mb-4 flex items-center justify-between">
+          <h3 className="text-lg font-semibold text-white">Client details</h3>
+          <button onClick={onClose} className="text-slate-400 hover:text-white"><X className="h-5 w-5" /></button>
+        </div>
+
+        <div className="space-y-3">
+          <div>
+            <label className="mb-1 block text-xs font-medium text-slate-400">Full name</label>
+            <input className={inputCls} value={name} onChange={(e) => setName(e.target.value)} placeholder="Patient name" />
+          </div>
+          <div className="grid grid-cols-2 gap-3">
+            <div>
+              <label className="mb-1 block text-xs font-medium text-slate-400">Age</label>
+              <input className={inputCls} value={age} onChange={(e) => setAge(e.target.value.replace(/[^0-9]/g, ""))} inputMode="numeric" placeholder="e.g. 34" />
+            </div>
+            <div>
+              <label className="mb-1 block text-xs font-medium text-slate-400">Sex</label>
+              <select className={inputCls} value={sex} onChange={(e) => setSex(e.target.value)}>
+                <option value="" className="bg-slate-800">—</option>
+                <option value="male" className="bg-slate-800">Male</option>
+                <option value="female" className="bg-slate-800">Female</option>
+                <option value="other" className="bg-slate-800">Other</option>
+              </select>
+            </div>
+          </div>
+          <div>
+            <label className="mb-1 block text-xs font-medium text-slate-400">Phone</label>
+            <input className={inputCls} value={phone} onChange={(e) => setPhone(e.target.value)} placeholder="Phone number" />
+          </div>
+          <div>
+            <label className="mb-1 block text-xs font-medium text-slate-400">Email</label>
+            <input className={inputCls} value={email} onChange={(e) => setEmail(e.target.value)} type="email" placeholder="Email (optional)" />
+          </div>
+        </div>
+
+        <div className="mt-5 flex justify-end gap-2">
+          <button onClick={onClose} className="rounded-xl border border-white/10 px-3 py-2 text-sm text-slate-200 hover:bg-white/5">Cancel</button>
+          <button onClick={save} disabled={saving} className="inline-flex items-center gap-1.5 rounded-xl bg-medical-600 px-4 py-2 text-sm font-semibold text-white hover:bg-medical-700 disabled:opacity-50">
+            {saving ? <Loader2 className="h-4 w-4 animate-spin" /> : <Check className="h-4 w-4" />} Save
+          </button>
+        </div>
       </div>
     </div>
   );
