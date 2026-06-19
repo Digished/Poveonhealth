@@ -5,14 +5,12 @@ import { generateUniqueCode } from "@/lib/code-generator";
 import { resend, labSender } from "@/lib/email/resend";
 import { doctorRequestConfirmation, patientRequestCode, labNewRequest } from "@/lib/email/templates";
 import { testsToCategories } from "@/lib/test-categories";
-import { resolveTests, totalFromBreakdown } from "@/lib/resolve-tests";
+import { resolveTests, totalFromBreakdown, type ResolvedTest } from "@/lib/resolve-tests";
 import { logApiCall } from "@/lib/api-logger";
 import { sendSms, buildPatientRequestSms } from "@/lib/sms";
 import { logSmsSend } from "@/lib/sms/log-sms";
 import { isValidNigerianPhone, checkPhoneSmsRateLimit, checkDailySmsCap } from "@/lib/sms-guard";
 import { parseReferralText } from "@/lib/parse-referral";
-import { detectTests } from "@/lib/test-dictionary";
-import { getSegmentIndex } from "@/lib/test-segment-cache";
 
 const CreateRequestSchema = z.object({
   patient_name: z.string().min(1).max(200).optional().or(z.literal("")),
@@ -155,37 +153,15 @@ export async function POST(request: NextRequest) {
       await fillPatientFromProfile();
     };
 
-    // Fast path: the client already separated the tests (chips) and sent them.
-    // Tests are authoritative — we DON'T re-split them. We only run the LLM to
-    // pull patient details out of the leftover text, and only when there IS
-    // leftover (so a pure test list submits with no LLM call at all).
-    const providedTests = data.fast_mode ? (data.tests || "").trim() : "";
-    const enrichWithProvidedTests = async () => {
-      let remainder = "";
-      try {
-        const index = await getSegmentIndex(data.lab_id);
-        remainder = detectTests(rawInput, index).remainder;
-      } catch (e) {
-        console.error("[create] fast-mode segment failed:", e);
-        remainder = rawInput; // be safe — parse for patient details
-      }
-      // Only the leftover (non-test) text can carry patient details/notes.
-      if (/[a-z0-9]/i.test(remainder)) {
-        try {
-          const baseUrl = process.env.NEXT_PUBLIC_APP_URL || new URL(request.url).origin;
-          const { parsed: p } = await parseReferralText(rawInput, data.lab_id, baseUrl);
-          if (!data.patient_name) data.patient_name = p.patient_name;
-          if (data.patient_age == null) data.patient_age = p.patient_age ?? undefined;
-          if (!data.sex && (p.sex === "male" || p.sex === "female")) data.sex = p.sex;
-          if (!data.patient_phone) data.patient_phone = p.patient_phone;
-          if (!data.patient_email && p.patient_email) data.patient_email = p.patient_email;
-          if (!data.diagnosis) data.diagnosis = p.diagnosis;
-        } catch (e) {
-          console.error("[create] fast-mode patient parse failed:", e);
-        }
-        await fillPatientFromProfile();
-      }
-      data.tests = providedTests; // chips stay authoritative
+    // Tests that aren't in this lab's catalogue — surfaced to the lab in their
+    // notification email so they can accept/price or reject them.
+    let offCatalogTests: string[] = [];
+    const offCatalogFromBreakdown = (breakdown: ResolvedTest[]): string[] => {
+      const names = breakdown
+        .filter((b) => b.is_others)
+        .map((b) => (b.raw && b.raw !== b.canonical_name ? `${b.raw} → ${b.canonical_name}` : b.canonical_name).trim())
+        .filter(Boolean);
+      return Array.from(new Set(names));
     };
 
     // Enrich doctor fields from DoctorProfile if not provided in the request body
@@ -254,6 +230,7 @@ export async function POST(request: NextRequest) {
         const breakdown = await resolveTests(finalTests, data.lab_id);
         quotedPrice = totalFromBreakdown(breakdown);
         testBreakdown = breakdown;
+        offCatalogTests = offCatalogFromBreakdown(breakdown);
       } catch (e) {
         console.error("[resolve-tests] failed at creation:", e);
       }
@@ -394,6 +371,7 @@ export async function POST(request: NextRequest) {
               doctorPhone: doctorPhone || undefined,
               doctorHospital: doctorHospital || undefined,
               tests: data.tests || "See attached image",
+              offCatalogTests: offCatalogTests.length > 0 ? offCatalogTests : undefined,
               diagnosis: data.diagnosis || undefined,
               schedule: data.schedule || undefined,
               isUrgent,
@@ -442,9 +420,7 @@ export async function POST(request: NextRequest) {
       // a background task would be killed once the response is sent, so the
       // emails would never go out.
       if (rawInput) {
-        // Chips path when the client separated the tests; full LLM sort otherwise.
-        if (providedTests) await enrichWithProvidedTests();
-        else await enrichFromRawInput();
+        await enrichFromRawInput();
         finalTests = data.tests || rawInput;
         let qp: number | null = null;
         let tb: unknown = null;
@@ -452,6 +428,7 @@ export async function POST(request: NextRequest) {
           const breakdown = await resolveTests(finalTests, data.lab_id);
           qp = totalFromBreakdown(breakdown);
           tb = breakdown;
+          offCatalogTests = offCatalogFromBreakdown(breakdown);
         } catch (e) { console.error("[resolve-tests] fast-mode:", e); }
         await prisma.request.update({
           where: { id: newRequest.id },

@@ -12,7 +12,6 @@ import { SuccessScreen } from "@/components/SuccessScreen";
 import { FastModeTutorial, FASTMODE_TUTORIAL_KEY } from "@/components/FastModeTutorial";
 import type { Lab, CreateRequestResponse } from "@/lib/types";
 import type { PhoneEntry } from "@/lib/phones";
-import type { DetectedTest } from "@/lib/test-dictionary";
 
 const DOCTOR_STORAGE_KEY = "poveon_doctor_profile";
 // Rolling average (ms) of how long a Fast Mode submit actually takes — drives an
@@ -64,11 +63,6 @@ export function FastModeComposer({
 
   const [rawText, setRawText] = useState("");
   const rawRef = useRef<HTMLTextAreaElement>(null);
-  // Live, comma-free test separation — detected against the lab catalogue + a
-  // built-in abbreviation dictionary as the doctor types (see segment-tests API).
-  const [detected, setDetected] = useState<DetectedTest[]>([]);
-  const [detecting, setDetecting] = useState(false);
-  const [removedTests, setRemovedTests] = useState<Set<string>>(new Set());
   const [doctorEmail, setDoctorEmail] = useState("");
   const [doctorHospital, setDoctorHospital] = useState("");
   // Cached doctor recognition (mirrors the full form's step 3).
@@ -82,7 +76,7 @@ export function FastModeComposer({
   const pendingTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const [submitting, setSubmitting] = useState(false);
   const [elapsed, setElapsed] = useState(0); // seconds since submit started — drives the live progress
-  const [estimateSec, setEstimateSec] = useState(20); // adaptive estimate for the countdown (starts long on purpose)
+  const [estimateSec, setEstimateSec] = useState(30); // adaptive estimate for the countdown — starts at 30s, then learns the real time
   const [result, setResult] = useState<CreateRequestResponse | null>(null);
 
   const [mounted, setMounted] = useState(false);
@@ -102,7 +96,7 @@ export function FastModeComposer({
   useEffect(() => {
     try {
       const v = parseInt(localStorage.getItem(ESTIMATE_KEY) || "");
-      if (v >= 8000 && v <= 30000) setEstimateSec(v / 1000);
+      if (v >= 6000 && v <= 30000) setEstimateSec(v / 1000);
     } catch { /* ignore */ }
   }, []);
 
@@ -171,45 +165,10 @@ export function FastModeComposer({
   // Clean up a pending undo timer on unmount.
   useEffect(() => () => { if (pendingTimer.current) clearTimeout(pendingTimer.current); }, []);
 
-  // Live test separation — debounced call to the fast (no-LLM) segment endpoint
-  // so the tests are split out and shown as chips while the doctor types, even
-  // without commas. Re-runs when the text or the selected lab changes.
-  useEffect(() => {
-    const text = rawText.trim();
-    if (text.length < 2) { setDetected([]); setDetecting(false); return; }
-    setDetecting(true);
-    const ctrl = new AbortController();
-    const t = setTimeout(async () => {
-      try {
-        const res = await fetch("/api/requests/segment-tests", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ text, labId: labId || undefined }),
-          signal: ctrl.signal,
-        });
-        if (res.ok) {
-          const d = await res.json();
-          setDetected(Array.isArray(d.tests) ? d.tests : []);
-        }
-      } catch { /* aborted or network — keep last result */ }
-      finally { setDetecting(false); }
-    }, 300);
-    return () => { clearTimeout(t); ctrl.abort(); };
-  }, [rawText, labId]);
-
-  function removeDetected(name: string) {
-    setRemovedTests((prev) => new Set(prev).add(name.toLowerCase()));
-  }
-
   const selectedLab = labs.find((l) => l.id === labId);
   const selectedLoc = labPreselected && locations.length > 0 ? locations[selectedLocIdx] : null;
   const labName = selectedLoc?.name || selectedLab?.name || "";
   const labAddress = selectedLoc?.address || selectedLab?.address || "";
-
-  // Tests the doctor hasn't removed — these are sent verbatim so the slow LLM
-  // test-split is skipped server-side.
-  const visibleTests = detected.filter((t) => !removedTests.has(t.name.toLowerCase()));
-  const testsForSubmit = visibleTests.map((t) => t.name).join("\n");
 
   const canSubmit =
     !!labId &&
@@ -257,9 +216,6 @@ export function FastModeComposer({
           lab_id: labId,
           fast_mode: true,
           raw_input: rawText.trim(),
-          // Tests already separated client-side → sent verbatim so the server
-          // skips the slow AI test-split. Omitted if nothing was detected.
-          tests: testsForSubmit || undefined,
           doctor_email: doctorEmail.trim(),
           doctor_hospital: doctorHospital.trim() || undefined,
         }),
@@ -270,10 +226,13 @@ export function FastModeComposer({
         // countdown LONGER (pad ~40% + 2s) so it tends to finish early rather than
         // run past the number. Clamped to 8–30s, starting from the 20s default.
         try {
+          // Learn the real submit duration so the countdown is accurate. Only a
+          // small safety margin (+10%) is added; the shown estimate converges to
+          // the true time. Clamped 6–30s; first-ever guess is 30s.
           const durMs = Date.now() - t0;
-          const padded = Math.round(durMs * 1.4) + 2000;
-          const prev = parseInt(localStorage.getItem(ESTIMATE_KEY) || "") || 20000;
-          const next = Math.min(30000, Math.max(8000, Math.round(prev * 0.5 + padded * 0.5)));
+          const padded = Math.round(durMs * 1.1) + 800;
+          const prev = parseInt(localStorage.getItem(ESTIMATE_KEY) || "") || 30000;
+          const next = Math.min(30000, Math.max(6000, Math.round(prev * 0.4 + padded * 0.6)));
           localStorage.setItem(ESTIMATE_KEY, String(next));
           setEstimateSec(next / 1000);
         } catch { /* ignore */ }
@@ -303,7 +262,7 @@ export function FastModeComposer({
         labAddress={result.lab?.address ?? labAddress}
         labPhones={result.lab?.phones ?? []}
         labWhatsapp={result.lab?.whatsapp ?? null}
-        onReset={() => { setResult(null); setRawText(""); setDetected([]); setRemovedTests(new Set()); }}
+        onReset={() => { setResult(null); setRawText(""); }}
       />
     );
   }
@@ -455,52 +414,9 @@ export function FastModeComposer({
         <div className="flex items-start gap-2 mt-2">
           <Info className="w-3.5 h-3.5 text-slate-400 shrink-0 mt-0.5" />
           <p className="text-[11px] text-slate-500 leading-relaxed">
-            Just the test is required. Add the patient name, age, phone or email if you have them — we sort it for the lab automatically. You can leave anything out.
+            Just the test is required. Add the patient name, age, phone or email if you have them — we separate the tests and sort the details for the lab automatically. You can leave anything out.
           </p>
         </div>
-
-        {/* Live test separation — chips detected as you type (even without commas) */}
-        {(visibleTests.length > 0 || (detecting && rawText.trim().length >= 2)) && (
-          <div className="mt-3 pt-3 border-t border-slate-100">
-            <div className="flex items-center gap-1.5 mb-2">
-              <FlaskConical className="w-3.5 h-3.5 text-medical-500 shrink-0" />
-              <span className="text-[11px] font-bold text-slate-500 uppercase tracking-wide">
-                {visibleTests.length > 0 ? `${visibleTests.length} test${visibleTests.length !== 1 ? "s" : ""} detected` : "Finding tests…"}
-              </span>
-              {detecting && <Loader2 className="w-3 h-3 text-slate-300 animate-spin" />}
-            </div>
-            {visibleTests.length > 0 && (
-              <>
-                <div className="flex flex-wrap gap-1.5">
-                  {visibleTests.map((t) => (
-                    <span
-                      key={t.name}
-                      className={`inline-flex items-center gap-1 text-xs px-2.5 py-1 rounded-full font-medium border ${
-                        t.catalog_test_id
-                          ? "bg-medical-100 text-medical-800 border-medical-200"
-                          : "bg-slate-100 text-slate-700 border-slate-200"
-                      }`}
-                      title={t.catalog_test_id ? "Matched in this lab's catalogue" : "Common test — matched by name"}
-                    >
-                      {t.name}
-                      <button
-                        type="button"
-                        onClick={() => removeDetected(t.name)}
-                        className="opacity-50 hover:opacity-100 transition-opacity shrink-0"
-                        aria-label={`Remove ${t.name}`}
-                      >
-                        <X className="w-3 h-3" />
-                      </button>
-                    </span>
-                  ))}
-                </div>
-                <p className="text-[11px] text-slate-400 mt-2 leading-relaxed">
-                  Separated automatically from your text — tap × on anything that isn&apos;t a test. Patient details are read for the lab on submit.
-                </p>
-              </>
-            )}
-          </div>
-        )}
       </div>
 
       {/* The doctor's details are auto-filled from the saved profile — only a
@@ -602,18 +518,6 @@ export function FastModeComposer({
                 <p className="text-[11px] font-bold text-slate-400 uppercase tracking-wide">What you typed</p>
                 <p className="text-sm text-slate-700 whitespace-pre-wrap leading-relaxed bg-slate-50 border border-slate-100 rounded-xl px-3 py-2 mt-1">{rawText.trim()}</p>
               </div>
-              {visibleTests.length > 0 && (
-                <div>
-                  <p className="text-[11px] font-bold text-slate-400 uppercase tracking-wide">Tests detected ({visibleTests.length})</p>
-                  <div className="flex flex-wrap gap-1.5 mt-1.5">
-                    {visibleTests.map((t) => (
-                      <span key={t.name} className={`inline-flex items-center text-xs px-2.5 py-1 rounded-full font-medium border ${t.catalog_test_id ? "bg-medical-100 text-medical-800 border-medical-200" : "bg-slate-100 text-slate-700 border-slate-200"}`}>
-                        {t.name}
-                      </span>
-                    ))}
-                  </div>
-                </div>
-              )}
               <div>
                 <p className="text-[11px] font-bold text-slate-400 uppercase tracking-wide">Your email</p>
                 <p className="text-sm font-medium text-slate-800">{doctorEmail.trim()}</p>

@@ -685,6 +685,7 @@ export function labNewRequest({
   doctorPhone,
   doctorHospital,
   tests,
+  offCatalogTests,
   diagnosis,
   schedule,
   isUrgent,
@@ -704,6 +705,7 @@ export function labNewRequest({
   doctorPhone?: string;
   doctorHospital?: string;
   tests: string;
+  offCatalogTests?: string[];
   diagnosis?: string;
   schedule?: string;
   isUrgent: boolean;
@@ -751,6 +753,15 @@ export function labNewRequest({
       </div>`
     : "";
 
+  const offCatalogSection = offCatalogTests && offCatalogTests.length > 0
+    ? `<div style="background:#fffbeb;border:1px solid #fde68a;border-radius:8px;padding:12px 16px;margin:8px 0 16px;">
+        <p style="margin:0 0 6px;color:#92400e;font-size:13px;font-weight:700;">⚠ Not found in your catalogue — please confirm &amp; price (or decline):</p>
+        <ul style="margin:0;padding:0 0 0 18px;color:#78350f;font-size:13px;line-height:1.7;">
+          ${offCatalogTests.map((t) => `<li>${escapeHtml(t)}</li>`).join("")}
+        </ul>
+      </div>`
+    : "";
+
   const rawInputSection = fastMode && rawInput
     ? `${divider}
        ${label("Doctor's original note (as entered)")}
@@ -785,6 +796,7 @@ export function labNewRequest({
     <h3 style="margin:0 0 16px;color:#0259a0;font-size:16px;font-weight:600;">Tests Requested</h3>
     ${label("Test Details")}
     ${value(tests)}
+    ${offCatalogSection}
     ${divider}
 
     <h3 style="margin:0 0 16px;color:#0259a0;font-size:16px;font-weight:600;">Request Details</h3>

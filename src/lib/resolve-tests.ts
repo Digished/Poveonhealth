@@ -86,17 +86,60 @@ function makeCatalogResult(raw: string, entry: LabCatalogEntry): ResolvedTest {
   };
 }
 
-function othersResult(raw: string): ResolvedTest {
+function offCatalogResult(canonicalName: string, raw: string): ResolvedTest {
   return {
     raw,
     canonical_id: null,
-    canonical_name: raw,
+    canonical_name: canonicalName,
     category: "Others",
     unit_price: 0,
     confidence: 0,
     is_others: true,
     source: "others",
   };
+}
+
+function othersResult(raw: string): ResolvedTest {
+  return offCatalogResult(raw, raw);
+}
+
+/**
+ * Imaging/procedure modalities. When a SPECIFIC study isn't in the lab's
+ * catalogue (e.g. "Ultrasound of the left leg") we fall back to the modality
+ * (e.g. "Ultrasound Scan") so the request is still actionable — the lab prices
+ * it under that modality, or accepts/rejects it as an off-catalogue item.
+ */
+const MODALITY_RULES: { label: string; re: RegExp }[] = [
+  { label: "Ultrasound Scan", re: /\bultrasound\b|\buss?\b|\bdoppler\b|\becho(?:cardiogra(?:m|phy))?\b|\bobstetric\s+scan\b|\bfetal\s+scan\b|\banomaly\s+scan\b|\bpelvic\s+scan\b|\babdominal\s+scan\b/i },
+  { label: "X-Ray", re: /\bx[-\s]?rays?\b|\bxray\b|\bcxr\b/i },
+  { label: "CT Scan", re: /\bct\s*scan\b|\bct\b|\bcat\s+scan\b|\bcomputed\s+tomography\b/i },
+  { label: "MRI Scan", re: /\bmri\b|\bmagnetic\s+resonance\b/i },
+  { label: "Mammography", re: /\bmammogra(?:m|phy)\b/i },
+  { label: "PET Scan", re: /\bpet\s*scan\b|\bpositron\b/i },
+  { label: "DEXA Scan", re: /\bdexa\b|\bbone\s+density\b|\bdensitometry\b/i },
+  { label: "Fluoroscopy", re: /\bfluoroscop|\bbarium\b/i },
+];
+
+function deriveModality(name: string): string | null {
+  for (const m of MODALITY_RULES) if (m.re.test(name)) return m.label;
+  return null;
+}
+
+/**
+ * Final fallback for a test that didn't match the lab's catalogue specifically.
+ * Imaging studies fall back to their modality (and try to match a catalogue
+ * entry for that modality so they get a price); everything else is kept as an
+ * off-catalogue item under its original name. Either way the test is INCLUDED —
+ * it's up to the lab to accept/price or reject it.
+ */
+function fallbackResult(raw: string, catalog: LabCatalogEntry[]): ResolvedTest {
+  const modality = deriveModality(raw);
+  if (modality) {
+    const catMatch = catalog.length > 0 ? labCatalogMatch(modality, catalog) : null;
+    if (catMatch) return { ...catMatch, raw };
+    return offCatalogResult(modality, raw);
+  }
+  return othersResult(raw);
 }
 
 // ── Step 0: Lab catalog match ─────────────────────────────────────────────────
@@ -261,7 +304,8 @@ export async function resolveTests(
       if (pre) return Promise.resolve(pre);
       const ai = aiResults.get(norm);
       if (ai) return Promise.resolve(ai);
-      return Promise.resolve(othersResult(item));
+      // Not matched specifically → category/modality fallback, still included.
+      return Promise.resolve(fallbackResult(item, labCatalog));
     })
   );
 }
