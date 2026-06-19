@@ -37,6 +37,8 @@ export async function GET(request: NextRequest) {
       patient_email: true,
       patient_age: true,
       sex: true,
+      doctor_name: true,
+      doctor_email: true,
       tests: true,
       created_at: true,
       seen_at: true,

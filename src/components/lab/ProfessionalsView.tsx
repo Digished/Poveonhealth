@@ -14,6 +14,9 @@ interface Professional {
   hospital: string | null;
   commission_type: string;
   commission_value: number;
+  bank_name: string | null;
+  account_number: string | null;
+  account_name: string | null;
   active: boolean;
   totals: { accrued: number; paid: number; count: number };
 }
@@ -34,6 +37,9 @@ export function ProfessionalsView() {
   const [hospital, setHospital] = useState("");
   const [ctype, setCtype] = useState<"percent" | "flat">("percent");
   const [cvalue, setCvalue] = useState("");
+  const [bankName, setBankName] = useState("");
+  const [accountNumber, setAccountNumber] = useState("");
+  const [accountName, setAccountName] = useState("");
   const [saving, setSaving] = useState(false);
 
   const load = useCallback(async () => {
@@ -66,6 +72,9 @@ export function ProfessionalsView() {
           hospital: hospital.trim() || undefined,
           commission_type: ctype,
           commission_value: Number(cvalue) || 0,
+          bank_name: bankName.trim() || undefined,
+          account_number: accountNumber.trim() || undefined,
+          account_name: accountName.trim() || undefined,
         }),
       });
       const data = await res.json();
@@ -73,6 +82,7 @@ export function ProfessionalsView() {
       toast.success("Professional added");
       setShowForm(false);
       setName(""); setEmail(""); setPhone(""); setSpecialty(""); setHospital(""); setCvalue(""); setCtype("percent");
+      setBankName(""); setAccountNumber(""); setAccountName("");
       await load();
     } catch (e) {
       toast.error(e instanceof Error ? e.message : "Failed to add");
@@ -133,6 +143,9 @@ export function ProfessionalsView() {
                   <p className="truncate text-sm font-semibold text-white">{p.name}{!p.active && <span className="ml-2 text-xs text-slate-500">(inactive)</span>}</p>
                   <p className="truncate text-xs text-slate-400">{[p.specialty, p.hospital, p.email].filter(Boolean).join(" · ") || "—"}</p>
                   <p className="mt-1 text-xs text-medical-300">{p.commission_type === "percent" ? `${p.commission_value}% of lab revenue` : `${naira(p.commission_value)} per referral`}</p>
+                  {(p.bank_name || p.account_number) && (
+                    <p className="mt-0.5 truncate text-[11px] text-slate-500">{[p.bank_name, p.account_number, p.account_name].filter(Boolean).join(" · ")}</p>
+                  )}
                 </div>
                 <div className="shrink-0 text-right">
                   <p className="text-xs text-slate-400">Outstanding</p>
@@ -176,6 +189,14 @@ export function ProfessionalsView() {
                   <option value="flat">Flat ₦ / referral</option>
                 </select>
                 <input className={inputCls} placeholder={ctype === "percent" ? "e.g. 10" : "e.g. 2000"} value={cvalue} inputMode="decimal" onChange={(e) => setCvalue(e.target.value.replace(/[^\d.]/g, ""))} />
+              </div>
+              <div className="pt-1">
+                <p className="mb-1.5 text-xs font-medium uppercase tracking-wide text-slate-400">Payout bank details (for settling commissions)</p>
+                <input className={inputCls} placeholder="Bank name" value={bankName} onChange={(e) => setBankName(e.target.value)} />
+                <div className="mt-3 grid grid-cols-2 gap-3">
+                  <input className={inputCls} placeholder="Account number" value={accountNumber} inputMode="numeric" onChange={(e) => setAccountNumber(e.target.value.replace(/[^\d]/g, ""))} />
+                  <input className={inputCls} placeholder="Account name" value={accountName} onChange={(e) => setAccountName(e.target.value)} />
+                </div>
               </div>
               <p className="text-xs text-slate-500">Referrals are matched to this professional by email when a request they referred is marked seen.</p>
               <button onClick={create} disabled={!name.trim() || saving} className="inline-flex w-full items-center justify-center gap-2 rounded-xl bg-medical-600 py-2.5 text-sm font-semibold text-white hover:bg-medical-700 disabled:opacity-50">

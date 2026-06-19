@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useState, useCallback, useMemo } from "react";
-import { Loader2, Search, X, ArrowRight, Plus, Workflow, QrCode, UserPlus, Printer, Send, Check, FlaskConical, Pencil } from "lucide-react";
+import { Loader2, Search, X, ArrowRight, Plus, Workflow, QrCode, UserPlus, Printer, Send, Check, FlaskConical, Pencil, Stethoscope } from "lucide-react";
 import toast from "react-hot-toast";
 import { SourceBadge, SOURCE_OPTIONS } from "@/components/lab/SourceBadge";
 import { OnboardingPanel } from "@/components/lab/OnboardingPanel";
@@ -16,7 +16,8 @@ interface JEvent { id: string; stage: string; department: string | null; sample_
 interface WReq {
   id: string; code: string; status: string; source: string; current_stage: string | null;
   patient_name: string | null; patient_phone: string | null; patient_email: string | null;
-  patient_age: number | null; sex: string | null; tests: string;
+  patient_age: number | null; sex: string | null;
+  doctor_name: string | null; doctor_email: string | null; tests: string;
   created_at: string; seen_at: string | null; completed_at: string | null;
   test_breakdown: unknown; journey_events: JEvent[];
 }
@@ -83,6 +84,7 @@ export function Workspace({
   const [statusF, setStatusF] = useState("");
   const [deptF, setDeptF] = useState(memberDepartment ?? "");
   const [sourceF, setSourceF] = useState("");
+  const [hideCompleted, setHideCompleted] = useState(true);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -100,6 +102,8 @@ export function Workspace({
   useEffect(() => { load(); }, [load]);
 
   const filtered = useMemo(() => requests.filter((r) => {
+    // Hide completed (done) requests by default, unless explicitly filtering for them.
+    if (hideCompleted && statusF !== "done" && r.status === "done") return false;
     if (statusF && r.status !== statusF) return false;
     if (sourceF && (r.source ?? "poveon") !== sourceF) return false;
     if (deptF && !tracksFor(r).some((t) => t.department === deptF)) return false;
@@ -108,7 +112,8 @@ export function Workspace({
       if (!r.code.toLowerCase().includes(q) && !(r.patient_name ?? "").toLowerCase().includes(q) && !(r.patient_phone ?? "").includes(q)) return false;
     }
     return true;
-  }), [requests, statusF, sourceF, deptF, query]);
+  }), [requests, statusF, sourceF, deptF, query, hideCompleted]);
+  const completedCount = useMemo(() => requests.filter((r) => r.status === "done").length, [requests]);
 
   async function markSeen(r: WReq) {
     setBusy(true);
@@ -221,6 +226,13 @@ export function Workspace({
         <select value={sourceF} onChange={(e) => setSourceF(e.target.value)} className="rounded-xl border border-white/10 bg-white/5 px-3 py-2 text-sm text-slate-200 outline-none">
           {SOURCE_OPTIONS.map((o) => <option key={o.value} value={o.value} className="bg-slate-800">{o.label}</option>)}
         </select>
+        <button
+          onClick={() => setHideCompleted((v) => !v)}
+          className={`inline-flex items-center gap-1.5 rounded-xl border px-3 py-2 text-sm font-medium transition ${hideCompleted ? "border-medical-500/40 bg-medical-600/20 text-medical-200" : "border-white/10 bg-white/5 text-slate-300 hover:bg-white/10"}`}
+          title="Hide requests whose results are already delivered"
+        >
+          {hideCompleted ? <Check className="h-3.5 w-3.5" /> : <X className="h-3.5 w-3.5" />} Hide completed{completedCount > 0 ? ` (${completedCount})` : ""}
+        </button>
       </div>
 
       {loading ? (
@@ -237,6 +249,7 @@ export function Workspace({
                   <div className="min-w-0">
                     <p className="truncate text-sm font-semibold text-white">{r.patient_name || (r.status === "incoming" ? "Incoming patient" : "Unnamed")} <span className="font-mono text-xs text-slate-400">· {r.code}</span></p>
                     <p className="truncate text-xs text-slate-400">{r.tests}</p>
+                    {r.doctor_name && <p className="mt-0.5 truncate text-[10px] text-medical-300">Ref: {r.doctor_name}</p>}
                     <p className="mt-0.5 text-[10px] text-slate-500">Registered {fmtDateTime(r.created_at)}</p>
                   </div>
                   <div className="flex shrink-0 items-center gap-1.5">
@@ -319,6 +332,11 @@ function WorkspaceDrawer({
             <p className="mt-1 text-xs text-slate-400">
               {[request.patient_phone, request.patient_email, request.sex, request.patient_age != null ? `${request.patient_age}y` : null].filter(Boolean).join(" · ") || "No contact details on file"}
             </p>
+            {(request.doctor_name || request.doctor_email) && (
+              <p className="mt-1 inline-flex items-center gap-1.5 rounded-lg bg-medical-600/15 px-2 py-1 text-xs text-medical-200">
+                <Stethoscope className="h-3.5 w-3.5" /> Referred by {request.doctor_name || request.doctor_email}
+              </p>
+            )}
             {canAdvance && (
               <button onClick={() => setEditOpen(true)} className="mt-2 inline-flex items-center gap-1.5 rounded-lg border border-white/10 px-2.5 py-1 text-xs font-medium text-medical-300 hover:bg-white/5">
                 <Pencil className="h-3.5 w-3.5" /> Edit client details

@@ -911,7 +911,7 @@ export function LabDashboard({ lab, isOwner = false, roleName = "Lab Owner", can
             <>
               {/* Desktop sidebar */}
               <aside className="hidden lg:block w-56 shrink-0">
-                <nav className="sticky top-24 max-h-[calc(100vh-7rem)] space-y-5 overflow-y-auto pr-1 [scrollbar-width:thin]">
+                <nav className="slim-scroll sticky top-24 max-h-[calc(100vh-7rem)] space-y-5 overflow-y-auto pr-1">
                   {NAV_SECTIONS.map((sec) => (
                     <div key={sec.label}>
                       <p className="px-3 mb-1.5 text-[11px] font-semibold uppercase tracking-wider text-slate-500">{sec.label}</p>
