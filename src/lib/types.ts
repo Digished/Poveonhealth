@@ -143,6 +143,7 @@ export interface LabRequest {
   lab_id: string;
   patient_name: string | null;
   dob: string | null;
+  patient_age: number | null;
   sex: Sex | null;
   address: string | null;
   patient_email: string | null;
@@ -166,6 +167,8 @@ export interface LabRequest {
   test_image_url: string | null;
   is_critical: boolean | null;
   needs_ambulance: boolean | null;
+  fast_mode?: boolean | null;
+  raw_input?: string | null;
   // Joined field from lab relation (Prisma relation name is "lab")
   lab?: {
     name: string;
@@ -178,6 +181,7 @@ export interface LabRequest {
 export interface CreateRequestPayload {
   patient_name?: string;
   dob?: string;
+  patient_age?: number;
   sex?: Sex;
   address?: string;
   patient_email?: string;

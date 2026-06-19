@@ -77,6 +77,11 @@ function calcAge(dob: string | null): number | null {
   return differenceInYears(new Date(), new Date(dob));
 }
 
+/** Prefer the stored age; fall back to deriving it from a legacy dob. */
+function displayAge(r: { patient_age?: number | null; dob?: string | null }): number | null {
+  return r.patient_age ?? calcAge(r.dob ?? null);
+}
+
 /** Normalise a raw tests string to comma-separated display */
 function displayTests(raw: string | null | undefined): string {
   if (!raw || raw === "See attached image") return raw ?? "";
@@ -183,7 +188,7 @@ export function LabDashboard({ lab, isOwner = false, roleName = "Lab Owner", can
 
   // Patient info edit modal state
   const [editPatientRequest, setEditPatientRequest] = useState<LabRequest | null>(null);
-  const [editPatientForm, setEditPatientForm] = useState({ patient_name: "", patient_phone: "", patient_email: "", dob: "", sex: "", address: "" });
+  const [editPatientForm, setEditPatientForm] = useState({ patient_name: "", patient_phone: "", patient_email: "", age: "", sex: "", address: "" });
   const [savingPatient, setSavingPatient] = useState(false);
 
   // Results modal state
@@ -597,7 +602,7 @@ export function LabDashboard({ lab, isOwner = false, roleName = "Lab Owner", can
       patient_name: req.patient_name ?? "",
       patient_phone: req.patient_phone ?? "",
       patient_email: req.patient_email ?? "",
-      dob: req.dob ? req.dob.slice(0, 10) : "",
+      age: displayAge(req) != null ? String(displayAge(req)) : "",
       sex: req.sex ?? "",
       address: req.address ?? "",
     });
@@ -621,7 +626,7 @@ export function LabDashboard({ lab, isOwner = false, roleName = "Lab Owner", can
         patient_name: editPatientForm.patient_name || null,
         patient_phone: editPatientForm.patient_phone || null,
         patient_email: editPatientForm.patient_email || null,
-        dob: editPatientForm.dob || null,
+        patient_age: editPatientForm.age ? parseInt(editPatientForm.age, 10) : null,
         sex: (editPatientForm.sex || null) as Sex | null,
         address: editPatientForm.address || null,
       };
@@ -2204,7 +2209,7 @@ export function LabDashboard({ lab, isOwner = false, roleName = "Lab Owner", can
                 <div>
                   <p className="text-xs text-slate-400">Age / Sex</p>
                   <p className="text-white font-medium capitalize">
-                    {retrievedRequest.dob ? `${calcAge(retrievedRequest.dob)} yrs` : "—"}{retrievedRequest.sex ? ` · ${retrievedRequest.sex}` : ""}
+                    {displayAge(retrievedRequest) != null ? `${displayAge(retrievedRequest)} yrs` : "—"}{retrievedRequest.sex ? ` · ${retrievedRequest.sex}` : ""}
                   </p>
                 </div>
                 <div>
@@ -2215,7 +2220,7 @@ export function LabDashboard({ lab, isOwner = false, roleName = "Lab Owner", can
                 </div>
                 <div>
                   <p className="text-xs text-slate-400">Tests</p>
-                  <p className="text-white font-medium line-clamp-1">{retrievedRequest.tests}</p>
+                  <p className="text-white font-medium line-clamp-1">{displayTests(retrievedRequest.tests)}</p>
                 </div>
               </div>
               {(retrievedRequest.address || retrievedRequest.patient_phone) && (
@@ -2298,8 +2303,11 @@ export function LabDashboard({ lab, isOwner = false, roleName = "Lab Owner", can
                           <>
                             <div className="flex items-center gap-2 mb-1.5">
                               <span className="text-xs bg-slate-700/80 text-slate-300 px-2 py-0.5 rounded capitalize">
-                                {req.sex ?? "—"}{req.dob ? ` · ${calcAge(req.dob)} yrs` : ""}
+                                {req.sex ?? "—"}{displayAge(req) != null ? ` · ${displayAge(req)} yrs` : ""}
                               </span>
+                              {req.fast_mode && (
+                                <span className="inline-flex items-center gap-1 text-[10px] font-bold uppercase tracking-wide bg-indigo-500/20 text-indigo-300 px-1.5 py-0.5 rounded-full">⚡ Fast Mode</span>
+                              )}
                             </div>
                             <div className="mt-1.5">
                               <p className="text-xs text-slate-500 font-semibold uppercase tracking-wider mb-1">Tests Requested</p>
@@ -2368,8 +2376,13 @@ export function LabDashboard({ lab, isOwner = false, roleName = "Lab Owner", can
                     {/* Tests & Diagnosis — prominent at top */}
                     <div className="bg-medical-900/30 border border-medical-700/30 rounded-xl p-3 space-y-2">
                       <div>
-                        <p className="text-xs text-medical-400 font-semibold uppercase tracking-wider mb-1">Tests Requested</p>
-                        <p className="text-white font-semibold leading-snug">{selectedRequest.tests}</p>
+                        <div className="flex items-center gap-2 mb-1">
+                      <p className="text-xs text-medical-400 font-semibold uppercase tracking-wider">Tests Requested</p>
+                      {selectedRequest.fast_mode && (
+                        <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded-full bg-indigo-500/20 text-indigo-300 text-[10px] font-bold uppercase tracking-wide">⚡ Fast Mode</span>
+                      )}
+                    </div>
+                        <p className="text-white font-semibold leading-snug">{displayTests(selectedRequest.tests)}</p>
                       </div>
                       {selectedRequest.diagnosis && (
                         <div>
@@ -2396,9 +2409,9 @@ export function LabDashboard({ lab, isOwner = false, roleName = "Lab Owner", can
                     {selectedRequest.patient_name && (
                       <DetailRow label="Patient Name">{selectedRequest.patient_name}</DetailRow>
                     )}
-                    {(selectedRequest.dob || selectedRequest.sex) && (
+                    {(displayAge(selectedRequest) != null || selectedRequest.sex) && (
                       <DetailRow label="Age / Sex">
-                        {selectedRequest.dob ? `${calcAge(selectedRequest.dob)} yrs` : ""}{selectedRequest.sex ? `${selectedRequest.dob ? " · " : ""}${selectedRequest.sex}` : ""}
+                        {displayAge(selectedRequest) != null ? `${displayAge(selectedRequest)} yrs` : ""}{selectedRequest.sex ? `${displayAge(selectedRequest) != null ? " · " : ""}${selectedRequest.sex}` : ""}
                       </DetailRow>
                     )}
                     {selectedRequest.dob && (
@@ -2502,9 +2515,9 @@ export function LabDashboard({ lab, isOwner = false, roleName = "Lab Owner", can
                         Patient details are hidden. Enter the code above to reveal.
                       </p>
                     </div>
-                    {(selectedRequest.dob || selectedRequest.sex) && (
+                    {(displayAge(selectedRequest) != null || selectedRequest.sex) && (
                       <DetailRow label="Age / Sex">
-                        {selectedRequest.dob ? `${calcAge(selectedRequest.dob)} yrs` : ""}{selectedRequest.sex ? `${selectedRequest.dob ? " · " : ""}${selectedRequest.sex}` : ""}
+                        {displayAge(selectedRequest) != null ? `${displayAge(selectedRequest)} yrs` : ""}{selectedRequest.sex ? `${displayAge(selectedRequest) != null ? " · " : ""}${selectedRequest.sex}` : ""}
                       </DetailRow>
                     )}
                     {selectedRequest.dob && (
@@ -2971,8 +2984,13 @@ export function LabDashboard({ lab, isOwner = false, roleName = "Lab Owner", can
                 {/* Tests & Diagnosis — prominent at top */}
                 <div className="bg-medical-900/30 border border-medical-700/30 rounded-xl p-3 space-y-2">
                   <div>
-                    <p className="text-xs text-medical-400 font-semibold uppercase tracking-wider mb-1">Tests Requested</p>
-                    <p className="text-white font-semibold leading-snug">{selectedRequest.tests}</p>
+                    <div className="flex items-center gap-2 mb-1">
+                      <p className="text-xs text-medical-400 font-semibold uppercase tracking-wider">Tests Requested</p>
+                      {selectedRequest.fast_mode && (
+                        <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded-full bg-indigo-500/20 text-indigo-300 text-[10px] font-bold uppercase tracking-wide">⚡ Fast Mode</span>
+                      )}
+                    </div>
+                    <p className="text-white font-semibold leading-snug">{displayTests(selectedRequest.tests)}</p>
                   </div>
                   {selectedRequest.diagnosis && (
                     <div>
@@ -3005,7 +3023,7 @@ export function LabDashboard({ lab, isOwner = false, roleName = "Lab Owner", can
                 ) : null}
                 <div>
                   <p className="text-xs text-slate-500 font-medium mb-0.5">Age / Sex</p>
-                  <p className="text-slate-200 capitalize">{selectedRequest.dob ? `${calcAge(selectedRequest.dob)} yrs` : "—"}{selectedRequest.sex ? ` · ${selectedRequest.sex}` : ""}</p>
+                  <p className="text-slate-200 capitalize">{displayAge(selectedRequest) != null ? `${displayAge(selectedRequest)} yrs` : "—"}{selectedRequest.sex ? ` · ${selectedRequest.sex}` : ""}</p>
                 </div>
                 {selectedRequest.dob && (
                   <div>
@@ -3163,7 +3181,7 @@ export function LabDashboard({ lab, isOwner = false, roleName = "Lab Owner", can
                 { key: "patient_name", label: "Full Name", type: "text", placeholder: "Patient full name" },
                 { key: "patient_phone", label: "Phone", type: "tel", placeholder: "+234 800 000 0000" },
                 { key: "patient_email", label: "Email", type: "email", placeholder: "patient@email.com" },
-                { key: "dob", label: "Date of Birth", type: "date", placeholder: "" },
+                { key: "age", label: "Age", type: "number", placeholder: "e.g. 42" },
                 { key: "address", label: "Address", type: "text", placeholder: "Home address" },
               ].map(({ key, label, type, placeholder }) => (
                 <div key={key}>

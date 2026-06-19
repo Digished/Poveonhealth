@@ -6,7 +6,6 @@ import { PoveonLogo } from "@/components/PoveonLogo";
 import { SupportFab } from "@/components/SupportFab";
 import { SectionLoader } from "@/components/PageLoader";
 import { parsePhones } from "@/lib/phones";
-import { DobInput } from "@/components/DobInput";
 import { PhoneInput } from "@/components/PhoneInput";
 import {
   LogOut, Phone, MapPin, Calendar, Stethoscope, FlaskConical,
@@ -98,11 +97,16 @@ function formatDate(iso: string) {
   } catch { return iso; }
 }
 
-function formatDob(dob: string | null): string {
+/** Whole-years age from an ISO dob string, or "" if not derivable. */
+function ageFromDob(dob: string | null): string {
   if (!dob) return "";
-  try {
-    return new Date(dob + "T12:00:00Z").toLocaleDateString("en-GB", { year: "numeric", month: "long", day: "numeric" });
-  } catch { return dob; }
+  const d = new Date(dob);
+  if (Number.isNaN(d.getTime())) return "";
+  const now = new Date();
+  let age = now.getFullYear() - d.getFullYear();
+  const m = now.getMonth() - d.getMonth();
+  if (m < 0 || (m === 0 && now.getDate() < d.getDate())) age--;
+  return age >= 0 && age < 130 ? String(age) : "";
 }
 
 // parsePhones is imported from @/lib/phones
@@ -152,7 +156,7 @@ function ProfilePanel({
 }) {
   const [name, setName] = useState(profile.name ?? "");
   const [phone, setPhone] = useState(profile.phone ?? "");
-  const [dob, setDob] = useState(profile.dob ?? "");
+  const [age, setAge] = useState(ageFromDob(profile.dob ?? ""));
   const [sex, setSex] = useState(profile.sex ?? "");
   const [address, setAddress] = useState(profile.address ?? "");
   const [saving, setSaving] = useState(false);
@@ -165,7 +169,7 @@ function ProfilePanel({
     try {
       const body: Record<string, string> = { name: name.trim() };
       if (phone.trim()) body.phone = phone.trim();
-      if (dob) body.dob = dob;
+      if (age) body.age = age;
       if (sex) body.sex = sex;
       if (address.trim()) body.address = address.trim();
       const res = await fetch("/api/patient/profile", {
@@ -220,8 +224,17 @@ function ProfilePanel({
         </div>
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
           <div>
-            <label className="text-xs font-semibold text-slate-500 uppercase tracking-wide block mb-1.5">Date of Birth</label>
-            <DobInput value={dob} onChange={setDob} noLabel />
+            <label className="text-xs font-semibold text-slate-500 uppercase tracking-wide block mb-1.5">Age</label>
+            <input
+              type="number"
+              min="0"
+              max="130"
+              inputMode="numeric"
+              value={age}
+              onChange={(e) => setAge(e.target.value.replace(/\D/g, "").slice(0, 3))}
+              placeholder="e.g. 42"
+              className="w-full rounded-xl border border-slate-200 bg-white/60 px-4 py-2.5 text-slate-800 text-sm focus:outline-none focus:ring-2 focus:ring-medical-500 focus:border-medical-400"
+            />
           </div>
           <div>
             <label className="text-xs font-semibold text-slate-500 uppercase tracking-wide block mb-1.5">Sex</label>
@@ -1102,7 +1115,7 @@ export default function DashboardPage() {
                     <p className="text-xs text-slate-500 truncate mt-0.5">{patientEmail}</p>
                     {(profile?.dob || profile?.sex || profile?.phone) && (
                       <div className="flex flex-wrap gap-x-4 gap-y-0.5 mt-2">
-                        {profile.dob && <span className="text-xs text-slate-500"><span className="text-slate-400">DOB:</span> {formatDob(profile.dob)}</span>}
+                        {ageFromDob(profile.dob) && <span className="text-xs text-slate-500"><span className="text-slate-400">Age:</span> {ageFromDob(profile.dob)} yrs</span>}
                         {profile.sex && <span className="text-xs text-slate-500 capitalize"><span className="text-slate-400">Sex:</span> {profile.sex}</span>}
                         {profile.phone && <span className="text-xs text-slate-500"><span className="text-slate-400">Tel:</span> {profile.phone}</span>}
                       </div>

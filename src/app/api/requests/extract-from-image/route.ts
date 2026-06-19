@@ -9,6 +9,7 @@ export interface ExtractedSlipData {
   diagnosis: string;
   patient_name: string;
   dob: string;                   // YYYY-MM-DD or ""
+  patient_age: number | null;    // age in years if stated on the slip
   sex: string;                   // "male" | "female" | ""
   doctor_name: string;
   doctor_prefix: string;
@@ -36,6 +37,7 @@ const USER_PROMPT = `Extract all clinical data from this test request slip and r
   "diagnosis": "clinical diagnosis or indication written on the slip, empty string if absent",
   "patient_name": "patient's full name as written, empty string if not found",
   "dob": "date of birth in YYYY-MM-DD format, empty string if not found",
+  "patient_age": "age in years as a number if the slip states an age, otherwise null",
   "sex": "male or female (lowercase), empty string if not determinable",
   "doctor_name": "referring doctor's name WITHOUT any title or prefix, empty string if not found",
   "doctor_prefix": "title only e.g. Dr. or Prof. or Nurse or Pharm., empty string if not found",
@@ -139,6 +141,10 @@ export async function POST(req: NextRequest) {
       diagnosis: String(extracted.diagnosis ?? "").trim(),
       patient_name: String(extracted.patient_name ?? "").trim(),
       dob: String(extracted.dob ?? "").trim(),
+      patient_age:
+        typeof extracted.patient_age === "number" && extracted.patient_age > 0 && extracted.patient_age < 130
+          ? Math.round(extracted.patient_age)
+          : null,
       sex: ["male", "female"].includes(String(extracted.sex).toLowerCase())
         ? (String(extracted.sex).toLowerCase() as "male" | "female")
         : "",

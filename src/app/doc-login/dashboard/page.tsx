@@ -34,6 +34,7 @@ interface Request {
   code: string;
   patient_name: string | null;
   dob: string | null;
+  patient_age: number | null;
   sex: string | null;
   address: string | null;
   patient_email: string | null;
@@ -96,6 +97,19 @@ function formatDob(iso: string | null) {
   try {
     return new Date(iso).toLocaleDateString("en-GB", { day: "numeric", month: "short", year: "numeric" });
   } catch { return iso; }
+}
+
+/** Prefer the stored age; fall back to deriving it from a legacy dob. */
+function displayAge(patientAge: number | null | undefined, dob: string | null): string {
+  if (patientAge != null) return `${patientAge} yrs`;
+  if (!dob) return "—";
+  const d = new Date(dob);
+  if (Number.isNaN(d.getTime())) return "—";
+  const now = new Date();
+  let age = now.getFullYear() - d.getFullYear();
+  const m = now.getMonth() - d.getMonth();
+  if (m < 0 || (m === 0 && now.getDate() < d.getDate())) age--;
+  return age >= 0 && age < 130 ? `${age} yrs` : "—";
 }
 
 function toDateInputValue(iso: string | null) {
@@ -163,8 +177,8 @@ function RequestCard({ req }: { req: Request }) {
                 <span className="text-slate-700 font-medium">{req.patient_name ?? "—"}</span>
               </div>
               <div className="flex gap-2">
-                <span className="text-slate-400 w-24 shrink-0">Date of Birth</span>
-                <span className="text-slate-700 font-medium">{formatDob(req.dob)}</span>
+                <span className="text-slate-400 w-24 shrink-0">Age</span>
+                <span className="text-slate-700 font-medium">{displayAge(req.patient_age, req.dob)}</span>
               </div>
               <div className="flex gap-2">
                 <span className="text-slate-400 w-24 shrink-0">Sex</span>

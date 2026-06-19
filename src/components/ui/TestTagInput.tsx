@@ -459,6 +459,8 @@ export function TestTagInput({ value, onChange, labId, error, label, disabled }:
   useEffect(() => { setMounted(true); }, []);
 
   const catalogCount = value.filter((t) => t.catalog_test_id).length;
+  // Tests not matched to this lab's catalogue — still sent, just flagged.
+  const offCatalogCount = value.filter((t) => !t.catalog_test_id && t.low_confidence).length;
 
   return (
     <div className="flex flex-col gap-1.5">
@@ -520,8 +522,8 @@ export function TestTagInput({ value, onChange, labId, error, label, disabled }:
         <div className="flex items-center justify-between text-xs px-0.5">
           <span className="text-slate-500">
             {value.length} test{value.length !== 1 ? "s" : ""}
-            {catalogCount > 0 && catalogCount < value.length && (
-              <span className="text-slate-400"> · {value.length - catalogCount} custom</span>
+            {offCatalogCount > 0 && (
+              <span className="text-amber-600"> · {offCatalogCount} not in this lab&rsquo;s list (sent as written)</span>
             )}
           </span>
           {!disabled && (

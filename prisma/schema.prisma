@@ -156,7 +156,8 @@ model Request {
   lab_id                String
   branch_id             String? // Optional — set when a specific lab branch is selected
   patient_name          String?
-  dob                   DateTime? @db.Date
+  dob                   DateTime? @db.Date // legacy — retained for historical records; new requests use patient_age
+  patient_age           Int? // patient age in years at time of request
   sex                   String?
   address               String?
   patient_email         String?
@@ -175,6 +176,8 @@ model Request {
   quoted_price          Decimal?  @db.Decimal(12, 2) // price snapshot at creation time
   test_breakdown        Json? // [{ raw, canonical_id, canonical_name, category, unit_price, confidence }]
   test_image_url        String? // Optional photo/scan of the physical test request slip
+  fast_mode             Boolean   @default(false) // submitted via Fast Mode (plain-language, sorted server-side)
+  raw_input             String? // the doctor's original Fast Mode text, before sorting
   is_critical           Boolean   @default(false) // Patient marked as critical
   needs_ambulance       Boolean   @default(false) // Ambulance service requested
   ambulance_notes       String? // Pickup address / extra ambulance details

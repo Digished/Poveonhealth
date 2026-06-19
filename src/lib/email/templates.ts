@@ -71,6 +71,14 @@ const label = (text: string) =>
 const value = (text: string) =>
   `<p style="margin:4px 0 16px;color:#1e3a5f;font-size:15px;font-weight:500;">${text}</p>`;
 
+/** Escape user-entered text before embedding in email HTML. */
+const escapeHtml = (text: string) =>
+  String(text)
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;");
+
 // =============================================================================
 // TEMPLATE: Doctor — Request Submitted Confirmation
 // =============================================================================
@@ -677,6 +685,7 @@ export function labNewRequest({
   doctorPhone,
   doctorHospital,
   tests,
+  offCatalogTests,
   diagnosis,
   schedule,
   isUrgent,
@@ -684,6 +693,8 @@ export function labNewRequest({
   needsAmbulance,
   ambulanceNotes,
   testImageUrl,
+  fastMode,
+  rawInput,
   appUrl,
   code,
 }: {
@@ -694,6 +705,7 @@ export function labNewRequest({
   doctorPhone?: string;
   doctorHospital?: string;
   tests: string;
+  offCatalogTests?: string[];
   diagnosis?: string;
   schedule?: string;
   isUrgent: boolean;
@@ -701,6 +713,8 @@ export function labNewRequest({
   needsAmbulance: boolean;
   ambulanceNotes?: string;
   testImageUrl?: string;
+  fastMode?: boolean;
+  rawInput?: string;
   appUrl: string;
   code: string;
 }) {
@@ -732,6 +746,30 @@ export function labNewRequest({
        ${ambulanceNotes ? `${label("Ambulance Notes")}${value(ambulanceNotes)}` : ""}`
     : "";
 
+  const fastModeBanner = fastMode
+    ? `<div style="background:#eef4ff;border:1px solid #c7d7fe;border-radius:8px;padding:12px 18px;margin:0 0 20px;">
+        <p style="margin:0;color:#3730a3;font-size:14px;font-weight:700;">⚡ Submitted via Fast Mode</p>
+        <p style="margin:6px 0 0;color:#4b5563;font-size:13px;">The referring doctor entered this quickly in plain language. The patient details below were sorted automatically — the doctor's original words are included for reference.</p>
+      </div>`
+    : "";
+
+  const offCatalogSection = offCatalogTests && offCatalogTests.length > 0
+    ? `<div style="background:#fffbeb;border:1px solid #fde68a;border-radius:8px;padding:12px 16px;margin:8px 0 16px;">
+        <p style="margin:0 0 6px;color:#92400e;font-size:13px;font-weight:700;">⚠ Not found in your catalogue — please confirm &amp; price (or decline):</p>
+        <ul style="margin:0;padding:0 0 0 18px;color:#78350f;font-size:13px;line-height:1.7;">
+          ${offCatalogTests.map((t) => `<li>${escapeHtml(t)}</li>`).join("")}
+        </ul>
+      </div>`
+    : "";
+
+  const rawInputSection = fastMode && rawInput
+    ? `${divider}
+       ${label("Doctor's original note (as entered)")}
+       <div style="background:#f8fafc;border:1px solid #e5e7eb;border-radius:8px;padding:12px 14px;margin:6px 0 0;">
+         <p style="margin:0;color:#374151;font-size:14px;line-height:1.6;white-space:pre-wrap;">${escapeHtml(rawInput)}</p>
+       </div>`
+    : "";
+
   return base(`
     <h2 style="margin:0 0 8px;color:#0259a0;font-size:20px;font-weight:700;">New Lab Request Received</h2>
     <p style="margin:0 0 24px;color:#4b5563;font-size:15px;">
@@ -739,6 +777,8 @@ export function labNewRequest({
     </p>
 
     ${urgentBanner}
+
+    ${fastModeBanner}
 
     ${code ? `${codeBox(code)}` : ""}
 
@@ -756,6 +796,7 @@ export function labNewRequest({
     <h3 style="margin:0 0 16px;color:#0259a0;font-size:16px;font-weight:600;">Tests Requested</h3>
     ${label("Test Details")}
     ${value(tests)}
+    ${offCatalogSection}
     ${divider}
 
     <h3 style="margin:0 0 16px;color:#0259a0;font-size:16px;font-weight:600;">Request Details</h3>
@@ -765,6 +806,7 @@ export function labNewRequest({
     ${isCritical ? `${label("Critical Patient")}${value("Yes")}` : ""}
     ${ambulanceSection}
     ${imageSection}
+    ${rawInputSection}
 
     ${divider}
 

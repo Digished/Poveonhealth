@@ -2455,7 +2455,7 @@ function LabDeveloperTab({ lab }: { lab: Lab }) {
   -d '{
     "lab_id": "${lab.id}",
     "patient_name": "Ada Okonkwo",
-    "dob": "1990-05-12",
+    "patient_age": 34,
     "sex": "female",
     "doctor_name": "Dr. James",
     "doctor_email": "james@clinic.com",

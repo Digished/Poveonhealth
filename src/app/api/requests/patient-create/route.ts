@@ -120,9 +120,8 @@ export async function POST(request: NextRequest) {
         patient_name: data.patient_name,
         patient_phone: data.patient_phone,
         patient_email: data.patient_email?.trim() || null,
-        // Store age as dob = null; age is included in additional notes or stored as-is
-        // The schema has no plain "age" column; we include age in the tests/notes string
         dob: null,
+        patient_age: data.patient_age ?? null,
         sex: null,
         address: null,
         doctor_name: SELF_SERVICE_NAME,
