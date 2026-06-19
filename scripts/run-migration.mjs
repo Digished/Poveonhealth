@@ -626,6 +626,14 @@ const migrations = [
     continueOnError: false,
   },
   {
+    desc: "LIMS: request_results document/link columns",
+    sql: `
+      ALTER TABLE request_results ADD COLUMN IF NOT EXISTS kind TEXT NOT NULL DEFAULT 'panel';
+      ALTER TABLE request_results ADD COLUMN IF NOT EXISTS external_url TEXT;
+    `,
+    continueOnError: true,
+  },
+  {
     desc: "LIMS: lab_sops table (Standard Operating Procedures)",
     sql: `
       CREATE TABLE IF NOT EXISTS lab_sops (

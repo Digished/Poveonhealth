@@ -860,6 +860,33 @@ function ResultEntry({
   const [resultId, setResultId] = useState<string | null>(null);
   const [status, setStatus] = useState<string>("new");
   const [busy, setBusy] = useState(false);
+  const [mode, setMode] = useState<"editor" | "document" | "link">("editor");
+  const [docFile, setDocFile] = useState<File | null>(null);
+  const [linkUrl, setLinkUrl] = useState("");
+  const [sendOnAttach, setSendOnAttach] = useState(true);
+
+  async function attach(kind: "document" | "link") {
+    if (kind === "document" && !docFile) { toast.error("Choose a file"); return; }
+    if (kind === "link" && !linkUrl.trim()) { toast.error("Enter a link"); return; }
+    setBusy(true);
+    try {
+      const fd = new FormData();
+      fd.append("request_id", request.id);
+      if (department) fd.append("department", department);
+      fd.append("kind", kind);
+      fd.append("send", String(sendOnAttach && canSendResults));
+      if (kind === "document" && docFile) fd.append("file", docFile);
+      if (kind === "link") fd.append("url", linkUrl.trim());
+      const res = await fetch("/api/lab/results/attach", { method: "POST", body: fd });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || "Failed");
+      toast.success(data.sent ? "Result sent to patient" : "Result attached");
+      onChanged();
+      onClose();
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : "Failed");
+    } finally { setBusy(false); }
+  }
 
   useEffect(() => {
     (async () => {
@@ -936,41 +963,87 @@ function ResultEntry({
           <button onClick={onClose} className="text-slate-400 hover:text-white"><X className="h-5 w-5" /></button>
         </div>
 
+        {/* Result delivery mode */}
         {!existing && (
-          <select value={templateId} onChange={(e) => applyTemplate(e.target.value)} className="mb-3 w-full rounded-xl border border-white/10 bg-white/5 px-3 py-2 text-sm text-slate-200 outline-none">
-            <option value="" className="bg-slate-800">Pick a result template…</option>
-            {templates.map((t) => <option key={t.id} value={t.id} className="bg-slate-800">{t.name}</option>)}
-          </select>
-        )}
-
-        {rows.length === 0 ? (
-          <p className="rounded-xl border border-white/10 bg-white/5 py-6 text-center text-sm text-slate-400">Pick a template to load its parameters.</p>
-        ) : (
-          <div className="space-y-2">
-            <div className="grid grid-cols-12 gap-2 px-1 text-[10px] font-semibold uppercase tracking-wide text-slate-500">
-              <span className="col-span-5">Parameter</span><span className="col-span-3">Result</span><span className="col-span-4">Reference</span>
-            </div>
-            {rows.map((row, i) => (
-              <div key={i} className="grid grid-cols-12 items-center gap-2">
-                <span className="col-span-5 truncate text-sm text-slate-200">{row.name}{row.unit ? <span className="text-slate-500"> ({row.unit})</span> : null}</span>
-                <input className={`${inputCls} col-span-3`} value={row.value} disabled={status === "reported"} onChange={(e) => setRows((prev) => prev.map((r, idx) => idx === i ? { ...r, value: e.target.value } : r))} />
-                <span className="col-span-4 truncate text-xs text-slate-400">{row.reference_range || "—"}</span>
-              </div>
+          <div className="mb-4 inline-flex w-full rounded-xl border border-white/10 bg-white/5 p-1">
+            {([["editor", "A4 editor"], ["document", "Attach document"], ["link", "Send a link"]] as const).map(([m, label]) => (
+              <button key={m} onClick={() => setMode(m)} className={`flex-1 rounded-lg px-3 py-1.5 text-xs font-medium transition ${mode === m ? "bg-medical-600 text-white" : "text-slate-300 hover:text-white"}`}>{label}</button>
             ))}
-            <textarea className={`${inputCls} mt-2`} rows={2} placeholder="Comment (optional)" value={comment} disabled={status === "reported"} onChange={(e) => setComment(e.target.value)} />
           </div>
         )}
 
-        {rows.length > 0 && (
-          <div className="mt-4 flex flex-wrap gap-2">
-            {status !== "reported" && <button onClick={saveDraft} disabled={busy} className="rounded-xl border border-white/10 px-3 py-2 text-sm text-slate-200 hover:bg-white/5 disabled:opacity-50">Save draft</button>}
-            {status !== "reported" && <button onClick={verify} disabled={busy} className="rounded-xl bg-medical-600 px-3 py-2 text-sm font-semibold text-white hover:bg-medical-700 disabled:opacity-50">{busy ? <Loader2 className="h-4 w-4 animate-spin" /> : "Verify"}</button>}
-            {resultId && (status === "verified" || status === "reported") && (
-              <>
-                <a href={`/api/lab/results/${resultId}/pdf`} target="_blank" rel="noreferrer" className="inline-flex items-center gap-1.5 rounded-xl border border-white/10 px-3 py-2 text-sm text-slate-200 hover:bg-white/5"><Printer className="h-4 w-4" /> Print</a>
-                {canSendResults && <button onClick={() => report(true)} disabled={busy} className="inline-flex items-center gap-1.5 rounded-xl bg-emerald-600 px-3 py-2 text-sm font-semibold text-white hover:bg-emerald-700 disabled:opacity-50"><Send className="h-4 w-4" /> Send to patient</button>}
-              </>
+        {(existing || mode === "editor") && (
+          <>
+            {!existing && (
+              <select value={templateId} onChange={(e) => applyTemplate(e.target.value)} className="mb-3 w-full rounded-xl border border-white/10 bg-white/5 px-3 py-2 text-sm text-slate-200 outline-none">
+                <option value="" className="bg-slate-800">Pick a result template…</option>
+                {templates.map((t) => <option key={t.id} value={t.id} className="bg-slate-800">{t.name}</option>)}
+              </select>
             )}
+
+            {rows.length === 0 ? (
+              <p className="rounded-xl border border-white/10 bg-white/5 py-6 text-center text-sm text-slate-400">Pick a template to load its parameters.</p>
+            ) : (
+              <div className="space-y-2">
+                <div className="grid grid-cols-12 gap-2 px-1 text-[10px] font-semibold uppercase tracking-wide text-slate-500">
+                  <span className="col-span-5">Parameter</span><span className="col-span-3">Result</span><span className="col-span-4">Reference</span>
+                </div>
+                {rows.map((row, i) => (
+                  <div key={i} className="grid grid-cols-12 items-center gap-2">
+                    <span className="col-span-5 truncate text-sm text-slate-200">{row.name}{row.unit ? <span className="text-slate-500"> ({row.unit})</span> : null}</span>
+                    <input className={`${inputCls} col-span-3`} value={row.value} disabled={status === "reported"} onChange={(e) => setRows((prev) => prev.map((r, idx) => idx === i ? { ...r, value: e.target.value } : r))} />
+                    <span className="col-span-4 truncate text-xs text-slate-400">{row.reference_range || "—"}</span>
+                  </div>
+                ))}
+                <textarea className={`${inputCls} mt-2`} rows={2} placeholder="Comment (optional)" value={comment} disabled={status === "reported"} onChange={(e) => setComment(e.target.value)} />
+              </div>
+            )}
+
+            {rows.length > 0 && (
+              <div className="mt-4 flex flex-wrap gap-2">
+                {status !== "reported" && <button onClick={saveDraft} disabled={busy} className="rounded-xl border border-white/10 px-3 py-2 text-sm text-slate-200 hover:bg-white/5 disabled:opacity-50">Save draft</button>}
+                {status !== "reported" && <button onClick={verify} disabled={busy} className="rounded-xl bg-medical-600 px-3 py-2 text-sm font-semibold text-white hover:bg-medical-700 disabled:opacity-50">{busy ? <Loader2 className="h-4 w-4 animate-spin" /> : "Verify"}</button>}
+                {resultId && (status === "verified" || status === "reported") && (
+                  <>
+                    <a href={`/api/lab/results/${resultId}/pdf`} target="_blank" rel="noreferrer" className="inline-flex items-center gap-1.5 rounded-xl border border-white/10 px-3 py-2 text-sm text-slate-200 hover:bg-white/5"><Printer className="h-4 w-4" /> Print</a>
+                    {canSendResults && <button onClick={() => report(true)} disabled={busy} className="inline-flex items-center gap-1.5 rounded-xl bg-emerald-600 px-3 py-2 text-sm font-semibold text-white hover:bg-emerald-700 disabled:opacity-50"><Send className="h-4 w-4" /> Send to patient</button>}
+                  </>
+                )}
+              </div>
+            )}
+          </>
+        )}
+
+        {!existing && mode === "document" && (
+          <div className="space-y-3">
+            <label className="flex cursor-pointer flex-col items-center justify-center rounded-2xl border border-dashed border-white/15 bg-white/5 py-8 text-center hover:bg-white/10">
+              <Printer className="mb-2 h-6 w-6 text-medical-300" />
+              <span className="text-sm text-slate-200">{docFile ? docFile.name : "Click to choose a result document"}</span>
+              <span className="mt-1 text-xs text-slate-500">PDF, image or scan · max 15MB</span>
+              <input type="file" accept=".pdf,image/*,.doc,.docx" className="hidden" onChange={(e) => setDocFile(e.target.files?.[0] ?? null)} />
+            </label>
+            {canSendResults && (
+              <label className="flex items-center gap-2 text-sm text-slate-300">
+                <input type="checkbox" checked={sendOnAttach} onChange={(e) => setSendOnAttach(e.target.checked)} /> Email it to the patient/doctor now
+              </label>
+            )}
+            <button onClick={() => attach("document")} disabled={busy || !docFile} className="inline-flex w-full items-center justify-center gap-2 rounded-xl bg-medical-600 py-2.5 text-sm font-semibold text-white hover:bg-medical-700 disabled:opacity-50">
+              {busy ? <Loader2 className="h-4 w-4 animate-spin" /> : <Send className="h-4 w-4" />} {sendOnAttach && canSendResults ? "Attach & send" : "Attach result"}
+            </button>
+          </div>
+        )}
+
+        {!existing && mode === "link" && (
+          <div className="space-y-3">
+            <input className={`${inputCls} px-3 py-2`} placeholder="https://… (link to the result)" value={linkUrl} onChange={(e) => setLinkUrl(e.target.value)} />
+            {canSendResults && (
+              <label className="flex items-center gap-2 text-sm text-slate-300">
+                <input type="checkbox" checked={sendOnAttach} onChange={(e) => setSendOnAttach(e.target.checked)} /> Email it to the patient/doctor now
+              </label>
+            )}
+            <button onClick={() => attach("link")} disabled={busy || !linkUrl.trim()} className="inline-flex w-full items-center justify-center gap-2 rounded-xl bg-medical-600 py-2.5 text-sm font-semibold text-white hover:bg-medical-700 disabled:opacity-50">
+              {busy ? <Loader2 className="h-4 w-4 animate-spin" /> : <Send className="h-4 w-4" />} {sendOnAttach && canSendResults ? "Save & send link" : "Save link"}
+            </button>
           </div>
         )}
       </div>

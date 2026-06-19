@@ -1090,14 +1090,16 @@ model LabSop {
 // A structured result entered for a request (optionally per department/template),
 // rendered into a branded PDF and sent/printed for the patient.
 model RequestResult {
-  id          String    @id @default(uuid())
-  lab_id      String
-  request_id  String
-  template_id String?
-  department  String?
-  values      Json      @default("[]") // [{ name, value, unit, reference_range, flag }]
-  comment     String?
-  status      String    @default("draft") // draft | verified | reported
+  id           String    @id @default(uuid())
+  lab_id       String
+  request_id   String
+  template_id  String?
+  department   String?
+  kind         String    @default("panel") // panel (editor) | document (uploaded file) | link (external URL)
+  external_url String? // for kind=link
+  values       Json      @default("[]") // [{ name, value, unit, reference_range, flag }]
+  comment      String?
+  status       String    @default("draft") // draft | verified | reported
   verified_by String?
   verified_at DateTime?
   pdf_url     String?
