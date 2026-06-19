@@ -570,6 +570,50 @@ const migrations = [
     `,
     continueOnError: false,
   },
+  {
+    desc: "LIMS: seed preset roles for every existing lab (idempotent)",
+    // Columns: can_view_requests, can_mark_seen, can_mark_done, can_send_results,
+    //   can_manage_team, can_manage_api_keys, can_view_referrals, can_view_clients,
+    //   can_view_analytics, can_view_activity, can_view_feedback, can_view_wallet,
+    //   can_view_marketers, can_manage_roles, can_manage_professionals, can_manage_templates
+    sql: `
+      DO $$
+      DECLARE
+        presets JSONB := '[
+          {"name":"Lab Admin","p":[true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true]},
+          {"name":"Lab Manager","p":[true,true,true,true,false,false,true,true,true,true,true,true,true,false,true,true]},
+          {"name":"Front Desk","p":[true,true,false,false,false,false,false,true,false,false,false,false,false,false,false,false]},
+          {"name":"Sample Collector","p":[true,true,false,false,false,false,false,false,false,false,false,false,false,false,false,false]},
+          {"name":"Lab Scientist","p":[true,false,true,true,false,false,false,false,false,false,false,false,false,false,false,true]},
+          {"name":"Accountant","p":[false,false,false,false,false,false,false,false,true,false,false,true,false,false,true,false]}
+        ]'::jsonb;
+        preset JSONB;
+        p JSONB;
+      BEGIN
+        FOR preset IN SELECT * FROM jsonb_array_elements(presets) LOOP
+          p := preset->'p';
+          INSERT INTO lab_roles (
+            id, lab_id, name,
+            can_view_requests, can_mark_seen, can_mark_done, can_send_results,
+            can_manage_team, can_manage_api_keys, can_view_referrals, can_view_clients,
+            can_view_analytics, can_view_activity, can_view_feedback, can_view_wallet,
+            can_view_marketers, can_manage_roles, can_manage_professionals, can_manage_templates,
+            created_at
+          )
+          SELECT
+            gen_random_uuid(), labs.id, preset->>'name',
+            (p->>0)::boolean, (p->>1)::boolean, (p->>2)::boolean, (p->>3)::boolean,
+            (p->>4)::boolean, (p->>5)::boolean, (p->>6)::boolean, (p->>7)::boolean,
+            (p->>8)::boolean, (p->>9)::boolean, (p->>10)::boolean, (p->>11)::boolean,
+            (p->>12)::boolean, (p->>13)::boolean, (p->>14)::boolean, (p->>15)::boolean,
+            NOW()
+          FROM labs
+          ON CONFLICT (lab_id, name) DO NOTHING;
+        END LOOP;
+      END $$;
+    `,
+    continueOnError: false,
+  },
 ];
 
 let failed = false;

@@ -6,6 +6,7 @@ import { prisma } from "@/lib/prisma";
 import { derivePrefixFromName } from "@/lib/code-generator";
 import { resend, FROM_ADDRESS } from "@/lib/email/resend";
 import { labAccountCreated } from "@/lib/email/templates";
+import { seedPresetRoles } from "@/lib/lab-roles";
 
 const CreateLabSchema = z.object({
   name: z.string().min(2).max(200),
@@ -83,6 +84,9 @@ export async function POST(request: NextRequest) {
       }
       throw err;
     }
+
+    // Seed the preset roles so the lab has sensible per-staff dashboards out of the box.
+    await seedPresetRoles(newLab.id).catch((e) => console.error("[create-lab] seedPresetRoles failed:", e));
 
     // Create Supabase Auth user for this lab (still uses Supabase for auth only)
     const supabaseAdmin = createAdminClient();

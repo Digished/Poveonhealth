@@ -25,6 +25,7 @@ import { useDashTheme } from "@/hooks/useDashTheme";
 import { Button } from "@/components/ui/Button";
 import { Input } from "@/components/ui/Input";
 import { StatusBadge } from "@/components/ui/Badge";
+import { SourceBadge, SOURCE_OPTIONS } from "@/components/lab/SourceBadge";
 import type { LabRequest, RequestStatus, Sex } from "@/lib/types";
 import { parsePhones } from "@/lib/phones";
 import { SERVICE_CATEGORIES } from "@/lib/constants";
@@ -75,6 +76,11 @@ interface LabDashboardProps {
   canManageRoles?: boolean;
   canManageProfessionals?: boolean;
   canManageTemplates?: boolean;
+  canViewRequests?: boolean;
+  canMarkSeen?: boolean;
+  canMarkDone?: boolean;
+  canSendResults?: boolean;
+  defaultTab?: string | null;
 }
 
 const TABS: { key: RequestStatus; label: string; icon: React.ReactNode }[] = [
@@ -103,17 +109,41 @@ function displayTests(raw: string | null | undefined): string {
 }
 
 
-export function LabDashboard({ lab, isOwner = false, roleName = "Lab Owner", canViewReferrals = false, canViewClients = false, canViewAnalytics = false, canViewActivity = false, canViewFeedback = false, canViewWallet = false, canViewMarketers = false, canManageRoles = false, canManageProfessionals = false, canManageTemplates = false }: LabDashboardProps) {
+export function LabDashboard({ lab, isOwner = false, roleName = "Lab Owner", canViewReferrals = false, canViewClients = false, canViewAnalytics = false, canViewActivity = false, canViewFeedback = false, canViewWallet = false, canViewMarketers = false, canManageRoles = false, canManageProfessionals = false, canManageTemplates = false, canViewRequests = true, canMarkSeen = false, canMarkDone = false, canSendResults = false, defaultTab = null }: LabDashboardProps) {
+  void canSendResults; // reserved for future result-action gating
+  const canViewRequestsEff = isOwner || canViewRequests;
+  const canAdvanceJourney = isOwner || canMarkSeen || canMarkDone;
   const { name: labName, logo_url: labLogoUrl } = lab;
   const router = useRouter();
   const searchParams = useSearchParams();
   const { isLight, toggle, themeClass } = useDashTheme("lab_dash_theme");
-  type MainView = "requests" | "journey" | "onboarding" | "referrals" | "professionals" | "clients" | "analytics" | "activity" | "feedback" | "poveon" | "price-list" | "marketers";
-  const VALID_TABS: MainView[] = ["requests", "journey", "onboarding", "referrals", "professionals", "clients", "analytics", "activity", "feedback", "poveon", "price-list", "marketers"];
+  type MainView = "requests" | "journey" | "onboarding" | "templates" | "referrals" | "professionals" | "clients" | "analytics" | "activity" | "feedback" | "poveon" | "price-list" | "marketers";
+  const VALID_TABS: MainView[] = ["requests", "journey", "onboarding", "templates", "referrals", "professionals", "clients", "analytics", "activity", "feedback", "poveon", "price-list", "marketers"];
+  // Which permission gates each tab (used by the sidebar and the initial landing).
+  const tabVisible: Record<MainView, boolean> = {
+    requests: canViewRequestsEff,
+    journey: canViewRequestsEff,
+    onboarding: canViewRequestsEff,
+    templates: canViewRequestsEff || isOwner || canManageTemplates,
+    referrals: isOwner || canViewReferrals,
+    professionals: isOwner || canManageProfessionals,
+    clients: isOwner || canViewClients,
+    analytics: isOwner || canViewAnalytics,
+    activity: isOwner || canViewActivity,
+    feedback: isOwner || canViewFeedback,
+    poveon: isOwner || canViewWallet,
+    "price-list": isOwner || canViewWallet,
+    marketers: isOwner || canViewMarketers,
+  };
+  const firstVisibleTab = (VALID_TABS.find((t) => tabVisible[t]) ?? "requests") as MainView;
   const tabParam = searchParams.get("tab") as MainView | null;
-  const [mainView, setMainView] = useState<MainView>(
-    tabParam && VALID_TABS.includes(tabParam) ? tabParam : "requests"
-  );
+  const initialTab: MainView =
+    tabParam && VALID_TABS.includes(tabParam) && tabVisible[tabParam]
+      ? tabParam
+      : defaultTab && VALID_TABS.includes(defaultTab as MainView) && tabVisible[defaultTab as MainView]
+      ? (defaultTab as MainView)
+      : firstVisibleTab;
+  const [mainView, setMainView] = useState<MainView>(initialTab);
   const navigateToTab = useCallback((tab: MainView) => {
     setMainView(tab);
     const next = new URLSearchParams(searchParams.toString());
@@ -164,8 +194,24 @@ export function LabDashboard({ lab, isOwner = false, roleName = "Lab Owner", can
   const [mobileDetailOpen, setMobileDetailOpen] = useState(false);
   const [profileOpen, setProfileOpen] = useState(false);
   const [changePasswordOpen, setChangePasswordOpen] = useState(false);
-  const [teamMembers, setTeamMembers] = useState<{ id: string; email: string; role: { name: string }; last_sign_in_at: string | null }[]>([]);
+  const [teamMembers, setTeamMembers] = useState<{ id: string; email: string; role: { id?: string; name: string }; last_sign_in_at: string | null }[]>([]);
   const [teamLoading, setTeamLoading] = useState(false);
+  const [labRolesList, setLabRolesList] = useState<{ id: string; name: string }[]>([]);
+
+  const assignMemberRole = useCallback(async (memberId: string, roleId: string) => {
+    try {
+      const res = await fetch(`/api/lab/team/${memberId}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ role_id: roleId }),
+      });
+      if (!res.ok) throw new Error((await res.json()).error || "Failed");
+      setTeamMembers((prev) => prev.map((m) => (m.id === memberId ? { ...m, role: { id: roleId, name: labRolesList.find((r) => r.id === roleId)?.name ?? m.role.name } } : m)));
+      toast.success("Role updated");
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : "Failed to update role");
+    }
+  }, [labRolesList]);
 
   // Clients state
   type ClientRecord = {
@@ -176,6 +222,7 @@ export function LabDashboard({ lab, isOwner = false, roleName = "Lab Owner", can
     first_visit: string;
     last_visit: string;
     recent_tests: string;
+    source?: string | null;
     requests: LabRequest[];
   };
   const [clients, setClients] = useState<ClientRecord[]>([]);
@@ -365,7 +412,16 @@ export function LabDashboard({ lab, isOwner = false, roleName = "Lab Owner", can
     if ((mainView === "marketers" || mainView === "analytics") && (isOwner || canViewMarketers)) fetchMarketers();
   }, [mainView, fetchReferrals, fetchClients, fetchMarketers, isOwner, canViewReferrals, canViewClients, canViewMarketers]);
 
-  const tabRequests = requests.filter((r) => r.status === activeTab);
+  // Load the lab's roles for the team member role-assignment dropdown.
+  useEffect(() => {
+    if (profileOpen && (isOwner || canManageRoles) && labRolesList.length === 0) {
+      fetch("/api/lab/roles").then((r) => (r.ok ? r.json() : null)).then((d) => { if (d?.roles) setLabRolesList(d.roles.map((x: { id: string; name: string }) => ({ id: x.id, name: x.name }))); }).catch(() => {});
+    }
+  }, [profileOpen, isOwner, canManageRoles, labRolesList.length]);
+
+  const [requestSourceFilter, setRequestSourceFilter] = useState("");
+  const [clientSourceFilter, setClientSourceFilter] = useState("");
+  const tabRequests = requests.filter((r) => r.status === activeTab && (!requestSourceFilter || (r.source ?? "poveon") === requestSourceFilter));
 
   async function handleRetrieve() {
     const code = codeInput.trim().toUpperCase();
@@ -787,83 +843,110 @@ export function LabDashboard({ lab, isOwner = false, roleName = "Lab Owner", can
         </div>
       </header>
 
-      <div className="max-w-6xl mx-auto px-4 py-8">
+      <div className="max-w-7xl mx-auto px-4 py-6 lg:flex lg:gap-6">
 
-        {/* Top-level navigation */}
+        {/* Role-aware grouped navigation (sidebar on desktop, sheet on mobile) */}
         {(() => {
-          const navItems = [
-            { key: "poveon" as const, label: "Poveon", icon: <CreditCard className="w-4 h-4" />, show: isOwner || canViewWallet },
-            { key: "requests" as const, label: "Requests", icon: <FlaskConical className="w-4 h-4" />, show: true },
-            { key: "journey" as const, label: "Journey", icon: <Workflow className="w-4 h-4" />, show: true },
-            { key: "onboarding" as const, label: "Onboarding", icon: <QrCode className="w-4 h-4" />, show: true },
-            { key: "referrals" as const, label: "Referrals", icon: <Users className="w-4 h-4" />, show: isOwner || canViewReferrals },
-            { key: "professionals" as const, label: "Professionals", icon: <Stethoscope className="w-4 h-4" />, show: isOwner || canManageProfessionals },
-            { key: "clients" as const, label: "Clients", icon: <UserCircle className="w-4 h-4" />, show: isOwner || canViewClients },
-            { key: "analytics" as const, label: "Analytics", icon: <BarChart3 className="w-4 h-4" />, show: isOwner || canViewAnalytics },
-            { key: "activity" as const, label: "Activity", icon: <Activity className="w-4 h-4" />, show: isOwner || canViewActivity },
-            { key: "feedback" as const, label: "Feedback", icon: <Star className="w-4 h-4" />, show: isOwner || canViewFeedback },
-            { key: "marketers" as const, label: "Marketers", icon: <Users className="w-4 h-4" />, show: isOwner || canViewMarketers },
-            { key: "price-list" as const, label: "Price List", icon: <Layers className="w-4 h-4" />, show: isOwner || canViewWallet },
-          ].filter((item) => item.show);
-          if (navItems.length <= 1) return null;
-          const currentItem = navItems.find((n) => n.key === mainView) ?? navItems[0];
+          const RAW_SECTIONS: { label: string; items: { key: MainView; label: string; icon: React.ReactNode; show: boolean }[] }[] = [
+            { label: "Operations", items: [
+              { key: "requests", label: "Requests", icon: <FlaskConical className="w-4 h-4" />, show: tabVisible.requests },
+              { key: "journey", label: "Journey", icon: <Workflow className="w-4 h-4" />, show: tabVisible.journey },
+              { key: "onboarding", label: "Onboarding", icon: <QrCode className="w-4 h-4" />, show: tabVisible.onboarding },
+              { key: "templates", label: "Templates", icon: <Layers className="w-4 h-4" />, show: tabVisible.templates },
+              { key: "clients", label: "Clients", icon: <UserCircle className="w-4 h-4" />, show: tabVisible.clients },
+            ] },
+            { label: "Network", items: [
+              { key: "referrals", label: "Referrals", icon: <Users className="w-4 h-4" />, show: tabVisible.referrals },
+              { key: "professionals", label: "Professionals", icon: <Stethoscope className="w-4 h-4" />, show: tabVisible.professionals },
+              { key: "marketers", label: "Marketers", icon: <Users className="w-4 h-4" />, show: tabVisible.marketers },
+            ] },
+            { label: "Insights", items: [
+              { key: "analytics", label: "Analytics", icon: <BarChart3 className="w-4 h-4" />, show: tabVisible.analytics },
+              { key: "activity", label: "Activity", icon: <Activity className="w-4 h-4" />, show: tabVisible.activity },
+              { key: "feedback", label: "Feedback", icon: <Star className="w-4 h-4" />, show: tabVisible.feedback },
+            ] },
+            { label: "Finance", items: [
+              { key: "poveon", label: "Revenue", icon: <CreditCard className="w-4 h-4" />, show: tabVisible.poveon },
+              { key: "price-list", label: "Price List", icon: <FileText className="w-4 h-4" />, show: tabVisible["price-list"] },
+            ] },
+          ];
+          const NAV_SECTIONS = RAW_SECTIONS.map((s) => ({ ...s, items: s.items.filter((i) => i.show) })).filter((s) => s.items.length > 0);
+
+          const onNav = (key: MainView) => {
+            navigateToTab(key);
+            setMobileNavOpen(false);
+            if (key === "price-list" && !priceListData) {
+              setPriceListLoading(true);
+              fetch("/api/lab/price-schedule").then((r) => r.json()).then((d) => { if (d.success) setPriceListData(d.schedule); }).catch(() => {}).finally(() => setPriceListLoading(false));
+            }
+          };
+
+          const allItems = NAV_SECTIONS.flatMap((s) => s.items);
+          const currentItem = allItems.find((n) => n.key === mainView) ?? allItems[0];
+
+          const itemClass = (active: boolean) =>
+            `flex items-center gap-2.5 w-full px-3 py-2 rounded-lg text-sm font-medium transition-colors ${
+              active ? "bg-medical-600/20 text-white border border-medical-500/30" : "text-slate-400 hover:text-slate-200 hover:bg-white/5 border border-transparent"
+            }`;
+
           return (
-            <div className="mb-6">
-              {/* Mobile: hamburger trigger + inline dropdown */}
-              <div className="sm:hidden">
-                <button
-                  onClick={() => setMobileNavOpen((v) => !v)}
-                  className="flex items-center gap-2.5 px-4 py-3 rounded-xl bg-white/8 border border-white/12 text-sm font-semibold text-white w-full active:bg-white/15 transition-colors"
-                >
-                  <span className="text-slate-300">{currentItem.icon}</span>
-                  <span className="flex-1 text-left">{currentItem.label}</span>
-                  <ChevronDown className={`w-4 h-4 text-slate-400 transition-transform duration-200 ${mobileNavOpen ? "rotate-180" : ""}`} />
-                </button>
-                {mobileNavOpen && (
-                  <div className="mt-1.5 rounded-xl border border-white/10 bg-slate-800 overflow-hidden shadow-2xl">
-                    {navItems.map((item) => (
-                      <button key={item.key}
-                        onClick={() => {
-                          navigateToTab(item.key);
-                          setMobileNavOpen(false);
-                          if (item.key === "price-list" && !priceListData) {
-                            setPriceListLoading(true);
-                            fetch("/api/lab/price-schedule").then((r) => r.json()).then((d) => { if (d.success) setPriceListData(d.schedule); }).catch(() => {}).finally(() => setPriceListLoading(false));
-                          }
-                        }}
-                        className={`flex items-center gap-3 w-full px-4 py-3.5 text-sm font-medium transition-colors border-b border-white/5 last:border-0 ${
-                          mainView === item.key
-                            ? "bg-white/12 text-white"
-                            : "text-slate-300 active:bg-white/8"
-                        }`}>
-                        <span className={mainView === item.key ? "text-white" : "text-slate-500"}>{item.icon}</span>
-                        {item.label}
-                        {mainView === item.key && <ChevronRight className="w-3.5 h-3.5 ml-auto text-white/40" />}
-                      </button>
-                    ))}
-                  </div>
-                )}
-              </div>
-              {/* Desktop: pill row */}
-              <div className="hidden sm:flex gap-1 bg-white/5 rounded-xl p-1 w-fit">
-                {navItems.map((item) => (
-                  <button key={item.key} onClick={() => {
-                    navigateToTab(item.key);
-                    if (item.key === "price-list" && !priceListData) {
-                      setPriceListLoading(true);
-                      fetch("/api/lab/price-schedule").then((r) => r.json()).then((d) => { if (d.success) setPriceListData(d.schedule); }).catch(() => {}).finally(() => setPriceListLoading(false));
-                    }
-                  }}
-                    className={`flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-medium transition-all ${
-                      mainView === item.key ? "bg-white/15 text-white shadow-sm" : "text-slate-400 hover:text-slate-200"
-                    }`}>
-                    {item.icon}{item.label}
+            <>
+              {/* Desktop sidebar */}
+              <aside className="hidden lg:block w-56 shrink-0">
+                <nav className="sticky top-24 space-y-5">
+                  {NAV_SECTIONS.map((sec) => (
+                    <div key={sec.label}>
+                      <p className="px-3 mb-1.5 text-[11px] font-semibold uppercase tracking-wider text-slate-500">{sec.label}</p>
+                      <div className="space-y-0.5">
+                        {sec.items.map((item) => (
+                          <button key={item.key} onClick={() => onNav(item.key)} className={itemClass(mainView === item.key)}>
+                            <span className={mainView === item.key ? "text-medical-300" : "text-slate-500"}>{item.icon}</span>
+                            {item.label}
+                          </button>
+                        ))}
+                      </div>
+                    </div>
+                  ))}
+                </nav>
+              </aside>
+
+              {/* Mobile grouped menu */}
+              {currentItem && (
+                <div className="lg:hidden mb-4">
+                  <button
+                    onClick={() => setMobileNavOpen((v) => !v)}
+                    className="flex items-center gap-2.5 px-4 py-3 rounded-xl bg-white/8 border border-white/12 text-sm font-semibold text-white w-full active:bg-white/15 transition-colors"
+                  >
+                    <span className="text-slate-300">{currentItem.icon}</span>
+                    <span className="flex-1 text-left">{currentItem.label}</span>
+                    <ChevronDown className={`w-4 h-4 text-slate-400 transition-transform duration-200 ${mobileNavOpen ? "rotate-180" : ""}`} />
                   </button>
-                ))}
-              </div>
-            </div>
+                  {mobileNavOpen && (
+                    <div className="mt-1.5 rounded-xl border border-white/10 bg-slate-800 overflow-hidden shadow-2xl">
+                      {NAV_SECTIONS.map((sec) => (
+                        <div key={sec.label}>
+                          <p className="px-4 pt-3 pb-1 text-[10px] font-semibold uppercase tracking-wider text-slate-500 bg-white/5">{sec.label}</p>
+                          {sec.items.map((item) => (
+                            <button key={item.key} onClick={() => onNav(item.key)}
+                              className={`flex items-center gap-3 w-full px-4 py-3 text-sm font-medium transition-colors border-b border-white/5 ${
+                                mainView === item.key ? "bg-white/12 text-white" : "text-slate-300 active:bg-white/8"
+                              }`}>
+                              <span className={mainView === item.key ? "text-white" : "text-slate-500"}>{item.icon}</span>
+                              {item.label}
+                              {mainView === item.key && <ChevronRight className="w-3.5 h-3.5 ml-auto text-white/40" />}
+                            </button>
+                          ))}
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              )}
+            </>
           );
         })()}
+
+        <main className="min-w-0 flex-1">
 
         {/* Amount owed banner — shown on all tabs when lab has a negative wallet balance */}
         {poveonBalance !== null && poveonBalance < 0 && (isOwner || canViewWallet) && !balanceBannerDismissed && (
@@ -1208,9 +1291,23 @@ export function LabDashboard({ lab, isOwner = false, roleName = "Lab Owner", can
               </div>
             ) : (
               <div>
-                <p className="text-xs text-slate-500 font-semibold uppercase tracking-wider mb-3">{clients.length} client{clients.length !== 1 ? "s" : ""}</p>
+                <div className="mb-3 flex items-center justify-between gap-3">
+                  {(() => {
+                    const shown = clientSourceFilter ? clients.filter((c) => (c.source ?? "poveon") === clientSourceFilter) : clients;
+                    return <p className="text-xs text-slate-500 font-semibold uppercase tracking-wider">{shown.length} client{shown.length !== 1 ? "s" : ""}</p>;
+                  })()}
+                  <select
+                    value={clientSourceFilter}
+                    onChange={(e) => setClientSourceFilter(e.target.value)}
+                    className="bg-white/5 border border-white/10 rounded-lg px-3 py-1.5 text-xs text-slate-200 outline-none cursor-pointer"
+                  >
+                    {SOURCE_OPTIONS.map((o) => (
+                      <option key={o.value} value={o.value} className="bg-slate-800">{o.label}</option>
+                    ))}
+                  </select>
+                </div>
                 <div className="rounded-2xl overflow-hidden border border-white/8 divide-y divide-white/5">
-                  {clients.map((client) => (
+                  {clients.filter((client) => !clientSourceFilter || (client.source ?? "poveon") === clientSourceFilter).map((client) => (
                     <button
                       key={client.patient_phone}
                       type="button"
@@ -1221,9 +1318,12 @@ export function LabDashboard({ lab, isOwner = false, roleName = "Lab Owner", can
                         <UserCircle className="w-4 h-4 text-medical-400" />
                       </div>
                       <div className="flex-1 min-w-0">
-                        {client.patient_name && (
-                          <p className="text-sm font-semibold text-white truncate leading-tight">{client.patient_name}</p>
-                        )}
+                        <div className="flex items-center gap-2">
+                          {client.patient_name && (
+                            <p className="text-sm font-semibold text-white truncate leading-tight">{client.patient_name}</p>
+                          )}
+                          <SourceBadge source={client.source} className="shrink-0" />
+                        </div>
                         <p className="text-xs text-slate-500 font-mono truncate">{client.patient_phone}</p>
                       </div>
                       <div className="shrink-0 text-right">
@@ -1936,18 +2036,18 @@ export function LabDashboard({ lab, isOwner = false, roleName = "Lab Owner", can
         })()}
 
         {/* Journey / sample tracking view */}
-        {mainView === "journey" && (
+        {mainView === "journey" && canViewRequestsEff && (
           <div className="space-y-5">
             <div>
               <h2 className="text-lg font-semibold text-white">Sample journey</h2>
               <p className="text-sm text-slate-400 mt-1">Track every client and sample from registration to reported results.</p>
             </div>
-            <JourneyView canAdvance={true} />
+            <JourneyView canAdvance={canAdvanceJourney} />
           </div>
         )}
 
         {/* Onboarding (QR + walk-in) view */}
-        {mainView === "onboarding" && (
+        {mainView === "onboarding" && canViewRequestsEff && (
           <div className="space-y-5">
             <div>
               <h2 className="text-lg font-semibold text-white">Client onboarding</h2>
@@ -2007,10 +2107,18 @@ export function LabDashboard({ lab, isOwner = false, roleName = "Lab Owner", can
             {priceManagerOpen && (
               <LabPriceListManager onClose={() => setPriceManagerOpen(false)} />
             )}
-            <div className="mt-8 border-t border-white/10 pt-6">
-              <TemplatesManager labId={lab.id} canManage={isOwner || canManageTemplates} />
-            </div>
           </>
+        )}
+
+        {/* Templates / panels view */}
+        {mainView === "templates" && (isOwner || canViewRequestsEff || canManageTemplates) && (
+          <div className="space-y-5">
+            <div>
+              <h2 className="text-lg font-semibold text-white">Test templates</h2>
+              <p className="text-sm text-slate-400 mt-1">Group common tests into reusable panels with optional turnaround targets.</p>
+            </div>
+            <TemplatesManager labId={lab.id} canManage={isOwner || canManageTemplates} />
+          </div>
         )}
 
         {/* Marketers tab */}
@@ -2214,7 +2322,7 @@ export function LabDashboard({ lab, isOwner = false, roleName = "Lab Owner", can
         )}
 
         {/* Requests view */}
-        {mainView === "requests" && (
+        {mainView === "requests" && canViewRequestsEff && (
         <div>
         {/* Code reveal section */}
         <div className="bg-white/5 backdrop-blur-md border border-white/10 rounded-2xl p-4 mb-6">
@@ -2317,6 +2425,18 @@ export function LabDashboard({ lab, isOwner = false, roleName = "Lab Owner", can
               ))}
             </div>
 
+            <div className="mb-3 flex justify-end">
+              <select
+                value={requestSourceFilter}
+                onChange={(e) => setRequestSourceFilter(e.target.value)}
+                className="bg-white/5 border border-white/10 rounded-lg px-3 py-1.5 text-xs text-slate-200 outline-none cursor-pointer"
+              >
+                {SOURCE_OPTIONS.map((o) => (
+                  <option key={o.value} value={o.value} className="bg-slate-800">{o.label}</option>
+                ))}
+              </select>
+            </div>
+
 <div className="space-y-2">
               {loading ? (
                 <div className="text-center py-16 text-slate-400">
@@ -2360,6 +2480,7 @@ export function LabDashboard({ lab, isOwner = false, roleName = "Lab Owner", can
                               <span className="text-xs bg-slate-700/80 text-slate-300 px-2 py-0.5 rounded capitalize">
                                 {req.sex ?? "—"}{displayAge(req) != null ? ` · ${displayAge(req)} yrs` : ""}
                               </span>
+                              <SourceBadge source={req.source} />
                               {req.fast_mode && (
                                 <span className="inline-flex items-center gap-1 text-[10px] font-bold uppercase tracking-wide bg-indigo-500/20 text-indigo-300 px-1.5 py-0.5 rounded-full">⚡ Fast Mode</span>
                               )}
@@ -2385,6 +2506,7 @@ export function LabDashboard({ lab, isOwner = false, roleName = "Lab Owner", can
                               <span className="font-mono text-xs text-medical-400 bg-medical-900/50 px-1.5 py-0.5 rounded shrink-0">
                                 {req.code}
                               </span>
+                              <SourceBadge source={req.source} className="shrink-0" />
                             </div>
                             <div className="flex flex-wrap items-center gap-x-4 gap-y-1 text-xs text-slate-400">
                               <span className="flex items-center gap-1">
@@ -3008,12 +3130,25 @@ export function LabDashboard({ lab, isOwner = false, roleName = "Lab Owner", can
                             <div className="min-w-0">
                               <p className="text-sm text-white truncate">{m.email ?? "—"}</p>
                               <p className="text-xs text-slate-500 mt-0.5">
-                                {m.role.name}
                                 {m.last_sign_in_at
-                                  ? <span className="ml-2">· last login {new Date(m.last_sign_in_at).toLocaleDateString("en-GB", { day: "numeric", month: "short", year: "numeric" })}</span>
-                                  : <span className="ml-2">· never logged in</span>}
+                                  ? <span>last login {new Date(m.last_sign_in_at).toLocaleDateString("en-GB", { day: "numeric", month: "short", year: "numeric" })}</span>
+                                  : <span>never logged in</span>}
                               </p>
                             </div>
+                            {(isOwner || canManageRoles) && labRolesList.length > 0 ? (
+                              <select
+                                value={m.role.id ?? ""}
+                                onChange={(e) => assignMemberRole(m.id, e.target.value)}
+                                className="shrink-0 bg-white/5 border border-white/10 rounded-lg px-2 py-1.5 text-xs text-slate-200 outline-none cursor-pointer max-w-[9rem]"
+                              >
+                                {!m.role.id && <option value="" className="bg-slate-800">{m.role.name}</option>}
+                                {labRolesList.map((r) => (
+                                  <option key={r.id} value={r.id} className="bg-slate-800">{r.name}</option>
+                                ))}
+                              </select>
+                            ) : (
+                              <span className="shrink-0 text-xs text-slate-400">{m.role.name}</span>
+                            )}
                           </div>
                         ))}
                       </div>
@@ -3289,6 +3424,7 @@ export function LabDashboard({ lab, isOwner = false, roleName = "Lab Owner", can
           </div>
         </div>
       )}
+      </main>
       </div>
     </div>
   );

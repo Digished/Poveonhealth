@@ -2,6 +2,7 @@ import { redirect } from "next/navigation";
 import { createServerClient } from "@/lib/supabase/server";
 import { prisma } from "@/lib/prisma";
 import { LabDashboard } from "@/components/LabDashboard";
+import { defaultTabForRole } from "@/lib/lab-roles";
 
 export const metadata = {
   title: "Lab Dashboard — Poveon",
@@ -29,6 +30,12 @@ export default async function LabDashboardPage() {
   let canManageRoles = false;
   let canManageProfessionals = false;
   let canManageTemplates = false;
+  // Action / view permissions used to gate the new sidebar items.
+  let canViewRequests = true;
+  let canMarkSeen = true;
+  let canMarkDone = true;
+  let canSendResults = true;
+  let defaultTab: string | null = null;
 
   if (role === "lab") {
     const labUser = await prisma.labUser.findUnique({
@@ -46,11 +53,15 @@ export default async function LabDashboardPage() {
       where: { user_id: user.id },
       select: {
         lab_id: true,
-        role: { select: { name: true, can_view_referrals: true, can_view_clients: true, can_view_analytics: true, can_view_activity: true, can_view_feedback: true, can_view_wallet: true, can_view_marketers: true, can_manage_roles: true, can_manage_professionals: true, can_manage_templates: true } },
+        role: { select: { name: true, can_view_requests: true, can_mark_seen: true, can_mark_done: true, can_send_results: true, can_view_referrals: true, can_view_clients: true, can_view_analytics: true, can_view_activity: true, can_view_feedback: true, can_view_wallet: true, can_view_marketers: true, can_manage_roles: true, can_manage_professionals: true, can_manage_templates: true } },
       },
     });
     labId = member?.lab_id ?? null;
     roleName = member?.role.name ?? "Member";
+    canViewRequests = member?.role.can_view_requests ?? false;
+    canMarkSeen = member?.role.can_mark_seen ?? false;
+    canMarkDone = member?.role.can_mark_done ?? false;
+    canSendResults = member?.role.can_send_results ?? false;
     canViewReferrals = member?.role.can_view_referrals ?? false;
     canViewClients = member?.role.can_view_clients ?? false;
     canViewAnalytics = member?.role.can_view_analytics ?? false;
@@ -61,6 +72,7 @@ export default async function LabDashboardPage() {
     canManageRoles = member?.role.can_manage_roles ?? false;
     canManageProfessionals = member?.role.can_manage_professionals ?? false;
     canManageTemplates = member?.role.can_manage_templates ?? false;
+    defaultTab = defaultTabForRole(roleName);
   }
 
   if (!labId) redirect("/lab-login");
@@ -97,6 +109,11 @@ export default async function LabDashboardPage() {
       canManageRoles={canManageRoles}
       canManageProfessionals={canManageProfessionals}
       canManageTemplates={canManageTemplates}
+      canViewRequests={canViewRequests}
+      canMarkSeen={canMarkSeen}
+      canMarkDone={canMarkDone}
+      canSendResults={canSendResults}
+      defaultTab={defaultTab}
       lab={{
         id: lab.id,
         name: lab.name,
