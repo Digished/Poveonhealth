@@ -5,7 +5,12 @@ import { Loader2, Search, X, ArrowRight, Plus, Workflow, QrCode, UserPlus, Print
 import toast from "react-hot-toast";
 import { SourceBadge, SOURCE_OPTIONS } from "@/components/lab/SourceBadge";
 import { OnboardingPanel } from "@/components/lab/OnboardingPanel";
-import { requestDepartments, WORKFLOWS, workflowForDepartment, stageLabel, DEPARTMENTS } from "@/lib/lims-shared";
+import { requestDepartments, categoryToDepartment, WORKFLOWS, workflowForDepartment, stageLabel, DEPARTMENTS } from "@/lib/lims-shared";
+
+function fmtDateTime(iso: string | null | undefined): string {
+  if (!iso) return "—";
+  return new Date(iso).toLocaleString(undefined, { month: "short", day: "numeric", year: "numeric", hour: "numeric", minute: "2-digit" });
+}
 
 interface JEvent { id: string; stage: string; department: string | null; sample_label: string | null; note: string | null; actor_email: string | null; created_at: string }
 interface WReq {
@@ -14,21 +19,29 @@ interface WReq {
   created_at: string; seen_at: string | null; completed_at: string | null;
   test_breakdown: unknown; journey_events: JEvent[];
 }
-interface Track { department: string; workflow: string; currentStage: string; events: JEvent[]; collections: JEvent[] }
+interface Track { department: string; workflow: string; currentStage: string; events: JEvent[]; collections: JEvent[]; tests: string[] }
 interface ResultTemplate { id: string; name: string; department: string | null; parameters: { name: string; unit?: string; reference_range?: string; group?: string }[] }
 interface RResult { id: string; request_id: string; department: string | null; status: string; values: { name: string; value?: string; unit?: string; reference_range?: string; group?: string; flag?: string }[]; comment: string | null; pdf_url: string | null }
 
 function tracksFor(r: WReq): Track[] {
   const depts = requestDepartments(r.test_breakdown);
+  const items = Array.isArray(r.test_breakdown)
+    ? (r.test_breakdown as { category?: string | null; raw?: string; canonical_name?: string }[])
+    : [];
   return depts.map(({ department, workflow }) => {
     const events = r.journey_events.filter((e) => e.department === department);
     const last = events[events.length - 1];
+    const tests = items
+      .filter((it) => categoryToDepartment(it.category).department === department)
+      .map((it) => it.canonical_name || it.raw || "")
+      .filter(Boolean);
     return {
       department,
       workflow,
       currentStage: last?.stage ?? "registered",
       events,
       collections: events.filter((e) => e.stage === "collected"),
+      tests,
     };
   });
 }
@@ -223,6 +236,7 @@ export function Workspace({
                   <div className="min-w-0">
                     <p className="truncate text-sm font-semibold text-white">{r.patient_name || (r.status === "incoming" ? "Incoming patient" : "Unnamed")} <span className="font-mono text-xs text-slate-400">· {r.code}</span></p>
                     <p className="truncate text-xs text-slate-400">{r.tests}</p>
+                    <p className="mt-0.5 text-[10px] text-slate-500">Registered {fmtDateTime(r.created_at)}</p>
                   </div>
                   <div className="flex shrink-0 items-center gap-1.5">
                     <SourceBadge source={r.source} />
@@ -246,6 +260,7 @@ export function Workspace({
       {selected && (
         <WorkspaceDrawer
           request={selected}
+          labId={labId}
           onClose={() => setSelected(null)}
           canAdvance={canAdvance}
           canEnterResults={canEnterResults}
@@ -262,9 +277,10 @@ export function Workspace({
 }
 
 function WorkspaceDrawer({
-  request, onClose, canAdvance, canEnterResults, canSendResults, memberDepartment, busy, onMarkSeen, onAdvance, onChanged,
+  request, labId, onClose, canAdvance, canEnterResults, canSendResults, memberDepartment, busy, onMarkSeen, onAdvance, onChanged,
 }: {
   request: WReq;
+  labId: string;
   onClose: () => void;
   canAdvance: boolean;
   canEnterResults: boolean;
@@ -272,11 +288,12 @@ function WorkspaceDrawer({
   memberDepartment: string | null;
   busy: boolean;
   onMarkSeen: () => void;
-  onAdvance: (track: Track, stage: string, label?: string) => void;
+  onAdvance: (track: Track, stage: string, label?: string) => Promise<void> | void;
   onChanged: () => void;
 }) {
   const tracks = tracksFor(request).filter((t) => !memberDepartment || t.department === memberDepartment);
   const [resultsFor, setResultsFor] = useState<{ department: string } | null>(null);
+  const [collectFor, setCollectFor] = useState<Track | null>(null);
 
   function nextStage(track: Track): string | null {
     const stages = WORKFLOWS[track.workflow as keyof typeof WORKFLOWS] ?? WORKFLOWS.specimen;
@@ -292,6 +309,11 @@ function WorkspaceDrawer({
             <h3 className="text-lg font-semibold text-white">{request.patient_name || "Patient"}</h3>
             <p className="font-mono text-xs text-slate-400">{request.code} · {request.status}</p>
             <p className="mt-1 text-xs text-slate-400">{request.tests}</p>
+            <p className="mt-1.5 text-[11px] text-slate-500">
+              Registered {fmtDateTime(request.created_at)}
+              {request.seen_at ? ` · Seen ${fmtDateTime(request.seen_at)}` : ""}
+              {request.completed_at ? ` · Done ${fmtDateTime(request.completed_at)}` : ""}
+            </p>
           </div>
           <button onClick={onClose} className="text-slate-400 hover:text-white"><X className="h-5 w-5" /></button>
         </div>
@@ -347,7 +369,7 @@ function WorkspaceDrawer({
                     ) : <span className="rounded-lg bg-emerald-500/10 px-3 py-1.5 text-xs font-medium text-emerald-300">Track complete</span>}
                     {track.workflow === "specimen" && (
                       <button
-                        onClick={() => { const label = window.prompt("Sample label (e.g. FBS, 2HPP)"); if (label) onAdvance(track, "collected", label); }}
+                        onClick={() => setCollectFor(track)}
                         disabled={busy}
                         className="inline-flex items-center gap-1.5 rounded-lg border border-white/10 px-3 py-1.5 text-xs font-medium text-slate-200 hover:bg-white/5 disabled:opacity-50"
                       >
@@ -376,6 +398,166 @@ function WorkspaceDrawer({
             onChanged={onChanged}
           />
         )}
+
+        {collectFor && (
+          <CollectionPicker
+            labId={labId}
+            track={collectFor}
+            busy={busy}
+            onClose={() => setCollectFor(null)}
+            onConfirm={async (labels) => {
+              for (const label of labels) {
+                await onAdvance(collectFor, "collected", label);
+              }
+              setCollectFor(null);
+            }}
+          />
+        )}
+      </div>
+    </div>
+  );
+}
+
+/**
+ * Picker for logging specimen collections. Lets the operator tick the tests the
+ * patient is actually doing in this department, and add extra samples by name
+ * (typeahead against the lab's own catalog). Each chosen label is logged as a
+ * separate "collected" journey event.
+ */
+function CollectionPicker({
+  labId, track, busy, onClose, onConfirm,
+}: {
+  labId: string;
+  track: Track;
+  busy: boolean;
+  onClose: () => void;
+  onConfirm: (labels: string[]) => void;
+}) {
+  const already = new Set(track.collections.map((c) => (c.sample_label || "").toLowerCase()));
+  const [selected, setSelected] = useState<Set<string>>(new Set());
+  const [extra, setExtra] = useState("");
+  const [results, setResults] = useState<{ id: string; raw_name: string }[]>([]);
+  const [searching, setSearching] = useState(false);
+
+  const toggle = (label: string) =>
+    setSelected((prev) => {
+      const next = new Set(prev);
+      if (next.has(label)) next.delete(label); else next.add(label);
+      return next;
+    });
+
+  // Typeahead against the lab's own catalog for "extra" samples.
+  useEffect(() => {
+    const q = extra.trim();
+    if (q.length < 1) { setResults([]); return; }
+    let cancelled = false;
+    setSearching(true);
+    const t = setTimeout(async () => {
+      try {
+        const res = await fetch(`/api/catalog/search?lab_id=${encodeURIComponent(labId)}&q=${encodeURIComponent(q)}&limit=8`, { cache: "no-store" });
+        const data = await res.json();
+        if (!cancelled) setResults(data.results ?? []);
+      } catch {
+        if (!cancelled) setResults([]);
+      } finally {
+        if (!cancelled) setSearching(false);
+      }
+    }, 220);
+    return () => { cancelled = true; clearTimeout(t); };
+  }, [extra, labId]);
+
+  const addExtra = (label: string) => {
+    const v = label.trim();
+    if (!v) return;
+    setSelected((prev) => new Set(prev).add(v));
+    setExtra("");
+    setResults([]);
+  };
+
+  const inputCls = "w-full rounded-xl border border-white/10 bg-white/5 px-3 py-2 text-sm text-white placeholder:text-slate-500 focus:border-medical-400 focus:outline-none";
+
+  return (
+    <div className="fixed inset-0 z-[10000] flex items-end justify-center bg-black/70 backdrop-blur-sm sm:items-center" onClick={onClose}>
+      <div className="max-h-[88vh] w-full max-w-md overflow-y-auto rounded-t-3xl border border-white/10 bg-slate-900 p-5 sm:rounded-3xl" onClick={(e) => e.stopPropagation()}>
+        <div className="mb-4 flex items-center justify-between">
+          <div>
+            <h3 className="text-lg font-semibold text-white">Add collection</h3>
+            <p className="text-xs text-slate-400">{track.department}</p>
+          </div>
+          <button onClick={onClose} className="text-slate-400 hover:text-white"><X className="h-5 w-5" /></button>
+        </div>
+
+        {/* Tests the patient is doing in this department */}
+        {track.tests.length > 0 ? (
+          <>
+            <p className="mb-2 text-xs font-medium uppercase tracking-wide text-slate-400">Tests requested</p>
+            <div className="mb-4 flex flex-wrap gap-2">
+              {track.tests.map((t) => {
+                const collected = already.has(t.toLowerCase());
+                const on = selected.has(t);
+                return (
+                  <button
+                    key={t}
+                    onClick={() => toggle(t)}
+                    className={`inline-flex items-center gap-1.5 rounded-full border px-3 py-1.5 text-xs font-medium transition ${
+                      on ? "border-medical-400 bg-medical-600/25 text-white" : "border-white/10 bg-white/5 text-slate-200 hover:bg-white/10"
+                    }`}
+                  >
+                    {on ? <Check className="h-3.5 w-3.5" /> : <Plus className="h-3.5 w-3.5" />} {t}
+                    {collected && <span className="text-[9px] text-emerald-300">· collected</span>}
+                  </button>
+                );
+              })}
+            </div>
+          </>
+        ) : (
+          <p className="mb-4 text-xs text-slate-500">No catalog-matched tests on this request — add samples below.</p>
+        )}
+
+        {/* Extra samples from the catalog or free text */}
+        <p className="mb-2 text-xs font-medium uppercase tracking-wide text-slate-400">Add extra sample</p>
+        <div className="relative">
+          <input
+            value={extra}
+            onChange={(e) => setExtra(e.target.value)}
+            onKeyDown={(e) => { if (e.key === "Enter") { e.preventDefault(); addExtra(extra); } }}
+            placeholder="Search catalog or type a label (e.g. FBS, 2HPP)"
+            className={inputCls}
+          />
+          {(searching || results.length > 0) && (
+            <div className="absolute z-10 mt-1 w-full overflow-hidden rounded-xl border border-white/10 bg-slate-800 shadow-2xl">
+              {searching && <p className="px-3 py-2 text-xs text-slate-500">Searching…</p>}
+              {results.map((r) => (
+                <button key={r.id} onClick={() => addExtra(r.raw_name)} className="block w-full px-3 py-2 text-left text-sm text-slate-200 hover:bg-white/10">
+                  {r.raw_name}
+                </button>
+              ))}
+            </div>
+          )}
+        </div>
+
+        {/* Selected summary */}
+        {selected.size > 0 && (
+          <div className="mt-4 flex flex-wrap gap-1.5">
+            {Array.from(selected).map((s) => (
+              <span key={s} className="inline-flex items-center gap-1 rounded-full bg-medical-600/20 px-2 py-0.5 text-[11px] text-medical-200">
+                {s}
+                <button onClick={() => toggle(s)} className="text-medical-300 hover:text-white"><X className="h-3 w-3" /></button>
+              </span>
+            ))}
+          </div>
+        )}
+
+        <div className="mt-5 flex justify-end gap-2">
+          <button onClick={onClose} className="rounded-xl border border-white/10 px-3 py-2 text-sm text-slate-200 hover:bg-white/5">Cancel</button>
+          <button
+            onClick={() => onConfirm(Array.from(selected))}
+            disabled={busy || selected.size === 0}
+            className="inline-flex items-center gap-1.5 rounded-xl bg-medical-600 px-4 py-2 text-sm font-semibold text-white hover:bg-medical-700 disabled:opacity-50"
+          >
+            {busy ? <Loader2 className="h-4 w-4 animate-spin" /> : <Check className="h-4 w-4" />} Log {selected.size > 0 ? `${selected.size} ` : ""}collection{selected.size === 1 ? "" : "s"}
+          </button>
+        </div>
       </div>
     </div>
   );
