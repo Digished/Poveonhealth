@@ -50,6 +50,7 @@ model Lab {
   professional_commissions ProfessionalCommission[]
   result_templates LabResultTemplate[]
   request_results  RequestResult[]
+  sops             LabSop[]
 
   @@map("labs")
 }
@@ -1066,6 +1067,24 @@ model LabResultTemplate {
   @@unique([lab_id, name])
   @@index([lab_id])
   @@map("lab_result_templates")
+}
+
+model LabSop {
+  id           String   @id @default(uuid())
+  lab_id       String
+  title        String
+  category     String? // e.g. Pre-analytical, Safety, Quality Control
+  department   String? // optional department scope
+  content      String   @db.Text // markdown / plain-text procedure body
+  version      Int      @default(1)
+  created_by   String?
+  created_at   DateTime @default(now())
+  updated_at   DateTime @default(now()) @updatedAt
+
+  lab Lab @relation(fields: [lab_id], references: [id], onDelete: Cascade)
+
+  @@index([lab_id])
+  @@map("lab_sops")
 }
 
 // A structured result entered for a request (optionally per department/template),

@@ -626,6 +626,25 @@ const migrations = [
     continueOnError: false,
   },
   {
+    desc: "LIMS: lab_sops table (Standard Operating Procedures)",
+    sql: `
+      CREATE TABLE IF NOT EXISTS lab_sops (
+        id TEXT PRIMARY KEY,
+        lab_id TEXT NOT NULL,
+        title TEXT NOT NULL,
+        category TEXT,
+        department TEXT,
+        content TEXT NOT NULL DEFAULT '',
+        version INTEGER NOT NULL DEFAULT 1,
+        created_by TEXT,
+        created_at TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+        updated_at TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP
+      );
+      CREATE INDEX IF NOT EXISTS lab_sops_lab_id_idx ON lab_sops(lab_id);
+    `,
+    continueOnError: true,
+  },
+  {
     desc: "LIMS: seed preset roles for every existing lab (idempotent)",
     // Columns: can_view_requests, can_mark_seen, can_mark_done, can_send_results,
     //   can_manage_team, can_manage_api_keys, can_view_referrals, can_view_clients,

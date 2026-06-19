@@ -9,7 +9,7 @@ import {
   Users, CreditCard, Filter, ChevronDown, AlertTriangle, Truck, ExternalLink,
   MessageCircle, ChevronLeft, FileImage, Sun, Moon, Pencil, Save, BarChart3, Lock,
   Menu, Activity, KeyRound, ArrowRight, Star, MessageSquare, Wallet2, Copy, ArrowUpRight,
-  Settings2, FileText, Plus, Workflow, QrCode,
+  Settings2, FileText, Plus, Workflow, QrCode, ClipboardList,
 } from "lucide-react";
 import dynamic from "next/dynamic";
 
@@ -23,6 +23,7 @@ const RolesManager = dynamic(() => import("@/components/lab/RolesManager").then(
 const TemplatesManager = dynamic(() => import("@/components/lab/TemplatesManager").then(m => ({ default: m.TemplatesManager })), { ssr: false });
 const Workspace = dynamic(() => import("@/components/lab/Workspace").then(m => ({ default: m.Workspace })), { ssr: false });
 const ResultTemplatesManager = dynamic(() => import("@/components/lab/ResultTemplatesManager").then(m => ({ default: m.ResultTemplatesManager })), { ssr: false });
+const SopManager = dynamic(() => import("@/components/lab/SopManager").then(m => ({ default: m.SopManager })), { ssr: false });
 import { useDashTheme } from "@/hooks/useDashTheme";
 import { Button } from "@/components/ui/Button";
 import { Input } from "@/components/ui/Input";
@@ -121,8 +122,8 @@ export function LabDashboard({ lab, isOwner = false, roleName = "Lab Owner", can
   const router = useRouter();
   const searchParams = useSearchParams();
   const { isLight, toggle, themeClass } = useDashTheme("lab_dash_theme");
-  type MainView = "workspace" | "requests" | "journey" | "onboarding" | "templates" | "network" | "referrals" | "professionals" | "clients" | "analytics" | "activity" | "feedback" | "poveon" | "price-list" | "marketers";
-  const VALID_TABS: MainView[] = ["workspace", "requests", "journey", "onboarding", "templates", "network", "referrals", "professionals", "clients", "analytics", "activity", "feedback", "poveon", "price-list", "marketers"];
+  type MainView = "workspace" | "requests" | "journey" | "onboarding" | "templates" | "sops" | "network" | "referrals" | "professionals" | "clients" | "analytics" | "activity" | "feedback" | "poveon" | "price-list" | "marketers";
+  const VALID_TABS: MainView[] = ["workspace", "requests", "journey", "onboarding", "templates", "sops", "network", "referrals", "professionals", "clients", "analytics", "activity", "feedback", "poveon", "price-list", "marketers"];
   // Legacy tabs now fold into the unified Workspace.
   const LEGACY_TO_WORKSPACE = new Set(["requests", "journey", "onboarding"]);
   // Which permission gates each tab (used by the sidebar and the initial landing).
@@ -132,6 +133,7 @@ export function LabDashboard({ lab, isOwner = false, roleName = "Lab Owner", can
     journey: canViewRequestsEff,
     onboarding: canViewRequestsEff,
     templates: canViewRequestsEff || isOwner || canManageTemplates,
+    sops: canViewRequestsEff || isOwner || canManageTemplates,
     network: isOwner || canViewReferrals || canManageProfessionals,
     referrals: isOwner || canViewReferrals,
     professionals: isOwner || canManageProfessionals,
@@ -867,6 +869,7 @@ export function LabDashboard({ lab, isOwner = false, roleName = "Lab Owner", can
             { label: "Operations", items: [
               { key: "workspace", label: "Workspace", icon: <Workflow className="w-4 h-4" />, show: tabVisible.workspace },
               { key: "templates", label: "Result Templates", icon: <FileText className="w-4 h-4" />, show: tabVisible.templates },
+              { key: "sops", label: "SOPs", icon: <ClipboardList className="w-4 h-4" />, show: tabVisible.sops },
               { key: "clients", label: "Clients", icon: <UserCircle className="w-4 h-4" />, show: tabVisible.clients },
             ] },
             { label: "Network", items: [
@@ -2156,6 +2159,11 @@ export function LabDashboard({ lab, isOwner = false, roleName = "Lab Owner", can
             </div>
             <ResultTemplatesManager canManage={isOwner || canManageTemplates} />
           </div>
+        )}
+
+        {/* Standard Operating Procedures */}
+        {mainView === "sops" && (isOwner || canViewRequestsEff || canManageTemplates) && (
+          <SopManager canManage={isOwner || canManageTemplates} />
         )}
 
         {/* Unified Workspace — intake + requests + multi-department journey + results */}
