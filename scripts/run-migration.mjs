@@ -628,10 +628,12 @@ const migrations = [
   {
     desc: "requests.is_paid + tests_confirmed (registration gate before pipeline)",
     sql: `
-      ALTER TABLE requests ADD COLUMN IF NOT EXISTS is_paid BOOLEAN NOT NULL DEFAULT false;
-      ALTER TABLE requests ADD COLUMN IF NOT EXISTS tests_confirmed BOOLEAN NOT NULL DEFAULT false;
+      DO $$ BEGIN
+        ALTER TABLE requests ADD COLUMN IF NOT EXISTS is_paid BOOLEAN NOT NULL DEFAULT false;
+        ALTER TABLE requests ADD COLUMN IF NOT EXISTS tests_confirmed BOOLEAN NOT NULL DEFAULT false;
+      END $$;
     `,
-    continueOnError: true,
+    continueOnError: false,
   },
   {
     desc: "backfill is_paid/tests_confirmed for already-progressed requests (avoid locking the pipeline)",
@@ -646,29 +648,33 @@ const migrations = [
   {
     desc: "LIMS: request_results document/link columns",
     sql: `
-      ALTER TABLE request_results ADD COLUMN IF NOT EXISTS kind TEXT NOT NULL DEFAULT 'panel';
-      ALTER TABLE request_results ADD COLUMN IF NOT EXISTS external_url TEXT;
+      DO $$ BEGIN
+        ALTER TABLE request_results ADD COLUMN IF NOT EXISTS kind TEXT NOT NULL DEFAULT 'panel';
+        ALTER TABLE request_results ADD COLUMN IF NOT EXISTS external_url TEXT;
+      END $$;
     `,
-    continueOnError: true,
+    continueOnError: false,
   },
   {
     desc: "LIMS: lab_sops table (Standard Operating Procedures)",
     sql: `
-      CREATE TABLE IF NOT EXISTS lab_sops (
-        id TEXT PRIMARY KEY,
-        lab_id TEXT NOT NULL,
-        title TEXT NOT NULL,
-        category TEXT,
-        department TEXT,
-        content TEXT NOT NULL DEFAULT '',
-        version INTEGER NOT NULL DEFAULT 1,
-        created_by TEXT,
-        created_at TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
-        updated_at TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP
-      );
-      CREATE INDEX IF NOT EXISTS lab_sops_lab_id_idx ON lab_sops(lab_id);
+      DO $$ BEGIN
+        CREATE TABLE IF NOT EXISTS lab_sops (
+          id TEXT PRIMARY KEY,
+          lab_id TEXT NOT NULL,
+          title TEXT NOT NULL,
+          category TEXT,
+          department TEXT,
+          content TEXT NOT NULL DEFAULT '',
+          version INTEGER NOT NULL DEFAULT 1,
+          created_by TEXT,
+          created_at TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+          updated_at TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP
+        );
+        CREATE INDEX IF NOT EXISTS lab_sops_lab_id_idx ON lab_sops(lab_id);
+      END $$;
     `,
-    continueOnError: true,
+    continueOnError: false,
   },
   {
     desc: "LIMS: seed preset roles for every existing lab (idempotent)",
