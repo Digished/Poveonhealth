@@ -66,9 +66,12 @@ export async function GET(request: NextRequest) {
 
     const enrichedRequests = requests.map((r) => {
       const lp = r.doctor_email ? profileByEmail.get(r.doctor_email) : undefined;
-      if (!lp) return r;
+      // A doctor is "registered" when they have a DoctorProfile on file; otherwise
+      // they're tracked from request details alone (unregistered referrer).
+      if (!lp) return { ...r, doctor_registered: false };
       return {
         ...r,
+        doctor_registered: true,
         doctor_prefix: lp.prefix ?? r.doctor_prefix,
         doctor_name: lp.full_name || r.doctor_name,
         doctor_phone: lp.phone ?? r.doctor_phone,

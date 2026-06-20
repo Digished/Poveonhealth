@@ -8,7 +8,7 @@ import {
   Phone, Upload, Check, MapPin, Users, ChevronRight, ChevronDown, ChevronUp,
   Code2, Key, Copy, TrendingUp, Link, Sun, Moon, Star, GitBranch,
   ArrowUpRight, ArrowDownRight, ArrowDownToLine, Settings, CreditCard, MessageCircle,
-  BookOpen, Database, Sparkles, Search, Layers, UserCircle, Wallet, FileText, AlertCircle, Filter, Download, Stethoscope, Mail,
+  BookOpen, Database, Sparkles, Search, Layers, UserCircle, Wallet, FileText, AlertCircle, Filter, Download, Stethoscope, Mail, Zap,
 } from "lucide-react";
 import { useDashTheme } from "@/hooks/useDashTheme";
 import { renderLabSla, EMPTY_LAB_SLA, type LabSlaData } from "@/lib/labSlaTemplate";
@@ -39,6 +39,30 @@ interface ReferralGroup {
   hospital: string | null;
   requests: LabRequest[];
   thisMonthCount: number;
+  registered: boolean; // has a DoctorProfile on file
+  fastCount: number; // Fast Mode submissions
+}
+
+/** Per-test aggregate across a set of requests (for robust admin test tracking). */
+interface TestStat { name: string; total: number; done: number; fast: number }
+function testStatsFor(requests: LabRequest[]): TestStat[] {
+  const m = new Map<string, TestStat>();
+  for (const r of requests) {
+    const names = (r.tests || "")
+      .split(/[\n,]+/)
+      .map((s) => s.replace(/\s*\(.*?\)\s*/g, " ").trim())
+      .filter(Boolean);
+    for (const raw of names) {
+      const name = raw.length > 60 ? raw.slice(0, 60) + "…" : raw;
+      const key = name.toLowerCase();
+      const s = m.get(key) ?? { name, total: 0, done: 0, fast: 0 };
+      s.total++;
+      if (r.status === "done") s.done++;
+      if (r.fast_mode) s.fast++;
+      m.set(key, s);
+    }
+  }
+  return Array.from(m.values()).sort((a, b) => b.total - a.total);
 }
 
 // Shared white input class for dark-background modals
@@ -295,6 +319,8 @@ export function AdminDashboard() {
       if (existing) {
         existing.requests.push(req);
         if (isThisMonth) existing.thisMonthCount++;
+        if (req.fast_mode) existing.fastCount++;
+        if (req.doctor_registered) existing.registered = true;
         // Keep most complete name seen across requests
         if (!existing.referrerName && req.doctor_name) existing.referrerName = [req.doctor_prefix, req.doctor_name].filter(Boolean).join(" ");
         if (!existing.hospital && req.doctor_hospital) existing.hospital = req.doctor_hospital;
@@ -306,6 +332,8 @@ export function AdminDashboard() {
           hospital: req.doctor_hospital ?? null,
           requests: [req],
           thisMonthCount: isThisMonth ? 1 : 0,
+          registered: !!req.doctor_registered,
+          fastCount: req.fast_mode ? 1 : 0,
         });
       }
     }
@@ -936,6 +964,14 @@ export function AdminDashboard() {
                     <div className="flex-1 min-w-0">
                       <p className="text-sm font-semibold text-white truncate leading-tight">{group.referrerName || group.email || "—"}</p>
                       <p className="text-xs text-slate-500 truncate">{group.hospital || (group.referrerName ? group.email : "")}</p>
+                      <div className="mt-1 flex flex-wrap items-center gap-1">
+                        <span className={`inline-flex items-center rounded-full px-1.5 py-0.5 text-[9px] font-semibold ${group.registered ? "bg-emerald-500/15 text-emerald-300" : "bg-amber-500/15 text-amber-300"}`}>
+                          {group.registered ? "Registered" : "Unregistered"}
+                        </span>
+                        {group.fastCount > 0 && (
+                          <span className="inline-flex items-center gap-0.5 rounded-full bg-medical-500/15 px-1.5 py-0.5 text-[9px] font-semibold text-medical-300"><Zap className="w-2.5 h-2.5" /> {group.fastCount} fast</span>
+                        )}
+                      </div>
                     </div>
                     <div className="shrink-0 text-right">
                       <span className="text-sm font-bold text-white">{group.requests.length}</span>
@@ -2056,6 +2092,8 @@ function ReferralDetailModal({ group, onClose }: { group: ReferralGroup; onClose
     });
   }, [group.requests, monthFilter]);
 
+  const testStats = useMemo(() => testStatsFor(filtered), [filtered]);
+
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm p-4">
       <div className="bg-slate-900 border border-white/15 rounded-2xl w-full max-w-lg shadow-2xl animate-slide-up max-h-[90vh] flex flex-col">
@@ -2065,6 +2103,14 @@ function ReferralDetailModal({ group, onClose }: { group: ReferralGroup; onClose
             <h2 className="font-semibold text-white">{group.referrerName || group.email || "Unknown Referrer"}</h2>
             {group.referrerName && group.email && <p className="text-xs text-slate-400 mt-0.5">{group.email}</p>}
             {group.hospital && <p className="text-xs text-slate-500 mt-0.5">{group.hospital}</p>}
+            <div className="mt-1.5 flex flex-wrap items-center gap-1.5">
+              <span className={`inline-flex items-center rounded-full px-2 py-0.5 text-[10px] font-semibold ${group.registered ? "bg-emerald-500/15 text-emerald-300" : "bg-amber-500/15 text-amber-300"}`}>
+                {group.registered ? "Registered doctor" : "Unregistered referrer"}
+              </span>
+              {group.fastCount > 0 && (
+                <span className="inline-flex items-center gap-1 rounded-full bg-medical-500/15 px-2 py-0.5 text-[10px] font-semibold text-medical-300"><Zap className="w-3 h-3" /> {group.fastCount} Fast Mode</span>
+              )}
+            </div>
           </div>
           <button onClick={onClose} className="p-1.5 rounded-lg hover:bg-white/10 text-slate-400 transition-colors mt-0.5">
             <X className="w-4 h-4" />
@@ -2099,10 +2145,40 @@ function ReferralDetailModal({ group, onClose }: { group: ReferralGroup; onClose
           {filtered.length === 0 && (
             <p className="text-center text-slate-500 py-10 text-sm">No referrals for this period</p>
           )}
+
+          {/* Per-test breakdown — robust tracking of what this referrer orders */}
+          {testStats.length > 0 && (
+            <div className="mb-2 rounded-xl border border-white/8 bg-white/3 p-3">
+              <p className="mb-2 text-[11px] font-bold uppercase tracking-wide text-slate-400">Tests referred ({testStats.length})</p>
+              <div className="space-y-1.5">
+                {testStats.slice(0, 10).map((t) => (
+                  <div key={t.name} className="flex items-center gap-2">
+                    <div className="min-w-0 flex-1">
+                      <div className="flex items-center justify-between gap-2">
+                        <span className="truncate text-xs text-slate-200">{t.name}</span>
+                        <span className="shrink-0 text-[11px] font-semibold text-white">{t.total}</span>
+                      </div>
+                      <div className="mt-0.5 h-1 overflow-hidden rounded-full bg-white/5">
+                        <div className="h-full rounded-full bg-medical-500" style={{ width: `${Math.round((t.total / testStats[0].total) * 100)}%` }} />
+                      </div>
+                    </div>
+                    <div className="flex shrink-0 items-center gap-1">
+                      <span className="rounded bg-emerald-500/15 px-1.5 py-0.5 text-[9px] font-semibold text-emerald-300" title="Completed">{t.done} done</span>
+                      {t.fast > 0 && <span className="inline-flex items-center gap-0.5 rounded bg-medical-500/15 px-1.5 py-0.5 text-[9px] font-semibold text-medical-300" title="Fast Mode"><Zap className="w-2.5 h-2.5" />{t.fast}</span>}
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+
           {filtered.map((req) => (
             <div key={req.id} className="bg-white/5 border border-white/8 rounded-xl px-4 py-3">
               <div className="flex items-start justify-between gap-2 mb-1">
-                <p className="text-sm text-white font-medium truncate">{req.patient_name}</p>
+                <div className="flex min-w-0 items-center gap-1.5">
+                  <p className="text-sm text-white font-medium truncate">{req.patient_name}</p>
+                  {req.fast_mode && <span className="inline-flex shrink-0 items-center gap-0.5 rounded-full bg-medical-500/15 px-1.5 py-0.5 text-[9px] font-semibold text-medical-300"><Zap className="w-2.5 h-2.5" /> Fast</span>}
+                </div>
                 <StatusBadge status={req.status} />
               </div>
               <div className="flex items-center justify-between gap-2">

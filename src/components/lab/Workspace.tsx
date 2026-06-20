@@ -246,6 +246,9 @@ export function Workspace({
       if (obView === "register") {
         // Registration queue — not yet completed.
         if (r.status === "done") return false;
+        // Pre-arrival Poveon leads stay hidden until their code is entered via
+        // the "Have a Poveon code?" box (which opens them directly).
+        if (r.source === "poveon" && r.status === "incoming") return false;
         if (statusF === "incoming" && r.status !== "incoming") return false;
         if (statusF === "seen" && r.status !== "seen") return false;
         if (paidF === "paid" && !r.is_paid) return false;
@@ -555,22 +558,29 @@ export function Workspace({
                       <p className="mt-0.5 text-[10px] text-slate-500" title={fmtDateTime(r.created_at)}>Registered {timeAgo(r.created_at)}</p>
                     </div>
                   </div>
-                  <div className="flex shrink-0 items-center gap-1.5">
-                    {/* Source + registration status are only relevant in onboarding. */}
-                    {isOnboarding && <SourceBadge source={r.source} />}
-                    {!r.is_paid && r.status !== "done" && <span className="inline-flex items-center gap-1 rounded-full bg-rose-500/15 px-2 py-0.5 text-[10px] font-medium text-rose-300" title="In the queue, awaiting payment"><CreditCard className="h-3 w-3" /> Awaiting payment</span>}
-                    {isOnboarding && <span className={`rounded-full px-2 py-0.5 text-[10px] font-medium ${r.status === "done" ? "bg-emerald-500/15 text-emerald-300" : r.status === "seen" ? "bg-sky-500/15 text-sky-300" : "bg-amber-500/15 text-amber-300"}`}>{statusLabel(r.status)}</span>}
-                  </div>
                 </div>
-                <div className="flex flex-wrap gap-1.5">
-                  {tracks.map((t) => (
-                    <span key={t.department} className={`inline-flex items-center gap-1 rounded-full border px-2 py-0.5 text-[10px] ${stageColorClasses(t.currentStage)}`}>
-                      <span className="font-medium opacity-90">{t.department}</span>
-                      <span className="opacity-60">·</span>
-                      <span className="font-medium">{stageLabel(t.currentStage)}</span>
+                {isOnboarding && obView === "register" ? (
+                  // Register subtab: source + payment + registration status (these
+                  // patients aren't in the pipeline yet, so no pipeline pills).
+                  <div className="flex flex-wrap items-center gap-1.5">
+                    <SourceBadge source={r.source} />
+                    <span className={`inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[10px] font-medium ${r.is_paid ? "bg-emerald-500/15 text-emerald-300" : "bg-rose-500/15 text-rose-300"}`}>
+                      <CreditCard className="h-3 w-3" /> {r.is_paid ? "Paid" : "Unpaid"}
                     </span>
-                  ))}
-                </div>
+                    <span className={`rounded-full px-2 py-0.5 text-[10px] font-medium ${r.status === "seen" ? "bg-sky-500/15 text-sky-300" : "bg-amber-500/15 text-amber-300"}`}>{statusLabel(r.status)}</span>
+                  </div>
+                ) : (
+                  // Journey subtab + workstation: pipeline status only.
+                  <div className="flex flex-wrap gap-1.5">
+                    {tracks.map((t) => (
+                      <span key={t.department} className={`inline-flex items-center gap-1 rounded-full border px-2 py-0.5 text-[10px] ${stageColorClasses(t.currentStage)}`}>
+                        <span className="font-medium opacity-90">{t.department}</span>
+                        <span className="opacity-60">·</span>
+                        <span className="font-medium">{stageLabel(t.currentStage)}</span>
+                      </span>
+                    ))}
+                  </div>
+                )}
               </button>
             );
           })}
