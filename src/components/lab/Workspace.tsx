@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useState, useCallback, useMemo } from "react";
-import { Loader2, Search, X, ArrowRight, Plus, Workflow, QrCode, UserPlus, Printer, Send, Check, FlaskConical, Pencil, Stethoscope, AlertTriangle, CreditCard } from "lucide-react";
+import { Loader2, Search, X, ArrowRight, Plus, Workflow, QrCode, UserPlus, Printer, Send, Check, FlaskConical, Pencil, Stethoscope, AlertTriangle, CreditCard, Lock } from "lucide-react";
 import toast from "react-hot-toast";
 import { SourceBadge } from "@/components/lab/SourceBadge";
 import { OnboardingPanel } from "@/components/lab/OnboardingPanel";
@@ -39,6 +39,23 @@ function statusLabel(status: string): string {
   if (status === "seen") return "Registered";
   if (status === "done") return "Done";
   return status;
+}
+
+/** Format a Naira amount, e.g. 12500 → "₦12,500". */
+function fmtNaira(n: number): string {
+  return "₦" + Math.round(n).toLocaleString();
+}
+
+/** Per-test cost rows (+ total) for a request, derived from its resolved breakdown. */
+function costBreakdown(r: WReq): { rows: { name: string; price: number | null }[]; total: number } {
+  const items = Array.isArray(r.test_breakdown)
+    ? (r.test_breakdown as { raw?: string; canonical_name?: string; unit_price?: number }[])
+    : [];
+  const rows = items
+    .map((it) => ({ name: it.canonical_name || it.raw || "", price: typeof it.unit_price === "number" ? it.unit_price : null }))
+    .filter((x) => x.name);
+  const total = rows.reduce((s, x) => s + (x.price ?? 0), 0);
+  return { rows, total };
 }
 
 interface JEvent { id: string; stage: string; department: string | null; sample_label: string | null; note: string | null; actor_email: string | null; created_at: string }
@@ -418,6 +435,7 @@ export function Workspace({
                   </div>
                   <div className="flex shrink-0 items-center gap-1.5">
                     <SourceBadge source={r.source} />
+                    {!r.is_paid && r.status !== "done" && <span className="inline-flex items-center gap-1 rounded-full bg-rose-500/15 px-2 py-0.5 text-[10px] font-medium text-rose-300" title="In the queue, awaiting payment"><CreditCard className="h-3 w-3" /> Awaiting payment</span>}
                     <span className={`rounded-full px-2 py-0.5 text-[10px] font-medium ${r.status === "done" ? "bg-emerald-500/15 text-emerald-300" : r.status === "seen" ? "bg-sky-500/15 text-sky-300" : "bg-amber-500/15 text-amber-300"}`}>{statusLabel(r.status)}</span>
                   </div>
                 </div>
@@ -514,6 +532,9 @@ function WorkspaceDrawer({
                 </span>
               ))}
             </div>
+            {costBreakdown(request).total > 0 && (
+              <p className="mt-1.5 text-xs text-slate-300">Estimated total: <span className="font-semibold text-white">{fmtNaira(costBreakdown(request).total)}</span></p>
+            )}
             <p className="mt-1.5 text-[11px] text-slate-500">
               Registered {fmtDateTime(request.created_at)}
               {request.seen_at ? ` · Seen ${fmtDateTime(request.seen_at)}` : ""}
@@ -548,6 +569,24 @@ function WorkspaceDrawer({
           <div className="mb-4 rounded-2xl border border-amber-500/25 bg-amber-500/10 p-4">
             <p className="flex items-center gap-2 text-sm font-semibold text-amber-200"><AlertTriangle className="h-4 w-4" /> Registration checklist</p>
             <p className="mt-1 text-xs text-amber-100/80">Confirm the tests and take payment before the sample can move down the pipeline.</p>
+            {(() => {
+              const { rows, total } = costBreakdown(request);
+              return rows.length > 0 ? (
+                <div className="mt-3 rounded-xl border border-amber-500/20 bg-amber-500/5 p-3 text-xs">
+                  <div className="space-y-1">
+                    {rows.map((x, i) => (
+                      <div key={i} className="flex justify-between gap-3 text-amber-100/80">
+                        <span className="truncate">{x.name}</span>
+                        <span className="shrink-0 tabular-nums">{x.price != null ? fmtNaira(x.price) : "—"}</span>
+                      </div>
+                    ))}
+                  </div>
+                  <div className="mt-2 flex justify-between border-t border-amber-500/20 pt-2 font-semibold text-amber-100">
+                    <span>Total to collect</span><span className="tabular-nums">{fmtNaira(total)}</span>
+                  </div>
+                </div>
+              ) : null;
+            })()}
             <div className="mt-3 flex flex-wrap gap-2">
               <button onClick={() => onRegistration({ tests_confirmed: !request.tests_confirmed })} disabled={busy}
                 className={`inline-flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-xs font-semibold disabled:opacity-50 ${request.tests_confirmed ? "border border-emerald-500/30 bg-emerald-600/20 text-emerald-300" : "bg-white/10 text-slate-200 hover:bg-white/15"}`}>
@@ -884,6 +923,17 @@ function PatientEditForm({
         </div>
 
         <div className="space-y-3">
+          {(request.doctor_name || request.doctor_email) && (
+            <div>
+              <label className="mb-1 block text-xs font-medium text-slate-400">Referring doctor</label>
+              <div className="flex items-center gap-2 rounded-xl border border-white/10 bg-white/5 px-3 py-2 text-sm text-slate-300">
+                <Stethoscope className="h-4 w-4 shrink-0 text-medical-300" />
+                <span className="truncate">{request.doctor_name || request.doctor_email}</span>
+                <Lock className="ml-auto h-3.5 w-3.5 shrink-0 text-slate-500" />
+              </div>
+              <p className="mt-1 text-[11px] text-slate-500">From the Poveon referral — locked, can&rsquo;t be changed here.</p>
+            </div>
+          )}
           <div>
             <label className="mb-1 block text-xs font-medium text-slate-400">Full name</label>
             <input className={inputCls} value={name} onChange={(e) => setName(e.target.value)} placeholder="Patient name" />

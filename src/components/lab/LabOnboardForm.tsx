@@ -56,6 +56,10 @@ export function LabOnboardForm({
   const detailsValid = name.trim().length > 0 && phone.trim().length >= 5;
   const testsValid = tests.length > 0;
 
+  // Running cost estimate from catalog-priced tests (free-text tests are unpriced).
+  const knownTotal = tests.reduce((s, t) => s + (typeof t.price === "number" ? t.price : 0), 0);
+  const hasUnpriced = tests.some((t) => typeof t.price !== "number");
+
   function addTemplate(t: OnboardTemplate) {
     const existing = new Set(tests.map((x) => x.name.toLowerCase()));
     const additions = t.test_names
@@ -195,6 +199,15 @@ export function LabOnboardForm({
             <label className="mb-1 block text-xs font-medium text-slate-600">Tests / investigations *</label>
             <TestTagInput value={tests} onChange={setTests} labId={lab.id} />
           </div>
+          {tests.length > 0 && (
+            <div className="rounded-xl border border-slate-200 bg-slate-50 px-3 py-2 text-sm">
+              <div className="flex justify-between font-medium text-slate-800">
+                <span>Estimated total</span>
+                <span className="tabular-nums">₦{Math.round(knownTotal).toLocaleString()}{hasUnpriced ? "+" : ""}</span>
+              </div>
+              {hasUnpriced && <p className="mt-0.5 text-[11px] text-slate-400">Some tests aren&rsquo;t price-listed yet — the lab confirms the final total.</p>}
+            </div>
+          )}
           <div>
             <label className="mb-1 block text-xs font-medium text-slate-600">Symptoms / notes (optional)</label>
             <textarea className={inputCls} rows={3} value={condition} onChange={(e) => setCondition(e.target.value)} placeholder="Anything the lab should know" />
@@ -212,6 +225,10 @@ export function LabOnboardForm({
             <p className="font-medium text-slate-900">{name} {age && <span className="text-slate-400">· {age}y</span>} {sex && <span className="text-slate-400">· {sex}</span>}</p>
             <p className="text-slate-500">{phone}{email ? ` · ${email}` : ""}</p>
             <p className="mt-2 text-slate-700">{tests.map((t) => t.name).join(", ")}</p>
+            <div className="mt-2 flex justify-between border-t border-slate-200 pt-2 font-semibold text-slate-900">
+              <span>Estimated total</span>
+              <span className="tabular-nums">₦{Math.round(knownTotal).toLocaleString()}{hasUnpriced ? "+" : ""}</span>
+            </div>
           </div>
           <label className="flex items-start gap-2 text-sm text-slate-600">
             <input type="checkbox" checked={consent} onChange={(e) => setConsent(e.target.checked)} className="mt-0.5 h-4 w-4 rounded border-slate-300 text-medical-600" />

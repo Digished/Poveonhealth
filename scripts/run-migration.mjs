@@ -762,6 +762,18 @@ const migrations = [
     sql: `UPDATE request_journey_events SET department='Radiology' WHERE department IN ('Sonography','Cardiology')`,
     continueOnError: true,
   },
+  {
+    // Keep staff roles scoped to old granular departments working under the new
+    // 2-department model. Idempotent once remapped.
+    desc: "remap legacy role departments → Laboratory",
+    sql: `UPDATE lab_roles SET department='Laboratory' WHERE department IN ('Hematology','Chemistry','Microbiology','Immunology','Histopathology')`,
+    continueOnError: true,
+  },
+  {
+    desc: "remap legacy role departments → Radiology",
+    sql: `UPDATE lab_roles SET department='Radiology' WHERE department IN ('Sonography','Cardiology')`,
+    continueOnError: true,
+  },
 ];
 
 let failed = false;
