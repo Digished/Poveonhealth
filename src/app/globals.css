@@ -196,6 +196,14 @@
   100% { transform: translate3d(110vw, 0, 0); }
 }
 
+/* Seamless horizontal parallax for the landscape hills. The layer holds two
+   identical tiles side by side; sliding by -50% loops with no visible seam.
+   Transform-only → GPU-composited, no per-frame JS. */
+@keyframes scene-scroll {
+  from { transform: translate3d(0, 0, 0); }
+  to   { transform: translate3d(-50%, 0, 0); }
+}
+
 /* Stars fade in/out (used with alternate) */
 @keyframes twinkle {
   0%   { opacity: 0.15; }
