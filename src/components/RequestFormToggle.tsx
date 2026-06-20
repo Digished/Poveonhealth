@@ -65,51 +65,51 @@ export function RequestFormToggle({
   };
 
   return (
-    <div className="space-y-3">
+    <div className="space-y-4">
       {/* Mode dropdown */}
       <div className="relative">
         <button
           onClick={() => setDropdownOpen(!dropdownOpen)}
-          className="w-full flex items-center justify-between gap-3 px-4 py-3.5 rounded-xl border border-slate-200 bg-white hover:bg-slate-50 transition-all shadow-sm focus:outline-none focus:ring-2 focus:ring-medical-500 focus:border-medical-500"
+          className="w-full flex items-center justify-between gap-3 px-4 py-4 rounded-2xl border border-stone-200/80 bg-white/70 backdrop-blur-sm hover:bg-white transition-all shadow-[0_1px_3px_rgba(40,33,20,0.05)] focus:outline-none focus:ring-2 focus:ring-medical-400/40 focus:border-medical-300"
         >
           <div className="flex items-center gap-3 min-w-0">
             <div className="text-medical-600 flex-shrink-0">
               {modeIcons[mode]}
             </div>
             <div className="text-left min-w-0">
-              <p className="text-xs font-semibold text-slate-500 uppercase tracking-wide">I am a</p>
-              <p className="text-sm font-bold text-slate-800">{modeLabels[mode]}</p>
+              <p className="text-[11px] font-medium text-stone-400 uppercase tracking-[0.12em]">I am a</p>
+              <p className="text-sm font-semibold text-stone-800">{modeLabels[mode]}</p>
             </div>
           </div>
-          <ChevronDown className={`w-5 h-5 text-slate-400 flex-shrink-0 transition-transform duration-200 ${dropdownOpen ? "rotate-180" : ""}`} />
+          <ChevronDown className={`w-5 h-5 text-stone-400 flex-shrink-0 transition-transform duration-200 ${dropdownOpen ? "rotate-180" : ""}`} />
         </button>
 
         {/* Dropdown menu */}
         {dropdownOpen && (
-          <div className="absolute top-full left-0 right-0 mt-2 bg-white border border-slate-200 rounded-xl shadow-xl z-50 overflow-hidden">
+          <div className="absolute top-full left-0 right-0 mt-2 bg-white/95 backdrop-blur-sm border border-stone-200/80 rounded-2xl shadow-lg shadow-stone-300/30 z-50 overflow-hidden">
             {(["professional", "patient"] as const).map((m) => (
               <button
                 key={m}
                 onClick={() => handleModeChange(m)}
-                className={`w-full flex items-center gap-3 px-4 py-3.5 text-left transition-colors border-l-4 ${
+                className={`w-full flex items-center gap-3 px-4 py-3.5 text-left transition-colors border-l-2 ${
                   mode === m
-                    ? "bg-medical-50 border-l-medical-600"
-                    : "hover:bg-slate-50 border-l-transparent hover:border-l-slate-300"
+                    ? "bg-medical-50/70 border-l-medical-500"
+                    : "hover:bg-stone-50 border-l-transparent"
                 }`}
               >
-                <div className={`text-lg flex-shrink-0 ${mode === m ? "text-medical-600" : "text-slate-400"}`}>
+                <div className={`text-lg flex-shrink-0 ${mode === m ? "text-medical-600" : "text-stone-400"}`}>
                   {modeIcons[m]}
                 </div>
                 <div className="min-w-0 flex-1">
-                  <p className={`text-sm font-semibold ${mode === m ? "text-medical-700" : "text-slate-700"}`}>
+                  <p className={`text-sm font-semibold ${mode === m ? "text-medical-700" : "text-stone-700"}`}>
                     {modeLabels[m]}
                   </p>
-                  <p className="text-xs text-slate-500 mt-1">
+                  <p className="text-xs text-stone-400 mt-0.5">
                     {modeDescriptions[m]}
                   </p>
                 </div>
                 {mode === m && (
-                  <div className="w-2.5 h-2.5 rounded-full bg-medical-600 flex-shrink-0 animate-pulse" />
+                  <div className="w-1.5 h-1.5 rounded-full bg-medical-500 flex-shrink-0" />
                 )}
               </button>
             ))}

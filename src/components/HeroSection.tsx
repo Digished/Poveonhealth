@@ -172,27 +172,27 @@ export function HeroSection({ mode = "professional" }: { mode?: "professional" |
   return (
     <>
       <div
-        className={`relative overflow-hidden pt-5 pb-5 px-4 transition-colors duration-700 ${
+        className={`relative overflow-hidden pt-9 pb-8 px-4 transition-colors duration-700 ${
           isDay
-            ? "bg-gradient-to-b from-sky-200/70 via-sky-100/50 to-transparent"
-            : "bg-gradient-to-b from-indigo-200/60 via-slate-100/40 to-transparent"
+            ? "bg-gradient-to-b from-amber-100/55 via-sky-100/25 to-transparent"
+            : "bg-gradient-to-b from-indigo-200/50 via-slate-100/25 to-transparent"
         }`}
       >
         {isDay ? <CloudLayer /> : <StarField />}
 
-        <div className="relative z-10 flex flex-col items-center text-center gap-1.5 max-w-md mx-auto">
+        <div className="relative z-10 flex flex-col items-center text-center gap-3 max-w-md mx-auto">
           <div>{isDay ? <SunIcon /> : <MoonIcon />}</div>
-          <h1 className="text-2xl font-bold text-slate-800 tracking-tight">
+          <h1 className="font-serif text-[2.6rem] sm:text-5xl font-normal leading-[1.05] tracking-tight text-stone-800">
             {GREETING[tod]}
           </h1>
-          <p className="text-sm text-slate-500 leading-relaxed max-w-xs">
+          <p className="text-[15px] text-stone-500 leading-relaxed max-w-xs">
             {mode === "patient"
               ? "What test do you need today?"
               : "What test does your patient need today?"}{" "}
             <button
               type="button"
               onClick={() => setAboutOpen(true)}
-              className="text-medical-600 hover:text-medical-800 font-semibold underline underline-offset-2 transition-colors"
+              className="text-medical-600 hover:text-medical-800 font-medium underline underline-offset-4 decoration-medical-300 transition-colors"
             >
               Learn more
             </button>

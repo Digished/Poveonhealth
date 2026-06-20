@@ -17,6 +17,7 @@ const config: Config = {
     extend: {
       fontFamily: {
         sans: ["Inter", "system-ui", "sans-serif"],
+        serif: ["Newsreader", "Georgia", "Cambria", "Times New Roman", "serif"],
       },
       colors: {
         // Backed by CSS variables so a theme wrapper (.theme-*) can recolour every

@@ -218,10 +218,10 @@ export function LabHeroSection({
       <div
         id="lab-hero"
         ref={heroRef}
-        className={`relative overflow-hidden pt-6 pb-8 px-4 transition-colors duration-700 ${
+        className={`relative overflow-hidden pt-8 pb-9 px-4 transition-colors duration-700 ${
           isDay
-            ? "bg-gradient-to-b from-sky-200/70 via-sky-100/50 to-transparent"
-            : "bg-gradient-to-b from-indigo-200/60 via-slate-100/40 to-transparent"
+            ? "bg-gradient-to-b from-amber-100/55 via-sky-100/25 to-transparent"
+            : "bg-gradient-to-b from-indigo-200/50 via-slate-100/25 to-transparent"
         }`}
       >
         {/* Hero image background */}
@@ -257,18 +257,15 @@ export function LabHeroSection({
           </div>
 
           {/* Text */}
-          <div className="space-y-1">
-            <p className="text-[10px] font-bold uppercase tracking-[0.24em] text-slate-500">
+          <div className="space-y-1.5">
+            <p className="text-[10px] font-medium uppercase tracking-[0.24em] text-stone-400">
               Welcome to
             </p>
-            <h1 className="text-3xl font-black tracking-tight leading-[1.05] text-slate-900">
+            <h1 className="font-serif text-[2rem] sm:text-4xl font-normal tracking-tight leading-[1.05] text-stone-800">
               {labName}
             </h1>
-            <p className="text-sm font-semibold text-slate-600">
-              {GREETING[tod]}
-            </p>
-            <p className="text-sm text-slate-500">
-              How may we assist you today?
+            <p className="text-sm font-medium text-stone-500 pt-0.5">
+              {GREETING[tod]} — how may we assist you today?
             </p>
           </div>
 
@@ -276,7 +273,7 @@ export function LabHeroSection({
           <button
             type="button"
             onClick={() => setDetailsOpen(true)}
-            className="text-xs font-semibold underline underline-offset-2 transition-colors text-medical-600 hover:text-medical-800"
+            className="text-xs font-medium underline underline-offset-4 decoration-medical-300 transition-colors text-medical-600 hover:text-medical-800"
           >
             Learn more
           </button>
@@ -286,7 +283,7 @@ export function LabHeroSection({
       {/* ── Fixed mini-header — slides in when hero scrolls out of view ─── */}
       {mounted && createPortal(
         <div
-          className={`fixed top-0 inset-x-0 z-50 h-16 bg-white/95 backdrop-blur-md border-b border-slate-200/60 shadow-sm transition-[opacity,transform] duration-300 ease-out ${
+          className={`fixed top-0 inset-x-0 z-50 h-16 bg-white/90 backdrop-blur-md border-b border-stone-200/60 shadow-sm transition-[opacity,transform] duration-300 ease-out ${
             heroVisible
               ? "opacity-0 -translate-y-2 pointer-events-none"
               : "opacity-100 translate-y-0"
@@ -302,7 +299,7 @@ export function LabHeroSection({
               </div>
             )}
             {/* Name */}
-            <p className="text-sm font-bold text-slate-800 flex-1 truncate">{labName}</p>
+            <p className="text-sm font-semibold text-stone-800 flex-1 truncate">{labName}</p>
             {/* Contact */}
             {hasContact && (
               waHref ? (
