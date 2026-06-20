@@ -424,7 +424,7 @@ export function FastModeComposer({
           value={rawText}
           onChange={(e) => setRawText(e.target.value)}
           rows={4}
-          placeholder="e.g. FBC, malaria parasite and widal for Mrs Okafor, 42, 0801 234 5678, query typhoid"
+          placeholder="e.g. Headache, nipple discharge, Brain CT scan for Mrs Okafor, 38, 0801 234 5678, query prolactinoma"
           className="w-full rounded-xl border border-slate-200 bg-white px-3 py-2.5 text-[15px] leading-7 text-slate-800 placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-medical-500 focus:border-medical-400 resize-none"
         />
         <div className="flex items-start gap-2 mt-2">
