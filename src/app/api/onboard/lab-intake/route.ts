@@ -27,6 +27,7 @@ const Schema = z.object({
   address: z.string().max(500).optional().or(z.literal("")),
   tests: z.string().min(1).max(3000),
   condition: z.string().max(1000).optional().or(z.literal("")),
+  professional_id: z.string().uuid().optional(),
   consent: z.literal(true),
 });
 
@@ -93,6 +94,24 @@ export async function POST(request: NextRequest) {
 
     const email = data.patient_email?.trim() || null;
 
+    // A chosen referring doctor (from the lab's pool) makes this a referral.
+    let doctorName = data.source === "walk_in" ? "Walk-in" : "Self Service";
+    let doctorEmail: string | null = null;
+    let doctorPhone: string | null = null;
+    let doctorHospital: string | null = null;
+    if (data.professional_id) {
+      const prof = await prisma.labProfessional.findFirst({
+        where: { id: data.professional_id, lab_id: lab.id, active: true },
+        select: { name: true, email: true, phone: true, hospital: true },
+      });
+      if (prof) {
+        doctorName = prof.name;
+        doctorEmail = prof.email ?? null;
+        doctorPhone = prof.phone ?? null;
+        doctorHospital = prof.hospital ?? null;
+      }
+    }
+
     const newRequest = await prisma.request.create({
       data: {
         code,
@@ -103,8 +122,10 @@ export async function POST(request: NextRequest) {
         patient_age: data.patient_age ?? null,
         sex: data.sex || null,
         address: data.address || null,
-        doctor_name: data.source === "walk_in" ? "Walk-in" : "Self Service",
-        doctor_email: null,
+        doctor_name: doctorName,
+        doctor_email: doctorEmail,
+        doctor_phone: doctorPhone,
+        doctor_hospital: doctorHospital,
         tests: testsField,
         diagnosis: data.condition || null,
         quoted_price: quotedPrice,

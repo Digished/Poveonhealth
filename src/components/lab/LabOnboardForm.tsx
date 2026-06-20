@@ -1,8 +1,9 @@
 "use client";
 
 import { useState } from "react";
-import { User, FlaskConical, ShieldCheck, Check, Loader2, Copy } from "lucide-react";
+import { User, FlaskConical, ShieldCheck, Check, Loader2, Copy, Search, ArrowRight, Stethoscope, Lock } from "lucide-react";
 import { TestTagInput, TestTag } from "@/components/ui/TestTagInput";
+import { DoctorSearchSelect, PickedDoctor } from "@/components/lab/DoctorSearchSelect";
 
 export interface OnboardLab {
   id?: string;
@@ -53,6 +54,17 @@ export function LabOnboardForm({
   const [error, setError] = useState<string | null>(null);
   const [code, setCode] = useState<string | null>(null);
 
+  // Referring doctor (manual path) — picked from the lab's pool.
+  const [doctor, setDoctor] = useState<PickedDoctor | null>(null);
+  const canAddDoctor = source === "walk_in"; // front desk can add; public QR is search-only
+
+  // "I have a Poveon code" reveal-and-confirm path.
+  const [entryMode, setEntryMode] = useState<"code" | "manual">(source === "qr" ? "code" : "manual");
+  const [lookupCode, setLookupCode] = useState("");
+  const [looking, setLooking] = useState(false);
+  const [confirming, setConfirming] = useState(false);
+  const [revealed, setRevealed] = useState<{ code: string; tests: string; doctor_name: string | null } | null>(null);
+
   const detailsValid = name.trim().length > 0 && phone.trim().length >= 5;
   const testsValid = tests.length > 0;
 
@@ -86,6 +98,7 @@ export function LabOnboardForm({
           sex: sex || undefined,
           tests: tests.map((t) => t.name).join(", "),
           condition: condition.trim() || undefined,
+          professional_id: doctor?.id,
           consent: true,
         }),
       });
@@ -97,6 +110,64 @@ export function LabOnboardForm({
       setError(e instanceof Error ? e.message : "Something went wrong");
     } finally {
       setSubmitting(false);
+    }
+  }
+
+  // Reveal an existing Poveon request by code so the client can confirm details.
+  async function reveal() {
+    const c = lookupCode.trim().toUpperCase();
+    if (!c) { setError("Enter your Poveon code"); return; }
+    setLooking(true); setError(null);
+    try {
+      const res = await fetch("/api/onboard/lookup", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ lab_id: lab.id, lab_slug: lab.slug, code: c }),
+      });
+      const data = await res.json();
+      if (!res.ok || !data.success) throw new Error(data.error || "Request not found");
+      const r = data.request;
+      setName(r.patient_name ?? "");
+      setPhone(r.patient_phone ?? "");
+      setEmail(r.patient_email ?? "");
+      setAge(r.patient_age != null ? String(r.patient_age) : "");
+      setSex((r.sex ?? "").toLowerCase());
+      setRevealed({ code: r.code, tests: r.tests ?? "", doctor_name: r.doctor_name ?? null });
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Lookup failed");
+    } finally {
+      setLooking(false);
+    }
+  }
+
+  // Confirm the revealed details and submit (updates the existing request).
+  async function confirmDetails() {
+    if (!revealed) return;
+    setConfirming(true); setError(null);
+    try {
+      const res = await fetch("/api/onboard/confirm", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          lab_id: lab.id,
+          lab_slug: lab.slug,
+          code: revealed.code,
+          patient_name: name.trim(),
+          patient_phone: phone.trim(),
+          patient_email: email.trim() || undefined,
+          patient_age: age ? Number(age) : undefined,
+          sex: sex || undefined,
+          consent: true,
+        }),
+      });
+      const data = await res.json();
+      if (!res.ok || !data.success) throw new Error(data.error || "Could not confirm");
+      setCode(data.code);
+      onSuccess?.(data.code);
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Could not confirm");
+    } finally {
+      setConfirming(false);
     }
   }
 
@@ -122,6 +193,75 @@ export function LabOnboardForm({
 
   return (
     <div>
+      {/* Entry mode toggle */}
+      <div className="mb-4 inline-flex w-full rounded-xl border border-slate-200 bg-slate-50 p-1">
+        {([["code", "I have a Poveon code"], ["manual", "New registration"]] as const).map(([m, label]) => (
+          <button key={m} type="button" onClick={() => { setEntryMode(m); setError(null); }} className={`flex-1 rounded-lg px-3 py-1.5 text-xs font-medium transition ${entryMode === m ? "bg-medical-600 text-white" : "text-slate-500 hover:text-slate-700"}`}>{label}</button>
+        ))}
+      </div>
+
+      {error && <div className="mb-3 rounded-lg bg-red-50 px-3 py-2 text-sm text-red-700">{error}</div>}
+
+      {/* Code path — find the Poveon request, then confirm details */}
+      {entryMode === "code" && !revealed && (
+        <div className="space-y-3">
+          <p className="text-sm text-slate-500">Enter the Poveon code from your referral to load and confirm your details.</p>
+          <div className="flex gap-2">
+            <input
+              value={lookupCode}
+              onChange={(e) => setLookupCode(e.target.value.toUpperCase())}
+              onKeyDown={(e) => { if (e.key === "Enter") reveal(); }}
+              placeholder="e.g. 8X4K29Q"
+              className={`${inputCls} font-mono uppercase tracking-wider`}
+            />
+            <button type="button" onClick={reveal} disabled={looking || !lookupCode.trim()} className="inline-flex shrink-0 items-center gap-1.5 rounded-xl bg-medical-600 px-4 text-sm font-semibold text-white hover:bg-medical-700 disabled:opacity-50">
+              {looking ? <Loader2 className="h-4 w-4 animate-spin" /> : <Search className="h-4 w-4" />} Find
+            </button>
+          </div>
+        </div>
+      )}
+
+      {entryMode === "code" && revealed && (
+        <div className="space-y-3">
+          <div>
+            <label className="mb-1 block text-xs font-medium text-slate-600">Full name *</label>
+            <input className={inputCls} value={name} onChange={(e) => setName(e.target.value)} />
+          </div>
+          <div>
+            <label className="mb-1 block text-xs font-medium text-slate-600">Phone number *</label>
+            <input className={inputCls} value={phone} onChange={(e) => setPhone(e.target.value)} inputMode="tel" />
+          </div>
+          <div className="grid grid-cols-2 gap-3">
+            <div>
+              <label className="mb-1 block text-xs font-medium text-slate-600">Age</label>
+              <input className={inputCls} value={age} onChange={(e) => setAge(e.target.value.replace(/\D/g, ""))} inputMode="numeric" />
+            </div>
+            <div>
+              <label className="mb-1 block text-xs font-medium text-slate-600">Sex</label>
+              <select className={inputCls} value={sex} onChange={(e) => setSex(e.target.value)}>
+                <option value="">—</option><option value="male">Male</option><option value="female">Female</option><option value="other">Other</option>
+              </select>
+            </div>
+          </div>
+          <div>
+            <label className="mb-1 block text-xs font-medium text-slate-600">Email (optional)</label>
+            <input className={inputCls} value={email} onChange={(e) => setEmail(e.target.value)} inputMode="email" />
+          </div>
+          <div className="rounded-xl border border-slate-200 bg-slate-50 p-3 text-sm">
+            <p className="text-xs font-medium text-slate-500">Tests requested</p>
+            <p className="mt-0.5 text-slate-700">{revealed.tests || "—"}</p>
+            {revealed.doctor_name && (
+              <p className="mt-2 inline-flex items-center gap-1.5 text-xs text-slate-500"><Stethoscope className="h-3.5 w-3.5" /> Referred by {revealed.doctor_name} <Lock className="h-3 w-3" /></p>
+            )}
+          </div>
+          <button type="button" onClick={confirmDetails} disabled={confirming || !detailsValid} className="inline-flex w-full items-center justify-center gap-2 rounded-xl bg-medical-600 py-2.5 text-sm font-semibold text-white hover:bg-medical-700 disabled:opacity-50">
+            {confirming ? <Loader2 className="h-4 w-4 animate-spin" /> : <Check className="h-4 w-4" />} Confirm &amp; send
+          </button>
+        </div>
+      )}
+
+      {/* Manual path */}
+      {entryMode === "manual" && (<>
       {/* Stepper */}
       <div className="mb-5 flex items-center gap-2">
         {STEP_META.map((s, i) => {
@@ -139,8 +279,6 @@ export function LabOnboardForm({
           );
         })}
       </div>
-
-      {error && <div className="mb-3 rounded-lg bg-red-50 px-3 py-2 text-sm text-red-700">{error}</div>}
 
       {step === 0 && (
         <div className="space-y-3">
@@ -170,6 +308,10 @@ export function LabOnboardForm({
           <div>
             <label className="mb-1 block text-xs font-medium text-slate-600">Email (optional)</label>
             <input className={inputCls} value={email} onChange={(e) => setEmail(e.target.value)} placeholder="you@email.com" inputMode="email" />
+          </div>
+          <div>
+            <label className="mb-1 block text-xs font-medium text-slate-600">Referring doctor (optional)</label>
+            <DoctorSearchSelect labId={lab.id} canAdd={canAddDoctor} value={doctor} onChange={setDoctor} />
           </div>
           <button
             onClick={() => setStep(1)}
@@ -243,6 +385,7 @@ export function LabOnboardForm({
           </div>
         </div>
       )}
+      </>)}
     </div>
   );
 }

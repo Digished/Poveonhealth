@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useState, useCallback, useMemo } from "react";
-import { Loader2, Search, X, ArrowRight, Plus, Workflow, UserPlus, Printer, Send, Check, FlaskConical, Pencil, Stethoscope, AlertTriangle, CreditCard, Lock } from "lucide-react";
+import { Loader2, Search, X, ArrowRight, Plus, Workflow, UserPlus, Printer, Send, Check, FlaskConical, Pencil, Stethoscope, AlertTriangle, CreditCard, Lock, Bell } from "lucide-react";
 import toast from "react-hot-toast";
 import { SourceBadge } from "@/components/lab/SourceBadge";
 import { LabOnboardForm } from "@/components/lab/LabOnboardForm";
@@ -184,6 +184,20 @@ export function Workspace({
   // Switching department resets the pipeline sub-filter.
   const selectDept = useCallback((d: string) => { setDeptF(d); setStageF(""); }, []);
 
+  // New-QR-registration notifications (onboarding only): poll, then bubble up
+  // any QR self-registrations that arrived since this device last acknowledged.
+  const [lastSeenQr, setLastSeenQr] = useState<number>(() => Date.now());
+  const [fabOpen, setFabOpen] = useState(false);
+  useEffect(() => {
+    if (!isOnboarding) return;
+    try {
+      const key = `poveon_onboard_lastseen_${labId}`;
+      const stored = localStorage.getItem(key);
+      if (stored) setLastSeenQr(Number(stored));
+      else localStorage.setItem(key, String(Date.now()));
+    } catch { /* ignore */ }
+  }, [isOnboarding, labId]);
+
   const load = useCallback(async () => {
     setLoading(true);
     try {
@@ -198,6 +212,24 @@ export function Workspace({
   }, []);
 
   useEffect(() => { load(); }, [load]);
+
+  // Light polling so new QR registrations surface without a manual refresh.
+  useEffect(() => {
+    if (!isOnboarding) return;
+    const id = setInterval(() => { load(); }, 20000);
+    return () => clearInterval(id);
+  }, [isOnboarding, load]);
+
+  const newQr = useMemo(
+    () => (isOnboarding ? requests.filter((r) => (r.source ?? "") === "qr" && new Date(r.created_at).getTime() > lastSeenQr) : []),
+    [requests, isOnboarding, lastSeenQr]
+  );
+  function markQrSeen() {
+    const now = Date.now();
+    setLastSeenQr(now);
+    setFabOpen(false);
+    try { localStorage.setItem(`poveon_onboard_lastseen_${labId}`, String(now)); } catch { /* ignore */ }
+  }
 
   const matchesQuery = useCallback((r: WReq) => {
     if (!query) return true;
@@ -539,6 +571,30 @@ export function Workspace({
           onRegistration={(flags) => registration(selected, flags)}
           onChanged={load}
         />
+      )}
+
+      {/* New-QR-registration notification FAB (onboarding) */}
+      {isOnboarding && newQr.length > 0 && (
+        <div className="fixed bottom-6 right-6 z-[9998] flex flex-col items-end">
+          {fabOpen && (
+            <div className="mb-3 max-h-80 w-72 overflow-y-auto rounded-2xl border border-white/10 bg-slate-800 p-2 shadow-2xl">
+              <div className="flex items-center justify-between px-2 py-1">
+                <p className="text-xs font-semibold text-slate-300">New QR registrations</p>
+                <button onClick={markQrSeen} className="text-[11px] text-medical-300 hover:text-white">Mark all seen</button>
+              </div>
+              {newQr.map((r) => (
+                <button key={r.id} onClick={() => { setSelected(r); setObView("register"); setFabOpen(false); }} className="block w-full rounded-lg px-2 py-2 text-left hover:bg-white/10">
+                  <span className="block truncate text-sm text-white">{r.patient_name || "Unnamed"} <span className="font-mono text-xs text-slate-400">· {r.code}</span></span>
+                  <span className="block text-[10px] text-slate-400">Registered {timeAgo(r.created_at)}</span>
+                </button>
+              ))}
+            </div>
+          )}
+          <button onClick={() => setFabOpen((v) => !v)} className="relative inline-flex h-14 w-14 items-center justify-center rounded-full bg-medical-600 text-white shadow-xl transition hover:bg-medical-700" title="New QR registrations">
+            <Bell className="h-6 w-6" />
+            <span className="absolute -right-1 -top-1 inline-flex h-6 min-w-[1.5rem] items-center justify-center rounded-full bg-rose-500 px-1.5 text-xs font-bold text-white">{newQr.length}</span>
+          </button>
+        </div>
       )}
     </div>
   );
