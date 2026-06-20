@@ -16,6 +16,10 @@ export interface LabPermissions {
   can_view_activity:    boolean;
   can_view_feedback:    boolean;
   can_view_wallet:      boolean;
+  can_view_marketers?:       boolean;
+  can_manage_roles?:         boolean;
+  can_manage_professionals?: boolean;
+  can_manage_templates?:     boolean;
 }
 
 /** Full permissions — granted to the lab owner (LabUser) and API keys */
@@ -32,6 +36,10 @@ export const FULL_PERMISSIONS: LabPermissions = {
   can_view_activity:     true,
   can_view_feedback:     true,
   can_view_wallet:       true,
+  can_view_marketers:        true,
+  can_manage_roles:          true,
+  can_manage_professionals:  true,
+  can_manage_templates:      true,
 };
 
 export interface LabAuthResult {
@@ -41,6 +49,8 @@ export interface LabAuthResult {
   permissions: LabPermissions;
   /** Email of the authenticated actor — used for audit trails (undefined for API-key auth) */
   actor_email?: string;
+  /** Department this member's role is scoped to (null = all departments / owner / api key) */
+  department?: string | null;
 }
 
 /**
@@ -84,6 +94,7 @@ export async function getLabAuth(request: NextRequest): Promise<LabAuthResult | 
             email:  true,
             role: {
               select: {
+                department:           true,
                 can_view_requests:    true,
                 can_mark_seen:        true,
                 can_mark_done:        true,
@@ -96,16 +107,22 @@ export async function getLabAuth(request: NextRequest): Promise<LabAuthResult | 
                 can_view_activity:    true,
                 can_view_feedback:    true,
                 can_view_wallet:      true,
+                can_view_marketers:        true,
+                can_manage_roles:          true,
+                can_manage_professionals:  true,
+                can_manage_templates:      true,
               },
             },
           },
         });
         if (member) {
+          const { department, ...permissions } = member.role;
           return {
             lab_id:      member.lab_id,
             auth_method: "member",
-            permissions: member.role,
+            permissions,
             actor_email: member.email ?? user.email,
+            department:  department ?? null,
           };
         }
       }

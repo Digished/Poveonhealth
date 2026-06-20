@@ -7,6 +7,7 @@ import { doctorPatientArrived } from "@/lib/email/templates";
 import { logApiCall } from "@/lib/api-logger";
 import { getLabAuth } from "@/lib/lab-auth";
 import { resolveTests } from "@/lib/resolve-tests";
+import { accrueProfessionalCommission } from "@/lib/lims";
 
 const RetrieveSchema = z.object({
   code: z.string().min(1).max(50).transform((s) => s.trim().toUpperCase()),
@@ -42,9 +43,14 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    // Look up the request by code
-    const req = await prisma.request.findUnique({
-      where: { code },
+    // Look up the request within this lab. Accept the code with or without the
+    // lab prefix — the code is already lab-specific, so "8X4K29Q" matches
+    // "LABA-8X4K29Q".
+    const req = await prisma.request.findFirst({
+      where: {
+        lab_id: auth.lab_id,
+        OR: [{ code }, { code: { endsWith: `-${code}` } }],
+      },
       include: { lab: { select: { name: true, address: true, notification_email: true } } },
     });
 
@@ -52,14 +58,6 @@ export async function POST(request: NextRequest) {
       return NextResponse.json(
         { success: false, error: "No request found with that code" },
         { status: 404 }
-      );
-    }
-
-    // Verify code belongs to this lab
-    if (req.lab_id !== auth.lab_id) {
-      return NextResponse.json(
-        { success: false, error: "This request does not belong to your laboratory." },
-        { status: 403 }
       );
     }
 
@@ -120,6 +118,9 @@ export async function POST(request: NextRequest) {
           poveonFee, labRevenue, isPaidToPoveon, req.id,
         );
       }
+
+      // LIMS: accrue professional commission (journey tracks advanced manually).
+      await accrueProfessionalCommission({ labId: req.lab_id, requestId: req.id, doctorEmail: req.doctor_email, labRevenue });
 
       if (req.doctor_email) resend.emails.send({
         from: labSender(req.lab),

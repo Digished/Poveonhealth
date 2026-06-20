@@ -105,6 +105,33 @@
     display: none;
   }
 
+  /* Sleek, minimal scrollbar for in-panel scroll areas (e.g. the desktop nav).
+     Thumb only appears on hover so the rail doesn't feel heavy/archaic. */
+  .slim-scroll {
+    scrollbar-width: thin;
+    scrollbar-color: transparent transparent;
+  }
+  .slim-scroll:hover {
+    scrollbar-color: rgba(148, 163, 184, 0.35) transparent;
+  }
+  .slim-scroll::-webkit-scrollbar {
+    width: 6px;
+    height: 6px;
+  }
+  .slim-scroll::-webkit-scrollbar-track {
+    background: transparent;
+  }
+  .slim-scroll::-webkit-scrollbar-thumb {
+    background: transparent;
+    border-radius: 9999px;
+  }
+  .slim-scroll:hover::-webkit-scrollbar-thumb {
+    background: rgba(148, 163, 184, 0.35);
+  }
+  .slim-scroll::-webkit-scrollbar-thumb:hover {
+    background: rgba(148, 163, 184, 0.6);
+  }
+
   .animate-fade-in {
     animation: fadeIn 0.5s ease-in-out;
   }

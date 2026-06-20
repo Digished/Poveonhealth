@@ -45,6 +45,13 @@ model Lab {
   synonym_generation_jobs LabSynonymGenerationJob[]
   test_kb_mappings LabTestKnowledgeBaseMapping[]
   marketers       LabMarketer[]       @relation("lab_marketers")
+  test_templates  LabTestTemplate[]
+  professionals   LabProfessional[]
+  professional_commissions ProfessionalCommission[]
+  result_templates LabResultTemplate[]
+  request_results  RequestResult[]
+  sops             LabSop[]
+  departments      LabDepartment[]
 
   @@map("labs")
 }
@@ -113,6 +120,10 @@ model LabRole {
   can_view_feedback      Boolean  @default(false)
   can_view_wallet        Boolean  @default(false)
   can_view_marketers     Boolean  @default(false)
+  can_manage_roles       Boolean  @default(false) // create/edit lab roles & assign members
+  can_manage_professionals Boolean @default(false) // manage referring professionals & commission ledger
+  can_manage_templates   Boolean  @default(false) // create/edit test & result templates
+  department             String? // optional: scopes this role to one department (e.g. "Radiology")
   created_at             DateTime @default(now())
 
   lab     Lab         @relation(fields: [lab_id], references: [id], onDelete: Cascade)
@@ -138,6 +149,27 @@ model LabApiKey {
 
   @@index([lab_id])
   @@map("lab_api_keys")
+}
+
+// Per-lab configurable departments. Labs decide how tests group into pipelines
+// (e.g. "Laboratory" for samples, "Radiology" for scans). When a lab has none
+// configured, the app falls back to DEFAULT_DEPARTMENTS in lims-shared.ts.
+model LabDepartment {
+  id         String   @id @default(uuid())
+  lab_id     String
+  name       String
+  workflow   String   @default("specimen") // specimen | imaging | procedure
+  categories Json     @default("[]")        // keywords routing a test's category into this department
+  sort_order Int      @default(0)
+  is_active  Boolean  @default(true)
+  created_at DateTime @default(now())
+  updated_at DateTime @updatedAt
+
+  lab Lab @relation(fields: [lab_id], references: [id], onDelete: Cascade)
+
+  @@unique([lab_id, name])
+  @@index([lab_id])
+  @@map("lab_departments")
 }
 
 // Platform administrators
@@ -182,6 +214,9 @@ model Request {
   needs_ambulance       Boolean   @default(false) // Ambulance service requested
   ambulance_notes       String? // Pickup address / extra ambulance details
   status                String    @default("incoming")
+  source                String    @default("poveon") // poveon | walk_in | qr — how the client reached the lab
+  current_stage         String? // denormalized latest journey stage (registered|collected|received|in_analysis|verified|reported)
+  consent_at            DateTime? // patient consent captured at onboarding (ISO 15189 data-integrity)
   result_link           String? // URL to online results (stored when lab sends results)
   result_note           String? // Lab note sent with results
   result_file_urls      String[]  @default([]) // URLs of uploaded result files in Supabase Storage
@@ -189,6 +224,8 @@ model Request {
   poveon_amount         Decimal?  @db.Decimal(12, 2) // sum of poveon_fee for all lab_catalog matched tests
   lab_revenue_amount    Decimal?  @db.Decimal(12, 2) // sum of unit_price for all lab_catalog matched tests
   is_paid_to_poveon     Boolean   @default(false)    // true when lab has paid Poveon their commission
+  is_paid               Boolean   @default(false)    // true when the client has paid the lab for the tests
+  tests_confirmed       Boolean   @default(false)    // true when staff have reviewed & confirmed the tests
   created_at            DateTime  @default(now())
   updated_at            DateTime  @default(now()) @updatedAt
   seen_at               DateTime?
@@ -196,8 +233,28 @@ model Request {
 
   lab    Lab        @relation(fields: [lab_id], references: [id], onDelete: Cascade)
   branch LabBranch? @relation(fields: [branch_id], references: [id])
+  journey_events RequestJourneyEvent[]
+  results        RequestResult[]
 
   @@map("requests")
+}
+
+// Lightweight sample / client-journey timeline — one row per stage transition.
+// Powers the graphical journey map in the lab dashboard.
+model RequestJourneyEvent {
+  id          String   @id @default(uuid())
+  request_id  String
+  stage       String // registered | collected | received | in_analysis | verified | reported (or imaging/procedure stages)
+  department  String? // department/track this event belongs to (e.g. Hematology, Radiology); null = legacy single track
+  sample_label String? // for multiple collections on one request, e.g. "FBS", "2HPP"
+  note        String?
+  actor_email String?
+  created_at  DateTime @default(now())
+
+  request Request @relation(fields: [request_id], references: [id], onDelete: Cascade)
+
+  @@index([request_id, created_at])
+  @@map("request_journey_events")
 }
 
 // Doctor profile — stores PIN hash and profile data for the doctor portal
@@ -571,6 +628,7 @@ model LabOfferedTest {
   lab_price               Decimal   @db.Decimal(12, 2) // what the lab charges patients
   poveon_fee              Decimal?  @db.Decimal(12, 2) // Poveon's cut (derived)
   commission_pct          Decimal?  @db.Decimal(5, 2)  // e.g. 15.00 for 15%
+  tat_hours               Int?      // target turnaround time in hours (SLA) for this test
   is_active               Boolean   @default(true)
   mapped_by               String?   // admin email if manually mapped
   mapped_at               DateTime?
@@ -946,4 +1004,136 @@ model SkinConsult {
   @@index([patient_email])
   @@index([is_paid, created_at])
   @@map("skin_consults")
+}
+
+// Reusable test panel / template defined by a lab (e.g. "Antenatal Profile").
+model LabTestTemplate {
+  id             String   @id @default(uuid())
+  lab_id         String
+  name           String
+  description    String?
+  category_label String?
+  test_names     Json     @default("[]") // array of catalog test names included in the panel
+  tat_hours      Int?     // target turnaround time in hours (SLA) for this panel
+  created_by     String?  // actor email
+  created_at     DateTime @default(now())
+  updated_at     DateTime @default(now()) @updatedAt
+
+  lab Lab @relation(fields: [lab_id], references: [id], onDelete: Cascade)
+
+  @@unique([lab_id, name])
+  @@index([lab_id])
+  @@map("lab_test_templates")
+}
+
+// A referring medical professional owned by a lab, with a commission rate.
+model LabProfessional {
+  id               String   @id @default(uuid())
+  lab_id           String
+  name             String
+  email            String?
+  phone            String?
+  specialty        String?
+  hospital         String?
+  commission_type  String   @default("percent") // percent | flat
+  commission_value Decimal  @default(0) @db.Decimal(12, 2) // % of lab revenue, or flat ₦ per referral
+  bank_name        String?
+  account_number   String?
+  account_name     String?
+  active           Boolean  @default(true)
+  created_at       DateTime @default(now())
+  updated_at       DateTime @default(now()) @updatedAt
+
+  lab         Lab                      @relation(fields: [lab_id], references: [id], onDelete: Cascade)
+  commissions ProfessionalCommission[]
+
+  @@unique([lab_id, email])
+  @@index([lab_id])
+  @@map("lab_professionals")
+}
+
+// Commission accrual ledger — one row per referred request that earns commission.
+model ProfessionalCommission {
+  id              String   @id @default(uuid())
+  lab_id          String
+  professional_id String
+  request_id      String?  // the request that triggered the accrual
+  basis_amount    Decimal? @db.Decimal(12, 2) // lab_revenue_amount used as the basis
+  amount          Decimal  @db.Decimal(12, 2) // commission owed to the professional
+  status          String   @default("accrued") // accrued | paid
+  paid_at         DateTime?
+  note            String?
+  created_at      DateTime @default(now())
+
+  lab          Lab             @relation(fields: [lab_id], references: [id], onDelete: Cascade)
+  professional LabProfessional @relation(fields: [professional_id], references: [id], onDelete: Cascade)
+
+  @@index([lab_id, status])
+  @@index([professional_id])
+  @@map("professional_commissions")
+}
+
+// A reusable result-report template: a named set of parameters (analytes) with
+// units and reference ranges, used to enter & print/send structured results.
+model LabResultTemplate {
+  id             String   @id @default(uuid())
+  lab_id         String
+  name           String
+  department     String?
+  parameters     Json     @default("[]") // [{ name, unit, reference_range, group? }]
+  interpretation String?  // optional default interpretation/comment
+  created_by     String?
+  created_at     DateTime @default(now())
+  updated_at     DateTime @default(now()) @updatedAt
+
+  lab Lab @relation(fields: [lab_id], references: [id], onDelete: Cascade)
+
+  @@unique([lab_id, name])
+  @@index([lab_id])
+  @@map("lab_result_templates")
+}
+
+model LabSop {
+  id           String   @id @default(uuid())
+  lab_id       String
+  title        String
+  category     String? // e.g. Pre-analytical, Safety, Quality Control
+  department   String? // optional department scope
+  content      String   @db.Text // markdown / plain-text procedure body
+  version      Int      @default(1)
+  created_by   String?
+  created_at   DateTime @default(now())
+  updated_at   DateTime @default(now()) @updatedAt
+
+  lab Lab @relation(fields: [lab_id], references: [id], onDelete: Cascade)
+
+  @@index([lab_id])
+  @@map("lab_sops")
+}
+
+// A structured result entered for a request (optionally per department/template),
+// rendered into a branded PDF and sent/printed for the patient.
+model RequestResult {
+  id           String    @id @default(uuid())
+  lab_id       String
+  request_id   String
+  template_id  String?
+  department   String?
+  kind         String    @default("panel") // panel (editor) | document (uploaded file) | link (external URL)
+  external_url String? // for kind=link
+  values       Json      @default("[]") // [{ name, value, unit, reference_range, flag }]
+  comment      String?
+  status       String    @default("draft") // draft | verified | reported
+  verified_by String?
+  verified_at DateTime?
+  pdf_url     String?
+  created_at  DateTime  @default(now())
+  updated_at  DateTime  @default(now()) @updatedAt
+
+  lab     Lab     @relation(fields: [lab_id], references: [id], onDelete: Cascade)
+  request Request @relation(fields: [request_id], references: [id], onDelete: Cascade)
+
+  @@index([request_id])
+  @@index([lab_id, status])
+  @@map("request_results")
 }

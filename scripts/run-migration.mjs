@@ -12,7 +12,34 @@ import { createRequire } from "module";
 const require = createRequire(import.meta.url);
 const { PrismaClient } = require("@prisma/client");
 
-const prisma = new PrismaClient();
+// Run migrations over the DIRECT (non-pooled) connection when available. The
+// pooled DATABASE_URL goes through PgBouncer in transaction mode, where each
+// $executeRawUnsafe can land on a different backend and lose its prepared
+// statement ("prepared statement \"sNN\" does not exist", SQLSTATE 26000).
+const directUrl = process.env.DIRECT_URL || process.env.DATABASE_URL;
+const prisma = new PrismaClient(
+  directUrl ? { datasources: { db: { url: directUrl } } } : undefined
+);
+
+// Belt-and-suspenders: even on a direct connection, retry the pooler artifact.
+function isPreparedStmtArtifact(err) {
+  const msg = String(err?.message ?? "");
+  return msg.includes("prepared statement") && msg.includes("does not exist");
+}
+async function execWithRetry(sql, attempts = 4) {
+  let lastErr;
+  for (let i = 0; i < attempts; i++) {
+    try {
+      await prisma.$executeRawUnsafe(sql);
+      return;
+    } catch (err) {
+      lastErr = err;
+      if (isPreparedStmtArtifact(err)) continue;
+      throw err;
+    }
+  }
+  throw lastErr;
+}
 
 const migrations = [
   {
@@ -455,13 +482,332 @@ const migrations = [
     `,
     continueOnError: false,
   },
+  {
+    desc: "LIMS: requests source / journey-stage / consent columns",
+    sql: `
+      DO $$ BEGIN
+        ALTER TABLE requests ADD COLUMN IF NOT EXISTS source TEXT NOT NULL DEFAULT 'poveon';
+        ALTER TABLE requests ADD COLUMN IF NOT EXISTS current_stage TEXT;
+        ALTER TABLE requests ADD COLUMN IF NOT EXISTS consent_at TIMESTAMP(3);
+      END $$;
+    `,
+    continueOnError: false,
+  },
+  {
+    desc: "LIMS: request_journey_events table (sample / client journey timeline)",
+    sql: `
+      DO $$ BEGIN
+        CREATE TABLE IF NOT EXISTS request_journey_events (
+          id TEXT PRIMARY KEY,
+          request_id TEXT NOT NULL,
+          stage TEXT NOT NULL,
+          note TEXT,
+          actor_email TEXT,
+          created_at TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP
+        );
+        CREATE INDEX IF NOT EXISTS request_journey_events_request_id_created_at_idx ON request_journey_events(request_id, created_at);
+      END $$;
+    `,
+    continueOnError: false,
+  },
+  {
+    desc: "LIMS: lab_offered_tests.tat_hours column (per-test SLA)",
+    sql: `ALTER TABLE lab_offered_tests ADD COLUMN IF NOT EXISTS tat_hours INTEGER`,
+    continueOnError: true,
+  },
+  {
+    desc: "LIMS: lab_roles permission flags complete (defensive — fixes legacy can_view_marketers gap)",
+    sql: `
+      DO $$ BEGIN
+        ALTER TABLE lab_roles ADD COLUMN IF NOT EXISTS can_view_requests BOOLEAN NOT NULL DEFAULT true;
+        ALTER TABLE lab_roles ADD COLUMN IF NOT EXISTS can_mark_seen BOOLEAN NOT NULL DEFAULT false;
+        ALTER TABLE lab_roles ADD COLUMN IF NOT EXISTS can_mark_done BOOLEAN NOT NULL DEFAULT false;
+        ALTER TABLE lab_roles ADD COLUMN IF NOT EXISTS can_send_results BOOLEAN NOT NULL DEFAULT false;
+        ALTER TABLE lab_roles ADD COLUMN IF NOT EXISTS can_manage_team BOOLEAN NOT NULL DEFAULT false;
+        ALTER TABLE lab_roles ADD COLUMN IF NOT EXISTS can_manage_api_keys BOOLEAN NOT NULL DEFAULT false;
+        ALTER TABLE lab_roles ADD COLUMN IF NOT EXISTS can_view_referrals BOOLEAN NOT NULL DEFAULT false;
+        ALTER TABLE lab_roles ADD COLUMN IF NOT EXISTS can_view_clients BOOLEAN NOT NULL DEFAULT false;
+        ALTER TABLE lab_roles ADD COLUMN IF NOT EXISTS can_view_analytics BOOLEAN NOT NULL DEFAULT false;
+        ALTER TABLE lab_roles ADD COLUMN IF NOT EXISTS can_view_activity BOOLEAN NOT NULL DEFAULT false;
+        ALTER TABLE lab_roles ADD COLUMN IF NOT EXISTS can_view_feedback BOOLEAN NOT NULL DEFAULT false;
+        ALTER TABLE lab_roles ADD COLUMN IF NOT EXISTS can_view_wallet BOOLEAN NOT NULL DEFAULT false;
+        ALTER TABLE lab_roles ADD COLUMN IF NOT EXISTS can_view_marketers BOOLEAN NOT NULL DEFAULT false;
+        ALTER TABLE lab_roles ADD COLUMN IF NOT EXISTS can_manage_roles BOOLEAN NOT NULL DEFAULT false;
+        ALTER TABLE lab_roles ADD COLUMN IF NOT EXISTS can_manage_professionals BOOLEAN NOT NULL DEFAULT false;
+        ALTER TABLE lab_roles ADD COLUMN IF NOT EXISTS can_manage_templates BOOLEAN NOT NULL DEFAULT false;
+        CREATE UNIQUE INDEX IF NOT EXISTS lab_roles_lab_id_name_key ON lab_roles(lab_id, name);
+      END $$;
+    `,
+    continueOnError: false,
+  },
+  {
+    desc: "LIMS: lab_test_templates table (reusable panels)",
+    sql: `
+      DO $$ BEGIN
+        CREATE TABLE IF NOT EXISTS lab_test_templates (
+          id TEXT PRIMARY KEY,
+          lab_id TEXT NOT NULL,
+          name TEXT NOT NULL,
+          description TEXT,
+          category_label TEXT,
+          test_names JSONB NOT NULL DEFAULT '[]',
+          tat_hours INTEGER,
+          created_by TEXT,
+          created_at TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+          updated_at TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP
+        );
+        CREATE UNIQUE INDEX IF NOT EXISTS lab_test_templates_lab_id_name_key ON lab_test_templates(lab_id, name);
+        CREATE INDEX IF NOT EXISTS lab_test_templates_lab_id_idx ON lab_test_templates(lab_id);
+      END $$;
+    `,
+    continueOnError: false,
+  },
+  {
+    desc: "LIMS: lab_professionals table (referring professionals + commission rate)",
+    sql: `
+      DO $$ BEGIN
+        CREATE TABLE IF NOT EXISTS lab_professionals (
+          id TEXT PRIMARY KEY,
+          lab_id TEXT NOT NULL,
+          name TEXT NOT NULL,
+          email TEXT,
+          phone TEXT,
+          specialty TEXT,
+          hospital TEXT,
+          commission_type TEXT NOT NULL DEFAULT 'percent',
+          commission_value DECIMAL(12,2) NOT NULL DEFAULT 0,
+          bank_name TEXT,
+          account_number TEXT,
+          account_name TEXT,
+          active BOOLEAN NOT NULL DEFAULT true,
+          created_at TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+          updated_at TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP
+        );
+        CREATE UNIQUE INDEX IF NOT EXISTS lab_professionals_lab_id_email_key ON lab_professionals(lab_id, email);
+        CREATE INDEX IF NOT EXISTS lab_professionals_lab_id_idx ON lab_professionals(lab_id);
+      END $$;
+    `,
+    continueOnError: false,
+  },
+  {
+    desc: "LIMS: professional_commissions ledger table",
+    sql: `
+      DO $$ BEGIN
+        CREATE TABLE IF NOT EXISTS professional_commissions (
+          id TEXT PRIMARY KEY,
+          lab_id TEXT NOT NULL,
+          professional_id TEXT NOT NULL,
+          request_id TEXT,
+          basis_amount DECIMAL(12,2),
+          amount DECIMAL(12,2) NOT NULL,
+          status TEXT NOT NULL DEFAULT 'accrued',
+          paid_at TIMESTAMP(3),
+          note TEXT,
+          created_at TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP
+        );
+        CREATE INDEX IF NOT EXISTS professional_commissions_lab_id_status_idx ON professional_commissions(lab_id, status);
+        CREATE INDEX IF NOT EXISTS professional_commissions_professional_id_idx ON professional_commissions(professional_id);
+      END $$;
+    `,
+    continueOnError: false,
+  },
+  {
+    desc: "LIMS: multi-department journey + result-report schema",
+    sql: `
+      DO $$ BEGIN
+        ALTER TABLE request_journey_events ADD COLUMN IF NOT EXISTS department TEXT;
+        ALTER TABLE request_journey_events ADD COLUMN IF NOT EXISTS sample_label TEXT;
+        ALTER TABLE lab_roles ADD COLUMN IF NOT EXISTS department TEXT;
+        CREATE TABLE IF NOT EXISTS lab_result_templates (
+          id TEXT PRIMARY KEY,
+          lab_id TEXT NOT NULL,
+          name TEXT NOT NULL,
+          department TEXT,
+          parameters JSONB NOT NULL DEFAULT '[]',
+          interpretation TEXT,
+          created_by TEXT,
+          created_at TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+          updated_at TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP
+        );
+        CREATE UNIQUE INDEX IF NOT EXISTS lab_result_templates_lab_id_name_key ON lab_result_templates(lab_id, name);
+        CREATE INDEX IF NOT EXISTS lab_result_templates_lab_id_idx ON lab_result_templates(lab_id);
+        CREATE TABLE IF NOT EXISTS request_results (
+          id TEXT PRIMARY KEY,
+          lab_id TEXT NOT NULL,
+          request_id TEXT NOT NULL,
+          template_id TEXT,
+          department TEXT,
+          "values" JSONB NOT NULL DEFAULT '[]',
+          comment TEXT,
+          status TEXT NOT NULL DEFAULT 'draft',
+          verified_by TEXT,
+          verified_at TIMESTAMP(3),
+          pdf_url TEXT,
+          created_at TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+          updated_at TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP
+        );
+        CREATE INDEX IF NOT EXISTS request_results_request_id_idx ON request_results(request_id);
+        CREATE INDEX IF NOT EXISTS request_results_lab_id_status_idx ON request_results(lab_id, status);
+      END $$;
+    `,
+    continueOnError: false,
+  },
+  {
+    desc: "requests.is_paid + tests_confirmed (registration gate before pipeline)",
+    sql: `
+      DO $$ BEGIN
+        ALTER TABLE requests ADD COLUMN IF NOT EXISTS is_paid BOOLEAN NOT NULL DEFAULT false;
+        ALTER TABLE requests ADD COLUMN IF NOT EXISTS tests_confirmed BOOLEAN NOT NULL DEFAULT false;
+      END $$;
+    `,
+    continueOnError: false,
+  },
+  {
+    desc: "backfill is_paid/tests_confirmed for already-progressed requests (avoid locking the pipeline)",
+    sql: `
+      UPDATE requests
+      SET is_paid = true, tests_confirmed = true
+      WHERE is_paid = false
+        AND (status IN ('seen', 'done') OR (current_stage IS NOT NULL AND current_stage <> 'registered'));
+    `,
+    continueOnError: true,
+  },
+  {
+    desc: "LIMS: request_results document/link columns",
+    sql: `
+      DO $$ BEGIN
+        ALTER TABLE request_results ADD COLUMN IF NOT EXISTS kind TEXT NOT NULL DEFAULT 'panel';
+        ALTER TABLE request_results ADD COLUMN IF NOT EXISTS external_url TEXT;
+      END $$;
+    `,
+    continueOnError: false,
+  },
+  {
+    desc: "LIMS: lab_sops table (Standard Operating Procedures)",
+    sql: `
+      DO $$ BEGIN
+        CREATE TABLE IF NOT EXISTS lab_sops (
+          id TEXT PRIMARY KEY,
+          lab_id TEXT NOT NULL,
+          title TEXT NOT NULL,
+          category TEXT,
+          department TEXT,
+          content TEXT NOT NULL DEFAULT '',
+          version INTEGER NOT NULL DEFAULT 1,
+          created_by TEXT,
+          created_at TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+          updated_at TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP
+        );
+        CREATE INDEX IF NOT EXISTS lab_sops_lab_id_idx ON lab_sops(lab_id);
+      END $$;
+    `,
+    continueOnError: false,
+  },
+  {
+    desc: "LIMS: seed preset roles for every existing lab (idempotent)",
+    // Columns: can_view_requests, can_mark_seen, can_mark_done, can_send_results,
+    //   can_manage_team, can_manage_api_keys, can_view_referrals, can_view_clients,
+    //   can_view_analytics, can_view_activity, can_view_feedback, can_view_wallet,
+    //   can_view_marketers, can_manage_roles, can_manage_professionals, can_manage_templates
+    sql: `
+      DO $$
+      DECLARE
+        presets JSONB := '[
+          {"name":"Lab Admin","p":[true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true]},
+          {"name":"Lab Manager","p":[true,true,true,true,false,false,true,true,true,true,true,true,true,false,true,true]},
+          {"name":"Front Desk","p":[true,true,false,false,false,false,false,true,false,false,false,false,false,false,false,false]},
+          {"name":"Sample Collector","p":[true,true,false,false,false,false,false,false,false,false,false,false,false,false,false,false]},
+          {"name":"Lab Scientist","p":[true,false,true,true,false,false,false,false,false,false,false,false,false,false,false,true]},
+          {"name":"Sonographer","d":"Sonography","p":[true,true,true,true,false,false,false,false,false,false,false,false,false,false,false,true]},
+          {"name":"Radiographer","d":"Radiology","p":[true,true,true,true,false,false,false,false,false,false,false,false,false,false,false,true]},
+          {"name":"Accountant","p":[false,false,false,false,false,false,false,false,true,false,false,true,false,false,true,false]}
+        ]'::jsonb;
+        preset JSONB;
+        p JSONB;
+      BEGIN
+        FOR preset IN SELECT * FROM jsonb_array_elements(presets) LOOP
+          p := preset->'p';
+          INSERT INTO lab_roles (
+            id, lab_id, name,
+            can_view_requests, can_mark_seen, can_mark_done, can_send_results,
+            can_manage_team, can_manage_api_keys, can_view_referrals, can_view_clients,
+            can_view_analytics, can_view_activity, can_view_feedback, can_view_wallet,
+            can_view_marketers, can_manage_roles, can_manage_professionals, can_manage_templates,
+            department, created_at
+          )
+          SELECT
+            gen_random_uuid(), labs.id, preset->>'name',
+            (p->>0)::boolean, (p->>1)::boolean, (p->>2)::boolean, (p->>3)::boolean,
+            (p->>4)::boolean, (p->>5)::boolean, (p->>6)::boolean, (p->>7)::boolean,
+            (p->>8)::boolean, (p->>9)::boolean, (p->>10)::boolean, (p->>11)::boolean,
+            (p->>12)::boolean, (p->>13)::boolean, (p->>14)::boolean, (p->>15)::boolean,
+            preset->>'d', NOW()
+          FROM labs
+          ON CONFLICT (lab_id, name) DO NOTHING;
+        END LOOP;
+      END $$;
+    `,
+    continueOnError: true, // preset seeding is a convenience — never block a deploy
+  },
+  {
+    desc: "lab_departments table (per-lab configurable departments)",
+    sql: `
+      CREATE TABLE IF NOT EXISTS lab_departments (
+        id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+        lab_id UUID NOT NULL REFERENCES labs(id) ON DELETE CASCADE,
+        name TEXT NOT NULL,
+        workflow VARCHAR(20) NOT NULL DEFAULT 'specimen',
+        categories JSONB NOT NULL DEFAULT '[]',
+        sort_order INTEGER NOT NULL DEFAULT 0,
+        is_active BOOLEAN NOT NULL DEFAULT true,
+        created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+        updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+      )
+    `,
+    continueOnError: true,
+  },
+  {
+    desc: "lab_departments unique (lab_id, name)",
+    sql: `CREATE UNIQUE INDEX IF NOT EXISTS lab_departments_lab_id_name_key ON lab_departments(lab_id, name)`,
+    continueOnError: true,
+  },
+  {
+    desc: "lab_departments index (lab_id)",
+    sql: `CREATE INDEX IF NOT EXISTS lab_departments_lab_id_idx ON lab_departments(lab_id)`,
+    continueOnError: true,
+  },
+  {
+    // Collapse legacy granular department tracks onto the new 2-department model
+    // so in-flight requests keep their pipeline progress. Idempotent: once
+    // remapped, no rows match the old names.
+    desc: "remap legacy journey-event departments → Laboratory",
+    sql: `UPDATE request_journey_events SET department='Laboratory' WHERE department IN ('Hematology','Chemistry','Microbiology','Immunology','Histopathology')`,
+    continueOnError: true,
+  },
+  {
+    desc: "remap legacy journey-event departments → Radiology",
+    sql: `UPDATE request_journey_events SET department='Radiology' WHERE department IN ('Sonography','Cardiology')`,
+    continueOnError: true,
+  },
+  {
+    // Keep staff roles scoped to old granular departments working under the new
+    // 2-department model. Idempotent once remapped.
+    desc: "remap legacy role departments → Laboratory",
+    sql: `UPDATE lab_roles SET department='Laboratory' WHERE department IN ('Hematology','Chemistry','Microbiology','Immunology','Histopathology')`,
+    continueOnError: true,
+  },
+  {
+    desc: "remap legacy role departments → Radiology",
+    sql: `UPDATE lab_roles SET department='Radiology' WHERE department IN ('Sonography','Cardiology')`,
+    continueOnError: true,
+  },
 ];
 
 let failed = false;
 
 for (const { desc, sql, continueOnError } of migrations) {
   try {
-    await prisma.$executeRawUnsafe(sql);
+    await execWithRetry(sql);
     console.log(`  ✓ ${desc}`);
   } catch (err) {
     if (continueOnError) {

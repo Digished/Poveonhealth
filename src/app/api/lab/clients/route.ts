@@ -114,8 +114,9 @@ export async function GET(request: NextRequest) {
       });
     }
 
-    const clientList: { patient_phone: string; patient_email: string | null; patient_name: string | null; visit_count: number; first_visit: string; last_visit: string; recent_tests: string; requests: typeof requests }[] = [];
-    clientMap.forEach((v) => clientList.push(v));
+    const clientList: { patient_phone: string; patient_email: string | null; patient_name: string | null; visit_count: number; first_visit: string; last_visit: string; recent_tests: string; source: string; requests: typeof requests }[] = [];
+    // Each client's source = its most recent request's source (requests are newest-first).
+    clientMap.forEach((v) => clientList.push({ ...v, source: v.requests[0]?.source ?? "poveon" }));
     const clients = clientList.sort((a, b) => new Date(b.last_visit).getTime() - new Date(a.last_visit).getTime());
 
     return NextResponse.json({ success: true, clients });

@@ -3,13 +3,13 @@
 import { useState, useEffect } from "react";
 
 export function useDashTheme(storageKey = "poveon_dash_theme") {
-  // Default is light mode; only switch to dark if the user has explicitly chosen it
-  const [isLight, setIsLight] = useState(true);
+  // Default is dark mode; only switch to light if the user has explicitly chosen it.
+  const [isLight, setIsLight] = useState(false);
 
   useEffect(() => {
     try {
       const stored = localStorage.getItem(storageKey);
-      if (stored === "dark") setIsLight(false);
+      if (stored === "light") setIsLight(true);
     } catch { /* ignore */ }
   }, [storageKey]);
 

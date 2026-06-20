@@ -8,6 +8,7 @@ import {
   Check, ShieldCheck, Undo2, HelpCircle, AlertCircle,
 } from "lucide-react";
 import { Input } from "@/components/ui/Input";
+import { PrefixSelect } from "@/components/PrefixSelect";
 import { SuccessScreen } from "@/components/SuccessScreen";
 import { FastModeTutorial, FASTMODE_TUTORIAL_KEY } from "@/components/FastModeTutorial";
 import type { Lab, CreateRequestResponse } from "@/lib/types";
@@ -65,6 +66,10 @@ export function FastModeComposer({
   const rawRef = useRef<HTMLTextAreaElement>(null);
   const [doctorEmail, setDoctorEmail] = useState("");
   const [doctorHospital, setDoctorHospital] = useState("");
+  // When the doctor isn't recognised, collect their details once — exactly the
+  // same fields as the full form (title + full name + hospital).
+  const [doctorPrefix, setDoctorPrefix] = useState("Dr.");
+  const [doctorName, setDoctorName] = useState("");
   // Cached doctor recognition (mirrors the full form's step 3).
   const [docStatus, setDocStatus] = useState<"idle" | "checking" | "recognized" | "unknown">("idle");
   const [docInfo, setDocInfo] = useState<{ prefix: string | null; name: string | null; hospital: string | null } | null>(null);
@@ -121,13 +126,15 @@ export function FastModeComposer({
     try {
       const raw = localStorage.getItem(DOCTOR_STORAGE_KEY);
       if (raw) {
-        const p = JSON.parse(raw) as { email?: string; hospital?: string };
+        const p = JSON.parse(raw) as { email?: string; hospital?: string; prefix?: string; name?: string };
         if (p.email) {
           setDoctorEmail(p.email);
           // Already on file — don't re-ask; show it as an editable chip.
           if (/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(p.email)) setEditingDoctor(false);
         }
         if (p.hospital) setDoctorHospital(p.hospital);
+        if (p.prefix) setDoctorPrefix(p.prefix);
+        if (p.name) setDoctorName(p.name);
       }
     } catch { /* ignore */ }
   }, []);
@@ -170,10 +177,14 @@ export function FastModeComposer({
   const labName = selectedLoc?.name || selectedLab?.name || "";
   const labAddress = selectedLoc?.address || selectedLab?.address || "";
 
+  // An unrecognised doctor must register (name + hospital) before submitting.
+  const needsRegistration = docStatus === "unknown";
+  const registrationValid = !needsRegistration || (doctorName.trim().length > 0 && doctorHospital.trim().length > 0);
   const canSubmit =
     !!labId &&
     rawText.trim().length >= 3 &&
-    /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(doctorEmail.trim());
+    /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(doctorEmail.trim()) &&
+    registrationValid;
 
   // Rough checks for a phone (7+ digit run) and an email in the typed text so we
   // can nudge the doctor to add them — phone lets the lab reach the patient, email
@@ -186,7 +197,8 @@ export function FastModeComposer({
     if (!canSubmit) {
       if (!labId) toast.error("Choose the laboratory first.");
       else if (rawText.trim().length < 3) toast.error("Type the test(s) needed.");
-      else toast.error("Enter a valid email for your confirmation.");
+      else if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(doctorEmail.trim())) toast.error("Enter a valid email for your confirmation.");
+      else if (needsRegistration && !registrationValid) toast.error("Add your name and hospital to register.");
       return;
     }
     setConfirmOpen(true);
@@ -218,6 +230,9 @@ export function FastModeComposer({
           raw_input: rawText.trim(),
           doctor_email: doctorEmail.trim(),
           doctor_hospital: doctorHospital.trim() || undefined,
+          // New (unrecognised) doctor's registration details, when provided.
+          doctor_prefix: needsRegistration ? doctorPrefix : undefined,
+          doctor_name: needsRegistration && doctorName.trim() ? doctorName.trim() : undefined,
         }),
       });
       const data: CreateRequestResponse = await res.json();
@@ -239,6 +254,7 @@ export function FastModeComposer({
         try {
           const toSave: Record<string, string> = { email: doctorEmail.trim() };
           if (doctorHospital.trim()) toSave.hospital = doctorHospital.trim();
+          if (doctorName.trim()) { toSave.name = doctorName.trim(); toSave.prefix = doctorPrefix; }
           localStorage.setItem(DOCTOR_STORAGE_KEY, JSON.stringify(toSave));
         } catch { /* ignore */ }
         setResult(data);
@@ -460,6 +476,33 @@ export function FastModeComposer({
                 {docInfo.hospital && <p className="text-xs text-emerald-600 truncate">{docInfo.hospital}</p>}
                 <p className="text-[11px] text-emerald-600/80 mt-0.5">Your saved details are filled in automatically.</p>
               </div>
+            </div>
+          ) : docStatus === "unknown" ? (
+            /* New doctor — same fields as the full form: title + full name + hospital. */
+            <div className="space-y-3">
+              <div className="grid grid-cols-1 sm:grid-cols-4 gap-3">
+                <div className="sm:col-span-1">
+                  <PrefixSelect value={doctorPrefix || "Dr."} onChange={(prefix) => setDoctorPrefix(prefix)} />
+                </div>
+                <div className="sm:col-span-3">
+                  <Input
+                    label="Full Name"
+                    placeholder="e.g. Chioma Okafor"
+                    value={doctorName}
+                    onChange={(e) => setDoctorName(e.target.value)}
+                    required
+                  />
+                </div>
+              </div>
+              {doctorName.trim() && (
+                <Input
+                  label="Hospital / Clinic"
+                  placeholder="e.g. Lagos University Teaching Hospital"
+                  value={doctorHospital}
+                  onChange={(e) => setDoctorHospital(e.target.value)}
+                  required
+                />
+              )}
             </div>
           ) : (
             <Input
