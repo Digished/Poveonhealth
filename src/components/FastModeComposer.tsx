@@ -8,6 +8,7 @@ import {
   Check, ShieldCheck, Undo2, HelpCircle, AlertCircle,
 } from "lucide-react";
 import { Input } from "@/components/ui/Input";
+import { PrefixSelect } from "@/components/PrefixSelect";
 import { SuccessScreen } from "@/components/SuccessScreen";
 import { FastModeTutorial, FASTMODE_TUTORIAL_KEY } from "@/components/FastModeTutorial";
 import type { Lab, CreateRequestResponse } from "@/lib/types";
@@ -65,14 +66,10 @@ export function FastModeComposer({
   const rawRef = useRef<HTMLTextAreaElement>(null);
   const [doctorEmail, setDoctorEmail] = useState("");
   const [doctorHospital, setDoctorHospital] = useState("");
-  // When the doctor isn't recognised, collect their details once (mirrors the
-  // full form's step 3) so they're registered and the lab can credit referrals.
+  // When the doctor isn't recognised, collect their details once — exactly the
+  // same fields as the full form (title + full name + hospital).
   const [doctorPrefix, setDoctorPrefix] = useState("Dr.");
   const [doctorName, setDoctorName] = useState("");
-  const [doctorAccountName, setDoctorAccountName] = useState("");
-  const [doctorAccountNumber, setDoctorAccountNumber] = useState("");
-  const [doctorBankName, setDoctorBankName] = useState("");
-  const [bankOpen, setBankOpen] = useState(false);
   // Cached doctor recognition (mirrors the full form's step 3).
   const [docStatus, setDocStatus] = useState<"idle" | "checking" | "recognized" | "unknown">("idle");
   const [docInfo, setDocInfo] = useState<{ prefix: string | null; name: string | null; hospital: string | null } | null>(null);
@@ -236,9 +233,6 @@ export function FastModeComposer({
           // New (unrecognised) doctor's registration details, when provided.
           doctor_prefix: needsRegistration ? doctorPrefix : undefined,
           doctor_name: needsRegistration && doctorName.trim() ? doctorName.trim() : undefined,
-          doctor_bank_name: needsRegistration && doctorBankName.trim() ? doctorBankName.trim() : undefined,
-          doctor_account_number: needsRegistration && doctorAccountNumber.trim() ? doctorAccountNumber.trim() : undefined,
-          doctor_account_name: needsRegistration && doctorAccountName.trim() ? doctorAccountName.trim() : undefined,
         }),
       });
       const data: CreateRequestResponse = await res.json();
@@ -484,45 +478,30 @@ export function FastModeComposer({
               </div>
             </div>
           ) : docStatus === "unknown" ? (
-            /* New doctor — register once (name + hospital required, payout optional). */
+            /* New doctor — same fields as the full form: title + full name + hospital. */
             <div className="space-y-3">
-              <div className="flex items-start gap-2 px-3 py-2.5 rounded-xl bg-medical-50 border border-medical-100">
-                <Info className="w-4 h-4 text-medical-500 shrink-0 mt-0.5" />
-                <p className="text-xs text-medical-700 leading-relaxed">You&apos;re new here — add your details once so the lab can credit your referrals. We&apos;ll remember them next time.</p>
-              </div>
-              <div className="grid grid-cols-3 gap-2">
-                <div className="col-span-1">
-                  <label className="block text-xs font-semibold text-slate-600 mb-1">Title</label>
-                  <select
-                    value={doctorPrefix}
-                    onChange={(e) => setDoctorPrefix(e.target.value)}
-                    className="w-full rounded-xl border border-slate-200 bg-white px-2.5 py-2.5 text-sm text-slate-800 focus:outline-none focus:ring-2 focus:ring-medical-500 focus:border-medical-400"
-                  >
-                    {["Dr.", "Prof.", "Mr.", "Mrs.", "Ms.", "Mx."].map((p) => <option key={p} value={p}>{p}</option>)}
-                  </select>
+              <div className="grid grid-cols-1 sm:grid-cols-4 gap-3">
+                <div className="sm:col-span-1">
+                  <PrefixSelect value={doctorPrefix || "Dr."} onChange={(prefix) => setDoctorPrefix(prefix)} />
                 </div>
-                <div className="col-span-2">
-                  <Input label="Full name" placeholder="e.g. Chioma Okafor" value={doctorName} onChange={(e) => setDoctorName(e.target.value)} required />
+                <div className="sm:col-span-3">
+                  <Input
+                    label="Full Name"
+                    placeholder="e.g. Chioma Okafor"
+                    value={doctorName}
+                    onChange={(e) => setDoctorName(e.target.value)}
+                    required
+                  />
                 </div>
               </div>
-              <Input
-                label="Hospital / clinic"
-                placeholder="e.g. Lagos University Teaching Hospital"
-                value={doctorHospital}
-                onChange={(e) => setDoctorHospital(e.target.value)}
-                required
-              />
-              <button type="button" onClick={() => setBankOpen((v) => !v)} className="text-xs font-semibold text-medical-600 hover:text-medical-800">
-                {bankOpen ? "− Hide" : "+ Add"} payout details (optional)
-              </button>
-              {bankOpen && (
-                <div className="space-y-2 animate-fade-in">
-                  <Input label="Account name" placeholder="As it appears at the bank" value={doctorAccountName} onChange={(e) => setDoctorAccountName(e.target.value)} />
-                  <div className="grid grid-cols-2 gap-2">
-                    <Input label="Account number" value={doctorAccountNumber} onChange={(e) => setDoctorAccountNumber(e.target.value)} inputMode="numeric" />
-                    <Input label="Bank" value={doctorBankName} onChange={(e) => setDoctorBankName(e.target.value)} />
-                  </div>
-                </div>
+              {doctorName.trim() && (
+                <Input
+                  label="Hospital / Clinic"
+                  placeholder="e.g. Lagos University Teaching Hospital"
+                  value={doctorHospital}
+                  onChange={(e) => setDoctorHospital(e.target.value)}
+                  required
+                />
               )}
             </div>
           ) : (
