@@ -7,6 +7,7 @@ import { SourceBadge } from "@/components/lab/SourceBadge";
 import { LabOnboardForm } from "@/components/lab/LabOnboardForm";
 import { StatCard } from "@/components/lab/StatCard";
 import { TestTagInput, TestTag } from "@/components/ui/TestTagInput";
+import { FilterSelect } from "@/components/ui/FilterSelect";
 import { requestDepartments, categoryToDepartment, WORKFLOWS, stageLabel, DEFAULT_DEPARTMENTS, type DepartmentConfig } from "@/lib/lims-shared";
 
 function fmtDateTime(iso: string | null | undefined): string {
@@ -380,7 +381,7 @@ export function Workspace({
                 value={codeInput}
                 onChange={(e) => setCodeInput(e.target.value.toUpperCase())}
                 onKeyDown={(e) => { if (e.key === "Enter") revealByCode(); }}
-                placeholder="e.g. LABA-8X4K29Q"
+                placeholder="e.g. 8X4K29Q (prefix optional)"
                 className="min-w-0 flex-1 rounded-xl border border-white/10 bg-white/5 px-3 py-2 text-sm font-mono uppercase tracking-wider text-white placeholder:font-sans placeholder:tracking-normal placeholder:text-slate-500 focus:border-medical-400 focus:outline-none"
               />
               <button onClick={revealByCode} disabled={revealing || !codeInput.trim()} className="inline-flex shrink-0 items-center gap-1.5 rounded-xl bg-medical-600 px-4 py-2 text-sm font-semibold text-white hover:bg-medical-700 disabled:opacity-50">
@@ -391,18 +392,15 @@ export function Workspace({
         </div>
       )}
 
-      {/* Stats — relevant to the tab, reflecting any applied filters */}
-      <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
+      {/* Stats — only actionable, pending-task counts (reflecting applied filters) */}
+      <div className="grid grid-cols-2 gap-3 lg:grid-cols-3">
         {isOnboarding && obView === "register" ? (
           <>
-            <StatCard label="In queue" value={stats.total ?? 0} accent="violet" icon={<UserPlus className="h-4 w-4" />} />
-            <StatCard label="Unregistered" value={stats.unregistered ?? 0} accent="amber" icon={<AlertTriangle className="h-4 w-4" />} />
+            <StatCard label="To register" value={stats.unregistered ?? 0} accent="amber" icon={<UserPlus className="h-4 w-4" />} />
             <StatCard label="Awaiting payment" value={stats.awaitingPayment ?? 0} accent="amber" icon={<CreditCard className="h-4 w-4" />} />
-            <StatCard label="Registered" value={stats.registered ?? 0} accent="emerald" icon={<Check className="h-4 w-4" />} />
           </>
         ) : (
           <>
-            <StatCard label="In pipeline" hint={deptF || "All departments"} value={stats.total ?? 0} accent="violet" icon={<Workflow className="h-4 w-4" />} />
             <StatCard label={selectedIsImaging ? "Awaiting scan" : "Awaiting collection"} value={stats.awaitingCollection ?? 0} accent="amber" icon={<FlaskConical className="h-4 w-4" />} />
             <StatCard label="In progress" value={stats.inProgress ?? 0} accent="violet" icon={<Workflow className="h-4 w-4" />} />
             <StatCard label="Ready to report" value={stats.readyToReport ?? 0} accent="emerald" icon={<Send className="h-4 w-4" />} />
@@ -412,61 +410,45 @@ export function Workspace({
 
       {/* Onboarding "Register" filters: registration status + payment */}
       {isOnboarding && obView === "register" && (
-        <div className="flex flex-wrap items-center gap-1.5">
-          {([["", "All"], ["incoming", "Unregistered"], ["seen", "Registered"]] as const).map(([v, label]) => (
-            <button key={v || "all-st"} onClick={() => setStatusF(v)} className={`shrink-0 rounded-full border px-3 py-1 text-[11px] font-medium transition ${statusF === v ? "border-medical-400 bg-medical-600/25 text-white" : "border-white/10 bg-white/5 text-slate-300 hover:bg-white/10"}`}>{label}</button>
-          ))}
-          <span className="mx-1 text-white/15">|</span>
-          {([["", "All payments"], ["unpaid", "Unpaid"], ["paid", "Paid"]] as const).map(([v, label]) => (
-            <button key={v || "all-pay"} onClick={() => setPaidF(v)} className={`shrink-0 rounded-full border px-3 py-1 text-[11px] font-medium transition ${paidF === v ? "border-medical-400 bg-medical-600/25 text-white" : "border-white/10 bg-white/5 text-slate-300 hover:bg-white/10"}`}>{label}</button>
-          ))}
+        <div className="flex flex-wrap items-center gap-2">
+          <FilterSelect
+            label="Status"
+            value={statusF}
+            onChange={setStatusF}
+            className="w-44"
+            options={[{ value: "", label: "All" }, { value: "incoming", label: "Unregistered" }, { value: "seen", label: "Registered" }]}
+          />
+          <FilterSelect
+            label="Payment"
+            value={paidF}
+            onChange={setPaidF}
+            className="w-44"
+            options={[{ value: "", label: "All" }, { value: "unpaid", label: "Unpaid" }, { value: "paid", label: "Paid" }]}
+          />
         </div>
       )}
 
-      {/* Department switcher — the primary filter (workstation) */}
-      {!isOnboarding && !memberDepartment && (
-        <div className="-mx-1 flex gap-1.5 overflow-x-auto px-1 pb-1 no-scrollbar">
-          <button
-            onClick={() => selectDept("")}
-            className={`shrink-0 rounded-full border px-3 py-1.5 text-xs font-medium transition ${deptF === "" ? "border-medical-400 bg-medical-600/25 text-white" : "border-white/10 bg-white/5 text-slate-300 hover:bg-white/10"}`}
-          >
-            All departments
-          </button>
-          {departments.map((d) => (
-            <button
-              key={d.name}
-              onClick={() => selectDept(d.name)}
-              className={`inline-flex shrink-0 items-center gap-1.5 rounded-full border px-3 py-1.5 text-xs font-medium transition ${deptF === d.name ? "border-medical-400 bg-medical-600/25 text-white" : "border-white/10 bg-white/5 text-slate-300 hover:bg-white/10"}`}
-            >
-              {d.name}
-              {(deptCounts.get(d.name) ?? 0) > 0 && <span className="rounded-full bg-white/10 px-1.5 text-[10px] text-slate-300">{deptCounts.get(d.name)}</span>}
-            </button>
-          ))}
-        </div>
-      )}
-
-      {/* Pipeline sub-filter — appears once a department is selected, driven by
-          that department's workflow stages (workstation). */}
-      {!isOnboarding && deptF && (
-        <div className="-mx-1 flex gap-1.5 overflow-x-auto px-1 pb-1 no-scrollbar">
-          {([["", "All stages"]] as const).map(([val, label]) => (
-            <button
-              key={val || "all"}
-              onClick={() => setStageF(val)}
-              className={`shrink-0 rounded-full border px-3 py-1 text-[11px] font-medium transition ${stageF === val ? "border-medical-400 bg-medical-600/25 text-white" : "border-white/10 bg-white/5 text-slate-300 hover:bg-white/10"}`}
-            >
-              {label}
-            </button>
-          ))}
-          {subStages.map((s) => (
-            <button
-              key={s}
-              onClick={() => setStageF(s)}
-              className={`shrink-0 rounded-full border px-3 py-1 text-[11px] font-medium transition ${stageF === s ? "border-medical-400 bg-medical-600/25 text-white" : "border-white/10 bg-white/5 text-slate-300 hover:bg-white/10"}`}
-            >
-              {stageLabel(s)}
-            </button>
-          ))}
+      {/* Workstation filters: department + pipeline stage (modern dropdowns) */}
+      {!isOnboarding && (
+        <div className="flex flex-wrap items-center gap-2">
+          {!memberDepartment && (
+            <FilterSelect
+              label="Department"
+              value={deptF}
+              onChange={selectDept}
+              className="w-56"
+              options={[{ value: "", label: "All departments" }, ...departments.map((d) => ({ value: d.name, label: d.name, count: deptCounts.get(d.name) || undefined }))]}
+            />
+          )}
+          {deptF && (
+            <FilterSelect
+              label="Stage"
+              value={stageF}
+              onChange={setStageF}
+              className="w-48"
+              options={[{ value: "", label: "All stages" }, ...subStages.map((s) => ({ value: s, label: stageLabel(s) }))]}
+            />
+          )}
         </div>
       )}
 

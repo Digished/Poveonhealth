@@ -43,9 +43,14 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    // Look up the request by code
-    const req = await prisma.request.findUnique({
-      where: { code },
+    // Look up the request within this lab. Accept the code with or without the
+    // lab prefix — the code is already lab-specific, so "8X4K29Q" matches
+    // "LABA-8X4K29Q".
+    const req = await prisma.request.findFirst({
+      where: {
+        lab_id: auth.lab_id,
+        OR: [{ code }, { code: { endsWith: `-${code}` } }],
+      },
       include: { lab: { select: { name: true, address: true, notification_email: true } } },
     });
 
@@ -53,14 +58,6 @@ export async function POST(request: NextRequest) {
       return NextResponse.json(
         { success: false, error: "No request found with that code" },
         { status: 404 }
-      );
-    }
-
-    // Verify code belongs to this lab
-    if (req.lab_id !== auth.lab_id) {
-      return NextResponse.json(
-        { success: false, error: "This request does not belong to your laboratory." },
-        { status: 403 }
       );
     }
 
