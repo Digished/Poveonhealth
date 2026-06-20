@@ -17,16 +17,17 @@ export default async function HomePage() {
     console.error("[home] failed to load labs:", err instanceof Error ? err.message : err);
   }
   return (
-    <div className="relative h-dvh flex flex-col bg-sky-50 overflow-hidden">
-      {/* Full-page gradient wash — deep sky at top, pale blue through the form */}
+    <div className="relative h-dvh flex flex-col bg-[#FAF8F3] overflow-hidden">
+      {/* Full-page wash — a warm dawn glow at the top fading into soft cream,
+          with the faintest sky tint. Calm and editorial. */}
       <div
         className="absolute inset-0 -z-10 pointer-events-none"
         aria-hidden="true"
         style={{
           backgroundImage:
-            "radial-gradient(ellipse 100% 55% at 50% 0%, rgba(186,230,255,0.85) 0%, rgba(224,242,254,0.5) 50%, transparent 80%), " +
-            "radial-gradient(ellipse 70% 50% at 90% 25%, rgba(199,210,254,0.45) 0%, transparent 65%), " +
-            "radial-gradient(ellipse 60% 40% at 5% 70%, rgba(207,250,254,0.4) 0%, transparent 65%)",
+            "radial-gradient(ellipse 110% 55% at 50% 0%, rgba(254,243,221,0.75) 0%, rgba(250,248,243,0.4) 55%, transparent 82%), " +
+            "radial-gradient(ellipse 70% 48% at 88% 20%, rgba(224,242,254,0.38) 0%, transparent 66%), " +
+            "radial-gradient(ellipse 60% 45% at 6% 74%, rgba(255,237,213,0.32) 0%, transparent 66%)",
         }}
       />
 
@@ -37,19 +38,19 @@ export default async function HomePage() {
         <HomePageContent initialLabs={labsData as any} />
 
         {/* Trust indicators strip */}
-        <div className="w-full border-t border-sky-100/60 bg-sky-50/40 mt-4">
+        <div className="w-full border-t border-stone-200/60 bg-stone-50/30 mt-6">
           <div className="max-w-2xl mx-auto px-4 py-4">
             <TrustIndicators />
           </div>
         </div>
 
         {/* Compact footer */}
-        <div className="max-w-6xl mx-auto px-4 py-3 flex items-center justify-center gap-4 text-xs text-slate-400">
+        <div className="max-w-6xl mx-auto px-4 py-4 flex items-center justify-center gap-4 text-xs text-stone-400">
           <PoveonLogo className="w-5 h-5 opacity-40" />
           <span>© {new Date().getFullYear()} Poveon.</span>
-          <a href="/terms" className="hover:text-slate-600 transition-colors">Terms</a>
-          <a href="/privacy" className="hover:text-slate-600 transition-colors">Privacy</a>
-          <a href="/api-docs" className="hover:text-slate-600 transition-colors">API Docs</a>
+          <a href="/terms" className="hover:text-stone-600 transition-colors">Terms</a>
+          <a href="/privacy" className="hover:text-stone-600 transition-colors">Privacy</a>
+          <a href="/api-docs" className="hover:text-stone-600 transition-colors">API Docs</a>
         </div>
       </main>
     </div>

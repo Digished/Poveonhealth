@@ -66,7 +66,7 @@ export default async function LabSlugPage({ params }: LabSlugPageProps) {
   const heroImageUrl = lab.hero_image_url ?? null;
 
   return (
-    <div className="relative h-dvh flex flex-col bg-slate-50 overflow-hidden">
+    <div className="relative h-dvh flex flex-col bg-[#FAF8F3] overflow-hidden">
       {/* Branded background — logo blur wash or soft gradient (no hero image at page level) */}
       {logoUrl ? (
         <div
@@ -87,9 +87,9 @@ export default async function LabSlugPage({ params }: LabSlugPageProps) {
           aria-hidden="true"
           style={{
             backgroundImage:
-              "radial-gradient(ellipse 70% 50% at 25% 0%, rgba(224,242,254,0.7) 0%, transparent 70%), " +
-              "radial-gradient(ellipse 60% 45% at 90% 30%, rgba(224,231,255,0.5) 0%, transparent 65%), " +
-              "radial-gradient(ellipse 55% 50% at 5% 90%, rgba(240,253,244,0.6) 0%, transparent 65%)",
+              "radial-gradient(ellipse 75% 52% at 50% 0%, rgba(254,243,221,0.7) 0%, transparent 72%), " +
+              "radial-gradient(ellipse 60% 45% at 90% 28%, rgba(224,242,254,0.4) 0%, transparent 65%), " +
+              "radial-gradient(ellipse 55% 50% at 5% 88%, rgba(255,237,213,0.32) 0%, transparent 65%)",
           }}
         />
       )}
