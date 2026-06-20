@@ -15,7 +15,7 @@ const GREETING: Record<SceneInfo["tod"], string> = {
 function AboutModal({ onClose }: { onClose: () => void }) {
   return (
     <div
-      className="fixed inset-0 z-50 flex items-end sm:items-center justify-center p-4 animate-backdrop-in"
+      className="fixed inset-0 z-[300] flex items-end sm:items-center justify-center p-4 animate-backdrop-in"
       style={{ backgroundColor: "rgba(15,23,42,0.45)", backdropFilter: "blur(4px)" }}
       onClick={onClose}
     >
