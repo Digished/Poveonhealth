@@ -59,52 +59,96 @@ export function stageLabel(stage: string): string {
   return ALL_STAGE_LABELS[stage] ?? stage;
 }
 
-/** All selectable departments (for filters / role scoping). */
-export const DEPARTMENTS = [
-  "Laboratory",
-  "Hematology",
-  "Chemistry",
-  "Microbiology",
-  "Immunology",
-  "Histopathology",
-  "Radiology",
-  "Sonography",
-  "Cardiology",
-] as const;
+/**
+ * A configurable department: a display name, the pipeline it follows, and the
+ * lowercase keywords that route a test's category (or name) into it. Labs can
+ * customise these via the LabDepartment table; when a lab has none configured
+ * the app falls back to DEFAULT_DEPARTMENTS below.
+ */
+export interface DepartmentConfig {
+  name: string;
+  workflow: WorkflowType;
+  categories: string[];
+}
+
+/**
+ * Two real-world departments cover how a modern lab actually works:
+ *  • Laboratory — anything collected as a sample (blood, urine, swab, stool,
+ *    histology / biopsy) → specimen workflow.
+ *  • Radiology — anything performed on the patient (x-ray, scans, ultrasound,
+ *    ECG, echo, endoscopy) → imaging / scheduled-procedure workflow.
+ * Laboratory is the catch-all fallback; Radiology only wins when an imaging
+ * keyword is present.
+ */
+export const DEFAULT_DEPARTMENTS: DepartmentConfig[] = [
+  {
+    name: "Laboratory",
+    workflow: "specimen",
+    categories: [
+      "blood", "urine", "swab", "stool", "serum", "plasma", "specimen", "sample",
+      "hematolog", "haematolog", "blood count", "fbc", "cbc",
+      "chemistry", "biochem", "metabolic", "lipid", "liver", "renal", "electrolyt", "endocrin", "hormone",
+      "microbiolog", "culture", "parasit", "immunolog", "serolog", "antibody", "antigen",
+      "histopath", "cytolog", "biopsy", "pap",
+    ],
+  },
+  {
+    name: "Radiology",
+    workflow: "imaging",
+    categories: [
+      "radiolog", "imaging", "x-ray", "x ray", "xray", "ct scan", "ct-scan", "mri", "pet scan",
+      "mammogr", "fluoroscop", "dexa", "radiograph", "ultrasound", "doppler", "sonograph", "scan",
+      "ecg", "ekg", "echocard", "echo", "treadmill", "holter", "endoscop", "cardiolog",
+    ],
+  },
+];
+
+/** Names of the built-in default departments (fallback for filters / dropdowns). */
+export const DEPARTMENTS = DEFAULT_DEPARTMENTS.map((d) => d.name) as readonly string[];
+
+/**
+ * Route a piece of text (a test's category, falling back to its name) to the
+ * first department whose keywords it matches. When nothing matches we fall back
+ * to the "Laboratory" catch-all (or the first configured department).
+ */
+export function matchDepartment(text: string | null | undefined, departments: DepartmentConfig[] = DEFAULT_DEPARTMENTS): DepartmentConfig {
+  const c = (text ?? "").toLowerCase();
+  // Imaging-type keywords should win over the broad Laboratory list, so check
+  // any non-first department first, then fall through to the catch-all.
+  for (const d of departments) {
+    if (d.name.toLowerCase() === "laboratory") continue;
+    if (d.categories.some((k) => k && c.includes(k))) return d;
+  }
+  for (const d of departments) {
+    if (d.categories.some((k) => k && c.includes(k))) return d;
+  }
+  return departments.find((d) => d.name.toLowerCase() === "laboratory") ?? departments[0] ?? DEFAULT_DEPARTMENTS[0];
+}
 
 /** Map a test category (from resolve-tests / test_breakdown) to a department + workflow. */
-export function categoryToDepartment(category: string | null | undefined): { department: string; workflow: WorkflowType } {
-  const c = (category ?? "").toLowerCase();
-  const has = (...keys: string[]) => keys.some((k) => c.includes(k));
-
-  if (has("ultrasound", "doppler", "echocard", "sonograph")) return { department: "Sonography", workflow: "imaging" };
-  if (has("x-ray", "x ray", "xray", "ct", "mri", "pet", "mammogr", "fluoroscop", "dexa", "radiograph", "radiology", "interventional", "imaging")) return { department: "Radiology", workflow: "imaging" };
-  if (has("ecg", "ekg", "cardiac", "echo", "treadmill", "holter")) return { department: "Cardiology", workflow: "procedure" };
-  if (has("hematolog", "haematolog", "blood count", "fbc", "cbc")) return { department: "Hematology", workflow: "specimen" };
-  if (has("chemistry", "biochem", "metabolic", "lipid", "liver", "renal", "electrolyt", "endocrin", "hormone")) return { department: "Chemistry", workflow: "specimen" };
-  if (has("microbiolog", "culture", "parasit", "stool", "swab")) return { department: "Microbiology", workflow: "specimen" };
-  if (has("immunolog", "serolog", "antibody", "antigen")) return { department: "Immunology", workflow: "specimen" };
-  if (has("histopath", "cytolog", "biopsy", "pap")) return { department: "Histopathology", workflow: "specimen" };
-  return { department: "Laboratory", workflow: "specimen" };
+export function categoryToDepartment(category: string | null | undefined, departments: DepartmentConfig[] = DEFAULT_DEPARTMENTS): { department: string; workflow: WorkflowType } {
+  const d = matchDepartment(category, departments);
+  return { department: d.name, workflow: d.workflow };
 }
 
 type BreakdownItem = { category?: string | null; raw?: string; canonical_name?: string };
 
 /** Distinct departments (+ workflow) a request touches, derived from its test breakdown. */
-export function requestDepartments(testBreakdown: unknown): { department: string; workflow: WorkflowType }[] {
+export function requestDepartments(testBreakdown: unknown, departments: DepartmentConfig[] = DEFAULT_DEPARTMENTS): { department: string; workflow: WorkflowType }[] {
   const seen = new Map<string, WorkflowType>();
   const items = Array.isArray(testBreakdown) ? (testBreakdown as BreakdownItem[]) : [];
   for (const it of items) {
-    const { department, workflow } = categoryToDepartment(it.category);
+    const { department, workflow } = categoryToDepartment(it.category, departments);
     if (!seen.has(department)) seen.set(department, workflow);
   }
-  if (seen.size === 0) seen.set("Laboratory", "specimen");
+  if (seen.size === 0) {
+    const d = departments.find((x) => x.name.toLowerCase() === "laboratory") ?? departments[0] ?? DEFAULT_DEPARTMENTS[0];
+    seen.set(d.name, d.workflow);
+  }
   return Array.from(seen.entries()).map(([department, workflow]) => ({ department, workflow }));
 }
 
-/** Workflow for a department (defaults to specimen). */
-export function workflowForDepartment(department: string | null | undefined): WorkflowType {
-  if (department === "Radiology" || department === "Sonography") return "imaging";
-  if (department === "Cardiology") return "procedure";
-  return "specimen";
+/** Workflow for a department, looked up in the lab's config (defaults to specimen). */
+export function workflowForDepartment(department: string | null | undefined, departments: DepartmentConfig[] = DEFAULT_DEPARTMENTS): WorkflowType {
+  return departments.find((d) => d.name === department)?.workflow ?? "specimen";
 }

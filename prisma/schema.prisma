@@ -51,6 +51,7 @@ model Lab {
   result_templates LabResultTemplate[]
   request_results  RequestResult[]
   sops             LabSop[]
+  departments      LabDepartment[]
 
   @@map("labs")
 }
@@ -148,6 +149,27 @@ model LabApiKey {
 
   @@index([lab_id])
   @@map("lab_api_keys")
+}
+
+// Per-lab configurable departments. Labs decide how tests group into pipelines
+// (e.g. "Laboratory" for samples, "Radiology" for scans). When a lab has none
+// configured, the app falls back to DEFAULT_DEPARTMENTS in lims-shared.ts.
+model LabDepartment {
+  id         String   @id @default(uuid())
+  lab_id     String
+  name       String
+  workflow   String   @default("specimen") // specimen | imaging | procedure
+  categories Json     @default("[]")        // keywords routing a test's category into this department
+  sort_order Int      @default(0)
+  is_active  Boolean  @default(true)
+  created_at DateTime @default(now())
+  updated_at DateTime @updatedAt
+
+  lab Lab @relation(fields: [lab_id], references: [id], onDelete: Cascade)
+
+  @@unique([lab_id, name])
+  @@index([lab_id])
+  @@map("lab_departments")
 }
 
 // Platform administrators

@@ -722,6 +722,46 @@ const migrations = [
     `,
     continueOnError: true, // preset seeding is a convenience — never block a deploy
   },
+  {
+    desc: "lab_departments table (per-lab configurable departments)",
+    sql: `
+      CREATE TABLE IF NOT EXISTS lab_departments (
+        id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+        lab_id UUID NOT NULL REFERENCES labs(id) ON DELETE CASCADE,
+        name TEXT NOT NULL,
+        workflow VARCHAR(20) NOT NULL DEFAULT 'specimen',
+        categories JSONB NOT NULL DEFAULT '[]',
+        sort_order INTEGER NOT NULL DEFAULT 0,
+        is_active BOOLEAN NOT NULL DEFAULT true,
+        created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+        updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+      )
+    `,
+    continueOnError: true,
+  },
+  {
+    desc: "lab_departments unique (lab_id, name)",
+    sql: `CREATE UNIQUE INDEX IF NOT EXISTS lab_departments_lab_id_name_key ON lab_departments(lab_id, name)`,
+    continueOnError: true,
+  },
+  {
+    desc: "lab_departments index (lab_id)",
+    sql: `CREATE INDEX IF NOT EXISTS lab_departments_lab_id_idx ON lab_departments(lab_id)`,
+    continueOnError: true,
+  },
+  {
+    // Collapse legacy granular department tracks onto the new 2-department model
+    // so in-flight requests keep their pipeline progress. Idempotent: once
+    // remapped, no rows match the old names.
+    desc: "remap legacy journey-event departments → Laboratory",
+    sql: `UPDATE request_journey_events SET department='Laboratory' WHERE department IN ('Hematology','Chemistry','Microbiology','Immunology','Histopathology')`,
+    continueOnError: true,
+  },
+  {
+    desc: "remap legacy journey-event departments → Radiology",
+    sql: `UPDATE request_journey_events SET department='Radiology' WHERE department IN ('Sonography','Cardiology')`,
+    continueOnError: true,
+  },
 ];
 
 let failed = false;

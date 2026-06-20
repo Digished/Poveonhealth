@@ -4,7 +4,7 @@ import { z } from "zod";
 import { prisma } from "@/lib/prisma";
 import { getLabAuth } from "@/lib/lab-auth";
 import { logLabActivity } from "@/lib/lab-activity";
-import { addJourneyEvent, markSeenWithCommission, WORKFLOWS, workflowForDepartment, stageLabel } from "@/lib/lims";
+import { addJourneyEvent, markSeenWithCommission, getLabDepartments, WORKFLOWS, workflowForDepartment, stageLabel } from "@/lib/lims";
 
 const Schema = z.object({
   requestId: z.string().uuid(),
@@ -32,8 +32,9 @@ export async function POST(request: NextRequest) {
   if (!parsed.success) return NextResponse.json({ error: "Invalid input" }, { status: 400 });
   const { requestId, stage, department, sample_label, note } = parsed.data;
 
-  // Validate the stage belongs to the department's workflow.
-  const workflow = workflowForDepartment(department);
+  // Validate the stage belongs to the department's workflow (per this lab's config).
+  const labDepartments = await getLabDepartments(auth.lab_id);
+  const workflow = workflowForDepartment(department, labDepartments);
   if (!WORKFLOWS[workflow].includes(stage)) {
     return NextResponse.json({ error: `Stage "${stage}" is not valid for this department` }, { status: 400 });
   }

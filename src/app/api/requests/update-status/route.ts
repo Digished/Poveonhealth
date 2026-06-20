@@ -50,7 +50,7 @@ export async function POST(request: NextRequest) {
     } else {
       await prisma.request.update({ where: { id: requestId }, data: { status: "done", completed_at: new Date() } });
       // LIMS: results delivered — close out every department track.
-      await reportAllTracks(requestId, req.test_breakdown, auth.actor_email).catch(() => {});
+      await reportAllTracks(requestId, req.lab_id, req.test_breakdown, auth.actor_email).catch(() => {});
     }
 
     // Activity log (non-critical)

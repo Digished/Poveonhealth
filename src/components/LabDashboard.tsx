@@ -24,6 +24,7 @@ const TemplatesManager = dynamic(() => import("@/components/lab/TemplatesManager
 const Workspace = dynamic(() => import("@/components/lab/Workspace").then(m => ({ default: m.Workspace })), { ssr: false });
 const ResultTemplatesManager = dynamic(() => import("@/components/lab/ResultTemplatesManager").then(m => ({ default: m.ResultTemplatesManager })), { ssr: false });
 const SopManager = dynamic(() => import("@/components/lab/SopManager").then(m => ({ default: m.SopManager })), { ssr: false });
+const DepartmentsManager = dynamic(() => import("@/components/lab/DepartmentsManager").then(m => ({ default: m.DepartmentsManager })), { ssr: false });
 import { useDashTheme } from "@/hooks/useDashTheme";
 import { Button } from "@/components/ui/Button";
 import { Input } from "@/components/ui/Input";
@@ -122,8 +123,8 @@ export function LabDashboard({ lab, isOwner = false, roleName = "Lab Owner", can
   const router = useRouter();
   const searchParams = useSearchParams();
   const { isLight, toggle, themeClass } = useDashTheme("lab_dash_theme");
-  type MainView = "workspace" | "requests" | "journey" | "onboarding" | "templates" | "sops" | "network" | "referrals" | "professionals" | "clients" | "analytics" | "activity" | "feedback" | "poveon" | "price-list" | "marketers";
-  const VALID_TABS: MainView[] = ["workspace", "requests", "journey", "onboarding", "templates", "sops", "network", "referrals", "professionals", "clients", "analytics", "activity", "feedback", "poveon", "price-list", "marketers"];
+  type MainView = "workspace" | "requests" | "journey" | "onboarding" | "departments" | "templates" | "sops" | "network" | "referrals" | "professionals" | "clients" | "analytics" | "activity" | "feedback" | "poveon" | "price-list" | "marketers";
+  const VALID_TABS: MainView[] = ["workspace", "requests", "journey", "onboarding", "departments", "templates", "sops", "network", "referrals", "professionals", "clients", "analytics", "activity", "feedback", "poveon", "price-list", "marketers"];
   // Legacy tabs now fold into the unified Workspace.
   const LEGACY_TO_WORKSPACE = new Set(["requests", "journey", "onboarding"]);
   // Which permission gates each tab (used by the sidebar and the initial landing).
@@ -132,6 +133,7 @@ export function LabDashboard({ lab, isOwner = false, roleName = "Lab Owner", can
     requests: canViewRequestsEff,
     journey: canViewRequestsEff,
     onboarding: canViewRequestsEff,
+    departments: isOwner,
     templates: canViewRequestsEff || isOwner || canManageTemplates,
     sops: canViewRequestsEff || isOwner || canManageTemplates,
     network: isOwner || canViewReferrals || canManageProfessionals,
@@ -868,6 +870,7 @@ export function LabDashboard({ lab, isOwner = false, roleName = "Lab Owner", can
           const RAW_SECTIONS: { label: string; items: { key: MainView; label: string; icon: React.ReactNode; show: boolean }[] }[] = [
             { label: "Operations", items: [
               { key: "workspace", label: "Workspace", icon: <Workflow className="w-4 h-4" />, show: tabVisible.workspace },
+              { key: "departments", label: "Departments", icon: <Workflow className="w-4 h-4" />, show: tabVisible.departments },
               // Result templates hidden for now — re-enable by restoring `show: tabVisible.templates`.
               { key: "templates", label: "Result Templates", icon: <FileText className="w-4 h-4" />, show: false },
               { key: "sops", label: "SOPs", icon: <ClipboardList className="w-4 h-4" />, show: tabVisible.sops },
@@ -2149,6 +2152,11 @@ export function LabDashboard({ lab, isOwner = false, roleName = "Lab Owner", can
               <LabPriceListManager onClose={() => setPriceManagerOpen(false)} />
             )}
           </>
+        )}
+
+        {/* Departments — per-lab pipeline configuration */}
+        {mainView === "departments" && isOwner && (
+          <DepartmentsManager />
         )}
 
         {/* Result report templates view */}

@@ -117,7 +117,7 @@ export async function POST(request: NextRequest) {
     });
 
     // Seed one "registered" journey event per department the request touches.
-    await seedDepartmentTracks({ requestId: newRequest.id, testBreakdown: testBreakdown }).catch(() => {});
+    await seedDepartmentTracks({ requestId: newRequest.id, labId: newRequest.lab_id, testBreakdown: testBreakdown }).catch(() => {});
 
     // Upsert the global patient profile for future auto-fill (non-fatal).
     if (email) {

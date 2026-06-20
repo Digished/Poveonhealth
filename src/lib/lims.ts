@@ -1,6 +1,29 @@
 import { prisma } from "@/lib/prisma";
-import { requestDepartments, JourneyStage } from "@/lib/lims-shared";
+import { requestDepartments, JourneyStage, DEFAULT_DEPARTMENTS, type DepartmentConfig, type WorkflowType } from "@/lib/lims-shared";
 import { resolveTests } from "@/lib/resolve-tests";
+
+/**
+ * Load a lab's configured departments, falling back to the built-in defaults
+ * when the lab hasn't customised them. Used wherever a request's department
+ * tracks are derived so server and client agree on the same routing.
+ */
+export async function getLabDepartments(labId: string): Promise<DepartmentConfig[]> {
+  try {
+    const rows = await prisma.labDepartment.findMany({
+      where: { lab_id: labId, is_active: true },
+      orderBy: { sort_order: "asc" },
+      select: { name: true, workflow: true, categories: true },
+    });
+    if (rows.length === 0) return DEFAULT_DEPARTMENTS;
+    return rows.map((r) => ({
+      name: r.name,
+      workflow: (r.workflow as WorkflowType) || "specimen",
+      categories: Array.isArray(r.categories) ? (r.categories as unknown[]).map((c) => String(c).toLowerCase()) : [],
+    }));
+  } catch {
+    return DEFAULT_DEPARTMENTS;
+  }
+}
 
 /**
  * Server-side LIMS helpers (DB): the sample / client-journey timeline and the
@@ -42,10 +65,12 @@ export async function addJourneyEvent(params: {
 /** Seed a `registered` event for each department a request touches. */
 export async function seedDepartmentTracks(params: {
   requestId: string;
+  labId: string;
   testBreakdown: unknown;
   actorEmail?: string | null;
 }): Promise<void> {
-  const depts = requestDepartments(params.testBreakdown);
+  const departments = await getLabDepartments(params.labId);
+  const depts = requestDepartments(params.testBreakdown, departments);
   for (const { department } of depts) {
     await prisma.requestJourneyEvent.create({
       data: { request_id: params.requestId, stage: "registered", department, actor_email: params.actorEmail ?? null },
@@ -54,8 +79,9 @@ export async function seedDepartmentTracks(params: {
 }
 
 /** Push every department track of a request to its workflow's terminal "reported" stage. */
-export async function reportAllTracks(requestId: string, testBreakdown: unknown, actorEmail?: string | null): Promise<void> {
-  const depts = requestDepartments(testBreakdown);
+export async function reportAllTracks(requestId: string, labId: string, testBreakdown: unknown, actorEmail?: string | null): Promise<void> {
+  const departments = await getLabDepartments(labId);
+  const depts = requestDepartments(testBreakdown, departments);
   for (const { department } of depts) {
     await prisma.requestJourneyEvent.create({
       data: { request_id: requestId, stage: "reported", department, actor_email: actorEmail ?? null, note: "Results delivered" },

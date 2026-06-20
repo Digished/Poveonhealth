@@ -3,11 +3,11 @@
 import { useEffect, useState, useCallback, useMemo } from "react";
 import { Loader2, Search, X, ArrowRight, Plus, Workflow, QrCode, UserPlus, Printer, Send, Check, FlaskConical, Pencil, Stethoscope, AlertTriangle, CreditCard } from "lucide-react";
 import toast from "react-hot-toast";
-import { SourceBadge, SOURCE_OPTIONS } from "@/components/lab/SourceBadge";
+import { SourceBadge } from "@/components/lab/SourceBadge";
 import { OnboardingPanel } from "@/components/lab/OnboardingPanel";
 import { StatCard } from "@/components/lab/StatCard";
 import { TestTagInput, TestTag } from "@/components/ui/TestTagInput";
-import { requestDepartments, categoryToDepartment, WORKFLOWS, workflowForDepartment, stageLabel, DEPARTMENTS } from "@/lib/lims-shared";
+import { requestDepartments, categoryToDepartment, WORKFLOWS, stageLabel, DEFAULT_DEPARTMENTS, type DepartmentConfig } from "@/lib/lims-shared";
 
 function fmtDateTime(iso: string | null | undefined): string {
   if (!iso) return "—";
@@ -67,8 +67,8 @@ interface Track { department: string; workflow: string; currentStage: string; ev
 interface ResultTemplate { id: string; name: string; department: string | null; parameters: { name: string; unit?: string; reference_range?: string; group?: string }[] }
 interface RResult { id: string; request_id: string; department: string | null; status: string; values: { name: string; value?: string; unit?: string; reference_range?: string; group?: string; flag?: string }[]; comment: string | null; pdf_url: string | null }
 
-function tracksFor(r: WReq): Track[] {
-  const depts = requestDepartments(r.test_breakdown);
+function tracksFor(r: WReq, departments: DepartmentConfig[] = DEFAULT_DEPARTMENTS): Track[] {
+  const depts = requestDepartments(r.test_breakdown, departments);
   const items = Array.isArray(r.test_breakdown)
     ? (r.test_breakdown as { category?: string | null; raw?: string; canonical_name?: string }[])
     : [];
@@ -76,7 +76,7 @@ function tracksFor(r: WReq): Track[] {
     const events = r.journey_events.filter((e) => e.department === department);
     const last = events[events.length - 1];
     const tests = items
-      .filter((it) => categoryToDepartment(it.category).department === department)
+      .filter((it) => categoryToDepartment(it.category, departments).department === department)
       .map((it) => it.canonical_name || it.raw || "")
       .filter(Boolean);
     return {
@@ -89,13 +89,6 @@ function tracksFor(r: WReq): Track[] {
     };
   });
 }
-
-const STATUS_OPTIONS = [
-  { value: "", label: "All statuses" },
-  { value: "incoming", label: "Unregistered" },
-  { value: "seen", label: "Registered" },
-  { value: "done", label: "Done" },
-];
 
 /**
  * Per-milestone action config. Every stage advance opens a short action sheet
@@ -137,10 +130,22 @@ export function Workspace({
   const [revealing, setRevealing] = useState(false);
 
   const [query, setQuery] = useState("");
-  const [statusF, setStatusF] = useState("");
   const [deptF, setDeptF] = useState(memberDepartment ?? "");
-  const [sourceF, setSourceF] = useState("");
-  const [hideCompleted, setHideCompleted] = useState(true);
+  // Pipeline sub-filter within the selected department: "" = all active,
+  // "unregistered" = not yet registered, otherwise a workflow stage key.
+  const [stageF, setStageF] = useState("");
+  // The lab's configured departments (falls back to the built-in defaults).
+  const [departments, setDepartments] = useState<DepartmentConfig[]>(DEFAULT_DEPARTMENTS);
+
+  useEffect(() => {
+    fetch("/api/lab/departments", { cache: "no-store" })
+      .then((r) => (r.ok ? r.json() : null))
+      .then((d) => { if (d?.departments?.length) setDepartments(d.departments); })
+      .catch(() => {});
+  }, []);
+
+  // Switching department resets the pipeline sub-filter.
+  const selectDept = useCallback((d: string) => { setDeptF(d); setStageF(""); }, []);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -158,18 +163,25 @@ export function Workspace({
   useEffect(() => { load(); }, [load]);
 
   const filtered = useMemo(() => requests.filter((r) => {
-    // Hide completed (done) requests by default, unless explicitly filtering for them.
-    if (hideCompleted && statusF !== "done" && r.status === "done") return false;
-    if (statusF && r.status !== statusF) return false;
-    if (sourceF && (r.source ?? "poveon") !== sourceF) return false;
-    if (deptF && !tracksFor(r).some((t) => t.department === deptF)) return false;
+    const tracks = tracksFor(r, departments);
+    // Department (primary filter).
+    if (deptF && !tracks.some((t) => t.department === deptF)) return false;
+    // Pipeline sub-filter (based on the department's workflow stages).
+    if (stageF === "unregistered") {
+      if (r.status !== "incoming") return false;
+    } else if (stageF) {
+      const t = tracks.find((x) => x.department === deptF);
+      if (!t || t.currentStage !== stageF) return false;
+    } else if (r.status === "done") {
+      // Default view hides completed work — select the "Reported" stage to see it.
+      return false;
+    }
     if (query) {
       const q = query.toLowerCase();
       if (!r.code.toLowerCase().includes(q) && !(r.patient_name ?? "").toLowerCase().includes(q) && !(r.patient_phone ?? "").includes(q)) return false;
     }
     return true;
-  }), [requests, statusF, sourceF, deptF, query, hideCompleted]);
-  const completedCount = useMemo(() => requests.filter((r) => r.status === "done").length, [requests]);
+  }), [requests, departments, deptF, stageF, query]);
 
   // Actionable insights across active (not-done) work, scoped to the selected
   // pipeline (department) when one is chosen.
@@ -177,7 +189,7 @@ export function Workspace({
   const stats = useMemo(() => {
     let toRegister = 0, awaitingCollection = 0, inProgress = 0, readyToReport = 0;
     for (const r of active) {
-      const tracks = tracksFor(r).filter((t) => !deptF || t.department === deptF);
+      const tracks = tracksFor(r, departments).filter((t) => !deptF || t.department === deptF);
       if (tracks.length === 0) continue;
       if (!r.is_paid) toRegister++;
       for (const t of tracks) {
@@ -187,15 +199,17 @@ export function Workspace({
       }
     }
     return { toRegister, awaitingCollection, inProgress, readyToReport };
-  }, [active, deptF]);
+  }, [active, departments, deptF]);
 
   // Per-department active workload (for the quick department switcher).
   const deptCounts = useMemo(() => {
     const m = new Map<string, number>();
-    for (const r of active) for (const t of tracksFor(r)) m.set(t.department, (m.get(t.department) ?? 0) + 1);
+    for (const r of active) for (const t of tracksFor(r, departments)) m.set(t.department, (m.get(t.department) ?? 0) + 1);
     return m;
-  }, [active]);
-  const activeDepartments = DEPARTMENTS.filter((d) => (deptCounts.get(d) ?? 0) > 0);
+  }, [active, departments]);
+  // Pipeline stages for the selected department's workflow (for the sub-filter).
+  const subStages = deptF ? (WORKFLOWS[(departments.find((d) => d.name === deptF)?.workflow ?? "specimen")] ?? WORKFLOWS.specimen) : [];
+  const selectedIsImaging = departments.find((d) => d.name === deptF)?.workflow === "imaging";
 
   // Auto-triage: number active (not-done) requests by arrival order — first in = #1.
   const triageNo = useMemo(() => {
@@ -319,56 +333,62 @@ export function Workspace({
       {/* Actionable insights — only the essentials, scoped to the selected pipeline */}
       <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
         <StatCard label="To register" hint={deptF || "All pipelines"} value={stats.toRegister} accent="amber" icon={<UserPlus className="h-4 w-4" />} />
-        <StatCard label={deptF === "Radiology" || deptF === "Sonography" ? "Awaiting scan" : "Awaiting collection"} value={stats.awaitingCollection} accent="amber" icon={<FlaskConical className="h-4 w-4" />} />
+        <StatCard label={selectedIsImaging ? "Awaiting scan" : "Awaiting collection"} value={stats.awaitingCollection} accent="amber" icon={<FlaskConical className="h-4 w-4" />} />
         <StatCard label="In progress" value={stats.inProgress} accent="violet" icon={<Workflow className="h-4 w-4" />} />
         <StatCard label="Ready to report" value={stats.readyToReport} accent="emerald" icon={<Send className="h-4 w-4" />} />
       </div>
 
-      {/* Quick department switcher */}
-      {!memberDepartment && activeDepartments.length > 0 && (
+      {/* Department switcher — the primary filter */}
+      {!memberDepartment && (
         <div className="-mx-1 flex gap-1.5 overflow-x-auto px-1 pb-1 no-scrollbar">
           <button
-            onClick={() => setDeptF("")}
+            onClick={() => selectDept("")}
             className={`shrink-0 rounded-full border px-3 py-1.5 text-xs font-medium transition ${deptF === "" ? "border-medical-400 bg-medical-600/25 text-white" : "border-white/10 bg-white/5 text-slate-300 hover:bg-white/10"}`}
           >
             All departments
           </button>
-          {activeDepartments.map((d) => (
+          {departments.map((d) => (
             <button
-              key={d}
-              onClick={() => setDeptF(d)}
-              className={`inline-flex shrink-0 items-center gap-1.5 rounded-full border px-3 py-1.5 text-xs font-medium transition ${deptF === d ? "border-medical-400 bg-medical-600/25 text-white" : "border-white/10 bg-white/5 text-slate-300 hover:bg-white/10"}`}
+              key={d.name}
+              onClick={() => selectDept(d.name)}
+              className={`inline-flex shrink-0 items-center gap-1.5 rounded-full border px-3 py-1.5 text-xs font-medium transition ${deptF === d.name ? "border-medical-400 bg-medical-600/25 text-white" : "border-white/10 bg-white/5 text-slate-300 hover:bg-white/10"}`}
             >
-              {d}
-              <span className="rounded-full bg-white/10 px-1.5 text-[10px] text-slate-300">{deptCounts.get(d)}</span>
+              {d.name}
+              {(deptCounts.get(d.name) ?? 0) > 0 && <span className="rounded-full bg-white/10 px-1.5 text-[10px] text-slate-300">{deptCounts.get(d.name)}</span>}
             </button>
           ))}
         </div>
       )}
 
-      {/* Filters */}
-      <div className="flex flex-wrap items-center gap-2">
-        <div className="relative min-w-[200px] flex-1">
-          <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
-          <input value={query} onChange={(e) => setQuery(e.target.value)} placeholder="Search code, name or phone" className="w-full rounded-xl border border-white/10 bg-white/5 py-2 pl-9 pr-3 text-sm text-white placeholder:text-slate-500 focus:border-medical-400 focus:outline-none" />
+      {/* Pipeline sub-filter — appears once a department is selected, driven by
+          that department's workflow stages. */}
+      {deptF && (
+        <div className="-mx-1 flex gap-1.5 overflow-x-auto px-1 pb-1 no-scrollbar">
+          {([["", "All stages"], ["unregistered", "Unregistered"]] as const).map(([val, label]) => (
+            <button
+              key={val || "all"}
+              onClick={() => setStageF(val)}
+              className={`shrink-0 rounded-full border px-3 py-1 text-[11px] font-medium transition ${stageF === val ? "border-medical-400 bg-medical-600/25 text-white" : "border-white/10 bg-white/5 text-slate-300 hover:bg-white/10"}`}
+            >
+              {label}
+            </button>
+          ))}
+          {subStages.map((s) => (
+            <button
+              key={s}
+              onClick={() => setStageF(s)}
+              className={`shrink-0 rounded-full border px-3 py-1 text-[11px] font-medium transition ${stageF === s ? "border-medical-400 bg-medical-600/25 text-white" : "border-white/10 bg-white/5 text-slate-300 hover:bg-white/10"}`}
+            >
+              {stageLabel(s)}
+            </button>
+          ))}
         </div>
-        <select value={statusF} onChange={(e) => setStatusF(e.target.value)} className="rounded-xl border border-white/10 bg-white/5 px-3 py-2 text-sm text-slate-200 outline-none">
-          {STATUS_OPTIONS.map((o) => <option key={o.value} value={o.value} className="bg-slate-800">{o.label}</option>)}
-        </select>
-        <select value={deptF} onChange={(e) => setDeptF(e.target.value)} disabled={!!memberDepartment} className="rounded-xl border border-white/10 bg-white/5 px-3 py-2 text-sm text-slate-200 outline-none disabled:opacity-60">
-          <option value="" className="bg-slate-800">All departments</option>
-          {DEPARTMENTS.map((d) => <option key={d} value={d} className="bg-slate-800">{d}</option>)}
-        </select>
-        <select value={sourceF} onChange={(e) => setSourceF(e.target.value)} className="rounded-xl border border-white/10 bg-white/5 px-3 py-2 text-sm text-slate-200 outline-none">
-          {SOURCE_OPTIONS.map((o) => <option key={o.value} value={o.value} className="bg-slate-800">{o.label}</option>)}
-        </select>
-        <button
-          onClick={() => setHideCompleted((v) => !v)}
-          className={`inline-flex items-center gap-1.5 rounded-xl border px-3 py-2 text-sm font-medium transition ${hideCompleted ? "border-medical-500/40 bg-medical-600/20 text-medical-200" : "border-white/10 bg-white/5 text-slate-300 hover:bg-white/10"}`}
-          title="Hide requests whose results are already delivered"
-        >
-          {hideCompleted ? <Check className="h-3.5 w-3.5" /> : <X className="h-3.5 w-3.5" />} Hide completed{completedCount > 0 ? ` (${completedCount})` : ""}
-        </button>
+      )}
+
+      {/* Search */}
+      <div className="relative">
+        <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
+        <input value={query} onChange={(e) => setQuery(e.target.value)} placeholder="Search code, name or phone" className="w-full rounded-xl border border-white/10 bg-white/5 py-2 pl-9 pr-3 text-sm text-white placeholder:text-slate-500 focus:border-medical-400 focus:outline-none" />
       </div>
 
       {loading ? (
@@ -378,7 +398,7 @@ export function Workspace({
       ) : (
         <div className="space-y-2">
           {filtered.map((r) => {
-            const tracks = tracksFor(r).filter((t) => !deptF || t.department === deptF);
+            const tracks = tracksFor(r, departments).filter((t) => !deptF || t.department === deptF);
             return (
               <button key={r.id} onClick={() => setSelected(r)} className="block w-full rounded-2xl border border-white/10 bg-white/5 p-4 text-left transition hover:bg-white/10">
                 <div className="mb-2 flex items-center justify-between gap-2">
@@ -419,6 +439,7 @@ export function Workspace({
         <WorkspaceDrawer
           request={selected}
           labId={labId}
+          departments={departments}
           onClose={() => setSelected(null)}
           canAdvance={canAdvance}
           canEnterResults={canEnterResults}
@@ -436,10 +457,11 @@ export function Workspace({
 }
 
 function WorkspaceDrawer({
-  request, labId, onClose, canAdvance, canEnterResults, canSendResults, memberDepartment, busy, onMarkSeen, onAdvance, onRegistration, onChanged,
+  request, labId, departments, onClose, canAdvance, canEnterResults, canSendResults, memberDepartment, busy, onMarkSeen, onAdvance, onRegistration, onChanged,
 }: {
   request: WReq;
   labId: string;
+  departments: DepartmentConfig[];
   onClose: () => void;
   canAdvance: boolean;
   canEnterResults: boolean;
@@ -451,7 +473,7 @@ function WorkspaceDrawer({
   onRegistration: (flags: { tests_confirmed?: boolean; is_paid?: boolean }) => Promise<void> | void;
   onChanged: () => void;
 }) {
-  const tracks = tracksFor(request).filter((t) => !memberDepartment || t.department === memberDepartment);
+  const tracks = tracksFor(request, departments).filter((t) => !memberDepartment || t.department === memberDepartment);
   const [resultsFor, setResultsFor] = useState<{ department: string } | null>(null);
   const [collectFor, setCollectFor] = useState<Track | null>(null);
   const [milestone, setMilestone] = useState<{ track: Track; stage: string } | null>(null);
@@ -1100,7 +1122,7 @@ function ResultEntry({
         fetch("/api/lab/result-templates", { cache: "no-store" }),
         fetch(`/api/lab/results?requestId=${request.id}`, { cache: "no-store" }),
       ]);
-      if (tRes.ok) { const d = await tRes.json(); setTemplates((d.templates ?? []).filter((t: ResultTemplate) => !t.department || t.department === department || !DEPARTMENTS.includes(department as (typeof DEPARTMENTS)[number]))); }
+      if (tRes.ok) { const d = await tRes.json(); setTemplates((d.templates ?? []).filter((t: ResultTemplate) => !t.department || t.department === department || !DEFAULT_DEPARTMENTS.some((dd) => dd.name === department))); }
       if (rRes.ok) {
         const d = await rRes.json();
         const found = (d.results ?? []).find((x: RResult) => (x.department ?? "") === department) ?? null;
