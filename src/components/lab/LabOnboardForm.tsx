@@ -58,8 +58,10 @@ export function LabOnboardForm({
   const [doctor, setDoctor] = useState<PickedDoctor | null>(null);
   const canAddDoctor = source === "walk_in"; // front desk can add; public QR is search-only
 
-  // "I have a Poveon code" reveal-and-confirm path.
-  const [entryMode, setEntryMode] = useState<"code" | "manual">(source === "qr" ? "code" : "manual");
+  // "I have a Poveon code" reveal-and-confirm path. Both QR self-service and
+  // front-desk manual registration lead with the code prompt; "New
+  // registration" is one toggle away for walk-ins without a code.
+  const [entryMode, setEntryMode] = useState<"code" | "manual">("code");
   const [lookupCode, setLookupCode] = useState("");
   const [looking, setLooking] = useState(false);
   const [confirming, setConfirming] = useState(false);

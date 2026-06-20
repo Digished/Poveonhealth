@@ -8,7 +8,7 @@ import { LabOnboardForm } from "@/components/lab/LabOnboardForm";
 import { StatCard } from "@/components/lab/StatCard";
 import { TestTagInput, TestTag } from "@/components/ui/TestTagInput";
 import { FilterSelect } from "@/components/ui/FilterSelect";
-import { requestDepartments, categoryToDepartment, WORKFLOWS, stageLabel, DEFAULT_DEPARTMENTS, type DepartmentConfig } from "@/lib/lims-shared";
+import { requestDepartments, categoryToDepartment, WORKFLOWS, stageLabel, stageColorClasses, DEFAULT_DEPARTMENTS, type DepartmentConfig } from "@/lib/lims-shared";
 
 function fmtDateTime(iso: string | null | undefined): string {
   if (!iso) return "—";
@@ -163,6 +163,8 @@ export function Workspace({
   // Onboarding filters: registration status and payment.
   const [statusF, setStatusF] = useState("");
   const [paidF, setPaidF] = useState("");
+  // List ordering by registration time (newest ↔ oldest).
+  const [sortDir, setSortDir] = useState<"newest" | "oldest">("newest");
   // The lab's configured departments (falls back to the built-in defaults).
   const [departments, setDepartments] = useState<DepartmentConfig[]>(DEFAULT_DEPARTMENTS);
 
@@ -268,6 +270,16 @@ export function Workspace({
     return true;
   }), [requests, departments, deptF, stageF, statusF, paidF, isOnboarding, obView, matchesQuery]);
 
+  // Displayed list, ordered by registration time per the sort toggle.
+  const sorted = useMemo(() => {
+    const arr = [...filtered];
+    arr.sort((a, b) => {
+      const d = new Date(a.created_at).getTime() - new Date(b.created_at).getTime();
+      return sortDir === "newest" ? -d : d;
+    });
+    return arr;
+  }, [filtered, sortDir]);
+
   const active = useMemo(() => requests.filter((r) => r.status !== "done"), [requests]);
 
   // Headline stats reflect the current tab and any applied filters (computed
@@ -275,9 +287,10 @@ export function Workspace({
   const stats = useMemo(() => {
     const s = { total: filtered.length, unregistered: 0, awaitingPayment: 0, registered: 0, awaitingCollection: 0, inProgress: 0, readyToReport: 0 };
     if (isOnboarding && obView === "register") {
+      // Step 1: registration (identity). Step 2: confirm tests + payment.
       s.unregistered = filtered.filter((r) => r.status === "incoming").length;
-      s.awaitingPayment = filtered.filter((r) => !r.is_paid).length;
-      s.registered = filtered.filter((r) => r.is_paid).length;
+      s.awaitingPayment = filtered.filter((r) => r.status !== "incoming" && r.status !== "done" && !(r.is_paid && r.tests_confirmed)).length;
+      s.registered = filtered.filter((r) => r.is_paid && r.tests_confirmed).length;
       return s;
     }
     for (const r of filtered) {
@@ -429,7 +442,7 @@ export function Workspace({
         {isOnboarding && obView === "register" ? (
           <>
             <StatCard label="To register" value={stats.unregistered ?? 0} accent="amber" icon={<UserPlus className="h-4 w-4" />} />
-            <StatCard label="Awaiting payment" value={stats.awaitingPayment ?? 0} accent="amber" icon={<CreditCard className="h-4 w-4" />} />
+            <StatCard label="Tests & payment" value={stats.awaitingPayment ?? 0} accent="amber" icon={<CreditCard className="h-4 w-4" />} />
           </>
         ) : (
           <>
@@ -484,10 +497,19 @@ export function Workspace({
         </div>
       )}
 
-      {/* Search */}
-      <div className="relative">
-        <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
-        <input value={query} onChange={(e) => setQuery(e.target.value)} placeholder="Search code, name or phone" className="w-full rounded-xl border border-white/10 bg-white/5 py-2 pl-9 pr-3 text-sm text-white placeholder:text-slate-500 focus:border-medical-400 focus:outline-none" />
+      {/* Search + sort */}
+      <div className="flex items-center gap-2">
+        <div className="relative flex-1">
+          <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
+          <input value={query} onChange={(e) => setQuery(e.target.value)} placeholder="Search code, name or phone" className="w-full rounded-xl border border-white/10 bg-white/5 py-2 pl-9 pr-3 text-sm text-white placeholder:text-slate-500 focus:border-medical-400 focus:outline-none" />
+        </div>
+        <FilterSelect
+          label="Sort"
+          value={sortDir}
+          onChange={(v) => setSortDir(v as "newest" | "oldest")}
+          className="w-40"
+          options={[{ value: "newest", label: "Newest first" }, { value: "oldest", label: "Oldest first" }]}
+        />
       </div>
 
       {/* Walk-in registration modal (onboarding) */}
@@ -514,7 +536,7 @@ export function Workspace({
         <div className="rounded-2xl border border-white/10 bg-white/5 py-16 text-center text-slate-400">No matching requests.</div>
       ) : (
         <div className="space-y-2">
-          {filtered.map((r) => {
+          {sorted.map((r) => {
             const tracks = tracksFor(r, departments).filter((t) => !deptF || t.department === deptF);
             return (
               <button key={r.id} onClick={() => setSelected(r)} className="block w-full rounded-2xl border border-white/10 bg-white/5 p-4 text-left transition hover:bg-white/10">
@@ -534,16 +556,18 @@ export function Workspace({
                     </div>
                   </div>
                   <div className="flex shrink-0 items-center gap-1.5">
-                    <SourceBadge source={r.source} />
+                    {/* Source + registration status are only relevant in onboarding. */}
+                    {isOnboarding && <SourceBadge source={r.source} />}
                     {!r.is_paid && r.status !== "done" && <span className="inline-flex items-center gap-1 rounded-full bg-rose-500/15 px-2 py-0.5 text-[10px] font-medium text-rose-300" title="In the queue, awaiting payment"><CreditCard className="h-3 w-3" /> Awaiting payment</span>}
-                    <span className={`rounded-full px-2 py-0.5 text-[10px] font-medium ${r.status === "done" ? "bg-emerald-500/15 text-emerald-300" : r.status === "seen" ? "bg-sky-500/15 text-sky-300" : "bg-amber-500/15 text-amber-300"}`}>{statusLabel(r.status)}</span>
+                    {isOnboarding && <span className={`rounded-full px-2 py-0.5 text-[10px] font-medium ${r.status === "done" ? "bg-emerald-500/15 text-emerald-300" : r.status === "seen" ? "bg-sky-500/15 text-sky-300" : "bg-amber-500/15 text-amber-300"}`}>{statusLabel(r.status)}</span>}
                   </div>
                 </div>
                 <div className="flex flex-wrap gap-1.5">
                   {tracks.map((t) => (
-                    <span key={t.department} className="inline-flex items-center gap-1 rounded-full border border-white/10 bg-white/5 px-2 py-0.5 text-[10px] text-slate-300">
-                      <span className="font-medium text-slate-200">{t.department}</span>
-                      <span className="text-medical-300">{stageLabel(t.currentStage)}</span>
+                    <span key={t.department} className={`inline-flex items-center gap-1 rounded-full border px-2 py-0.5 text-[10px] ${stageColorClasses(t.currentStage)}`}>
+                      <span className="font-medium opacity-90">{t.department}</span>
+                      <span className="opacity-60">·</span>
+                      <span className="font-medium">{stageLabel(t.currentStage)}</span>
                     </span>
                   ))}
                 </div>

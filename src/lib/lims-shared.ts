@@ -60,6 +60,24 @@ export function stageLabel(stage: string): string {
 }
 
 /**
+ * Tailwind classes (border + tint + text, dark-theme) giving each pipeline
+ * stage its own colour so progress is readable at a glance in the workstation.
+ */
+export function stageColorClasses(stage: string): string {
+  switch (stage) {
+    case "registered": return "border-slate-400/20 bg-slate-500/15 text-slate-300";
+    case "collected":
+    case "scheduled": return "border-sky-400/20 bg-sky-500/15 text-sky-300";
+    case "received": return "border-indigo-400/20 bg-indigo-500/15 text-indigo-300";
+    case "in_analysis":
+    case "performed": return "border-amber-400/20 bg-amber-500/15 text-amber-300";
+    case "verified": return "border-violet-400/20 bg-violet-500/15 text-violet-300";
+    case "reported": return "border-emerald-400/20 bg-emerald-500/15 text-emerald-300";
+    default: return "border-white/10 bg-white/5 text-slate-300";
+  }
+}
+
+/**
  * A configurable department: a display name, the pipeline it follows, and the
  * lowercase keywords that route a test's category (or name) into it. Labs can
  * customise these via the LabDepartment table; when a lab has none configured

@@ -12,7 +12,34 @@ import { createRequire } from "module";
 const require = createRequire(import.meta.url);
 const { PrismaClient } = require("@prisma/client");
 
-const prisma = new PrismaClient();
+// Run migrations over the DIRECT (non-pooled) connection when available. The
+// pooled DATABASE_URL goes through PgBouncer in transaction mode, where each
+// $executeRawUnsafe can land on a different backend and lose its prepared
+// statement ("prepared statement \"sNN\" does not exist", SQLSTATE 26000).
+const directUrl = process.env.DIRECT_URL || process.env.DATABASE_URL;
+const prisma = new PrismaClient(
+  directUrl ? { datasources: { db: { url: directUrl } } } : undefined
+);
+
+// Belt-and-suspenders: even on a direct connection, retry the pooler artifact.
+function isPreparedStmtArtifact(err) {
+  const msg = String(err?.message ?? "");
+  return msg.includes("prepared statement") && msg.includes("does not exist");
+}
+async function execWithRetry(sql, attempts = 4) {
+  let lastErr;
+  for (let i = 0; i < attempts; i++) {
+    try {
+      await prisma.$executeRawUnsafe(sql);
+      return;
+    } catch (err) {
+      lastErr = err;
+      if (isPreparedStmtArtifact(err)) continue;
+      throw err;
+    }
+  }
+  throw lastErr;
+}
 
 const migrations = [
   {
@@ -780,7 +807,7 @@ let failed = false;
 
 for (const { desc, sql, continueOnError } of migrations) {
   try {
-    await prisma.$executeRawUnsafe(sql);
+    await execWithRetry(sql);
     console.log(`  ✓ ${desc}`);
   } catch (err) {
     if (continueOnError) {
