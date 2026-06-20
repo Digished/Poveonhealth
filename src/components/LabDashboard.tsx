@@ -17,7 +17,6 @@ const LabPriceListManager = dynamic(() => import("@/components/LabPriceListManag
 const LabMarketerAnalytics = dynamic(() => import("@/components/LabMarketerAnalytics").then(m => ({ default: m.LabMarketerAnalytics })), { ssr: false });
 const JourneyView = dynamic(() => import("@/components/lab/JourneyView").then(m => ({ default: m.JourneyView })), { ssr: false });
 const ProfessionalsView = dynamic(() => import("@/components/lab/ProfessionalsView").then(m => ({ default: m.ProfessionalsView })), { ssr: false });
-const OnboardingPanel = dynamic(() => import("@/components/lab/OnboardingPanel").then(m => ({ default: m.OnboardingPanel })), { ssr: false });
 const TatPanel = dynamic(() => import("@/components/lab/TatPanel").then(m => ({ default: m.TatPanel })), { ssr: false });
 const RolesManager = dynamic(() => import("@/components/lab/RolesManager").then(m => ({ default: m.RolesManager })), { ssr: false });
 const TemplatesManager = dynamic(() => import("@/components/lab/TemplatesManager").then(m => ({ default: m.TemplatesManager })), { ssr: false });
@@ -25,6 +24,7 @@ const Workspace = dynamic(() => import("@/components/lab/Workspace").then(m => (
 const ResultTemplatesManager = dynamic(() => import("@/components/lab/ResultTemplatesManager").then(m => ({ default: m.ResultTemplatesManager })), { ssr: false });
 const SopManager = dynamic(() => import("@/components/lab/SopManager").then(m => ({ default: m.SopManager })), { ssr: false });
 const DepartmentsManager = dynamic(() => import("@/components/lab/DepartmentsManager").then(m => ({ default: m.DepartmentsManager })), { ssr: false });
+const LabQrCard = dynamic(() => import("@/components/lab/LabQrCard").then(m => ({ default: m.LabQrCard })), { ssr: false });
 import { useDashTheme } from "@/hooks/useDashTheme";
 import { Button } from "@/components/ui/Button";
 import { Input } from "@/components/ui/Input";
@@ -124,15 +124,15 @@ export function LabDashboard({ lab, isOwner = false, roleName = "Lab Owner", can
   const searchParams = useSearchParams();
   const { isLight, toggle, themeClass } = useDashTheme("lab_dash_theme");
   type MainView = "workspace" | "requests" | "journey" | "onboarding" | "departments" | "templates" | "sops" | "network" | "referrals" | "professionals" | "clients" | "analytics" | "activity" | "feedback" | "poveon" | "price-list" | "marketers";
-  const VALID_TABS: MainView[] = ["workspace", "requests", "journey", "onboarding", "departments", "templates", "sops", "network", "referrals", "professionals", "clients", "analytics", "activity", "feedback", "poveon", "price-list", "marketers"];
+  const VALID_TABS: MainView[] = ["onboarding", "workspace", "requests", "journey", "departments", "templates", "sops", "network", "referrals", "professionals", "clients", "analytics", "activity", "feedback", "poveon", "price-list", "marketers"];
   // Legacy tabs now fold into the unified Workspace.
-  const LEGACY_TO_WORKSPACE = new Set(["requests", "journey", "onboarding"]);
+  const LEGACY_TO_WORKSPACE = new Set(["requests", "journey"]);
   // Which permission gates each tab (used by the sidebar and the initial landing).
   const tabVisible: Record<MainView, boolean> = {
     workspace: canViewRequestsEff,
     requests: canViewRequestsEff,
     journey: canViewRequestsEff,
-    onboarding: canViewRequestsEff,
+    onboarding: canMarkSeen || isOwner,
     departments: isOwner,
     templates: canViewRequestsEff || isOwner || canManageTemplates,
     sops: canViewRequestsEff || isOwner || canManageTemplates,
@@ -148,7 +148,7 @@ export function LabDashboard({ lab, isOwner = false, roleName = "Lab Owner", can
     marketers: isOwner || canViewMarketers,
   };
   const STANDALONE_NETWORK = new Set(["referrals", "professionals"]);
-  const firstVisibleTab = (VALID_TABS.find((t) => t !== "requests" && t !== "journey" && t !== "onboarding" && !STANDALONE_NETWORK.has(t) && tabVisible[t]) ?? "workspace") as MainView;
+  const firstVisibleTab = (VALID_TABS.find((t) => t !== "requests" && t !== "journey" && !STANDALONE_NETWORK.has(t) && tabVisible[t]) ?? "workspace") as MainView;
   const rawTabParam = searchParams.get("tab") as MainView | null;
   // Old deep links (requests/journey/onboarding) resolve to the Workspace.
   const tabParam: MainView | null = rawTabParam && LEGACY_TO_WORKSPACE.has(rawTabParam) ? "workspace" : rawTabParam;
@@ -869,8 +869,9 @@ export function LabDashboard({ lab, isOwner = false, roleName = "Lab Owner", can
         {(() => {
           const RAW_SECTIONS: { label: string; items: { key: MainView; label: string; icon: React.ReactNode; show: boolean }[] }[] = [
             { label: "Operations", items: [
-              { key: "workspace", label: "Workspace", icon: <Workflow className="w-4 h-4" />, show: tabVisible.workspace },
-              { key: "departments", label: "Departments", icon: <Workflow className="w-4 h-4" />, show: tabVisible.departments },
+              { key: "onboarding", label: "Onboarding", icon: <QrCode className="w-4 h-4" />, show: tabVisible.onboarding },
+              { key: "workspace", label: "Workstation", icon: <Workflow className="w-4 h-4" />, show: tabVisible.workspace },
+              { key: "departments", label: "Departments", icon: <Layers className="w-4 h-4" />, show: tabVisible.departments },
               // Result templates hidden for now — re-enable by restoring `show: tabVisible.templates`.
               { key: "templates", label: "Result Templates", icon: <FileText className="w-4 h-4" />, show: false },
               { key: "sops", label: "SOPs", icon: <ClipboardList className="w-4 h-4" />, show: tabVisible.sops },
@@ -2090,17 +2091,6 @@ export function LabDashboard({ lab, isOwner = false, roleName = "Lab Owner", can
           </div>
         )}
 
-        {/* Onboarding (QR + walk-in) view */}
-        {mainView === "onboarding" && canViewRequestsEff && (
-          <div className="space-y-5">
-            <div>
-              <h2 className="text-lg font-semibold text-white">Client onboarding</h2>
-              <p className="text-sm text-slate-400 mt-1">Let clients self-register via QR, or register a walk-in in seconds.</p>
-            </div>
-            <OnboardingPanel labId={lab.id} labName={lab.name} slug={lab.slug ?? null} />
-          </div>
-        )}
-
         {/* Professionals & commission view */}
         {(mainView === "professionals" || (mainView === "network" && networkSub === "professionals")) && (isOwner || canManageProfessionals) && (
           <div className="space-y-5">
@@ -2176,13 +2166,33 @@ export function LabDashboard({ lab, isOwner = false, roleName = "Lab Owner", can
         )}
 
         {/* Unified Workspace — intake + requests + multi-department journey + results */}
+        {mainView === "onboarding" && (canMarkSeen || isOwner) && (
+          <div className="space-y-5">
+            <div>
+              <h2 className="text-lg font-semibold text-white">Onboarding</h2>
+              <p className="text-sm text-slate-400 mt-1">Register walk-ins or Poveon arrivals, confirm tests and take payment. Paid clients move on to the Workstation.</p>
+            </div>
+            <Workspace
+              mode="onboarding"
+              labId={lab.id}
+              labName={lab.name}
+              labSlug={lab.slug ?? null}
+              canAdvance={canAdvanceJourney}
+              canEnterResults={canEnterResults}
+              canSendResults={canSendResultsEff}
+              memberDepartment={memberDepartment}
+            />
+          </div>
+        )}
+
         {mainView === "workspace" && canViewRequestsEff && (
           <div className="space-y-5">
             <div>
-              <h2 className="text-lg font-semibold text-white">Workspace</h2>
-              <p className="text-sm text-slate-400 mt-1">Onboard clients, track every sample across departments, and deliver results — in one place.</p>
+              <h2 className="text-lg font-semibold text-white">Workstation</h2>
+              <p className="text-sm text-slate-400 mt-1">Track every paid sample across departments and deliver results. Registration happens in Onboarding.</p>
             </div>
             <Workspace
+              mode="workstation"
               labId={lab.id}
               labName={lab.name}
               labSlug={lab.slug ?? null}
@@ -3103,6 +3113,9 @@ export function LabDashboard({ lab, isOwner = false, roleName = "Lab Owner", can
                     {lab.description && <p className="text-sm text-slate-400 mt-1 leading-relaxed">{lab.description}</p>}
                   </div>
                 </div>
+
+                {/* Onboarding QR — print/download for physical display */}
+                {(isOwner || canManageRoles) && <LabQrCard slug={lab.slug ?? null} />}
 
                 {/* Contact */}
                 {(() => {

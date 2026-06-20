@@ -1,10 +1,10 @@
 "use client";
 
 import { useEffect, useState, useCallback, useMemo } from "react";
-import { Loader2, Search, X, ArrowRight, Plus, Workflow, QrCode, UserPlus, Printer, Send, Check, FlaskConical, Pencil, Stethoscope, AlertTriangle, CreditCard, Lock } from "lucide-react";
+import { Loader2, Search, X, ArrowRight, Plus, Workflow, UserPlus, Printer, Send, Check, FlaskConical, Pencil, Stethoscope, AlertTriangle, CreditCard, Lock } from "lucide-react";
 import toast from "react-hot-toast";
 import { SourceBadge } from "@/components/lab/SourceBadge";
-import { OnboardingPanel } from "@/components/lab/OnboardingPanel";
+import { LabOnboardForm } from "@/components/lab/LabOnboardForm";
 import { StatCard } from "@/components/lab/StatCard";
 import { TestTagInput, TestTag } from "@/components/ui/TestTagInput";
 import { requestDepartments, categoryToDepartment, WORKFLOWS, stageLabel, DEFAULT_DEPARTMENTS, type DepartmentConfig } from "@/lib/lims-shared";
@@ -129,6 +129,7 @@ export function Workspace({
   canEnterResults,
   canSendResults,
   memberDepartment,
+  mode = "workstation",
 }: {
   labId: string;
   labName: string;
@@ -137,20 +138,30 @@ export function Workspace({
   canEnterResults: boolean;
   canSendResults: boolean;
   memberDepartment: string | null;
+  /** "onboarding" = reception intake + registration (+ read-only journey subtab);
+   *  "workstation" = lab pipeline for already-paid requests (no registration). */
+  mode?: "onboarding" | "workstation";
 }) {
+  const isOnboarding = mode === "onboarding";
   const [requests, setRequests] = useState<WReq[]>([]);
   const [loading, setLoading] = useState(true);
   const [selected, setSelected] = useState<WReq | null>(null);
-  const [intakeOpen, setIntakeOpen] = useState(false);
   const [busy, setBusy] = useState(false);
   const [codeInput, setCodeInput] = useState("");
   const [revealing, setRevealing] = useState(false);
 
+  // Onboarding-only: which sub-view, the walk-in modal, and its quick panels.
+  const [obView, setObView] = useState<"register" | "journey">("register");
+  const [walkInOpen, setWalkInOpen] = useState(false);
+  const [walkInTemplates, setWalkInTemplates] = useState<{ id: string; name: string; test_names: string[] }[]>([]);
+
   const [query, setQuery] = useState("");
   const [deptF, setDeptF] = useState(memberDepartment ?? "");
-  // Pipeline sub-filter within the selected department: "" = all active,
-  // "unregistered" = not yet registered, otherwise a workflow stage key.
+  // Workstation pipeline sub-filter: "" = all active, otherwise a workflow stage key.
   const [stageF, setStageF] = useState("");
+  // Onboarding filters: registration status and payment.
+  const [statusF, setStatusF] = useState("");
+  const [paidF, setPaidF] = useState("");
   // The lab's configured departments (falls back to the built-in defaults).
   const [departments, setDepartments] = useState<DepartmentConfig[]>(DEFAULT_DEPARTMENTS);
 
@@ -160,6 +171,14 @@ export function Workspace({
       .then((d) => { if (d?.departments?.length) setDepartments(d.departments); })
       .catch(() => {});
   }, []);
+
+  function openWalkIn() {
+    fetch("/api/lab/templates", { cache: "no-store" })
+      .then((r) => (r.ok ? r.json() : null))
+      .then((d) => setWalkInTemplates((d?.templates ?? []).map((t: { id: string; name: string; test_names: string[] }) => ({ id: t.id, name: t.name, test_names: t.test_names }))))
+      .catch(() => {});
+    setWalkInOpen(true);
+  }
 
   // Switching department resets the pipeline sub-filter.
   const selectDept = useCallback((d: string) => { setDeptF(d); setStageF(""); }, []);
@@ -179,44 +198,64 @@ export function Workspace({
 
   useEffect(() => { load(); }, [load]);
 
+  const matchesQuery = useCallback((r: WReq) => {
+    if (!query) return true;
+    const q = query.toLowerCase();
+    return r.code.toLowerCase().includes(q) || (r.patient_name ?? "").toLowerCase().includes(q) || (r.patient_phone ?? "").includes(q);
+  }, [query]);
+
   const filtered = useMemo(() => requests.filter((r) => {
+    if (!matchesQuery(r)) return false;
+
+    if (isOnboarding) {
+      if (obView === "register") {
+        // Registration queue — not yet completed.
+        if (r.status === "done") return false;
+        if (statusF === "incoming" && r.status !== "incoming") return false;
+        if (statusF === "seen" && r.status !== "seen") return false;
+        if (paidF === "paid" && !r.is_paid) return false;
+        if (paidF === "unpaid" && r.is_paid) return false;
+        return true;
+      }
+      // Journey subtab — registered (paid) patients still in the pipeline.
+      return r.is_paid && r.status !== "done";
+    }
+
+    // Workstation: paid requests only (unpaid live in Onboarding).
+    if (!r.is_paid) return false;
     const tracks = tracksFor(r, departments);
-    // Department (primary filter).
     if (deptF && !tracks.some((t) => t.department === deptF)) return false;
-    // Pipeline sub-filter (based on the department's workflow stages).
-    if (stageF === "unregistered") {
-      if (r.status !== "incoming") return false;
-    } else if (stageF) {
+    if (stageF) {
       const t = tracks.find((x) => x.department === deptF);
       if (!t || t.currentStage !== stageF) return false;
     } else if (r.status === "done") {
-      // Default view hides completed work — select the "Reported" stage to see it.
+      // Default view hides completed work — pick the "Reported" stage to see it.
       return false;
     }
-    if (query) {
-      const q = query.toLowerCase();
-      if (!r.code.toLowerCase().includes(q) && !(r.patient_name ?? "").toLowerCase().includes(q) && !(r.patient_phone ?? "").includes(q)) return false;
-    }
     return true;
-  }), [requests, departments, deptF, stageF, query]);
+  }), [requests, departments, deptF, stageF, statusF, paidF, isOnboarding, obView, matchesQuery]);
 
-  // Actionable insights across active (not-done) work, scoped to the selected
-  // pipeline (department) when one is chosen.
   const active = useMemo(() => requests.filter((r) => r.status !== "done"), [requests]);
+
+  // Headline stats reflect the current tab and any applied filters (computed
+  // over the filtered set so the numbers always match what's on screen).
   const stats = useMemo(() => {
-    let toRegister = 0, awaitingCollection = 0, inProgress = 0, readyToReport = 0;
-    for (const r of active) {
-      const tracks = tracksFor(r, departments).filter((t) => !deptF || t.department === deptF);
-      if (tracks.length === 0) continue;
-      if (!r.is_paid) toRegister++;
-      for (const t of tracks) {
-        if (t.currentStage === "registered") awaitingCollection++;
-        else if (t.currentStage === "verified") readyToReport++;
-        else if (t.currentStage !== "reported") inProgress++;
+    const s = { total: filtered.length, unregistered: 0, awaitingPayment: 0, registered: 0, awaitingCollection: 0, inProgress: 0, readyToReport: 0 };
+    if (isOnboarding && obView === "register") {
+      s.unregistered = filtered.filter((r) => r.status === "incoming").length;
+      s.awaitingPayment = filtered.filter((r) => !r.is_paid).length;
+      s.registered = filtered.filter((r) => r.is_paid).length;
+      return s;
+    }
+    for (const r of filtered) {
+      for (const t of tracksFor(r, departments).filter((t) => !deptF || t.department === deptF)) {
+        if (t.currentStage === "registered") s.awaitingCollection++;
+        else if (t.currentStage === "verified") s.readyToReport++;
+        else if (t.currentStage !== "reported") s.inProgress++;
       }
     }
-    return { toRegister, awaitingCollection, inProgress, readyToReport };
-  }, [active, departments, deptF]);
+    return s;
+  }, [filtered, departments, deptF, isOnboarding, obView]);
 
   // Per-department active workload (for the quick department switcher).
   const deptCounts = useMemo(() => {
@@ -316,17 +355,24 @@ export function Workspace({
 
   return (
     <div className="space-y-5">
-      {/* Intake */}
-      <div className="rounded-2xl border border-white/10 bg-white/5 p-4">
-        <div className="flex items-center justify-between gap-3">
-          <p className="flex items-center gap-2 text-sm font-semibold text-white"><UserPlus className="h-4 w-4 text-medical-300" /> Intake</p>
-          <button onClick={() => setIntakeOpen((v) => !v)} className="inline-flex items-center gap-1.5 rounded-lg bg-medical-600 px-3 py-1.5 text-xs font-semibold text-white hover:bg-medical-700">
-            <QrCode className="h-3.5 w-3.5" /> {intakeOpen ? "Hide" : "Register / QR"}
-          </button>
+      {/* Onboarding: Register / Journey sub-tabs */}
+      {isOnboarding && (
+        <div className="inline-flex rounded-xl border border-white/10 bg-white/5 p-1">
+          {([["register", "Register"], ["journey", "Journey"]] as const).map(([v, label]) => (
+            <button key={v} onClick={() => setObView(v)} className={`rounded-lg px-4 py-1.5 text-sm font-medium transition ${obView === v ? "bg-medical-600 text-white" : "text-slate-300 hover:text-white"}`}>{label}</button>
+          ))}
         </div>
+      )}
 
-        {/* Check in a patient who booked via Poveon */}
-        {canAdvance && (
+      {/* Intake — onboarding "Register" view only (walk-in modal + Poveon check-in) */}
+      {isOnboarding && obView === "register" && canAdvance && (
+        <div className="rounded-2xl border border-white/10 bg-white/5 p-4">
+          <div className="flex flex-wrap items-center justify-between gap-3">
+            <p className="flex items-center gap-2 text-sm font-semibold text-white"><UserPlus className="h-4 w-4 text-medical-300" /> Intake</p>
+            <button onClick={openWalkIn} className="inline-flex items-center gap-1.5 rounded-lg bg-medical-600 px-3 py-1.5 text-xs font-semibold text-white hover:bg-medical-700">
+              <UserPlus className="h-3.5 w-3.5" /> Register walk-in
+            </button>
+          </div>
           <div className="mt-3">
             <label className="mb-1 block text-xs font-medium text-slate-400">Have a Poveon code? Check the patient in</label>
             <div className="flex gap-2">
@@ -342,21 +388,43 @@ export function Workspace({
               </button>
             </div>
           </div>
-        )}
+        </div>
+      )}
 
-        {intakeOpen && <div className="mt-4"><OnboardingPanel labId={labId} labName={labName} slug={labSlug} /></div>}
-      </div>
-
-      {/* Actionable insights — only the essentials, scoped to the selected pipeline */}
+      {/* Stats — relevant to the tab, reflecting any applied filters */}
       <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
-        <StatCard label="To register" hint={deptF || "All pipelines"} value={stats.toRegister} accent="amber" icon={<UserPlus className="h-4 w-4" />} />
-        <StatCard label={selectedIsImaging ? "Awaiting scan" : "Awaiting collection"} value={stats.awaitingCollection} accent="amber" icon={<FlaskConical className="h-4 w-4" />} />
-        <StatCard label="In progress" value={stats.inProgress} accent="violet" icon={<Workflow className="h-4 w-4" />} />
-        <StatCard label="Ready to report" value={stats.readyToReport} accent="emerald" icon={<Send className="h-4 w-4" />} />
+        {isOnboarding && obView === "register" ? (
+          <>
+            <StatCard label="In queue" value={stats.total ?? 0} accent="violet" icon={<UserPlus className="h-4 w-4" />} />
+            <StatCard label="Unregistered" value={stats.unregistered ?? 0} accent="amber" icon={<AlertTriangle className="h-4 w-4" />} />
+            <StatCard label="Awaiting payment" value={stats.awaitingPayment ?? 0} accent="amber" icon={<CreditCard className="h-4 w-4" />} />
+            <StatCard label="Registered" value={stats.registered ?? 0} accent="emerald" icon={<Check className="h-4 w-4" />} />
+          </>
+        ) : (
+          <>
+            <StatCard label="In pipeline" hint={deptF || "All departments"} value={stats.total ?? 0} accent="violet" icon={<Workflow className="h-4 w-4" />} />
+            <StatCard label={selectedIsImaging ? "Awaiting scan" : "Awaiting collection"} value={stats.awaitingCollection ?? 0} accent="amber" icon={<FlaskConical className="h-4 w-4" />} />
+            <StatCard label="In progress" value={stats.inProgress ?? 0} accent="violet" icon={<Workflow className="h-4 w-4" />} />
+            <StatCard label="Ready to report" value={stats.readyToReport ?? 0} accent="emerald" icon={<Send className="h-4 w-4" />} />
+          </>
+        )}
       </div>
 
-      {/* Department switcher — the primary filter */}
-      {!memberDepartment && (
+      {/* Onboarding "Register" filters: registration status + payment */}
+      {isOnboarding && obView === "register" && (
+        <div className="flex flex-wrap items-center gap-1.5">
+          {([["", "All"], ["incoming", "Unregistered"], ["seen", "Registered"]] as const).map(([v, label]) => (
+            <button key={v || "all-st"} onClick={() => setStatusF(v)} className={`shrink-0 rounded-full border px-3 py-1 text-[11px] font-medium transition ${statusF === v ? "border-medical-400 bg-medical-600/25 text-white" : "border-white/10 bg-white/5 text-slate-300 hover:bg-white/10"}`}>{label}</button>
+          ))}
+          <span className="mx-1 text-white/15">|</span>
+          {([["", "All payments"], ["unpaid", "Unpaid"], ["paid", "Paid"]] as const).map(([v, label]) => (
+            <button key={v || "all-pay"} onClick={() => setPaidF(v)} className={`shrink-0 rounded-full border px-3 py-1 text-[11px] font-medium transition ${paidF === v ? "border-medical-400 bg-medical-600/25 text-white" : "border-white/10 bg-white/5 text-slate-300 hover:bg-white/10"}`}>{label}</button>
+          ))}
+        </div>
+      )}
+
+      {/* Department switcher — the primary filter (workstation) */}
+      {!isOnboarding && !memberDepartment && (
         <div className="-mx-1 flex gap-1.5 overflow-x-auto px-1 pb-1 no-scrollbar">
           <button
             onClick={() => selectDept("")}
@@ -378,10 +446,10 @@ export function Workspace({
       )}
 
       {/* Pipeline sub-filter — appears once a department is selected, driven by
-          that department's workflow stages. */}
-      {deptF && (
+          that department's workflow stages (workstation). */}
+      {!isOnboarding && deptF && (
         <div className="-mx-1 flex gap-1.5 overflow-x-auto px-1 pb-1 no-scrollbar">
-          {([["", "All stages"], ["unregistered", "Unregistered"]] as const).map(([val, label]) => (
+          {([["", "All stages"]] as const).map(([val, label]) => (
             <button
               key={val || "all"}
               onClick={() => setStageF(val)}
@@ -407,6 +475,24 @@ export function Workspace({
         <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
         <input value={query} onChange={(e) => setQuery(e.target.value)} placeholder="Search code, name or phone" className="w-full rounded-xl border border-white/10 bg-white/5 py-2 pl-9 pr-3 text-sm text-white placeholder:text-slate-500 focus:border-medical-400 focus:outline-none" />
       </div>
+
+      {/* Walk-in registration modal (onboarding) */}
+      {walkInOpen && (
+        <div className="fixed inset-0 z-[9999] flex items-end justify-center bg-black/60 backdrop-blur-sm sm:items-center" onClick={() => setWalkInOpen(false)}>
+          <div className="max-h-[90vh] w-full max-w-md overflow-y-auto rounded-t-3xl bg-white p-5 sm:rounded-3xl" onClick={(e) => e.stopPropagation()}>
+            <div className="mb-4 flex items-center justify-between">
+              <h3 className="text-lg font-semibold text-slate-900">Register walk-in</h3>
+              <button onClick={() => setWalkInOpen(false)} className="text-slate-400 hover:text-slate-600"><X className="h-5 w-5" /></button>
+            </div>
+            <LabOnboardForm
+              lab={{ id: labId, name: labName, slug: labSlug ?? undefined }}
+              source="walk_in"
+              templates={walkInTemplates}
+              onSuccess={() => { setTimeout(() => { setWalkInOpen(false); load(); }, 1500); }}
+            />
+          </div>
+        </div>
+      )}
 
       {loading ? (
         <div className="flex justify-center py-16"><Loader2 className="h-6 w-6 animate-spin text-medical-400" /></div>
@@ -458,6 +544,8 @@ export function Workspace({
           request={selected}
           labId={labId}
           departments={departments}
+          mode={mode}
+          readOnly={isOnboarding && obView === "journey"}
           onClose={() => setSelected(null)}
           canAdvance={canAdvance}
           canEnterResults={canEnterResults}
@@ -475,11 +563,13 @@ export function Workspace({
 }
 
 function WorkspaceDrawer({
-  request, labId, departments, onClose, canAdvance, canEnterResults, canSendResults, memberDepartment, busy, onMarkSeen, onAdvance, onRegistration, onChanged,
+  request, labId, departments, mode, readOnly, onClose, canAdvance, canEnterResults, canSendResults, memberDepartment, busy, onMarkSeen, onAdvance, onRegistration, onChanged,
 }: {
   request: WReq;
   labId: string;
   departments: DepartmentConfig[];
+  mode: "onboarding" | "workstation";
+  readOnly: boolean;
   onClose: () => void;
   canAdvance: boolean;
   canEnterResults: boolean;
@@ -491,6 +581,12 @@ function WorkspaceDrawer({
   onRegistration: (flags: { tests_confirmed?: boolean; is_paid?: boolean }) => Promise<void> | void;
   onChanged: () => void;
 }) {
+  // Onboarding "Register" handles intake/payment; the pipeline (tracks/results)
+  // belongs to the Workstation. Onboarding's "Journey" subtab shows the pipeline
+  // read-only.
+  const showRegistration = mode === "onboarding" && !readOnly;
+  const showPipeline = mode === "workstation" || readOnly;
+  const pipelineInteractive = mode === "workstation";
   const tracks = tracksFor(request, departments).filter((t) => !memberDepartment || t.department === memberDepartment);
   const [resultsFor, setResultsFor] = useState<{ department: string } | null>(null);
   const [collectFor, setCollectFor] = useState<Track | null>(null);
@@ -548,7 +644,7 @@ function WorkspaceDrawer({
                 <Stethoscope className="h-3.5 w-3.5" /> Referred by {request.doctor_name || request.doctor_email}
               </p>
             )}
-            {canAdvance && (
+            {showRegistration && canAdvance && (
               <div className="mt-2 flex flex-wrap gap-2">
                 <button onClick={() => setEditOpen(true)} className="inline-flex items-center gap-1.5 rounded-lg border border-white/10 px-2.5 py-1 text-xs font-medium text-medical-300 hover:bg-white/5">
                   <Pencil className="h-3.5 w-3.5" /> Edit client details
@@ -565,7 +661,7 @@ function WorkspaceDrawer({
         </div>
 
         {/* Registration gate — confirm tests & take payment before the pipeline */}
-        {request.status !== "done" && canAdvance && !request.is_paid && (
+        {showRegistration && request.status !== "done" && canAdvance && !request.is_paid && (
           <div className="mb-4 rounded-2xl border border-amber-500/25 bg-amber-500/10 p-4">
             <p className="flex items-center gap-2 text-sm font-semibold text-amber-200"><AlertTriangle className="h-4 w-4" /> Registration checklist</p>
             <p className="mt-1 text-xs text-amber-100/80">Confirm the tests and take payment before the sample can move down the pipeline.</p>
@@ -603,13 +699,14 @@ function WorkspaceDrawer({
             {!request.tests_confirmed && <p className="mt-2 text-[11px] text-amber-100/60">Confirm the tests to enable “Mark as paid”.</p>}
           </div>
         )}
-        {request.is_paid && request.status !== "done" && (
+        {showRegistration && request.is_paid && request.status !== "done" && (
           <div className="mb-4 flex items-center gap-2 rounded-xl bg-emerald-500/10 px-3 py-2 text-xs font-medium text-emerald-300">
-            <Check className="h-4 w-4" /> Confirmed &amp; paid — pipeline unlocked
+            <Check className="h-4 w-4" /> Confirmed &amp; paid — moved to the workstation
           </div>
         )}
 
-        {/* Department tracks */}
+        {/* Department tracks (workstation pipeline; read-only in onboarding's Journey) */}
+        {showPipeline && (
         <div className="space-y-4">
           {tracks.map((track) => {
             const stages = WORKFLOWS[track.workflow as keyof typeof WORKFLOWS] ?? WORKFLOWS.specimen;
@@ -657,7 +754,7 @@ function WorkspaceDrawer({
                   </div>
                 )}
 
-                {canAdvance && (
+                {pipelineInteractive && canAdvance && (
                   <div className="mt-3 flex flex-wrap gap-2">
                     {ns ? (
                       <button
@@ -682,7 +779,7 @@ function WorkspaceDrawer({
                   </div>
                 )}
 
-                {canEnterResults && (
+                {pipelineInteractive && canEnterResults && (
                   <button onClick={() => setResultsFor({ department: track.department })} className="mt-3 inline-flex items-center gap-1.5 rounded-lg border border-white/10 px-3 py-1.5 text-xs font-medium text-medical-300 hover:bg-white/5">
                     <FlaskConical className="h-3.5 w-3.5" /> Enter / send results
                   </button>
@@ -691,6 +788,7 @@ function WorkspaceDrawer({
             );
           })}
         </div>
+        )}
 
         {resultsFor && (
           <ResultEntry
