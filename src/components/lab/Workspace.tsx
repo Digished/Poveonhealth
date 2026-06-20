@@ -20,12 +20,34 @@ function fmtDayTime(iso: string | null | undefined): string {
   return new Date(iso).toLocaleString(undefined, { month: "short", day: "numeric", hour: "numeric", minute: "2-digit" });
 }
 
+/** Relative "time since", e.g. "just now", "3 hours ago", "2 days ago". */
+function timeAgo(iso: string | null | undefined): string {
+  if (!iso) return "—";
+  const then = new Date(iso).getTime();
+  const mins = Math.max(0, Math.floor((Date.now() - then) / 60000));
+  if (mins < 1) return "just now";
+  if (mins < 60) return `${mins} min${mins === 1 ? "" : "s"} ago`;
+  const hours = Math.floor(mins / 60);
+  if (hours < 24) return `${hours} hour${hours === 1 ? "" : "s"} ago`;
+  const days = Math.floor(hours / 24);
+  return `${days} day${days === 1 ? "" : "s"} ago`;
+}
+
+/** Human label for a request's registration status (the client-facing wording). */
+function statusLabel(status: string): string {
+  if (status === "incoming") return "Unregistered";
+  if (status === "seen") return "Registered";
+  if (status === "done") return "Done";
+  return status;
+}
+
 interface JEvent { id: string; stage: string; department: string | null; sample_label: string | null; note: string | null; actor_email: string | null; created_at: string }
 interface WReq {
   id: string; code: string; status: string; source: string; current_stage: string | null;
   patient_name: string | null; patient_phone: string | null; patient_email: string | null;
   patient_age: number | null; sex: string | null;
   doctor_name: string | null; doctor_email: string | null; tests: string;
+  raw_input: string | null; diagnosis: string | null;
   is_paid: boolean; tests_confirmed: boolean;
   created_at: string; seen_at: string | null; completed_at: string | null;
   test_breakdown: unknown; journey_events: JEvent[];
@@ -70,8 +92,8 @@ function tracksFor(r: WReq): Track[] {
 
 const STATUS_OPTIONS = [
   { value: "", label: "All statuses" },
-  { value: "incoming", label: "Incoming" },
-  { value: "seen", label: "Seen" },
+  { value: "incoming", label: "Unregistered" },
+  { value: "seen", label: "Registered" },
   { value: "done", label: "Done" },
 ];
 
@@ -174,6 +196,15 @@ export function Workspace({
     return m;
   }, [active]);
   const activeDepartments = DEPARTMENTS.filter((d) => (deptCounts.get(d) ?? 0) > 0);
+
+  // Auto-triage: number active (not-done) requests by arrival order — first in = #1.
+  const triageNo = useMemo(() => {
+    const m = new Map<string, number>();
+    [...active]
+      .sort((a, b) => new Date(a.created_at).getTime() - new Date(b.created_at).getTime())
+      .forEach((r, i) => m.set(r.id, i + 1));
+    return m;
+  }, [active]);
 
   async function markSeen(r: WReq) {
     setBusy(true);
@@ -351,15 +382,23 @@ export function Workspace({
             return (
               <button key={r.id} onClick={() => setSelected(r)} className="block w-full rounded-2xl border border-white/10 bg-white/5 p-4 text-left transition hover:bg-white/10">
                 <div className="mb-2 flex items-center justify-between gap-2">
-                  <div className="min-w-0">
-                    <p className="truncate text-sm font-semibold text-white">{r.patient_name || (r.status === "incoming" ? "Incoming patient" : "Unnamed")} <span className="font-mono text-xs text-slate-400">· {r.code}</span></p>
-                    <p className="truncate text-xs text-slate-400">{r.tests}</p>
-                    {r.doctor_name && <p className="mt-0.5 truncate text-[10px] text-medical-300">Ref: {r.doctor_name}</p>}
-                    <p className="mt-0.5 text-[10px] text-slate-500">Registered {fmtDateTime(r.created_at)}</p>
+                  <div className="flex min-w-0 items-start gap-2">
+                    {triageNo.has(r.id) && (
+                      <span className="mt-0.5 inline-flex h-6 shrink-0 items-center justify-center rounded-full bg-medical-600/25 px-2 text-xs font-bold text-medical-200" title="Triage position — first in, first served">
+                        #{triageNo.get(r.id)}
+                      </span>
+                    )}
+                    <div className="min-w-0">
+                      <p className="truncate text-sm font-semibold text-white">{r.patient_name || (r.status === "incoming" ? "Unregistered patient" : "Unnamed")} <span className="font-mono text-xs text-slate-400">· {r.code}</span></p>
+                      <p className="truncate text-xs text-slate-400">{r.tests}</p>
+                      {r.diagnosis && <p className="mt-0.5 truncate text-[10px] text-amber-200/80">Dx: {r.diagnosis}</p>}
+                      {r.doctor_name && <p className="mt-0.5 truncate text-[10px] text-medical-300">Ref: {r.doctor_name}</p>}
+                      <p className="mt-0.5 text-[10px] text-slate-500" title={fmtDateTime(r.created_at)}>Registered {timeAgo(r.created_at)}</p>
+                    </div>
                   </div>
                   <div className="flex shrink-0 items-center gap-1.5">
                     <SourceBadge source={r.source} />
-                    <span className={`rounded-full px-2 py-0.5 text-[10px] font-medium ${r.status === "done" ? "bg-emerald-500/15 text-emerald-300" : r.status === "seen" ? "bg-sky-500/15 text-sky-300" : "bg-amber-500/15 text-amber-300"}`}>{r.status}</span>
+                    <span className={`rounded-full px-2 py-0.5 text-[10px] font-medium ${r.status === "done" ? "bg-emerald-500/15 text-emerald-300" : r.status === "seen" ? "bg-sky-500/15 text-sky-300" : "bg-amber-500/15 text-amber-300"}`}>{statusLabel(r.status)}</span>
                   </div>
                 </div>
                 <div className="flex flex-wrap gap-1.5">
@@ -431,8 +470,22 @@ function WorkspaceDrawer({
         <div className="mb-4 flex items-start justify-between">
           <div>
             <h3 className="text-lg font-semibold text-white">{request.patient_name || "Patient"}</h3>
-            <p className="font-mono text-xs text-slate-400">{request.code} · {request.status}</p>
-            <div className="mt-1.5 flex flex-wrap gap-1.5">
+            <p className="font-mono text-xs text-slate-400">{request.code} · {statusLabel(request.status)}</p>
+
+            {/* Raw request as typed by the physician — always shown for reference */}
+            {request.raw_input && (
+              <p className="mt-2 rounded-lg border border-white/10 bg-white/5 px-2.5 py-1.5 text-xs italic text-slate-300">
+                <span className="font-medium not-italic text-slate-400">Request as written: </span>“{request.raw_input}”
+              </p>
+            )}
+            {request.diagnosis && (
+              <p className="mt-1.5 inline-flex items-center gap-1.5 rounded-lg bg-amber-500/15 px-2 py-1 text-xs text-amber-200">
+                <span className="font-medium">Diagnosis:</span> {request.diagnosis}
+              </p>
+            )}
+
+            <p className="mt-2 text-[10px] font-medium uppercase tracking-wide text-slate-500">Detected tests</p>
+            <div className="mt-1 flex flex-wrap gap-1.5">
               {testPills(request).map((p, i) => (
                 <span key={i} className={`inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[11px] ${p.recognized ? "border border-medical-500/30 bg-medical-600/20 text-medical-200" : "border border-white/10 bg-white/5 text-slate-400"}`} title={p.recognized ? "Recognised in your catalog" : "Not in your catalog"}>
                   {p.recognized && <Check className="h-3 w-3" />}{p.name}
@@ -646,9 +699,28 @@ function TestsEditForm({
   onClose: () => void;
   onSaved: () => void;
 }) {
-  const [tests, setTests] = useState<TestTag[]>(
-    (request.tests || "").split(",").map((s) => s.trim()).filter(Boolean).map((n) => ({ name: n, catalog_test_id: null }))
-  );
+  // Seed from the resolved breakdown so catalog-recognised tests show as recognised
+  // (green pills with their catalog id) instead of collapsing to plain free text.
+  const [tests, setTests] = useState<TestTag[]>(() => {
+    const bd = Array.isArray(request.test_breakdown)
+      ? (request.test_breakdown as { raw?: string; canonical_name?: string; category?: string; unit_price?: number; source?: string; lab_offered_test_id?: string | null }[])
+      : [];
+    if (bd.length > 0) {
+      return bd
+        .map((it): TestTag => {
+          const recognized = it.source === "lab_catalog";
+          return {
+            name: it.canonical_name || it.raw || "",
+            catalog_test_id: recognized ? (it.lab_offered_test_id ?? null) : null,
+            price: it.unit_price,
+            category: it.category,
+            low_confidence: !recognized,
+          };
+        })
+        .filter((t) => t.name);
+    }
+    return (request.tests || "").split(",").map((s) => s.trim()).filter(Boolean).map((n) => ({ name: n, catalog_test_id: null }));
+  });
   const [saving, setSaving] = useState(false);
 
   async function save() {
@@ -992,7 +1064,9 @@ function ResultEntry({
   const [resultId, setResultId] = useState<string | null>(null);
   const [status, setStatus] = useState<string>("new");
   const [busy, setBusy] = useState(false);
-  const [mode, setMode] = useState<"editor" | "document" | "link">("editor");
+  // Result templates hidden for now — new results are delivered as a document or link.
+  // The "editor" branch is retained only to display previously-entered template results.
+  const [mode, setMode] = useState<"editor" | "document" | "link">("document");
   const [docFile, setDocFile] = useState<File | null>(null);
   const [linkUrl, setLinkUrl] = useState("");
   const [sendOnAttach, setSendOnAttach] = useState(true);
@@ -1098,7 +1172,7 @@ function ResultEntry({
         {/* Result delivery mode */}
         {!existing && (
           <div className="mb-4 inline-flex w-full rounded-xl border border-white/10 bg-white/5 p-1">
-            {([["editor", "A4 editor"], ["document", "Attach document"], ["link", "Send a link"]] as const).map(([m, label]) => (
+            {([["document", "Attach document"], ["link", "Send a link"]] as const).map(([m, label]) => (
               <button key={m} onClick={() => setMode(m)} className={`flex-1 rounded-lg px-3 py-1.5 text-xs font-medium transition ${mode === m ? "bg-medical-600 text-white" : "text-slate-300 hover:text-white"}`}>{label}</button>
             ))}
           </div>

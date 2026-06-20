@@ -42,6 +42,8 @@ export async function GET(request: NextRequest) {
       is_paid: true,
       tests_confirmed: true,
       tests: true,
+      raw_input: true,
+      diagnosis: true,
       created_at: true,
       seen_at: true,
       completed_at: true,

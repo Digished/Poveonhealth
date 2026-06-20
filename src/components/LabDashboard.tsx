@@ -868,7 +868,8 @@ export function LabDashboard({ lab, isOwner = false, roleName = "Lab Owner", can
           const RAW_SECTIONS: { label: string; items: { key: MainView; label: string; icon: React.ReactNode; show: boolean }[] }[] = [
             { label: "Operations", items: [
               { key: "workspace", label: "Workspace", icon: <Workflow className="w-4 h-4" />, show: tabVisible.workspace },
-              { key: "templates", label: "Result Templates", icon: <FileText className="w-4 h-4" />, show: tabVisible.templates },
+              // Result templates hidden for now — re-enable by restoring `show: tabVisible.templates`.
+              { key: "templates", label: "Result Templates", icon: <FileText className="w-4 h-4" />, show: false },
               { key: "sops", label: "SOPs", icon: <ClipboardList className="w-4 h-4" />, show: tabVisible.sops },
               { key: "clients", label: "Clients", icon: <UserCircle className="w-4 h-4" />, show: tabVisible.clients },
             ] },
