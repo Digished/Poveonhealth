@@ -243,9 +243,12 @@ interface TimedEvent { stage: string; created_at: string | Date }
  * Compute how long a request spent in each stage of one department track, plus
  * the time it has spent in its current (latest) stage so far. `events` should be
  * the chronologically-ordered events for a single department. Consecutive events
- * with the same stage are collapsed onto the first occurrence.
+ * with the same stage are collapsed onto the first occurrence. Pass `createdAt`
+ * (the request's creation time) so the "registered" stage is anchored correctly
+ * even when the track has no explicit registered event (legacy / unseeded) —
+ * otherwise the current-stage timer wrongly reads "just now".
  */
-export function stageDurations(events: TimedEvent[]): {
+export function stageDurations(events: TimedEvent[], createdAt?: string | Date | null): {
   segments: { stage: string; enteredAt: string; ms: number; ongoing: boolean }[];
   currentStage: string | null;
   currentMs: number;
@@ -261,6 +264,14 @@ export function stageDurations(events: TimedEvent[]): {
     if (milestones.length === 0 || milestones[milestones.length - 1].stage !== e.stage) {
       milestones.push({ stage: e.stage, at });
     }
+  }
+
+  // Anchor to the request's creation time when there's no registered milestone,
+  // so the timer measures real elapsed time rather than starting from "now".
+  const anchor = createdAt != null ? new Date(createdAt).getTime() : null;
+  if (anchor != null && !Number.isNaN(anchor)) {
+    if (milestones.length === 0) milestones.push({ stage: "registered", at: anchor });
+    else if (milestones[0].stage !== "registered") milestones.unshift({ stage: "registered", at: anchor });
   }
 
   const now = Date.now();

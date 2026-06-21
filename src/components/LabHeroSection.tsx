@@ -197,15 +197,16 @@ export function LabHeroSection({
             )}
           </div>
 
-          {/* Text — white panel keeps it legible on any time-of-day sky */}
-          <div className="space-y-1.5 rounded-3xl bg-white/85 backdrop-blur-md shadow-xl ring-1 ring-black/5 px-6 py-5">
-            <p className="text-[10px] font-semibold uppercase tracking-[0.24em] text-slate-400">
+          {/* Text — each line gets its own white pill that hugs its text, so
+              shorter lines have shorter panels than the ones below them. */}
+          <div className="flex flex-col items-center gap-1.5">
+            <p className="w-fit max-w-full rounded-full bg-white/85 backdrop-blur-md shadow-md ring-1 ring-black/5 px-3 py-1 text-[10px] font-semibold uppercase tracking-[0.24em] text-slate-400">
               Welcome to
             </p>
-            <h1 className="text-3xl sm:text-4xl font-black tracking-tight leading-[1.05] text-slate-900">
+            <h1 className="w-fit max-w-full rounded-2xl bg-white/85 backdrop-blur-md shadow-lg ring-1 ring-black/5 px-5 py-2 text-3xl sm:text-4xl font-black tracking-tight leading-[1.05] text-slate-900">
               {labName}
             </h1>
-            <p className="text-sm font-medium pt-0.5 text-slate-600">
+            <p className="w-fit max-w-full rounded-2xl bg-white/85 backdrop-blur-md shadow-lg ring-1 ring-black/5 px-4 py-2 text-sm font-medium text-slate-600">
               {GREETING[tod]} — how may we assist you today?
             </p>
           </div>

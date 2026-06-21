@@ -127,19 +127,19 @@ export function JourneyView({ canAdvance }: { canAdvance: boolean }) {
             <div className="space-y-3">
               {filtered.map((r) => {
                 const rb = resultBadge(r.current_stage);
-                const { currentMs } = stageDurations(r.journey_events);
+                const { currentMs } = stageDurations(r.journey_events, r.created_at);
                 return (
                   <button
                     key={r.id}
                     onClick={() => setSelected(r)}
                     className="block w-full rounded-2xl border border-white/10 bg-white/5 p-4 text-left transition hover:bg-white/10"
                   >
-                    <div className="mb-3 flex items-center justify-between gap-2">
+                    <div className="mb-3 flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
                       <div className="min-w-0">
                         <p className="truncate text-sm font-semibold text-white">{r.patient_name || "Unnamed"} <span className="font-mono text-xs text-slate-400">· {r.code}</span></p>
                         <p className="truncate text-xs text-slate-400">{r.tests}</p>
                       </div>
-                      <div className="flex shrink-0 items-center gap-1.5">
+                      <div className="flex flex-wrap items-center gap-1.5">
                         {rb && <span className={`inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[10px] font-medium ${rb.cls}`}><FileText className="h-3 w-3" /> {rb.label}</span>}
                         {r.current_stage && r.current_stage !== "reported" && <span className="inline-flex items-center gap-1 rounded-full bg-white/10 px-2 py-0.5 text-[10px] text-slate-300" title={`${formatDuration(currentMs)} ${awaitingPhrase(r.current_stage ?? "registered")}`}><Clock className="h-3 w-3" /> {formatDuration(currentMs)}</span>}
                         <span className="rounded-full bg-white/10 px-2 py-0.5 text-[10px] font-medium text-slate-300">{SOURCE_LABEL[r.source] ?? r.source}</span>

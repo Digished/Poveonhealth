@@ -61,18 +61,17 @@ export function HeroSection({ mode = "professional" }: { mode?: "professional" |
     <>
       <SkyScene>
         {({ tod }) => (
-          <div className="flex flex-col items-center text-center gap-4 max-w-md mx-auto pt-9 px-4">
-            {/* White panel keeps the greeting legible on any time-of-day sky */}
-            <div className="rounded-3xl bg-white/85 backdrop-blur-md shadow-xl ring-1 ring-black/5 px-6 py-5">
-              <h1 className="text-3xl sm:text-4xl font-bold tracking-tight text-slate-900">
-                {GREETING[tod]}
-              </h1>
-              <p className="mt-1.5 text-[15px] leading-relaxed text-slate-600 max-w-xs">
-                {mode === "patient"
-                  ? "What test do you need today?"
-                  : "What test does your patient need today?"}
-              </p>
-            </div>
+          <div className="flex flex-col items-center text-center gap-2.5 max-w-md mx-auto pt-9 px-4">
+            {/* Each line gets its own white pill that hugs its text, so the
+                greeting panel is naturally shorter than the line below it. */}
+            <h1 className="w-fit max-w-full rounded-2xl bg-white/85 backdrop-blur-md shadow-lg ring-1 ring-black/5 px-5 py-2 text-3xl sm:text-4xl font-bold tracking-tight text-slate-900">
+              {GREETING[tod]}
+            </h1>
+            <p className="w-fit max-w-xs rounded-2xl bg-white/85 backdrop-blur-md shadow-lg ring-1 ring-black/5 px-4 py-2 text-[15px] leading-relaxed text-slate-600">
+              {mode === "patient"
+                ? "What test do you need today?"
+                : "What test does your patient need today?"}
+            </p>
 
             <button
               type="button"

@@ -492,9 +492,15 @@ export function Workspace({
           </>
         ) : (
           <>
-            {stats.stageCounts.map((sc) => (
-              <StatCard key={sc.stage} label={sc.label} value={sc.count} accent={stageAccent(sc.stage)} icon={<Workflow className="h-4 w-4" />} />
-            ))}
+            {(() => {
+              // Only surface stages that actually have work, so the cards reflect
+              // the current department/stage filter instead of a wall of zeros.
+              const nonZero = stats.stageCounts.filter((sc) => sc.count > 0);
+              if (nonZero.length === 0) return <StatCard label="No active work" value={0} accent="slate" icon={<Check className="h-4 w-4" />} />;
+              return nonZero.map((sc) => (
+                <StatCard key={sc.stage} label={sc.label} value={sc.count} accent={stageAccent(sc.stage)} icon={<Workflow className="h-4 w-4" />} />
+              ));
+            })()}
             {selectedIsImaging && (
               <button onClick={() => setScheduleOpen(true)} className="flex items-center justify-between gap-2 rounded-2xl border border-sky-400/30 bg-sky-500/10 p-4 text-left transition hover:bg-sky-500/15">
                 <div>
@@ -644,7 +650,7 @@ export function Workspace({
                       {pending && <PendingBadge action={pending} />}
                     </div>
                     {tracks.filter((t) => t.currentStage !== "reported").map((t) => {
-                      const { currentMs } = stageDurations(t.events);
+                      const { currentMs } = stageDurations(t.events, r.created_at);
                       return (
                         <p key={t.department} className="text-[11px] text-slate-400">
                           <span className="font-medium text-slate-300">{formatDuration(currentMs)}</span> {awaitingPhrase(t.currentStage, t.workflow as "specimen" | "imaging" | "procedure")}
@@ -922,14 +928,14 @@ function WorkspaceDrawer({
             const stages = WORKFLOWS[track.workflow as keyof typeof WORKFLOWS] ?? WORKFLOWS.specimen;
             const curIdx = stages.indexOf(track.currentStage);
             const ns = nextStage(track);
-            const durations = stageDurations(track.events);
+            const durations = stageDurations(track.events, request.created_at);
             const segByStage = new Map(durations.segments.map((s) => [s.stage, s]));
             const resultStatus = resultStatusFor(track.department);
             return (
               <div key={track.department} className="rounded-2xl border border-white/10 bg-white/5 p-4">
-                <div className="mb-3 flex items-center justify-between gap-2">
+                <div className="mb-3 flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
                   <p className="flex items-center gap-2 text-sm font-semibold text-white"><Workflow className="h-4 w-4 text-medical-300" /> {track.department}</p>
-                  <div className="flex items-center gap-1.5">
+                  <div className="flex flex-col items-start gap-1.5 sm:flex-row sm:items-center">
                     {resultStatus && <span className={`inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[10px] font-medium ${resultStatus.cls}`}><FileText className="h-3 w-3" /> {resultStatus.label}</span>}
                     {track.currentStage !== "reported" && <span className="inline-flex items-center gap-1 rounded-full bg-white/5 px-2 py-0.5 text-[10px] text-slate-300"><Clock className="h-3 w-3" /> {formatDuration(durations.currentMs)} {awaitingPhrase(track.currentStage, track.workflow as "specimen" | "imaging" | "procedure")}</span>}
                   </div>
