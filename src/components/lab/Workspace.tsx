@@ -1,14 +1,17 @@
 "use client";
 
 import { useEffect, useState, useCallback, useMemo } from "react";
-import { Loader2, Search, X, ArrowRight, Plus, Workflow, UserPlus, Printer, Send, Check, FlaskConical, Pencil, Stethoscope, AlertTriangle, CreditCard, Lock, Bell } from "lucide-react";
+import { Loader2, Search, X, ArrowRight, Plus, Workflow, UserPlus, Printer, Send, Check, FlaskConical, Pencil, Stethoscope, AlertTriangle, CreditCard, Lock, Bell, Calendar as CalendarIcon, MapPin, Clock, FileText } from "lucide-react";
 import toast from "react-hot-toast";
 import { SourceBadge } from "@/components/lab/SourceBadge";
 import { LabOnboardForm } from "@/components/lab/LabOnboardForm";
 import { StatCard } from "@/components/lab/StatCard";
 import { TestTagInput, TestTag } from "@/components/ui/TestTagInput";
 import { FilterSelect } from "@/components/ui/FilterSelect";
-import { requestDepartments, categoryToDepartment, WORKFLOWS, stageLabel, stageColorClasses, DEFAULT_DEPARTMENTS, type DepartmentConfig } from "@/lib/lims-shared";
+import { FullViewModal } from "@/components/ui/FullViewModal";
+import { Calendar } from "@/components/ui/Calendar";
+import { requestDepartments, categoryToDepartment, WORKFLOWS, stageLabel, stageColorClasses, stageDurations, formatDuration, DEFAULT_DEPARTMENTS, type DepartmentConfig } from "@/lib/lims-shared";
+import { nextPendingAction, directToDepartments, type PendingAction } from "@/lib/lab-pending";
 
 function fmtDateTime(iso: string | null | undefined): string {
   if (!iso) return "—";
@@ -121,6 +124,15 @@ const MILESTONE_ACTIONS: Record<string, { cta: string; title: string; field: str
   verified:    { cta: "Verify",         title: "Verify results",       field: "Note (optional)",         placeholder: "Reviewed & verified",                           prompt: "Confirm the results have been checked and are correct." },
   reported:    { cta: "Mark reported",  title: "Mark reported",        field: "Note (optional)",         placeholder: "Results delivered",                             prompt: "Confirm the report has been delivered to the patient." },
 };
+
+/** Small pulsing "action needed" chip telling staff the next step for a request. */
+function PendingBadge({ action }: { action: PendingAction }) {
+  return (
+    <span className="inline-flex animate-pending-pulse items-center gap-1 rounded-full bg-medical-600/25 px-2 py-0.5 text-[10px] font-semibold text-medical-200 ring-1 ring-medical-400/50">
+      <ArrowRight className="h-3 w-3" /> {action.label}
+    </span>
+  );
+}
 
 export function Workspace({
   labId,
@@ -341,10 +353,10 @@ export function Workspace({
     }
   }
 
-  async function advance(r: WReq, track: Track, stage: string, sampleLabel?: string, note?: string) {
+  async function advance(r: WReq, track: Track, stage: string, sampleLabel?: string, note?: string, scheduledAt?: string) {
     setBusy(true);
     try {
-      const res = await fetch("/api/lab/journey/advance", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ requestId: r.id, department: track.department, stage, sample_label: sampleLabel, note }) });
+      const res = await fetch("/api/lab/journey/advance", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ requestId: r.id, department: track.department, stage, sample_label: sampleLabel, note, scheduled_at: scheduledAt }) });
       const data = await res.json();
       if (!res.ok) throw new Error(data.error || "Failed");
       toast.success(`${track.department}: ${stageLabel(stage)}`);
@@ -418,7 +430,7 @@ export function Workspace({
         <div className="rounded-2xl border border-white/10 bg-white/5 p-4">
           <div className="flex flex-wrap items-center justify-between gap-3">
             <p className="flex items-center gap-2 text-sm font-semibold text-white"><UserPlus className="h-4 w-4 text-medical-300" /> Intake</p>
-            <button onClick={openWalkIn} className="inline-flex items-center gap-1.5 rounded-lg bg-medical-600 px-3 py-1.5 text-xs font-semibold text-white hover:bg-medical-700">
+            <button data-tour="ob-walkin" onClick={openWalkIn} className="inline-flex items-center gap-1.5 rounded-lg bg-medical-600 px-3 py-1.5 text-xs font-semibold text-white hover:bg-medical-700">
               <UserPlus className="h-3.5 w-3.5" /> Register walk-in
             </button>
           </div>
@@ -432,7 +444,7 @@ export function Workspace({
                 placeholder="e.g. 8X4K29Q (prefix optional)"
                 className="min-w-0 flex-1 rounded-xl border border-white/10 bg-white/5 px-3 py-2 text-sm font-mono uppercase tracking-wider text-white placeholder:font-sans placeholder:tracking-normal placeholder:text-slate-500 focus:border-medical-400 focus:outline-none"
               />
-              <button onClick={revealByCode} disabled={revealing || !codeInput.trim()} className="inline-flex shrink-0 items-center gap-1.5 rounded-xl bg-medical-600 px-4 py-2 text-sm font-semibold text-white hover:bg-medical-700 disabled:opacity-50">
+              <button data-tour="ob-poveon-code" onClick={revealByCode} disabled={revealing || !codeInput.trim()} className="inline-flex shrink-0 items-center gap-1.5 rounded-xl bg-medical-600 px-4 py-2 text-sm font-semibold text-white hover:bg-medical-700 disabled:opacity-50">
                 {revealing ? <Loader2 className="h-4 w-4 animate-spin" /> : <ArrowRight className="h-4 w-4" />} Reveal
               </button>
             </div>
@@ -541,8 +553,9 @@ export function Workspace({
         <div className="space-y-2">
           {sorted.map((r) => {
             const tracks = tracksFor(r, departments).filter((t) => !deptF || t.department === deptF);
+            const pending = nextPendingAction(r, departments);
             return (
-              <button key={r.id} onClick={() => setSelected(r)} className="block w-full rounded-2xl border border-white/10 bg-white/5 p-4 text-left transition hover:bg-white/10">
+              <button key={r.id} onClick={() => setSelected(r)} className={`block w-full rounded-2xl border bg-white/5 p-4 text-left transition hover:bg-white/10 ${pending ? "border-medical-500/40" : "border-white/10"}`}>
                 <div className="mb-2 flex items-center justify-between gap-2">
                   <div className="flex min-w-0 items-start gap-2">
                     {triageNo.has(r.id) && (
@@ -568,17 +581,23 @@ export function Workspace({
                       <CreditCard className="h-3 w-3" /> {r.is_paid ? "Paid" : "Unpaid"}
                     </span>
                     <span className={`rounded-full px-2 py-0.5 text-[10px] font-medium ${r.status === "seen" ? "bg-sky-500/15 text-sky-300" : "bg-amber-500/15 text-amber-300"}`}>{statusLabel(r.status)}</span>
+                    {pending && <PendingBadge action={pending} />}
                   </div>
                 ) : (
-                  // Journey subtab + workstation: pipeline status only.
-                  <div className="flex flex-wrap gap-1.5">
-                    {tracks.map((t) => (
-                      <span key={t.department} className={`inline-flex items-center gap-1 rounded-full border px-2 py-0.5 text-[10px] ${stageColorClasses(t.currentStage)}`}>
-                        <span className="font-medium opacity-90">{t.department}</span>
-                        <span className="opacity-60">·</span>
-                        <span className="font-medium">{stageLabel(t.currentStage)}</span>
-                      </span>
-                    ))}
+                  // Journey subtab + workstation: pipeline status (+ time in stage).
+                  <div className="flex flex-wrap items-center gap-1.5">
+                    {tracks.map((t) => {
+                      const { currentMs } = stageDurations(t.events);
+                      return (
+                        <span key={t.department} className={`inline-flex items-center gap-1 rounded-full border px-2 py-0.5 text-[10px] ${stageColorClasses(t.currentStage)}`}>
+                          <span className="font-medium opacity-90">{t.department}</span>
+                          <span className="opacity-60">·</span>
+                          <span className="font-medium">{stageLabel(t.currentStage)}</span>
+                          {t.currentStage !== "reported" && <span className="opacity-70">· {formatDuration(currentMs)}</span>}
+                        </span>
+                      );
+                    })}
+                    {pending && <PendingBadge action={pending} />}
                   </div>
                 )}
               </button>
@@ -601,7 +620,7 @@ export function Workspace({
           memberDepartment={memberDepartment}
           busy={busy}
           onMarkSeen={() => markSeen(selected)}
-          onAdvance={(track, stage, label, note) => advance(selected, track, stage, label, note)}
+          onAdvance={(track, stage, label, note, scheduledAt) => advance(selected, track, stage, label, note, scheduledAt)}
           onRegistration={(flags) => registration(selected, flags)}
           onChanged={load}
         />
@@ -649,7 +668,7 @@ function WorkspaceDrawer({
   memberDepartment: string | null;
   busy: boolean;
   onMarkSeen: () => void;
-  onAdvance: (track: Track, stage: string, label?: string, note?: string) => Promise<void> | void;
+  onAdvance: (track: Track, stage: string, label?: string, note?: string, scheduledAt?: string) => Promise<void> | void;
   onRegistration: (flags: { tests_confirmed?: boolean; is_paid?: boolean }) => Promise<void> | void;
   onChanged: () => void;
 }) {
@@ -665,6 +684,31 @@ function WorkspaceDrawer({
   const [milestone, setMilestone] = useState<{ track: Track; stage: string } | null>(null);
   const [editOpen, setEditOpen] = useState(false);
   const [testsOpen, setTestsOpen] = useState(false);
+  const [results, setResults] = useState<RResult[]>([]);
+
+  // The single next action the lab must take to move this client forward.
+  const pending = nextPendingAction(request, departments);
+  const pendIs = (kind: PendingAction["kind"], dept?: string) =>
+    !!pending && pending.kind === kind && (dept === undefined || pending.department === dept);
+  const pulse = "animate-pending-pulse ring-1 ring-medical-400";
+
+  // Results per department — surfaces sent vs still-pending in the pipeline.
+  useEffect(() => {
+    let cancelled = false;
+    fetch(`/api/lab/results?requestId=${request.id}`, { cache: "no-store" })
+      .then((r) => (r.ok ? r.json() : null))
+      .then((d) => { if (!cancelled && d?.results) setResults(d.results); })
+      .catch(() => {});
+    return () => { cancelled = true; };
+  }, [request.id]);
+
+  function resultStatusFor(department: string): { label: string; cls: string } | null {
+    const rs = results.filter((x) => (x.department ?? "") === department || (!x.department && tracks.length === 1));
+    if (rs.length === 0) return { label: "Result pending", cls: "bg-amber-500/15 text-amber-300" };
+    if (rs.some((x) => x.status === "reported")) return { label: "Result sent", cls: "bg-emerald-500/15 text-emerald-300" };
+    if (rs.some((x) => x.status === "verified")) return { label: "Verified — not sent", cls: "bg-violet-500/15 text-violet-300" };
+    return { label: "Result drafted", cls: "bg-sky-500/15 text-sky-300" };
+  }
 
   function nextStage(track: Track): string | null {
     const stages = WORKFLOWS[track.workflow as keyof typeof WORKFLOWS] ?? WORKFLOWS.specimen;
@@ -672,17 +716,21 @@ function WorkspaceDrawer({
     return idx >= 0 && idx < stages.length - 1 ? stages[idx + 1] : null;
   }
 
-  return (
-    <div className="fixed inset-0 z-[9999] flex items-end justify-center bg-black/60 backdrop-blur-sm sm:items-center" onClick={onClose}>
-      <div className="max-h-[90vh] w-full max-w-2xl overflow-y-auto rounded-t-3xl border border-white/10 bg-slate-900 p-5 sm:rounded-3xl" onClick={(e) => e.stopPropagation()}>
-        <div className="mb-4 flex items-start justify-between">
-          <div>
-            <h3 className="text-lg font-semibold text-white">{request.patient_name || "Patient"}</h3>
-            <p className="font-mono text-xs text-slate-400">{request.code} · {statusLabel(request.status)}</p>
+  // Where to physically direct the client once paid (Laboratory vs Radiology).
+  const directions = directToDepartments(request.test_breakdown, departments);
 
+  return (
+    <FullViewModal
+      title={request.patient_name || "Patient"}
+      subtitle={`${request.code} · ${statusLabel(request.status)}`}
+      onClose={onClose}
+    >
+      <div className="grid grid-cols-1 gap-5 lg:grid-cols-2">
+        {/* Left column — client & request details */}
+        <div>
             {/* Raw request as typed by the physician — always shown for reference */}
             {request.raw_input && (
-              <p className="mt-2 rounded-lg border border-white/10 bg-white/5 px-2.5 py-1.5 text-xs italic text-slate-300">
+              <p className="mt-1 rounded-lg border border-white/10 bg-white/5 px-2.5 py-1.5 text-xs italic text-slate-300">
                 <span className="font-medium not-italic text-slate-400">Request as written: </span>“{request.raw_input}”
               </p>
             )}
@@ -717,26 +765,36 @@ function WorkspaceDrawer({
               </p>
             )}
             {showRegistration && canAdvance && (
-              <div className="mt-2 flex flex-wrap gap-2">
-                <button onClick={() => setEditOpen(true)} className="inline-flex items-center gap-1.5 rounded-lg border border-white/10 px-2.5 py-1 text-xs font-medium text-medical-300 hover:bg-white/5">
+              <div className="mt-3 flex flex-wrap gap-2">
+                <button data-tour="ob-edit-details" onClick={() => setEditOpen(true)} className="inline-flex items-center gap-1.5 rounded-lg border border-white/10 px-2.5 py-1 text-xs font-medium text-medical-300 hover:bg-white/5">
                   <Pencil className="h-3.5 w-3.5" /> Edit client details
                 </button>
                 {request.status !== "done" && (
-                  <button onClick={() => setTestsOpen(true)} className="inline-flex items-center gap-1.5 rounded-lg border border-white/10 px-2.5 py-1 text-xs font-medium text-medical-300 hover:bg-white/5">
+                  <button data-tour="ob-edit-tests" onClick={() => setTestsOpen(true)} className="inline-flex items-center gap-1.5 rounded-lg border border-white/10 px-2.5 py-1 text-xs font-medium text-medical-300 hover:bg-white/5">
                     <FlaskConical className="h-3.5 w-3.5" /> Edit tests
                   </button>
                 )}
               </div>
             )}
-          </div>
-          <button onClick={onClose} className="text-slate-400 hover:text-white"><X className="h-5 w-5" /></button>
         </div>
 
-        {/* Registration gate — confirm tests & take payment before the pipeline */}
+        {/* Right column — checklist (onboarding) / pipeline (workstation) */}
+        <div className="space-y-4">
+
+        {/* Onboarding checklist — confirm tests, take payment, then direct the client */}
         {showRegistration && request.status !== "done" && canAdvance && !request.is_paid && (
-          <div className="mb-4 rounded-2xl border border-amber-500/25 bg-amber-500/10 p-4">
-            <p className="flex items-center gap-2 text-sm font-semibold text-amber-200"><AlertTriangle className="h-4 w-4" /> Registration checklist</p>
-            <p className="mt-1 text-xs text-amber-100/80">Confirm the tests and take payment before the sample can move down the pipeline.</p>
+          <div className="rounded-2xl border border-amber-500/25 bg-amber-500/10 p-4">
+            <p className="flex items-center gap-2 text-sm font-semibold text-amber-200"><AlertTriangle className="h-4 w-4" /> Onboarding checklist</p>
+            <p className="mt-1 text-xs text-amber-100/80">Work top to bottom — the next step to do is highlighted.</p>
+
+            {/* Step list */}
+            <ol className="mt-3 space-y-1.5 text-xs">
+              <ChecklistItem done={!!request.patient_name} label="1. Confirm client details" />
+              <ChecklistItem done={request.tests_confirmed} label="2. Edit & confirm the tests" />
+              <ChecklistItem done={request.is_paid} label="3. Take payment & mark as paid" />
+              <ChecklistItem done={false} label="4. Direct the client to the right department" />
+            </ol>
+
             {(() => {
               const { rows, total } = costBreakdown(request);
               return rows.length > 0 ? (
@@ -756,24 +814,42 @@ function WorkspaceDrawer({
               ) : null;
             })()}
             <div className="mt-3 flex flex-wrap gap-2">
-              <button onClick={() => onRegistration({ tests_confirmed: !request.tests_confirmed })} disabled={busy}
-                className={`inline-flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-xs font-semibold disabled:opacity-50 ${request.tests_confirmed ? "border border-emerald-500/30 bg-emerald-600/20 text-emerald-300" : "bg-white/10 text-slate-200 hover:bg-white/15"}`}>
+              <button data-tour="ob-confirm-tests" onClick={() => onRegistration({ tests_confirmed: !request.tests_confirmed })} disabled={busy}
+                className={`inline-flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-xs font-semibold disabled:opacity-50 ${request.tests_confirmed ? "border border-emerald-500/30 bg-emerald-600/20 text-emerald-300" : `bg-white/10 text-slate-200 hover:bg-white/15 ${pendIs("confirm_tests") ? pulse : ""}`}`}>
                 {request.tests_confirmed ? <Check className="h-3.5 w-3.5" /> : <FlaskConical className="h-3.5 w-3.5" />} {request.tests_confirmed ? "Tests confirmed" : "Confirm tests"}
               </button>
-              <button onClick={() => setTestsOpen(true)} className="inline-flex items-center gap-1.5 rounded-lg border border-white/10 px-3 py-1.5 text-xs font-medium text-slate-200 hover:bg-white/5">
+              <button data-tour="ob-edit-tests" onClick={() => setTestsOpen(true)} className="inline-flex items-center gap-1.5 rounded-lg border border-white/10 px-3 py-1.5 text-xs font-medium text-slate-200 hover:bg-white/5">
                 <Pencil className="h-3.5 w-3.5" /> Edit tests
               </button>
-              <button onClick={() => onRegistration({ is_paid: true })} disabled={busy || !request.tests_confirmed}
-                className="inline-flex items-center gap-1.5 rounded-lg bg-medical-600 px-3 py-1.5 text-xs font-semibold text-white hover:bg-medical-700 disabled:opacity-50">
+              <button data-tour="ob-mark-paid" onClick={() => onRegistration({ is_paid: true })} disabled={busy || !request.tests_confirmed}
+                className={`inline-flex items-center gap-1.5 rounded-lg bg-medical-600 px-3 py-1.5 text-xs font-semibold text-white hover:bg-medical-700 disabled:opacity-50 ${pendIs("mark_paid") ? pulse : ""}`}>
                 {busy ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <CreditCard className="h-3.5 w-3.5" />} Mark as paid
               </button>
             </div>
             {!request.tests_confirmed && <p className="mt-2 text-[11px] text-amber-100/60">Confirm the tests to enable “Mark as paid”.</p>}
+
+            {/* Direct-to-department guidance */}
+            <div data-tour="ob-direct" className="mt-3 border-t border-amber-500/20 pt-3">
+              <p className="flex items-center gap-1.5 text-[11px] font-semibold uppercase tracking-wide text-amber-200/80"><MapPin className="h-3.5 w-3.5" /> Direct the client to</p>
+              <div className="mt-2 flex flex-wrap gap-1.5">
+                {directions.map((d) => (
+                  <span key={d.department} className={`inline-flex items-center gap-1 rounded-full border px-2 py-1 text-[11px] ${stageColorClasses(d.workflow === "imaging" ? "scheduled" : "collected")}`}>
+                    <span className="font-semibold">{d.department}</span><span className="opacity-70">· {d.hint}</span>
+                  </span>
+                ))}
+              </div>
+            </div>
           </div>
         )}
         {showRegistration && request.is_paid && request.status !== "done" && (
-          <div className="mb-4 flex items-center gap-2 rounded-xl bg-emerald-500/10 px-3 py-2 text-xs font-medium text-emerald-300">
-            <Check className="h-4 w-4" /> Confirmed &amp; paid — moved to the workstation
+          <div className="rounded-xl bg-emerald-500/10 p-3 text-xs font-medium text-emerald-300">
+            <p className="flex items-center gap-2"><Check className="h-4 w-4" /> Confirmed &amp; paid — moved to the workstation.</p>
+            <div className="mt-2 flex flex-wrap gap-1.5">
+              <span className="inline-flex items-center gap-1 text-emerald-200/80"><MapPin className="h-3 w-3" /> Send to:</span>
+              {directions.map((d) => (
+                <span key={d.department} className="rounded-full bg-emerald-500/15 px-2 py-0.5 text-emerald-200">{d.department} · {d.hint}</span>
+              ))}
+            </div>
           </div>
         )}
 
@@ -784,11 +860,17 @@ function WorkspaceDrawer({
             const stages = WORKFLOWS[track.workflow as keyof typeof WORKFLOWS] ?? WORKFLOWS.specimen;
             const curIdx = stages.indexOf(track.currentStage);
             const ns = nextStage(track);
+            const durations = stageDurations(track.events);
+            const segByStage = new Map(durations.segments.map((s) => [s.stage, s]));
+            const resultStatus = resultStatusFor(track.department);
             return (
               <div key={track.department} className="rounded-2xl border border-white/10 bg-white/5 p-4">
-                <div className="mb-3 flex items-center justify-between">
+                <div className="mb-3 flex items-center justify-between gap-2">
                   <p className="flex items-center gap-2 text-sm font-semibold text-white"><Workflow className="h-4 w-4 text-medical-300" /> {track.department}</p>
-                  <span className="text-xs text-slate-400">{track.workflow}</span>
+                  <div className="flex items-center gap-1.5">
+                    {resultStatus && <span className={`inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[10px] font-medium ${resultStatus.cls}`}><FileText className="h-3 w-3" /> {resultStatus.label}</span>}
+                    {track.currentStage !== "reported" && <span className="inline-flex items-center gap-1 rounded-full bg-white/5 px-2 py-0.5 text-[10px] text-slate-300"><Clock className="h-3 w-3" /> {formatDuration(durations.currentMs)} in {stageLabel(track.currentStage)}</span>}
+                  </div>
                 </div>
                 {/* stepper */}
                 <div className="flex items-center">
@@ -799,6 +881,7 @@ function WorkspaceDrawer({
                           {i < curIdx ? <Check className="h-3 w-3" /> : i + 1}
                         </div>
                         <span className={`mt-1 text-[9px] ${i <= curIdx ? "text-slate-200" : "text-slate-500"}`}>{stageLabel(s)}</span>
+                        {i < curIdx && segByStage.has(s) && <span className="text-[8px] text-slate-500">{formatDuration(segByStage.get(s)!.ms)}</span>}
                       </div>
                       {i < stages.length - 1 && <div className={`mx-1 h-0.5 flex-1 ${i < curIdx ? "bg-emerald-500/60" : "bg-white/10"}`} />}
                     </div>
@@ -830,10 +913,11 @@ function WorkspaceDrawer({
                   <div className="mt-3 flex flex-wrap gap-2">
                     {ns ? (
                       <button
+                        data-tour="ws-advance"
                         onClick={() => { if (ns === "collected") setCollectFor(track); else setMilestone({ track, stage: ns }); }}
                         disabled={busy || !request.is_paid}
                         title={!request.is_paid ? "Confirm tests & mark as paid first" : undefined}
-                        className="inline-flex items-center gap-1.5 rounded-lg bg-medical-600 px-3 py-1.5 text-xs font-semibold text-white hover:bg-medical-700 disabled:opacity-50"
+                        className={`inline-flex items-center gap-1.5 rounded-lg bg-medical-600 px-3 py-1.5 text-xs font-semibold text-white hover:bg-medical-700 disabled:opacity-50 ${(pendIs("advance", track.department) || pendIs("collect", track.department)) ? pulse : ""}`}
                       >
                         <ArrowRight className="h-3.5 w-3.5" /> {MILESTONE_ACTIONS[ns]?.cta ?? `Advance to ${stageLabel(ns)}`}
                       </button>
@@ -852,7 +936,7 @@ function WorkspaceDrawer({
                 )}
 
                 {pipelineInteractive && canEnterResults && (
-                  <button onClick={() => setResultsFor({ department: track.department })} className="mt-3 inline-flex items-center gap-1.5 rounded-lg border border-white/10 px-3 py-1.5 text-xs font-medium text-medical-300 hover:bg-white/5">
+                  <button data-tour="ws-results" onClick={() => setResultsFor({ department: track.department })} className={`mt-3 inline-flex items-center gap-1.5 rounded-lg border border-white/10 px-3 py-1.5 text-xs font-medium text-medical-300 hover:bg-white/5 ${pendIs("enter_results") ? pulse : ""}`}>
                     <FlaskConical className="h-3.5 w-3.5" /> Enter / send results
                   </button>
                 )}
@@ -861,6 +945,8 @@ function WorkspaceDrawer({
           })}
         </div>
         )}
+        </div>
+      </div>
 
         {resultsFor && (
           <ResultEntry
@@ -893,8 +979,8 @@ function WorkspaceDrawer({
             stage={milestone.stage}
             busy={busy}
             onClose={() => setMilestone(null)}
-            onConfirm={async (note) => {
-              await onAdvance(milestone.track, milestone.stage, undefined, note);
+            onConfirm={async (note, scheduledAt) => {
+              await onAdvance(milestone.track, milestone.stage, undefined, note, scheduledAt);
               setMilestone(null);
             }}
           />
@@ -916,8 +1002,19 @@ function WorkspaceDrawer({
             onSaved={() => { setTestsOpen(false); onChanged(); }}
           />
         )}
-      </div>
-    </div>
+    </FullViewModal>
+  );
+}
+
+/** A single onboarding-checklist line with done/pending state. */
+function ChecklistItem({ done, label }: { done: boolean; label: string }) {
+  return (
+    <li className={`flex items-center gap-2 ${done ? "text-emerald-300" : "text-amber-100/80"}`}>
+      <span className={`flex h-4 w-4 shrink-0 items-center justify-center rounded-full border ${done ? "border-emerald-400 bg-emerald-500/20" : "border-amber-300/40"}`}>
+        {done && <Check className="h-2.5 w-2.5" />}
+      </span>
+      {label}
+    </li>
   );
 }
 
@@ -992,7 +1089,8 @@ function TestsEditForm({
   );
 }
 
-/** Short action sheet that captures the detail for a single journey milestone. */
+/** Short action sheet that captures the detail for a single journey milestone.
+ *  For the "scheduled" milestone it shows a real calendar to book the appointment. */
 function MilestoneModal({
   track, stage, busy, onClose, onConfirm,
 }: {
@@ -1000,15 +1098,27 @@ function MilestoneModal({
   stage: string;
   busy: boolean;
   onClose: () => void;
-  onConfirm: (note?: string) => void;
+  onConfirm: (note?: string, scheduledAt?: string) => void;
 }) {
   const cfg = MILESTONE_ACTIONS[stage] ?? { cta: `Advance to ${stageLabel(stage)}`, title: `Advance to ${stageLabel(stage)}`, field: "Note (optional)", placeholder: "", prompt: "" };
+  const isScheduling = stage === "scheduled";
   const [note, setNote] = useState("");
+  const [when, setWhen] = useState<Date | null>(null);
   const inputCls = "w-full rounded-xl border border-white/10 bg-white/5 px-3 py-2 text-sm text-white placeholder:text-slate-500 focus:border-medical-400 focus:outline-none";
+
+  function confirm() {
+    if (isScheduling) {
+      if (!when) return;
+      const label = when.toLocaleString(undefined, { weekday: "short", month: "short", day: "numeric", hour: "numeric", minute: "2-digit" });
+      onConfirm(label, when.toISOString());
+    } else {
+      onConfirm(note.trim() || undefined);
+    }
+  }
 
   return (
     <div className="fixed inset-0 z-[10000] flex items-end justify-center bg-black/70 backdrop-blur-sm sm:items-center" onClick={onClose}>
-      <div className="w-full max-w-md rounded-t-3xl border border-white/10 bg-slate-900 p-5 sm:rounded-3xl" onClick={(e) => e.stopPropagation()}>
+      <div className="max-h-[90vh] w-full max-w-md overflow-y-auto rounded-t-3xl border border-white/10 bg-slate-900 p-5 sm:rounded-3xl" onClick={(e) => e.stopPropagation()}>
         <div className="mb-3 flex items-start justify-between">
           <div>
             <h3 className="text-lg font-semibold text-white">{cfg.title}</h3>
@@ -1017,20 +1127,32 @@ function MilestoneModal({
           <button onClick={onClose} className="text-slate-400 hover:text-white"><X className="h-5 w-5" /></button>
         </div>
         {cfg.prompt && <p className="mb-3 text-sm text-slate-300">{cfg.prompt}</p>}
-        <label className="mb-1 block text-xs font-medium text-slate-400">{cfg.field}{cfg.required ? " *" : ""}</label>
-        <input
-          autoFocus
-          className={inputCls}
-          value={note}
-          onChange={(e) => setNote(e.target.value)}
-          onKeyDown={(e) => { if (e.key === "Enter" && (!cfg.required || note.trim())) onConfirm(note.trim() || undefined); }}
-          placeholder={cfg.placeholder}
-        />
+
+        {isScheduling ? (
+          <>
+            <label className="mb-1.5 block text-xs font-medium text-slate-400">Pick a date &amp; time *</label>
+            <Calendar value={when} onSelect={setWhen} withTime />
+            {when && <p className="mt-2 inline-flex items-center gap-1.5 rounded-lg bg-medical-600/15 px-2.5 py-1 text-xs text-medical-200"><CalendarIcon className="h-3.5 w-3.5" /> {when.toLocaleString(undefined, { weekday: "short", month: "short", day: "numeric", hour: "numeric", minute: "2-digit" })}</p>}
+          </>
+        ) : (
+          <>
+            <label className="mb-1 block text-xs font-medium text-slate-400">{cfg.field}{cfg.required ? " *" : ""}</label>
+            <input
+              autoFocus
+              className={inputCls}
+              value={note}
+              onChange={(e) => setNote(e.target.value)}
+              onKeyDown={(e) => { if (e.key === "Enter" && (!cfg.required || note.trim())) confirm(); }}
+              placeholder={cfg.placeholder}
+            />
+          </>
+        )}
+
         <div className="mt-5 flex justify-end gap-2">
           <button onClick={onClose} className="rounded-xl border border-white/10 px-3 py-2 text-sm text-slate-200 hover:bg-white/5">Cancel</button>
           <button
-            onClick={() => onConfirm(note.trim() || undefined)}
-            disabled={busy || (cfg.required && !note.trim())}
+            onClick={confirm}
+            disabled={busy || (isScheduling ? !when : cfg.required && !note.trim())}
             className="inline-flex items-center gap-1.5 rounded-xl bg-medical-600 px-4 py-2 text-sm font-semibold text-white hover:bg-medical-700 disabled:opacity-50"
           >
             {busy ? <Loader2 className="h-4 w-4 animate-spin" /> : <Check className="h-4 w-4" />} {cfg.cta}

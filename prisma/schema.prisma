@@ -203,6 +203,7 @@ model Request {
   doctor_account_number String?
   doctor_account_name   String?
   schedule              String?
+  scheduled_at          DateTime? // structured appointment time (calendar scheduling); `schedule` kept for legacy free-text
   diagnosis             String?
   tests                 String
   quoted_price          Decimal?  @db.Decimal(12, 2) // price snapshot at creation time

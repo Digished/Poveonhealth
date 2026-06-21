@@ -12,6 +12,7 @@ const Schema = z.object({
   department: z.string().max(60).optional(),
   sample_label: z.string().max(60).optional(),
   note: z.string().max(500).optional(),
+  scheduled_at: z.string().datetime().optional(),
 });
 
 /**
@@ -30,7 +31,7 @@ export async function POST(request: NextRequest) {
   const body = await request.json();
   const parsed = Schema.safeParse(body);
   if (!parsed.success) return NextResponse.json({ error: "Invalid input" }, { status: 400 });
-  const { requestId, stage, department, sample_label, note } = parsed.data;
+  const { requestId, stage, department, sample_label, note, scheduled_at } = parsed.data;
 
   // Validate the stage belongs to the department's workflow (per this lab's config).
   const labDepartments = await getLabDepartments(auth.lab_id);
@@ -55,6 +56,11 @@ export async function POST(request: NextRequest) {
   }
 
   await addJourneyEvent({ requestId, stage, department: department ?? null, sampleLabel: sample_label ?? null, actorEmail: auth.actor_email, note: note ?? null });
+
+  // Persist the structured appointment time when scheduling (powers the calendar).
+  if (stage === "scheduled" && scheduled_at) {
+    await prisma.request.update({ where: { id: requestId }, data: { scheduled_at: new Date(scheduled_at) } }).catch(() => {});
+  }
 
   // Derive coarse status from journey progress: any advance past registration
   // marks the patient "seen" (and accrues commission) — so a separate manual

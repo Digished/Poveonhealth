@@ -170,3 +170,60 @@ export function requestDepartments(testBreakdown: unknown, departments: Departme
 export function workflowForDepartment(department: string | null | undefined, departments: DepartmentConfig[] = DEFAULT_DEPARTMENTS): WorkflowType {
   return departments.find((d) => d.name === department)?.workflow ?? "specimen";
 }
+
+// ─── Stage timing ────────────────────────────────────────────────────────────
+
+/** Format a duration in milliseconds as a short human string, e.g. "2h 15m", "3d", "just now". */
+export function formatDuration(ms: number): string {
+  if (ms < 0) ms = 0;
+  const mins = Math.floor(ms / 60000);
+  if (mins < 1) return "just now";
+  if (mins < 60) return `${mins}m`;
+  const hours = Math.floor(mins / 60);
+  const remMins = mins % 60;
+  if (hours < 24) return remMins > 0 ? `${hours}h ${remMins}m` : `${hours}h`;
+  const days = Math.floor(hours / 24);
+  const remHours = hours % 24;
+  return remHours > 0 ? `${days}d ${remHours}h` : `${days}d`;
+}
+
+interface TimedEvent { stage: string; created_at: string | Date }
+
+/**
+ * Compute how long a request spent in each stage of one department track, plus
+ * the time it has spent in its current (latest) stage so far. `events` should be
+ * the chronologically-ordered events for a single department. Consecutive events
+ * with the same stage are collapsed onto the first occurrence.
+ */
+export function stageDurations(events: TimedEvent[]): {
+  segments: { stage: string; enteredAt: string; ms: number; ongoing: boolean }[];
+  currentStage: string | null;
+  currentMs: number;
+} {
+  const ordered = [...events]
+    .filter((e) => e.stage !== "collected")
+    .sort((a, b) => new Date(a.created_at).getTime() - new Date(b.created_at).getTime());
+
+  // Collapse repeats of the same stage onto the first time we entered it.
+  const milestones: { stage: string; at: number }[] = [];
+  for (const e of ordered) {
+    const at = new Date(e.created_at).getTime();
+    if (milestones.length === 0 || milestones[milestones.length - 1].stage !== e.stage) {
+      milestones.push({ stage: e.stage, at });
+    }
+  }
+
+  const now = Date.now();
+  const segments = milestones.map((m, i) => {
+    const next = milestones[i + 1];
+    const end = next ? next.at : now;
+    return { stage: m.stage, enteredAt: new Date(m.at).toISOString(), ms: end - m.at, ongoing: !next };
+  });
+
+  const last = milestones[milestones.length - 1] ?? null;
+  return {
+    segments,
+    currentStage: last?.stage ?? null,
+    currentMs: last ? now - last.at : 0,
+  };
+}

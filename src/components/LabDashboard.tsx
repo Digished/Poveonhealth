@@ -16,7 +16,7 @@ import dynamic from "next/dynamic";
 const LabPriceListManager = dynamic(() => import("@/components/LabPriceListManager"), { ssr: false });
 const LabMarketerAnalytics = dynamic(() => import("@/components/LabMarketerAnalytics").then(m => ({ default: m.LabMarketerAnalytics })), { ssr: false });
 const JourneyView = dynamic(() => import("@/components/lab/JourneyView").then(m => ({ default: m.JourneyView })), { ssr: false });
-const ProfessionalsView = dynamic(() => import("@/components/lab/ProfessionalsView").then(m => ({ default: m.ProfessionalsView })), { ssr: false });
+const ReferralsView = dynamic(() => import("@/components/lab/ReferralsView").then(m => ({ default: m.ReferralsView })), { ssr: false });
 const TatPanel = dynamic(() => import("@/components/lab/TatPanel").then(m => ({ default: m.TatPanel })), { ssr: false });
 const RolesManager = dynamic(() => import("@/components/lab/RolesManager").then(m => ({ default: m.RolesManager })), { ssr: false });
 const TemplatesManager = dynamic(() => import("@/components/lab/TemplatesManager").then(m => ({ default: m.TemplatesManager })), { ssr: false });
@@ -26,6 +26,8 @@ const SopManager = dynamic(() => import("@/components/lab/SopManager").then(m =>
 const DepartmentsManager = dynamic(() => import("@/components/lab/DepartmentsManager").then(m => ({ default: m.DepartmentsManager })), { ssr: false });
 const LabQrCard = dynamic(() => import("@/components/lab/LabQrCard").then(m => ({ default: m.LabQrCard })), { ssr: false });
 import { useDashTheme } from "@/hooks/useDashTheme";
+import { TourProvider } from "@/components/lab/tour/TourProvider";
+import { GuideToggle } from "@/components/lab/tour/GuideToggle";
 import { Button } from "@/components/ui/Button";
 import { Input } from "@/components/ui/Input";
 import { StatusBadge } from "@/components/ui/Badge";
@@ -36,23 +38,6 @@ import { SERVICE_CATEGORIES } from "@/lib/constants";
 import { format, differenceInYears } from "date-fns";
 import { createClient } from "@/lib/supabase/client";
 import { useRouter, useSearchParams } from "next/navigation";
-
-interface ReferralDoctor {
-  doctor_name: string;
-  doctor_email: string;
-  doctor_prefix: string | null;
-  doctor_phone: string | null;
-  doctor_hospital: string | null;
-  doctor_bank_name: string | null;
-  doctor_account_number: string | null;
-  doctor_account_name: string | null;
-  total_referrals: number;
-  months: Record<string, number>;
-  tests: string[];
-  last_referral: string;
-  profile_complete: boolean;
-  recent_requests?: { id: string; code: string; status: string; tests: string; test_image_url: string | null; created_at: string; patient_name: string | null; patient_phone: string | null }[];
-}
 
 interface LabDashboardProps {
   lab: {
@@ -173,10 +158,6 @@ export function LabDashboard({ lab, isOwner = false, roleName = "Lab Owner", can
   const [priceListLoading, setPriceListLoading] = useState(false);
   const [priceManagerOpen, setPriceManagerOpen] = useState(false);
   const [mobileNavOpen, setMobileNavOpen] = useState(false);
-  // Sub-tab within the combined "Network" tab (Referrals + Professionals)
-  const [networkSub, setNetworkSub] = useState<"referrals" | "professionals">(
-    (isOwner || canViewReferrals) ? "referrals" : "professionals"
-  );
   // Agreement status — checked once on mount for owners
   const [agreementSigned, setAgreementSigned] = useState<boolean | null>(null);
   // Eagerly loaded wallet balance for the "amount owed" banner shown on all tabs
@@ -248,15 +229,6 @@ export function LabDashboard({ lab, isOwner = false, roleName = "Lab Owner", can
   const [clientsLoading, setClientsLoading] = useState(false);
   const [selectedClient, setSelectedClient] = useState<ClientRecord | null>(null);
 
-  // Referrals state
-  const [referrals, setReferrals] = useState<ReferralDoctor[]>([]);
-  const [referralsLoading, setReferralsLoading] = useState(false);
-  const [referralMonthFilter, setReferralMonthFilter] = useState("");
-  const [referralTestFilter, setReferralTestFilter] = useState("");
-  const [availableMonths, setAvailableMonths] = useState<string[]>([]);
-  const [availableTests, setAvailableTests] = useState<string[]>([]);
-  const [expandedDoctor, setExpandedDoctor] = useState<string | null>(null);
-
   // Analytics filters
   const [analyticsTestFilter, setAnalyticsTestFilter] = useState("");
   const [analyticsStatusFilter, setAnalyticsStatusFilter] = useState<"" | "incoming" | "seen" | "done">("");
@@ -298,24 +270,6 @@ export function LabDashboard({ lab, isOwner = false, roleName = "Lab Owner", can
     }
   }, []);
 
-  const fetchReferrals = useCallback(async () => {
-    setReferralsLoading(true);
-    try {
-      const params = new URLSearchParams();
-      if (referralMonthFilter) params.set("month", referralMonthFilter);
-      if (referralTestFilter) params.set("test", referralTestFilter);
-      const res = await fetch(`/api/lab/referrals?${params}`);
-      const data = await res.json();
-      if (!data.success) throw new Error(data.error);
-      setReferrals(data.referrals ?? []);
-      setAvailableMonths(data.available_months ?? []);
-      setAvailableTests(data.available_tests ?? []);
-    } catch {
-      toast.error("Failed to load referrals");
-    } finally {
-      setReferralsLoading(false);
-    }
-  }, [referralMonthFilter, referralTestFilter]);
 
   useEffect(() => {
     fetchRequests();
@@ -426,11 +380,9 @@ export function LabDashboard({ lab, isOwner = false, roleName = "Lab Owner", can
   }, [lab.id]);
 
   useEffect(() => {
-    const onReferrals = mainView === "referrals" || (mainView === "network" && networkSub === "referrals");
-    if (onReferrals && (isOwner || canViewReferrals)) fetchReferrals();
     if (mainView === "clients" && (isOwner || canViewClients)) fetchClients();
     if ((mainView === "marketers" || mainView === "analytics") && (isOwner || canViewMarketers)) fetchMarketers();
-  }, [mainView, networkSub, fetchReferrals, fetchClients, fetchMarketers, isOwner, canViewReferrals, canViewClients, canViewMarketers]);
+  }, [mainView, fetchClients, fetchMarketers, isOwner, canViewClients, canViewMarketers]);
 
   // Load the lab's roles for the team member role-assignment dropdown.
   useEffect(() => {
@@ -735,6 +687,7 @@ export function LabDashboard({ lab, isOwner = false, roleName = "Lab Owner", can
   const isRevealed = selectedRequest?.status !== "incoming";
 
   return (
+    <TourProvider>
     <div className={`min-h-screen bg-gradient-to-br from-slate-900 via-medical-950 to-slate-900 text-white transition-colors duration-300 ${themeClass}`}>
       {/* Top bar */}
       <header className="border-b border-white/10 backdrop-blur-sm bg-white/5 sticky top-0 z-10">
@@ -762,6 +715,7 @@ export function LabDashboard({ lab, isOwner = false, roleName = "Lab Owner", can
           <div className="flex items-center gap-2">
             {/* Desktop: individual action buttons */}
             <div className="hidden sm:flex items-center gap-2">
+              <GuideToggle />
               <button
                 onClick={toggle}
                 className="p-2 rounded-lg hover:bg-white/10 transition-colors text-slate-400 hover:text-white"
@@ -823,6 +777,7 @@ export function LabDashboard({ lab, isOwner = false, roleName = "Lab Owner", can
                       {isLight ? <Moon className="w-4 h-4 text-slate-500" /> : <Sun className="w-4 h-4 text-slate-500" />}
                       {isLight ? "Dark Mode" : "Light Mode"}
                     </button>
+                    <GuideToggle variant="row" />
                     <button
                       onClick={async () => {
                         setMobileHeaderOpen(false);
@@ -878,7 +833,7 @@ export function LabDashboard({ lab, isOwner = false, roleName = "Lab Owner", can
               { key: "clients", label: "Clients", icon: <UserCircle className="w-4 h-4" />, show: tabVisible.clients },
             ] },
             { label: "Network", items: [
-              { key: "network", label: "Referrals & Professionals", icon: <Stethoscope className="w-4 h-4" />, show: tabVisible.network },
+              { key: "network", label: "Referrals", icon: <Stethoscope className="w-4 h-4" />, show: tabVisible.network },
               { key: "marketers", label: "Marketers", icon: <Users className="w-4 h-4" />, show: tabVisible.marketers },
             ] },
             { label: "Insights", items: [
@@ -1014,309 +969,9 @@ export function LabDashboard({ lab, isOwner = false, roleName = "Lab Owner", can
           </div>
         )}
 
-        {/* Combined Network tab: sub-tab switcher for Referrals + Professionals */}
-        {mainView === "network" && (
-          <div className="mb-5 inline-flex rounded-xl border border-white/10 bg-white/5 p-1">
-            {(isOwner || canViewReferrals) && (
-              <button
-                onClick={() => setNetworkSub("referrals")}
-                className={`inline-flex items-center gap-1.5 rounded-lg px-4 py-1.5 text-sm font-medium transition-colors ${networkSub === "referrals" ? "bg-medical-600 text-white" : "text-slate-300 hover:text-white"}`}
-              >
-                <Users className="w-4 h-4" /> Referrals
-              </button>
-            )}
-            {(isOwner || canManageProfessionals) && (
-              <button
-                onClick={() => setNetworkSub("professionals")}
-                className={`inline-flex items-center gap-1.5 rounded-lg px-4 py-1.5 text-sm font-medium transition-colors ${networkSub === "professionals" ? "bg-medical-600 text-white" : "text-slate-300 hover:text-white"}`}
-              >
-                <Stethoscope className="w-4 h-4" /> Professionals
-              </button>
-            )}
-          </div>
-        )}
-
-        {/* Referrals view */}
-        {(mainView === "referrals" || (mainView === "network" && networkSub === "referrals")) && (
-          <div>
-            {/* Filters */}
-            <div className="flex flex-wrap gap-3 mb-6">
-              <div className="flex items-center gap-2 bg-white/5 border border-white/10 rounded-xl px-3 py-2">
-                <Filter className="w-4 h-4 text-slate-400 shrink-0" />
-                <select
-                  value={referralMonthFilter}
-                  onChange={(e) => setReferralMonthFilter(e.target.value)}
-                  className="bg-transparent text-sm text-slate-200 outline-none cursor-pointer min-w-[120px]"
-                >
-                  <option value="" className="bg-slate-800">All months</option>
-                  {availableMonths.map((m) => {
-                    const [year, month] = m.split("-");
-                    const label = new Date(Number(year), Number(month) - 1).toLocaleDateString("en-GB", { month: "long", year: "numeric" });
-                    return <option key={m} value={m} className="bg-slate-800">{label}</option>;
-                  })}
-                </select>
-              </div>
-              <div className="flex items-center gap-2 bg-white/5 border border-white/10 rounded-xl px-3 py-2">
-                <Search className="w-4 h-4 text-slate-400 shrink-0" />
-                <select
-                  value={referralTestFilter}
-                  onChange={(e) => setReferralTestFilter(e.target.value)}
-                  className="bg-transparent text-sm text-slate-200 outline-none cursor-pointer min-w-[140px]"
-                >
-                  <option value="" className="bg-slate-800">All tests</option>
-                  {availableTests.map((t) => (
-                    <option key={t} value={t} className="bg-slate-800">{t}</option>
-                  ))}
-                </select>
-              </div>
-              {(referralMonthFilter || referralTestFilter) && (
-                <button
-                  onClick={() => { setReferralMonthFilter(""); setReferralTestFilter(""); }}
-                  className="flex items-center gap-1.5 px-3 py-2 text-sm text-slate-400 hover:text-white rounded-xl hover:bg-white/10 transition-colors"
-                >
-                  <X className="w-3.5 h-3.5" />
-                  Clear
-                </button>
-              )}
-            </div>
-
-            {referralsLoading ? (
-              <div className="text-center py-20 text-slate-400">
-                <RefreshCw className="w-8 h-8 mx-auto mb-3 animate-spin opacity-50" />
-                <p>Loading referrals…</p>
-              </div>
-            ) : referrals.length === 0 ? (
-              <div className="text-center py-20 text-slate-400">
-                <Users className="w-10 h-10 mx-auto mb-3 opacity-30" />
-                <p className="font-medium">No referrals found</p>
-                <p className="text-sm mt-1 text-slate-500">Referrals appear here once patients have been seen</p>
-              </div>
-            ) : (
-              <>
-                {/* Doctor rows — compact list */}
-                <div className="rounded-2xl overflow-hidden border border-white/8 divide-y divide-white/5">
-                  {referrals.map((doc) => {
-                    const displayName = [doc.doctor_prefix, doc.doctor_name].filter(Boolean).join(" ") || doc.doctor_email;
-                    const subline = doc.doctor_hospital || ([doc.doctor_prefix, doc.doctor_name].filter(Boolean).length > 0 ? doc.doctor_email : null);
-                    return (
-                      <button
-                        key={doc.doctor_email}
-                        type="button"
-                        onClick={() => startTransition(() => setExpandedDoctor(doc.doctor_email))}
-                        className="w-full text-left flex items-center gap-3 px-4 py-3 bg-white/3 hover:bg-white/8 transition-colors group"
-                      >
-                        <div className="w-8 h-8 rounded-full bg-medical-600/20 border border-medical-500/30 flex items-center justify-center shrink-0">
-                          <Stethoscope className="w-4 h-4 text-medical-400" />
-                        </div>
-                        <div className="flex-1 min-w-0">
-                          <p className="text-sm font-semibold text-white truncate leading-tight">{displayName}</p>
-                          {subline && <p className="text-xs text-slate-500 truncate">{subline}</p>}
-                        </div>
-                        <div className="shrink-0 text-right">
-                          <span className="text-xs font-bold bg-medical-900/50 text-medical-300 border border-medical-800/30 px-2 py-0.5 rounded-full">
-                            {doc.total_referrals}
-                          </span>
-                          <p className="text-[10px] text-slate-500 mt-0.5">
-                            {new Date(doc.last_referral).toLocaleDateString("en-GB", { day: "numeric", month: "short" })}
-                          </p>
-                        </div>
-                        <ChevronRight className="w-3.5 h-3.5 text-slate-500 shrink-0 group-hover:text-slate-300 transition-colors" />
-                      </button>
-                    );
-                  })}
-                </div>
-
-                {/* Doctor detail popup */}
-                {expandedDoctor && (() => {
-                  const doc = referrals.find((d) => d.doctor_email === expandedDoctor);
-                  if (!doc) return null;
-                  return (
-                    <div
-                      className="fixed inset-0 z-50 flex items-end sm:items-center justify-center p-4"
-                      style={{ backgroundColor: "rgba(15,23,42,0.8)", backdropFilter: "blur(4px)" }}
-                      onClick={() => setExpandedDoctor(null)}
-                    >
-                      <div
-                        className="w-full max-w-lg bg-slate-900 border border-white/10 rounded-3xl shadow-2xl overflow-hidden max-h-[88vh] flex flex-col"
-                        onClick={(e) => e.stopPropagation()}
-                      >
-                        {/* Header */}
-                        <div className="px-5 pt-5 pb-4 border-b border-white/10 flex items-start justify-between gap-3 shrink-0">
-                          <div className="flex items-center gap-3 min-w-0">
-                            <div className="w-11 h-11 rounded-2xl bg-medical-600/20 border border-medical-500/30 flex items-center justify-center shrink-0">
-                              <Stethoscope className="w-6 h-6 text-medical-400" />
-                            </div>
-                            <div className="min-w-0">
-                              <div className="flex items-center gap-2 min-w-0">
-                                <p className="font-bold text-white text-base leading-tight truncate">
-                                  {[doc.doctor_prefix, doc.doctor_name].filter(Boolean).join(" ") || doc.doctor_email}
-                                </p>
-                                {!doc.profile_complete && (
-                                  <span className="shrink-0 text-[10px] font-semibold px-1.5 py-0.5 rounded-full bg-amber-500/20 text-amber-400 border border-amber-500/30">
-                                    Profile incomplete
-                                  </span>
-                                )}
-                              </div>
-                              <p className="text-xs text-slate-400 truncate mt-0.5">{doc.doctor_email}</p>
-                            </div>
-                          </div>
-                          <button type="button" onClick={() => setExpandedDoctor(null)} className="p-1.5 rounded-xl hover:bg-white/10 text-slate-400 hover:text-white transition-colors shrink-0">
-                            <X className="w-5 h-5" />
-                          </button>
-                        </div>
-
-                        {/* Quick stats — grid layout so nothing gets squeezed on mobile */}
-                        <div className="px-5 py-4 border-b border-white/5 bg-white/3 shrink-0">
-                          <div className="grid grid-cols-2 gap-3">
-                            <div className="bg-white/5 rounded-2xl px-4 py-3">
-                              <p className="text-xs text-slate-400 mb-0.5">Total Referrals</p>
-                              <p className="text-2xl font-bold text-white leading-none">{doc.total_referrals}</p>
-                            </div>
-                            {doc.doctor_phone ? (
-                              <div className="bg-white/5 rounded-2xl px-4 py-3">
-                                <p className="text-xs text-slate-400 mb-0.5">Phone</p>
-                                <a href={`tel:${doc.doctor_phone}`} className="text-sm font-semibold text-blue-400 hover:text-blue-300 flex items-center gap-1 mt-0.5 leading-snug">
-                                  <Phone className="w-3.5 h-3.5 shrink-0" />
-                                  <span className="truncate">{doc.doctor_phone}</span>
-                                </a>
-                              </div>
-                            ) : (
-                              <div className="bg-white/5 rounded-2xl px-4 py-3 flex items-center justify-center">
-                                <p className="text-xs text-slate-600">No phone</p>
-                              </div>
-                            )}
-                            {doc.doctor_hospital && (
-                              <div className="col-span-2 bg-white/5 rounded-2xl px-4 py-3">
-                                <p className="text-xs text-slate-400 mb-0.5">Hospital / Clinic</p>
-                                <p className="text-sm font-semibold text-slate-200 leading-snug break-words">{doc.doctor_hospital}</p>
-                              </div>
-                            )}
-                          </div>
-                        </div>
-
-                        {/* Scrollable body */}
-                        <div className="overflow-y-auto flex-1 px-5 py-4 space-y-5">
-
-                          {/* Bank details */}
-                          {(doc.doctor_bank_name || doc.doctor_account_number) && (
-                            <div>
-                              <p className="text-xs font-semibold text-slate-500 uppercase tracking-wider mb-2">Bank Details</p>
-                              <div className="bg-white/5 rounded-xl p-3 flex items-start gap-2">
-                                <CreditCard className="w-4 h-4 text-emerald-400 shrink-0 mt-0.5" />
-                                <div>
-                                  {doc.doctor_bank_name && <p className="text-white font-medium text-sm">{doc.doctor_bank_name}</p>}
-                                  {doc.doctor_account_number && <p className="font-mono text-sm text-slate-200">{doc.doctor_account_number}</p>}
-                                  {doc.doctor_account_name && <p className="text-xs text-slate-400">{doc.doctor_account_name}</p>}
-                                </div>
-                              </div>
-                            </div>
-                          )}
-
-                          {/* Tests referred */}
-                          <div>
-                            <p className="text-xs font-semibold text-slate-500 uppercase tracking-wider mb-2">
-                              Tests Referred ({doc.tests.length})
-                            </p>
-                            <div className="flex flex-wrap gap-1.5">
-                              {doc.tests.map((t) => (
-                                <span key={t} className="text-xs bg-medical-900/50 text-medical-300 border border-medical-800/30 px-2 py-0.5 rounded-full">{t}</span>
-                              ))}
-                            </div>
-                          </div>
-
-                          {/* All requests — with patient + status per request */}
-                          {doc.recent_requests && doc.recent_requests.length > 0 && (
-                            <div>
-                              <p className="text-xs font-semibold text-slate-500 uppercase tracking-wider mb-2">
-                                Requests ({doc.recent_requests.length})
-                              </p>
-                              <div className="space-y-2">
-                                {doc.recent_requests.map((r) => {
-                                  const statusDot: Record<string, string> = { incoming: "bg-amber-400", seen: "bg-blue-400", done: "bg-emerald-400" };
-                                  const statusLabel: Record<string, string> = { incoming: "Pending", seen: "Patient Seen", done: "Completed" };
-                                  const testDisplay = r.tests === "See attached image"
-                                    ? null
-                                    : r.tests.split(/[,\n]+/).map((t) => t.trim()).filter(Boolean);
-                                  return (
-                                    <div key={r.id} className="bg-white/5 border border-white/10 rounded-xl px-3 py-3 space-y-2">
-                                      {/* Header row: patient name + code + date */}
-                                      <div className="flex items-start justify-between gap-2">
-                                        <div className="flex items-center gap-2 min-w-0">
-                                          <span className={`w-2 h-2 rounded-full shrink-0 ${statusDot[r.status] ?? "bg-slate-400"}`} />
-                                          <div className="min-w-0">
-                                            {r.patient_name && (
-                                              <p className="text-sm font-semibold text-white truncate">{r.patient_name}</p>
-                                            )}
-                                            <p className="text-xs text-slate-500 font-mono">{r.code}</p>
-                                          </div>
-                                        </div>
-                                        <div className="text-right shrink-0">
-                                          <p className={`text-xs font-medium ${statusDot[r.status] === "bg-emerald-400" ? "text-emerald-400" : statusDot[r.status] === "bg-blue-400" ? "text-blue-400" : "text-amber-400"}`}>
-                                            {statusLabel[r.status] ?? r.status}
-                                          </p>
-                                          <p className="text-xs text-slate-500 mt-0.5">
-                                            {new Date(r.created_at).toLocaleDateString("en-GB", { day: "numeric", month: "short", year: "numeric" })}
-                                          </p>
-                                        </div>
-                                      </div>
-                                      {/* Tests as badges */}
-                                      {testDisplay && testDisplay.length > 0 && (
-                                        <div className="flex flex-wrap gap-1">
-                                          {testDisplay.map((t, ti) => (
-                                            <span key={ti} className="text-xs bg-medical-900/50 text-medical-300 border border-medical-800/30 px-2 py-0.5 rounded-full">{t}</span>
-                                          ))}
-                                        </div>
-                                      )}
-                                      {r.tests === "See attached image" && (
-                                        <p className="text-xs italic text-slate-500">See attached image</p>
-                                      )}
-                                      {r.patient_phone && (
-                                        <a href={`tel:${r.patient_phone}`} className="inline-flex items-center gap-1 text-xs text-blue-400 hover:underline">
-                                          <Phone className="w-3 h-3" />{r.patient_phone}
-                                        </a>
-                                      )}
-                                      {r.test_image_url && (
-                                        <a
-                                          href={r.test_image_url}
-                                          target="_blank"
-                                          rel="noopener noreferrer"
-                                          className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-blue-500/10 border border-blue-500/20 hover:bg-blue-500/20 transition text-xs font-medium text-blue-300"
-                                        >
-                                          <FileImage className="w-3.5 h-3.5" />
-                                          View image
-                                          <ExternalLink className="w-3 h-3 opacity-60 ml-0.5" />
-                                        </a>
-                                      )}
-                                    </div>
-                                  );
-                                })}
-                              </div>
-                            </div>
-                          )}
-
-                          {/* Monthly breakdown */}
-                          <div>
-                            <p className="text-xs font-semibold text-slate-500 uppercase tracking-wider mb-2">Monthly Breakdown</p>
-                            <div className="flex flex-wrap gap-2">
-                              {Object.entries(doc.months).sort((a, b) => b[0].localeCompare(a[0])).map(([ym, count]) => {
-                                const [year, month] = ym.split("-");
-                                const label = new Date(Number(year), Number(month) - 1).toLocaleDateString("en-GB", { month: "short", year: "numeric" });
-                                return (
-                                  <span key={ym} className="text-xs bg-white/10 text-slate-300 px-2 py-1 rounded-lg">
-                                    {label}: <span className="font-bold text-white">{count}</span>
-                                  </span>
-                                );
-                              })}
-                            </div>
-                          </div>
-                        </div>
-                      </div>
-                    </div>
-                  );
-                })()}
-              </>
-            )}
-          </div>
+        {/* Unified Referrals page (merges referrals + professionals) */}
+        {(mainView === "network" || mainView === "referrals" || mainView === "professionals") && (
+          <ReferralsView canManage={isOwner || canManageProfessionals} />
         )}
 
         {/* Clients view */}
@@ -2091,16 +1746,6 @@ export function LabDashboard({ lab, isOwner = false, roleName = "Lab Owner", can
           </div>
         )}
 
-        {/* Professionals & commission view */}
-        {(mainView === "professionals" || (mainView === "network" && networkSub === "professionals")) && (isOwner || canManageProfessionals) && (
-          <div className="space-y-5">
-            <div>
-              <h2 className="text-lg font-semibold text-white">Medical professionals</h2>
-              <p className="text-sm text-slate-400 mt-1">Add referring professionals and track referral commissions.</p>
-            </div>
-            <ProfessionalsView />
-          </div>
-        )}
 
         {/* Activity view */}
         {mainView === "activity" && (isOwner || canViewActivity) && (
@@ -3513,6 +3158,7 @@ export function LabDashboard({ lab, isOwner = false, roleName = "Lab Owner", can
       </main>
       </div>
     </div>
+    </TourProvider>
   );
 }
 
