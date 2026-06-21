@@ -70,9 +70,11 @@ export function TourProvider({ children }: { children: ReactNode }) {
   const start = useCallback(() => { setStepIndex(0); setRunning(true); }, []);
   const stop = useCallback(() => setRunning(false), []);
   const goTo = useCallback((i: number) => setStepIndex(Math.max(0, Math.min(steps.length - 1, i))), [steps.length]);
+  // Forward-only: surfacing a contextual step (e.g. drawer opens) should never
+  // drag the user back to an earlier step they've already passed.
   const goToKey = useCallback((key: string) => {
     const i = steps.findIndex((s) => s.key === key);
-    if (i >= 0) setStepIndex(i);
+    if (i >= 0) setStepIndex((cur) => (i > cur ? i : cur));
   }, [steps]);
   const next = useCallback(() => {
     setStepIndex((i) => {
