@@ -777,6 +777,11 @@ const migrations = [
     continueOnError: true,
   },
   {
+    desc: "lab_professionals.bank_code column (NIBSS bank selection)",
+    sql: `ALTER TABLE lab_professionals ADD COLUMN IF NOT EXISTS bank_code TEXT`,
+    continueOnError: true,
+  },
+  {
     desc: "requests.scheduled_at column (calendar scheduling for imaging)",
     sql: `ALTER TABLE requests ADD COLUMN IF NOT EXISTS scheduled_at TIMESTAMP(3)`,
     continueOnError: true,

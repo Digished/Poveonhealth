@@ -54,14 +54,19 @@ export function TourSpotlight() {
   const isLast = stepIndex >= steps.length - 1;
   const isFirst = stepIndex === 0;
 
-  // Tooltip placement: below the target if there's room, otherwise above; else centered.
+  // Tooltip placement: below the target if there's room, otherwise above; always
+  // clamped fully inside the viewport on both axes so it never bleeds off-screen.
   const tip = (() => {
-    if (!rect) return { centered: true, top: 0, left: 0 };
-    const below = rect.top + rect.height + 12;
-    const spaceBelow = window.innerHeight - (rect.top + rect.height);
-    const top = spaceBelow > 220 ? below : Math.max(12, rect.top - 12 - 200);
-    const left = Math.min(Math.max(12, rect.left), window.innerWidth - 340);
-    return { centered: false, top, left };
+    if (typeof window === "undefined" || !rect) return { centered: true, top: 0, left: 0, width: 320 };
+    const vw = window.innerWidth;
+    const vh = window.innerHeight;
+    const width = Math.min(320, vw - 24);
+    const cardH = 250; // approximate; clamp keeps it on-screen regardless
+    const spaceBelow = vh - (rect.top + rect.height);
+    const rawTop = spaceBelow > cardH + 24 ? rect.top + rect.height + 12 : rect.top - cardH - 12;
+    const top = Math.max(12, Math.min(rawTop, vh - cardH - 12));
+    const left = Math.max(12, Math.min(rect.left, vw - width - 12));
+    return { centered: false, top, left, width };
   })();
 
   return createPortal(
@@ -84,8 +89,8 @@ export function TourSpotlight() {
 
       {/* Tooltip card */}
       <div
-        className={`absolute w-[320px] max-w-[calc(100vw-24px)] rounded-2xl border border-white/10 bg-slate-900 p-4 shadow-2xl animate-scale-in ${tip.centered ? "left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2" : ""}`}
-        style={tip.centered ? undefined : { top: tip.top, left: tip.left }}
+        className={`absolute max-w-[calc(100vw-24px)] rounded-2xl border border-white/10 bg-slate-900 p-4 shadow-2xl animate-scale-in ${tip.centered ? "left-1/2 top-1/2 w-[320px] -translate-x-1/2 -translate-y-1/2" : ""}`}
+        style={tip.centered ? undefined : { top: tip.top, left: tip.left, width: tip.width }}
       >
         <div className="mb-1.5 flex items-center justify-between">
           <span className="inline-flex items-center gap-1.5 text-[11px] font-semibold uppercase tracking-wide text-medical-300">

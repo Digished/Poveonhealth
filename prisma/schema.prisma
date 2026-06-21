@@ -1039,6 +1039,7 @@ model LabProfessional {
   commission_type  String   @default("percent") // percent | flat
   commission_value Decimal  @default(0) @db.Decimal(12, 2) // % of lab revenue, or flat ₦ per referral
   bank_name        String?
+  bank_code        String?  // Paystack/NIBSS bank code (for name verification & payouts)
   account_number   String?
   account_name     String?
   active           Boolean  @default(true)

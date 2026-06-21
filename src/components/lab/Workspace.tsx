@@ -10,7 +10,9 @@ import { TestTagInput, TestTag } from "@/components/ui/TestTagInput";
 import { FilterSelect } from "@/components/ui/FilterSelect";
 import { FullViewModal } from "@/components/ui/FullViewModal";
 import { Calendar } from "@/components/ui/Calendar";
-import { requestDepartments, categoryToDepartment, WORKFLOWS, stageLabel, stageColorClasses, stageDurations, formatDuration, DEFAULT_DEPARTMENTS, type DepartmentConfig } from "@/lib/lims-shared";
+import { ScheduleCalendar } from "@/components/lab/ScheduleCalendar";
+import { useLabTour } from "@/components/lab/tour/TourProvider";
+import { requestDepartments, categoryToDepartment, WORKFLOWS, stageLabel, stageColorClasses, stageDurations, formatDuration, awaitingPhrase, awaitingLabel, DEFAULT_DEPARTMENTS, type DepartmentConfig } from "@/lib/lims-shared";
 import { nextPendingAction, directToDepartments, type PendingAction } from "@/lib/lab-pending";
 
 function fmtDateTime(iso: string | null | undefined): string {
@@ -125,6 +127,17 @@ const MILESTONE_ACTIONS: Record<string, { cta: string; title: string; field: str
   reported:    { cta: "Mark reported",  title: "Mark reported",        field: "Note (optional)",         placeholder: "Results delivered",                             prompt: "Confirm the report has been delivered to the patient." },
 };
 
+/** Canonical stage ordering across all workflows (for per-stage stat cards). */
+const STAGE_ORDER = ["registered", "collected", "received", "in_analysis", "scheduled", "performed", "verified"] as const;
+
+/** StatCard accent for a pipeline stage. */
+function stageAccent(stage: string): "amber" | "violet" | "emerald" | "medical" {
+  if (stage === "registered") return "amber";
+  if (stage === "verified") return "emerald";
+  if (stage === "scheduled") return "medical";
+  return "violet";
+}
+
 /** Small pulsing "action needed" chip telling staff the next step for a request. */
 function PendingBadge({ action }: { action: PendingAction }) {
   return (
@@ -167,6 +180,8 @@ export function Workspace({
   const [obView, setObView] = useState<"register" | "journey">("register");
   const [walkInOpen, setWalkInOpen] = useState(false);
   const [walkInTemplates, setWalkInTemplates] = useState<{ id: string; name: string; test_names: string[] }[]>([]);
+  // Radiology booking calendar modal.
+  const [scheduleOpen, setScheduleOpen] = useState(false);
 
   const [query, setQuery] = useState("");
   const [deptF, setDeptF] = useState(memberDepartment ?? "");
@@ -212,16 +227,18 @@ export function Workspace({
     } catch { /* ignore */ }
   }, [isOnboarding, labId]);
 
-  const load = useCallback(async () => {
-    setLoading(true);
+  // `silent` background refreshes update the list in place without blanking the
+  // content behind a spinner (prevents the flicker on the 20s poll).
+  const load = useCallback(async (silent = false) => {
+    if (!silent) setLoading(true);
     try {
       const res = await fetch("/api/lab/journey", { cache: "no-store" });
       const data = await res.json();
       setRequests(data.requests ?? []);
     } catch {
-      toast.error("Failed to load workspace");
+      if (!silent) toast.error("Failed to load workspace");
     } finally {
-      setLoading(false);
+      if (!silent) setLoading(false);
     }
   }, []);
 
@@ -230,7 +247,7 @@ export function Workspace({
   // Light polling so new QR registrations surface without a manual refresh.
   useEffect(() => {
     if (!isOnboarding) return;
-    const id = setInterval(() => { load(); }, 20000);
+    const id = setInterval(() => { load(true); }, 20000);
     return () => clearInterval(id);
   }, [isOnboarding, load]);
 
@@ -258,6 +275,9 @@ export function Workspace({
       if (obView === "register") {
         // Registration queue — not yet completed.
         if (r.status === "done") return false;
+        // Once confirmed & paid the client is fully registered — they move on to
+        // the Journey subtab and leave the Register queue.
+        if (r.is_paid && r.tests_confirmed) return false;
         // Pre-arrival Poveon leads stay hidden until their code is entered via
         // the "Have a Poveon code?" box (which opens them directly).
         if (r.source === "poveon" && r.status === "incoming") return false;
@@ -299,23 +319,33 @@ export function Workspace({
 
   // Headline stats reflect the current tab and any applied filters (computed
   // over the filtered set so the numbers always match what's on screen).
+  // Workstation stats are one card per non-terminal pipeline stage, each
+  // labelled by the NEXT phase it's waiting for ("Awaiting investigation", …).
   const stats = useMemo(() => {
-    const s = { total: filtered.length, unregistered: 0, awaitingPayment: 0, registered: 0, awaitingCollection: 0, inProgress: 0, readyToReport: 0 };
     if (isOnboarding && obView === "register") {
-      // Step 1: registration (identity). Step 2: confirm tests + payment.
-      s.unregistered = filtered.filter((r) => r.status === "incoming").length;
-      s.awaitingPayment = filtered.filter((r) => r.status !== "incoming" && r.status !== "done" && !(r.is_paid && r.tests_confirmed)).length;
-      s.registered = filtered.filter((r) => r.is_paid && r.tests_confirmed).length;
-      return s;
+      return {
+        register: true,
+        unregistered: filtered.filter((r) => r.status === "incoming").length,
+        awaitingPayment: filtered.filter((r) => r.status !== "incoming" && r.status !== "done" && !(r.is_paid && r.tests_confirmed)).length,
+        stageCounts: [] as { stage: string; label: string; count: number }[],
+      };
     }
+    const scopeWorkflows = deptF
+      ? [departments.find((d) => d.name === deptF)?.workflow ?? "specimen"]
+      : Array.from(new Set(departments.map((d) => d.workflow)));
+    const scopeStages = STAGE_ORDER.filter((st) => scopeWorkflows.some((w) => (WORKFLOWS[w] ?? WORKFLOWS.specimen).includes(st)));
+    const counts = new Map<string, number>();
     for (const r of filtered) {
       for (const t of tracksFor(r, departments).filter((t) => !deptF || t.department === deptF)) {
-        if (t.currentStage === "registered") s.awaitingCollection++;
-        else if (t.currentStage === "verified") s.readyToReport++;
-        else if (t.currentStage !== "reported") s.inProgress++;
+        if (t.currentStage && t.currentStage !== "reported") counts.set(t.currentStage, (counts.get(t.currentStage) ?? 0) + 1);
       }
     }
-    return s;
+    return {
+      register: false,
+      unregistered: 0,
+      awaitingPayment: 0,
+      stageCounts: scopeStages.map((st) => ({ stage: st, label: awaitingLabel(st), count: counts.get(st) ?? 0 })),
+    };
   }, [filtered, departments, deptF, isOnboarding, obView]);
 
   // Per-department active workload (for the quick department switcher).
@@ -452,8 +482,9 @@ export function Workspace({
         </div>
       )}
 
-      {/* Stats — only actionable, pending-task counts (reflecting applied filters) */}
-      <div className="grid grid-cols-2 gap-3 lg:grid-cols-3">
+      {/* Stats — onboarding: registration tasks; workstation: one card per stage,
+          each labelled by the next phase it's waiting for. */}
+      <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
         {isOnboarding && obView === "register" ? (
           <>
             <StatCard label="To register" value={stats.unregistered ?? 0} accent="amber" icon={<UserPlus className="h-4 w-4" />} />
@@ -461,9 +492,18 @@ export function Workspace({
           </>
         ) : (
           <>
-            <StatCard label={selectedIsImaging ? "Awaiting scan" : "Awaiting collection"} value={stats.awaitingCollection ?? 0} accent="amber" icon={<FlaskConical className="h-4 w-4" />} />
-            <StatCard label="In progress" value={stats.inProgress ?? 0} accent="violet" icon={<Workflow className="h-4 w-4" />} />
-            <StatCard label="Ready to report" value={stats.readyToReport ?? 0} accent="emerald" icon={<Send className="h-4 w-4" />} />
+            {stats.stageCounts.map((sc) => (
+              <StatCard key={sc.stage} label={sc.label} value={sc.count} accent={stageAccent(sc.stage)} icon={<Workflow className="h-4 w-4" />} />
+            ))}
+            {selectedIsImaging && (
+              <button onClick={() => setScheduleOpen(true)} className="flex items-center justify-between gap-2 rounded-2xl border border-sky-400/30 bg-sky-500/10 p-4 text-left transition hover:bg-sky-500/15">
+                <div>
+                  <p className="text-xs font-medium text-sky-200/80">Bookings</p>
+                  <p className="mt-1 text-sm font-semibold text-white">Open schedule</p>
+                </div>
+                <CalendarIcon className="h-5 w-5 text-sky-300" />
+              </button>
+            )}
           </>
         )}
       </div>
@@ -527,6 +567,13 @@ export function Workspace({
         />
       </div>
 
+      {/* Radiology booking calendar */}
+      {scheduleOpen && (
+        <FullViewModal title="Radiology schedule" subtitle="Booked scans by day" maxWidth="max-w-4xl" onClose={() => setScheduleOpen(false)}>
+          <ScheduleCalendar onSelectRequest={(id) => { const r = requests.find((x) => x.id === id); if (r) { setSelected(r); setScheduleOpen(false); } }} />
+        </FullViewModal>
+      )}
+
       {/* Walk-in registration modal (onboarding) */}
       {walkInOpen && (
         <div className="fixed inset-0 z-[9999] flex items-end justify-center bg-black/60 backdrop-blur-sm sm:items-center" onClick={() => setWalkInOpen(false)}>
@@ -584,20 +631,27 @@ export function Workspace({
                     {pending && <PendingBadge action={pending} />}
                   </div>
                 ) : (
-                  // Journey subtab + workstation: pipeline status (+ time in stage).
-                  <div className="flex flex-wrap items-center gap-1.5">
-                    {tracks.map((t) => {
-                      const { currentMs } = stageDurations(t.events);
-                      return (
+                  // Journey subtab + workstation: pipeline status + natural "waiting" line.
+                  <div className="space-y-1.5">
+                    <div className="flex flex-wrap items-center gap-1.5">
+                      {tracks.map((t) => (
                         <span key={t.department} className={`inline-flex items-center gap-1 rounded-full border px-2 py-0.5 text-[10px] ${stageColorClasses(t.currentStage)}`}>
                           <span className="font-medium opacity-90">{t.department}</span>
                           <span className="opacity-60">·</span>
                           <span className="font-medium">{stageLabel(t.currentStage)}</span>
-                          {t.currentStage !== "reported" && <span className="opacity-70">· {formatDuration(currentMs)}</span>}
                         </span>
+                      ))}
+                      {pending && <PendingBadge action={pending} />}
+                    </div>
+                    {tracks.filter((t) => t.currentStage !== "reported").map((t) => {
+                      const { currentMs } = stageDurations(t.events);
+                      return (
+                        <p key={t.department} className="text-[11px] text-slate-400">
+                          <span className="font-medium text-slate-300">{formatDuration(currentMs)}</span> {awaitingPhrase(t.currentStage, t.workflow as "specimen" | "imaging" | "procedure")}
+                          {tracks.length > 1 ? <span className="text-slate-500"> · {t.department}</span> : null}
+                        </p>
                       );
                     })}
-                    {pending && <PendingBadge action={pending} />}
                   </div>
                 )}
               </button>
@@ -686,6 +740,14 @@ function WorkspaceDrawer({
   const [testsOpen, setTestsOpen] = useState(false);
   const [results, setResults] = useState<RResult[]>([]);
 
+  // Contextual tutorial: when the drawer opens with the Guide on, jump to the
+  // client-detail steps; restore the list step when it closes.
+  const { enabled: tourEnabled, running: tourRunning, goToKey } = useLabTour();
+  useEffect(() => {
+    if (tourEnabled && tourRunning) goToKey(showRegistration ? "ob-edit-details" : "ws-advance");
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
   // The single next action the lab must take to move this client forward.
   const pending = nextPendingAction(request, departments);
   const pendIs = (kind: PendingAction["kind"], dept?: string) =>
@@ -740,11 +802,11 @@ function WorkspaceDrawer({
               </p>
             )}
 
-            <p className="mt-2 text-[10px] font-medium uppercase tracking-wide text-slate-500">Detected tests</p>
-            <div className="mt-1 flex flex-wrap gap-1.5">
+            <p className="mt-3 text-xs font-semibold uppercase tracking-wide text-slate-400">Detected tests</p>
+            <div className="mt-1.5 flex flex-wrap gap-2">
               {testPills(request).map((p, i) => (
-                <span key={i} className={`inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[11px] ${p.recognized ? "border border-medical-500/30 bg-medical-600/20 text-medical-200" : "border border-white/10 bg-white/5 text-slate-400"}`} title={p.recognized ? "Recognised in your catalog" : "Not in your catalog"}>
-                  {p.recognized && <Check className="h-3 w-3" />}{p.name}
+                <span key={i} className={`inline-flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-sm font-semibold ${p.recognized ? "border border-medical-500/40 bg-medical-600/25 text-medical-100" : "border border-white/10 bg-white/5 text-slate-300"}`} title={p.recognized ? "Recognised in your catalog" : "Not in your catalog"}>
+                  {p.recognized && <Check className="h-4 w-4" />}{p.name}
                 </span>
               ))}
             </div>
@@ -869,7 +931,7 @@ function WorkspaceDrawer({
                   <p className="flex items-center gap-2 text-sm font-semibold text-white"><Workflow className="h-4 w-4 text-medical-300" /> {track.department}</p>
                   <div className="flex items-center gap-1.5">
                     {resultStatus && <span className={`inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[10px] font-medium ${resultStatus.cls}`}><FileText className="h-3 w-3" /> {resultStatus.label}</span>}
-                    {track.currentStage !== "reported" && <span className="inline-flex items-center gap-1 rounded-full bg-white/5 px-2 py-0.5 text-[10px] text-slate-300"><Clock className="h-3 w-3" /> {formatDuration(durations.currentMs)} in {stageLabel(track.currentStage)}</span>}
+                    {track.currentStage !== "reported" && <span className="inline-flex items-center gap-1 rounded-full bg-white/5 px-2 py-0.5 text-[10px] text-slate-300"><Clock className="h-3 w-3" /> {formatDuration(durations.currentMs)} {awaitingPhrase(track.currentStage, track.workflow as "specimen" | "imaging" | "procedure")}</span>}
                   </div>
                 </div>
                 {/* stepper */}
@@ -1102,15 +1164,27 @@ function MilestoneModal({
 }) {
   const cfg = MILESTONE_ACTIONS[stage] ?? { cta: `Advance to ${stageLabel(stage)}`, title: `Advance to ${stageLabel(stage)}`, field: "Note (optional)", placeholder: "", prompt: "" };
   const isScheduling = stage === "scheduled";
+  // "Performed" picks which scan/procedure was done from the request's tests.
+  const isPerformed = stage === "performed" && track.tests.length > 0;
   const [note, setNote] = useState("");
   const [when, setWhen] = useState<Date | null>(null);
+  const [picked, setPicked] = useState<Set<string>>(new Set());
   const inputCls = "w-full rounded-xl border border-white/10 bg-white/5 px-3 py-2 text-sm text-white placeholder:text-slate-500 focus:border-medical-400 focus:outline-none";
+
+  const togglePick = (t: string) => setPicked((prev) => {
+    const next = new Set(prev);
+    if (next.has(t)) next.delete(t); else next.add(t);
+    return next;
+  });
 
   function confirm() {
     if (isScheduling) {
       if (!when) return;
       const label = when.toLocaleString(undefined, { weekday: "short", month: "short", day: "numeric", hour: "numeric", minute: "2-digit" });
       onConfirm(label, when.toISOString());
+    } else if (isPerformed) {
+      if (picked.size === 0) return;
+      onConfirm(`${Array.from(picked).join(", ")} done`);
     } else {
       onConfirm(note.trim() || undefined);
     }
@@ -1134,6 +1208,24 @@ function MilestoneModal({
             <Calendar value={when} onSelect={setWhen} withTime />
             {when && <p className="mt-2 inline-flex items-center gap-1.5 rounded-lg bg-medical-600/15 px-2.5 py-1 text-xs text-medical-200"><CalendarIcon className="h-3.5 w-3.5" /> {when.toLocaleString(undefined, { weekday: "short", month: "short", day: "numeric", hour: "numeric", minute: "2-digit" })}</p>}
           </>
+        ) : isPerformed ? (
+          <>
+            <label className="mb-2 block text-xs font-medium text-slate-400">Which scan / procedure was done? *</label>
+            <div className="flex flex-wrap gap-2">
+              {track.tests.map((t) => {
+                const on = picked.has(t);
+                return (
+                  <button
+                    key={t}
+                    onClick={() => togglePick(t)}
+                    className={`inline-flex items-center gap-1.5 rounded-full border px-3 py-1.5 text-xs font-medium transition ${on ? "border-medical-400 bg-medical-600/25 text-white" : "border-white/10 bg-white/5 text-slate-200 hover:bg-white/10"}`}
+                  >
+                    {on ? <Check className="h-3.5 w-3.5" /> : <Plus className="h-3.5 w-3.5" />} {t}
+                  </button>
+                );
+              })}
+            </div>
+          </>
         ) : (
           <>
             <label className="mb-1 block text-xs font-medium text-slate-400">{cfg.field}{cfg.required ? " *" : ""}</label>
@@ -1152,7 +1244,7 @@ function MilestoneModal({
           <button onClick={onClose} className="rounded-xl border border-white/10 px-3 py-2 text-sm text-slate-200 hover:bg-white/5">Cancel</button>
           <button
             onClick={confirm}
-            disabled={busy || (isScheduling ? !when : cfg.required && !note.trim())}
+            disabled={busy || (isScheduling ? !when : isPerformed ? picked.size === 0 : cfg.required && !note.trim())}
             className="inline-flex items-center gap-1.5 rounded-xl bg-medical-600 px-4 py-2 text-sm font-semibold text-white hover:bg-medical-700 disabled:opacity-50"
           >
             {busy ? <Loader2 className="h-4 w-4 animate-spin" /> : <Check className="h-4 w-4" />} {cfg.cta}

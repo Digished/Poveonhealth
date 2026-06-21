@@ -187,6 +187,56 @@ export function formatDuration(ms: number): string {
   return remHours > 0 ? `${days}d ${remHours}h` : `${days}d`;
 }
 
+/**
+ * Natural "what we're waiting for" phrase for a request currently sitting in
+ * `stage` — references the NEXT step so timings read like
+ * "9m waiting for the sample to be collected".
+ */
+export function awaitingPhrase(stage: string, workflow: WorkflowType = "specimen"): string {
+  if (workflow === "imaging") {
+    switch (stage) {
+      case "registered": return "waiting to be scheduled";
+      case "scheduled": return "waiting for the scan";
+      case "performed": return "waiting for results to be verified";
+      case "verified": return "waiting for results to be sent";
+      default: return "in progress";
+    }
+  }
+  if (workflow === "procedure") {
+    switch (stage) {
+      case "registered": return "waiting for the procedure";
+      case "performed": return "waiting for results to be verified";
+      case "verified": return "waiting for results to be sent";
+      default: return "in progress";
+    }
+  }
+  switch (stage) {
+    case "registered": return "waiting for the sample to be collected";
+    case "collected": return "waiting for the sample to be received";
+    case "received": return "waiting for the sample to be analysed";
+    case "in_analysis": return "waiting for results to be verified";
+    case "verified": return "waiting for results to be sent";
+    default: return "in progress";
+  }
+}
+
+/**
+ * Short "Awaiting <next phase>" label for a stat card — the count of items in
+ * `stage` is what's awaiting the next phase.
+ */
+export function awaitingLabel(stage: string): string {
+  switch (stage) {
+    case "registered": return "Awaiting investigation";
+    case "collected": return "Awaiting receipt";
+    case "received": return "Awaiting analysis";
+    case "in_analysis": return "Awaiting verification";
+    case "scheduled": return "Awaiting scan";
+    case "performed": return "Awaiting verification";
+    case "verified": return "Awaiting report";
+    default: return `Awaiting ${stageLabel(stage)}`;
+  }
+}
+
 interface TimedEvent { stage: string; created_at: string | Date }
 
 /**

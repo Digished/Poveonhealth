@@ -18,6 +18,8 @@ interface TourContextValue {
   next: () => void;
   prev: () => void;
   goTo: (i: number) => void;
+  /** Jump to a step by its key, but only while the tour is running (contextual). */
+  goToKey: (key: string) => void;
 }
 
 const TourContext = createContext<TourContextValue | null>(null);
@@ -68,6 +70,10 @@ export function TourProvider({ children }: { children: ReactNode }) {
   const start = useCallback(() => { setStepIndex(0); setRunning(true); }, []);
   const stop = useCallback(() => setRunning(false), []);
   const goTo = useCallback((i: number) => setStepIndex(Math.max(0, Math.min(steps.length - 1, i))), [steps.length]);
+  const goToKey = useCallback((key: string) => {
+    const i = steps.findIndex((s) => s.key === key);
+    if (i >= 0) setStepIndex(i);
+  }, [steps]);
   const next = useCallback(() => {
     setStepIndex((i) => {
       if (i >= steps.length - 1) { setRunning(false); return i; }
@@ -77,8 +83,8 @@ export function TourProvider({ children }: { children: ReactNode }) {
   const prev = useCallback(() => setStepIndex((i) => Math.max(0, i - 1)), []);
 
   const value = useMemo<TourContextValue>(() => ({
-    enabled, toggle, running, start, stop, stepIndex, steps, next, prev, goTo,
-  }), [enabled, toggle, running, start, stop, stepIndex, steps, next, prev, goTo]);
+    enabled, toggle, running, start, stop, stepIndex, steps, next, prev, goTo, goToKey,
+  }), [enabled, toggle, running, start, stop, stepIndex, steps, next, prev, goTo, goToKey]);
 
   return (
     <TourContext.Provider value={value}>

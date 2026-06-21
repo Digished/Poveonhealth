@@ -5,6 +5,7 @@ import { Loader2, Plus, X, Wallet, Users, BadgeCheck, Search, Stethoscope, Send,
 import toast from "react-hot-toast";
 import { StatCard } from "@/components/lab/StatCard";
 import { FullViewModal } from "@/components/ui/FullViewModal";
+import { BankAccountInput } from "@/components/BankAccountInput";
 
 interface RecentRef { code: string; patient_name: string | null; tests: string; status: string; created_at: string }
 interface Professional {
@@ -17,9 +18,11 @@ interface Professional {
   commission_type: string;
   commission_value: number;
   bank_name: string | null;
+  bank_code: string | null;
   account_number: string | null;
   account_name: string | null;
   active: boolean;
+  synced_from_doctor?: boolean;
   totals: { accrued: number; paid: number; count: number };
   referrals: { count: number; last_referral_at: string | null; recent: RecentRef[] };
 }
@@ -50,6 +53,7 @@ export function ReferralsView({ canManage = false }: { canManage?: boolean }) {
   const [ctype, setCtype] = useState<"percent" | "flat">("percent");
   const [cvalue, setCvalue] = useState("");
   const [bankName, setBankName] = useState("");
+  const [bankCode, setBankCode] = useState("");
   const [accountNumber, setAccountNumber] = useState("");
   const [accountName, setAccountName] = useState("");
   const [saving, setSaving] = useState(false);
@@ -85,6 +89,7 @@ export function ReferralsView({ canManage = false }: { canManage?: boolean }) {
           commission_type: ctype,
           commission_value: Number(cvalue) || 0,
           bank_name: bankName.trim() || undefined,
+          bank_code: bankCode.trim() || undefined,
           account_number: accountNumber.trim() || undefined,
           account_name: accountName.trim() || undefined,
         }),
@@ -94,7 +99,7 @@ export function ReferralsView({ canManage = false }: { canManage?: boolean }) {
       toast.success("Professional added");
       setShowForm(false);
       setName(""); setEmail(""); setPhone(""); setSpecialty(""); setHospital(""); setCvalue(""); setCtype("percent");
-      setBankName(""); setAccountNumber(""); setAccountName("");
+      setBankName(""); setBankCode(""); setAccountNumber(""); setAccountName("");
       await load();
     } catch (e) {
       toast.error(e instanceof Error ? e.message : "Failed to add");
@@ -232,6 +237,11 @@ export function ReferralsView({ canManage = false }: { canManage?: boolean }) {
               Payout: {[detail.bank_name, detail.account_number, detail.account_name].filter(Boolean).join(" · ")}
             </p>
           )}
+          {detail.synced_from_doctor && (
+            <p className="mt-2 inline-flex items-center gap-1.5 rounded-lg bg-medical-600/15 px-2.5 py-1 text-[11px] text-medical-200">
+              <BadgeCheck className="h-3.5 w-3.5" /> Synced from the doctor&rsquo;s dashboard — they manage these details
+            </p>
+          )}
 
           <p className="mt-5 mb-2 text-xs font-semibold uppercase tracking-wide text-slate-400">Recent referrals</p>
           {detail.referrals.recent.length === 0 ? (
@@ -279,11 +289,16 @@ export function ReferralsView({ canManage = false }: { canManage?: boolean }) {
               </div>
               <div className="pt-1">
                 <p className="mb-1.5 text-xs font-medium uppercase tracking-wide text-slate-400">Payout bank details (for settling commissions)</p>
-                <input className={inputCls} placeholder="Bank name" value={bankName} onChange={(e) => setBankName(e.target.value)} />
-                <div className="mt-3 grid grid-cols-2 gap-3">
-                  <input className={inputCls} placeholder="Account number" value={accountNumber} inputMode="numeric" onChange={(e) => setAccountNumber(e.target.value.replace(/[^\d]/g, ""))} />
-                  <input className={inputCls} placeholder="Account name" value={accountName} onChange={(e) => setAccountName(e.target.value)} />
-                </div>
+                <BankAccountInput
+                  bankName={bankName}
+                  bankCode={bankCode}
+                  accountNumber={accountNumber}
+                  accountName={accountName}
+                  onBankChange={(n, c) => { setBankName(n); setBankCode(c); }}
+                  onAccountNumberChange={setAccountNumber}
+                  onAccountNameChange={setAccountName}
+                  optional
+                />
               </div>
               <p className="text-xs text-slate-500">Referrals are matched to this professional by email when a request they referred is marked seen.</p>
               <button onClick={create} disabled={!name.trim() || saving} className="inline-flex w-full items-center justify-center gap-2 rounded-xl bg-medical-600 py-2.5 text-sm font-semibold text-white hover:bg-medical-700 disabled:opacity-50">

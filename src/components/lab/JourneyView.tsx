@@ -1,14 +1,13 @@
 "use client";
 
 import { useEffect, useState, useCallback } from "react";
-import { Loader2, Search, X, ArrowRight, Activity, CalendarDays, List, FileText, Clock } from "lucide-react";
+import { Loader2, Search, ArrowRight, Activity, CalendarDays, List, FileText, Clock } from "lucide-react";
 import toast from "react-hot-toast";
-import { format, startOfMonth, endOfMonth } from "date-fns";
 import { JourneyMap, JourneyTimeline, JourneyEvent } from "@/components/lab/JourneyMap";
 import { StatCard } from "@/components/lab/StatCard";
-import { Calendar } from "@/components/ui/Calendar";
+import { ScheduleCalendar } from "@/components/lab/ScheduleCalendar";
 import { FullViewModal } from "@/components/ui/FullViewModal";
-import { JOURNEY_STAGES, STAGE_LABELS, stageIndex, stageDurations, formatDuration, JourneyStage } from "@/lib/lims-shared";
+import { JOURNEY_STAGES, STAGE_LABELS, stageIndex, stageDurations, formatDuration, awaitingPhrase, JourneyStage } from "@/lib/lims-shared";
 
 interface JourneyRequest {
   id: string;
@@ -23,13 +22,7 @@ interface JourneyRequest {
   journey_events: JourneyEvent[];
 }
 
-interface ScheduledRequest {
-  id: string; code: string; patient_name: string | null; patient_phone: string | null;
-  tests: string; scheduled_at: string | null; current_stage: string | null; status: string; source: string;
-}
-
 const SOURCE_LABEL: Record<string, string> = { poveon: "Poveon", walk_in: "Walk-in", qr: "QR" };
-const dayKey = (iso: string) => format(new Date(iso), "yyyy-MM-dd");
 
 /** Lightweight result indicator derived from the request's furthest stage. */
 function resultBadge(stage: string | null): { label: string; cls: string } | null {
@@ -46,11 +39,6 @@ export function JourneyView({ canAdvance }: { canAdvance: boolean }) {
   const [advancing, setAdvancing] = useState(false);
   const [view, setView] = useState<"list" | "schedule">("list");
 
-  // Schedule (calendar) state
-  const [scheduled, setScheduled] = useState<ScheduledRequest[]>([]);
-  const [schedLoading, setSchedLoading] = useState(false);
-  const [selectedDay, setSelectedDay] = useState<Date | null>(new Date());
-
   const load = useCallback(async () => {
     setLoading(true);
     try {
@@ -65,27 +53,6 @@ export function JourneyView({ canAdvance }: { canAdvance: boolean }) {
   }, []);
 
   useEffect(() => { load(); }, [load]);
-
-  const loadSchedule = useCallback(async (monthStart: Date, monthEnd: Date) => {
-    setSchedLoading(true);
-    try {
-      const params = new URLSearchParams({ from: monthStart.toISOString(), to: monthEnd.toISOString() });
-      const res = await fetch(`/api/lab/schedule?${params}`, { cache: "no-store" });
-      const data = await res.json();
-      setScheduled(data.requests ?? []);
-    } catch {
-      toast.error("Failed to load schedule");
-    } finally {
-      setSchedLoading(false);
-    }
-  }, []);
-
-  useEffect(() => {
-    if (view === "schedule") {
-      const now = new Date();
-      loadSchedule(startOfMonth(now), endOfMonth(now));
-    }
-  }, [view, loadSchedule]);
 
   async function advance(req: JourneyRequest, stage: JourneyStage) {
     setAdvancing(true);
@@ -121,13 +88,6 @@ export function JourneyView({ canAdvance }: { canAdvance: boolean }) {
     const idx = current ? stageIndex(current) : -1;
     return idx < JOURNEY_STAGES.length - 1 ? JOURNEY_STAGES[idx + 1] : null;
   }
-
-  // Markers + day list for the schedule calendar.
-  const markers = new Map<string, number>();
-  for (const s of scheduled) if (s.scheduled_at) markers.set(dayKey(s.scheduled_at), (markers.get(dayKey(s.scheduled_at)) ?? 0) + 1);
-  const dayItems = selectedDay
-    ? scheduled.filter((s) => s.scheduled_at && dayKey(s.scheduled_at) === format(selectedDay, "yyyy-MM-dd"))
-    : [];
 
   return (
     <div className="space-y-5">
@@ -181,7 +141,7 @@ export function JourneyView({ canAdvance }: { canAdvance: boolean }) {
                       </div>
                       <div className="flex shrink-0 items-center gap-1.5">
                         {rb && <span className={`inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[10px] font-medium ${rb.cls}`}><FileText className="h-3 w-3" /> {rb.label}</span>}
-                        {r.current_stage && r.current_stage !== "reported" && <span className="inline-flex items-center gap-1 rounded-full bg-white/10 px-2 py-0.5 text-[10px] text-slate-300"><Clock className="h-3 w-3" /> {formatDuration(currentMs)}</span>}
+                        {r.current_stage && r.current_stage !== "reported" && <span className="inline-flex items-center gap-1 rounded-full bg-white/10 px-2 py-0.5 text-[10px] text-slate-300" title={`${formatDuration(currentMs)} ${awaitingPhrase(r.current_stage ?? "registered")}`}><Clock className="h-3 w-3" /> {formatDuration(currentMs)}</span>}
                         <span className="rounded-full bg-white/10 px-2 py-0.5 text-[10px] font-medium text-slate-300">{SOURCE_LABEL[r.source] ?? r.source}</span>
                       </div>
                     </div>
@@ -194,39 +154,7 @@ export function JourneyView({ canAdvance }: { canAdvance: boolean }) {
         </>
       ) : (
         /* Schedule calendar — find scheduled scans/tests by date */
-        <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
-          <div>
-            <Calendar
-              value={selectedDay}
-              onSelect={setSelectedDay}
-              markers={markers}
-              onVisibleMonthChange={(s, e) => loadSchedule(s, e)}
-            />
-            {schedLoading && <p className="mt-2 flex items-center gap-1.5 text-xs text-slate-400"><Loader2 className="h-3 w-3 animate-spin" /> Loading schedule…</p>}
-          </div>
-          <div>
-            <p className="mb-2 text-sm font-semibold text-white">
-              {selectedDay ? format(selectedDay, "EEEE, MMMM d") : "Pick a day"}
-              <span className="ml-2 text-xs font-normal text-slate-400">{dayItems.length} booked</span>
-            </p>
-            {dayItems.length === 0 ? (
-              <div className="rounded-2xl border border-white/10 bg-white/5 py-12 text-center text-sm text-slate-400">Nothing scheduled this day.</div>
-            ) : (
-              <div className="space-y-2">
-                {dayItems.map((s) => (
-                  <div key={s.id} className="rounded-2xl border border-white/10 bg-white/5 p-3">
-                    <div className="flex items-center justify-between gap-2">
-                      <p className="truncate text-sm font-semibold text-white">{s.patient_name || "Unnamed"} <span className="font-mono text-xs text-slate-400">· {s.code}</span></p>
-                      <span className="shrink-0 text-xs font-medium text-medical-300">{s.scheduled_at ? format(new Date(s.scheduled_at), "h:mm a") : ""}</span>
-                    </div>
-                    <p className="mt-0.5 truncate text-xs text-slate-400">{s.tests}</p>
-                    {s.patient_phone && <p className="mt-0.5 text-[11px] text-slate-500">{s.patient_phone}</p>}
-                  </div>
-                ))}
-              </div>
-            )}
-          </div>
-        </div>
+        <ScheduleCalendar onSelectRequest={(id) => { const r = requests.find((x) => x.id === id); if (r) setSelected(r); }} />
       )}
 
       {/* Detail (full view) */}
