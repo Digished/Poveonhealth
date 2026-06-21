@@ -37,7 +37,7 @@ export async function GET(request: NextRequest) {
     where: { lab_id: auth.lab_id, status: "done", completed_at: { not: null } },
     orderBy: { completed_at: "desc" },
     take: 300,
-    select: { id: true, code: true, tests: true, test_breakdown: true, created_at: true, completed_at: true },
+    select: { id: true, code: true, tests: true, test_breakdown: true, created_at: true, seen_at: true, completed_at: true },
   });
 
   const tatHours: number[] = [];
@@ -46,7 +46,11 @@ export async function GET(request: NextRequest) {
 
   for (const r of done) {
     if (!r.completed_at) continue;
-    const hours = (r.completed_at.getTime() - r.created_at.getTime()) / HOUR;
+    // Turnaround is the lab's own clock: from when the client was registered/seen
+    // at the lab (seen_at) to reported. Using created_at would wrongly include the
+    // pre-arrival wait on Poveon requests (submitted by the doctor days earlier).
+    const start = (r.seen_at ?? r.created_at).getTime();
+    const hours = (r.completed_at.getTime() - start) / HOUR;
     if (hours < 0) continue;
     tatHours.push(hours);
 

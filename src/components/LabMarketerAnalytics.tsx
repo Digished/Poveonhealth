@@ -230,41 +230,42 @@ export function LabMarketerAnalytics({ labId }: { labId: string }) {
                 onClick={() =>
                   setExpandedMarketer(expandedMarketer === m.marketer_id ? null : m.marketer_id)
                 }
-                className="w-full px-5 py-4 text-left flex items-center gap-4"
+                className="relative w-full px-4 py-4 text-left sm:px-5"
               >
-                <div className="flex-1 min-w-0">
-                  <h3 className="text-sm font-semibold text-white">{m.marketer_name}</h3>
-                  <p className="text-xs text-slate-500">{m.marketer_email}</p>
-                </div>
-
-                <div className="grid grid-cols-5 gap-4 shrink-0 text-right text-xs">
-                  <div>
-                    <p className="text-slate-400">Revenue</p>
-                    <p className="text-lg font-bold text-green-400 mt-1">₦{(m.total_revenue / 1000).toFixed(1)}k</p>
-                  </div>
-                  <div>
-                    <p className="text-slate-400">Requests</p>
-                    <p className="text-lg font-bold text-blue-400 mt-1">{m.total_requests}</p>
-                  </div>
-                  <div>
-                    <p className="text-slate-400">Doctors</p>
-                    <p className="text-lg font-bold text-emerald-400 mt-1">{m.doctors_count}</p>
-                  </div>
-                  <div>
-                    <p className="text-slate-400">Conversion</p>
-                    <p className="text-lg font-bold text-orange-400 mt-1">{m.conversion_rate}%</p>
-                  </div>
-                  <div>
-                    <p className="text-slate-400">Completion</p>
-                    <p className="text-lg font-bold text-purple-400 mt-1">{m.completion_rate}%</p>
-                  </div>
-                </div>
-
                 <ChevronDown
-                  className={`w-5 h-5 text-slate-500 transition-transform ${
+                  className={`absolute right-4 top-4 h-5 w-5 shrink-0 text-slate-500 transition-transform ${
                     expandedMarketer === m.marketer_id ? "rotate-180" : ""
                   }`}
                 />
+                <div className="flex flex-col gap-3 pr-7 sm:flex-row sm:items-center sm:gap-4">
+                  <div className="min-w-0 sm:flex-1">
+                    <h3 className="truncate text-sm font-semibold text-white">{m.marketer_name}</h3>
+                    <p className="truncate text-xs text-slate-500">{m.marketer_email}</p>
+                  </div>
+
+                  <div className="grid grid-cols-3 gap-2 text-left sm:grid-cols-5 sm:gap-4 sm:text-right">
+                    <div>
+                      <p className="text-[11px] text-slate-400">Revenue</p>
+                      <p className="mt-0.5 text-base font-bold text-green-400 sm:text-lg">₦{(m.total_revenue / 1000).toFixed(1)}k</p>
+                    </div>
+                    <div>
+                      <p className="text-[11px] text-slate-400">Requests</p>
+                      <p className="mt-0.5 text-base font-bold text-blue-400 sm:text-lg">{m.total_requests}</p>
+                    </div>
+                    <div>
+                      <p className="text-[11px] text-slate-400">Doctors</p>
+                      <p className="mt-0.5 text-base font-bold text-emerald-400 sm:text-lg">{m.doctors_count}</p>
+                    </div>
+                    <div>
+                      <p className="text-[11px] text-slate-400">Conversion</p>
+                      <p className="mt-0.5 text-base font-bold text-orange-400 sm:text-lg">{m.conversion_rate}%</p>
+                    </div>
+                    <div>
+                      <p className="text-[11px] text-slate-400">Completion</p>
+                      <p className="mt-0.5 text-base font-bold text-purple-400 sm:text-lg">{m.completion_rate}%</p>
+                    </div>
+                  </div>
+                </div>
               </button>
 
               {/* Expanded Details */}
@@ -275,7 +276,7 @@ export function LabMarketerAnalytics({ labId }: { labId: string }) {
                     <p className="text-xs font-semibold text-slate-400 uppercase tracking-wider mb-3">
                       Request Breakdown
                     </p>
-                    <div className="grid grid-cols-4 gap-3">
+                    <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
                       <div className="bg-slate-800/50 rounded-lg p-3 text-center">
                         <p className="text-xs text-slate-400">Incoming</p>
                         <p className="text-lg font-bold text-amber-400 mt-1">{m.incoming_requests}</p>
@@ -341,7 +342,7 @@ export function LabMarketerAnalytics({ labId }: { labId: string }) {
                     <p className="text-xs font-semibold text-slate-400 uppercase tracking-wider mb-3">
                       Performance Metrics
                     </p>
-                    <div className="grid grid-cols-3 gap-3">
+                    <div className="grid grid-cols-2 gap-3 sm:grid-cols-3">
                       <div className="bg-slate-800/50 rounded-lg p-3">
                         <p className="text-xs text-slate-400">Avg/Doctor</p>
                         <p className="text-lg font-bold text-blue-400 mt-1">
