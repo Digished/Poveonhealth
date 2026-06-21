@@ -286,6 +286,15 @@ export function Workspace({
 
   const periodFrom = useMemo(() => periodStart(periodF), [periodF]);
 
+  // Department tracks parse each request's breakdown, so compute them once per
+  // request (not on every keystroke / render) — keeps filtering snappy.
+  const tracksByReq = useMemo(() => {
+    const m = new Map<string, Track[]>();
+    for (const r of requests) m.set(r.id, tracksFor(r, departments));
+    return m;
+  }, [requests, departments]);
+  const getTracks = useCallback((r: WReq) => tracksByReq.get(r.id) ?? tracksFor(r, departments), [tracksByReq, departments]);
+
   const filtered = useMemo(() => requests.filter((r) => {
     if (!matchesQuery(r)) return false;
     if (periodFrom != null && new Date(r.created_at).getTime() < periodFrom) return false;
@@ -312,7 +321,7 @@ export function Workspace({
 
     // Workstation: paid requests only (unpaid live in Onboarding).
     if (!r.is_paid) return false;
-    const tracks = tracksFor(r, departments);
+    const tracks = getTracks(r);
     if (deptF && !tracks.some((t) => t.department === deptF)) return false;
     if (stageF) {
       const t = tracks.find((x) => x.department === deptF);
@@ -322,7 +331,7 @@ export function Workspace({
       return false;
     }
     return true;
-  }), [requests, departments, deptF, stageF, statusF, paidF, periodFrom, isOnboarding, obView, matchesQuery]);
+  }), [requests, getTracks, deptF, stageF, statusF, paidF, periodFrom, isOnboarding, obView, matchesQuery]);
 
   // Displayed list, ordered by registration time per the sort toggle.
   const sorted = useMemo(() => {
@@ -355,7 +364,7 @@ export function Workspace({
     const scopeStages = STAGE_ORDER.filter((st) => scopeWorkflows.some((w) => (WORKFLOWS[w] ?? WORKFLOWS.specimen).includes(st)));
     const counts = new Map<string, number>();
     for (const r of filtered) {
-      for (const t of tracksFor(r, departments).filter((t) => !deptF || t.department === deptF)) {
+      for (const t of getTracks(r).filter((t) => !deptF || t.department === deptF)) {
         if (t.currentStage && t.currentStage !== "reported") counts.set(t.currentStage, (counts.get(t.currentStage) ?? 0) + 1);
       }
     }
@@ -365,14 +374,14 @@ export function Workspace({
       awaitingPayment: 0,
       stageCounts: scopeStages.map((st) => ({ stage: st, label: awaitingLabel(st), count: counts.get(st) ?? 0 })),
     };
-  }, [filtered, departments, deptF, isOnboarding, obView]);
+  }, [filtered, getTracks, departments, deptF, isOnboarding, obView]);
 
   // Per-department active workload (for the quick department switcher).
   const deptCounts = useMemo(() => {
     const m = new Map<string, number>();
-    for (const r of active) for (const t of tracksFor(r, departments)) m.set(t.department, (m.get(t.department) ?? 0) + 1);
+    for (const r of active) for (const t of getTracks(r)) m.set(t.department, (m.get(t.department) ?? 0) + 1);
     return m;
-  }, [active, departments]);
+  }, [active, getTracks]);
   // Pipeline stages for the selected department's workflow (for the sub-filter).
   const subStages = deptF ? (WORKFLOWS[(departments.find((d) => d.name === deptF)?.workflow ?? "specimen")] ?? WORKFLOWS.specimen) : [];
   const selectedIsImaging = departments.find((d) => d.name === deptF)?.workflow === "imaging";
@@ -637,7 +646,7 @@ export function Workspace({
       ) : (
         <div className="space-y-2">
           {sorted.map((r) => {
-            const tracks = tracksFor(r, departments).filter((t) => !deptF || t.department === deptF);
+            const tracks = getTracks(r).filter((t) => !deptF || t.department === deptF);
             const pending = nextPendingAction(r, departments);
             return (
               <button key={r.id} onClick={() => setSelected(r)} className={`block w-full rounded-2xl border bg-white/5 p-4 text-left transition hover:bg-white/10 ${pending ? "border-medical-500/40" : "border-white/10"}`}>

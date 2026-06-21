@@ -926,48 +926,8 @@ export function LabDashboard({ lab, isOwner = false, roleName = "Lab Owner", can
 
         <main className="min-w-0 flex-1">
 
-        {/* Amount owed banner — shown on all tabs when lab has a negative wallet balance */}
-        {poveonBalance !== null && poveonBalance < 0 && (isOwner || canViewWallet) && !balanceBannerDismissed && (
-          <div className="mb-5 flex items-center gap-3 bg-red-500/20 border border-red-500/30 rounded-2xl px-4 py-3">
-            <AlertTriangle className="w-4 h-4 text-red-400 shrink-0" />
-            <p className="text-sm text-slate-200 flex-1">
-              Your lab owes Poveon{" "}
-              <span className="font-bold font-mono text-red-400">₦{Math.abs(poveonBalance).toLocaleString()}</span>.
-              {" "}Top up your wallet to settle the balance.
-            </p>
-            <button
-              onClick={() => navigateToTab("poveon")}
-              className="shrink-0 text-xs font-semibold text-red-400 hover:text-red-300 underline underline-offset-2 transition"
-            >
-              View →
-            </button>
-            <button
-              onClick={() => { setBalanceBannerDismissed(true); localStorage.setItem(`balance_banner_dismissed_${lab.id}`, "1"); }}
-              className="shrink-0 w-6 h-6 rounded-full bg-white/10 hover:bg-white/20 flex items-center justify-center text-red-300 hover:text-white transition"
-              aria-label="Dismiss"
-            >
-              <X className="w-3 h-3" />
-            </button>
-          </div>
-        )}
-
-        {/* Agreement unsigned banner — shown to owners until agreement is signed */}
-        {isOwner && agreementSigned === false && !agreementBannerDismissed && (
-          <div className="mb-5 flex items-center gap-3 bg-amber-500/15 border border-amber-500/25 rounded-2xl px-4 py-3">
-            <FileText className="w-4 h-4 text-amber-400 shrink-0" />
-            <p className="text-sm text-slate-200 flex-1">
-              Your lab has not yet signed the Poveon Partnership Agreement.{" "}
-              Check your email for the invitation link.
-            </p>
-            <button
-              onClick={() => { setAgreementBannerDismissed(true); localStorage.setItem(`agreement_banner_dismissed_${lab.id}`, "1"); }}
-              className="shrink-0 w-6 h-6 rounded-full bg-white/10 hover:bg-white/20 flex items-center justify-center text-amber-300 hover:text-white transition"
-              aria-label="Dismiss"
-            >
-              <X className="w-3 h-3" />
-            </button>
-          </div>
-        )}
+        {/* Amount-owed and unsigned-agreement banners intentionally hidden —
+            this info still lives on the Revenue tab. */}
 
         {/* Unified Referrals page (merges referrals + professionals) */}
         {(mainView === "network" || mainView === "referrals" || mainView === "professionals") && (

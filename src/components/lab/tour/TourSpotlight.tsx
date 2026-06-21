@@ -54,11 +54,14 @@ export function TourSpotlight() {
   const isLast = stepIndex >= steps.length - 1;
   const isFirst = stepIndex === 0;
 
-  // Tooltip placement: below the target if there's room, otherwise above; always
-  // clamped fully inside the viewport on both axes so it never bleeds off-screen.
+  // Placement: on mobile, a centered bottom sheet (never bleeds off-screen);
+  // on desktop, anchored below/above the target and clamped to the viewport;
+  // with no target, centered.
   const tip = (() => {
-    if (typeof window === "undefined" || !rect) return { centered: true, top: 0, left: 0, width: 320 };
+    if (typeof window === "undefined") return { mode: "centered" as const };
     const vw = window.innerWidth;
+    if (!rect) return { mode: "centered" as const };
+    if (vw < 640) return { mode: "sheet" as const };
     const vh = window.innerHeight;
     const width = Math.min(320, vw - 24);
     const cardH = 250; // approximate; clamp keeps it on-screen regardless
@@ -66,7 +69,7 @@ export function TourSpotlight() {
     const rawTop = spaceBelow > cardH + 24 ? rect.top + rect.height + 12 : rect.top - cardH - 12;
     const top = Math.max(12, Math.min(rawTop, vh - cardH - 12));
     const left = Math.max(12, Math.min(rect.left, vw - width - 12));
-    return { centered: false, top, left, width };
+    return { mode: "anchored" as const, top, left, width };
   })();
 
   return createPortal(
@@ -89,8 +92,14 @@ export function TourSpotlight() {
 
       {/* Tooltip card */}
       <div
-        className={`absolute max-w-[calc(100vw-24px)] rounded-2xl border border-white/10 bg-slate-900 p-4 shadow-2xl animate-scale-in ${tip.centered ? "left-1/2 top-1/2 w-[320px] -translate-x-1/2 -translate-y-1/2" : ""}`}
-        style={tip.centered ? undefined : { top: tip.top, left: tip.left, width: tip.width }}
+        className={`absolute w-[320px] max-w-[calc(100vw-24px)] rounded-2xl border border-white/10 bg-slate-900 p-4 shadow-2xl animate-scale-in ${
+          tip.mode === "centered"
+            ? "left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2"
+            : tip.mode === "sheet"
+              ? "bottom-4 left-1/2 -translate-x-1/2"
+              : ""
+        }`}
+        style={tip.mode === "anchored" ? { top: tip.top, left: tip.left, width: tip.width } : undefined}
       >
         <div className="mb-1.5 flex items-center justify-between">
           <span className="inline-flex items-center gap-1.5 text-[11px] font-semibold uppercase tracking-wide text-medical-300">
