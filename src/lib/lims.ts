@@ -101,11 +101,21 @@ export async function markSeenWithCommission(requestId: string): Promise<boolean
   const req = await prisma.request.findUnique({
     where: { id: requestId },
     select: {
-      id: true, lab_id: true, tests: true, test_breakdown: true, status: true, doctor_email: true,
+      id: true, lab_id: true, tests: true, test_breakdown: true, status: true,
+      doctor_email: true, doctor_name: true, doctor_phone: true, doctor_hospital: true,
       lab: { select: { free_trial: true } },
     },
   });
   if (!req || req.status !== "incoming") return false;
+
+  // Any referring doctor becomes a saved professional (searchable in Referrals).
+  await ensureProfessional({
+    labId: req.lab_id,
+    name: req.doctor_name,
+    email: req.doctor_email,
+    phone: req.doctor_phone,
+    hospital: req.doctor_hospital,
+  });
 
   const testsString = req.tests && req.tests !== "See attached image" ? req.tests : null;
   type BreakdownItem = { source?: string; poveon_fee?: number | null; unit_price?: number };
@@ -153,6 +163,63 @@ export async function markSeenWithCommission(requestId: string): Promise<boolean
 
   await accrueProfessionalCommission({ labId: req.lab_id, requestId, doctorEmail: req.doctor_email, labRevenue });
   return true;
+}
+
+/**
+ * Ensure a LabProfessional exists for a referring doctor within a lab, creating
+ * one (commission 0) if not found. This collapses "referrals" and "professionals"
+ * into a single pool — any referring doctor becomes a saved, searchable
+ * professional. Idempotent: matches by email first, then case-insensitive name.
+ * Never throws; returns the professional id when known.
+ */
+export async function ensureProfessional(params: {
+  labId: string;
+  name?: string | null;
+  email?: string | null;
+  phone?: string | null;
+  hospital?: string | null;
+}): Promise<string | null> {
+  const { labId } = params;
+  const name = (params.name ?? "").trim();
+  const email = (params.email ?? "").trim().toLowerCase() || null;
+  // Ignore the placeholder "referrers" used for non-doctor sources.
+  if (!email && (!name || name === "Walk-in" || name === "Self Service")) return null;
+  try {
+    let pro = email
+      ? await prisma.labProfessional.findFirst({ where: { lab_id: labId, email } })
+      : null;
+    if (!pro && name) {
+      pro = await prisma.labProfessional.findFirst({
+        where: { lab_id: labId, name: { equals: name, mode: "insensitive" } },
+      });
+    }
+    if (pro) {
+      // Backfill contact fields we now know but were previously missing.
+      const patch: Record<string, unknown> = {};
+      if (email && !pro.email) patch.email = email;
+      if (params.phone && !pro.phone) patch.phone = params.phone.trim();
+      if (params.hospital && !pro.hospital) patch.hospital = params.hospital.trim();
+      if (Object.keys(patch).length) {
+        await prisma.labProfessional.update({ where: { id: pro.id }, data: patch }).catch(() => {});
+      }
+      return pro.id;
+    }
+    const created = await prisma.labProfessional.create({
+      data: {
+        lab_id: labId,
+        name: name || email!,
+        email,
+        phone: params.phone?.trim() || null,
+        hospital: params.hospital?.trim() || null,
+        commission_type: "percent",
+        commission_value: 0,
+      },
+    });
+    return created.id;
+  } catch (e) {
+    console.error("[lims] ensureProfessional failed:", e);
+    return null;
+  }
 }
 
 /** Map the coarse request status to its canonical journey stage. */

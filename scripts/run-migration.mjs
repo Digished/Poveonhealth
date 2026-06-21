@@ -777,6 +777,33 @@ const migrations = [
     continueOnError: true,
   },
   {
+    desc: "lab_professionals.bank_code column (NIBSS bank selection)",
+    sql: `ALTER TABLE lab_professionals ADD COLUMN IF NOT EXISTS bank_code TEXT`,
+    continueOnError: true,
+  },
+  {
+    // Radiology / Imaging departments never collect a sample — ensure they use
+    // the imaging pipeline even when saved with the default specimen pipeline.
+    desc: "normalize radiology/imaging departments to the imaging pipeline",
+    sql: `UPDATE lab_departments SET workflow='imaging' WHERE workflow IS DISTINCT FROM 'imaging' AND (lower(name) LIKE '%radiolog%' OR lower(name) LIKE '%imaging%')`,
+    continueOnError: true,
+  },
+  {
+    desc: "backfill empty department workflow to specimen",
+    sql: `UPDATE lab_departments SET workflow='specimen' WHERE workflow IS NULL OR workflow=''`,
+    continueOnError: true,
+  },
+  {
+    desc: "requests.scheduled_at column (calendar scheduling for imaging)",
+    sql: `ALTER TABLE requests ADD COLUMN IF NOT EXISTS scheduled_at TIMESTAMP(3)`,
+    continueOnError: true,
+  },
+  {
+    desc: "requests scheduled_at index (radiology schedule lookups)",
+    sql: `CREATE INDEX IF NOT EXISTS requests_lab_id_scheduled_at_idx ON requests(lab_id, scheduled_at)`,
+    continueOnError: true,
+  },
+  {
     // Collapse legacy granular department tracks onto the new 2-department model
     // so in-flight requests keep their pipeline progress. Idempotent: once
     // remapped, no rows match the old names.

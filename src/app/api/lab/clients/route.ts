@@ -15,23 +15,33 @@ export async function GET(request: NextRequest) {
     const auth = await getLabAuth(request);
     if (!auth) return NextResponse.json({ success: false, error: "Authentication required" }, { status: 401 });
 
-    // Fetch all requests where patient code was entered (seen/done)
+    // A client is anyone who physically registered: every walk-in / QR
+    // self-registration (regardless of pipeline status) plus seen/done Poveon
+    // requests. Pre-arrival Poveon leads (incoming) are excluded as noise.
+    const arrivedClient = {
+      OR: [
+        { status: { in: ["seen", "done"] } },
+        { source: { in: ["walk_in", "qr"] } },
+      ],
+    };
+
+    // Fetch all arrived clients with a phone on file.
     const requests = await prisma.request.findMany({
       where: {
         lab_id: auth.lab_id,
-        status: { in: ["seen", "done"] },
         patient_phone: { not: null },
+        ...arrivedClient,
       },
       orderBy: { created_at: "desc" },
     });
 
-    // Also include seen/done requests without phone (grouped by email if available)
+    // Also include arrived clients without phone (grouped by email if available)
     const requestsNoPhone = await prisma.request.findMany({
       where: {
         lab_id: auth.lab_id,
-        status: { in: ["seen", "done"] },
         patient_phone: null,
         patient_email: { not: null },
+        ...arrivedClient,
       },
       orderBy: { created_at: "desc" },
     });

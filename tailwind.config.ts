@@ -49,6 +49,8 @@ const config: Config = {
         pulse: "pulse 2s cubic-bezier(0.4, 0, 0.6, 1) infinite",
         "cloud-drift": "cloudDrift 60s linear infinite",
         "twinkle": "twinkle 2.5s ease-in-out infinite alternate",
+        // Soft attention ring for the next pending action button.
+        "pending-pulse": "pendingPulse 1.8s cubic-bezier(0.4, 0, 0.6, 1) infinite",
       },
       keyframes: {
         fadeIn: {
@@ -86,6 +88,10 @@ const config: Config = {
         twinkle: {
           "0%":   { opacity: "0.15" },
           "100%": { opacity: "0.95" },
+        },
+        pendingPulse: {
+          "0%, 100%": { boxShadow: "0 0 0 0 rgb(var(--medical-500) / 0.5)" },
+          "50%": { boxShadow: "0 0 0 6px rgb(var(--medical-500) / 0)" },
         },
       },
     },

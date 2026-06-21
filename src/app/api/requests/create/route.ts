@@ -11,6 +11,7 @@ import { sendSms, buildPatientRequestSms } from "@/lib/sms";
 import { logSmsSend } from "@/lib/sms/log-sms";
 import { isValidNigerianPhone, checkPhoneSmsRateLimit, checkDailySmsCap } from "@/lib/sms-guard";
 import { parseReferralText } from "@/lib/parse-referral";
+import { ensureProfessional } from "@/lib/lims";
 
 const CreateRequestSchema = z.object({
   patient_name: z.string().min(1).max(200).optional().or(z.literal("")),
@@ -271,6 +272,16 @@ export async function POST(request: NextRequest) {
         status: "incoming",
       },
     });
+
+    // Any referring doctor becomes a saved professional in this lab, so they're
+    // searchable during client registration. Fire-and-forget; never blocks.
+    ensureProfessional({
+      labId: data.lab_id,
+      name: doctorName,
+      email: data.doctor_email,
+      phone: doctorPhone,
+      hospital: doctorHospital,
+    }).catch(() => {});
 
     // Marketer attribution — fire-and-forget, never blocks or fails the request
     if (povRef) {

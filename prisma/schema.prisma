@@ -203,6 +203,7 @@ model Request {
   doctor_account_number String?
   doctor_account_name   String?
   schedule              String?
+  scheduled_at          DateTime? // structured appointment time (calendar scheduling); `schedule` kept for legacy free-text
   diagnosis             String?
   tests                 String
   quoted_price          Decimal?  @db.Decimal(12, 2) // price snapshot at creation time
@@ -1038,6 +1039,7 @@ model LabProfessional {
   commission_type  String   @default("percent") // percent | flat
   commission_value Decimal  @default(0) @db.Decimal(12, 2) // % of lab revenue, or flat ₦ per referral
   bank_name        String?
+  bank_code        String?  // Paystack/NIBSS bank code (for name verification & payouts)
   account_number   String?
   account_name     String?
   active           Boolean  @default(true)

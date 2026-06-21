@@ -170,3 +170,121 @@ export function requestDepartments(testBreakdown: unknown, departments: Departme
 export function workflowForDepartment(department: string | null | undefined, departments: DepartmentConfig[] = DEFAULT_DEPARTMENTS): WorkflowType {
   return departments.find((d) => d.name === department)?.workflow ?? "specimen";
 }
+
+// ─── Stage timing ────────────────────────────────────────────────────────────
+
+/** Format a duration in milliseconds as a short human string, e.g. "2h 15m", "3d", "just now". */
+export function formatDuration(ms: number): string {
+  if (ms < 0) ms = 0;
+  const mins = Math.floor(ms / 60000);
+  if (mins < 1) return "just now";
+  if (mins < 60) return `${mins}m`;
+  const hours = Math.floor(mins / 60);
+  const remMins = mins % 60;
+  if (hours < 24) return remMins > 0 ? `${hours}h ${remMins}m` : `${hours}h`;
+  const days = Math.floor(hours / 24);
+  const remHours = hours % 24;
+  return remHours > 0 ? `${days}d ${remHours}h` : `${days}d`;
+}
+
+/**
+ * Natural "what we're waiting for" phrase for a request currently sitting in
+ * `stage` — references the NEXT step so timings read like
+ * "9m waiting for the sample to be collected".
+ */
+export function awaitingPhrase(stage: string, workflow: WorkflowType = "specimen"): string {
+  if (workflow === "imaging") {
+    switch (stage) {
+      case "registered": return "waiting to be scheduled";
+      case "scheduled": return "waiting for the scan";
+      case "performed": return "waiting for results to be verified";
+      case "verified": return "waiting for results to be sent";
+      default: return "in progress";
+    }
+  }
+  if (workflow === "procedure") {
+    switch (stage) {
+      case "registered": return "waiting for the procedure";
+      case "performed": return "waiting for results to be verified";
+      case "verified": return "waiting for results to be sent";
+      default: return "in progress";
+    }
+  }
+  switch (stage) {
+    case "registered": return "waiting for the sample to be collected";
+    case "collected": return "waiting for the sample to be received";
+    case "received": return "waiting for the sample to be analysed";
+    case "in_analysis": return "waiting for results to be verified";
+    case "verified": return "waiting for results to be sent";
+    default: return "in progress";
+  }
+}
+
+/**
+ * Short "Awaiting <next phase>" label for a stat card — the count of items in
+ * `stage` is what's awaiting the next phase.
+ */
+export function awaitingLabel(stage: string): string {
+  switch (stage) {
+    case "registered": return "Awaiting investigation";
+    case "collected": return "Awaiting receipt";
+    case "received": return "Awaiting analysis";
+    case "in_analysis": return "Awaiting verification";
+    case "scheduled": return "Awaiting scan";
+    case "performed": return "Awaiting verification";
+    case "verified": return "Awaiting report";
+    default: return `Awaiting ${stageLabel(stage)}`;
+  }
+}
+
+interface TimedEvent { stage: string; created_at: string | Date }
+
+/**
+ * Compute how long a request spent in each stage of one department track, plus
+ * the time it has spent in its current (latest) stage so far. `events` should be
+ * the chronologically-ordered events for a single department. Consecutive events
+ * with the same stage are collapsed onto the first occurrence. Pass `createdAt`
+ * (the request's creation time) so the "registered" stage is anchored correctly
+ * even when the track has no explicit registered event (legacy / unseeded) —
+ * otherwise the current-stage timer wrongly reads "just now".
+ */
+export function stageDurations(events: TimedEvent[], createdAt?: string | Date | null): {
+  segments: { stage: string; enteredAt: string; ms: number; ongoing: boolean }[];
+  currentStage: string | null;
+  currentMs: number;
+} {
+  const ordered = [...events]
+    .filter((e) => e.stage !== "collected")
+    .sort((a, b) => new Date(a.created_at).getTime() - new Date(b.created_at).getTime());
+
+  // Collapse repeats of the same stage onto the first time we entered it.
+  const milestones: { stage: string; at: number }[] = [];
+  for (const e of ordered) {
+    const at = new Date(e.created_at).getTime();
+    if (milestones.length === 0 || milestones[milestones.length - 1].stage !== e.stage) {
+      milestones.push({ stage: e.stage, at });
+    }
+  }
+
+  // Anchor to the request's creation time when there's no registered milestone,
+  // so the timer measures real elapsed time rather than starting from "now".
+  const anchor = createdAt != null ? new Date(createdAt).getTime() : null;
+  if (anchor != null && !Number.isNaN(anchor)) {
+    if (milestones.length === 0) milestones.push({ stage: "registered", at: anchor });
+    else if (milestones[0].stage !== "registered") milestones.unshift({ stage: "registered", at: anchor });
+  }
+
+  const now = Date.now();
+  const segments = milestones.map((m, i) => {
+    const next = milestones[i + 1];
+    const end = next ? next.at : now;
+    return { stage: m.stage, enteredAt: new Date(m.at).toISOString(), ms: end - m.at, ongoing: !next };
+  });
+
+  const last = milestones[milestones.length - 1] ?? null;
+  return {
+    segments,
+    currentStage: last?.stage ?? null,
+    currentMs: last ? now - last.at : 0,
+  };
+}

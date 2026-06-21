@@ -1,7 +1,7 @@
 "use client";
 
 import { useState } from "react";
-import { X } from "lucide-react";
+import { X, Info } from "lucide-react";
 import { PoveonLogo } from "@/components/PoveonLogo";
 import { SkyScene, type SceneInfo } from "@/components/SkyScene";
 
@@ -60,41 +60,26 @@ export function HeroSection({ mode = "professional" }: { mode?: "professional" |
   return (
     <>
       <SkyScene>
-        {({ lightText, tod }) => (
-          <div className="flex flex-col items-center text-center gap-2 max-w-md mx-auto pt-9 px-4">
-            <h1
-              className="text-3xl sm:text-4xl font-bold tracking-tight transition-colors duration-700"
-              style={{
-                color: lightText ? "#f8fafc" : "#0f172a",
-                textShadow: lightText
-                  ? "0 1px 14px rgba(0,0,0,0.4)"
-                  : "0 1px 12px rgba(255,255,255,0.55)",
-              }}
-            >
+        {({ tod }) => (
+          <div className="flex flex-col items-center text-center gap-2.5 max-w-md mx-auto pt-9 px-4">
+            {/* Each line gets its own white pill that hugs its text, so the
+                greeting panel is naturally shorter than the line below it. */}
+            <h1 className="w-fit max-w-full rounded-2xl bg-white/85 backdrop-blur-md shadow-lg ring-1 ring-black/5 px-5 py-2 text-3xl sm:text-4xl font-bold tracking-tight text-slate-900">
               {GREETING[tod]}
             </h1>
-            <p
-              className="text-[15px] leading-relaxed max-w-xs transition-colors duration-700"
-              style={{
-                color: lightText ? "rgba(248,250,252,0.9)" : "#475569",
-                textShadow: lightText ? "0 1px 10px rgba(0,0,0,0.35)" : "none",
-              }}
-            >
+            <p className="w-fit max-w-xs rounded-2xl bg-white/85 backdrop-blur-md shadow-lg ring-1 ring-black/5 px-4 py-2 text-[15px] leading-relaxed text-slate-600">
               {mode === "patient"
                 ? "What test do you need today?"
-                : "What test does your patient need today?"}{" "}
-              <button
-                type="button"
-                onClick={() => setAboutOpen(true)}
-                className={`font-semibold underline underline-offset-2 transition-colors ${
-                  lightText
-                    ? "text-sky-200 hover:text-white"
-                    : "text-medical-700 hover:text-medical-900"
-                }`}
-              >
-                Learn more
-              </button>
+                : "What test does your patient need today?"}
             </p>
+
+            <button
+              type="button"
+              onClick={() => setAboutOpen(true)}
+              className="inline-flex items-center gap-1.5 rounded-full bg-medical-600 px-4 py-2 text-sm font-semibold text-white shadow-lg shadow-medical-600/30 transition-colors hover:bg-medical-700"
+            >
+              <Info className="w-4 h-4" /> Learn more
+            </button>
           </div>
         )}
       </SkyScene>
