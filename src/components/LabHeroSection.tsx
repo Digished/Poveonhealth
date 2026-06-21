@@ -2,7 +2,7 @@
 
 import { useEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
-import { X, MapPin, MessageCircle, Phone as PhoneIcon } from "lucide-react";
+import { X, MapPin, MessageCircle, Phone as PhoneIcon, Info } from "lucide-react";
 import { PoveonLogo } from "@/components/PoveonLogo";
 import { parsePhones } from "@/lib/phones";
 import { SkyScene, useSceneInfo, type SceneInfo } from "@/components/SkyScene";
@@ -126,7 +126,7 @@ export function LabHeroSection({
   labName, logoUrl, heroImageUrl,
   labAddress, labServiceCategories, labPhones, labWhatsapp,
 }: LabHeroSectionProps) {
-  const { lightText, tod } = useSceneInfo();
+  const { tod } = useSceneInfo();
   const [mounted, setMounted] = useState(false);
   // true while the hero is visible in the viewport; false once fully scrolled out
   const [heroVisible, setHeroVisible] = useState(true);
@@ -149,9 +149,6 @@ export function LabHeroSection({
     return () => observer.disconnect();
   }, []);
 
-  // A custom hero image gets a light translucent scrim → dark text. The
-  // dynamic landscape decides its own light/dark text from the clock.
-  const onDark = heroImageUrl ? false : lightText;
   const phones = parsePhones(labPhones);
   const waNumbers = parseWa(labWhatsapp);
   const hasContact = waNumbers.length > 0 || phones.length > 0;
@@ -200,27 +197,15 @@ export function LabHeroSection({
             )}
           </div>
 
-          {/* Text */}
-          <div
-            className="space-y-1.5"
-            style={{ textShadow: onDark ? "0 1px 14px rgba(0,0,0,0.4)" : undefined }}
-          >
-            <p
-              className="text-[10px] font-semibold uppercase tracking-[0.24em] transition-colors duration-700"
-              style={{ color: onDark ? "rgba(248,250,252,0.8)" : "#94a3b8" }}
-            >
+          {/* Text — white panel keeps it legible on any time-of-day sky */}
+          <div className="space-y-1.5 rounded-3xl bg-white/85 backdrop-blur-md shadow-xl ring-1 ring-black/5 px-6 py-5">
+            <p className="text-[10px] font-semibold uppercase tracking-[0.24em] text-slate-400">
               Welcome to
             </p>
-            <h1
-              className="text-3xl sm:text-4xl font-black tracking-tight leading-[1.05] transition-colors duration-700"
-              style={{ color: onDark ? "#f8fafc" : "#0f172a" }}
-            >
+            <h1 className="text-3xl sm:text-4xl font-black tracking-tight leading-[1.05] text-slate-900">
               {labName}
             </h1>
-            <p
-              className="text-sm font-medium pt-0.5 transition-colors duration-700"
-              style={{ color: onDark ? "rgba(248,250,252,0.9)" : "#475569" }}
-            >
+            <p className="text-sm font-medium pt-0.5 text-slate-600">
               {GREETING[tod]} — how may we assist you today?
             </p>
           </div>
@@ -229,11 +214,9 @@ export function LabHeroSection({
           <button
             type="button"
             onClick={() => setDetailsOpen(true)}
-            className={`text-xs font-semibold underline underline-offset-4 transition-colors ${
-              onDark ? "text-sky-200 hover:text-white" : "text-medical-600 hover:text-medical-800"
-            }`}
+            className="inline-flex items-center gap-1.5 rounded-full bg-medical-600 px-4 py-2 text-sm font-semibold text-white shadow-lg shadow-medical-600/30 transition-colors hover:bg-medical-700"
           >
-            Learn more
+            <Info className="w-4 h-4" /> Learn more
           </button>
         </div>
       </div>

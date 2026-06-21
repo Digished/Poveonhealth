@@ -1,7 +1,7 @@
 "use client";
 
 import { useState } from "react";
-import { X } from "lucide-react";
+import { X, Info } from "lucide-react";
 import { PoveonLogo } from "@/components/PoveonLogo";
 import { SkyScene, type SceneInfo } from "@/components/SkyScene";
 
@@ -60,41 +60,27 @@ export function HeroSection({ mode = "professional" }: { mode?: "professional" |
   return (
     <>
       <SkyScene>
-        {({ lightText, tod }) => (
-          <div className="flex flex-col items-center text-center gap-2 max-w-md mx-auto pt-9 px-4">
-            <h1
-              className="text-3xl sm:text-4xl font-bold tracking-tight transition-colors duration-700"
-              style={{
-                color: lightText ? "#f8fafc" : "#0f172a",
-                textShadow: lightText
-                  ? "0 1px 14px rgba(0,0,0,0.4)"
-                  : "0 1px 12px rgba(255,255,255,0.55)",
-              }}
+        {({ tod }) => (
+          <div className="flex flex-col items-center text-center gap-4 max-w-md mx-auto pt-9 px-4">
+            {/* White panel keeps the greeting legible on any time-of-day sky */}
+            <div className="rounded-3xl bg-white/85 backdrop-blur-md shadow-xl ring-1 ring-black/5 px-6 py-5">
+              <h1 className="text-3xl sm:text-4xl font-bold tracking-tight text-slate-900">
+                {GREETING[tod]}
+              </h1>
+              <p className="mt-1.5 text-[15px] leading-relaxed text-slate-600 max-w-xs">
+                {mode === "patient"
+                  ? "What test do you need today?"
+                  : "What test does your patient need today?"}
+              </p>
+            </div>
+
+            <button
+              type="button"
+              onClick={() => setAboutOpen(true)}
+              className="inline-flex items-center gap-1.5 rounded-full bg-medical-600 px-4 py-2 text-sm font-semibold text-white shadow-lg shadow-medical-600/30 transition-colors hover:bg-medical-700"
             >
-              {GREETING[tod]}
-            </h1>
-            <p
-              className="text-[15px] leading-relaxed max-w-xs transition-colors duration-700"
-              style={{
-                color: lightText ? "rgba(248,250,252,0.9)" : "#475569",
-                textShadow: lightText ? "0 1px 10px rgba(0,0,0,0.35)" : "none",
-              }}
-            >
-              {mode === "patient"
-                ? "What test do you need today?"
-                : "What test does your patient need today?"}{" "}
-              <button
-                type="button"
-                onClick={() => setAboutOpen(true)}
-                className={`font-semibold underline underline-offset-2 transition-colors ${
-                  lightText
-                    ? "text-sky-200 hover:text-white"
-                    : "text-medical-700 hover:text-medical-900"
-                }`}
-              >
-                Learn more
-              </button>
-            </p>
+              <Info className="w-4 h-4" /> Learn more
+            </button>
           </div>
         )}
       </SkyScene>
