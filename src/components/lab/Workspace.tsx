@@ -263,7 +263,7 @@ export function Workspace({
   // Light polling so new QR registrations surface without a manual refresh.
   useEffect(() => {
     if (!isOnboarding) return;
-    const id = setInterval(() => { load(true); }, 20000);
+    const id = setInterval(() => { if (!document.hidden) load(true); }, 20000);
     return () => clearInterval(id);
   }, [isOnboarding, load]);
 

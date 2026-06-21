@@ -273,7 +273,7 @@ export function LabDashboard({ lab, isOwner = false, roleName = "Lab Owner", can
 
   useEffect(() => {
     fetchRequests();
-    const interval = setInterval(() => fetchRequests(true), 30_000);
+    const interval = setInterval(() => { if (!document.hidden) fetchRequests(true); }, 30_000);
     return () => clearInterval(interval);
   }, [fetchRequests]);
 
@@ -307,7 +307,7 @@ export function LabDashboard({ lab, isOwner = false, roleName = "Lab Owner", can
     if (!isOwner && !canViewWallet) return;
     fetchPoveon(true);
     fetchWallet();
-    const walletInterval = setInterval(() => fetchWallet(true), 30_000);
+    const walletInterval = setInterval(() => { if (!document.hidden) fetchWallet(true); }, 30_000);
     return () => clearInterval(walletInterval);
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
@@ -331,7 +331,7 @@ export function LabDashboard({ lab, isOwner = false, roleName = "Lab Owner", can
   // Poll Poveon data every 30s when on the poveon tab (real-time updates)
   useEffect(() => {
     if (mainView !== "poveon" || (!isOwner && !canViewWallet)) return;
-    const interval = setInterval(() => fetchPoveon(), 30_000);
+    const interval = setInterval(() => { if (!document.hidden) fetchPoveon(); }, 30_000);
     return () => clearInterval(interval);
   }, [mainView, fetchPoveon, isOwner, canViewWallet]);
 

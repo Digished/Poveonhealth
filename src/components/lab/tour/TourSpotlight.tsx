@@ -25,22 +25,25 @@ export function TourSpotlight() {
   useLayoutEffect(() => {
     if (!step) return;
     let raf = 0;
+    let scrolledKey = "";
+    // Re-measure the target's box; only scroll it into view once per step so we
+    // don't fight the user's scrolling or thrash layout on every tick.
     function measure() {
       const el = document.querySelector<HTMLElement>(`[data-tour="${step.key}"]`);
       if (el) {
-        el.scrollIntoView({ block: "center", behavior: "smooth" });
+        if (scrolledKey !== step.key) { scrolledKey = step.key; el.scrollIntoView({ block: "center", behavior: "smooth" }); }
         const r = el.getBoundingClientRect();
         setRect({ top: r.top, left: r.left, width: r.width, height: r.height });
       } else {
         setRect(null);
       }
     }
-    // Measure after layout settles, and keep in sync on scroll/resize.
     raf = requestAnimationFrame(measure);
     const onChange = () => { raf = requestAnimationFrame(measure); };
     window.addEventListener("resize", onChange);
     window.addEventListener("scroll", onChange, true);
-    const interval = setInterval(measure, 600); // catch async-rendered targets
+    // Slow poll only to catch async-rendered targets (e.g. a drawer opening).
+    const interval = setInterval(measure, 1000);
     return () => {
       cancelAnimationFrame(raf);
       window.removeEventListener("resize", onChange);

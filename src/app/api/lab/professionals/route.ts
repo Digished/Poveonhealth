@@ -4,7 +4,6 @@ import { z } from "zod";
 import { prisma } from "@/lib/prisma";
 import { getLabAuth } from "@/lib/lab-auth";
 import { logLabActivity } from "@/lib/lab-activity";
-import { ensureProfessional } from "@/lib/lims";
 
 /**
  * GET /api/lab/professionals — the unified Referrals list: every professional
@@ -30,11 +29,14 @@ export async function GET(request: NextRequest) {
   });
 
   // Backfill: make sure every historical referrer exists as a professional so
-  // none were "lost" when Referrals + Professionals merged. Idempotent.
+  // none were "lost" when Referrals + Professionals merged. Batched into a single
+  // insert (skipDuplicates) so it stays cheap and is effectively a no-op once the
+  // pool is populated.
   const existing = await prisma.labProfessional.findMany({ where: { lab_id: auth.lab_id }, select: { email: true, name: true } });
   const haveEmail = new Set(existing.map((p) => (p.email ?? "").toLowerCase()).filter(Boolean));
   const haveName = new Set(existing.map((p) => p.name.trim().toLowerCase()));
   const seenRef = new Set<string>();
+  const toCreate: { lab_id: string; name: string; email: string | null; phone: string | null; hospital: string | null; commission_type: string; commission_value: number }[] = [];
   for (const r of refReqs) {
     const email = (r.doctor_email ?? "").toLowerCase();
     const name = (r.doctor_name ?? "").trim();
@@ -43,7 +45,10 @@ export async function GET(request: NextRequest) {
     if (seenRef.has(key)) continue;
     seenRef.add(key);
     if ((email && haveEmail.has(email)) || (!email && haveName.has(name.toLowerCase()))) continue;
-    await ensureProfessional({ labId: auth.lab_id, name, email: r.doctor_email, phone: r.doctor_phone, hospital: r.doctor_hospital });
+    toCreate.push({ lab_id: auth.lab_id, name: name || email, email: r.doctor_email?.toLowerCase() || null, phone: r.doctor_phone || null, hospital: r.doctor_hospital || null, commission_type: "percent", commission_value: 0 });
+  }
+  if (toCreate.length > 0) {
+    await prisma.labProfessional.createMany({ data: toCreate, skipDuplicates: true }).catch(() => {});
   }
 
   const professionals = await prisma.labProfessional.findMany({

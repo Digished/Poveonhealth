@@ -9,9 +9,11 @@ export async function GET(request: NextRequest) {
     if (!auth) return NextResponse.json({ success: false, error: "Authentication required" }, { status: 401 });
     if (!auth.permissions.can_view_requests) return NextResponse.json({ success: false, error: "Your role does not permit viewing requests" }, { status: 403 });
 
+    // The lab name/address is the same for every row (it's the caller's own lab),
+    // so we don't join it onto each request — the dashboard doesn't use it and it
+    // only bloats the payload.
     const requests = await prisma.request.findMany({
       where: { lab_id: auth.lab_id },
-      include: { lab: { select: { name: true, address: true } } },
       orderBy: { created_at: "desc" },
     });
 
