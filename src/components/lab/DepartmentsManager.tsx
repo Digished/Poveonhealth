@@ -14,6 +14,11 @@ const WORKFLOW_OPTIONS: { value: WorkflowType; label: string }[] = [
   { value: "procedure", label: "Procedure (no scheduling)" },
 ];
 
+/** Names that clearly indicate an imaging department (no sample collected). */
+function looksImaging(name: string): boolean {
+  return /radiolog|imaging|x-?ray|ultrasound|sonograph|\bscan\b|\bmri\b|\bct\b|mammogr/i.test(name);
+}
+
 function toRows(departments: { name: string; workflow: string; categories: unknown }[]): Row[] {
   return departments.map((d) => ({
     name: d.name,
@@ -136,7 +141,19 @@ export function DepartmentsManager() {
               <div className="flex flex-col gap-3 sm:flex-row sm:items-start">
                 <div className="sm:w-48">
                   <label className="mb-1 block text-xs font-medium text-slate-400">Department name</label>
-                  <input className={inputCls} value={r.name} onChange={(e) => update(i, { name: e.target.value })} placeholder="e.g. Laboratory" />
+                  <input
+                    className={inputCls}
+                    value={r.name}
+                    onChange={(e) => {
+                      const name = e.target.value;
+                      // Nudge obvious imaging departments onto the imaging pipeline
+                      // (they take no sample) — only when still on the default.
+                      const patch: Partial<Row> = { name };
+                      if (r.workflow === "specimen" && looksImaging(name)) patch.workflow = "imaging";
+                      update(i, patch);
+                    }}
+                    placeholder="e.g. Laboratory"
+                  />
                 </div>
                 <div className="sm:w-64">
                   <label className="mb-1 block text-xs font-medium text-slate-400">Pipeline</label>

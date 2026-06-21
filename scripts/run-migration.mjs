@@ -782,6 +782,18 @@ const migrations = [
     continueOnError: true,
   },
   {
+    // Radiology / Imaging departments never collect a sample — ensure they use
+    // the imaging pipeline even when saved with the default specimen pipeline.
+    desc: "normalize radiology/imaging departments to the imaging pipeline",
+    sql: `UPDATE lab_departments SET workflow='imaging' WHERE workflow IS DISTINCT FROM 'imaging' AND (lower(name) LIKE '%radiolog%' OR lower(name) LIKE '%imaging%')`,
+    continueOnError: true,
+  },
+  {
+    desc: "backfill empty department workflow to specimen",
+    sql: `UPDATE lab_departments SET workflow='specimen' WHERE workflow IS NULL OR workflow=''`,
+    continueOnError: true,
+  },
+  {
     desc: "requests.scheduled_at column (calendar scheduling for imaging)",
     sql: `ALTER TABLE requests ADD COLUMN IF NOT EXISTS scheduled_at TIMESTAMP(3)`,
     continueOnError: true,

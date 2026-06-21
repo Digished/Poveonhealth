@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState, useCallback, useMemo } from "react";
+import { startOfDay, startOfWeek, startOfMonth, startOfYear } from "date-fns";
 import { Loader2, Search, X, ArrowRight, Plus, Workflow, UserPlus, Printer, Send, Check, FlaskConical, Pencil, Stethoscope, AlertTriangle, CreditCard, Lock, Bell, Calendar as CalendarIcon, MapPin, Clock, FileText } from "lucide-react";
 import toast from "react-hot-toast";
 import { SourceBadge } from "@/components/lab/SourceBadge";
@@ -130,6 +131,19 @@ const MILESTONE_ACTIONS: Record<string, { cta: string; title: string; field: str
 /** Canonical stage ordering across all workflows (for per-stage stat cards). */
 const STAGE_ORDER = ["registered", "collected", "received", "in_analysis", "scheduled", "performed", "verified"] as const;
 
+/** Time-window filter for the registration / pipeline lists. */
+type PeriodKey = "all" | "today" | "week" | "month" | "year";
+function periodStart(p: PeriodKey): number | null {
+  const now = new Date();
+  switch (p) {
+    case "today": return startOfDay(now).getTime();
+    case "week": return startOfWeek(now).getTime();
+    case "month": return startOfMonth(now).getTime();
+    case "year": return startOfYear(now).getTime();
+    default: return null;
+  }
+}
+
 /** StatCard accent for a pipeline stage. */
 function stageAccent(stage: string): "amber" | "violet" | "emerald" | "medical" {
   if (stage === "registered") return "amber";
@@ -192,6 +206,8 @@ export function Workspace({
   const [paidF, setPaidF] = useState("");
   // List ordering by registration time (newest ↔ oldest).
   const [sortDir, setSortDir] = useState<"newest" | "oldest">("newest");
+  // Time-window filter (applies to both onboarding and workstation lists).
+  const [periodF, setPeriodF] = useState<PeriodKey>("all");
   // The lab's configured departments (falls back to the built-in defaults).
   const [departments, setDepartments] = useState<DepartmentConfig[]>(DEFAULT_DEPARTMENTS);
 
@@ -268,8 +284,11 @@ export function Workspace({
     return r.code.toLowerCase().includes(q) || (r.patient_name ?? "").toLowerCase().includes(q) || (r.patient_phone ?? "").includes(q);
   }, [query]);
 
+  const periodFrom = useMemo(() => periodStart(periodF), [periodF]);
+
   const filtered = useMemo(() => requests.filter((r) => {
     if (!matchesQuery(r)) return false;
+    if (periodFrom != null && new Date(r.created_at).getTime() < periodFrom) return false;
 
     if (isOnboarding) {
       if (obView === "register") {
@@ -303,7 +322,7 @@ export function Workspace({
       return false;
     }
     return true;
-  }), [requests, departments, deptF, stageF, statusF, paidF, isOnboarding, obView, matchesQuery]);
+  }), [requests, departments, deptF, stageF, statusF, paidF, periodFrom, isOnboarding, obView, matchesQuery]);
 
   // Displayed list, ordered by registration time per the sort toggle.
   const sorted = useMemo(() => {
@@ -558,12 +577,25 @@ export function Workspace({
         </div>
       )}
 
-      {/* Search + sort */}
-      <div className="flex items-center gap-2">
-        <div className="relative flex-1">
+      {/* Search + period + sort */}
+      <div className="flex flex-wrap items-center gap-2">
+        <div className="relative min-w-[12rem] flex-1">
           <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
           <input value={query} onChange={(e) => setQuery(e.target.value)} placeholder="Search code, name or phone" className="w-full rounded-xl border border-white/10 bg-white/5 py-2 pl-9 pr-3 text-sm text-white placeholder:text-slate-500 focus:border-medical-400 focus:outline-none" />
         </div>
+        <FilterSelect
+          label="Period"
+          value={periodF}
+          onChange={(v) => setPeriodF(v as PeriodKey)}
+          className="w-44"
+          options={[
+            { value: "all", label: "All time" },
+            { value: "today", label: "Today" },
+            { value: "week", label: "This week" },
+            { value: "month", label: "This month" },
+            { value: "year", label: "This year" },
+          ]}
+        />
         <FilterSelect
           label="Sort"
           value={sortDir}
