@@ -3781,12 +3781,14 @@ function AdminKnowledgeBaseTab() {
   const csvFileRef = useRef<HTMLInputElement | null>(null);
   const [uploadingCsv, setUploadingCsv] = useState(false);
   const [hospitalTab, setHospitalTab] = useState(false);
-  const [hospitals, setHospitals] = useState<{ id: string; name: string; city: string | null; is_active: boolean }[]>([]);
+  const [hospitals, setHospitals] = useState<{ id: string; name: string; city: string | null; email: string | null; phone: string | null; is_active: boolean }[]>([]);
   const [hospLoading, setHospLoading] = useState(false);
   const [hospSearch, setHospSearch] = useState("");
   const [showAddHosp, setShowAddHosp] = useState(false);
   const [newHospName, setNewHospName] = useState("");
   const [newHospCity, setNewHospCity] = useState("");
+  const [newHospEmail, setNewHospEmail] = useState("");
+  const [newHospPhone, setNewHospPhone] = useState("");
 
   const fetchKb = useCallback(async (q?: string) => {
     setLoading(true);
@@ -3945,14 +3947,38 @@ function AdminKnowledgeBaseTab() {
 
   async function handleAddHospital() {
     if (!newHospName.trim()) return;
+    const email = newHospEmail.trim().toLowerCase();
+    if (email && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) { toast.error("Enter a valid email"); return; }
     const res = await fetch("/api/admin/hospitals", {
       method: "POST", headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ name: newHospName.trim(), city: newHospCity.trim() || null }),
+      body: JSON.stringify({
+        name: newHospName.trim(),
+        city: newHospCity.trim() || null,
+        email: email || null,
+        phone: newHospPhone.trim() || null,
+      }),
     });
     const data = await res.json();
     if (data.success) {
-      toast.success("Hospital added"); setNewHospName(""); setNewHospCity(""); setShowAddHosp(false); fetchHospitals();
+      toast.success(email ? "Hospital added — invite sent to log in" : "Hospital added");
+      setNewHospName(""); setNewHospCity(""); setNewHospEmail(""); setNewHospPhone(""); setShowAddHosp(false); fetchHospitals();
     } else { toast.error(data.error ?? "Failed"); }
+  }
+
+  async function setHospitalEmail(id: string, current: string | null) {
+    const input = window.prompt("Login email for this hospital (used at /hospital-login):", current ?? "");
+    if (input == null) return;
+    const email = input.trim().toLowerCase();
+    if (email && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) { toast.error("Enter a valid email"); return; }
+    const res = await fetch(`/api/admin/hospitals/${id}`, {
+      method: "PATCH", headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ email: email || null }),
+    });
+    const data = await res.json();
+    if (res.ok && data.success !== false) {
+      toast.success(email ? "Email saved — they can now log in" : "Email cleared");
+      setHospitals((prev) => prev.map((h) => h.id === id ? { ...h, email: email || null } : h));
+    } else { toast.error(data.error ?? "Failed to update email"); }
   }
 
   async function toggleHospActive(id: string, current: boolean) {
@@ -4176,7 +4202,10 @@ function AdminKnowledgeBaseTab() {
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                 <input value={newHospName} onChange={(e) => setNewHospName(e.target.value)} placeholder="Name *" className="px-3 py-2 rounded-xl bg-white/8 border border-white/10 text-sm text-white placeholder-slate-500 focus:outline-none focus:border-white/25" />
                 <input value={newHospCity} onChange={(e) => setNewHospCity(e.target.value)} placeholder="City (optional)" className="px-3 py-2 rounded-xl bg-white/8 border border-white/10 text-sm text-white placeholder-slate-500 focus:outline-none focus:border-white/25" />
+                <input value={newHospEmail} onChange={(e) => setNewHospEmail(e.target.value)} type="email" placeholder="Login email (for /hospital-login)" className="px-3 py-2 rounded-xl bg-white/8 border border-white/10 text-sm text-white placeholder-slate-500 focus:outline-none focus:border-white/25" />
+                <input value={newHospPhone} onChange={(e) => setNewHospPhone(e.target.value)} placeholder="Phone (optional)" className="px-3 py-2 rounded-xl bg-white/8 border border-white/10 text-sm text-white placeholder-slate-500 focus:outline-none focus:border-white/25" />
               </div>
+              <p className="text-xs text-slate-500">Add an email to activate this hospital&apos;s login — they sign in at <span className="font-mono text-slate-400">/hospital-login</span> with it. No email = directory listing only.</p>
               <div className="flex gap-2">
                 <button onClick={handleAddHospital} disabled={!newHospName.trim()} className="flex items-center gap-1.5 px-4 py-2 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white text-sm font-semibold disabled:opacity-50"><Check className="w-4 h-4" />Add</button>
                 <button onClick={() => setShowAddHosp(false)} className="px-4 py-2 rounded-xl bg-white/8 text-slate-400 text-sm">Cancel</button>
@@ -4194,8 +4223,16 @@ function AdminKnowledgeBaseTab() {
                   <Building2 className="w-4 h-4 text-slate-500 shrink-0" />
                   <div className="flex-1 min-w-0">
                     <p className="text-sm text-white font-medium">{h.name}</p>
-                    {h.city && <p className="text-xs text-slate-500">{h.city}</p>}
+                    <p className="text-xs text-slate-500 truncate">
+                      {h.city ? `${h.city} · ` : ""}
+                      {h.email
+                        ? <span className="text-slate-400">{h.email}</span>
+                        : <span className="text-amber-400/80">no login email</span>}
+                    </p>
                   </div>
+                  <button onClick={() => setHospitalEmail(h.id, h.email)} className="text-xs px-2.5 py-1 rounded-full border border-white/10 text-slate-400 hover:text-white hover:bg-white/10 font-medium">
+                    {h.email ? "Edit email" : "Set email"}
+                  </button>
                   <button onClick={() => toggleHospActive(h.id, h.is_active)} className={`text-xs px-2.5 py-1 rounded-full border font-medium ${h.is_active ? "text-emerald-400 border-emerald-500/30 bg-emerald-500/10 hover:bg-emerald-500/20" : "text-slate-500 border-slate-700 bg-white/5 hover:bg-white/10"}`}>
                     {h.is_active ? "Active" : "Inactive"}
                   </button>
