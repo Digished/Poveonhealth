@@ -1,16 +1,18 @@
 "use client";
 
-import { useState } from "react";
-import { useRouter } from "next/navigation";
+import { useState, useEffect, useCallback } from "react";
 import toast from "react-hot-toast";
-import { Search, UserPlus, Check } from "lucide-react";
+import { Search, UserPlus, Check, X, User, ShieldAlert, Phone, Users } from "lucide-react";
 import { EmrShell } from "@/components/emr/EmrShell";
 import { Button } from "@/components/ui/Button";
+import { PatientDetail } from "@/components/emr/PatientDetail";
 
 interface LookupPatient {
   id: string; full_name: string; hospital_number: string;
   age: number | null; sex: string | null; phone: string | null;
 }
+
+interface ListPatient extends LookupPatient { allergies: string | null; created_at: string; }
 
 const empty = {
   full_name: "", age: "", sex: "", phone: "", email: "", address: "", city: "", state: "",
@@ -20,7 +22,6 @@ const empty = {
 };
 
 function OnboardingInner() {
-  const router = useRouter();
   const [form, setForm] = useState({ ...empty });
   const [saving, setSaving] = useState(false);
   const [reuseId, setReuseId] = useState<string | null>(null);
@@ -191,10 +192,85 @@ function Field({ label, required, children }: { label: string; required?: boolea
   );
 }
 
+function PatientsView() {
+  const [patients, setPatients] = useState<ListPatient[]>([]);
+  const [q, setQ] = useState("");
+  const [loading, setLoading] = useState(true);
+  const [openId, setOpenId] = useState<string | null>(null);
+
+  const load = useCallback(async (query = "") => {
+    setLoading(true);
+    try {
+      const res = await fetch(`/api/emr/patients?q=${encodeURIComponent(query)}`);
+      const data = await res.json();
+      if (res.ok) setPatients(data.patients);
+      else toast.error(data.error ?? "Failed to load patients.");
+    } finally {
+      setLoading(false);
+    }
+  }, []);
+
+  useEffect(() => { load(); }, [load]);
+  useEffect(() => { const t = setTimeout(() => load(q), 300); return () => clearTimeout(t); }, [q, load]);
+
+  if (openId) return <PatientDetail patientId={openId} onBack={() => { setOpenId(null); load(q); }} />;
+
+  return (
+    <div className="space-y-3">
+      <div className="relative">
+        <Search className="w-4 h-4 text-slate-400 absolute left-3 top-1/2 -translate-y-1/2" />
+        <input
+          value={q} onChange={(e) => setQ(e.target.value)}
+          placeholder="Search by name, hospital no. or phone"
+          className="w-full rounded-xl border border-slate-200 bg-white pl-9 pr-9 py-2.5 text-sm focus:border-medical-400 focus:ring-2 focus:ring-medical-500/30 outline-none"
+        />
+        {q && <button onClick={() => setQ("")} className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400"><X className="w-4 h-4" /></button>}
+      </div>
+
+      {loading ? (
+        <div className="space-y-2 animate-pulse">{[1,2,3].map(i => <div key={i} className="h-16 bg-white rounded-2xl border border-slate-100" />)}</div>
+      ) : patients.length === 0 ? (
+        <p className="text-center text-sm text-slate-400 py-10">{q ? "No patients match your search." : "No patients yet — register one to get started."}</p>
+      ) : (
+        <div className="space-y-2">
+          {patients.map((p) => (
+            <button key={p.id} onClick={() => setOpenId(p.id)} className="w-full text-left bg-white rounded-2xl border border-slate-100 shadow-sm p-3.5 flex items-center gap-3 hover:border-medical-200 transition">
+              <div className="w-9 h-9 rounded-full bg-medical-50 text-medical-600 flex items-center justify-center shrink-0"><User className="w-4 h-4" /></div>
+              <div className="flex-1 min-w-0">
+                <p className="text-sm font-semibold text-slate-800 truncate">{p.full_name}</p>
+                <p className="text-[11px] text-slate-400 font-mono">{p.hospital_number} · {p.age ?? "—"}{p.sex ? p.sex.charAt(0).toUpperCase() : ""}</p>
+              </div>
+              {p.allergies && <ShieldAlert className="w-4 h-4 text-amber-500 shrink-0" />}
+              {p.phone && <span className="text-[11px] text-slate-400 flex items-center gap-1 shrink-0"><Phone className="w-3 h-3" />{p.phone}</span>}
+            </button>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
+function OnboardingWorkspace() {
+  const [view, setView] = useState<"register" | "patients">("register");
+  return (
+    <div className="space-y-4">
+      <div className="flex gap-1 bg-white/70 rounded-xl p-1 border border-slate-100 shadow-sm">
+        <button onClick={() => setView("register")} className={`flex-1 flex items-center justify-center gap-1.5 py-2 rounded-lg text-sm font-semibold transition ${view === "register" ? "bg-medical-600 text-white shadow-sm" : "text-slate-500 hover:text-slate-700"}`}>
+          <UserPlus className="w-4 h-4" /> Register
+        </button>
+        <button onClick={() => setView("patients")} className={`flex-1 flex items-center justify-center gap-1.5 py-2 rounded-lg text-sm font-semibold transition ${view === "patients" ? "bg-medical-600 text-white shadow-sm" : "text-slate-500 hover:text-slate-700"}`}>
+          <Users className="w-4 h-4" /> Patients
+        </button>
+      </div>
+      {view === "register" ? <OnboardingInner /> : <PatientsView />}
+    </div>
+  );
+}
+
 export default function OnboardingPage() {
   return (
     <EmrShell title="Onboarding" allow={["onboarding_clerk", "nurse", "records"]}>
-      <OnboardingInner />
+      <OnboardingWorkspace />
     </EmrShell>
   );
 }
