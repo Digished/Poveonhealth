@@ -106,6 +106,22 @@ export async function middleware(request: NextRequest) {
     }
   }
 
+  // ── EMR staff workspace ────────────────────────────────────────────────────
+  if (pathname.startsWith("/emr") && pathname !== "/emr-login") {
+    const token = request.cookies.get("emr_token")?.value;
+    if (!token) {
+      return NextResponse.redirect(new URL("/emr-login", request.url));
+    }
+  }
+
+  // ── Redirect signed-in staff away from the EMR login ──────────────────────
+  if (pathname === "/emr-login") {
+    const token = request.cookies.get("emr_token")?.value;
+    if (token) {
+      return NextResponse.redirect(new URL("/emr", request.url));
+    }
+  }
+
   // ── Patient Dashboard ──────────────────────────────────────────────────────
   if (pathname.startsWith("/dashboard")) {
     const token = request.cookies.get("patient_token")?.value;

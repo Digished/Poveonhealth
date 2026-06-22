@@ -1139,3 +1139,283 @@ model RequestResult {
   @@index([lab_id, status])
   @@map("request_results")
 }
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Hospital EMR
+// A lightweight in-hospital EMR layered on the Hospital tenant. The hospital's
+// own login (hospital_token) acts as the super admin; staff get per-person PIN
+// accounts (emr_token) scoped to a department/role. Tenant links are plain
+// scalar `hospital_id` fields (indexed) to keep the existing Hospital model
+// untouched; relations are declared between the clinical models themselves.
+// ─────────────────────────────────────────────────────────────────────────────
+
+// The six core departments. Seeded per hospital on first EMR open; the super
+// admin can rename or deactivate them. Mirrors LabDepartment.
+model HospitalDepartment {
+  id          String   @id @default(uuid())
+  hospital_id String
+  key         String // onboarding | vitals | consultation | pharmacy | laboratory | ward
+  name        String
+  is_active   Boolean  @default(true)
+  sort_order  Int      @default(0)
+  created_at  DateTime @default(now())
+
+  @@unique([hospital_id, key])
+  @@index([hospital_id])
+  @@map("hospital_departments")
+}
+
+// Per-person staff accounts with a role + optional department scope. PIN auth
+// mirrors the hospital PIN/session pattern.
+model HospitalStaff {
+  id             String   @id @default(uuid())
+  hospital_id    String
+  full_name      String
+  role           String // super_admin | doctor | nurse | pharmacist | lab_tech | ward_nurse | onboarding_clerk | records
+  email          String?
+  phone          String?
+  pin_hash       String? // SHA-256 of 4-digit PIN
+  department_key String? // optional primary department
+  is_active      Boolean  @default(true)
+  created_by     String? // hospital email or staff id
+  created_at     DateTime @default(now())
+  updated_at     DateTime @default(now()) @updatedAt
+
+  sessions HospitalStaffSession[]
+
+  @@index([hospital_id])
+  @@index([hospital_id, role])
+  @@map("hospital_staff")
+}
+
+model HospitalStaffSession {
+  id         String   @id @default(uuid())
+  staff_id   String
+  expires_at DateTime
+  created_at DateTime @default(now())
+
+  staff HospitalStaff @relation(fields: [staff_id], references: [id], onDelete: Cascade)
+
+  @@index([staff_id])
+  @@map("hospital_staff_sessions")
+}
+
+model HospitalPatient {
+  id                       String    @id @default(uuid())
+  hospital_id              String
+  hospital_number          String // unique per hospital, auto-generated
+  full_name                String
+  dob                      DateTime? @db.Date
+  age                      Int?
+  sex                      String?
+  phone                    String?
+  email                    String?
+  address                  String?
+  city                     String?
+  state                    String?
+  occupation               String?
+  marital_status           String?
+  blood_group              String?
+  genotype                 String?
+  allergies                String?
+  known_conditions         String?
+  next_of_kin_name         String?
+  next_of_kin_relationship String?
+  next_of_kin_phone        String?
+  next_of_kin_address      String?
+  insurance_provider       String?
+  insurance_number         String?
+  created_by               String?
+  created_at               DateTime  @default(now())
+  updated_at               DateTime  @default(now()) @updatedAt
+
+  encounters    HospitalEncounter[]
+  vitals        VitalsRecord[]
+  notes         ConsultationNote[]
+  prescriptions Prescription[]
+  lab_orders    LabOrder[]
+  admissions    Admission[]
+
+  @@unique([hospital_id, hospital_number])
+  @@index([hospital_id])
+  @@map("hospital_patients")
+}
+
+// A single visit; its status walks the patient through the departments.
+model HospitalEncounter {
+  id                  String    @id @default(uuid())
+  hospital_id         String
+  patient_id          String
+  type                String    @default("outpatient") // outpatient | emergency | admission
+  status              String    @default("waiting_vitals") // waiting_vitals | waiting_consult | in_consult | pharmacy | lab | ward | closed
+  chief_complaint     String?
+  attending_doctor_id String?
+  created_by          String?
+  created_at          DateTime  @default(now())
+  updated_at          DateTime  @default(now()) @updatedAt
+  closed_at           DateTime?
+
+  patient       HospitalPatient    @relation(fields: [patient_id], references: [id], onDelete: Cascade)
+  vitals        VitalsRecord[]
+  notes         ConsultationNote[]
+  prescriptions Prescription[]
+  lab_orders    LabOrder[]
+  admissions    Admission[]
+
+  @@index([hospital_id, status])
+  @@index([patient_id])
+  @@map("hospital_encounters")
+}
+
+model VitalsRecord {
+  id           String   @id @default(uuid())
+  encounter_id String
+  patient_id   String
+  temperature  Float?
+  systolic     Int?
+  diastolic    Int?
+  pulse        Int?
+  resp_rate    Int?
+  spo2         Int?
+  weight_kg    Float?
+  height_cm    Float?
+  bmi          Float?
+  blood_sugar  Float?
+  pain_score   Int?
+  notes        String?
+  recorded_by  String?
+  recorded_at  DateTime @default(now())
+
+  encounter HospitalEncounter @relation(fields: [encounter_id], references: [id], onDelete: Cascade)
+  patient   HospitalPatient @relation(fields: [patient_id], references: [id], onDelete: Cascade)
+
+  @@index([encounter_id])
+  @@index([patient_id])
+  @@map("hospital_vitals")
+}
+
+// The Notion-like consultation document — an ordered array of typed blocks.
+model ConsultationNote {
+  id           String    @id @default(uuid())
+  encounter_id String
+  patient_id   String
+  doctor_id    String?
+  content      Json      @default("[]") // [{ id, type, text?, data? }]
+  status       String    @default("draft") // draft | signed
+  signed_at    DateTime?
+  created_at   DateTime  @default(now())
+  updated_at   DateTime  @default(now()) @updatedAt
+
+  encounter HospitalEncounter @relation(fields: [encounter_id], references: [id], onDelete: Cascade)
+  patient   HospitalPatient @relation(fields: [patient_id], references: [id], onDelete: Cascade)
+
+  @@index([encounter_id])
+  @@index([patient_id])
+  @@map("hospital_consultation_notes")
+}
+
+model Prescription {
+  id           String    @id @default(uuid())
+  encounter_id String
+  patient_id   String
+  doctor_id    String?
+  raw_text     String?
+  status       String    @default("pending") // pending | partially_dispensed | dispensed | cancelled
+  dispensed_by String?
+  dispensed_at DateTime?
+  created_at   DateTime  @default(now())
+
+  encounter HospitalEncounter  @relation(fields: [encounter_id], references: [id], onDelete: Cascade)
+  patient   HospitalPatient    @relation(fields: [patient_id], references: [id], onDelete: Cascade)
+  items     PrescriptionItem[]
+
+  @@index([encounter_id])
+  @@index([patient_id])
+  @@map("hospital_prescriptions")
+}
+
+model PrescriptionItem {
+  id                String  @id @default(uuid())
+  prescription_id   String
+  drug_name         String
+  strength          String?
+  form              String?
+  dose              String?
+  route             String?
+  frequency         String?
+  frequency_per_day Int?
+  duration_days     Int?
+  quantity          String?
+  instructions      String?
+  raw_fragment      String?
+  confidence        Float?
+  status            String  @default("pending") // pending | dispensed | unavailable
+  sort_order        Int     @default(0)
+
+  prescription Prescription @relation(fields: [prescription_id], references: [id], onDelete: Cascade)
+
+  @@index([prescription_id])
+  @@map("hospital_prescription_items")
+}
+
+model LabOrder {
+  id            String    @id @default(uuid())
+  encounter_id  String
+  patient_id    String
+  doctor_id     String?
+  clinical_note String?
+  status        String    @default("ordered") // ordered | collected | resulted | cancelled
+  collected_by  String?
+  collected_at  DateTime?
+  resulted_by   String?
+  resulted_at   DateTime?
+  created_at    DateTime  @default(now())
+
+  encounter HospitalEncounter @relation(fields: [encounter_id], references: [id], onDelete: Cascade)
+  patient   HospitalPatient @relation(fields: [patient_id], references: [id], onDelete: Cascade)
+  tests     LabOrderTest[]
+
+  @@index([encounter_id])
+  @@index([patient_id])
+  @@map("hospital_lab_orders")
+}
+
+model LabOrderTest {
+  id              String  @id @default(uuid())
+  lab_order_id    String
+  test_name       String
+  result_value    String?
+  result_unit     String?
+  reference_range String?
+  flag            String? // normal | high | low | abnormal
+  status          String  @default("ordered")
+  raw_fragment    String?
+  sort_order      Int     @default(0)
+
+  lab_order LabOrder @relation(fields: [lab_order_id], references: [id], onDelete: Cascade)
+
+  @@index([lab_order_id])
+  @@map("hospital_lab_order_tests")
+}
+
+model Admission {
+  id                  String    @id @default(uuid())
+  hospital_id         String
+  encounter_id        String
+  patient_id          String
+  ward_name           String
+  bed_label           String?
+  admitting_doctor_id String?
+  reason              String?
+  status              String    @default("admitted") // admitted | discharged
+  discharge_summary   String?
+  admitted_at         DateTime  @default(now())
+  discharged_at       DateTime?
+
+  encounter HospitalEncounter @relation(fields: [encounter_id], references: [id], onDelete: Cascade)
+  patient   HospitalPatient @relation(fields: [patient_id], references: [id], onDelete: Cascade)
+
+  @@index([hospital_id, status])
+  @@index([patient_id])
+  @@map("hospital_admissions")
+}
