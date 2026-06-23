@@ -17,6 +17,7 @@ import { MarketerPlaybook } from "@/components/marketer/MarketerPlaybook";
 import { MarketerPitch } from "@/components/marketer/MarketerPitch";
 import { MarketerGoals } from "@/components/marketer/MarketerGoals";
 import { MarketerTerritory } from "@/components/marketer/MarketerTerritory";
+import { labLabel } from "@/lib/marketer/playbook-content";
 
 type ScaleTab = "doctors" | "playbook" | "pitch" | "goals" | "territory";
 const SCALE_TABS: { key: ScaleTab; label: string; icon: React.ReactNode }[] = [
@@ -30,7 +31,7 @@ import { HospitalTagInput } from "@/components/ui/HospitalTagInput";
 
 // ─── types ────────────────────────────────────────────────────────────────────
 
-interface Marketer { name: string; email: string; code: string }
+interface Marketer { name: string; email: string; code: string; labs?: string[] }
 
 interface RequestSummary {
   id: string; code: string; patient_name: string; tests: string;
@@ -1169,8 +1170,8 @@ export default function ScaleDashboardPage() {
         </>
         )}
 
-        {scaleTab === "playbook" && marketer && <MarketerPlaybook marketerName={marketer.name} marketerCode={marketer.code} />}
-        {scaleTab === "pitch" && marketer && <MarketerPitch marketerName={marketer.name} />}
+        {scaleTab === "playbook" && marketer && <MarketerPlaybook marketerName={marketer.name} marketerCode={marketer.code} labLabel={labLabel(marketer.labs ?? [])} />}
+        {scaleTab === "pitch" && marketer && <MarketerPitch marketerName={marketer.name} labLabel={labLabel(marketer.labs ?? [])} />}
         {scaleTab === "goals" && <MarketerGoals />}
         {scaleTab === "territory" && <MarketerTerritory />}
       </main>

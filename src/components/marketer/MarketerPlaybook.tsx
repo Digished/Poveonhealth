@@ -6,7 +6,7 @@ import {
   Flame, Moon, ThumbsUp, Clock, MessageCircle, Phone, Copy, CheckSquare, Square,
   Rocket, BarChart3, ChevronDown, ChevronUp,
 } from "lucide-react";
-import { SCRIPTS, ACTIVATION_STEPS, fillScript } from "@/lib/marketer/playbook-content";
+import { scriptsFor, ACTIVATION_STEPS, fillScript, type Script } from "@/lib/marketer/playbook-content";
 import { waLink, telLink, firstName } from "./contact-links";
 import { ProofCard } from "./ProofCard";
 
@@ -21,10 +21,11 @@ const BUCKETS: { key: BucketKey; label: string; icon: React.ReactNode; tint: str
   { key: "winback", label: "Win back — gone quiet", icon: <Moon className="w-4 h-4" />, tint: "text-blue-600 bg-blue-50", scriptKey: "winback" },
 ];
 
-export function MarketerPlaybook({ marketerName, marketerCode }: { marketerName: string; marketerCode: string }) {
+export function MarketerPlaybook({ marketerName, marketerCode, labLabel }: { marketerName: string; marketerCode: string; labLabel: string }) {
   const [playbook, setPlaybook] = useState<Playbook | null>(null);
   const [loading, setLoading] = useState(true);
   const [proofEmail, setProofEmail] = useState<string | null>(null);
+  const scripts = scriptsFor(labLabel);
 
   useEffect(() => {
     fetch("/api/scale/playbook")
@@ -59,7 +60,7 @@ export function MarketerPlaybook({ marketerName, marketerCode }: { marketerName:
               {items.map((it) => (
                 <PlaybookRow
                   key={`${b.key}-${it.email}`}
-                  item={it} bucket={b.key} scriptKey={b.scriptKey}
+                  item={it} bucket={b.key} script={scripts.find((s) => s.key === b.scriptKey) ?? scripts[0]}
                   marketerName={marketerName} marketerCode={marketerCode}
                   onProof={() => setProofEmail(it.email)}
                 />
@@ -82,11 +83,10 @@ export function MarketerPlaybook({ marketerName, marketerCode }: { marketerName:
   );
 }
 
-function PlaybookRow({ item, bucket, scriptKey, marketerName, marketerCode, onProof }: {
-  item: Item; bucket: BucketKey; scriptKey: string; marketerName: string; marketerCode: string; onProof: () => void;
+function PlaybookRow({ item, bucket, script, marketerName, marketerCode, onProof }: {
+  item: Item; bucket: BucketKey; script: Script; marketerName: string; marketerCode: string; onProof: () => void;
 }) {
   const [open, setOpen] = useState(false);
-  const script = SCRIPTS.find((s) => s.key === scriptKey) ?? SCRIPTS[0];
   const text = fillScript(script.body, { doctor: firstName(item.name), me: marketerName, detail: item.detail });
   const wa = waLink(item.phone, text);
   const tel = telLink(item.phone);

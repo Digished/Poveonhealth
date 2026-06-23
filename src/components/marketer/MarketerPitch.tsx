@@ -3,10 +3,13 @@
 import { useState } from "react";
 import toast from "react-hot-toast";
 import { Copy, MessageSquareQuote, ShieldQuestion, ChevronDown, ChevronUp, Megaphone } from "lucide-react";
-import { ELEVATOR_PITCH, OBJECTIONS, SCRIPTS, fillScript } from "@/lib/marketer/playbook-content";
+import { pitchFor, objectionsFor, scriptsFor, fillScript } from "@/lib/marketer/playbook-content";
 
-export function MarketerPitch({ marketerName }: { marketerName: string }) {
+export function MarketerPitch({ marketerName, labLabel }: { marketerName: string; labLabel: string }) {
   const [openObj, setOpenObj] = useState<number | null>(0);
+  const ELEVATOR_PITCH = pitchFor(labLabel);
+  const OBJECTIONS = objectionsFor(labLabel);
+  const SCRIPTS = scriptsFor(labLabel);
 
   function copy(text: string) {
     navigator.clipboard?.writeText(text).then(() => toast.success("Copied"));

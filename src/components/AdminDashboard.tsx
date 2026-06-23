@@ -122,6 +122,36 @@ export function AdminDashboard() {
   const [labMarketerLoading, setLabMarketerLoading] = useState(false);
   const [selectedLabMarketerLabId, setSelectedLabMarketerLabId] = useState<string | null>(null);
   const [selectedLabMarketerActivity, setSelectedLabMarketerActivity] = useState<any[]>([]);
+  // Admin → assign a marketer to a lab
+  const [assignLabId, setAssignLabId] = useState("");
+  const [assignEmail, setAssignEmail] = useState("");
+  const [assignName, setAssignName] = useState("");
+  const [assigningMarketer, setAssigningMarketer] = useState(false);
+
+  async function assignLabMarketer() {
+    if (!assignLabId || !assignEmail.trim()) { toast.error("Pick a lab and enter the marketer's email"); return; }
+    setAssigningMarketer(true);
+    try {
+      const res = await fetch("/api/admin/lab-marketers", {
+        method: "POST", headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ lab_id: assignLabId, email: assignEmail.trim(), name: assignName.trim() || undefined }),
+      });
+      const data = await res.json();
+      if (!res.ok || !data.success) { toast.error(data.error ?? "Failed to assign"); return; }
+      toast.success("Marketer assigned to lab");
+      setAssignEmail(""); setAssignName("");
+      fetchLabMarketers();
+    } finally {
+      setAssigningMarketer(false);
+    }
+  }
+
+  async function removeLabMarketer(id: string) {
+    if (!confirm("Remove this marketer from the lab?")) return;
+    const res = await fetch(`/api/admin/lab-marketers?id=${id}`, { method: "DELETE" });
+    if (res.ok) { toast.success("Removed"); fetchLabMarketers(); }
+    else toast.error("Failed to remove");
+  }
 
   type RevenueData = {
     total_poveon_earned: number;
@@ -1601,6 +1631,23 @@ export function AdminDashboard() {
               </button>
             </div>
 
+            {/* Assign a marketer to a lab (Poveon admin helps labs add marketers) */}
+            <div className="bg-emerald-500/5 border border-emerald-500/20 rounded-2xl p-4 space-y-3">
+              <p className="text-sm font-semibold text-emerald-300">Assign a marketer to a lab</p>
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                <select value={assignLabId} onChange={(e) => setAssignLabId(e.target.value)} className="px-3 py-2 rounded-xl bg-white/8 border border-white/10 text-sm text-white focus:outline-none focus:border-white/25">
+                  <option value="">Select lab…</option>
+                  {labs.map((l) => <option key={l.id} value={l.id} className="bg-slate-800">{l.name}</option>)}
+                </select>
+                <input value={assignEmail} onChange={(e) => setAssignEmail(e.target.value)} type="email" placeholder="Marketer email" className="px-3 py-2 rounded-xl bg-white/8 border border-white/10 text-sm text-white placeholder-slate-500 focus:outline-none focus:border-white/25" />
+                <input value={assignName} onChange={(e) => setAssignName(e.target.value)} placeholder="Name (optional)" className="px-3 py-2 rounded-xl bg-white/8 border border-white/10 text-sm text-white placeholder-slate-500 focus:outline-none focus:border-white/25" />
+              </div>
+              <button onClick={assignLabMarketer} disabled={assigningMarketer || !assignLabId || !assignEmail.trim()} className="flex items-center gap-1.5 px-4 py-2 rounded-xl bg-emerald-600 hover:bg-emerald-500 disabled:opacity-50 text-white text-sm font-semibold">
+                <Plus className="w-4 h-4" />{assigningMarketer ? "Assigning…" : "Assign marketer"}
+              </button>
+              <p className="text-xs text-slate-500">If the marketer email is new, an account is created automatically. Their pitch and scripts are tailored to this lab.</p>
+            </div>
+
             {labMarketerLoading ? (
               <div className="space-y-2">{[...Array(5)].map((_, i) => <div key={i} className="bg-white/5 border border-white/10 rounded-xl h-16 animate-pulse" />)}</div>
             ) : labMarketers.length === 0 ? (
@@ -1634,6 +1681,15 @@ export function AdminDashboard() {
                         <p className="text-xs text-emerald-400 font-semibold">{lm.doctors_count} doctors</p>
                         <p className="text-[10px] text-slate-500">Added by {lm.added_by}</p>
                       </div>
+                      <span
+                        role="button"
+                        tabIndex={0}
+                        onClick={(e) => { e.stopPropagation(); removeLabMarketer(lm.id); }}
+                        className="p-1.5 text-slate-600 hover:text-rose-400 transition-colors shrink-0 cursor-pointer"
+                        title="Remove marketer from this lab"
+                      >
+                        <Trash2 className="w-3.5 h-3.5" />
+                      </span>
                       <ChevronDown className={`w-4 h-4 text-slate-500 transition-transform ${selectedLabMarketerLabId === lm.lab.id ? "rotate-180" : ""}`} />
                     </button>
 
