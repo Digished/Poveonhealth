@@ -5,18 +5,27 @@ import { useRouter } from "next/navigation";
 import toast from "react-hot-toast";
 import {
   Hospital, LogOut, Inbox, Users, Settings, Clock, CheckCircle, Stethoscope,
+  LayoutGrid, Building2, UserCog,
 } from "lucide-react";
 import { HospitalInfo, HospitalCounts } from "@/components/hospital/types";
 import { ReferralsTab } from "@/components/hospital/ReferralsTab";
 import { DoctorsTab } from "@/components/hospital/DoctorsTab";
 import { SettingsTab } from "@/components/hospital/SettingsTab";
+import { EmrOverviewTab } from "@/components/hospital/EmrOverviewTab";
+import { DepartmentsTab } from "@/components/hospital/DepartmentsTab";
+import { TeamTab } from "@/components/hospital/TeamTab";
+import { PatientsTab } from "@/components/hospital/PatientsTab";
 
-type Tab = "referrals" | "doctors" | "settings";
+type Tab = "overview" | "departments" | "team" | "patients" | "referrals" | "doctors" | "settings";
 
 const TABS: { key: Tab; label: string; shortLabel: string; icon: React.ReactNode }[] = [
-  { key: "referrals", label: "Referrals", shortLabel: "Referrals", icon: <Inbox className="w-3.5 h-3.5" /> },
-  { key: "doctors",   label: "Doctors",   shortLabel: "Doctors",   icon: <Users className="w-3.5 h-3.5" /> },
-  { key: "settings",  label: "Settings",  shortLabel: "Settings",  icon: <Settings className="w-3.5 h-3.5" /> },
+  { key: "overview",    label: "Overview",    shortLabel: "Overview",  icon: <LayoutGrid className="w-3.5 h-3.5" /> },
+  { key: "departments", label: "Departments", shortLabel: "Depts",     icon: <Building2 className="w-3.5 h-3.5" /> },
+  { key: "team",        label: "Team",        shortLabel: "Team",      icon: <UserCog className="w-3.5 h-3.5" /> },
+  { key: "patients",    label: "Patients",    shortLabel: "Patients",  icon: <Users className="w-3.5 h-3.5" /> },
+  { key: "referrals",   label: "Referrals",   shortLabel: "Referrals", icon: <Inbox className="w-3.5 h-3.5" /> },
+  { key: "doctors",     label: "Doctors",     shortLabel: "Doctors",   icon: <Stethoscope className="w-3.5 h-3.5" /> },
+  { key: "settings",    label: "Settings",    shortLabel: "Settings",  icon: <Settings className="w-3.5 h-3.5" /> },
 ];
 
 export default function HospitalDashboardPage() {
@@ -26,7 +35,7 @@ export default function HospitalDashboardPage() {
   const [counts, setCounts] = useState<HospitalCounts | null>(null);
   const [loading, setLoading] = useState(true);
   const [loggingOut, setLoggingOut] = useState(false);
-  const [activeTab, setActiveTab] = useState<Tab>("referrals");
+  const [activeTab, setActiveTab] = useState<Tab>("overview");
 
   const loadMe = useCallback(async (silent = false) => {
     if (!silent) setLoading(true);
@@ -156,6 +165,10 @@ export default function HospitalDashboardPage() {
             </div>
 
             {/* Tab content */}
+            {activeTab === "overview" && <EmrOverviewTab />}
+            {activeTab === "departments" && <DepartmentsTab />}
+            {activeTab === "team" && <TeamTab />}
+            {activeTab === "patients" && <PatientsTab />}
             {activeTab === "referrals" && (
               <ReferralsTab hospitalId={hospital.id} onCountsChange={() => loadMe(true)} />
             )}

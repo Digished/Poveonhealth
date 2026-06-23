@@ -170,6 +170,7 @@ export function Workspace({
   canSendResults,
   memberDepartment,
   mode = "workstation",
+  lite = false,
 }: {
   labId: string;
   labName: string;
@@ -181,6 +182,8 @@ export function Workspace({
   /** "onboarding" = reception intake + registration (+ read-only journey subtab);
    *  "workstation" = lab pipeline for already-paid requests (no registration). */
   mode?: "onboarding" | "workstation";
+  /** Lite mode hides the onboarding Journey sub-tab (registration only). */
+  lite?: boolean;
 }) {
   const isOnboarding = mode === "onboarding";
   const [requests, setRequests] = useState<WReq[]>([]);
@@ -474,8 +477,8 @@ export function Workspace({
 
   return (
     <div className="space-y-5">
-      {/* Onboarding: Register / Journey sub-tabs */}
-      {isOnboarding && (
+      {/* Onboarding: Register / Journey sub-tabs (Journey hidden in Lite mode) */}
+      {isOnboarding && !lite && (
         <div className="inline-flex rounded-xl border border-white/10 bg-white/5 p-1">
           {([["register", "Register"], ["journey", "Journey"]] as const).map(([v, label]) => (
             <button key={v} onClick={() => setObView(v)} className={`rounded-lg px-4 py-1.5 text-sm font-medium transition ${obView === v ? "bg-medical-600 text-white" : "text-slate-300 hover:text-white"}`}>{label}</button>

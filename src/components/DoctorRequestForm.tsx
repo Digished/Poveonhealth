@@ -25,8 +25,6 @@ import { PROFESSIONAL_PREFIXES, PrefixSelectModal, PrefixSelect } from "@/compon
 import { FastModeComposer } from "@/components/FastModeComposer";
 import type { Lab, CreateRequestResponse } from "@/lib/types";
 
-const FAST_MODE_KEY = "poveon_fast_mode";
-
 /** Whole-years age from an ISO "YYYY-MM-DD" date of birth, or "" if not derivable. */
 function ageFromIso(iso: string): string {
   if (!iso || !/^\d{4}-\d{2}-\d{2}/.test(iso)) return "";
@@ -720,17 +718,14 @@ export function DoctorRequestForm({
   const startStep = !labPreselected ? 1 : hasLocations ? 1 : 2;
   const [step, setStep] = useState(startStep);
   // Fast Mode — type the tests/patient in plain language and submit instantly.
-  const [fastMode, setFastMode] = useState(false);
-  useEffect(() => {
-    try { if (localStorage.getItem(FAST_MODE_KEY) === "1") setFastMode(true); } catch { /* ignore */ }
-  }, []);
+  // Fast Mode is the default; doctors can switch to the full multi-step form
+  // from within the composer (session only, not persisted across visits).
+  const [fastMode, setFastMode] = useState(true);
   const enterFastMode = useCallback(() => {
     setFastMode(true);
-    try { localStorage.setItem(FAST_MODE_KEY, "1"); } catch { /* ignore */ }
   }, []);
   const exitFastMode = useCallback(() => {
     setFastMode(false);
-    try { localStorage.setItem(FAST_MODE_KEY, "0"); } catch { /* ignore */ }
   }, []);
   const [form, setForm] = useState<FormData>(() => ({
     ...INITIAL,
@@ -2450,6 +2445,7 @@ export function DoctorRequestForm({
                               <option value="">Not specified</option>
                               <option value="male">Male</option>
                               <option value="female">Female</option>
+                              <option value="other">Other</option>
                             </select>
                           </div>
                         </div>

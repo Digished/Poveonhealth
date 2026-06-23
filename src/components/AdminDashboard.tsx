@@ -122,6 +122,36 @@ export function AdminDashboard() {
   const [labMarketerLoading, setLabMarketerLoading] = useState(false);
   const [selectedLabMarketerLabId, setSelectedLabMarketerLabId] = useState<string | null>(null);
   const [selectedLabMarketerActivity, setSelectedLabMarketerActivity] = useState<any[]>([]);
+  // Admin → assign a marketer to a lab
+  const [assignLabId, setAssignLabId] = useState("");
+  const [assignEmail, setAssignEmail] = useState("");
+  const [assignName, setAssignName] = useState("");
+  const [assigningMarketer, setAssigningMarketer] = useState(false);
+
+  async function assignLabMarketer() {
+    if (!assignLabId || !assignEmail.trim()) { toast.error("Pick a lab and enter the marketer's email"); return; }
+    setAssigningMarketer(true);
+    try {
+      const res = await fetch("/api/admin/lab-marketers", {
+        method: "POST", headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ lab_id: assignLabId, email: assignEmail.trim(), name: assignName.trim() || undefined }),
+      });
+      const data = await res.json();
+      if (!res.ok || !data.success) { toast.error(data.error ?? "Failed to assign"); return; }
+      toast.success("Marketer assigned to lab");
+      setAssignEmail(""); setAssignName("");
+      fetchLabMarketers();
+    } finally {
+      setAssigningMarketer(false);
+    }
+  }
+
+  async function removeLabMarketer(id: string) {
+    if (!confirm("Remove this marketer from the lab?")) return;
+    const res = await fetch(`/api/admin/lab-marketers?id=${id}`, { method: "DELETE" });
+    if (res.ok) { toast.success("Removed"); fetchLabMarketers(); }
+    else toast.error("Failed to remove");
+  }
 
   type RevenueData = {
     total_poveon_earned: number;
@@ -308,6 +338,40 @@ export function AdminDashboard() {
   useEffect(() => { fetchData(); }, [fetchData]);
   useEffect(() => { if (activeTab === "lab-marketers") fetchLabMarketers(); }, [activeTab, fetchLabMarketers]);
 
+  // ── All Requests tab: searchable, paginated back to the very first request ──
+  const [allReqs, setAllReqs] = useState<LabRequest[]>([]);
+  const [allReqTotal, setAllReqTotal] = useState(0);
+  const [allReqPage, setAllReqPage] = useState(1);
+  const [allReqSearch, setAllReqSearch] = useState("");
+  const [allReqLoading, setAllReqLoading] = useState(false);
+  const [allReqMore, setAllReqMore] = useState(false);
+
+  const loadAllRequests = useCallback(async (opts: { reset?: boolean; page?: number; q?: string }) => {
+    const page = opts.page ?? 1;
+    const q = opts.q ?? "";
+    if (opts.reset) setAllReqLoading(true); else setAllReqMore(true);
+    try {
+      const res = await fetch(`/api/admin/requests?limit=50&page=${page}&q=${encodeURIComponent(q)}`);
+      const data = await res.json();
+      if (data.success) {
+        setAllReqs((prev) => (opts.reset ? data.requests : [...prev, ...data.requests]));
+        setAllReqTotal(data.total ?? 0);
+        setAllReqPage(page);
+      }
+    } catch {
+      toast.error("Failed to load requests");
+    } finally {
+      setAllReqLoading(false); setAllReqMore(false);
+    }
+  }, []);
+
+  // Load on entering the tab; debounce search.
+  useEffect(() => {
+    if (activeTab !== "requests") return;
+    const t = setTimeout(() => loadAllRequests({ reset: true, page: 1, q: allReqSearch }), 300);
+    return () => clearTimeout(t);
+  }, [activeTab, allReqSearch, loadAllRequests]);
+
   const referralGroups = useMemo<ReferralGroup[]>(() => {
     const map = new Map<string, ReferralGroup>();
     const now = new Date();
@@ -349,6 +413,7 @@ export function AdminDashboard() {
       if (data.success) {
         toast.success(`Request ${req.code} deleted`);
         setRequests((prev: LabRequest[]) => prev.filter((r: LabRequest) => r.id !== req.id));
+        setAllReqs((prev: LabRequest[]) => prev.filter((r: LabRequest) => r.id !== req.id));
       } else {
         toast.error(data.error ?? "Failed to delete");
       }
@@ -830,10 +895,29 @@ export function AdminDashboard() {
 
         {/* ── REQUESTS ── */}
         {activeTab === "requests" && (
-          <div className="animate-fade-in">
-            {loading ? (
+          <div className="animate-fade-in space-y-4">
+            {/* Search + count header */}
+            <div className="flex flex-col sm:flex-row sm:items-center gap-2">
+              <div className="relative flex-1">
+                <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-500 pointer-events-none" />
+                <input
+                  value={allReqSearch}
+                  onChange={(e) => setAllReqSearch(e.target.value)}
+                  placeholder="Search patient, test, code, doctor or lab…"
+                  className="w-full pl-9 pr-9 py-2.5 rounded-xl bg-white/8 border border-white/10 text-sm text-white placeholder-slate-500 focus:outline-none focus:border-white/25"
+                />
+                {allReqSearch && (
+                  <button onClick={() => setAllReqSearch("")} className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-500 hover:text-white"><X className="w-4 h-4" /></button>
+                )}
+              </div>
+              <span className="text-xs text-slate-400 bg-white/5 px-3 py-2 rounded-xl shrink-0 whitespace-nowrap">
+                {allReqLoading ? "Loading…" : `Showing ${allReqs.length} of ${allReqTotal}`}
+              </span>
+            </div>
+
+            {allReqLoading ? (
               <div className="space-y-2">
-                {[...Array(5)].map((_, i) => (
+                {[...Array(6)].map((_, i) => (
                   <div key={i} className="bg-white/5 border border-white/10 rounded-xl p-4 animate-pulse h-14" />
                 ))}
               </div>
@@ -841,7 +925,7 @@ export function AdminDashboard() {
               <>
                 {/* Mobile card layout */}
                 <div className="md:hidden space-y-2">
-                  {requests.map((req) => (
+                  {allReqs.map((req) => (
                     <div key={req.id} className="bg-white/5 border border-white/8 rounded-xl p-4">
                       <div className="flex items-start justify-between gap-2 mb-2">
                         <div className="min-w-0">
@@ -863,6 +947,11 @@ export function AdminDashboard() {
                         <span className="text-slate-600">Ref: </span>
                         {[req.doctor_prefix, req.doctor_name].filter(Boolean).join(" ")}
                       </p>
+                      {req.tests && (
+                        <p className="text-xs text-slate-300 mt-1 line-clamp-2">
+                          <span className="text-slate-600">Tests: </span>{req.tests}
+                        </p>
+                      )}
                       {(req.doctor_bank_name || req.doctor_account_number) && (
                         <p className="text-xs text-slate-500 truncate mt-0.5">
                           {[req.doctor_bank_name, req.doctor_account_number].filter(Boolean).join(" · ")}
@@ -876,8 +965,8 @@ export function AdminDashboard() {
                       </div>
                     </div>
                   ))}
-                  {requests.length === 0 && (
-                    <div className="py-16 text-center text-slate-400">No requests yet</div>
+                  {allReqs.length === 0 && (
+                    <div className="py-16 text-center text-slate-400">{allReqSearch ? "No requests match your search" : "No requests yet"}</div>
                   )}
                 </div>
 
@@ -892,7 +981,7 @@ export function AdminDashboard() {
                       </tr>
                     </thead>
                     <tbody className="divide-y divide-white/5">
-                      {requests.map((req) => (
+                      {allReqs.map((req) => (
                         <tr key={req.id} className="hover:bg-white/5 transition-colors">
                           <td className="py-3 px-3"><span className="font-mono text-medical-400 text-xs">{req.code}</span></td>
                           <td className="py-3 px-3 text-white font-medium">{req.patient_name}</td>
@@ -923,12 +1012,25 @@ export function AdminDashboard() {
                           </td>
                         </tr>
                       ))}
-                      {requests.length === 0 && (
-                        <tr><td colSpan={8} className="py-16 text-center text-slate-400">No requests yet</td></tr>
+                      {allReqs.length === 0 && (
+                        <tr><td colSpan={8} className="py-16 text-center text-slate-400">{allReqSearch ? "No requests match your search" : "No requests yet"}</td></tr>
                       )}
                     </tbody>
                   </table>
                 </div>
+
+                {/* Load more — pages back to the very first request */}
+                {allReqs.length < allReqTotal && (
+                  <div className="flex justify-center pt-2">
+                    <button
+                      onClick={() => loadAllRequests({ page: allReqPage + 1, q: allReqSearch })}
+                      disabled={allReqMore}
+                      className="px-5 py-2.5 rounded-xl bg-white/8 hover:bg-white/12 border border-white/10 text-sm text-slate-200 font-medium disabled:opacity-50"
+                    >
+                      {allReqMore ? "Loading…" : `Load more (${allReqTotal - allReqs.length} older)`}
+                    </button>
+                  </div>
+                )}
               </>
             )}
           </div>
@@ -1601,6 +1703,23 @@ export function AdminDashboard() {
               </button>
             </div>
 
+            {/* Assign a marketer to a lab (Poveon admin helps labs add marketers) */}
+            <div className="bg-emerald-500/5 border border-emerald-500/20 rounded-2xl p-4 space-y-3">
+              <p className="text-sm font-semibold text-emerald-300">Assign a marketer to a lab</p>
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                <select value={assignLabId} onChange={(e) => setAssignLabId(e.target.value)} className="px-3 py-2 rounded-xl bg-white/8 border border-white/10 text-sm text-white focus:outline-none focus:border-white/25">
+                  <option value="">Select lab…</option>
+                  {labs.map((l) => <option key={l.id} value={l.id} className="bg-slate-800">{l.name}</option>)}
+                </select>
+                <input value={assignEmail} onChange={(e) => setAssignEmail(e.target.value)} type="email" placeholder="Marketer email" className="px-3 py-2 rounded-xl bg-white/8 border border-white/10 text-sm text-white placeholder-slate-500 focus:outline-none focus:border-white/25" />
+                <input value={assignName} onChange={(e) => setAssignName(e.target.value)} placeholder="Name (optional)" className="px-3 py-2 rounded-xl bg-white/8 border border-white/10 text-sm text-white placeholder-slate-500 focus:outline-none focus:border-white/25" />
+              </div>
+              <button onClick={assignLabMarketer} disabled={assigningMarketer || !assignLabId || !assignEmail.trim()} className="flex items-center gap-1.5 px-4 py-2 rounded-xl bg-emerald-600 hover:bg-emerald-500 disabled:opacity-50 text-white text-sm font-semibold">
+                <Plus className="w-4 h-4" />{assigningMarketer ? "Assigning…" : "Assign marketer"}
+              </button>
+              <p className="text-xs text-slate-500">If the marketer email is new, an account is created automatically. Their pitch and scripts are tailored to this lab.</p>
+            </div>
+
             {labMarketerLoading ? (
               <div className="space-y-2">{[...Array(5)].map((_, i) => <div key={i} className="bg-white/5 border border-white/10 rounded-xl h-16 animate-pulse" />)}</div>
             ) : labMarketers.length === 0 ? (
@@ -1634,6 +1753,15 @@ export function AdminDashboard() {
                         <p className="text-xs text-emerald-400 font-semibold">{lm.doctors_count} doctors</p>
                         <p className="text-[10px] text-slate-500">Added by {lm.added_by}</p>
                       </div>
+                      <span
+                        role="button"
+                        tabIndex={0}
+                        onClick={(e) => { e.stopPropagation(); removeLabMarketer(lm.id); }}
+                        className="p-1.5 text-slate-600 hover:text-rose-400 transition-colors shrink-0 cursor-pointer"
+                        title="Remove marketer from this lab"
+                      >
+                        <Trash2 className="w-3.5 h-3.5" />
+                      </span>
                       <ChevronDown className={`w-4 h-4 text-slate-500 transition-transform ${selectedLabMarketerLabId === lm.lab.id ? "rotate-180" : ""}`} />
                     </button>
 
@@ -3781,12 +3909,14 @@ function AdminKnowledgeBaseTab() {
   const csvFileRef = useRef<HTMLInputElement | null>(null);
   const [uploadingCsv, setUploadingCsv] = useState(false);
   const [hospitalTab, setHospitalTab] = useState(false);
-  const [hospitals, setHospitals] = useState<{ id: string; name: string; city: string | null; is_active: boolean }[]>([]);
+  const [hospitals, setHospitals] = useState<{ id: string; name: string; city: string | null; email: string | null; phone: string | null; is_active: boolean }[]>([]);
   const [hospLoading, setHospLoading] = useState(false);
   const [hospSearch, setHospSearch] = useState("");
   const [showAddHosp, setShowAddHosp] = useState(false);
   const [newHospName, setNewHospName] = useState("");
   const [newHospCity, setNewHospCity] = useState("");
+  const [newHospEmail, setNewHospEmail] = useState("");
+  const [newHospPhone, setNewHospPhone] = useState("");
 
   const fetchKb = useCallback(async (q?: string) => {
     setLoading(true);
@@ -3945,14 +4075,38 @@ function AdminKnowledgeBaseTab() {
 
   async function handleAddHospital() {
     if (!newHospName.trim()) return;
+    const email = newHospEmail.trim().toLowerCase();
+    if (email && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) { toast.error("Enter a valid email"); return; }
     const res = await fetch("/api/admin/hospitals", {
       method: "POST", headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ name: newHospName.trim(), city: newHospCity.trim() || null }),
+      body: JSON.stringify({
+        name: newHospName.trim(),
+        city: newHospCity.trim() || null,
+        email: email || null,
+        phone: newHospPhone.trim() || null,
+      }),
     });
     const data = await res.json();
     if (data.success) {
-      toast.success("Hospital added"); setNewHospName(""); setNewHospCity(""); setShowAddHosp(false); fetchHospitals();
+      toast.success(email ? "Hospital added — invite sent to log in" : "Hospital added");
+      setNewHospName(""); setNewHospCity(""); setNewHospEmail(""); setNewHospPhone(""); setShowAddHosp(false); fetchHospitals();
     } else { toast.error(data.error ?? "Failed"); }
+  }
+
+  async function setHospitalEmail(id: string, current: string | null) {
+    const input = window.prompt("Login email for this hospital (used at /hospital-login):", current ?? "");
+    if (input == null) return;
+    const email = input.trim().toLowerCase();
+    if (email && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) { toast.error("Enter a valid email"); return; }
+    const res = await fetch(`/api/admin/hospitals/${id}`, {
+      method: "PATCH", headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ email: email || null }),
+    });
+    const data = await res.json();
+    if (res.ok && data.success !== false) {
+      toast.success(email ? "Email saved — they can now log in" : "Email cleared");
+      setHospitals((prev) => prev.map((h) => h.id === id ? { ...h, email: email || null } : h));
+    } else { toast.error(data.error ?? "Failed to update email"); }
   }
 
   async function toggleHospActive(id: string, current: boolean) {
@@ -4176,7 +4330,10 @@ function AdminKnowledgeBaseTab() {
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                 <input value={newHospName} onChange={(e) => setNewHospName(e.target.value)} placeholder="Name *" className="px-3 py-2 rounded-xl bg-white/8 border border-white/10 text-sm text-white placeholder-slate-500 focus:outline-none focus:border-white/25" />
                 <input value={newHospCity} onChange={(e) => setNewHospCity(e.target.value)} placeholder="City (optional)" className="px-3 py-2 rounded-xl bg-white/8 border border-white/10 text-sm text-white placeholder-slate-500 focus:outline-none focus:border-white/25" />
+                <input value={newHospEmail} onChange={(e) => setNewHospEmail(e.target.value)} type="email" placeholder="Login email (for /hospital-login)" className="px-3 py-2 rounded-xl bg-white/8 border border-white/10 text-sm text-white placeholder-slate-500 focus:outline-none focus:border-white/25" />
+                <input value={newHospPhone} onChange={(e) => setNewHospPhone(e.target.value)} placeholder="Phone (optional)" className="px-3 py-2 rounded-xl bg-white/8 border border-white/10 text-sm text-white placeholder-slate-500 focus:outline-none focus:border-white/25" />
               </div>
+              <p className="text-xs text-slate-500">Add an email to activate this hospital&apos;s login — they sign in at <span className="font-mono text-slate-400">/hospital-login</span> with it. No email = directory listing only.</p>
               <div className="flex gap-2">
                 <button onClick={handleAddHospital} disabled={!newHospName.trim()} className="flex items-center gap-1.5 px-4 py-2 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white text-sm font-semibold disabled:opacity-50"><Check className="w-4 h-4" />Add</button>
                 <button onClick={() => setShowAddHosp(false)} className="px-4 py-2 rounded-xl bg-white/8 text-slate-400 text-sm">Cancel</button>
@@ -4194,8 +4351,16 @@ function AdminKnowledgeBaseTab() {
                   <Building2 className="w-4 h-4 text-slate-500 shrink-0" />
                   <div className="flex-1 min-w-0">
                     <p className="text-sm text-white font-medium">{h.name}</p>
-                    {h.city && <p className="text-xs text-slate-500">{h.city}</p>}
+                    <p className="text-xs text-slate-500 truncate">
+                      {h.city ? `${h.city} · ` : ""}
+                      {h.email
+                        ? <span className="text-slate-400">{h.email}</span>
+                        : <span className="text-amber-400/80">no login email</span>}
+                    </p>
                   </div>
+                  <button onClick={() => setHospitalEmail(h.id, h.email)} className="text-xs px-2.5 py-1 rounded-full border border-white/10 text-slate-400 hover:text-white hover:bg-white/10 font-medium">
+                    {h.email ? "Edit email" : "Set email"}
+                  </button>
                   <button onClick={() => toggleHospActive(h.id, h.is_active)} className={`text-xs px-2.5 py-1 rounded-full border font-medium ${h.is_active ? "text-emerald-400 border-emerald-500/30 bg-emerald-500/10 hover:bg-emerald-500/20" : "text-slate-500 border-slate-700 bg-white/5 hover:bg-white/10"}`}>
                     {h.is_active ? "Active" : "Inactive"}
                   </button>

@@ -2,8 +2,8 @@ import { NextRequest, NextResponse } from "next/server";
 import { z } from "zod";
 import { prisma } from "@/lib/prisma";
 import { generateUniqueCode } from "@/lib/code-generator";
-import { resend, labSender } from "@/lib/email/resend";
-import { doctorRequestConfirmation, patientRequestCode, labNewRequest } from "@/lib/email/templates";
+import { resend, labSender, FROM_ADDRESS } from "@/lib/email/resend";
+import { doctorRequestConfirmation, patientRequestCode, labNewRequest, marketerNewRequest } from "@/lib/email/templates";
 import { testsToCategories } from "@/lib/test-categories";
 import { resolveTests, totalFromBreakdown, type ResolvedTest } from "@/lib/resolve-tests";
 import { logApiCall } from "@/lib/api-logger";
@@ -283,29 +283,50 @@ export async function POST(request: NextRequest) {
       hospital: doctorHospital,
     }).catch(() => {});
 
-    // Marketer attribution — fire-and-forget, never blocks or fails the request
-    if (povRef) {
-      (async () => {
-        try {
-          const marketer = await prisma.marketer.findUnique({ where: { code: povRef } });
-          if (!marketer) return;
-          const existing = await prisma.doctorMarketerLink.findUnique({
-            where: { doctor_email: data.doctor_email },
-          });
-          if (!existing) {
-            await prisma.doctorMarketerLink.create({
+    // Marketer attribution + notification — fire-and-forget, never blocks the request.
+    // Covers both newly-linked (first-touch via pov_ref) and already-linked doctors:
+    // any request by a doctor in a marketer's network emails that marketer.
+    (async () => {
+      try {
+        let link = await prisma.doctorMarketerLink.findUnique({
+          where: { doctor_email: data.doctor_email },
+        });
+        if (!link && povRef) {
+          const m = await prisma.marketer.findUnique({ where: { code: povRef } });
+          if (m) {
+            link = await prisma.doctorMarketerLink.create({
               data: {
                 doctor_email: data.doctor_email,
-                marketer_id: marketer.id,
+                marketer_id: m.id,
                 first_request_id: newRequest.id,
               },
             });
           }
-        } catch (e) {
-          console.error("[marketer-attribution]", e);
         }
-      })();
-    }
+        if (!link) return;
+
+        const marketer = await prisma.marketer.findUnique({ where: { id: link.marketer_id } });
+        if (!marketer || marketer.suspended || !marketer.email) return;
+
+        const lab = await prisma.lab.findUnique({ where: { id: data.lab_id }, select: { name: true } });
+        const appUrl = process.env.NEXT_PUBLIC_APP_URL || "https://poveon.com";
+        await resend.emails.send({
+          from: FROM_ADDRESS,
+          to: marketer.email,
+          subject: `${doctorName || "A doctor"} in your network sent a request`,
+          html: marketerNewRequest({
+            marketerName: marketer.name,
+            doctorName: doctorName || data.doctor_email,
+            labName: lab?.name ?? "",
+            tests: finalTests,
+            code,
+            dashboardUrl: `${appUrl}/scale/dashboard`,
+          }),
+        });
+      } catch (e) {
+        console.error("[marketer-attribution]", e);
+      }
+    })();
 
     // If the doctor has a profile but no hospital saved, persist the one they typed so their
     // dashboard reflects it and they are not prompted again on future requests.

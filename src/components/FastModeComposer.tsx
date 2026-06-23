@@ -60,7 +60,10 @@ export function FastModeComposer({
     labPreselected && locations.length > 0 ? locations[defaultLocIdx].lab_id : (preselectedLabId ?? "")
   );
   const [selectedLocIdx, setSelectedLocIdx] = useState(defaultLocIdx);
-  const [labPickerOpen, setLabPickerOpen] = useState(false);
+  // Choose the lab first: open the picker on entry when no lab is preselected.
+  const [labPickerOpen, setLabPickerOpen] = useState(
+    !labPreselected && !preselectedLabId && !(locations && locations.length > 0)
+  );
 
   const [rawText, setRawText] = useState("");
   const rawRef = useRef<HTMLTextAreaElement>(null);
