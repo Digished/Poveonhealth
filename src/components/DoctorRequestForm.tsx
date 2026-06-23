@@ -718,9 +718,9 @@ export function DoctorRequestForm({
   const startStep = !labPreselected ? 1 : hasLocations ? 1 : 2;
   const [step, setStep] = useState(startStep);
   // Fast Mode — type the tests/patient in plain language and submit instantly.
-  // The full multi-step form is always the default; Fast Mode is an opt-in for
-  // the current session only (not persisted across visits).
-  const [fastMode, setFastMode] = useState(false);
+  // Fast Mode is the default; doctors can switch to the full multi-step form
+  // from within the composer (session only, not persisted across visits).
+  const [fastMode, setFastMode] = useState(true);
   const enterFastMode = useCallback(() => {
     setFastMode(true);
   }, []);
