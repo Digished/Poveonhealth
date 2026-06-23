@@ -20,13 +20,27 @@ export async function GET(request: NextRequest) {
     const { searchParams } = new URL(request.url);
     const labId = searchParams.get("lab_id") ?? undefined;
     const status = searchParams.get("status") ?? undefined;
+    const q = searchParams.get("q")?.trim();
     const page = Math.max(1, parseInt(searchParams.get("page") ?? "1"));
-    const limit = Math.min(100, parseInt(searchParams.get("limit") ?? "50"));
+    const limit = Math.min(200, parseInt(searchParams.get("limit") ?? "50"));
     const skip = (page - 1) * limit;
 
     const where = {
       ...(labId ? { lab_id: labId } : {}),
       ...(status ? { status } : {}),
+      ...(q
+        ? {
+            OR: [
+              { patient_name: { contains: q, mode: "insensitive" as const } },
+              { tests: { contains: q, mode: "insensitive" as const } },
+              { code: { contains: q, mode: "insensitive" as const } },
+              { doctor_name: { contains: q, mode: "insensitive" as const } },
+              { doctor_email: { contains: q, mode: "insensitive" as const } },
+              { patient_phone: { contains: q } },
+              { lab: { name: { contains: q, mode: "insensitive" as const } } },
+            ],
+          }
+        : {}),
     };
 
     // Paginated requests + efficient aggregate counts in parallel

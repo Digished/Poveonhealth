@@ -338,6 +338,40 @@ export function AdminDashboard() {
   useEffect(() => { fetchData(); }, [fetchData]);
   useEffect(() => { if (activeTab === "lab-marketers") fetchLabMarketers(); }, [activeTab, fetchLabMarketers]);
 
+  // ── All Requests tab: searchable, paginated back to the very first request ──
+  const [allReqs, setAllReqs] = useState<LabRequest[]>([]);
+  const [allReqTotal, setAllReqTotal] = useState(0);
+  const [allReqPage, setAllReqPage] = useState(1);
+  const [allReqSearch, setAllReqSearch] = useState("");
+  const [allReqLoading, setAllReqLoading] = useState(false);
+  const [allReqMore, setAllReqMore] = useState(false);
+
+  const loadAllRequests = useCallback(async (opts: { reset?: boolean; page?: number; q?: string }) => {
+    const page = opts.page ?? 1;
+    const q = opts.q ?? "";
+    if (opts.reset) setAllReqLoading(true); else setAllReqMore(true);
+    try {
+      const res = await fetch(`/api/admin/requests?limit=50&page=${page}&q=${encodeURIComponent(q)}`);
+      const data = await res.json();
+      if (data.success) {
+        setAllReqs((prev) => (opts.reset ? data.requests : [...prev, ...data.requests]));
+        setAllReqTotal(data.total ?? 0);
+        setAllReqPage(page);
+      }
+    } catch {
+      toast.error("Failed to load requests");
+    } finally {
+      setAllReqLoading(false); setAllReqMore(false);
+    }
+  }, []);
+
+  // Load on entering the tab; debounce search.
+  useEffect(() => {
+    if (activeTab !== "requests") return;
+    const t = setTimeout(() => loadAllRequests({ reset: true, page: 1, q: allReqSearch }), 300);
+    return () => clearTimeout(t);
+  }, [activeTab, allReqSearch, loadAllRequests]);
+
   const referralGroups = useMemo<ReferralGroup[]>(() => {
     const map = new Map<string, ReferralGroup>();
     const now = new Date();
@@ -379,6 +413,7 @@ export function AdminDashboard() {
       if (data.success) {
         toast.success(`Request ${req.code} deleted`);
         setRequests((prev: LabRequest[]) => prev.filter((r: LabRequest) => r.id !== req.id));
+        setAllReqs((prev: LabRequest[]) => prev.filter((r: LabRequest) => r.id !== req.id));
       } else {
         toast.error(data.error ?? "Failed to delete");
       }
@@ -860,10 +895,29 @@ export function AdminDashboard() {
 
         {/* ── REQUESTS ── */}
         {activeTab === "requests" && (
-          <div className="animate-fade-in">
-            {loading ? (
+          <div className="animate-fade-in space-y-4">
+            {/* Search + count header */}
+            <div className="flex flex-col sm:flex-row sm:items-center gap-2">
+              <div className="relative flex-1">
+                <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-500 pointer-events-none" />
+                <input
+                  value={allReqSearch}
+                  onChange={(e) => setAllReqSearch(e.target.value)}
+                  placeholder="Search patient, test, code, doctor or lab…"
+                  className="w-full pl-9 pr-9 py-2.5 rounded-xl bg-white/8 border border-white/10 text-sm text-white placeholder-slate-500 focus:outline-none focus:border-white/25"
+                />
+                {allReqSearch && (
+                  <button onClick={() => setAllReqSearch("")} className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-500 hover:text-white"><X className="w-4 h-4" /></button>
+                )}
+              </div>
+              <span className="text-xs text-slate-400 bg-white/5 px-3 py-2 rounded-xl shrink-0 whitespace-nowrap">
+                {allReqLoading ? "Loading…" : `Showing ${allReqs.length} of ${allReqTotal}`}
+              </span>
+            </div>
+
+            {allReqLoading ? (
               <div className="space-y-2">
-                {[...Array(5)].map((_, i) => (
+                {[...Array(6)].map((_, i) => (
                   <div key={i} className="bg-white/5 border border-white/10 rounded-xl p-4 animate-pulse h-14" />
                 ))}
               </div>
@@ -871,7 +925,7 @@ export function AdminDashboard() {
               <>
                 {/* Mobile card layout */}
                 <div className="md:hidden space-y-2">
-                  {requests.map((req) => (
+                  {allReqs.map((req) => (
                     <div key={req.id} className="bg-white/5 border border-white/8 rounded-xl p-4">
                       <div className="flex items-start justify-between gap-2 mb-2">
                         <div className="min-w-0">
@@ -893,6 +947,11 @@ export function AdminDashboard() {
                         <span className="text-slate-600">Ref: </span>
                         {[req.doctor_prefix, req.doctor_name].filter(Boolean).join(" ")}
                       </p>
+                      {req.tests && (
+                        <p className="text-xs text-slate-300 mt-1 line-clamp-2">
+                          <span className="text-slate-600">Tests: </span>{req.tests}
+                        </p>
+                      )}
                       {(req.doctor_bank_name || req.doctor_account_number) && (
                         <p className="text-xs text-slate-500 truncate mt-0.5">
                           {[req.doctor_bank_name, req.doctor_account_number].filter(Boolean).join(" · ")}
@@ -906,8 +965,8 @@ export function AdminDashboard() {
                       </div>
                     </div>
                   ))}
-                  {requests.length === 0 && (
-                    <div className="py-16 text-center text-slate-400">No requests yet</div>
+                  {allReqs.length === 0 && (
+                    <div className="py-16 text-center text-slate-400">{allReqSearch ? "No requests match your search" : "No requests yet"}</div>
                   )}
                 </div>
 
@@ -922,7 +981,7 @@ export function AdminDashboard() {
                       </tr>
                     </thead>
                     <tbody className="divide-y divide-white/5">
-                      {requests.map((req) => (
+                      {allReqs.map((req) => (
                         <tr key={req.id} className="hover:bg-white/5 transition-colors">
                           <td className="py-3 px-3"><span className="font-mono text-medical-400 text-xs">{req.code}</span></td>
                           <td className="py-3 px-3 text-white font-medium">{req.patient_name}</td>
@@ -953,12 +1012,25 @@ export function AdminDashboard() {
                           </td>
                         </tr>
                       ))}
-                      {requests.length === 0 && (
-                        <tr><td colSpan={8} className="py-16 text-center text-slate-400">No requests yet</td></tr>
+                      {allReqs.length === 0 && (
+                        <tr><td colSpan={8} className="py-16 text-center text-slate-400">{allReqSearch ? "No requests match your search" : "No requests yet"}</td></tr>
                       )}
                     </tbody>
                   </table>
                 </div>
+
+                {/* Load more — pages back to the very first request */}
+                {allReqs.length < allReqTotal && (
+                  <div className="flex justify-center pt-2">
+                    <button
+                      onClick={() => loadAllRequests({ page: allReqPage + 1, q: allReqSearch })}
+                      disabled={allReqMore}
+                      className="px-5 py-2.5 rounded-xl bg-white/8 hover:bg-white/12 border border-white/10 text-sm text-slate-200 font-medium disabled:opacity-50"
+                    >
+                      {allReqMore ? "Loading…" : `Load more (${allReqTotal - allReqs.length} older)`}
+                    </button>
+                  </div>
+                )}
               </>
             )}
           </div>
