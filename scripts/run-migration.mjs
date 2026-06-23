@@ -829,6 +829,13 @@ const migrations = [
     continueOnError: true,
   },
 
+  // ── Marketer growth tools ──────────────────────────────────────────────────
+  {
+    desc: "marketers.weekly_target column",
+    sql: `ALTER TABLE marketers ADD COLUMN IF NOT EXISTS weekly_target INTEGER`,
+    continueOnError: true,
+  },
+
   // ── Hospital EMR ───────────────────────────────────────────────────────────
   {
     desc: "hospital_departments table",

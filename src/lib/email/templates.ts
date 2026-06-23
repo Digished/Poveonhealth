@@ -579,6 +579,49 @@ export function marketerOtpEmail({
 }
 
 // =============================================================================
+// TEMPLATE: Marketer — a doctor in their network sent a request
+// =============================================================================
+export function marketerNewRequest({
+  marketerName,
+  doctorName,
+  labName,
+  tests,
+  code,
+  dashboardUrl,
+}: {
+  marketerName: string;
+  doctorName: string;
+  labName: string;
+  tests: string;
+  code: string;
+  dashboardUrl: string;
+}) {
+  const testList = tests.split(/[\n,]+/).map((t) => t.trim()).filter(Boolean);
+  return base(`
+    <h2 style="margin:0 0 8px;color:#0259a0;font-size:20px;font-weight:700;">A doctor in your network just sent a request 🎉</h2>
+    <p style="margin:0 0 20px;color:#4b5563;font-size:15px;">
+      Hi ${marketerName},<br><br>
+      <strong style="color:#1e3a5f;">${doctorName}</strong> just submitted a lab test request${labName ? ` to <strong>${labName}</strong>` : ""}. That's your network at work.
+    </p>
+
+    <div style="background:#f0f7ff;border:1px solid #cfe6fb;border-radius:8px;padding:18px 20px;margin:0 0 20px;">
+      <p style="margin:0 0 6px;color:#6b7280;font-size:12px;font-weight:600;text-transform:uppercase;letter-spacing:1px;">Request ${code}</p>
+      <p style="margin:0;color:#1e3a5f;font-size:14px;line-height:1.6;">
+        ${testList.length ? testList.map((t) => `• ${t}`).join("<br>") : "See request details"}
+      </p>
+    </div>
+
+    <p style="margin:0 0 20px;color:#4b5563;font-size:14px;">
+      Tip: a quick thank-you message keeps doctors active — and now's a great time to ask them to refer a colleague.
+    </p>
+
+    <div style="text-align:center;margin:24px 0;">
+      <a href="${dashboardUrl}" style="display:inline-block;background:#0270c3;color:#ffffff;text-decoration:none;font-weight:600;font-size:15px;padding:12px 28px;border-radius:8px;">Open your dashboard</a>
+    </div>
+  `);
+}
+
+// =============================================================================
 // TEMPLATE: Doctor — One-Time Passcode for Portal Login
 // =============================================================================
 export function doctorOtpEmail({

@@ -7,16 +7,30 @@ import {
   Phone, TestTube2, ChevronDown, ChevronUp,
   Clock, CheckCircle, Eye, Plus, X, Loader2,
   ShieldAlert, Search, Calendar, Banknote,
+  Users, ListChecks, MessageSquareQuote, Target, MapPin,
 } from "lucide-react";
 import { PoveonLogo } from "@/components/PoveonLogo";
 import { PrefixSelect } from "@/components/PrefixSelect";
 import { BankAccountInput } from "@/components/BankAccountInput";
 import { PhoneInput } from "@/components/PhoneInput";
+import { MarketerPlaybook } from "@/components/marketer/MarketerPlaybook";
+import { MarketerPitch } from "@/components/marketer/MarketerPitch";
+import { MarketerGoals } from "@/components/marketer/MarketerGoals";
+import { MarketerTerritory } from "@/components/marketer/MarketerTerritory";
+
+type ScaleTab = "doctors" | "playbook" | "pitch" | "goals" | "territory";
+const SCALE_TABS: { key: ScaleTab; label: string; icon: React.ReactNode }[] = [
+  { key: "doctors", label: "Doctors", icon: <Users className="w-3.5 h-3.5" /> },
+  { key: "playbook", label: "Playbook", icon: <ListChecks className="w-3.5 h-3.5" /> },
+  { key: "pitch", label: "Pitch", icon: <MessageSquareQuote className="w-3.5 h-3.5" /> },
+  { key: "goals", label: "Goals", icon: <Target className="w-3.5 h-3.5" /> },
+  { key: "territory", label: "Territory", icon: <MapPin className="w-3.5 h-3.5" /> },
+];
 import { HospitalTagInput } from "@/components/ui/HospitalTagInput";
 
 // ─── types ────────────────────────────────────────────────────────────────────
 
-interface Marketer { name: string; email: string }
+interface Marketer { name: string; email: string; code: string }
 
 interface RequestSummary {
   id: string; code: string; patient_name: string; tests: string;
@@ -878,6 +892,7 @@ export default function ScaleDashboardPage() {
   const [monthFilter, setMonthFilter]       = useState("");
   const [showCreate, setShowCreate] = useState(false);
   const [sortBy, setSortBy] = useState<"revenue-desc" | "revenue-asc" | "name-asc">("revenue-desc");
+  const [scaleTab, setScaleTab] = useState<ScaleTab>("doctors");
 
   const load = useCallback(async () => {
     setLoading(true); setError("");
@@ -1013,6 +1028,18 @@ export default function ScaleDashboardPage() {
 
       <main className="max-w-2xl mx-auto px-4 py-5 space-y-4">
 
+        {/* Marketing tools tab bar */}
+        <div className="flex gap-1 bg-white/70 rounded-xl p-1 border border-white/60 shadow-sm overflow-x-auto">
+          {SCALE_TABS.map((t) => (
+            <button key={t.key} type="button" onClick={() => setScaleTab(t.key)}
+              className={`flex-1 min-w-fit flex items-center justify-center gap-1.5 py-2 px-3 rounded-lg text-xs font-semibold whitespace-nowrap transition ${scaleTab === t.key ? "bg-emerald-600 text-white shadow-sm" : "text-slate-500 hover:text-slate-700"}`}>
+              {t.icon}{t.label}
+            </button>
+          ))}
+        </div>
+
+        {scaleTab === "doctors" && (
+        <>
         {/* Revenue summary + counts */}
         {stats && (
           <>
@@ -1139,6 +1166,13 @@ export default function ScaleDashboardPage() {
             <DoctorCard key={doctor.doctor_email} doctor={doctor} monthFilter={monthFilter} />
           ))}
         </div>
+        </>
+        )}
+
+        {scaleTab === "playbook" && marketer && <MarketerPlaybook marketerName={marketer.name} marketerCode={marketer.code} />}
+        {scaleTab === "pitch" && marketer && <MarketerPitch marketerName={marketer.name} />}
+        {scaleTab === "goals" && <MarketerGoals />}
+        {scaleTab === "territory" && <MarketerTerritory />}
       </main>
 
       <div className="max-w-2xl mx-auto px-4 py-4 flex items-center justify-center gap-2 text-xs text-slate-400">

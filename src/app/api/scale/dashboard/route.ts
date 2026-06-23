@@ -42,7 +42,7 @@ export async function GET(req: NextRequest) {
     if (links.length === 0) {
       return NextResponse.json({
         success: true,
-        marketer: { name: marketer.name, email: marketer.email },
+        marketer: { name: marketer.name, email: marketer.email, code: marketer.code },
         doctors: [],
         stats: { total_doctors: 0, total_requests: 0, pending: 0, seen: 0, done: 0, total_revenue: 0 },
       });
@@ -158,7 +158,7 @@ export async function GET(req: NextRequest) {
       total_revenue,
     };
 
-    return NextResponse.json({ success: true, marketer: { name: marketer.name, email: marketer.email }, doctors, stats });
+    return NextResponse.json({ success: true, marketer: { name: marketer.name, email: marketer.email, code: marketer.code }, doctors, stats });
   } catch (err) {
     console.error("[scale/dashboard]", err);
     return NextResponse.json({ error: "Server error" }, { status: 500 });
