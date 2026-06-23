@@ -132,8 +132,30 @@ export function LabDashboard({ lab, isOwner = false, roleName = "Lab Owner", can
     "price-list": isOwner || canViewWallet,
     marketers: isOwner || canViewMarketers,
   };
+  // ── Lite / LIMS (beta) mode ───────────────────────────────────────────────
+  // Lite (default) trims the dashboard to Onboarding, Referrals, Marketers and
+  // Price list — no journey map and no journey sub-tab in onboarding. LIMS (beta)
+  // exposes the full suite. Persisted per-lab in localStorage (effect-based to
+  // avoid hydration mismatch; mirrors useDashTheme).
+  const [labMode, setLabMode] = useState<"lite" | "lims">("lite");
+  useEffect(() => {
+    try {
+      const stored = localStorage.getItem(`lab_dash_mode_${lab.id}`);
+      if (stored === "lims" || stored === "lite") setLabMode(stored);
+    } catch { /* ignore */ }
+  }, [lab.id]);
+  const applyLabMode = useCallback((m: "lite" | "lims") => {
+    setLabMode(m);
+    try { localStorage.setItem(`lab_dash_mode_${lab.id}`, m); } catch { /* ignore */ }
+  }, [lab.id]);
+  const LITE_SIDEBAR = new Set<MainView>(["onboarding", "network", "marketers", "price-list"]);
+  const LITE_ALLOWED = new Set<MainView>(["onboarding", "network", "referrals", "professionals", "marketers", "price-list"]);
+  const tabVisibleEff: Record<MainView, boolean> = labMode === "lite"
+    ? (Object.fromEntries((Object.keys(tabVisible) as MainView[]).map((k) => [k, tabVisible[k] && LITE_SIDEBAR.has(k)])) as Record<MainView, boolean>)
+    : tabVisible;
   const STANDALONE_NETWORK = new Set(["referrals", "professionals"]);
   const firstVisibleTab = (VALID_TABS.find((t) => t !== "requests" && t !== "journey" && !STANDALONE_NETWORK.has(t) && tabVisible[t]) ?? "workspace") as MainView;
+  const firstVisibleLiteTab = (VALID_TABS.find((t) => t !== "requests" && t !== "journey" && !STANDALONE_NETWORK.has(t) && tabVisibleEff[t]) ?? "onboarding") as MainView;
   const rawTabParam = searchParams.get("tab") as MainView | null;
   // Old deep links (requests/journey/onboarding) resolve to the Workspace.
   const tabParam: MainView | null = rawTabParam && LEGACY_TO_WORKSPACE.has(rawTabParam) ? "workspace" : rawTabParam;
@@ -150,6 +172,14 @@ export function LabDashboard({ lab, isOwner = false, roleName = "Lab Owner", can
     next.set("tab", tab);
     router.replace(`/lab-dashboard?${next.toString()}`);
   }, [router, searchParams]);
+  // In Lite mode, keep the active view inside the allowed set (covers toggling
+  // to Lite while on a LIMS-only tab, and stale `?tab=` deep links).
+  useEffect(() => {
+    if (labMode === "lite" && !LITE_ALLOWED.has(mainView)) {
+      navigateToTab(firstVisibleLiteTab);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [labMode, mainView]);
   const [walletData, setWalletData] = useState<WalletData | null>(null);
   const [walletRefreshing, setWalletRefreshing] = useState(false);
   const [poveonData, setPoveonData] = useState<PoveonViewData>(null);
@@ -712,6 +742,24 @@ export function LabDashboard({ lab, isOwner = false, roleName = "Lab Owner", can
               </div>
             </div>
           </div>
+          {/* Lite / LIMS (beta) mode switch — always visible */}
+          <div className="inline-flex items-center rounded-lg border border-white/10 bg-white/5 p-0.5 text-xs shrink-0">
+            <button
+              onClick={() => applyLabMode("lite")}
+              className={`px-2.5 py-1 rounded-md font-semibold transition ${labMode === "lite" ? "bg-medical-600 text-white shadow-sm" : "text-slate-400 hover:text-white"}`}
+              title="Lite mode — onboarding, referrals, marketers & price list"
+            >
+              Lite
+            </button>
+            <button
+              onClick={() => applyLabMode("lims")}
+              className={`px-2.5 py-1 rounded-md font-semibold transition flex items-center gap-1 ${labMode === "lims" ? "bg-medical-600 text-white shadow-sm" : "text-slate-400 hover:text-white"}`}
+              title="LIMS mode (beta) — full laboratory features"
+            >
+              LIMS
+              <span className="text-[9px] uppercase tracking-wide bg-amber-400/20 text-amber-300 border border-amber-400/30 px-1 py-px rounded">beta</span>
+            </button>
+          </div>
           <div className="flex items-center gap-2">
             {/* Desktop: individual action buttons */}
             <div className="hidden sm:flex items-center gap-2">
@@ -824,26 +872,26 @@ export function LabDashboard({ lab, isOwner = false, roleName = "Lab Owner", can
         {(() => {
           const RAW_SECTIONS: { label: string; items: { key: MainView; label: string; icon: React.ReactNode; show: boolean }[] }[] = [
             { label: "Operations", items: [
-              { key: "onboarding", label: "Onboarding", icon: <QrCode className="w-4 h-4" />, show: tabVisible.onboarding },
-              { key: "workspace", label: "Workstation", icon: <Workflow className="w-4 h-4" />, show: tabVisible.workspace },
-              { key: "departments", label: "Departments", icon: <Layers className="w-4 h-4" />, show: tabVisible.departments },
-              // Result templates hidden for now — re-enable by restoring `show: tabVisible.templates`.
+              { key: "onboarding", label: "Onboarding", icon: <QrCode className="w-4 h-4" />, show: tabVisibleEff.onboarding },
+              { key: "workspace", label: "Workstation", icon: <Workflow className="w-4 h-4" />, show: tabVisibleEff.workspace },
+              { key: "departments", label: "Departments", icon: <Layers className="w-4 h-4" />, show: tabVisibleEff.departments },
+              // Result templates hidden for now — re-enable by restoring `show: tabVisibleEff.templates`.
               { key: "templates", label: "Result Templates", icon: <FileText className="w-4 h-4" />, show: false },
-              { key: "sops", label: "SOPs", icon: <ClipboardList className="w-4 h-4" />, show: tabVisible.sops },
-              { key: "clients", label: "Clients", icon: <UserCircle className="w-4 h-4" />, show: tabVisible.clients },
+              { key: "sops", label: "SOPs", icon: <ClipboardList className="w-4 h-4" />, show: tabVisibleEff.sops },
+              { key: "clients", label: "Clients", icon: <UserCircle className="w-4 h-4" />, show: tabVisibleEff.clients },
             ] },
             { label: "Network", items: [
-              { key: "network", label: "Referrals", icon: <Stethoscope className="w-4 h-4" />, show: tabVisible.network },
-              { key: "marketers", label: "Marketers", icon: <Users className="w-4 h-4" />, show: tabVisible.marketers },
+              { key: "network", label: "Referrals", icon: <Stethoscope className="w-4 h-4" />, show: tabVisibleEff.network },
+              { key: "marketers", label: "Marketers", icon: <Users className="w-4 h-4" />, show: tabVisibleEff.marketers },
             ] },
             { label: "Insights", items: [
-              { key: "analytics", label: "Analytics", icon: <BarChart3 className="w-4 h-4" />, show: tabVisible.analytics },
-              { key: "activity", label: "Activity", icon: <Activity className="w-4 h-4" />, show: tabVisible.activity },
-              { key: "feedback", label: "Feedback", icon: <Star className="w-4 h-4" />, show: tabVisible.feedback },
+              { key: "analytics", label: "Analytics", icon: <BarChart3 className="w-4 h-4" />, show: tabVisibleEff.analytics },
+              { key: "activity", label: "Activity", icon: <Activity className="w-4 h-4" />, show: tabVisibleEff.activity },
+              { key: "feedback", label: "Feedback", icon: <Star className="w-4 h-4" />, show: tabVisibleEff.feedback },
             ] },
             { label: "Finance", items: [
-              { key: "poveon", label: "Revenue", icon: <CreditCard className="w-4 h-4" />, show: tabVisible.poveon },
-              { key: "price-list", label: "Price List", icon: <FileText className="w-4 h-4" />, show: tabVisible["price-list"] },
+              { key: "poveon", label: "Revenue", icon: <CreditCard className="w-4 h-4" />, show: tabVisibleEff.poveon },
+              { key: "price-list", label: "Price List", icon: <FileText className="w-4 h-4" />, show: tabVisibleEff["price-list"] },
             ] },
           ];
           const NAV_SECTIONS = RAW_SECTIONS.map((s) => ({ ...s, items: s.items.filter((i) => i.show) })).filter((s) => s.items.length > 0);
@@ -1779,6 +1827,7 @@ export function LabDashboard({ lab, isOwner = false, roleName = "Lab Owner", can
             </div>
             <Workspace
               mode="onboarding"
+              lite={labMode === "lite"}
               labId={lab.id}
               labName={lab.name}
               labSlug={lab.slug ?? null}
