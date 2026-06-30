@@ -192,6 +192,25 @@ const migrations = [
     continueOnError: true,
   },
   {
+    desc: "lab_departments table for per-lab configurable departments (LIMS workflows)",
+    sql: `
+      CREATE TABLE IF NOT EXISTS lab_departments (
+        id TEXT PRIMARY KEY,
+        lab_id TEXT NOT NULL REFERENCES labs(id) ON DELETE CASCADE,
+        name TEXT NOT NULL,
+        workflow TEXT NOT NULL DEFAULT 'specimen',
+        categories JSONB NOT NULL DEFAULT '[]',
+        sort_order INTEGER NOT NULL DEFAULT 0,
+        is_active BOOLEAN NOT NULL DEFAULT true,
+        created_at TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+        updated_at TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP
+      );
+      CREATE UNIQUE INDEX IF NOT EXISTS lab_departments_lab_id_name_key ON lab_departments(lab_id, name);
+      CREATE INDEX IF NOT EXISTS lab_departments_lab_id_idx ON lab_departments(lab_id);
+    `,
+    continueOnError: true,
+  },
+  {
     desc: "LabRole.can_view_marketers permission for marketer management access",
     sql: `ALTER TABLE "LabRole" ADD COLUMN IF NOT EXISTS can_view_marketers BOOLEAN NOT NULL DEFAULT false`,
     continueOnError: true,

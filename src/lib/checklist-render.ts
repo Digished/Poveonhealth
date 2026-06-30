@@ -96,11 +96,20 @@ export async function renderVisitChecklistPdf(
   });
   if (!lab) return null;
 
-  const deptRows = await prisma.labDepartment.findMany({
-    where: { lab_id: labId, is_active: true },
-    orderBy: { sort_order: "asc" },
-    select: { name: true, workflow: true, categories: true },
-  });
+  // The lab_departments table may be absent on databases where the migration
+  // hasn't run yet — fall back to the built-in defaults rather than failing the
+  // whole print job. Any query error (e.g. Prisma P2021 "table does not exist")
+  // degrades gracefully to DEFAULT_DEPARTMENTS.
+  let deptRows: { name: string; workflow: string; categories: unknown }[] = [];
+  try {
+    deptRows = await prisma.labDepartment.findMany({
+      where: { lab_id: labId, is_active: true },
+      orderBy: { sort_order: "asc" },
+      select: { name: true, workflow: true, categories: true },
+    });
+  } catch {
+    deptRows = [];
+  }
   const departments: DepartmentConfig[] = deptRows.length
     ? deptRows.map((r) => ({ name: r.name, workflow: r.workflow as WorkflowType, categories: Array.isArray(r.categories) ? (r.categories as string[]) : [] }))
     : DEFAULT_DEPARTMENTS;
