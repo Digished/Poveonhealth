@@ -950,6 +950,19 @@ function WorkspaceDrawer({
                   </span>
                 ))}
               </div>
+              {/* Final onboarding step — give the client a printed checklist to carry
+                  between departments. Enabled once the front desk has confirmed the tests. */}
+              <a
+                href={request.tests_confirmed ? `/api/lab/requests/${request.id}/checklist-pdf` : undefined}
+                target="_blank"
+                rel="noreferrer"
+                aria-disabled={!request.tests_confirmed}
+                onClick={(e) => { if (!request.tests_confirmed) e.preventDefault(); }}
+                className={`mt-3 inline-flex items-center gap-1.5 rounded-lg border border-medical-400/40 bg-medical-600/20 px-3 py-1.5 text-xs font-semibold text-medical-100 hover:bg-medical-600/30 ${request.tests_confirmed ? "" : "pointer-events-none opacity-50"}`}
+              >
+                <Printer className="h-3.5 w-3.5" /> Print visit checklist
+              </a>
+              {!request.tests_confirmed && <p className="mt-1 text-[11px] text-amber-100/60">Confirm the tests to print the client&apos;s checklist.</p>}
             </div>
           </div>
         )}
@@ -962,6 +975,10 @@ function WorkspaceDrawer({
                 <span key={d.department} className="rounded-full bg-emerald-500/15 px-2 py-0.5 text-emerald-200">{d.department} · {d.hint}</span>
               ))}
             </div>
+            <a href={`/api/lab/requests/${request.id}/checklist-pdf`} target="_blank" rel="noreferrer"
+              className="mt-2 inline-flex items-center gap-1.5 rounded-lg border border-emerald-400/40 bg-emerald-500/15 px-3 py-1.5 text-xs font-semibold text-emerald-100 hover:bg-emerald-500/25">
+              <Printer className="h-3.5 w-3.5" /> Print visit checklist
+            </a>
           </div>
         )}
 
