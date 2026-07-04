@@ -35,6 +35,9 @@ const styles = StyleSheet.create({
   fieldLabel: { fontSize: 8.5, color: SLATE, width: 58 },
   fieldValue: { fontSize: 9.5, color: INK, fontFamily: "Helvetica-Bold", flex: 1 },
 
+  noteCard: { backgroundColor: "#f8fafc", borderWidth: 1, borderColor: "#e2e8f0", borderRadius: 6, padding: 10, marginBottom: 12 },
+  noteText: { fontSize: 9.5, color: INK, lineHeight: 1.5 },
+
   instruction: { flexDirection: "row", backgroundColor: "#f0f7ff", borderWidth: 1, borderColor: "#bfdbfe", borderRadius: 6, padding: 8, marginBottom: 14 },
   instructionText: { fontSize: 8.5, color: "#1e3a5f", lineHeight: 1.5, flex: 1 },
 
@@ -86,6 +89,12 @@ export type VisitChecklistProps = {
   patientEmail?: string | null;
   doctorName?: string | null;
   doctorHospital?: string | null;
+  doctorPhone?: string | null;
+  doctorEmail?: string | null;
+  /** The request exactly as the doctor wrote it (Fast Mode raw text). */
+  rawText?: string | null;
+  /** Clinical details / diagnosis accompanying the request. */
+  diagnosis?: string | null;
   groups: ChecklistGroup[];
   totalLabel?: string | null;     // e.g. "₦12,000" — omit when no pricing
   verifiedBy?: string | null;
@@ -139,9 +148,25 @@ export function VisitChecklistPdf(props: VisitChecklistProps) {
             <Text style={styles.sectionLabel}>Referral</Text>
             <Row label="Doctor" value={props.doctorName} />
             <Row label="Hospital" value={props.doctorHospital} />
+            <Row label="Phone" value={props.doctorPhone} />
+            <Row label="Email" value={props.doctorEmail} />
             <Row label="Request" value={props.code} />
           </View>
         </View>
+
+        {/* The request as the doctor wrote it + clinical details */}
+        {(props.rawText || props.diagnosis) ? (
+          <View style={styles.noteCard}>
+            <Text style={styles.sectionLabel}>Doctor&apos;s request</Text>
+            {props.rawText ? <Text style={styles.noteText}>&ldquo;{props.rawText}&rdquo;</Text> : null}
+            {props.diagnosis ? (
+              <View style={[styles.field, { marginTop: props.rawText ? 4 : 0 }]}>
+                <Text style={styles.fieldLabel}>Clinical</Text>
+                <Text style={styles.fieldValue}>{props.diagnosis}</Text>
+              </View>
+            ) : null}
+          </View>
+        ) : null}
 
         {/* Departments to visit + instruction */}
         {departmentNames.length > 0 ? (

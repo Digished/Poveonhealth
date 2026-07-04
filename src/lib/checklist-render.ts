@@ -1,6 +1,6 @@
 import { renderToBuffer } from "@react-pdf/renderer";
 import { prisma } from "@/lib/prisma";
-import { categoryToDepartment, DEFAULT_DEPARTMENTS, type DepartmentConfig, type WorkflowType } from "@/lib/lims-shared";
+import { breakdownItemDepartment, categoryToDepartment, DEFAULT_DEPARTMENTS, type DepartmentConfig, type WorkflowType } from "@/lib/lims-shared";
 import { VisitChecklistPdf, type ChecklistGroup, type ChecklistTest } from "@/lib/checklist-pdf";
 
 type BreakdownItem = { raw?: string; canonical_name?: string; category?: string | null; unit_price?: number | null };
@@ -45,7 +45,9 @@ function buildGroups(testBreakdown: unknown, testsString: string, departments: D
     for (const it of items) {
       const name = (it.canonical_name || it.raw || "").trim();
       if (!name) continue;
-      const { department, workflow } = categoryToDepartment(it.category, departments);
+      // Route by category + test name so imaging tests reach Radiology even
+      // when the catalog category is generic (e.g. "Lab Test" / "Others").
+      const { department, workflow } = breakdownItemDepartment(it, departments);
       const raw = (it.raw || "").trim();
       const sub = raw && raw.toLowerCase() !== name.toLowerCase() ? `as written: ${raw}` : null;
       push(department, workflow, { name, sub });
@@ -84,8 +86,9 @@ export async function renderVisitChecklistPdf(
     where: { id: requestId },
     select: {
       lab_id: true, code: true, tests: true, test_breakdown: true, is_paid: true,
+      raw_input: true, diagnosis: true,
       patient_name: true, patient_age: true, sex: true, patient_phone: true, patient_email: true,
-      doctor_prefix: true, doctor_name: true, doctor_hospital: true,
+      doctor_prefix: true, doctor_name: true, doctor_hospital: true, doctor_phone: true, doctor_email: true,
     },
   });
   if (!request || request.lab_id !== labId) return null;
@@ -132,6 +135,10 @@ export async function renderVisitChecklistPdf(
       patientEmail: request.patient_email,
       doctorName,
       doctorHospital: request.doctor_hospital,
+      doctorPhone: request.doctor_phone,
+      doctorEmail: request.doctor_email,
+      rawText: request.raw_input,
+      diagnosis: request.diagnosis,
       groups: buildGroups(request.test_breakdown, request.tests, departments),
       totalLabel: request.is_paid ? nairaTotal(request.test_breakdown) : null,
       verifiedBy: null,
