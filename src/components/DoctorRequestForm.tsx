@@ -23,6 +23,7 @@ import { SuccessScreen } from "@/components/SuccessScreen";
 import { PoveonLogo } from "@/components/PoveonLogo";
 import { PROFESSIONAL_PREFIXES, PrefixSelectModal, PrefixSelect } from "@/components/PrefixSelect";
 import { FastModeComposer } from "@/components/FastModeComposer";
+import { hasMinLetters, MIN_NAME_LETTERS } from "@/lib/name-validation";
 import type { Lab, CreateRequestResponse } from "@/lib/types";
 
 /** Whole-years age from an ISO "YYYY-MM-DD" date of birth, or "" if not derivable. */
@@ -718,9 +719,9 @@ export function DoctorRequestForm({
   const startStep = !labPreselected ? 1 : hasLocations ? 1 : 2;
   const [step, setStep] = useState(startStep);
   // Fast Mode — type the tests/patient in plain language and submit instantly.
-  // Fast Mode is the default; doctors can switch to the full multi-step form
-  // from within the composer (session only, not persisted across visits).
-  const [fastMode, setFastMode] = useState(true);
+  // The full multi-step form is the default; doctors can opt into Fast Mode
+  // via the entry button (session only, not persisted across visits).
+  const [fastMode, setFastMode] = useState(false);
   const enterFastMode = useCallback(() => {
     setFastMode(true);
   }, []);
@@ -1158,10 +1159,16 @@ export function DoctorRequestForm({
       if (!form.doctor_email.trim()) errs.doctor_email = "Email is required";
       else if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(form.doctor_email))
         errs.doctor_email = "Invalid email address";
-      if ((docProfileStatus === "not_found" || docProfileStatus === "found_partial") && !form.doctor_name.trim())
-        errs.doctor_name = "Doctor name is required";
+      if (docProfileStatus === "not_found" || docProfileStatus === "found_partial") {
+        if (!form.doctor_name.trim()) errs.doctor_name = "Doctor name is required";
+        else if (!hasMinLetters(form.doctor_name)) errs.doctor_name = `Please enter your full name (at least ${MIN_NAME_LETTERS} letters)`;
+      } else if (form.doctor_name.trim() && !hasMinLetters(form.doctor_name)) {
+        errs.doctor_name = `Please enter your full name (at least ${MIN_NAME_LETTERS} letters)`;
+      }
       if (!form.doctor_hospital.trim())
         errs.doctor_hospital = "Hospital / clinic is required";
+      else if (!hasMinLetters(form.doctor_hospital))
+        errs.doctor_hospital = `Please enter the full hospital / clinic name (at least ${MIN_NAME_LETTERS} letters)`;
     }
     setErrors(errs);
     return Object.keys(errs).length === 0;
@@ -1414,8 +1421,8 @@ export function DoctorRequestForm({
     }
     if (step === 3) {
       const emailOk = form.doctor_email.trim().length > 0 && /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(form.doctor_email);
-      const nameOk = docProfileStatus === "found_complete" || !!form.doctor_name.trim();
-      return emailOk && nameOk && !!form.doctor_hospital.trim();
+      const nameOk = (docProfileStatus === "found_complete" && !form.doctor_name.trim()) || hasMinLetters(form.doctor_name);
+      return emailOk && nameOk && hasMinLetters(form.doctor_hospital);
     }
     return true;
   })();
@@ -1517,24 +1524,18 @@ export function DoctorRequestForm({
             })() : null}
         </div>}
 
-        {/* Fast Mode entry — type the tests in plain language and submit instantly.
-            On the home page it only appears once a lab is chosen, so the lab
-            selector is always the first step. */}
+        {/* Fast Mode entry — kept deliberately low-key: a small text link so the
+            full form stays the obvious path. Only appears once a lab is chosen. */}
         {(labPreselected || !!form.lab_id) && (
-          <button
-            type="button"
-            onClick={enterFastMode}
-            className="group w-full mb-3 flex items-center gap-2.5 px-3.5 py-2.5 rounded-xl border border-medical-200 bg-gradient-to-r from-medical-50 via-white to-indigo-50 hover:border-medical-400 transition-all text-left animate-dictate-glow"
-          >
-            <span className="w-7 h-7 rounded-lg bg-medical-600 text-white flex items-center justify-center shrink-0 shadow-sm shadow-medical-600/30">
-              <Zap className="w-3.5 h-3.5" />
-            </span>
-            <span className="min-w-0 flex-1">
-              <span className="block text-xs font-bold text-slate-800 leading-tight">Fast Mode — type it, submit instantly</span>
-              <span className="block text-[11px] text-slate-500 leading-tight">Just type the tests in plain English. We sort the details for the lab.</span>
-            </span>
-            <ChevronRight className="w-4 h-4 text-medical-400 group-hover:translate-x-0.5 transition-transform shrink-0" />
-          </button>
+          <div className="mb-2 flex justify-end">
+            <button
+              type="button"
+              onClick={enterFastMode}
+              className="inline-flex items-center gap-1 text-[11px] font-medium text-slate-400 hover:text-medical-600 underline underline-offset-2 transition-colors"
+            >
+              <Zap className="w-3 h-3" /> Fast mode
+            </button>
+          </div>
         )}
 
         {/* Step indicator */}

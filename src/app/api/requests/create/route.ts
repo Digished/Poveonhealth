@@ -12,6 +12,7 @@ import { logSmsSend } from "@/lib/sms/log-sms";
 import { isValidNigerianPhone, checkPhoneSmsRateLimit, checkDailySmsCap } from "@/lib/sms-guard";
 import { parseReferralText } from "@/lib/parse-referral";
 import { ensureProfessional } from "@/lib/lims";
+import { hasMinLetters, MIN_NAME_LETTERS } from "@/lib/name-validation";
 
 const CreateRequestSchema = z.object({
   patient_name: z.string().min(1).max(200).optional().or(z.literal("")),
@@ -177,6 +178,31 @@ export async function POST(request: NextRequest) {
     const doctorBankName = data.doctor_bank_name || doctorProfile?.bank_name || null;
     const doctorAccountNumber = data.doctor_account_number || doctorProfile?.account_number || null;
     const doctorAccountName = data.doctor_account_name || doctorProfile?.account_name || null;
+
+    // Labs need to know who referred the patient: after merging with the saved
+    // profile, the doctor's name and hospital must each contain at least 4
+    // letters or the request is rejected.
+    if (!hasMinLetters(doctorName)) {
+      return NextResponse.json(
+        { success: false, error: `Referring doctor's full name is required (at least ${MIN_NAME_LETTERS} letters).` },
+        { status: 400, headers: CORS_HEADERS }
+      );
+    }
+    if (!hasMinLetters(doctorHospital)) {
+      return NextResponse.json(
+        { success: false, error: `Referring hospital / clinic is required (at least ${MIN_NAME_LETTERS} letters).` },
+        { status: 400, headers: CORS_HEADERS }
+      );
+    }
+
+    // Fast Mode requests must always carry the patient's phone number so the
+    // lab can reach the patient.
+    if (data.fast_mode && (data.patient_phone || "").replace(/\D/g, "").length < 7) {
+      return NextResponse.json(
+        { success: false, error: "Patient's phone number is required." },
+        { status: 400, headers: CORS_HEADERS }
+      );
+    }
 
     // Rate-limit: max 5 requests per doctor email per hour
     const recentCount = await prisma.request.count({

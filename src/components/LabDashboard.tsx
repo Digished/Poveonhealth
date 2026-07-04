@@ -717,7 +717,8 @@ export function LabDashboard({ lab, isOwner = false, roleName = "Lab Owner", can
   const isRevealed = selectedRequest?.status !== "incoming";
 
   return (
-    <TourProvider>
+    // Lite mode has no tutorial — the guided tour only exists in LIMS mode.
+    <TourProvider disabled={labMode === "lite"}>
     <div className={`min-h-screen bg-gradient-to-br from-slate-900 via-medical-950 to-slate-900 text-white transition-colors duration-300 ${themeClass}`}>
       {/* Top bar */}
       <header className="border-b border-white/10 backdrop-blur-sm bg-white/5 sticky top-0 z-10">
@@ -763,7 +764,7 @@ export function LabDashboard({ lab, isOwner = false, roleName = "Lab Owner", can
           <div className="flex items-center gap-2">
             {/* Desktop: individual action buttons */}
             <div className="hidden sm:flex items-center gap-2">
-              <GuideToggle />
+              {labMode !== "lite" && <GuideToggle />}
               <button
                 onClick={toggle}
                 className="p-2 rounded-lg hover:bg-white/10 transition-colors text-slate-400 hover:text-white"
@@ -825,7 +826,7 @@ export function LabDashboard({ lab, isOwner = false, roleName = "Lab Owner", can
                       {isLight ? <Moon className="w-4 h-4 text-slate-500" /> : <Sun className="w-4 h-4 text-slate-500" />}
                       {isLight ? "Dark Mode" : "Light Mode"}
                     </button>
-                    <GuideToggle variant="row" />
+                    {labMode !== "lite" && <GuideToggle variant="row" />}
                     <button
                       onClick={async () => {
                         setMobileHeaderOpen(false);

@@ -943,10 +943,26 @@ export function AdminDashboard() {
                           </button>
                         </div>
                       </div>
-                      <p className="text-xs text-slate-400 truncate">
+                      {(req.patient_phone || req.patient_email || req.patient_age != null || req.sex) && (
+                        <p className="text-xs text-slate-400 truncate">
+                          <span className="text-slate-600">Patient: </span>
+                          {[req.patient_phone, req.patient_email, req.patient_age != null ? `${req.patient_age}y` : null, req.sex].filter(Boolean).join(" · ")}
+                        </p>
+                      )}
+                      <p className="text-xs text-slate-400 truncate mt-1">
                         <span className="text-slate-600">Ref: </span>
-                        {[req.doctor_prefix, req.doctor_name].filter(Boolean).join(" ")}
+                        {[req.doctor_prefix, req.doctor_name].filter(Boolean).join(" ") || "—"}
                       </p>
+                      {req.doctor_hospital && (
+                        <p className="text-xs text-slate-400 truncate">
+                          <span className="text-slate-600">Hospital: </span>{req.doctor_hospital}
+                        </p>
+                      )}
+                      {(req.doctor_email || req.doctor_phone) && (
+                        <p className="text-xs text-slate-500 truncate">
+                          {[req.doctor_email, req.doctor_phone].filter(Boolean).join(" · ")}
+                        </p>
+                      )}
                       {req.tests && (
                         <p className="text-xs text-slate-300 mt-1 line-clamp-2">
                           <span className="text-slate-600">Tests: </span>{req.tests}
@@ -984,11 +1000,24 @@ export function AdminDashboard() {
                       {allReqs.map((req) => (
                         <tr key={req.id} className="hover:bg-white/5 transition-colors">
                           <td className="py-3 px-3"><span className="font-mono text-medical-400 text-xs">{req.code}</span></td>
-                          <td className="py-3 px-3 text-white font-medium">{req.patient_name}</td>
                           <td className="py-3 px-3">
-                            <p className="text-slate-300">{[req.doctor_prefix, req.doctor_name].filter(Boolean).join(" ")}</p>
+                            <p className="text-white font-medium">{req.patient_name}</p>
+                            {(req.patient_phone || req.patient_age != null || req.sex) && (
+                              <p className="text-xs text-slate-500 mt-0.5">
+                                {[req.patient_phone, req.patient_age != null ? `${req.patient_age}y` : null, req.sex].filter(Boolean).join(" · ")}
+                              </p>
+                            )}
+                            {req.patient_email && <p className="text-xs text-slate-500 mt-0.5">{req.patient_email}</p>}
+                          </td>
+                          <td className="py-3 px-3">
+                            <p className="text-slate-300">{[req.doctor_prefix, req.doctor_name].filter(Boolean).join(" ") || "—"}</p>
                             {req.doctor_hospital && (
-                              <p className="text-xs text-slate-500 mt-0.5">{req.doctor_hospital}</p>
+                              <p className="text-xs text-medical-300/80 mt-0.5">{req.doctor_hospital}</p>
+                            )}
+                            {(req.doctor_email || req.doctor_phone) && (
+                              <p className="text-xs text-slate-500 mt-0.5">
+                                {[req.doctor_email, req.doctor_phone].filter(Boolean).join(" · ")}
+                              </p>
                             )}
                             {(req.doctor_bank_name || req.doctor_account_number) && (
                               <p className="text-xs text-slate-500 mt-0.5">
