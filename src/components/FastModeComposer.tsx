@@ -13,6 +13,7 @@ import { SuccessScreen } from "@/components/SuccessScreen";
 import { FastModeTutorial, FASTMODE_TUTORIAL_KEY } from "@/components/FastModeTutorial";
 import type { Lab, CreateRequestResponse } from "@/lib/types";
 import type { PhoneEntry } from "@/lib/phones";
+import { hasMinLetters, MIN_NAME_LETTERS } from "@/lib/name-validation";
 
 const DOCTOR_STORAGE_KEY = "poveon_doctor_profile";
 // Rolling average (ms) of how long a Fast Mode submit actually takes — drives an
@@ -67,6 +68,9 @@ export function FastModeComposer({
 
   const [rawText, setRawText] = useState("");
   const rawRef = useRef<HTMLTextAreaElement>(null);
+  // The patient's phone number is compulsory — the lab must be able to reach
+  // the patient even when everything else is typed free-form.
+  const [patientPhone, setPatientPhone] = useState("");
   const [doctorEmail, setDoctorEmail] = useState("");
   const [doctorHospital, setDoctorHospital] = useState("");
   // When the doctor isn't recognised, collect their details once — exactly the
@@ -180,19 +184,34 @@ export function FastModeComposer({
   const labName = selectedLoc?.name || selectedLab?.name || "";
   const labAddress = selectedLoc?.address || selectedLab?.address || "";
 
-  // An unrecognised doctor must register (name + hospital) before submitting.
-  const needsRegistration = docStatus === "unknown";
-  const registrationValid = !needsRegistration || (doctorName.trim().length > 0 && doctorHospital.trim().length > 0);
+  // The doctor's name and hospital must be on file (saved profile) or typed —
+  // labs kept receiving requests with these blank, so both need at least
+  // MIN_NAME_LETTERS letters before the request can be sent.
+  const nameOnFile = docStatus === "recognized" && hasMinLetters(docInfo?.name);
+  const hospitalOnFile = docStatus === "recognized" && hasMinLetters(docInfo?.hospital);
+  const doctorNameOk = nameOnFile || hasMinLetters(doctorName);
+  const doctorHospitalOk = hospitalOnFile || hasMinLetters(doctorHospital);
+  const patientPhoneOk = patientPhone.replace(/\D/g, "").length >= 7;
   const canSubmit =
     !!labId &&
     rawText.trim().length >= 3 &&
+    patientPhoneOk &&
     /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(doctorEmail.trim()) &&
-    registrationValid;
+    doctorNameOk &&
+    doctorHospitalOk;
 
-  // Rough checks for a phone (7+ digit run) and an email in the typed text so we
-  // can nudge the doctor to add them — phone lets the lab reach the patient, email
-  // lets the code be sent to the patient.
-  const phoneLikelyPresent = /\d{7,}/.test(rawText.replace(/[\s().+-]/g, ""));
+  // When the profile check resolves but the doctor's name or hospital is still
+  // missing, open the details section so the inputs are visible and required.
+  useEffect(() => {
+    if ((docStatus === "recognized" || docStatus === "unknown") && (!doctorNameOk || !doctorHospitalOk)) {
+      setEditingDoctor(true);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [docStatus]);
+
+  // Rough check for an email in the typed text so we can nudge the doctor to add
+  // it — email lets the code be sent to the patient. (The phone has its own
+  // dedicated required field.)
   const emailLikelyPresent = /[^\s@]+@[^\s@]+\.[^\s@]+/.test(rawText);
 
   // Tap submit → review/confirm first.
@@ -200,8 +219,10 @@ export function FastModeComposer({
     if (!canSubmit) {
       if (!labId) toast.error("Choose the laboratory first.");
       else if (rawText.trim().length < 3) toast.error("Type the test(s) needed.");
+      else if (!patientPhoneOk) toast.error("Enter the patient's phone number.");
       else if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(doctorEmail.trim())) toast.error("Enter a valid email for your confirmation.");
-      else if (needsRegistration && !registrationValid) toast.error("Add your name and hospital to register.");
+      else if (!doctorNameOk) toast.error(`Add your full name (at least ${MIN_NAME_LETTERS} letters).`);
+      else if (!doctorHospitalOk) toast.error(`Add your hospital / clinic (at least ${MIN_NAME_LETTERS} letters).`);
       return;
     }
     setConfirmOpen(true);
@@ -231,11 +252,13 @@ export function FastModeComposer({
           lab_id: labId,
           fast_mode: true,
           raw_input: rawText.trim(),
+          patient_phone: patientPhone.trim(),
           doctor_email: doctorEmail.trim(),
           doctor_hospital: doctorHospital.trim() || undefined,
-          // New (unrecognised) doctor's registration details, when provided.
-          doctor_prefix: needsRegistration ? doctorPrefix : undefined,
-          doctor_name: needsRegistration && doctorName.trim() ? doctorName.trim() : undefined,
+          // The doctor's typed details always accompany the request so the lab
+          // never receives a referral with a blank name/hospital.
+          doctor_prefix: doctorName.trim() ? doctorPrefix : undefined,
+          doctor_name: doctorName.trim() || undefined,
         }),
       });
       const data: CreateRequestResponse = await res.json();
@@ -433,8 +456,21 @@ export function FastModeComposer({
         <div className="flex items-start gap-2 mt-2">
           <Info className="w-3.5 h-3.5 text-slate-400 shrink-0 mt-0.5" />
           <p className="text-[11px] text-slate-500 leading-relaxed">
-            Just the test is required. Add the patient name, age, phone or email if you have them — we separate the tests and sort the details for the lab automatically. You can leave anything out.
+            Just the test is required here. Add the patient name, age or email if you have them — we separate the tests and sort the details for the lab automatically.
           </p>
+        </div>
+        <div className="mt-3">
+          <Input
+            label="Patient's phone number"
+            type="tel"
+            inputMode="tel"
+            placeholder="e.g. 0801 234 5678"
+            value={patientPhone}
+            onChange={(e) => setPatientPhone(e.target.value)}
+            required
+            autoComplete="tel"
+            hint="Required — so the lab can reach the patient."
+          />
         </div>
       </div>
 
@@ -469,7 +505,7 @@ export function FastModeComposer({
           {docStatus === "checking" && (
             <p className="flex items-center gap-2 text-xs text-slate-400"><RefreshCw className="w-3 h-3 animate-spin" /> Checking your profile…</p>
           )}
-          {docStatus === "recognized" && docInfo ? (
+          {docStatus === "recognized" && docInfo && (
             <div className="flex items-start gap-2.5 px-3 py-2.5 rounded-xl bg-emerald-50 border border-emerald-100">
               <ShieldCheck className="w-4 h-4 text-emerald-600 shrink-0 mt-0.5" />
               <div className="min-w-0">
@@ -480,9 +516,11 @@ export function FastModeComposer({
                 <p className="text-[11px] text-emerald-600/80 mt-0.5">Your saved details are filled in automatically.</p>
               </div>
             </div>
-          ) : docStatus === "unknown" ? (
-            /* New doctor — same fields as the full form: title + full name + hospital. */
-            <div className="space-y-3">
+          )}
+          {/* The doctor's full name and hospital are compulsory — collect
+              whichever ones the saved profile doesn't already provide. */}
+          <div className="space-y-3">
+            {!nameOnFile && (
               <div className="grid grid-cols-1 sm:grid-cols-4 gap-3">
                 <div className="sm:col-span-1">
                   <PrefixSelect value={doctorPrefix || "Dr."} onChange={(prefix) => setDoctorPrefix(prefix)} />
@@ -493,28 +531,23 @@ export function FastModeComposer({
                     placeholder="e.g. Chioma Okafor"
                     value={doctorName}
                     onChange={(e) => setDoctorName(e.target.value)}
+                    error={doctorName.trim() && !hasMinLetters(doctorName) ? `At least ${MIN_NAME_LETTERS} letters` : undefined}
                     required
                   />
                 </div>
               </div>
-              {doctorName.trim() && (
-                <Input
-                  label="Hospital / Clinic"
-                  placeholder="e.g. Lagos University Teaching Hospital"
-                  value={doctorHospital}
-                  onChange={(e) => setDoctorHospital(e.target.value)}
-                  required
-                />
-              )}
-            </div>
-          ) : (
-            <Input
-              label="Hospital / clinic (optional)"
-              placeholder="e.g. Lagos University Teaching Hospital"
-              value={doctorHospital}
-              onChange={(e) => setDoctorHospital(e.target.value)}
-            />
-          )}
+            )}
+            {!hospitalOnFile && (
+              <Input
+                label="Hospital / Clinic"
+                placeholder="e.g. Lagos University Teaching Hospital"
+                value={doctorHospital}
+                onChange={(e) => setDoctorHospital(e.target.value)}
+                error={doctorHospital.trim() && !hasMinLetters(doctorHospital) ? `At least ${MIN_NAME_LETTERS} letters` : undefined}
+                required
+              />
+            )}
+          </div>
         </div>
       )}
 
@@ -565,35 +598,45 @@ export function FastModeComposer({
                 <p className="text-sm text-slate-700 whitespace-pre-wrap leading-relaxed bg-slate-50 border border-slate-100 rounded-xl px-3 py-2 mt-1">{rawText.trim()}</p>
               </div>
               <div>
+                <p className="text-[11px] font-bold text-slate-400 uppercase tracking-wide">Patient&apos;s phone</p>
+                <p className="text-sm font-medium text-slate-800">{patientPhone.trim()}</p>
+              </div>
+              <div>
                 <p className="text-[11px] font-bold text-slate-400 uppercase tracking-wide">Your email</p>
                 <p className="text-sm font-medium text-slate-800">{doctorEmail.trim()}</p>
+              </div>
+              <div>
+                <p className="text-[11px] font-bold text-slate-400 uppercase tracking-wide">Referring doctor</p>
+                <p className="text-sm font-medium text-slate-800">
+                  {nameOnFile ? [docInfo?.prefix, docInfo?.name].filter(Boolean).join(" ") : [doctorPrefix, doctorName.trim()].filter(Boolean).join(" ")}
+                </p>
+                <p className="text-xs text-slate-500">{hospitalOnFile ? docInfo?.hospital : doctorHospital.trim()}</p>
               </div>
               <div className="flex items-start gap-2 px-3 py-2.5 rounded-xl bg-medical-50 border border-medical-100">
                 <Info className="w-4 h-4 text-medical-500 shrink-0 mt-0.5" />
                 <p className="text-xs text-medical-700 leading-relaxed">Submitting generates a code now. The patient details are sorted for the lab in the background.</p>
               </div>
 
-              {(!emailLikelyPresent || !phoneLikelyPresent) && (
+              {!emailLikelyPresent && (
                 <div className="flex items-start gap-2 px-3 py-2.5 rounded-xl bg-amber-50 border border-amber-200">
                   <AlertCircle className="w-4 h-4 text-amber-500 shrink-0 mt-0.5" />
                   <div className="min-w-0">
                     <p className="text-xs font-semibold text-amber-800">Add the patient&apos;s contact if you can</p>
                     <ul className="text-xs text-amber-700 mt-1 space-y-0.5 list-disc pl-4 leading-relaxed">
-                      {!emailLikelyPresent && <li>Their <span className="font-semibold">email</span> — so the code can be sent to the patient</li>}
-                      {!phoneLikelyPresent && <li>Their <span className="font-semibold">phone</span> — so the lab can reach the patient</li>}
+                      <li>Their <span className="font-semibold">email</span> — so the code can be sent to the patient</li>
                     </ul>
                   </div>
                 </div>
               )}
             </div>
             <div className="px-5 py-4 border-t border-slate-100 flex gap-3">
-              {(!emailLikelyPresent || !phoneLikelyPresent) ? (
+              {!emailLikelyPresent ? (
                 <button type="button" onClick={() => setConfirmOpen(false)} className="flex-1 py-2.5 rounded-xl border border-amber-300 bg-amber-50 text-amber-700 font-semibold text-sm hover:bg-amber-100 transition">Go back &amp; add</button>
               ) : (
                 <button type="button" onClick={() => setConfirmOpen(false)} className="flex-1 py-2.5 rounded-xl border border-slate-200 text-slate-600 font-semibold text-sm hover:bg-slate-50 transition">Cancel</button>
               )}
               <button type="button" onClick={confirmAndQueue} className="flex-1 flex items-center justify-center gap-2 py-2.5 rounded-xl bg-medical-600 hover:bg-medical-700 text-white font-bold text-sm transition shadow-sm">
-                <Check className="w-4 h-4" /> {(!emailLikelyPresent || !phoneLikelyPresent) ? "Submit anyway" : "Looks good — submit"}
+                <Check className="w-4 h-4" /> {!emailLikelyPresent ? "Submit anyway" : "Looks good — submit"}
               </button>
             </div>
           </div>

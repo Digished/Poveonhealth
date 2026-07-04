@@ -45,11 +45,11 @@ function MockInput({ children }: { children: React.ReactNode }) {
 const SCENES = [
   {
     title: "Just type the test",
-    caption: "Type the test you need in plain English. That’s the only thing required.",
+    caption: "Type the test you need in plain English, and add the patient’s phone number so the lab can reach them.",
   },
   {
     title: "Add patient details if you have them",
-    caption: "Optionally add the name, age, phone or email — we sort it for the lab automatically. Leave anything out.",
+    caption: "Optionally add the name, age or email — we sort it for the lab automatically. Leave anything out.",
   },
   {
     title: "Submit & get a code",

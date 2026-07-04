@@ -70,7 +70,8 @@ interface WReq {
   id: string; code: string; status: string; source: string; current_stage: string | null;
   patient_name: string | null; patient_phone: string | null; patient_email: string | null;
   patient_age: number | null; sex: string | null;
-  doctor_name: string | null; doctor_email: string | null; tests: string;
+  doctor_prefix: string | null; doctor_name: string | null; doctor_email: string | null;
+  doctor_phone: string | null; doctor_hospital: string | null; tests: string;
   raw_input: string | null; diagnosis: string | null;
   is_paid: boolean; tests_confirmed: boolean;
   created_at: string; seen_at: string | null; completed_at: string | null;
@@ -664,10 +665,15 @@ export function Workspace({
                       </span>
                     )}
                     <div className="min-w-0">
-                      <p className="truncate text-sm font-semibold text-white">{r.patient_name || (r.status === "incoming" ? "Unregistered patient" : "Unnamed")} <span className="font-mono text-xs text-slate-400">· {r.code}</span></p>
-                      <p className="truncate text-xs text-slate-400">{r.tests}</p>
+                      {/* Lite mode makes the essentials — patient, tests, referrer — larger and easier to scan. */}
+                      <p className={`truncate font-semibold text-white ${lite ? "text-base" : "text-sm"}`}>{r.patient_name || (r.status === "incoming" ? "Unregistered patient" : "Unnamed")} <span className="font-mono text-xs text-slate-400">· {r.code}</span></p>
+                      <p className={`truncate ${lite ? "text-sm text-slate-200" : "text-xs text-slate-400"}`}>{r.tests}</p>
                       {r.diagnosis && <p className="mt-0.5 truncate text-[10px] text-amber-200/80">Dx: {r.diagnosis}</p>}
-                      {r.doctor_name && <p className="mt-0.5 truncate text-[10px] text-medical-300">Ref: {r.doctor_name}</p>}
+                      {(r.doctor_name || r.doctor_hospital) && (
+                        <p className={`mt-0.5 truncate text-medical-300 ${lite ? "text-xs font-medium" : "text-[10px]"}`}>
+                          Ref: {[[r.doctor_prefix, r.doctor_name].filter(Boolean).join(" "), r.doctor_hospital].filter(Boolean).join(" · ")}
+                        </p>
+                      )}
                       <p className="mt-0.5 text-[10px] text-slate-500" title={fmtDateTime(r.created_at)}>Registered {timeAgo(r.created_at)}</p>
                     </div>
                   </div>
@@ -719,6 +725,7 @@ export function Workspace({
           labId={labId}
           departments={departments}
           mode={mode}
+          lite={lite}
           readOnly={isOnboarding && obView === "journey"}
           onClose={() => setSelected(null)}
           canAdvance={canAdvance}
@@ -761,12 +768,14 @@ export function Workspace({
 }
 
 function WorkspaceDrawer({
-  request, labId, departments, mode, readOnly, onClose, canAdvance, canEnterResults, canSendResults, memberDepartment, busy, onMarkSeen, onAdvance, onRegistration, onChanged,
+  request, labId, departments, mode, lite, readOnly, onClose, canAdvance, canEnterResults, canSendResults, memberDepartment, busy, onMarkSeen, onAdvance, onRegistration, onChanged,
 }: {
   request: WReq;
   labId: string;
   departments: DepartmentConfig[];
   mode: "onboarding" | "workstation";
+  /** Lite labs get a simplified drawer: no step-by-step checklist or tutorial. */
+  lite?: boolean;
   readOnly: boolean;
   onClose: () => void;
   canAdvance: boolean;
@@ -874,10 +883,25 @@ function WorkspaceDrawer({
             <p className="mt-1 text-xs text-slate-400">
               {[request.patient_phone, request.patient_email, request.sex, request.patient_age != null ? `${request.patient_age}y` : null].filter(Boolean).join(" · ") || "No contact details on file"}
             </p>
-            {(request.doctor_name || request.doctor_email) && (
-              <p className="mt-1 inline-flex items-center gap-1.5 rounded-lg bg-medical-600/15 px-2 py-1 text-xs text-medical-200">
-                <Stethoscope className="h-3.5 w-3.5" /> Referred by {request.doctor_name || request.doctor_email}
-              </p>
+            {/* Full referring details — labs need to see exactly who sent the
+                patient (name, hospital and how to reach the doctor). */}
+            {(request.doctor_name || request.doctor_email || request.doctor_hospital) && (
+              <div className="mt-3 rounded-xl border border-medical-500/30 bg-medical-600/15 p-3">
+                <p className="flex items-center gap-1.5 text-[11px] font-semibold uppercase tracking-wide text-medical-300">
+                  <Stethoscope className="h-3.5 w-3.5" /> Referring doctor
+                </p>
+                <p className="mt-1 text-sm font-bold text-white">
+                  {[request.doctor_prefix, request.doctor_name].filter(Boolean).join(" ") || "Name not provided"}
+                </p>
+                {request.doctor_hospital && (
+                  <p className="mt-0.5 text-xs font-medium text-medical-200">{request.doctor_hospital}</p>
+                )}
+                {(request.doctor_phone || request.doctor_email) && (
+                  <p className="mt-0.5 text-xs text-slate-300">
+                    {[request.doctor_phone, request.doctor_email].filter(Boolean).join(" · ")}
+                  </p>
+                )}
+              </div>
             )}
             {showRegistration && canAdvance && (
               <div className="mt-3 flex flex-wrap gap-2">
@@ -904,8 +928,48 @@ function WorkspaceDrawer({
         {/* Right column — checklist (onboarding) / pipeline (workstation) */}
         <div className="space-y-4">
 
+        {/* Lite mode skips the step-by-step checklist: just the cost summary and
+            the two actions, so the important information stays front and centre. */}
+        {lite && showRegistration && request.status !== "done" && canAdvance && !request.is_paid && (
+          <div className="rounded-2xl border border-white/10 bg-white/5 p-4">
+            <p className="flex items-center gap-2 text-sm font-semibold text-white"><CreditCard className="h-4 w-4 text-medical-300" /> Tests &amp; payment</p>
+            {(() => {
+              const { rows, total } = costBreakdown(request);
+              return rows.length > 0 ? (
+                <div className="mt-3 rounded-xl border border-white/10 bg-white/5 p-3 text-xs">
+                  <div className="space-y-1">
+                    {rows.map((x, i) => (
+                      <div key={i} className="flex justify-between gap-3 text-slate-300">
+                        <span className="truncate">{x.name}</span>
+                        <span className="shrink-0 tabular-nums">{x.price != null ? fmtNaira(x.price) : "—"}</span>
+                      </div>
+                    ))}
+                  </div>
+                  <div className="mt-2 flex justify-between border-t border-white/10 pt-2 font-semibold text-white">
+                    <span>Total to collect</span><span className="tabular-nums">{fmtNaira(total)}</span>
+                  </div>
+                </div>
+              ) : null;
+            })()}
+            <div className="mt-3 flex flex-wrap gap-2">
+              <button onClick={() => onRegistration({ tests_confirmed: !request.tests_confirmed })} disabled={busy}
+                className={`inline-flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-xs font-semibold disabled:opacity-50 ${request.tests_confirmed ? "border border-emerald-500/30 bg-emerald-600/20 text-emerald-300" : "bg-white/10 text-slate-200 hover:bg-white/15"}`}>
+                {request.tests_confirmed ? <Check className="h-3.5 w-3.5" /> : <FlaskConical className="h-3.5 w-3.5" />} {request.tests_confirmed ? "Tests confirmed" : "Confirm tests"}
+              </button>
+              <button onClick={() => setTestsOpen(true)} className="inline-flex items-center gap-1.5 rounded-lg border border-white/10 px-3 py-1.5 text-xs font-medium text-slate-200 hover:bg-white/5">
+                <Pencil className="h-3.5 w-3.5" /> Edit tests
+              </button>
+              <button onClick={() => onRegistration({ is_paid: true })} disabled={busy || !request.tests_confirmed}
+                className="inline-flex items-center gap-1.5 rounded-lg bg-medical-600 px-3 py-1.5 text-xs font-semibold text-white hover:bg-medical-700 disabled:opacity-50">
+                {busy ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <CreditCard className="h-3.5 w-3.5" />} Mark as paid
+              </button>
+            </div>
+            {!request.tests_confirmed && <p className="mt-2 text-[11px] text-slate-400">Confirm the tests to enable “Mark as paid”.</p>}
+          </div>
+        )}
+
         {/* Onboarding checklist — confirm tests, take payment, then direct the client */}
-        {showRegistration && request.status !== "done" && canAdvance && !request.is_paid && (
+        {!lite && showRegistration && request.status !== "done" && canAdvance && !request.is_paid && (
           <div className="rounded-2xl border border-amber-500/25 bg-amber-500/10 p-4">
             <p className="flex items-center gap-2 text-sm font-semibold text-amber-200"><AlertTriangle className="h-4 w-4" /> Onboarding checklist</p>
             <p className="mt-1 text-xs text-amber-100/80">Work top to bottom — the next step to do is highlighted.</p>
@@ -979,17 +1043,21 @@ function WorkspaceDrawer({
         )}
         {showRegistration && request.is_paid && request.status !== "done" && (
           <div className="rounded-xl bg-emerald-500/10 p-3 text-xs font-medium text-emerald-300">
-            <p className="flex items-center gap-2"><Check className="h-4 w-4" /> Confirmed &amp; paid — moved to the workstation.</p>
-            <div className="mt-2 flex flex-wrap gap-1.5">
-              <span className="inline-flex items-center gap-1 text-emerald-200/80"><MapPin className="h-3 w-3" /> Send to:</span>
-              {directions.map((d) => (
-                <span key={d.department} className="rounded-full bg-emerald-500/15 px-2 py-0.5 text-emerald-200">{d.department} · {d.hint}</span>
-              ))}
-            </div>
-            <a href={`/api/lab/requests/${request.id}/checklist-pdf`} target="_blank" rel="noreferrer"
-              className="mt-2 inline-flex items-center gap-1.5 rounded-lg border border-emerald-400/40 bg-emerald-500/15 px-3 py-1.5 text-xs font-semibold text-emerald-100 hover:bg-emerald-500/25">
-              <Printer className="h-3.5 w-3.5" /> Print visit checklist
-            </a>
+            <p className="flex items-center gap-2"><Check className="h-4 w-4" /> {lite ? "Confirmed & paid." : "Confirmed & paid — moved to the workstation."}</p>
+            {!lite && (
+              <>
+                <div className="mt-2 flex flex-wrap gap-1.5">
+                  <span className="inline-flex items-center gap-1 text-emerald-200/80"><MapPin className="h-3 w-3" /> Send to:</span>
+                  {directions.map((d) => (
+                    <span key={d.department} className="rounded-full bg-emerald-500/15 px-2 py-0.5 text-emerald-200">{d.department} · {d.hint}</span>
+                  ))}
+                </div>
+                <a href={`/api/lab/requests/${request.id}/checklist-pdf`} target="_blank" rel="noreferrer"
+                  className="mt-2 inline-flex items-center gap-1.5 rounded-lg border border-emerald-400/40 bg-emerald-500/15 px-3 py-1.5 text-xs font-semibold text-emerald-100 hover:bg-emerald-500/25">
+                  <Printer className="h-3.5 w-3.5" /> Print visit checklist
+                </a>
+              </>
+            )}
           </div>
         )}
 

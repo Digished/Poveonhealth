@@ -23,6 +23,7 @@ import { SuccessScreen } from "@/components/SuccessScreen";
 import { PoveonLogo } from "@/components/PoveonLogo";
 import { PROFESSIONAL_PREFIXES, PrefixSelectModal, PrefixSelect } from "@/components/PrefixSelect";
 import { FastModeComposer } from "@/components/FastModeComposer";
+import { hasMinLetters, MIN_NAME_LETTERS } from "@/lib/name-validation";
 import type { Lab, CreateRequestResponse } from "@/lib/types";
 
 /** Whole-years age from an ISO "YYYY-MM-DD" date of birth, or "" if not derivable. */
@@ -718,9 +719,9 @@ export function DoctorRequestForm({
   const startStep = !labPreselected ? 1 : hasLocations ? 1 : 2;
   const [step, setStep] = useState(startStep);
   // Fast Mode — type the tests/patient in plain language and submit instantly.
-  // Fast Mode is the default; doctors can switch to the full multi-step form
-  // from within the composer (session only, not persisted across visits).
-  const [fastMode, setFastMode] = useState(true);
+  // The full multi-step form is the default; doctors can opt into Fast Mode
+  // via the entry button (session only, not persisted across visits).
+  const [fastMode, setFastMode] = useState(false);
   const enterFastMode = useCallback(() => {
     setFastMode(true);
   }, []);
@@ -1158,10 +1159,16 @@ export function DoctorRequestForm({
       if (!form.doctor_email.trim()) errs.doctor_email = "Email is required";
       else if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(form.doctor_email))
         errs.doctor_email = "Invalid email address";
-      if ((docProfileStatus === "not_found" || docProfileStatus === "found_partial") && !form.doctor_name.trim())
-        errs.doctor_name = "Doctor name is required";
+      if (docProfileStatus === "not_found" || docProfileStatus === "found_partial") {
+        if (!form.doctor_name.trim()) errs.doctor_name = "Doctor name is required";
+        else if (!hasMinLetters(form.doctor_name)) errs.doctor_name = `Please enter your full name (at least ${MIN_NAME_LETTERS} letters)`;
+      } else if (form.doctor_name.trim() && !hasMinLetters(form.doctor_name)) {
+        errs.doctor_name = `Please enter your full name (at least ${MIN_NAME_LETTERS} letters)`;
+      }
       if (!form.doctor_hospital.trim())
         errs.doctor_hospital = "Hospital / clinic is required";
+      else if (!hasMinLetters(form.doctor_hospital))
+        errs.doctor_hospital = `Please enter the full hospital / clinic name (at least ${MIN_NAME_LETTERS} letters)`;
     }
     setErrors(errs);
     return Object.keys(errs).length === 0;
@@ -1414,8 +1421,8 @@ export function DoctorRequestForm({
     }
     if (step === 3) {
       const emailOk = form.doctor_email.trim().length > 0 && /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(form.doctor_email);
-      const nameOk = docProfileStatus === "found_complete" || !!form.doctor_name.trim();
-      return emailOk && nameOk && !!form.doctor_hospital.trim();
+      const nameOk = (docProfileStatus === "found_complete" && !form.doctor_name.trim()) || hasMinLetters(form.doctor_name);
+      return emailOk && nameOk && hasMinLetters(form.doctor_hospital);
     }
     return true;
   })();
