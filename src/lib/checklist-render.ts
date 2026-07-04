@@ -1,6 +1,6 @@
 import { renderToBuffer } from "@react-pdf/renderer";
 import { prisma } from "@/lib/prisma";
-import { categoryToDepartment, DEFAULT_DEPARTMENTS, type DepartmentConfig, type WorkflowType } from "@/lib/lims-shared";
+import { breakdownItemDepartment, categoryToDepartment, DEFAULT_DEPARTMENTS, type DepartmentConfig, type WorkflowType } from "@/lib/lims-shared";
 import { VisitChecklistPdf, type ChecklistGroup, type ChecklistTest } from "@/lib/checklist-pdf";
 
 type BreakdownItem = { raw?: string; canonical_name?: string; category?: string | null; unit_price?: number | null };
@@ -45,7 +45,9 @@ function buildGroups(testBreakdown: unknown, testsString: string, departments: D
     for (const it of items) {
       const name = (it.canonical_name || it.raw || "").trim();
       if (!name) continue;
-      const { department, workflow } = categoryToDepartment(it.category, departments);
+      // Route by category + test name so imaging tests reach Radiology even
+      // when the catalog category is generic (e.g. "Lab Test" / "Others").
+      const { department, workflow } = breakdownItemDepartment(it, departments);
       const raw = (it.raw || "").trim();
       const sub = raw && raw.toLowerCase() !== name.toLowerCase() ? `as written: ${raw}` : null;
       push(department, workflow, { name, sub });

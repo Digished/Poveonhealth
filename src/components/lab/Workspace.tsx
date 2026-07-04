@@ -13,7 +13,7 @@ import { FullViewModal } from "@/components/ui/FullViewModal";
 import { Calendar } from "@/components/ui/Calendar";
 import { ScheduleCalendar } from "@/components/lab/ScheduleCalendar";
 import { useLabTour } from "@/components/lab/tour/TourProvider";
-import { requestDepartments, categoryToDepartment, WORKFLOWS, stageLabel, stageColorClasses, stageDurations, formatDuration, awaitingPhrase, awaitingLabel, DEFAULT_DEPARTMENTS, type DepartmentConfig } from "@/lib/lims-shared";
+import { requestDepartments, breakdownItemDepartment, WORKFLOWS, stageLabel, stageColorClasses, stageDurations, formatDuration, awaitingPhrase, awaitingLabel, DEFAULT_DEPARTMENTS, type DepartmentConfig } from "@/lib/lims-shared";
 import { nextPendingAction, directToDepartments, type PendingAction } from "@/lib/lab-pending";
 
 function fmtDateTime(iso: string | null | undefined): string {
@@ -101,7 +101,7 @@ function tracksFor(r: WReq, departments: DepartmentConfig[] = DEFAULT_DEPARTMENT
     const events = r.journey_events.filter((e) => e.department === department);
     const last = events[events.length - 1];
     const tests = items
-      .filter((it) => categoryToDepartment(it.category, departments).department === department)
+      .filter((it) => breakdownItemDepartment(it, departments).department === department)
       .map((it) => it.canonical_name || it.raw || "")
       .filter(Boolean);
     return {

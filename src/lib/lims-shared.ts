@@ -151,12 +151,24 @@ export function categoryToDepartment(category: string | null | undefined, depart
 
 type BreakdownItem = { category?: string | null; raw?: string; canonical_name?: string };
 
+/**
+ * Route a breakdown item to its department using the category AND the test
+ * name. Catalog categories are often generic ("Lab Test", "Others") and carry
+ * no imaging keywords, so an x-ray or scan would wrongly fall into the
+ * Laboratory catch-all if the test name were ignored.
+ */
+export function breakdownItemDepartment(it: BreakdownItem, departments: DepartmentConfig[] = DEFAULT_DEPARTMENTS): { department: string; workflow: WorkflowType } {
+  const text = [it.category, it.canonical_name, it.raw].filter(Boolean).join(" ");
+  const d = matchDepartment(text, departments);
+  return { department: d.name, workflow: d.workflow };
+}
+
 /** Distinct departments (+ workflow) a request touches, derived from its test breakdown. */
 export function requestDepartments(testBreakdown: unknown, departments: DepartmentConfig[] = DEFAULT_DEPARTMENTS): { department: string; workflow: WorkflowType }[] {
   const seen = new Map<string, WorkflowType>();
   const items = Array.isArray(testBreakdown) ? (testBreakdown as BreakdownItem[]) : [];
   for (const it of items) {
-    const { department, workflow } = categoryToDepartment(it.category, departments);
+    const { department, workflow } = breakdownItemDepartment(it, departments);
     if (!seen.has(department)) seen.set(department, workflow);
   }
   if (seen.size === 0) {
