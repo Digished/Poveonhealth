@@ -84,8 +84,9 @@ export async function renderVisitChecklistPdf(
     where: { id: requestId },
     select: {
       lab_id: true, code: true, tests: true, test_breakdown: true, is_paid: true,
+      raw_input: true, diagnosis: true,
       patient_name: true, patient_age: true, sex: true, patient_phone: true, patient_email: true,
-      doctor_prefix: true, doctor_name: true, doctor_hospital: true,
+      doctor_prefix: true, doctor_name: true, doctor_hospital: true, doctor_phone: true, doctor_email: true,
     },
   });
   if (!request || request.lab_id !== labId) return null;
@@ -132,6 +133,10 @@ export async function renderVisitChecklistPdf(
       patientEmail: request.patient_email,
       doctorName,
       doctorHospital: request.doctor_hospital,
+      doctorPhone: request.doctor_phone,
+      doctorEmail: request.doctor_email,
+      rawText: request.raw_input,
+      diagnosis: request.diagnosis,
       groups: buildGroups(request.test_breakdown, request.tests, departments),
       totalLabel: request.is_paid ? nairaTotal(request.test_breakdown) : null,
       verifiedBy: null,
