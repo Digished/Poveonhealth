@@ -443,7 +443,7 @@ export function FastModeComposer({
       <div className="mt-4 rounded-2xl border border-slate-200 bg-white p-4">
         <div className="flex items-center gap-2 mb-2">
           <div className="w-7 h-7 rounded-lg bg-medical-50 flex items-center justify-center shrink-0"><FlaskConical className="w-4 h-4 text-medical-600" /></div>
-          <h2 className="text-sm font-bold text-slate-800">What does the patient need?</h2>
+          <h2 className="text-sm font-bold text-slate-800">What does the patient need?<span className="text-red-500 font-semibold ml-1" aria-label="required">*</span></h2>
         </div>
         <textarea
           ref={rawRef}

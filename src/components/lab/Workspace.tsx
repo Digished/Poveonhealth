@@ -515,9 +515,9 @@ export function Workspace({
       )}
 
       {/* Stats — onboarding: registration tasks; workstation: one card per stage,
-          each labelled by the next phase it's waiting for. Hidden in Lite's
-          read-only Journey sub-tab, which is shown without statistics. */}
-      {!(lite && isOnboarding && obView === "journey") && (
+          each labelled by the next phase it's waiting for. Lite mode shows no
+          statistics at all — just the client list. */}
+      {!lite && (
       <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
         {isOnboarding && obView === "register" ? (
           <>
@@ -549,8 +549,8 @@ export function Workspace({
       </div>
       )}
 
-      {/* Onboarding "Register" filters: registration status + payment */}
-      {isOnboarding && obView === "register" && (
+      {/* Onboarding "Register" filters: registration status + payment (not in Lite) */}
+      {!lite && isOnboarding && obView === "register" && (
         <div className="flex flex-wrap items-center gap-2">
           <FilterSelect
             label="Status"
@@ -593,32 +593,36 @@ export function Workspace({
         </div>
       )}
 
-      {/* Search + period + sort */}
+      {/* Search + period + sort — Lite keeps only the search box, no filters */}
       <div className="flex flex-wrap items-center gap-2">
         <div className="relative min-w-[12rem] flex-1">
           <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
           <input value={query} onChange={(e) => setQuery(e.target.value)} placeholder="Search code, name or phone" className="w-full rounded-xl border border-white/10 bg-white/5 py-2 pl-9 pr-3 text-sm text-white placeholder:text-slate-500 focus:border-medical-400 focus:outline-none" />
         </div>
-        <FilterSelect
-          label="Period"
-          value={periodF}
-          onChange={(v) => setPeriodF(v as PeriodKey)}
-          className="w-44"
-          options={[
-            { value: "all", label: "All time" },
-            { value: "today", label: "Today" },
-            { value: "week", label: "This week" },
-            { value: "month", label: "This month" },
-            { value: "year", label: "This year" },
-          ]}
-        />
-        <FilterSelect
-          label="Sort"
-          value={sortDir}
-          onChange={(v) => setSortDir(v as "newest" | "oldest")}
-          className="w-40"
-          options={[{ value: "newest", label: "Newest first" }, { value: "oldest", label: "Oldest first" }]}
-        />
+        {!lite && (
+          <>
+            <FilterSelect
+              label="Period"
+              value={periodF}
+              onChange={(v) => setPeriodF(v as PeriodKey)}
+              className="w-44"
+              options={[
+                { value: "all", label: "All time" },
+                { value: "today", label: "Today" },
+                { value: "week", label: "This week" },
+                { value: "month", label: "This month" },
+                { value: "year", label: "This year" },
+              ]}
+            />
+            <FilterSelect
+              label="Sort"
+              value={sortDir}
+              onChange={(v) => setSortDir(v as "newest" | "oldest")}
+              className="w-40"
+              options={[{ value: "newest", label: "Newest first" }, { value: "oldest", label: "Oldest first" }]}
+            />
+          </>
+        )}
       </div>
 
       {/* Radiology booking calendar */}
@@ -852,11 +856,14 @@ function WorkspaceDrawer({
       <div className="grid grid-cols-1 gap-5 lg:grid-cols-2">
         {/* Left column — client & request details */}
         <div>
-            {/* Raw request as typed by the physician — always shown for reference */}
-            {request.raw_input && (
-              <p className="mt-1 rounded-lg border border-white/10 bg-white/5 px-2.5 py-1.5 text-xs italic text-slate-300">
-                <span className="font-medium not-italic text-slate-400">Request as written: </span>“{request.raw_input}”
-              </p>
+            {/* Raw request as typed by the physician — always shown for reference,
+                falling back to the submitted tests text when there is no
+                free-form input (full-form requests). */}
+            {(request.raw_input || request.tests) && (
+              <div className="mt-1 rounded-xl border border-white/10 bg-white/5 px-3 py-2.5">
+                <p className="text-[11px] font-semibold uppercase tracking-wide text-slate-400">Request as written by the doctor</p>
+                <p className="mt-1 whitespace-pre-wrap text-sm leading-relaxed text-slate-200">“{request.raw_input || request.tests}”</p>
+              </div>
             )}
             {request.diagnosis && (
               <p className="mt-1.5 inline-flex items-center gap-1.5 rounded-lg bg-amber-500/15 px-2 py-1 text-xs text-amber-200">
@@ -963,6 +970,10 @@ function WorkspaceDrawer({
                 className="inline-flex items-center gap-1.5 rounded-lg bg-medical-600 px-3 py-1.5 text-xs font-semibold text-white hover:bg-medical-700 disabled:opacity-50">
                 {busy ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <CreditCard className="h-3.5 w-3.5" />} Mark as paid
               </button>
+              <a href={`/api/lab/requests/${request.id}/checklist-pdf`} target="_blank" rel="noreferrer"
+                className="inline-flex items-center gap-1.5 rounded-lg border border-white/10 px-3 py-1.5 text-xs font-medium text-medical-300 hover:bg-white/5">
+                <Printer className="h-3.5 w-3.5" /> Print visit checklist
+              </a>
             </div>
             {!request.tests_confirmed && <p className="mt-2 text-[11px] text-slate-400">Confirm the tests to enable “Mark as paid”.</p>}
           </div>
@@ -1044,6 +1055,12 @@ function WorkspaceDrawer({
         {showRegistration && request.is_paid && request.status !== "done" && (
           <div className="rounded-xl bg-emerald-500/10 p-3 text-xs font-medium text-emerald-300">
             <p className="flex items-center gap-2"><Check className="h-4 w-4" /> {lite ? "Confirmed & paid." : "Confirmed & paid — moved to the workstation."}</p>
+            {lite && (
+              <a href={`/api/lab/requests/${request.id}/checklist-pdf`} target="_blank" rel="noreferrer"
+                className="mt-2 inline-flex items-center gap-1.5 rounded-lg border border-emerald-400/40 bg-emerald-500/15 px-3 py-1.5 text-xs font-semibold text-emerald-100 hover:bg-emerald-500/25">
+                <Printer className="h-3.5 w-3.5" /> Print visit checklist
+              </a>
+            )}
             {!lite && (
               <>
                 <div className="mt-2 flex flex-wrap gap-1.5">
