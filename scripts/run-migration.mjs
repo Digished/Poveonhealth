@@ -1133,6 +1133,182 @@ const migrations = [
     sql: `CREATE INDEX IF NOT EXISTS hospital_admissions_hospital_id_status_idx ON hospital_admissions (hospital_id, status)`,
     continueOnError: true,
   },
+
+  // ── HMO remote patient monitoring ──
+  {
+    desc: "hmos table (HMO partners)",
+    sql: `CREATE TABLE IF NOT EXISTS hmos (
+      id TEXT PRIMARY KEY,
+      name TEXT NOT NULL,
+      code TEXT NOT NULL,
+      contact_email TEXT,
+      contact_phone TEXT,
+      active BOOLEAN NOT NULL DEFAULT true,
+      created_at TIMESTAMP(3) NOT NULL DEFAULT now(),
+      updated_at TIMESTAMP(3) NOT NULL DEFAULT now()
+    )`,
+    continueOnError: true,
+  },
+  {
+    desc: "hmos unique index (code)",
+    sql: `CREATE UNIQUE INDEX IF NOT EXISTS hmos_code_key ON hmos (code)`,
+    continueOnError: true,
+  },
+  {
+    desc: "hmo_members table (uploaded rosters)",
+    sql: `CREATE TABLE IF NOT EXISTS hmo_members (
+      id TEXT PRIMARY KEY,
+      hmo_id TEXT NOT NULL REFERENCES hmos(id) ON DELETE CASCADE,
+      email TEXT NOT NULL,
+      policy_number TEXT NOT NULL,
+      full_name TEXT NOT NULL,
+      phone TEXT,
+      date_of_birth TEXT,
+      sex TEXT,
+      active BOOLEAN NOT NULL DEFAULT true,
+      flagged BOOLEAN NOT NULL DEFAULT false,
+      flagged_by TEXT,
+      flagged_at TIMESTAMP(3),
+      flag_note TEXT,
+      created_at TIMESTAMP(3) NOT NULL DEFAULT now(),
+      updated_at TIMESTAMP(3) NOT NULL DEFAULT now()
+    )`,
+    continueOnError: true,
+  },
+  {
+    desc: "hmo_members unique index (hmo_id, policy_number)",
+    sql: `CREATE UNIQUE INDEX IF NOT EXISTS hmo_members_hmo_id_policy_number_key ON hmo_members (hmo_id, policy_number)`,
+    continueOnError: true,
+  },
+  {
+    desc: "hmo_members unique index (hmo_id, email)",
+    sql: `CREATE UNIQUE INDEX IF NOT EXISTS hmo_members_hmo_id_email_key ON hmo_members (hmo_id, email)`,
+    continueOnError: true,
+  },
+  {
+    desc: "hmo_members index (email)",
+    sql: `CREATE INDEX IF NOT EXISTS hmo_members_email_idx ON hmo_members (email)`,
+    continueOnError: true,
+  },
+  {
+    desc: "hmo_patient_sessions table",
+    sql: `CREATE TABLE IF NOT EXISTS hmo_patient_sessions (
+      id TEXT PRIMARY KEY,
+      member_id TEXT NOT NULL REFERENCES hmo_members(id) ON DELETE CASCADE,
+      expires_at TIMESTAMP(3) NOT NULL,
+      created_at TIMESTAMP(3) NOT NULL DEFAULT now()
+    )`,
+    continueOnError: true,
+  },
+  {
+    desc: "hmo_patient_sessions index (member_id)",
+    sql: `CREATE INDEX IF NOT EXISTS hmo_patient_sessions_member_id_idx ON hmo_patient_sessions (member_id)`,
+    continueOnError: true,
+  },
+  {
+    desc: "hmo_vitals_readings table (BP / blood sugar logs)",
+    sql: `CREATE TABLE IF NOT EXISTS hmo_vitals_readings (
+      id TEXT PRIMARY KEY,
+      member_id TEXT NOT NULL REFERENCES hmo_members(id) ON DELETE CASCADE,
+      type TEXT NOT NULL,
+      systolic INTEGER,
+      diastolic INTEGER,
+      pulse INTEGER,
+      glucose_mg_dl DECIMAL(6,1),
+      glucose_context TEXT,
+      note TEXT,
+      recorded_at TIMESTAMP(3) NOT NULL DEFAULT now(),
+      created_at TIMESTAMP(3) NOT NULL DEFAULT now()
+    )`,
+    continueOnError: true,
+  },
+  {
+    desc: "hmo_vitals_readings index (member_id, type, recorded_at)",
+    sql: `CREATE INDEX IF NOT EXISTS hmo_vitals_readings_member_id_type_recorded_at_idx ON hmo_vitals_readings (member_id, type, recorded_at)`,
+    continueOnError: true,
+  },
+  {
+    desc: "hmo_doctor_coverages table (doctor covers whole HMO)",
+    sql: `CREATE TABLE IF NOT EXISTS hmo_doctor_coverages (
+      id TEXT PRIMARY KEY,
+      doctor_email TEXT NOT NULL,
+      hmo_id TEXT NOT NULL,
+      created_at TIMESTAMP(3) NOT NULL DEFAULT now()
+    )`,
+    continueOnError: true,
+  },
+  {
+    desc: "hmo_doctor_coverages unique index (doctor_email, hmo_id)",
+    sql: `CREATE UNIQUE INDEX IF NOT EXISTS hmo_doctor_coverages_doctor_email_hmo_id_key ON hmo_doctor_coverages (doctor_email, hmo_id)`,
+    continueOnError: true,
+  },
+  {
+    desc: "hmo_doctor_coverages index (hmo_id)",
+    sql: `CREATE INDEX IF NOT EXISTS hmo_doctor_coverages_hmo_id_idx ON hmo_doctor_coverages (hmo_id)`,
+    continueOnError: true,
+  },
+  {
+    desc: "hmo_doctor_patients table (doctor assigned to individual member)",
+    sql: `CREATE TABLE IF NOT EXISTS hmo_doctor_patients (
+      id TEXT PRIMARY KEY,
+      doctor_email TEXT NOT NULL,
+      member_id TEXT NOT NULL,
+      created_at TIMESTAMP(3) NOT NULL DEFAULT now()
+    )`,
+    continueOnError: true,
+  },
+  {
+    desc: "hmo_doctor_patients unique index (doctor_email, member_id)",
+    sql: `CREATE UNIQUE INDEX IF NOT EXISTS hmo_doctor_patients_doctor_email_member_id_key ON hmo_doctor_patients (doctor_email, member_id)`,
+    continueOnError: true,
+  },
+  {
+    desc: "hmo_doctor_patients index (member_id)",
+    sql: `CREATE INDEX IF NOT EXISTS hmo_doctor_patients_member_id_idx ON hmo_doctor_patients (member_id)`,
+    continueOnError: true,
+  },
+  {
+    desc: "hmo_vitals_alerts table (threshold / rising-trend alerts)",
+    sql: `CREATE TABLE IF NOT EXISTS hmo_vitals_alerts (
+      id TEXT PRIMARY KEY,
+      member_id TEXT NOT NULL REFERENCES hmo_members(id) ON DELETE CASCADE,
+      reading_id TEXT REFERENCES hmo_vitals_readings(id) ON DELETE SET NULL,
+      type TEXT NOT NULL,
+      severity TEXT NOT NULL DEFAULT 'warning',
+      message TEXT NOT NULL,
+      status TEXT NOT NULL DEFAULT 'open',
+      acknowledged_by TEXT,
+      acknowledged_at TIMESTAMP(3),
+      created_at TIMESTAMP(3) NOT NULL DEFAULT now()
+    )`,
+    continueOnError: true,
+  },
+  {
+    desc: "hmo_vitals_alerts index (member_id, created_at)",
+    sql: `CREATE INDEX IF NOT EXISTS hmo_vitals_alerts_member_id_created_at_idx ON hmo_vitals_alerts (member_id, created_at)`,
+    continueOnError: true,
+  },
+  {
+    desc: "hmo_vitals_alerts index (status, created_at)",
+    sql: `CREATE INDEX IF NOT EXISTS hmo_vitals_alerts_status_created_at_idx ON hmo_vitals_alerts (status, created_at)`,
+    continueOnError: true,
+  },
+  {
+    desc: "hmo_alert_email_logs table (alert email cooldown ledger)",
+    sql: `CREATE TABLE IF NOT EXISTS hmo_alert_email_logs (
+      id TEXT PRIMARY KEY,
+      doctor_email TEXT NOT NULL,
+      member_id TEXT NOT NULL,
+      alert_id TEXT,
+      created_at TIMESTAMP(3) NOT NULL DEFAULT now()
+    )`,
+    continueOnError: true,
+  },
+  {
+    desc: "hmo_alert_email_logs index (doctor_email, member_id, created_at)",
+    sql: `CREATE INDEX IF NOT EXISTS hmo_alert_email_logs_doctor_email_member_id_created_at_idx ON hmo_alert_email_logs (doctor_email, member_id, created_at)`,
+    continueOnError: true,
+  },
 ];
 
 let failed = false;

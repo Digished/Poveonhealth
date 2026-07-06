@@ -138,6 +138,22 @@ export async function middleware(request: NextRequest) {
     }
   }
 
+  // ── HMO member portal (vitals monitoring) ──────────────────────────────────
+  if (pathname.startsWith("/hmo/dashboard")) {
+    const token = request.cookies.get("hmo_token")?.value;
+    if (!token) {
+      return NextResponse.redirect(new URL("/hmo", request.url));
+    }
+  }
+
+  // ── Redirect authenticated HMO members away from the HMO login ─────────────
+  if (pathname === "/hmo") {
+    const token = request.cookies.get("hmo_token")?.value;
+    if (token) {
+      return NextResponse.redirect(new URL("/hmo/dashboard", request.url));
+    }
+  }
+
   return response;
 }
 

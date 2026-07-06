@@ -1420,3 +1420,143 @@ model Admission {
   @@index([patient_id])
   @@map("hospital_admissions")
 }
+
+// ════════════════════════════════════════════════════════════════════
+// HMO remote patient monitoring — partnered HMOs upload member rosters;
+// members log BP / blood sugar; assigned doctors monitor and get alerts.
+// ════════════════════════════════════════════════════════════════════
+
+model Hmo {
+  id            String   @id @default(uuid())
+  name          String
+  code          String   @unique // short slug, stored uppercase e.g. "RELIANCE"
+  contact_email String?
+  contact_phone String?
+  active        Boolean  @default(true)
+  created_at    DateTime @default(now())
+  updated_at    DateTime @default(now()) @updatedAt
+
+  members HmoMember[]
+
+  @@map("hmos")
+}
+
+// One roster entry per patient, uploaded via CSV by admin
+model HmoMember {
+  id            String    @id @default(uuid())
+  hmo_id        String
+  email         String // stored lowercase
+  policy_number String
+  full_name     String
+  phone         String?
+  date_of_birth String? // ISO date string "YYYY-MM-DD"
+  sex           String? // "male" | "female" | "other"
+  active        Boolean   @default(true)
+  flagged       Boolean   @default(false) // doctor marked as "of concern"
+  flagged_by    String? // doctor email
+  flagged_at    DateTime?
+  flag_note     String?
+  created_at    DateTime  @default(now())
+  updated_at    DateTime  @default(now()) @updatedAt
+
+  hmo      Hmo                 @relation(fields: [hmo_id], references: [id], onDelete: Cascade)
+  readings HmoVitalsReading[]
+  alerts   HmoVitalsAlert[]
+  sessions HmoPatientSession[]
+
+  @@unique([hmo_id, policy_number])
+  @@unique([hmo_id, email])
+  @@index([email])
+  @@map("hmo_members")
+}
+
+// Active HMO portal sessions (cookie: hmo_token)
+model HmoPatientSession {
+  id         String   @id @default(uuid())
+  member_id  String
+  expires_at DateTime
+  created_at DateTime @default(now())
+
+  member HmoMember @relation(fields: [member_id], references: [id], onDelete: Cascade)
+
+  @@index([member_id])
+  @@map("hmo_patient_sessions")
+}
+
+// A self-reported vitals reading (blood pressure or blood sugar)
+model HmoVitalsReading {
+  id              String   @id @default(uuid())
+  member_id       String
+  type            String // "bp" | "sugar"
+  systolic        Int?
+  diastolic       Int?
+  pulse           Int?
+  glucose_mg_dl   Decimal? @db.Decimal(6, 1)
+  glucose_context String? // "fasting" | "random"
+  note            String?
+  recorded_at     DateTime @default(now())
+  created_at      DateTime @default(now())
+
+  member HmoMember        @relation(fields: [member_id], references: [id], onDelete: Cascade)
+  alerts HmoVitalsAlert[]
+
+  @@index([member_id, type, recorded_at])
+  @@map("hmo_vitals_readings")
+}
+
+// Doctor assigned to monitor an entire HMO roster
+model HmoDoctorCoverage {
+  id           String   @id @default(uuid())
+  doctor_email String
+  hmo_id       String
+  created_at   DateTime @default(now())
+
+  @@unique([doctor_email, hmo_id])
+  @@index([hmo_id])
+  @@map("hmo_doctor_coverages")
+}
+
+// Doctor assigned to monitor an individual member (additive to coverage)
+model HmoDoctorPatient {
+  id           String   @id @default(uuid())
+  doctor_email String
+  member_id    String
+  created_at   DateTime @default(now())
+
+  @@unique([doctor_email, member_id])
+  @@index([member_id])
+  @@map("hmo_doctor_patients")
+}
+
+// Alert raised by the vitals engine (threshold breach or rising trend)
+model HmoVitalsAlert {
+  id              String    @id @default(uuid())
+  member_id       String
+  reading_id      String?
+  type            String // "bp_threshold" | "sugar_threshold" | "bp_rising" | "sugar_rising"
+  severity        String    @default("warning") // "warning" | "critical"
+  message         String // human-readable, e.g. "BP 152/96 — at or above 140/90"
+  status          String    @default("open") // "open" | "acknowledged"
+  acknowledged_by String? // doctor email
+  acknowledged_at DateTime?
+  created_at      DateTime  @default(now())
+
+  member  HmoMember         @relation(fields: [member_id], references: [id], onDelete: Cascade)
+  reading HmoVitalsReading? @relation(fields: [reading_id], references: [id], onDelete: SetNull)
+
+  @@index([member_id, created_at])
+  @@index([status, created_at])
+  @@map("hmo_vitals_alerts")
+}
+
+// Ledger of alert emails sent, used for the per-doctor/member cooldown
+model HmoAlertEmailLog {
+  id           String   @id @default(uuid())
+  doctor_email String
+  member_id    String
+  alert_id     String?
+  created_at   DateTime @default(now())
+
+  @@index([doctor_email, member_id, created_at])
+  @@map("hmo_alert_email_logs")
+}
