@@ -16,8 +16,6 @@ interface RosterRow {
   policy_number: string;
   full_name: string;
   phone?: string;
-  date_of_birth?: string;
-  sex?: string;
 }
 
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
@@ -31,7 +29,11 @@ const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
  *  - policy_number or email already on this HMO's roster → skip
  *  - duplicate within the file (first occurrence wins)   → skip
  *
- * Returns { created, skipped_duplicate, errors: [{row, email, reason}] }
+ * Members whose email already belongs to a verified patient account
+ * (PatientProfile) are linked to it: phone / date of birth / sex are
+ * backfilled from the profile and their existing PIN keeps working.
+ *
+ * Returns { created, skipped_duplicate, linked_existing, errors: [{row, email, reason}] }
  */
 export async function POST(
   request: NextRequest,
@@ -61,8 +63,6 @@ export async function POST(
       policy_number: String(r.policy_number ?? "").trim(),
       full_name: String(r.full_name ?? "").trim(),
       phone: String(r.phone ?? "").trim() || null,
-      date_of_birth: String(r.date_of_birth ?? "").trim() || null,
-      sex: String(r.sex ?? "").trim().toLowerCase() || null,
       _idx: i + 2,
     }));
 
@@ -74,10 +74,6 @@ export async function POST(
         errors.push({ row: r._idx, email: r.email, reason: "Missing policy number" });
       } else if (!r.full_name) {
         errors.push({ row: r._idx, email: r.email, reason: "Missing full name" });
-      } else if (r.date_of_birth && !/^\d{4}-\d{2}-\d{2}$/.test(r.date_of_birth)) {
-        errors.push({ row: r._idx, email: r.email, reason: "Date of birth must be YYYY-MM-DD" });
-      } else if (r.sex && !["male", "female", "other"].includes(r.sex)) {
-        errors.push({ row: r._idx, email: r.email, reason: "Sex must be male, female or other" });
       } else {
         valid.push(r);
       }
@@ -125,18 +121,34 @@ export async function POST(
       }
     }
 
+    // Consolidate with existing verified patient accounts: when the email
+    // already has a PatientProfile, backfill phone / date of birth / sex
+    // from the patient's own verified data.
+    const profiles = toCreate.length > 0
+      ? await prisma.patientProfile.findMany({
+          where: { email: { in: toCreate.map((r) => r.email) } },
+          select: { email: true, phone: true, dob: true, sex: true },
+        })
+      : [];
+    const profileByEmail = new Map(profiles.map((p) => [p.email, p]));
+
     let created = 0;
+    let linked_existing = 0;
     if (toCreate.length > 0) {
       const result = await prisma.hmoMember.createMany({
-        data: toCreate.map((r) => ({
-          hmo_id: hmo.id,
-          email: r.email,
-          policy_number: r.policy_number,
-          full_name: r.full_name,
-          phone: r.phone,
-          date_of_birth: r.date_of_birth,
-          sex: r.sex,
-        })),
+        data: toCreate.map((r) => {
+          const profile = profileByEmail.get(r.email);
+          if (profile) linked_existing++;
+          return {
+            hmo_id: hmo.id,
+            email: r.email,
+            policy_number: r.policy_number,
+            full_name: r.full_name,
+            phone: r.phone ?? profile?.phone ?? null,
+            date_of_birth: profile?.dob ?? null,
+            sex: profile?.sex ?? null,
+          };
+        }),
         skipDuplicates: true,
       });
       created = result.count;
@@ -146,6 +158,7 @@ export async function POST(
       success: true,
       created,
       skipped_duplicate,
+      linked_existing,
       errors,
     });
   } catch (err) {

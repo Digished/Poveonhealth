@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { createHash } from "crypto";
 import { prisma } from "@/lib/prisma";
 import { HMO_COOKIE, HMO_SESSION_DURATION_MS } from "@/lib/hmo/auth";
+import { consolidateMemberAccount } from "@/lib/hmo/consolidate";
 
 export async function POST(req: NextRequest) {
   try {
@@ -58,12 +59,25 @@ export async function POST(req: NextRequest) {
 
     await prisma.patientOtp.update({ where: { id: otp.id }, data: { used: true } });
 
+    // The email is now verified — consolidate with the platform-wide patient
+    // account (creating one if needed) so the member has a single identity
+    // and a single PIN across the patient and HMO portals.
+    await consolidateMemberAccount(member, { createProfile: true });
+
     const expiresAt = new Date(Date.now() + HMO_SESSION_DURATION_MS);
     const session = await prisma.hmoPatientSession.create({
       data: { member_id: member.id, expires_at: expiresAt },
     });
 
-    const res = NextResponse.json({ success: true });
+    // Prompt the member to create a PIN on first login (no PIN on the
+    // consolidated account yet)
+    const profile = await prisma.patientProfile.findUnique({
+      where: { email: normalisedEmail },
+      select: { pin_hash: true },
+    });
+    const should_create_pin = !profile?.pin_hash;
+
+    const res = NextResponse.json({ success: true, should_create_pin });
     res.cookies.set(HMO_COOKIE, session.id, {
       httpOnly: true,
       secure: process.env.NODE_ENV === "production",

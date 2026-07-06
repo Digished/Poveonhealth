@@ -46,8 +46,6 @@ type CsvRow = {
   policy_number: string;
   full_name: string;
   phone: string;
-  date_of_birth: string;
-  sex: string;
   _valid: boolean;
   _error?: string;
 };
@@ -86,8 +84,6 @@ function parseRosterCSV(text: string): CsvRow[] {
   const getPolicy = col("policy_number", ["policy_no", "policy", "policynumber"]);
   const getName   = col("full_name", ["name"]);
   const getPhone  = col("phone", ["phone_number", "mobile"]);
-  const getDob    = col("date_of_birth", ["dob", "birth_date"]);
-  const getSex    = col("sex", ["gender"]);
 
   return lines.slice(1).map((line) => {
     const cols = parseCSVLine(line);
@@ -96,8 +92,6 @@ function parseRosterCSV(text: string): CsvRow[] {
       policy_number: getPolicy(cols),
       full_name: getName(cols),
       phone: getPhone(cols),
-      date_of_birth: getDob(cols),
-      sex: getSex(cols).toLowerCase(),
       _valid: true,
     };
     if (!row.email || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(row.email)) {
@@ -106,10 +100,6 @@ function parseRosterCSV(text: string): CsvRow[] {
       row._valid = false; row._error = "Policy number required";
     } else if (!row.full_name) {
       row._valid = false; row._error = "Full name required";
-    } else if (row.date_of_birth && !/^\d{4}-\d{2}-\d{2}$/.test(row.date_of_birth)) {
-      row._valid = false; row._error = "DOB must be YYYY-MM-DD";
-    } else if (row.sex && !["male", "female", "other"].includes(row.sex)) {
-      row._valid = false; row._error = "Sex must be male/female/other";
     }
     return row;
   }).filter((r) => r.email || r.full_name || r.policy_number);
@@ -195,6 +185,7 @@ function CreateHmoModal({ onClose, onCreated }: { onClose: () => void; onCreated
 type ImportResult = {
   created: number;
   skipped_duplicate: number;
+  linked_existing: number;
   errors: { row: number; email: string; reason: string }[];
 };
 
@@ -259,6 +250,12 @@ function RosterImportModal({ hmo, onClose, onImported }: { hmo: HmoRow; onClose:
                   {result.skipped_duplicate > 0 && `, ${result.skipped_duplicate} already on the roster`}
                 </p>
               </div>
+              {result.linked_existing > 0 && (
+                <p className="text-xs text-slate-400">
+                  {result.linked_existing} member{result.linked_existing !== 1 ? "s were" : " was"} linked to an
+                  existing verified Poveon account — they can sign in with their existing PIN right away.
+                </p>
+              )}
               {result.errors.length > 0 && (
                 <div className="rounded-xl border border-white/8 overflow-hidden">
                   <div className="overflow-x-auto max-h-60">
@@ -306,7 +303,7 @@ function RosterImportModal({ hmo, onClose, onImported }: { hmo: HmoRow; onClose:
                 <Upload className="w-8 h-8 text-slate-500 mx-auto mb-3" />
                 <p className="text-sm text-slate-300 font-medium">Drop a CSV file here, or click to choose</p>
                 <p className="text-xs text-slate-500 mt-2">
-                  Columns: <span className="font-mono">email, policy_number, full_name, phone, date_of_birth, sex</span>
+                  Columns: <span className="font-mono">email, policy_number, full_name, phone</span> (phone optional)
                 </p>
                 <input ref={fileRef} type="file" accept=".csv,text/csv" hidden
                   onChange={(e) => { const f = e.target.files?.[0]; if (f) handleFile(f); }} />
@@ -342,8 +339,6 @@ function RosterImportModal({ hmo, onClose, onImported }: { hmo: HmoRow; onClose:
                         <th className="px-3 py-2 text-left text-slate-400 font-semibold">Policy No</th>
                         <th className="px-3 py-2 text-left text-slate-400 font-semibold">Name</th>
                         <th className="px-3 py-2 text-left text-slate-400 font-semibold">Phone</th>
-                        <th className="px-3 py-2 text-left text-slate-400 font-semibold">DOB</th>
-                        <th className="px-3 py-2 text-left text-slate-400 font-semibold">Sex</th>
                         <th className="px-3 py-2 text-left text-slate-400 font-semibold">Status</th>
                       </tr>
                     </thead>
@@ -355,8 +350,6 @@ function RosterImportModal({ hmo, onClose, onImported }: { hmo: HmoRow; onClose:
                           <td className="px-3 py-2 text-slate-300 font-mono">{row.policy_number || "—"}</td>
                           <td className="px-3 py-2 text-white max-w-[140px] truncate">{row.full_name || "—"}</td>
                           <td className="px-3 py-2 text-slate-400 font-mono">{row.phone || "—"}</td>
-                          <td className="px-3 py-2 text-slate-400">{row.date_of_birth || "—"}</td>
-                          <td className="px-3 py-2 text-slate-400">{row.sex || "—"}</td>
                           <td className="px-3 py-2 whitespace-nowrap">
                             {row._valid
                               ? <span className="text-emerald-400">Ready</span>
