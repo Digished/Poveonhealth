@@ -46,8 +46,6 @@ type CsvRow = {
   policy_number: string;
   full_name: string;
   phone: string;
-  date_of_birth: string;
-  sex: string;
   _valid: boolean;
   _error?: string;
 };
@@ -86,8 +84,6 @@ function parseRosterCSV(text: string): CsvRow[] {
   const getPolicy = col("policy_number", ["policy_no", "policy", "policynumber"]);
   const getName   = col("full_name", ["name"]);
   const getPhone  = col("phone", ["phone_number", "mobile"]);
-  const getDob    = col("date_of_birth", ["dob", "birth_date"]);
-  const getSex    = col("sex", ["gender"]);
 
   return lines.slice(1).map((line) => {
     const cols = parseCSVLine(line);
@@ -96,8 +92,6 @@ function parseRosterCSV(text: string): CsvRow[] {
       policy_number: getPolicy(cols),
       full_name: getName(cols),
       phone: getPhone(cols),
-      date_of_birth: getDob(cols),
-      sex: getSex(cols).toLowerCase(),
       _valid: true,
     };
     if (!row.email || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(row.email)) {
@@ -106,10 +100,6 @@ function parseRosterCSV(text: string): CsvRow[] {
       row._valid = false; row._error = "Policy number required";
     } else if (!row.full_name) {
       row._valid = false; row._error = "Full name required";
-    } else if (row.date_of_birth && !/^\d{4}-\d{2}-\d{2}$/.test(row.date_of_birth)) {
-      row._valid = false; row._error = "DOB must be YYYY-MM-DD";
-    } else if (row.sex && !["male", "female", "other"].includes(row.sex)) {
-      row._valid = false; row._error = "Sex must be male/female/other";
     }
     return row;
   }).filter((r) => r.email || r.full_name || r.policy_number);
@@ -306,7 +296,7 @@ function RosterImportModal({ hmo, onClose, onImported }: { hmo: HmoRow; onClose:
                 <Upload className="w-8 h-8 text-slate-500 mx-auto mb-3" />
                 <p className="text-sm text-slate-300 font-medium">Drop a CSV file here, or click to choose</p>
                 <p className="text-xs text-slate-500 mt-2">
-                  Columns: <span className="font-mono">email, policy_number, full_name, phone, date_of_birth, sex</span>
+                  Columns: <span className="font-mono">email, policy_number, full_name, phone</span>
                 </p>
                 <input ref={fileRef} type="file" accept=".csv,text/csv" hidden
                   onChange={(e) => { const f = e.target.files?.[0]; if (f) handleFile(f); }} />
@@ -342,26 +332,17 @@ function RosterImportModal({ hmo, onClose, onImported }: { hmo: HmoRow; onClose:
                         <th className="px-3 py-2 text-left text-slate-400 font-semibold">Policy No</th>
                         <th className="px-3 py-2 text-left text-slate-400 font-semibold">Name</th>
                         <th className="px-3 py-2 text-left text-slate-400 font-semibold">Phone</th>
-                        <th className="px-3 py-2 text-left text-slate-400 font-semibold">DOB</th>
-                        <th className="px-3 py-2 text-left text-slate-400 font-semibold">Sex</th>
-                        <th className="px-3 py-2 text-left text-slate-400 font-semibold">Status</th>
                       </tr>
                     </thead>
                     <tbody className="divide-y divide-white/5">
                       {rows.map((row, i) => (
-                        <tr key={i} className={row._valid ? "hover:bg-white/3" : "bg-red-900/10"}>
+                        <tr key={i} title={row._valid ? undefined : row._error}
+                          className={row._valid ? "hover:bg-white/3" : "bg-red-900/10"}>
                           <td className="px-3 py-2 text-slate-600">{i + 2}</td>
                           <td className="px-3 py-2 text-slate-300 font-mono max-w-[160px] truncate">{row.email || "—"}</td>
                           <td className="px-3 py-2 text-slate-300 font-mono">{row.policy_number || "—"}</td>
                           <td className="px-3 py-2 text-white max-w-[140px] truncate">{row.full_name || "—"}</td>
                           <td className="px-3 py-2 text-slate-400 font-mono">{row.phone || "—"}</td>
-                          <td className="px-3 py-2 text-slate-400">{row.date_of_birth || "—"}</td>
-                          <td className="px-3 py-2 text-slate-400">{row.sex || "—"}</td>
-                          <td className="px-3 py-2 whitespace-nowrap">
-                            {row._valid
-                              ? <span className="text-emerald-400">Ready</span>
-                              : <span className="text-red-400" title={row._error}>{row._error}</span>}
-                          </td>
                         </tr>
                       ))}
                     </tbody>
@@ -613,14 +594,13 @@ function HmoDetail({ hmo, onBack, onChanged }: { hmo: HmoRow; onBack: () => void
                 <th className="px-3 py-2.5 text-left text-slate-400 font-semibold">Member</th>
                 <th className="px-3 py-2.5 text-left text-slate-400 font-semibold">Policy No</th>
                 <th className="px-3 py-2.5 text-left text-slate-400 font-semibold">Phone</th>
-                <th className="px-3 py-2.5 text-left text-slate-400 font-semibold">DOB / Sex</th>
                 <th className="px-3 py-2.5 text-left text-slate-400 font-semibold">Assigned Doctors</th>
                 <th className="px-3 py-2.5 text-left text-slate-400 font-semibold" />
               </tr>
             </thead>
             <tbody className="divide-y divide-white/5">
               {members.length === 0 && !loading && (
-                <tr><td colSpan={6} className="px-3 py-8 text-center text-slate-500">
+                <tr><td colSpan={5} className="px-3 py-8 text-center text-slate-500">
                   No members yet — upload a roster CSV to get started.
                 </td></tr>
               )}
@@ -635,7 +615,6 @@ function HmoDetail({ hmo, onBack, onChanged }: { hmo: HmoRow; onBack: () => void
                   </td>
                   <td className="px-3 py-2.5 text-slate-300 font-mono">{m.policy_number}</td>
                   <td className="px-3 py-2.5 text-slate-400 font-mono">{m.phone || "—"}</td>
-                  <td className="px-3 py-2.5 text-slate-400">{m.date_of_birth || "—"}{m.sex ? ` · ${m.sex}` : ""}</td>
                   <td className="px-3 py-2.5">
                     {m.assigned_doctors.length === 0
                       ? <span className="text-slate-600">Roster doctors only</span>

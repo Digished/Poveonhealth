@@ -16,8 +16,6 @@ interface RosterRow {
   policy_number: string;
   full_name: string;
   phone?: string;
-  date_of_birth?: string;
-  sex?: string;
 }
 
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
@@ -25,7 +23,7 @@ const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 /**
  * POST /api/admin/hmo/[hmoId]/import-roster
  *
- * Body: { rows: RosterRow[] }  (client parses CSV/xlsx and sends clean rows)
+ * Body: { rows: RosterRow[] }  (client parses the CSV and sends clean rows)
  *
  * Dedup rules (per HMO):
  *  - policy_number or email already on this HMO's roster → skip
@@ -61,8 +59,6 @@ export async function POST(
       policy_number: String(r.policy_number ?? "").trim(),
       full_name: String(r.full_name ?? "").trim(),
       phone: String(r.phone ?? "").trim() || null,
-      date_of_birth: String(r.date_of_birth ?? "").trim() || null,
-      sex: String(r.sex ?? "").trim().toLowerCase() || null,
       _idx: i + 2,
     }));
 
@@ -74,10 +70,6 @@ export async function POST(
         errors.push({ row: r._idx, email: r.email, reason: "Missing policy number" });
       } else if (!r.full_name) {
         errors.push({ row: r._idx, email: r.email, reason: "Missing full name" });
-      } else if (r.date_of_birth && !/^\d{4}-\d{2}-\d{2}$/.test(r.date_of_birth)) {
-        errors.push({ row: r._idx, email: r.email, reason: "Date of birth must be YYYY-MM-DD" });
-      } else if (r.sex && !["male", "female", "other"].includes(r.sex)) {
-        errors.push({ row: r._idx, email: r.email, reason: "Sex must be male, female or other" });
       } else {
         valid.push(r);
       }
@@ -134,8 +126,6 @@ export async function POST(
           policy_number: r.policy_number,
           full_name: r.full_name,
           phone: r.phone,
-          date_of_birth: r.date_of_birth,
-          sex: r.sex,
         })),
         skipDuplicates: true,
       });
