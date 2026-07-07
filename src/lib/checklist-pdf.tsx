@@ -14,7 +14,12 @@ const SLATE = "#64748b";
 const LIGHT = "#94a3b8";
 
 const styles = StyleSheet.create({
-  page: { fontFamily: "Helvetica", fontSize: 10, color: "#1a1a2e", paddingTop: 40, paddingBottom: 56, paddingHorizontal: 44, lineHeight: 1.4 },
+  page: { fontFamily: "Helvetica", fontSize: 10, color: "#1a1a2e", paddingTop: 46, paddingBottom: 56, paddingHorizontal: 44, lineHeight: 1.4 },
+
+  // Slim repeat header shown on continuation pages only
+  contHeader: { flexDirection: "row", justifyContent: "space-between", alignItems: "center", borderBottomWidth: 1, borderBottomColor: "#e2e8f0", paddingBottom: 5 },
+  contTitle: { fontSize: 8, fontFamily: "Helvetica-Bold", color: SLATE, textTransform: "uppercase", letterSpacing: 0.8 },
+  contCode: { fontSize: 9, fontFamily: "Helvetica-Bold", color: BLUE, letterSpacing: 0.8 },
 
   header: { flexDirection: "row", justifyContent: "space-between", alignItems: "flex-start", borderBottomWidth: 2, borderBottomColor: BLUE, paddingBottom: 10, marginBottom: 4 },
   brandRow: { flexDirection: "row", alignItems: "center", maxWidth: "62%" },
@@ -47,7 +52,7 @@ const styles = StyleSheet.create({
 
   thead: { flexDirection: "row", borderBottomWidth: 1, borderBottomColor: "#cbd5e1", paddingVertical: 4, paddingHorizontal: 8 },
   th: { fontSize: 7.5, fontFamily: "Helvetica-Bold", color: SLATE, textTransform: "uppercase", letterSpacing: 0.5 },
-  tr: { flexDirection: "row", alignItems: "center", paddingVertical: 5, paddingHorizontal: 8, borderBottomWidth: 0.5, borderBottomColor: "#eef2f7" },
+  tr: { flexDirection: "row", alignItems: "center", paddingVertical: 6, paddingHorizontal: 8, borderBottomWidth: 0.5, borderBottomColor: "#eef2f7" },
   cBox: { width: "8%" }, cTest: { width: "50%" }, cDone: { width: "21%" }, cStaff: { width: "21%" },
   checkbox: { width: 11, height: 11, borderWidth: 1, borderColor: "#64748b", borderRadius: 2 },
   testName: { fontSize: 9.5, color: INK, fontFamily: "Helvetica-Bold" },
@@ -68,7 +73,10 @@ const styles = StyleSheet.create({
   verifyLine: { borderBottomWidth: 1, borderBottomColor: "#94a3b8", height: 16, marginTop: 2 },
   verifyValue: { fontSize: 9.5, fontFamily: "Helvetica-Bold", color: INK, marginTop: 2 },
 
-  footer: { position: "absolute", bottom: 26, left: 44, right: 44, flexDirection: "row", justifyContent: "space-between", borderTopWidth: 1, borderTopColor: "#e2e8f0", paddingTop: 7 },
+  // Anchored with `top` (A4 is 841.89pt tall): bottom-anchored fixed Views are
+  // dropped from multi-page documents by @react-pdf/renderer 4.x.
+  footerWrap: { position: "absolute", top: 799, left: 44, right: 44 },
+  footer: { flexDirection: "row", justifyContent: "space-between", borderTopWidth: 1, borderTopColor: "#e2e8f0", paddingTop: 7 },
   footerText: { fontSize: 7, color: LIGHT },
 });
 
@@ -116,6 +124,21 @@ export function VisitChecklistPdf(props: VisitChecklistProps) {
   return (
     <Document title={`Visit checklist ${props.code}`} author={props.labName}>
       <Page size="A4" style={styles.page}>
+        {/* Continuation header — repeats on pages 2+ so a detached sheet is
+            still identifiable; absolutely positioned so page 1 is untouched. */}
+        <View
+          fixed
+          style={{ position: "absolute", top: 16, left: 44, right: 44 }}
+          render={({ pageNumber }) =>
+            pageNumber > 1 ? (
+              <View style={styles.contHeader}>
+                <Text style={styles.contTitle}>{props.labName} · Patient Visit Checklist (continued)</Text>
+                <Text style={styles.contCode}>{props.code}</Text>
+              </View>
+            ) : null
+          }
+        />
+
         {/* Header — logo + lab identity, code + date */}
         <View style={styles.header}>
           <View style={styles.brandRow}>
@@ -182,21 +205,26 @@ export function VisitChecklistPdf(props: VisitChecklistProps) {
           </Text>
         </View>
 
-        {/* Test checklist grouped by department */}
+        {/* Test checklist grouped by department. Long departments flow onto
+            following pages: only individual rows are kept atomic, and the
+            heading + column header stay welded to the first few rows so a
+            department never opens as an orphan at the foot of a page. */}
         {props.groups.map((g, gi) => (
-          <View key={gi} wrap={false}>
-            <View style={styles.deptHeading}>
-              <Text style={styles.deptName}>{g.department}</Text>
-              <Text style={styles.deptHint}>{g.hint}</Text>
-            </View>
-            <View style={styles.thead}>
-              <Text style={[styles.th, styles.cBox]}>Done</Text>
-              <Text style={[styles.th, styles.cTest]}>Test</Text>
-              <Text style={[styles.th, styles.cDone]}>Sample / Time</Text>
-              <Text style={[styles.th, styles.cStaff]}>Staff initials</Text>
+          <View key={gi}>
+            <View wrap={false} minPresenceAhead={72}>
+              <View style={styles.deptHeading}>
+                <Text style={styles.deptName}>{g.department}</Text>
+                <Text style={styles.deptHint}>{g.hint}</Text>
+              </View>
+              <View style={styles.thead}>
+                <Text style={[styles.th, styles.cBox]}>Done</Text>
+                <Text style={[styles.th, styles.cTest]}>Test</Text>
+                <Text style={[styles.th, styles.cDone]}>Sample / Time</Text>
+                <Text style={[styles.th, styles.cStaff]}>Staff initials</Text>
+              </View>
             </View>
             {g.tests.map((t, ti) => (
-              <View key={ti} style={styles.tr}>
+              <View key={ti} style={styles.tr} wrap={false}>
                 <View style={styles.cBox}><View style={styles.checkbox} /></View>
                 <View style={styles.cTest}>
                   <Text style={styles.testName}>{t.name}</Text>
@@ -210,7 +238,7 @@ export function VisitChecklistPdf(props: VisitChecklistProps) {
         ))}
 
         {props.totalLabel ? (
-          <View style={styles.totalRow}>
+          <View style={styles.totalRow} wrap={false}>
             <Text style={styles.totalLabel}>Amount paid at front desk</Text>
             <Text style={styles.totalValue}>{props.totalLabel}</Text>
           </View>
@@ -228,10 +256,21 @@ export function VisitChecklistPdf(props: VisitChecklistProps) {
           </View>
         </View>
 
-        <View style={styles.footer} fixed>
-          <Text style={styles.footerText}>{props.labName} · Patient visit checklist · Powered by Poveon</Text>
-          <Text style={styles.footerText} render={({ pageNumber, totalPages }) => `Page ${pageNumber} of ${totalPages}`} />
-        </View>
+        <View
+          fixed
+          style={styles.footerWrap}
+          render={(pageProps) => {
+            // The View render prop's type omits totalPages, but react-pdf
+            // passes it at runtime just like it does for Text.
+            const { pageNumber, totalPages } = pageProps as unknown as { pageNumber: number; totalPages: number };
+            return (
+              <View style={styles.footer}>
+                <Text style={styles.footerText}>{props.labName} · Patient visit checklist · Powered by Poveon</Text>
+                <Text style={styles.footerText}>{`Page ${pageNumber} of ${totalPages}`}</Text>
+              </View>
+            );
+          }}
+        />
       </Page>
     </Document>
   );
