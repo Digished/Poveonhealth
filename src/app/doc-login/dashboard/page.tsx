@@ -6,10 +6,11 @@ import {
   FlaskConical, LogOut, Building2, User,
   CalendarDays, TestTube2, ChevronDown, ChevronUp,
   Clock, CheckCircle, Eye, MapPin, Phone, X, Shield, EyeOff, RefreshCw, MessageCircle, Star, MessageSquare, ExternalLink,
-  Stethoscope, Pencil, Check, CreditCard, ChevronRight, Info, Send,
+  Stethoscope, Pencil, Check, CreditCard, ChevronRight, Info, Send, HeartPulse,
 } from "lucide-react";
 import { DoctorReferralsSection } from "@/components/referral/DoctorReferralsSection";
 import { DoctorEncounterSection } from "@/components/doctor/DoctorEncounterSection";
+import { DoctorMonitoringSection } from "@/components/doctor/DoctorMonitoringSection";
 import { themeClass } from "@/lib/encounter-themes";
 import { SupportFab } from "@/components/SupportFab";
 import { SectionLoader } from "@/components/PageLoader";
@@ -527,7 +528,8 @@ function DocDashboardInner() {
   const [error, setError] = useState("");
   const [filter, setFilter] = useState<"all" | "incoming" | "seen" | "done">("all");
   const [loggingOut, setLoggingOut] = useState(false);
-  const [activeTab, setActiveTab] = useState<"charging" | "requests" | "referrals" | "results" | "profile" | "security">("charging");
+  const [activeTab, setActiveTab] = useState<"charging" | "requests" | "referrals" | "results" | "profile" | "security" | "monitoring">("charging");
+  const [monitoringCount, setMonitoringCount] = useState<number | null>(null);
   const [chargingReady, setChargingReady] = useState<boolean | null>(null);
   const [showEarnModal, setShowEarnModal] = useState(false);
   const [docTheme, setDocTheme] = useState<string | null>(null);
@@ -543,6 +545,13 @@ function DocDashboardInner() {
       setDoctorEmail(data.doctor_email);
       setRequests(data.requests);
       setProfile(data.profile ?? null);
+      // HMO monitoring assignments decide whether the Monitoring tab shows (non-blocking)
+      fetch("/api/doc-login/monitoring/patients")
+        .then((r) => r.json())
+        .then((m) => {
+          if (m.success) setMonitoringCount((m.patients ?? []).length);
+        })
+        .catch(() => {});
       // Surface the earning-setup prompt right away (non-blocking)
       fetch("/api/doc-login/pricing")
         .then((r) => r.json())
@@ -611,14 +620,19 @@ function DocDashboardInner() {
             <div className="flex gap-2 min-w-max pb-0.5">
               {([
                 { key: "charging", label: "Earn", Icon: CreditCard },
+                // Only doctors with HMO monitoring assignments see this tab
+                ...(monitoringCount ? [{ key: "monitoring", label: "Monitoring", Icon: HeartPulse }] : []),
                 { key: "requests", label: "Lab Requests", Icon: FlaskConical },
                 { key: "referrals", label: "Referrals", Icon: Send },
                 { key: "results", label: "Results", Icon: CheckCircle },
                 { key: "profile", label: "Profile", Icon: User },
                 { key: "security", label: "Security", Icon: Shield },
-              ] as const).map(({ key, label, Icon }) => {
+              ] as { key: typeof activeTab; label: string; Icon: typeof CreditCard }[]).map(({ key, label, Icon }) => {
                 const resultCount = requests.filter((r) => r.status === "done").length;
-                const tabCount = key === "requests" ? requests.length : key === "results" ? resultCount : 0;
+                const tabCount =
+                  key === "requests" ? requests.length :
+                  key === "results" ? resultCount :
+                  key === "monitoring" ? (monitoringCount ?? 0) : 0;
                 const profileIncomplete = key === "profile" && !profile?.full_name;
                 const chargingIncomplete = key === "charging" && chargingReady === false;
                 const active = activeTab === key;
@@ -648,6 +662,9 @@ function DocDashboardInner() {
         {!loading && activeTab === "charging" && (
           <DoctorEncounterSection onReadyChange={setChargingReady} onThemeChange={setDocTheme} />
         )}
+
+        {/* HMO Vitals Monitoring Tab */}
+        {!loading && activeTab === "monitoring" && <DoctorMonitoringSection />}
 
         {/* Patient Referrals Tab */}
         {!loading && activeTab === "referrals" && <DoctorReferralsSection />}

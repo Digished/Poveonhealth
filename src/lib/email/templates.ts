@@ -1644,3 +1644,102 @@ export function doctorPayoutEmail({
     </p>
   `);
 }
+
+// =============================================================================
+// TEMPLATE: HMO Portal — One-Time Passcode (email + policy number login)
+// =============================================================================
+export function hmoPatientOtpEmail({
+  email,
+  otp,
+  hmoName,
+}: {
+  email: string;
+  otp: string;
+  hmoName: string;
+}) {
+  return base(`
+    <h2 style="margin:0 0 8px;color:#0259a0;font-size:20px;font-weight:700;">Your Login Code</h2>
+    <p style="margin:0 0 24px;color:#4b5563;font-size:15px;">
+      Use the code below to sign in to your Poveon health monitoring portal (${hmoName}). It expires in <strong>10 minutes</strong>.
+    </p>
+
+    <div style="background:#f0f7ff;border:2px dashed #0270c3;border-radius:8px;padding:24px;text-align:center;margin:24px 0;">
+      <p style="margin:0 0 6px;color:#0259a0;font-size:12px;font-weight:600;text-transform:uppercase;letter-spacing:1px;">One-Time Passcode</p>
+      <p style="margin:0;color:#0259a0;font-size:40px;font-weight:800;letter-spacing:10px;font-family:monospace;">${otp}</p>
+    </div>
+
+    ${divider}
+
+    <p style="margin:0 0 8px;color:#6b7280;font-size:13px;">Signing in as: <strong style="color:#1e3a5f;">${email}</strong></p>
+
+    <p style="margin:12px 0 0;color:#dc2626;font-size:13px;font-weight:500;">
+      If you did not request this code, you can safely ignore this email.
+    </p>
+  `);
+}
+
+// =============================================================================
+// TEMPLATE: HMO Monitoring — vitals alert to the assigned doctor
+// =============================================================================
+export function hmoVitalsAlertEmail({
+  doctorName,
+  patientName,
+  hmoName,
+  alerts,
+  readingSummary,
+  dashboardUrl,
+}: {
+  doctorName: string;
+  patientName: string;
+  hmoName: string;
+  alerts: { severity: string; message: string }[];
+  readingSummary: string;
+  dashboardUrl: string;
+}) {
+  const critical = alerts.some((a) => a.severity === "critical");
+  const alertRows = alerts
+    .map(
+      (a) => `
+      <tr>
+        <td style="padding:8px 12px;border-bottom:1px solid ${critical ? "#fecaca" : "#fde68a"};">
+          <span style="display:inline-block;padding:2px 8px;border-radius:9999px;font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:0.5px;${
+            a.severity === "critical"
+              ? "background:#fee2e2;color:#b91c1c;"
+              : "background:#fef3c7;color:#b45309;"
+          }">${a.severity}</span>
+        </td>
+        <td style="padding:8px 12px;border-bottom:1px solid ${critical ? "#fecaca" : "#fde68a"};color:#1f2937;font-size:14px;">${a.message}</td>
+      </tr>`
+    )
+    .join("");
+
+  return base(`
+    <h2 style="margin:0 0 8px;color:${critical ? "#b91c1c" : "#b45309"};font-size:20px;font-weight:700;">
+      ${critical ? "Critical" : ""} Vitals Alert — ${patientName}
+    </h2>
+    <p style="margin:0 0 20px;color:#4b5563;font-size:15px;">
+      Hi ${doctorName || "Doctor"}, a patient you monitor under <strong>${hmoName}</strong> submitted a reading that needs your attention.
+    </p>
+
+    <div style="background:${critical ? "#fef2f2" : "#fffbeb"};border:1px solid ${critical ? "#fecaca" : "#fde68a"};border-radius:10px;padding:16px;margin:0 0 20px;">
+      <p style="margin:0 0 4px;color:#6b7280;font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:0.5px;">Latest reading</p>
+      <p style="margin:0;color:#1f2937;font-size:18px;font-weight:700;">${readingSummary}</p>
+    </div>
+
+    <table width="100%" cellpadding="0" cellspacing="0" style="border-collapse:collapse;margin:0 0 24px;">
+      ${alertRows}
+    </table>
+
+    <div style="text-align:center;margin:0 0 8px;">
+      <a href="${dashboardUrl}" style="display:inline-block;background:linear-gradient(135deg,#0259a0,#0270c3);color:#ffffff;text-decoration:none;padding:12px 32px;border-radius:8px;font-size:15px;font-weight:600;">
+        Review Patient
+      </a>
+    </div>
+
+    ${divider}
+
+    <p style="margin:0;color:#6b7280;font-size:12px;line-height:1.6;">
+      You are receiving this because you are assigned to monitor this patient. To avoid inbox noise, further alert emails for this patient are paused for a few hours; the full alert feed is always available in your dashboard.
+    </p>
+  `);
+}
