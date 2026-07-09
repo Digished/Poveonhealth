@@ -75,6 +75,8 @@ interface WReq {
   raw_input: string | null; diagnosis: string | null;
   is_paid: boolean; tests_confirmed: boolean;
   created_at: string; seen_at: string | null; completed_at: string | null;
+  arrived_at: string | null; attended_at: string | null;
+  referral_type: string | null; whatsapp_phone: string | null; payment_mode: string | null;
   test_breakdown: unknown; journey_events: JEvent[];
 }
 
@@ -431,13 +433,19 @@ export function Workspace({
     }
   }
 
-  async function registration(r: WReq, flags: { tests_confirmed?: boolean; is_paid?: boolean }) {
+  async function registration(r: WReq, flags: { tests_confirmed?: boolean; is_paid?: boolean; arrived?: boolean }) {
     setBusy(true);
     try {
       const res = await fetch("/api/lab/requests/registration", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ requestId: r.id, ...flags }) });
       const data = await res.json();
       if (!res.ok || data.success === false) throw new Error(data.error || "Failed");
-      toast.success(flags.is_paid ? "Marked as paid" : flags.tests_confirmed ? "Tests confirmed" : "Updated");
+      toast.success(
+        flags.is_paid ? "Marked as paid"
+        : flags.tests_confirmed ? "Tests confirmed"
+        : flags.arrived === true ? "Client marked as arrived"
+        : flags.arrived === false ? "Arrival cleared"
+        : "Updated"
+      );
       await load();
     } catch (e) {
       toast.error(e instanceof Error ? e.message : "Failed");
@@ -687,6 +695,9 @@ export function Workspace({
                   // patients aren't in the pipeline yet, so no pipeline pills).
                   <div className="flex flex-wrap items-center gap-1.5">
                     <SourceBadge source={r.source} />
+                    <span className={`inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[10px] font-medium ${r.arrived_at ? "bg-emerald-500/15 text-emerald-300" : "bg-slate-500/15 text-slate-400"}`}>
+                      {r.arrived_at ? <Check className="h-3 w-3" /> : <Clock className="h-3 w-3" />} {r.arrived_at ? "Arrived" : "Not arrived"}
+                    </span>
                     <span className={`inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[10px] font-medium ${r.is_paid ? "bg-emerald-500/15 text-emerald-300" : "bg-rose-500/15 text-rose-300"}`}>
                       <CreditCard className="h-3 w-3" /> {r.is_paid ? "Paid" : "Unpaid"}
                     </span>
@@ -789,7 +800,7 @@ function WorkspaceDrawer({
   busy: boolean;
   onMarkSeen: () => void;
   onAdvance: (track: Track, stage: string, label?: string, note?: string, scheduledAt?: string) => Promise<void> | void;
-  onRegistration: (flags: { tests_confirmed?: boolean; is_paid?: boolean }) => Promise<void> | void;
+  onRegistration: (flags: { tests_confirmed?: boolean; is_paid?: boolean; arrived?: boolean }) => Promise<void> | void;
   onChanged: () => void;
 }) {
   // Onboarding "Register" handles intake/payment; the pipeline (tracks/results)
@@ -890,6 +901,23 @@ function WorkspaceDrawer({
             <p className="mt-1 text-xs text-slate-400">
               {[request.patient_phone, request.patient_email, request.sex, request.patient_age != null ? `${request.patient_age}y` : null].filter(Boolean).join(" · ") || "No contact details on file"}
             </p>
+            {(request.whatsapp_phone || request.payment_mode || request.referral_type) && (
+              <div className="mt-1.5 flex flex-wrap gap-1.5">
+                {request.whatsapp_phone && (
+                  <span className="rounded-full bg-emerald-500/15 px-2 py-0.5 text-[10px] font-medium text-emerald-300">WhatsApp: {request.whatsapp_phone}</span>
+                )}
+                {request.referral_type && (
+                  <span className="rounded-full bg-violet-500/15 px-2 py-0.5 text-[10px] font-medium text-violet-300">
+                    {request.referral_type === "self" ? "Self referred" : request.referral_type === "hmo" ? "Referred by HMO" : "Referred by doctor / hospital"}
+                  </span>
+                )}
+                {request.payment_mode && (
+                  <span className="rounded-full bg-sky-500/15 px-2 py-0.5 text-[10px] font-medium text-sky-300">
+                    Pays by {request.payment_mode === "bill_hospital" ? "hospital / HMO bill" : request.payment_mode}
+                  </span>
+                )}
+              </div>
+            )}
             {/* Full referring details — labs need to see exactly who sent the
                 patient (name, hospital and how to reach the doctor). */}
             {(request.doctor_name || request.doctor_email || request.doctor_hospital) && (
@@ -912,6 +940,15 @@ function WorkspaceDrawer({
             )}
             {showRegistration && canAdvance && (
               <div className="mt-3 flex flex-wrap gap-2">
+                <button
+                  onClick={() => onRegistration({ arrived: !request.arrived_at })}
+                  disabled={busy}
+                  title={request.arrived_at ? `Arrived ${fmtDayTime(request.arrived_at)} — click to undo` : "Mark that the client has physically arrived at the lab"}
+                  className={`inline-flex items-center gap-1.5 rounded-lg px-2.5 py-1 text-xs font-semibold disabled:opacity-50 ${request.arrived_at ? "border border-emerald-500/30 bg-emerald-600/20 text-emerald-300" : "bg-emerald-600 text-white hover:bg-emerald-700"}`}
+                >
+                  {request.arrived_at ? <Check className="h-3.5 w-3.5" /> : <MapPin className="h-3.5 w-3.5" />}
+                  {request.arrived_at ? "Arrived" : "Client has arrived"}
+                </button>
                 <button data-tour="ob-edit-details" onClick={() => setEditOpen(true)} className="inline-flex items-center gap-1.5 rounded-lg border border-white/10 px-2.5 py-1 text-xs font-medium text-medical-300 hover:bg-white/5">
                   <Pencil className="h-3.5 w-3.5" /> Edit client details
                 </button>

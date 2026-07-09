@@ -50,6 +50,11 @@ export async function GET(request: NextRequest) {
       created_at: true,
       seen_at: true,
       completed_at: true,
+      arrived_at: true,
+      attended_at: true,
+      referral_type: true,
+      whatsapp_phone: true,
+      payment_mode: true,
       test_breakdown: true,
       journey_events: {
         orderBy: { created_at: "asc" },

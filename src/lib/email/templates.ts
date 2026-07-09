@@ -1743,3 +1743,125 @@ export function hmoVitalsAlertEmail({
     </p>
   `);
 }
+
+// =============================================================================
+// TEMPLATE: Lab — New QR Self-Service Registration (queue)
+// =============================================================================
+export function labQueueRegistration({
+  labName,
+  patientName,
+  patientPhone,
+  whatsappPhone,
+  patientEmail,
+  patientAge,
+  sex,
+  referralType,
+  doctorName,
+  referringOrg,
+  complaint,
+  paymentMode,
+  tests,
+  code,
+  appUrl,
+}: {
+  labName: string;
+  patientName: string;
+  patientPhone: string;
+  whatsappPhone?: string | null;
+  patientEmail?: string | null;
+  patientAge?: number | null;
+  sex?: string | null;
+  referralType?: string | null;
+  doctorName?: string | null;
+  referringOrg?: string | null;
+  complaint?: string | null;
+  paymentMode?: string | null;
+  tests: string;
+  code: string;
+  appUrl: string;
+}) {
+  const referralLabel: Record<string, string> = {
+    self: "Self referred",
+    doctor: "Referred by doctor / hospital",
+    hmo: "Referred by HMO",
+  };
+  const paymentLabel: Record<string, string> = {
+    cash: "Cash",
+    card: "Card",
+    transfer: "Transfer",
+    bill_hospital: "Bill to hospital / HMO",
+  };
+  return base(`
+    <h2 style="margin:0 0 8px;color:#0259a0;font-size:20px;font-weight:700;">New Self-Service Registration</h2>
+    <p style="margin:0 0 24px;color:#4b5563;font-size:15px;">
+      A client just registered through your QR self-service portal and is waiting in the queue.
+      Please confirm their details on your dashboard to add them to the queue.
+    </p>
+
+    ${codeBox(code)}
+
+    ${divider}
+
+    <h3 style="margin:0 0 16px;color:#0259a0;font-size:16px;font-weight:600;">Client Details</h3>
+
+    ${label("Full Name")}
+    ${value(escapeHtml(patientName))}
+
+    ${label("Phone")}
+    ${value(escapeHtml(patientPhone) + (whatsappPhone ? ` · WhatsApp: ${escapeHtml(whatsappPhone)}` : " (WhatsApp)"))}
+
+    ${patientEmail ? `${label("Email")}${value(escapeHtml(patientEmail))}` : ""}
+    ${patientAge != null || sex ? `${label("Age / Sex")}${value([patientAge != null ? `${patientAge} yrs` : null, sex].filter(Boolean).join(" · "))}` : ""}
+    ${referralType ? `${label("Referral")}${value(referralLabel[referralType] ?? escapeHtml(referralType))}` : ""}
+    ${doctorName ? `${label("Referring Doctor")}${value(escapeHtml(doctorName))}` : ""}
+    ${referringOrg ? `${label("Hospital / HMO / Company")}${value(escapeHtml(referringOrg))}` : ""}
+    ${complaint ? `${label("Complaint")}${value(escapeHtml(complaint))}` : ""}
+    ${paymentMode ? `${label("Payment Mode")}${value(paymentLabel[paymentMode] ?? escapeHtml(paymentMode))}` : ""}
+
+    ${label("Tests Requested")}
+    ${value(escapeHtml(tests))}
+
+    <div style="text-align:center;margin:24px 0 8px;">
+      <a href="${appUrl}/lab-dashboard?tab=queue" style="display:inline-block;background:linear-gradient(135deg,#0259a0,#0270c3);color:#ffffff;text-decoration:none;padding:13px 32px;border-radius:10px;font-weight:700;font-size:14px;letter-spacing:0.2px;">
+        Open Queue — ${escapeHtml(labName)}
+      </a>
+    </div>
+  `);
+}
+
+// =============================================================================
+// TEMPLATE: Patient — QR Self-Service Registration Received (queue)
+// =============================================================================
+export function patientQueueJoined({
+  patientName,
+  labName,
+  code,
+  tests,
+  brand,
+}: {
+  patientName: string;
+  labName: string;
+  code: string;
+  tests: string;
+  brand?: { name: string };
+}) {
+  return base(`
+    <h2 style="margin:0 0 8px;color:#0259a0;font-size:20px;font-weight:700;">You're Registered ✔</h2>
+    <p style="margin:0 0 24px;color:#4b5563;font-size:15px;">
+      Dear ${escapeHtml(patientName)},<br><br>
+      Your registration at <strong>${escapeHtml(labName)}</strong> has been received and you've been added to the waiting list.
+      The team will confirm your details shortly and attend to you in order of arrival.
+    </p>
+
+    ${codeBox(code)}
+
+    ${label("Tests Requested")}
+    ${value(escapeHtml(tests))}
+
+    ${divider}
+
+    <p style="margin:0;color:#6b7280;font-size:13px;line-height:1.6;">
+      Keep this code handy — the laboratory team may ask for it. If any of your details are wrong, just let the front desk know and they'll correct them.
+    </p>
+  `, brand);
+}

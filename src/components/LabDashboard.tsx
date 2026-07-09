@@ -9,7 +9,7 @@ import {
   Users, CreditCard, Filter, ChevronDown, AlertTriangle, Truck, ExternalLink,
   MessageCircle, ChevronLeft, FileImage, Sun, Moon, Pencil, Save, BarChart3, Lock,
   Menu, Activity, KeyRound, ArrowRight, Star, MessageSquare, Wallet2, Copy, ArrowUpRight,
-  Settings2, FileText, Plus, Workflow, QrCode, ClipboardList,
+  Settings2, FileText, Plus, Workflow, QrCode, ClipboardList, ListOrdered, UsersRound,
 } from "lucide-react";
 import dynamic from "next/dynamic";
 
@@ -25,6 +25,8 @@ const ResultTemplatesManager = dynamic(() => import("@/components/lab/ResultTemp
 const SopManager = dynamic(() => import("@/components/lab/SopManager").then(m => ({ default: m.SopManager })), { ssr: false });
 const DepartmentsManager = dynamic(() => import("@/components/lab/DepartmentsManager").then(m => ({ default: m.DepartmentsManager })), { ssr: false });
 const LabQrCard = dynamic(() => import("@/components/lab/LabQrCard").then(m => ({ default: m.LabQrCard })), { ssr: false });
+const QueueView = dynamic(() => import("@/components/lab/QueueView").then(m => ({ default: m.QueueView })), { ssr: false });
+const CustomersView = dynamic(() => import("@/components/lab/CustomersView").then(m => ({ default: m.CustomersView })), { ssr: false });
 import { useDashTheme } from "@/hooks/useDashTheme";
 import { TourProvider } from "@/components/lab/tour/TourProvider";
 import { GuideToggle } from "@/components/lab/tour/GuideToggle";
@@ -108,8 +110,8 @@ export function LabDashboard({ lab, isOwner = false, roleName = "Lab Owner", can
   const router = useRouter();
   const searchParams = useSearchParams();
   const { isLight, toggle, themeClass } = useDashTheme("lab_dash_theme");
-  type MainView = "workspace" | "requests" | "journey" | "onboarding" | "departments" | "templates" | "sops" | "network" | "referrals" | "professionals" | "clients" | "analytics" | "activity" | "feedback" | "poveon" | "price-list" | "marketers";
-  const VALID_TABS: MainView[] = ["onboarding", "workspace", "requests", "journey", "departments", "templates", "sops", "network", "referrals", "professionals", "clients", "analytics", "activity", "feedback", "poveon", "price-list", "marketers"];
+  type MainView = "workspace" | "requests" | "journey" | "onboarding" | "queue" | "departments" | "templates" | "sops" | "network" | "referrals" | "professionals" | "clients" | "customers" | "analytics" | "activity" | "feedback" | "poveon" | "price-list" | "marketers";
+  const VALID_TABS: MainView[] = ["onboarding", "queue", "workspace", "requests", "journey", "departments", "templates", "sops", "network", "referrals", "professionals", "clients", "customers", "analytics", "activity", "feedback", "poveon", "price-list", "marketers"];
   // Legacy tabs now fold into the unified Workspace.
   const LEGACY_TO_WORKSPACE = new Set(["requests", "journey"]);
   // Which permission gates each tab (used by the sidebar and the initial landing).
@@ -118,6 +120,8 @@ export function LabDashboard({ lab, isOwner = false, roleName = "Lab Owner", can
     requests: canViewRequestsEff,
     journey: canViewRequestsEff,
     onboarding: canMarkSeen || isOwner,
+    queue: canMarkSeen || isOwner || canViewRequestsEff,
+    customers: isOwner || canViewClients,
     departments: isOwner,
     templates: canViewRequestsEff || isOwner || canManageTemplates,
     sops: canViewRequestsEff || isOwner || canManageTemplates,
@@ -148,8 +152,8 @@ export function LabDashboard({ lab, isOwner = false, roleName = "Lab Owner", can
     setLabMode(m);
     try { localStorage.setItem(`lab_dash_mode_${lab.id}`, m); } catch { /* ignore */ }
   }, [lab.id]);
-  const LITE_SIDEBAR = new Set<MainView>(["onboarding", "network", "marketers", "price-list"]);
-  const LITE_ALLOWED = new Set<MainView>(["onboarding", "network", "referrals", "professionals", "marketers", "price-list"]);
+  const LITE_SIDEBAR = new Set<MainView>(["onboarding", "queue", "customers", "network", "marketers", "price-list"]);
+  const LITE_ALLOWED = new Set<MainView>(["onboarding", "queue", "customers", "network", "referrals", "professionals", "marketers", "price-list"]);
   const tabVisibleEff: Record<MainView, boolean> = labMode === "lite"
     ? (Object.fromEntries((Object.keys(tabVisible) as MainView[]).map((k) => [k, tabVisible[k] && LITE_SIDEBAR.has(k)])) as Record<MainView, boolean>)
     : tabVisible;
@@ -186,7 +190,25 @@ export function LabDashboard({ lab, isOwner = false, roleName = "Lab Owner", can
   const [poveonLoading, setPoveonLoading] = useState(false);
   const [priceListData, setPriceListData] = useState<{ category: string; tests: { id: string; name: string; lab_price: number; poveon_fee: number | null; commission_pct: number | null }[] }[] | null>(null);
   const [priceListLoading, setPriceListLoading] = useState(false);
+  const [priceListError, setPriceListError] = useState<string | null>(null);
   const [priceManagerOpen, setPriceManagerOpen] = useState(false);
+  // Load (or reload) the lab's price schedule. Errors are surfaced with a
+  // retry instead of being swallowed — a failed fetch used to leave the tab
+  // stuck on "No tests in your catalog yet".
+  const fetchPriceList = useCallback(async () => {
+    setPriceListLoading(true);
+    setPriceListError(null);
+    try {
+      const res = await fetch("/api/lab/price-schedule", { cache: "no-store" });
+      const d = await res.json().catch(() => null);
+      if (!res.ok || !d?.success) throw new Error(d?.error || `Could not load the price list (${res.status})`);
+      setPriceListData(d.schedule ?? []);
+    } catch (e) {
+      setPriceListError(e instanceof Error ? e.message : "Could not load the price list");
+    } finally {
+      setPriceListLoading(false);
+    }
+  }, []);
   const [mobileNavOpen, setMobileNavOpen] = useState(false);
   // Agreement status — checked once on mount for owners
   const [agreementSigned, setAgreementSigned] = useState<boolean | null>(null);
@@ -874,12 +896,14 @@ export function LabDashboard({ lab, isOwner = false, roleName = "Lab Owner", can
           const RAW_SECTIONS: { label: string; items: { key: MainView; label: string; icon: React.ReactNode; show: boolean }[] }[] = [
             { label: "Operations", items: [
               { key: "onboarding", label: "Onboarding", icon: <QrCode className="w-4 h-4" />, show: tabVisibleEff.onboarding },
+              { key: "queue", label: "Queue", icon: <ListOrdered className="w-4 h-4" />, show: tabVisibleEff.queue },
               { key: "workspace", label: "Workstation", icon: <Workflow className="w-4 h-4" />, show: tabVisibleEff.workspace },
               { key: "departments", label: "Departments", icon: <Layers className="w-4 h-4" />, show: tabVisibleEff.departments },
               // Result templates hidden for now — re-enable by restoring `show: tabVisibleEff.templates`.
               { key: "templates", label: "Result Templates", icon: <FileText className="w-4 h-4" />, show: false },
               { key: "sops", label: "SOPs", icon: <ClipboardList className="w-4 h-4" />, show: tabVisibleEff.sops },
               { key: "clients", label: "Clients", icon: <UserCircle className="w-4 h-4" />, show: tabVisibleEff.clients },
+              { key: "customers", label: "Customers", icon: <UsersRound className="w-4 h-4" />, show: tabVisibleEff.customers },
             ] },
             { label: "Network", items: [
               { key: "network", label: "Referrals", icon: <Stethoscope className="w-4 h-4" />, show: tabVisibleEff.network },
@@ -900,10 +924,7 @@ export function LabDashboard({ lab, isOwner = false, roleName = "Lab Owner", can
           const onNav = (key: MainView) => {
             navigateToTab(key);
             setMobileNavOpen(false);
-            if (key === "price-list" && !priceListData) {
-              setPriceListLoading(true);
-              fetch("/api/lab/price-schedule").then((r) => r.json()).then((d) => { if (d.success) setPriceListData(d.schedule); }).catch(() => {}).finally(() => setPriceListLoading(false));
-            }
+            if (key === "price-list") fetchPriceList();
           };
 
           const allItems = NAV_SECTIONS.flatMap((s) => s.items);
@@ -1784,18 +1805,24 @@ export function LabDashboard({ lab, isOwner = false, roleName = "Lab Owner", can
             <LabPriceListView
               data={priceListData}
               loading={priceListLoading}
+              error={priceListError}
               onManage={() => setPriceManagerOpen(true)}
-              onLoad={() => {
-                if (!priceListData) {
-                  setPriceListLoading(true);
-                  fetch("/api/lab/price-schedule").then((r) => r.json()).then((d) => { if (d.success) setPriceListData(d.schedule); }).catch(() => {}).finally(() => setPriceListLoading(false));
-                }
-              }}
+              onLoad={fetchPriceList}
             />
             {priceManagerOpen && (
               <LabPriceListManager onClose={() => setPriceManagerOpen(false)} />
             )}
           </>
+        )}
+
+        {/* Queue view — self-service (QR) waiting queue */}
+        {mainView === "queue" && (isOwner || canMarkSeen || canViewRequestsEff) && (
+          <QueueView canManage={isOwner || canMarkSeen} />
+        )}
+
+        {/* Customers view — every customer since inception, exportable */}
+        {mainView === "customers" && (isOwner || canViewClients) && (
+          <CustomersView labName={lab.name} />
         )}
 
         {/* Departments — per-lab pipeline configuration */}
@@ -3488,9 +3515,15 @@ function LabFeedbackView({ labId }: { labId: string }) {
 type PriceListTest = { id: string; name: string; lab_price: number; poveon_fee: number | null; commission_pct: number | null };
 type PriceListCategory = { category: string; tests: PriceListTest[] };
 
-function LabPriceListView({ data, loading, onLoad, onManage }: { data: PriceListCategory[] | null; loading: boolean; onLoad: () => void; onManage: () => void }) {
+function LabPriceListView({ data, loading, error, onLoad, onManage }: { data: PriceListCategory[] | null; loading: boolean; error?: string | null; onLoad: () => void; onManage: () => void }) {
   const [search, setSearch] = useState("");
-  useEffect(() => { if (!data && !loading) onLoad(); }, [data, loading, onLoad]);
+  // Load once on mount if nothing is cached yet. Deliberately NOT re-run on
+  // every render — a failed fetch must show the retry state, not refetch in a
+  // silent loop (which is what made the price list appear to never load).
+  useEffect(() => {
+    if (!data && !loading && !error) onLoad();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   if (loading) {
     return (
@@ -3498,6 +3531,22 @@ function LabPriceListView({ data, loading, onLoad, onManage }: { data: PriceList
         <div className="h-12 bg-white/5 rounded-xl" />
         <div className="h-48 bg-white/5 rounded-2xl" />
         <div className="h-32 bg-white/5 rounded-2xl" />
+      </div>
+    );
+  }
+
+  if (error) {
+    return (
+      <div className="rounded-2xl border border-rose-500/25 bg-rose-500/10 px-6 py-14 text-center">
+        <AlertTriangle className="mx-auto mb-3 h-8 w-8 text-rose-400" />
+        <p className="text-sm font-semibold text-white">Couldn&apos;t load your price list</p>
+        <p className="mt-1 text-xs text-slate-400">{error}</p>
+        <button
+          onClick={onLoad}
+          className="mt-4 inline-flex items-center gap-2 rounded-xl bg-medical-600 px-4 py-2 text-sm font-semibold text-white hover:bg-medical-700"
+        >
+          <RefreshCw className="h-4 w-4" /> Try again
+        </button>
       </div>
     );
   }

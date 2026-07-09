@@ -1,7 +1,7 @@
 "use client";
 
 import { useState } from "react";
-import { User, FlaskConical, ShieldCheck, Check, Loader2, Copy, Search, ArrowRight, Stethoscope, Lock } from "lucide-react";
+import { User, FlaskConical, ShieldCheck, Check, Loader2, Copy, Search, Stethoscope, Lock, HelpCircle, MessageCircle } from "lucide-react";
 import { TestTagInput, TestTag } from "@/components/ui/TestTagInput";
 import { DoctorSearchSelect, PickedDoctor } from "@/components/lab/DoctorSearchSelect";
 
@@ -26,9 +26,24 @@ const STEP_META = [
   { label: "Consent", icon: ShieldCheck },
 ];
 
+const REFERRAL_OPTIONS = [
+  { value: "self", label: "Self referred" },
+  { value: "doctor", label: "Referred by doctor / hospital" },
+  { value: "hmo", label: "Referred by HMO" },
+] as const;
+
+const PAYMENT_OPTIONS = [
+  { value: "cash", label: "Cash" },
+  { value: "card", label: "Card" },
+  { value: "transfer", label: "Transfer" },
+  { value: "bill_hospital", label: "Bill to my hospital" },
+] as const;
+
 /**
  * Minimalist multi-step client onboarding form. Used by the public QR page
  * (`/o/[labSlug]`, source="qr") and the dashboard walk-in flow (source="walk_in").
+ * The QR flow collects the full self-service queue intake (referral type,
+ * split names, DOB, WhatsApp, complaint, payment mode) and never shows prices.
  */
 export function LabOnboardForm({
   lab,
@@ -41,12 +56,25 @@ export function LabOnboardForm({
   templates?: OnboardTemplate[];
   onSuccess?: (code: string) => void;
 }) {
+  const isQr = source === "qr";
   const [step, setStep] = useState<Step>(0);
+  // Walk-in keeps a single name field; QR splits surname / first / middle.
   const [name, setName] = useState("");
+  const [surname, setSurname] = useState("");
+  const [firstName, setFirstName] = useState("");
+  const [middleName, setMiddleName] = useState("");
   const [phone, setPhone] = useState("");
+  const [phoneIsWhatsapp, setPhoneIsWhatsapp] = useState<"" | "yes" | "no">("");
+  const [whatsapp, setWhatsapp] = useState("");
   const [email, setEmail] = useState("");
   const [age, setAge] = useState("");
+  const [dob, setDob] = useState("");
   const [sex, setSex] = useState("");
+  const [referralType, setReferralType] = useState<"" | "self" | "doctor" | "hmo">("");
+  const [doctorNameText, setDoctorNameText] = useState("");
+  const [referringOrg, setReferringOrg] = useState("");
+  const [paymentMode, setPaymentMode] = useState<"" | "cash" | "card" | "transfer" | "bill_hospital">("");
+  const [complaintHelpOpen, setComplaintHelpOpen] = useState(false);
   const [tests, setTests] = useState<TestTag[]>([]);
   const [condition, setCondition] = useState("");
   const [consent, setConsent] = useState(false);
@@ -54,9 +82,9 @@ export function LabOnboardForm({
   const [error, setError] = useState<string | null>(null);
   const [code, setCode] = useState<string | null>(null);
 
-  // Referring doctor (manual path) — picked from the lab's pool.
+  // Referring doctor (manual path) — picked from the lab's pool (walk-in only).
   const [doctor, setDoctor] = useState<PickedDoctor | null>(null);
-  const canAddDoctor = source === "walk_in"; // front desk can add; public QR is search-only
+  const canAddDoctor = source === "walk_in"; // front desk can add; public QR uses free text
 
   // "I have a Poveon code" reveal-and-confirm path. Both QR self-service and
   // front-desk manual registration lead with the code prompt; "New
@@ -67,12 +95,35 @@ export function LabOnboardForm({
   const [confirming, setConfirming] = useState(false);
   const [revealed, setRevealed] = useState<{ code: string; tests: string; doctor_name: string | null } | null>(null);
 
-  const detailsValid = name.trim().length > 0 && phone.trim().length >= 5;
-  const testsValid = tests.length > 0;
+  const fullName = isQr
+    ? [firstName.trim(), middleName.trim(), surname.trim()].filter(Boolean).join(" ")
+    : name.trim();
 
-  // Running cost estimate from catalog-priced tests (free-text tests are unpriced).
+  const detailsValid = isQr
+    ? !!referralType &&
+      surname.trim().length > 0 &&
+      firstName.trim().length > 0 &&
+      dob.trim().length > 0 &&
+      sex.trim().length > 0 &&
+      phone.trim().length >= 5 &&
+      phoneIsWhatsapp !== ""
+    : name.trim().length > 0 && phone.trim().length >= 5;
+
+  const referralValid = !isQr
+    ? true
+    : referralType === "doctor"
+    ? doctorNameText.trim().length > 0
+    : referralType === "hmo"
+    ? referringOrg.trim().length > 0
+    : true;
+
+  const testsValid = tests.length > 0 && (!isQr || (!!paymentMode && referralValid));
+
+  // Running cost estimate from catalog-priced tests — shown to front-desk staff
+  // only. The public QR flow hides all prices from patients.
   const knownTotal = tests.reduce((s, t) => s + (typeof t.price === "number" ? t.price : 0), 0);
   const hasUnpriced = tests.some((t) => typeof t.price !== "number");
+  const showPrices = source === "walk_in";
 
   function addTemplate(t: OnboardTemplate) {
     const existing = new Set(tests.map((x) => x.name.toLowerCase()));
@@ -93,14 +144,20 @@ export function LabOnboardForm({
           lab_id: lab.id,
           lab_slug: lab.slug,
           source,
-          patient_name: name.trim(),
+          patient_name: fullName,
           patient_phone: phone.trim(),
           patient_email: email.trim() || undefined,
           patient_age: age ? Number(age) : undefined,
+          dob: isQr && dob ? dob : undefined,
           sex: sex || undefined,
           tests: tests.map((t) => t.name).join(", "),
           condition: condition.trim() || undefined,
           professional_id: doctor?.id,
+          referral_type: isQr && referralType ? referralType : undefined,
+          whatsapp_phone: isQr && phoneIsWhatsapp === "no" ? whatsapp.trim() || undefined : undefined,
+          referring_doctor_name: isQr && referralType !== "self" ? doctorNameText.trim() || undefined : undefined,
+          referring_org: isQr ? referringOrg.trim() || undefined : undefined,
+          payment_mode: isQr && paymentMode ? paymentMode : undefined,
           consent: true,
         }),
       });
@@ -180,18 +237,26 @@ export function LabOnboardForm({
           <Check className="h-7 w-7 text-emerald-600" />
         </div>
         <h3 className="mt-4 text-lg font-semibold text-slate-900">You&apos;re registered!</h3>
-        <p className="mt-1 text-sm text-slate-500">Show this code at {lab.name}.</p>
+        <p className="mt-1 text-sm text-slate-500">
+          {isQr
+            ? `You've been added to the waiting list at ${lab.name}. The team will confirm your details and call you in order of arrival.`
+            : `Show this code at ${lab.name}.`}
+        </p>
         <div className="mt-4 inline-flex items-center gap-2 rounded-xl border border-slate-200 bg-slate-50 px-4 py-3">
           <span className="text-2xl font-bold tracking-wider text-medical-700">{code}</span>
           <button onClick={() => navigator.clipboard?.writeText(code)} className="text-slate-400 hover:text-slate-600" title="Copy code">
             <Copy className="h-4 w-4" />
           </button>
         </div>
+        {isQr && email.trim() && (
+          <p className="mt-3 text-xs text-slate-400">A confirmation has also been sent to your email.</p>
+        )}
       </div>
     );
   }
 
   const inputCls = "w-full rounded-xl border border-slate-200 bg-white px-4 py-2.5 text-sm text-slate-800 focus:border-medical-400 focus:ring-2 focus:ring-medical-500/30 outline-none transition";
+  const labelCls = "mb-1 block text-xs font-medium text-slate-600";
 
   return (
     <div>
@@ -226,27 +291,27 @@ export function LabOnboardForm({
       {entryMode === "code" && revealed && (
         <div className="space-y-3">
           <div>
-            <label className="mb-1 block text-xs font-medium text-slate-600">Full name *</label>
+            <label className={labelCls}>Full name *</label>
             <input className={inputCls} value={name} onChange={(e) => setName(e.target.value)} />
           </div>
           <div>
-            <label className="mb-1 block text-xs font-medium text-slate-600">Phone number *</label>
+            <label className={labelCls}>Phone number *</label>
             <input className={inputCls} value={phone} onChange={(e) => setPhone(e.target.value)} inputMode="tel" />
           </div>
           <div className="grid grid-cols-2 gap-3">
             <div>
-              <label className="mb-1 block text-xs font-medium text-slate-600">Age</label>
+              <label className={labelCls}>Age</label>
               <input className={inputCls} value={age} onChange={(e) => setAge(e.target.value.replace(/\D/g, ""))} inputMode="numeric" />
             </div>
             <div>
-              <label className="mb-1 block text-xs font-medium text-slate-600">Sex</label>
+              <label className={labelCls}>Sex</label>
               <select className={inputCls} value={sex} onChange={(e) => setSex(e.target.value)}>
                 <option value="">—</option><option value="male">Male</option><option value="female">Female</option><option value="other">Other</option>
               </select>
             </div>
           </div>
           <div>
-            <label className="mb-1 block text-xs font-medium text-slate-600">Email (optional)</label>
+            <label className={labelCls}>Email (optional)</label>
             <input className={inputCls} value={email} onChange={(e) => setEmail(e.target.value)} inputMode="email" />
           </div>
           <div className="rounded-xl border border-slate-200 bg-slate-50 p-3 text-sm">
@@ -256,7 +321,7 @@ export function LabOnboardForm({
               <p className="mt-2 inline-flex items-center gap-1.5 text-xs text-slate-500"><Stethoscope className="h-3.5 w-3.5" /> Referred by {revealed.doctor_name} <Lock className="h-3 w-3" /></p>
             )}
           </div>
-          <button type="button" onClick={confirmDetails} disabled={confirming || !detailsValid} className="inline-flex w-full items-center justify-center gap-2 rounded-xl bg-medical-600 py-2.5 text-sm font-semibold text-white hover:bg-medical-700 disabled:opacity-50">
+          <button type="button" onClick={confirmDetails} disabled={confirming || (name.trim().length === 0 || phone.trim().length < 5)} className="inline-flex w-full items-center justify-center gap-2 rounded-xl bg-medical-600 py-2.5 text-sm font-semibold text-white hover:bg-medical-700 disabled:opacity-50">
             {confirming ? <Loader2 className="h-4 w-4 animate-spin" /> : <Check className="h-4 w-4" />} Confirm &amp; send
           </button>
         </div>
@@ -282,23 +347,23 @@ export function LabOnboardForm({
         })}
       </div>
 
-      {step === 0 && (
+      {step === 0 && !isQr && (
         <div className="space-y-3">
           <div>
-            <label className="mb-1 block text-xs font-medium text-slate-600">Full name *</label>
+            <label className={labelCls}>Full name *</label>
             <input className={inputCls} value={name} onChange={(e) => setName(e.target.value)} placeholder="Jane Doe" />
           </div>
           <div>
-            <label className="mb-1 block text-xs font-medium text-slate-600">Phone number *</label>
+            <label className={labelCls}>Phone number *</label>
             <input className={inputCls} value={phone} onChange={(e) => setPhone(e.target.value)} placeholder="+234..." inputMode="tel" />
           </div>
           <div className="grid grid-cols-2 gap-3">
             <div>
-              <label className="mb-1 block text-xs font-medium text-slate-600">Age</label>
+              <label className={labelCls}>Age</label>
               <input className={inputCls} value={age} onChange={(e) => setAge(e.target.value.replace(/\D/g, ""))} placeholder="e.g. 34" inputMode="numeric" />
             </div>
             <div>
-              <label className="mb-1 block text-xs font-medium text-slate-600">Sex</label>
+              <label className={labelCls}>Sex</label>
               <select className={inputCls} value={sex} onChange={(e) => setSex(e.target.value)}>
                 <option value="">—</option>
                 <option value="male">Male</option>
@@ -308,12 +373,100 @@ export function LabOnboardForm({
             </div>
           </div>
           <div>
-            <label className="mb-1 block text-xs font-medium text-slate-600">Email (optional)</label>
+            <label className={labelCls}>Email (optional)</label>
             <input className={inputCls} value={email} onChange={(e) => setEmail(e.target.value)} placeholder="you@email.com" inputMode="email" />
           </div>
           <div>
-            <label className="mb-1 block text-xs font-medium text-slate-600">Referring doctor (optional)</label>
+            <label className={labelCls}>Referring doctor (optional)</label>
             <DoctorSearchSelect labId={lab.id} canAdd={canAddDoctor} value={doctor} onChange={setDoctor} />
+          </div>
+          <button
+            onClick={() => setStep(1)}
+            disabled={!detailsValid}
+            className="mt-2 w-full rounded-xl bg-medical-600 py-2.5 text-sm font-semibold text-white hover:bg-medical-700 disabled:opacity-50"
+          >
+            Continue
+          </button>
+        </div>
+      )}
+
+      {step === 0 && isQr && (
+        <div className="space-y-3">
+          <div>
+            <label className={labelCls}>How were you referred? *</label>
+            <div className="grid grid-cols-1 gap-1.5">
+              {REFERRAL_OPTIONS.map((o) => (
+                <button
+                  key={o.value}
+                  type="button"
+                  onClick={() => setReferralType(o.value)}
+                  className={`flex items-center gap-2 rounded-xl border px-3.5 py-2.5 text-left text-sm font-medium transition ${referralType === o.value ? "border-medical-500 bg-medical-50 text-medical-800" : "border-slate-200 bg-white text-slate-600 hover:border-slate-300"}`}
+                >
+                  <span className={`flex h-4 w-4 shrink-0 items-center justify-center rounded-full border ${referralType === o.value ? "border-medical-600 bg-medical-600" : "border-slate-300"}`}>
+                    {referralType === o.value && <Check className="h-3 w-3 text-white" />}
+                  </span>
+                  {o.label}
+                </button>
+              ))}
+            </div>
+          </div>
+          <div>
+            <label className={labelCls}>Surname *</label>
+            <input className={inputCls} value={surname} onChange={(e) => setSurname(e.target.value)} placeholder="e.g. Okafor" autoComplete="family-name" />
+          </div>
+          <div className="grid grid-cols-2 gap-3">
+            <div>
+              <label className={labelCls}>First name *</label>
+              <input className={inputCls} value={firstName} onChange={(e) => setFirstName(e.target.value)} placeholder="e.g. Ada" autoComplete="given-name" />
+            </div>
+            <div>
+              <label className={labelCls}>Middle name</label>
+              <input className={inputCls} value={middleName} onChange={(e) => setMiddleName(e.target.value)} placeholder="Optional" autoComplete="additional-name" />
+            </div>
+          </div>
+          <div className="grid grid-cols-2 gap-3">
+            <div>
+              <label className={labelCls}>Date of birth *</label>
+              <input type="date" className={inputCls} value={dob} onChange={(e) => setDob(e.target.value)} max={new Date().toISOString().slice(0, 10)} />
+            </div>
+            <div>
+              <label className={labelCls}>Sex *</label>
+              <select className={inputCls} value={sex} onChange={(e) => setSex(e.target.value)}>
+                <option value="">—</option>
+                <option value="male">Male</option>
+                <option value="female">Female</option>
+                <option value="other">Other</option>
+              </select>
+            </div>
+          </div>
+          <div>
+            <label className={labelCls}>Phone number *</label>
+            <input className={inputCls} value={phone} onChange={(e) => setPhone(e.target.value)} placeholder="+234..." inputMode="tel" autoComplete="tel" />
+          </div>
+          <div>
+            <label className={labelCls}>Is this number on WhatsApp? *</label>
+            <div className="flex gap-2">
+              {([["yes", "Yes, it's on WhatsApp"], ["no", "No"]] as const).map(([v, label]) => (
+                <button
+                  key={v}
+                  type="button"
+                  onClick={() => setPhoneIsWhatsapp(v)}
+                  className={`flex flex-1 items-center justify-center gap-1.5 rounded-xl border px-3 py-2 text-xs font-medium transition ${phoneIsWhatsapp === v ? "border-medical-500 bg-medical-50 text-medical-800" : "border-slate-200 bg-white text-slate-600 hover:border-slate-300"}`}
+                >
+                  <MessageCircle className="h-3.5 w-3.5" /> {label}
+                </button>
+              ))}
+            </div>
+          </div>
+          {phoneIsWhatsapp === "no" && (
+            <div>
+              <label className={labelCls}>WhatsApp number (optional)</label>
+              <input className={inputCls} value={whatsapp} onChange={(e) => setWhatsapp(e.target.value)} placeholder="+234..." inputMode="tel" />
+            </div>
+          )}
+          <div>
+            <label className={labelCls}>Email (optional)</label>
+            <input className={inputCls} value={email} onChange={(e) => setEmail(e.target.value)} placeholder="you@email.com" inputMode="email" autoComplete="email" />
           </div>
           <button
             onClick={() => setStep(1)}
@@ -327,6 +480,18 @@ export function LabOnboardForm({
 
       {step === 1 && (
         <div className="space-y-3">
+          {isQr && referralType !== "self" && (
+            <>
+              <div>
+                <label className={labelCls}>Referring doctor&apos;s name {referralType === "doctor" ? "*" : ""}</label>
+                <input className={inputCls} value={doctorNameText} onChange={(e) => setDoctorNameText(e.target.value)} placeholder="e.g. Dr. John Ade" />
+              </div>
+              <div>
+                <label className={labelCls}>Referring hospital / HMO / company {referralType === "hmo" ? "*" : ""}</label>
+                <input className={inputCls} value={referringOrg} onChange={(e) => setReferringOrg(e.target.value)} placeholder="e.g. St. Mary's Hospital or Hygeia HMO" />
+              </div>
+            </>
+          )}
           {templates.length > 0 && (
             <div>
               <p className="mb-1.5 text-xs font-medium text-slate-600">Quick panels</p>
@@ -340,10 +505,10 @@ export function LabOnboardForm({
             </div>
           )}
           <div>
-            <label className="mb-1 block text-xs font-medium text-slate-600">Tests / investigations *</label>
+            <label className={labelCls}>Tests / investigations *</label>
             <TestTagInput value={tests} onChange={setTests} labId={lab.id} />
           </div>
-          {tests.length > 0 && (
+          {showPrices && tests.length > 0 && (
             <div className="rounded-xl border border-slate-200 bg-slate-50 px-3 py-2 text-sm">
               <div className="flex justify-between font-medium text-slate-800">
                 <span>Estimated total</span>
@@ -353,9 +518,42 @@ export function LabOnboardForm({
             </div>
           )}
           <div>
-            <label className="mb-1 block text-xs font-medium text-slate-600">Symptoms / notes (optional)</label>
-            <textarea className={inputCls} rows={3} value={condition} onChange={(e) => setCondition(e.target.value)} placeholder="Anything the lab should know" />
+            <label className={`${labelCls} flex items-center gap-1.5`}>
+              {isQr ? "Complaint (optional)" : "Symptoms / notes (optional)"}
+              <button
+                type="button"
+                onClick={() => setComplaintHelpOpen((v) => !v)}
+                className="text-slate-400 hover:text-medical-600"
+                title="What is this?"
+                aria-label="What is a complaint?"
+              >
+                <HelpCircle className="h-3.5 w-3.5" />
+              </button>
+            </label>
+            {complaintHelpOpen && (
+              <p className="mb-1.5 rounded-lg bg-medical-50 px-3 py-2 text-[11px] leading-relaxed text-medical-800">
+                Briefly describe what&apos;s bothering you or why you&apos;re doing these tests — e.g. &ldquo;fever and headache for 3 days&rdquo; or &ldquo;routine annual check-up&rdquo;. This helps the lab team serve you better.
+              </p>
+            )}
+            <textarea className={inputCls} rows={3} value={condition} onChange={(e) => setCondition(e.target.value)} placeholder={isQr ? "e.g. Fever and headache for 3 days" : "Anything the lab should know"} />
           </div>
+          {isQr && (
+            <div>
+              <label className={labelCls}>How will you pay? *</label>
+              <div className="grid grid-cols-2 gap-1.5">
+                {PAYMENT_OPTIONS.map((o) => (
+                  <button
+                    key={o.value}
+                    type="button"
+                    onClick={() => setPaymentMode(o.value)}
+                    className={`rounded-xl border px-3 py-2 text-xs font-medium transition ${paymentMode === o.value ? "border-medical-500 bg-medical-50 text-medical-800" : "border-slate-200 bg-white text-slate-600 hover:border-slate-300"}`}
+                  >
+                    {o.label}
+                  </button>
+                ))}
+              </div>
+            </div>
+          )}
           <div className="flex gap-2">
             <button onClick={() => setStep(0)} className="rounded-xl border border-slate-200 px-4 py-2.5 text-sm font-medium text-slate-600 hover:bg-slate-50">Back</button>
             <button onClick={() => setStep(2)} disabled={!testsValid} className="flex-1 rounded-xl bg-medical-600 py-2.5 text-sm font-semibold text-white hover:bg-medical-700 disabled:opacity-50">Continue</button>
@@ -366,13 +564,29 @@ export function LabOnboardForm({
       {step === 2 && (
         <div className="space-y-4">
           <div className="rounded-xl border border-slate-200 bg-slate-50 p-4 text-sm">
-            <p className="font-medium text-slate-900">{name} {age && <span className="text-slate-400">· {age}y</span>} {sex && <span className="text-slate-400">· {sex}</span>}</p>
-            <p className="text-slate-500">{phone}{email ? ` · ${email}` : ""}</p>
+            <p className="font-medium text-slate-900">
+              {fullName}
+              {isQr && dob && <span className="text-slate-400"> · {dob}</span>}
+              {!isQr && age && <span className="text-slate-400"> · {age}y</span>}
+              {sex && <span className="text-slate-400"> · {sex}</span>}
+            </p>
+            <p className="text-slate-500">{phone}{isQr && phoneIsWhatsapp === "no" && whatsapp ? ` · WhatsApp: ${whatsapp}` : ""}{email ? ` · ${email}` : ""}</p>
+            {isQr && referralType && (
+              <p className="mt-1 text-xs text-slate-500">
+                {REFERRAL_OPTIONS.find((o) => o.value === referralType)?.label}
+                {referralType !== "self" && (doctorNameText.trim() || referringOrg.trim()) ? ` — ${[doctorNameText.trim(), referringOrg.trim()].filter(Boolean).join(", ")}` : ""}
+              </p>
+            )}
             <p className="mt-2 text-slate-700">{tests.map((t) => t.name).join(", ")}</p>
-            <div className="mt-2 flex justify-between border-t border-slate-200 pt-2 font-semibold text-slate-900">
-              <span>Estimated total</span>
-              <span className="tabular-nums">₦{Math.round(knownTotal).toLocaleString()}{hasUnpriced ? "+" : ""}</span>
-            </div>
+            {isQr && paymentMode && (
+              <p className="mt-1 text-xs text-slate-500">Payment: {PAYMENT_OPTIONS.find((o) => o.value === paymentMode)?.label}</p>
+            )}
+            {showPrices && (
+              <div className="mt-2 flex justify-between border-t border-slate-200 pt-2 font-semibold text-slate-900">
+                <span>Estimated total</span>
+                <span className="tabular-nums">₦{Math.round(knownTotal).toLocaleString()}{hasUnpriced ? "+" : ""}</span>
+              </div>
+            )}
           </div>
           <label className="flex items-start gap-2 text-sm text-slate-600">
             <input type="checkbox" checked={consent} onChange={(e) => setConsent(e.target.checked)} className="mt-0.5 h-4 w-4 rounded border-slate-300 text-medical-600" />
@@ -382,7 +596,7 @@ export function LabOnboardForm({
             <button onClick={() => setStep(1)} className="rounded-xl border border-slate-200 px-4 py-2.5 text-sm font-medium text-slate-600 hover:bg-slate-50">Back</button>
             <button onClick={submit} disabled={!consent || submitting} className="flex-1 inline-flex items-center justify-center gap-2 rounded-xl bg-medical-600 py-2.5 text-sm font-semibold text-white hover:bg-medical-700 disabled:opacity-50">
               {submitting && <Loader2 className="h-4 w-4 animate-spin" />}
-              {source === "walk_in" ? "Register client" : "Submit"}
+              {source === "walk_in" ? "Register client" : "Join the queue"}
             </button>
           </div>
         </div>
