@@ -9,12 +9,15 @@ export async function generateMetadata({ params }: { params: { labSlug: string }
   return { title: lab ? `Register — ${lab.name}` : "Register" };
 }
 
-export default async function LabOnboardPage({ params }: { params: { labSlug: string } }) {
+export default async function LabOnboardPage({ params, searchParams }: { params: { labSlug: string }; searchParams?: { code?: string } }) {
   const lab = await prisma.lab.findUnique({
     where: { slug: params.labSlug },
     select: { id: true, name: true, slug: true, logo_url: true, address: true },
   });
   if (!lab) notFound();
+  // Arrival emails link here with ?code=… so the client's referral details
+  // auto-fill and they only confirm.
+  const initialCode = searchParams?.code?.trim().toUpperCase() || undefined;
 
   return (
     <main className="min-h-screen bg-gradient-to-br from-sky-50 via-white to-medical-50 px-4 py-8">
@@ -33,7 +36,7 @@ export default async function LabOnboardPage({ params }: { params: { labSlug: st
         </div>
 
         <div className="rounded-3xl border border-slate-100 bg-white p-5 shadow-sm sm:p-6">
-          <LabOnboardForm lab={{ id: lab.id, slug: lab.slug ?? undefined, name: lab.name, logo_url: lab.logo_url }} source="qr" />
+          <LabOnboardForm lab={{ id: lab.id, slug: lab.slug ?? undefined, name: lab.name, logo_url: lab.logo_url }} source="qr" initialCode={initialCode} />
         </div>
 
         <p className="mt-4 text-center text-xs text-slate-400">Powered by Poveon Health</p>

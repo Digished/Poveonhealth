@@ -1309,6 +1309,46 @@ const migrations = [
     sql: `CREATE INDEX IF NOT EXISTS hmo_alert_email_logs_doctor_email_member_id_created_at_idx ON hmo_alert_email_logs (doctor_email, member_id, created_at)`,
     continueOnError: true,
   },
+  {
+    desc: "requests.referral_type column (QR intake: self | doctor | hmo)",
+    sql: `ALTER TABLE requests ADD COLUMN IF NOT EXISTS referral_type TEXT`,
+    continueOnError: true,
+  },
+  {
+    desc: "requests.policy_number column (HMO policy number)",
+    sql: `ALTER TABLE requests ADD COLUMN IF NOT EXISTS policy_number TEXT`,
+    continueOnError: true,
+  },
+  {
+    desc: "requests.whatsapp_phone column (QR intake WhatsApp number)",
+    sql: `ALTER TABLE requests ADD COLUMN IF NOT EXISTS whatsapp_phone TEXT`,
+    continueOnError: true,
+  },
+  {
+    desc: "requests.payment_mode column (cash | card | transfer | bill_hospital)",
+    sql: `ALTER TABLE requests ADD COLUMN IF NOT EXISTS payment_mode TEXT`,
+    continueOnError: true,
+  },
+  {
+    desc: "requests.arrived_at column (client physically arrived at the lab)",
+    sql: `ALTER TABLE requests ADD COLUMN IF NOT EXISTS arrived_at TIMESTAMP(3)`,
+    continueOnError: true,
+  },
+  {
+    desc: "requests.queue_confirmed_at column (QR registration confirmed into queue)",
+    sql: `ALTER TABLE requests ADD COLUMN IF NOT EXISTS queue_confirmed_at TIMESTAMP(3)`,
+    continueOnError: true,
+  },
+  {
+    desc: "requests.attended_at column (client attended to, leaves the queue)",
+    sql: `ALTER TABLE requests ADD COLUMN IF NOT EXISTS attended_at TIMESTAMP(3)`,
+    continueOnError: true,
+  },
+  {
+    desc: "requests.queue_number column (stable daily queue ticket number)",
+    sql: `ALTER TABLE requests ADD COLUMN IF NOT EXISTS queue_number INTEGER`,
+    continueOnError: true,
+  },
 ];
 
 let failed = false;
