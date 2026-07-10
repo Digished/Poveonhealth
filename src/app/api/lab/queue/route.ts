@@ -88,6 +88,21 @@ export async function GET(request: NextRequest) {
     }),
   ]);
 
+  // Backfill ticket numbers for entries that joined before queue numbers
+  // existed (or via older code paths) — their number is their join order on
+  // the day they joined, and it's persisted so it never changes again.
+  const missing = [...waiting, ...paid, ...attended].filter((r) => r.queue_number == null && r.queue_confirmed_at != null);
+  for (const r of missing) {
+    const joined = r.queue_confirmed_at!;
+    const dayStart = new Date(joined);
+    dayStart.setHours(0, 0, 0, 0);
+    const n = await prisma.request.count({
+      where: { lab_id: auth.lab_id, queue_confirmed_at: { gte: dayStart, lte: joined } },
+    });
+    (r as { queue_number: number | null }).queue_number = n;
+    await prisma.request.update({ where: { id: r.id }, data: { queue_number: n } }).catch(() => {});
+  }
+
   return NextResponse.json({
     success: true,
     waiting: waiting.map(serialize),

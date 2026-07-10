@@ -879,11 +879,6 @@ function WorkspaceDrawer({
                 <button data-tour="ob-edit-details" onClick={() => setEditOpen(true)} className="inline-flex items-center gap-1.5 rounded-lg border border-white/10 px-2.5 py-1 text-xs font-medium text-medical-300 hover:bg-white/5">
                   <Pencil className="h-3.5 w-3.5" /> Edit client details
                 </button>
-                {request.status !== "done" && (
-                  <button data-tour="ob-edit-tests" onClick={() => setTestsOpen(true)} className="inline-flex items-center gap-1.5 rounded-lg border border-white/10 px-2.5 py-1 text-xs font-medium text-medical-300 hover:bg-white/5">
-                    <FlaskConical className="h-3.5 w-3.5" /> Edit tests
-                  </button>
-                )}
               </div>
             )}
             {/* Print the visit checklist from the Journey / workstation views too
@@ -1346,6 +1341,15 @@ function MilestoneModal({
   );
 }
 
+/** Split a stored full name ("First Other Surname") back into its parts. */
+function splitName(full: string): { first: string; other: string; surname: string } {
+  const parts = full.trim().split(/\s+/).filter(Boolean);
+  if (parts.length === 0) return { first: "", other: "", surname: "" };
+  if (parts.length === 1) return { first: parts[0], other: "", surname: "" };
+  if (parts.length === 2) return { first: parts[0], other: "", surname: parts[1] };
+  return { first: parts[0], other: parts.slice(1, -1).join(" "), surname: parts[parts.length - 1] };
+}
+
 /** Register / correct a client's details (name, age, sex, phone, email). */
 function PatientEditForm({
   request, onClose, onSaved,
@@ -1354,12 +1358,17 @@ function PatientEditForm({
   onClose: () => void;
   onSaved: () => void;
 }) {
-  const [name, setName] = useState(request.patient_name ?? "");
+  const initial = splitName(request.patient_name ?? "");
+  const [firstName, setFirstName] = useState(initial.first);
+  const [otherName, setOtherName] = useState(initial.other);
+  const [surname, setSurname] = useState(initial.surname);
   const [age, setAge] = useState(request.patient_age != null ? String(request.patient_age) : "");
   const [sex, setSex] = useState((request.sex ?? "").toLowerCase());
   const [phone, setPhone] = useState(request.patient_phone ?? "");
   const [email, setEmail] = useState(request.patient_email ?? "");
   const [saving, setSaving] = useState(false);
+
+  const fullName = [firstName.trim(), otherName.trim(), surname.trim()].filter(Boolean).join(" ");
 
   const inputCls = "w-full rounded-xl border border-white/10 bg-white/5 px-3 py-2 text-sm text-white placeholder:text-slate-500 focus:border-medical-400 focus:outline-none";
 
@@ -1371,7 +1380,7 @@ function PatientEditForm({
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           requestId: request.id,
-          patient_name: name.trim(),
+          patient_name: fullName,
           age: age.trim() === "" ? "" : Number(age),
           sex: sex || "",
           patient_phone: phone.trim(),
@@ -1410,8 +1419,18 @@ function PatientEditForm({
             </div>
           )}
           <div>
-            <label className="mb-1 block text-xs font-medium text-slate-400">Full name</label>
-            <input className={inputCls} value={name} onChange={(e) => setName(e.target.value)} placeholder="Patient name" />
+            <label className="mb-1 block text-xs font-medium text-slate-400">Surname</label>
+            <input className={inputCls} value={surname} onChange={(e) => setSurname(e.target.value)} placeholder="e.g. Okafor" />
+          </div>
+          <div className="grid grid-cols-2 gap-3">
+            <div>
+              <label className="mb-1 block text-xs font-medium text-slate-400">First name</label>
+              <input className={inputCls} value={firstName} onChange={(e) => setFirstName(e.target.value)} placeholder="e.g. Ada" />
+            </div>
+            <div>
+              <label className="mb-1 block text-xs font-medium text-slate-400">Other name</label>
+              <input className={inputCls} value={otherName} onChange={(e) => setOtherName(e.target.value)} placeholder="e.g. Chidi" />
+            </div>
           </div>
           <div className="grid grid-cols-2 gap-3">
             <div>

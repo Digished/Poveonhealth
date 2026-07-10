@@ -91,6 +91,7 @@ export function CustomersView({ labName, live = false }: { labName: string; live
   const [dateFrom, setDateFrom] = useState("");
   const [dateTo, setDateTo] = useState("");
   const [query, setQuery] = useState("");
+  const [togglingId, setTogglingId] = useState<string | null>(null);
 
   const load = useCallback(async (silent = false) => {
     if (silent) setRefreshing(true);
@@ -110,6 +111,29 @@ export function CustomersView({ labName, live = false }: { labName: string; live
   }, []);
 
   useEffect(() => { load(); }, [load]);
+
+  // Flip a customer's arrived status straight from the table (synced with the
+  // onboarding "Client has arrived" button).
+  const toggleArrived = useCallback(async (r: CustomerRow) => {
+    const next = !r.arrived;
+    setTogglingId(r.id);
+    try {
+      const res = await fetch("/api/lab/requests/registration", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ requestId: r.id, arrived: next }),
+      });
+      const data = await res.json();
+      if (!res.ok || data.success === false) throw new Error(data.error || "Failed");
+      const at = next ? new Date().toISOString() : null;
+      setRows((prev) => prev.map((x) => (x.id === r.id ? { ...x, arrived: next, arrived_at: at, attend_date: at } : x)));
+      toast.success(next ? "Marked as arrived" : "Arrival cleared");
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : "Could not update arrival");
+    } finally {
+      setTogglingId(null);
+    }
+  }, []);
 
   // Keep the table fresh — the live board refreshes every 10s, the normal
   // dashboard tab every 30s.
@@ -371,11 +395,21 @@ export function CustomersView({ labName, live = false }: { labName: string; live
                     <td className="px-4 py-3 text-xs text-slate-300"><p className="max-w-[220px] truncate" title={r.tests}>{r.tests?.replace(/\n+/g, " ")}</p></td>
                     <td className="whitespace-nowrap px-4 py-3 text-xs text-slate-300">{fmtDate(r.created_at)}</td>
                     <td className="whitespace-nowrap px-4 py-3 text-xs">
-                      {r.arrived ? (
-                        <span className="inline-flex items-center gap-1 whitespace-nowrap rounded-full bg-emerald-500/15 px-2 py-0.5 font-medium text-emerald-300"><Check className="h-3 w-3" /> {fmtDateTime(r.attend_date)}</span>
-                      ) : (
-                        <span className="inline-flex items-center gap-1 rounded-full bg-amber-500/15 px-2 py-0.5 font-medium text-amber-300"><Clock className="h-3 w-3" /> Not arrived</span>
-                      )}
+                      <button
+                        onClick={() => toggleArrived(r)}
+                        disabled={togglingId === r.id}
+                        title={r.arrived ? "Click to clear the arrival mark" : "Click to mark this client as arrived"}
+                        className={`inline-flex items-center gap-1 whitespace-nowrap rounded-full px-2 py-0.5 font-medium transition disabled:opacity-50 ${r.arrived ? "bg-emerald-500/15 text-emerald-300 hover:bg-emerald-500/25" : "bg-amber-500/15 text-amber-300 hover:bg-amber-500/25"}`}
+                      >
+                        {togglingId === r.id ? (
+                          <Loader2 className="h-3 w-3 animate-spin" />
+                        ) : r.arrived ? (
+                          <Check className="h-3 w-3" />
+                        ) : (
+                          <Clock className="h-3 w-3" />
+                        )}
+                        {r.arrived ? fmtDateTime(r.attend_date) : "Not arrived"}
+                      </button>
                     </td>
                     <td className="whitespace-nowrap px-4 py-3 font-mono text-xs text-slate-400">{r.code}</td>
                   </tr>
