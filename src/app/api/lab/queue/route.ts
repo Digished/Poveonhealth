@@ -34,6 +34,7 @@ const QUEUE_SELECT = {
   arrived_at: true,
   queue_confirmed_at: true,
   attended_at: true,
+  queue_number: true,
 } as const;
 
 type QueueRow = Prisma.RequestGetPayload<{ select: typeof QUEUE_SELECT }>;
@@ -48,8 +49,9 @@ function serialize(r: QueueRow) {
 
 /**
  * GET /api/lab/queue
- * The self-service (QR) waiting queue. Registrations join the queue on
- * submission and move through simple journey stages, first-come-first-served:
+ * The self-service waiting queue (QR + walk-ins registered from the queue).
+ * Registrations join on submission with a stable daily ticket number and move
+ * through simple journey stages, first-come-first-served:
  *  - waiting:  in the queue, payment not yet taken
  *  - paid:     payment taken, waiting to be attended to
  *  - attended: ticked off in the last 24h (for undo / reference)
@@ -61,23 +63,25 @@ export async function GET(request: NextRequest) {
     return NextResponse.json({ success: false, error: "Forbidden" }, { status: 403 });
   }
 
-  const base = { lab_id: auth.lab_id, source: "qr" };
+  // Queue membership = joined via intake or on-site confirmation (any source).
   // A waiting queue is a same-day affair — cap the active lists at 7 days so
-  // stale registrations (or pre-feature history) don't pile up forever.
+  // stale registrations don't pile up forever. Ordering follows the moment
+  // the client joined the queue (not when the referral was created).
+  const base = { lab_id: auth.lab_id };
   const activeSince = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000);
   const [waiting, paid, attended] = await Promise.all([
     prisma.request.findMany({
-      where: { ...base, is_paid: false, attended_at: null, status: { not: "done" }, created_at: { gt: activeSince } },
-      orderBy: { created_at: "asc" },
+      where: { ...base, is_paid: false, attended_at: null, status: { not: "done" }, queue_confirmed_at: { gt: activeSince } },
+      orderBy: { queue_confirmed_at: "asc" },
       select: QUEUE_SELECT,
     }),
     prisma.request.findMany({
-      where: { ...base, is_paid: true, attended_at: null, status: { not: "done" }, created_at: { gt: activeSince } },
-      orderBy: { created_at: "asc" },
+      where: { ...base, is_paid: true, attended_at: null, status: { not: "done" }, queue_confirmed_at: { gt: activeSince } },
+      orderBy: { queue_confirmed_at: "asc" },
       select: QUEUE_SELECT,
     }),
     prisma.request.findMany({
-      where: { ...base, attended_at: { gt: new Date(Date.now() - 24 * 60 * 60 * 1000) } },
+      where: { ...base, queue_confirmed_at: { not: null }, attended_at: { gt: new Date(Date.now() - 24 * 60 * 60 * 1000) } },
       orderBy: { attended_at: "desc" },
       take: 100,
       select: QUEUE_SELECT,
@@ -94,7 +98,7 @@ export async function GET(request: NextRequest) {
 
 const ActionSchema = z.object({
   requestId: z.string().uuid(),
-  action: z.enum(["confirm", "mark_paid", "attend", "unattend"]),
+  action: z.enum(["confirm", "mark_paid", "unpay", "attend", "unattend"]),
   // Optional edits applied when saving (the lab corrects details on the queue).
   edits: z
     .object({
@@ -158,6 +162,9 @@ export async function POST(request: NextRequest) {
   } else if (action === "mark_paid") {
     data.is_paid = true;
     activity = "marked paid (queue)";
+  } else if (action === "unpay") {
+    data.is_paid = false;
+    activity = "payment status undone (queue)";
   } else if (action === "attend") {
     data.attended_at = new Date();
     activity = "marked attended";

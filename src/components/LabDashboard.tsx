@@ -1815,9 +1815,15 @@ export function LabDashboard({ lab, isOwner = false, roleName = "Lab Owner", can
           </>
         )}
 
-        {/* Queue view — self-service (QR) waiting queue */}
+        {/* Queue view — self-service + walk-in waiting queue (Journey sub-tab in LIMS) */}
         {mainView === "queue" && (isOwner || canMarkSeen || canViewRequestsEff) && (
-          <QueueView canManage={isOwner || canMarkSeen} />
+          <QueueView
+            canManage={isOwner || canMarkSeen}
+            lite={labMode === "lite"}
+            labId={lab.id}
+            labName={lab.name}
+            labSlug={lab.slug ?? null}
+          />
         )}
 
         {/* Customers view — every customer since inception, exportable */}
@@ -1851,7 +1857,11 @@ export function LabDashboard({ lab, isOwner = false, roleName = "Lab Owner", can
           <div className="space-y-5">
             <div>
               <h2 className="text-lg font-semibold text-white">Onboarding</h2>
-              <p className="text-sm text-slate-400 mt-1">Register walk-ins or Poveon arrivals, confirm tests and take payment. Paid clients move on to the Workstation.</p>
+              <p className="text-sm text-slate-400 mt-1">
+                {labMode === "lite"
+                  ? "Check in Poveon arrivals, confirm their details and take payment. New walk-ins register from the Queue."
+                  : "Check in Poveon arrivals, confirm tests and take payment. Paid clients move on to the Workstation; new walk-ins register from the Queue."}
+              </p>
             </div>
             <Workspace
               mode="onboarding"

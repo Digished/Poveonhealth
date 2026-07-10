@@ -5,7 +5,6 @@ import { startOfDay, startOfWeek, startOfMonth, startOfYear } from "date-fns";
 import { Loader2, Search, X, ArrowRight, Plus, Workflow, UserPlus, Printer, Send, Check, FlaskConical, Pencil, Stethoscope, AlertTriangle, CreditCard, Lock, Bell, Calendar as CalendarIcon, MapPin, Clock, FileText } from "lucide-react";
 import toast from "react-hot-toast";
 import { SourceBadge } from "@/components/lab/SourceBadge";
-import { LabOnboardForm } from "@/components/lab/LabOnboardForm";
 import { StatCard } from "@/components/lab/StatCard";
 import { TestTagInput, TestTag } from "@/components/ui/TestTagInput";
 import { FilterSelect } from "@/components/ui/FilterSelect";
@@ -46,23 +45,6 @@ function statusLabel(status: string): string {
   if (status === "seen") return "Registered";
   if (status === "done") return "Done";
   return status;
-}
-
-/** Format a Naira amount, e.g. 12500 → "₦12,500". */
-function fmtNaira(n: number): string {
-  return "₦" + Math.round(n).toLocaleString();
-}
-
-/** Per-test cost rows (+ total) for a request, derived from its resolved breakdown. */
-function costBreakdown(r: WReq): { rows: { name: string; price: number | null }[]; total: number } {
-  const items = Array.isArray(r.test_breakdown)
-    ? (r.test_breakdown as { raw?: string; canonical_name?: string; unit_price?: number }[])
-    : [];
-  const rows = items
-    .map((it) => ({ name: it.canonical_name || it.raw || "", price: typeof it.unit_price === "number" ? it.unit_price : null }))
-    .filter((x) => x.name);
-  const total = rows.reduce((s, x) => s + (x.price ?? 0), 0);
-  return { rows, total };
 }
 
 interface JEvent { id: string; stage: string; department: string | null; sample_label: string | null; note: string | null; actor_email: string | null; created_at: string }
@@ -196,10 +178,9 @@ export function Workspace({
   const [codeInput, setCodeInput] = useState("");
   const [revealing, setRevealing] = useState(false);
 
-  // Onboarding-only: which sub-view, the walk-in modal, and its quick panels.
-  const [obView, setObView] = useState<"register" | "journey">("register");
-  const [walkInOpen, setWalkInOpen] = useState(false);
-  const [walkInTemplates, setWalkInTemplates] = useState<{ id: string; name: string; test_names: string[] }[]>([]);
+  // Onboarding is registration-only — the journey/pipeline lives in the Queue
+  // (LIMS) and Workstation views now.
+  const obView = "register" as const;
   // Radiology booking calendar modal.
   const [scheduleOpen, setScheduleOpen] = useState(false);
 
@@ -208,8 +189,8 @@ export function Workspace({
   // Workstation pipeline sub-filter: "" = all active, otherwise a workflow stage key.
   const [stageF, setStageF] = useState("");
   // Onboarding filters: registration status and payment.
-  const [statusF, setStatusF] = useState("");
-  const [paidF, setPaidF] = useState("");
+  // Onboarding arrived tabs: "" = everyone, arrived / not_arrived.
+  const [arrivedF, setArrivedF] = useState<"" | "arrived" | "not_arrived">("");
   // List ordering by registration time (newest ↔ oldest).
   const [sortDir, setSortDir] = useState<"newest" | "oldest">("newest");
   // Time-window filter (applies to both onboarding and workstation lists).
@@ -223,14 +204,6 @@ export function Workspace({
       .then((d) => { if (d?.departments?.length) setDepartments(d.departments); })
       .catch(() => {});
   }, []);
-
-  function openWalkIn() {
-    fetch("/api/lab/templates", { cache: "no-store" })
-      .then((r) => (r.ok ? r.json() : null))
-      .then((d) => setWalkInTemplates((d?.templates ?? []).map((t: { id: string; name: string; test_names: string[] }) => ({ id: t.id, name: t.name, test_names: t.test_names }))))
-      .catch(() => {});
-    setWalkInOpen(true);
-  }
 
   // Switching department resets the pipeline sub-filter.
   const selectDept = useCallback((d: string) => { setDeptF(d); setStageF(""); }, []);
@@ -315,10 +288,8 @@ export function Workspace({
         // Pre-arrival Poveon leads stay hidden until their code is entered via
         // the "Have a Poveon code?" box (which opens them directly).
         if (r.source === "poveon" && r.status === "incoming") return false;
-        if (statusF === "incoming" && r.status !== "incoming") return false;
-        if (statusF === "seen" && r.status !== "seen") return false;
-        if (paidF === "paid" && !r.is_paid) return false;
-        if (paidF === "unpaid" && r.is_paid) return false;
+        if (arrivedF === "arrived" && !r.arrived_at) return false;
+        if (arrivedF === "not_arrived" && r.arrived_at) return false;
         return true;
       }
       // Journey subtab — registered (paid) patients still in the pipeline.
@@ -337,7 +308,7 @@ export function Workspace({
       return false;
     }
     return true;
-  }), [requests, getTracks, deptF, stageF, statusF, paidF, periodFrom, isOnboarding, obView, matchesQuery]);
+  }), [requests, getTracks, deptF, stageF, arrivedF, periodFrom, isOnboarding, obView, matchesQuery]);
 
   // Displayed list, ordered by registration time per the sort toggle.
   const sorted = useMemo(() => {
@@ -486,24 +457,10 @@ export function Workspace({
 
   return (
     <div className="space-y-5">
-      {/* Onboarding: Register / Journey sub-tabs (Journey is shown in Lite too) */}
-      {isOnboarding && (
-        <div className="inline-flex rounded-xl border border-white/10 bg-white/5 p-1">
-          {([["register", "Register"], ["journey", "Journey"]] as const).map(([v, label]) => (
-            <button key={v} onClick={() => setObView(v)} className={`rounded-lg px-4 py-1.5 text-sm font-medium transition ${obView === v ? "bg-medical-600 text-white" : "text-slate-300 hover:text-white"}`}>{label}</button>
-          ))}
-        </div>
-      )}
-
-      {/* Intake — onboarding "Register" view only (walk-in modal + Poveon check-in) */}
+      {/* Intake — Poveon code check-in (walk-in registration lives in the Queue) */}
       {isOnboarding && obView === "register" && canAdvance && (
         <div className="rounded-2xl border border-white/10 bg-white/5 p-4">
-          <div className="flex flex-wrap items-center justify-between gap-3">
-            <p className="flex items-center gap-2 text-sm font-semibold text-white"><UserPlus className="h-4 w-4 text-medical-300" /> Intake</p>
-            <button data-tour="ob-walkin" onClick={openWalkIn} className="inline-flex items-center gap-1.5 rounded-lg bg-medical-600 px-3 py-1.5 text-xs font-semibold text-white hover:bg-medical-700">
-              <UserPlus className="h-3.5 w-3.5" /> Register walk-in
-            </button>
-          </div>
+          <p className="flex items-center gap-2 text-sm font-semibold text-white"><UserPlus className="h-4 w-4 text-medical-300" /> Intake</p>
           <div className="mt-3">
             <label className="mb-1 block text-xs font-medium text-slate-400">Have a Poveon code? Check the patient in</label>
             <div className="flex gap-2">
@@ -557,23 +514,18 @@ export function Workspace({
       </div>
       )}
 
-      {/* Onboarding "Register" filters: registration status + payment (not in Lite) */}
-      {!lite && isOnboarding && obView === "register" && (
-        <div className="flex flex-wrap items-center gap-2">
-          <FilterSelect
-            label="Status"
-            value={statusF}
-            onChange={setStatusF}
-            className="w-44"
-            options={[{ value: "", label: "All" }, { value: "incoming", label: "Unregistered" }, { value: "seen", label: "Registered" }]}
-          />
-          <FilterSelect
-            label="Payment"
-            value={paidF}
-            onChange={setPaidF}
-            className="w-44"
-            options={[{ value: "", label: "All" }, { value: "unpaid", label: "Unpaid" }, { value: "paid", label: "Paid" }]}
-          />
+      {/* Onboarding "Register" tabs: everyone / arrived / not arrived */}
+      {isOnboarding && obView === "register" && (
+        <div className="inline-flex rounded-xl border border-white/10 bg-white/5 p-1">
+          {([["", "All"], ["arrived", "Arrived"], ["not_arrived", "Not arrived"]] as const).map(([v, label]) => (
+            <button
+              key={v}
+              onClick={() => setArrivedF(v)}
+              className={`rounded-lg px-4 py-1.5 text-sm font-medium transition ${arrivedF === v ? "bg-medical-600 text-white" : "text-slate-300 hover:text-white"}`}
+            >
+              {label}
+            </button>
+          ))}
         </div>
       )}
 
@@ -640,24 +592,6 @@ export function Workspace({
         </FullViewModal>
       )}
 
-      {/* Walk-in registration modal (onboarding) */}
-      {walkInOpen && (
-        <div className="fixed inset-0 z-[9999] flex items-end justify-center bg-black/60 backdrop-blur-sm sm:items-center" onClick={() => setWalkInOpen(false)}>
-          <div className="max-h-[90vh] w-full max-w-md overflow-y-auto rounded-t-3xl bg-white p-5 sm:rounded-3xl" onClick={(e) => e.stopPropagation()}>
-            <div className="mb-4 flex items-center justify-between">
-              <h3 className="text-lg font-semibold text-slate-900">Register walk-in</h3>
-              <button onClick={() => setWalkInOpen(false)} className="text-slate-400 hover:text-slate-600"><X className="h-5 w-5" /></button>
-            </div>
-            <LabOnboardForm
-              lab={{ id: labId, name: labName, slug: labSlug ?? undefined }}
-              source="walk_in"
-              templates={walkInTemplates}
-              onSuccess={() => { setTimeout(() => { setWalkInOpen(false); load(); }, 1500); }}
-            />
-          </div>
-        </div>
-      )}
-
       {loading ? (
         <div className="flex justify-center py-16"><Loader2 className="h-6 w-6 animate-spin text-medical-400" /></div>
       ) : filtered.length === 0 ? (
@@ -698,10 +632,6 @@ export function Workspace({
                     <span className={`inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[10px] font-medium ${r.arrived_at ? "bg-emerald-500/15 text-emerald-300" : "bg-slate-500/15 text-slate-400"}`}>
                       {r.arrived_at ? <Check className="h-3 w-3" /> : <Clock className="h-3 w-3" />} {r.arrived_at ? "Arrived" : "Not arrived"}
                     </span>
-                    <span className={`inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[10px] font-medium ${r.is_paid ? "bg-emerald-500/15 text-emerald-300" : "bg-rose-500/15 text-rose-300"}`}>
-                      <CreditCard className="h-3 w-3" /> {r.is_paid ? "Paid" : "Unpaid"}
-                    </span>
-                    <span className={`rounded-full px-2 py-0.5 text-[10px] font-medium ${r.status === "seen" ? "bg-sky-500/15 text-sky-300" : "bg-amber-500/15 text-amber-300"}`}>{statusLabel(r.status)}</span>
                     {pending && <PendingBadge action={pending} />}
                   </div>
                 ) : (
@@ -741,7 +671,7 @@ export function Workspace({
           departments={departments}
           mode={mode}
           lite={lite}
-          readOnly={isOnboarding && obView === "journey"}
+          readOnly={false}
           onClose={() => setSelected(null)}
           canAdvance={canAdvance}
           canEnterResults={canEnterResults}
@@ -765,7 +695,7 @@ export function Workspace({
                 <button onClick={markQrSeen} className="text-[11px] text-medical-300 hover:text-white">Mark all seen</button>
               </div>
               {newQr.map((r) => (
-                <button key={r.id} onClick={() => { setSelected(r); setObView("register"); setFabOpen(false); }} className="block w-full rounded-lg px-2 py-2 text-left hover:bg-white/10">
+                <button key={r.id} onClick={() => { setSelected(r); setFabOpen(false); }} className="block w-full rounded-lg px-2 py-2 text-left hover:bg-white/10">
                   <span className="block truncate text-sm text-white">{r.patient_name || "Unnamed"} <span className="font-mono text-xs text-slate-400">· {r.code}</span></span>
                   <span className="block text-[10px] text-slate-400">Registered {timeAgo(r.created_at)}</span>
                 </button>
@@ -890,9 +820,6 @@ function WorkspaceDrawer({
                 </span>
               ))}
             </div>
-            {costBreakdown(request).total > 0 && (
-              <p className="mt-1.5 text-xs text-slate-300">Estimated total: <span className="font-semibold text-white">{fmtNaira(costBreakdown(request).total)}</span></p>
-            )}
             <p className="mt-1.5 text-[11px] text-slate-500">
               Registered {fmtDateTime(request.created_at)}
               {request.seen_at ? ` · Seen ${fmtDateTime(request.seen_at)}` : ""}
@@ -977,24 +904,6 @@ function WorkspaceDrawer({
         {lite && showRegistration && request.status !== "done" && canAdvance && !request.is_paid && (
           <div className="rounded-2xl border border-white/10 bg-white/5 p-4">
             <p className="flex items-center gap-2 text-sm font-semibold text-white"><CreditCard className="h-4 w-4 text-medical-300" /> Tests &amp; payment</p>
-            {(() => {
-              const { rows, total } = costBreakdown(request);
-              return rows.length > 0 ? (
-                <div className="mt-3 rounded-xl border border-white/10 bg-white/5 p-3 text-xs">
-                  <div className="space-y-1">
-                    {rows.map((x, i) => (
-                      <div key={i} className="flex justify-between gap-3 text-slate-300">
-                        <span className="truncate">{x.name}</span>
-                        <span className="shrink-0 tabular-nums">{x.price != null ? fmtNaira(x.price) : "—"}</span>
-                      </div>
-                    ))}
-                  </div>
-                  <div className="mt-2 flex justify-between border-t border-white/10 pt-2 font-semibold text-white">
-                    <span>Total to collect</span><span className="tabular-nums">{fmtNaira(total)}</span>
-                  </div>
-                </div>
-              ) : null;
-            })()}
             <div className="mt-3 flex flex-wrap gap-2">
               <button onClick={() => onRegistration({ tests_confirmed: !request.tests_confirmed })} disabled={busy}
                 className={`inline-flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-xs font-semibold disabled:opacity-50 ${request.tests_confirmed ? "border border-emerald-500/30 bg-emerald-600/20 text-emerald-300" : "bg-white/10 text-slate-200 hover:bg-white/15"}`}>
@@ -1030,24 +939,6 @@ function WorkspaceDrawer({
               <ChecklistItem done={false} label="4. Direct the client to the right department" />
             </ol>
 
-            {(() => {
-              const { rows, total } = costBreakdown(request);
-              return rows.length > 0 ? (
-                <div className="mt-3 rounded-xl border border-amber-500/20 bg-amber-500/5 p-3 text-xs">
-                  <div className="space-y-1">
-                    {rows.map((x, i) => (
-                      <div key={i} className="flex justify-between gap-3 text-amber-100/80">
-                        <span className="truncate">{x.name}</span>
-                        <span className="shrink-0 tabular-nums">{x.price != null ? fmtNaira(x.price) : "—"}</span>
-                      </div>
-                    ))}
-                  </div>
-                  <div className="mt-2 flex justify-between border-t border-amber-500/20 pt-2 font-semibold text-amber-100">
-                    <span>Total to collect</span><span className="tabular-nums">{fmtNaira(total)}</span>
-                  </div>
-                </div>
-              ) : null;
-            })()}
             <div className="mt-3 flex flex-wrap gap-2">
               <button data-tour="ob-confirm-tests" onClick={() => onRegistration({ tests_confirmed: !request.tests_confirmed })} disabled={busy}
                 className={`inline-flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-xs font-semibold disabled:opacity-50 ${request.tests_confirmed ? "border border-emerald-500/30 bg-emerald-600/20 text-emerald-300" : `bg-white/10 text-slate-200 hover:bg-white/15 ${pendIs("confirm_tests") ? pulse : ""}`}`}>

@@ -1,10 +1,10 @@
 "use client";
 
-import { useState } from "react";
-import { User, FlaskConical, ShieldCheck, Check, Loader2, Copy, Search, Stethoscope, Lock, HelpCircle, MessageCircle } from "lucide-react";
+import { useEffect, useRef, useState } from "react";
+import { User, FlaskConical, ShieldCheck, Check, Loader2, Copy, Search, Stethoscope, Lock, HelpCircle, MessageCircle, Plus, X, MapPin, ChevronDown } from "lucide-react";
 import { TestTagInput, TestTag } from "@/components/ui/TestTagInput";
-import { DoctorSearchSelect, PickedDoctor } from "@/components/lab/DoctorSearchSelect";
 import { PhoneInput } from "@/components/PhoneInput";
+import { STATE_NAMES, lgasForState, fuzzyFilter } from "@/lib/nigeria-locations";
 
 export interface OnboardLab {
   id?: string;
@@ -23,7 +23,7 @@ type Step = 0 | 1 | 2;
 
 const STEP_META = [
   { label: "Your details", icon: User },
-  { label: "Tests", icon: FlaskConical },
+  { label: "Visit info", icon: FlaskConical },
   { label: "Consent", icon: ShieldCheck },
 ];
 
@@ -72,37 +72,163 @@ function phoneValid(p: string): boolean {
 
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
+const inputCls = "w-full rounded-xl border border-slate-200 bg-white px-4 py-2.5 text-sm text-slate-800 focus:border-medical-400 focus:ring-2 focus:ring-medical-500/30 outline-none transition";
+const labelCls = "mb-1 block text-xs font-medium text-slate-600";
+
+/** Predictive (fuzzy) combobox for states / LGAs — type-ahead with suggestions. */
+function FuzzyCombo({
+  value,
+  onChange,
+  options,
+  placeholder,
+  disabled,
+}: {
+  value: string;
+  onChange: (v: string) => void;
+  options: string[];
+  placeholder: string;
+  disabled?: boolean;
+}) {
+  const [query, setQuery] = useState(value);
+  const [open, setOpen] = useState(false);
+  const wrapRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => { setQuery(value); }, [value]);
+
+  useEffect(() => {
+    function onDoc(e: MouseEvent) {
+      if (wrapRef.current && !wrapRef.current.contains(e.target as Node)) setOpen(false);
+    }
+    document.addEventListener("mousedown", onDoc);
+    return () => document.removeEventListener("mousedown", onDoc);
+  }, []);
+
+  const suggestions = fuzzyFilter(query, options, 8);
+
+  return (
+    <div ref={wrapRef} className="relative">
+      <input
+        className={`${inputCls} pr-9 disabled:bg-slate-50 disabled:text-slate-400`}
+        value={query}
+        disabled={disabled}
+        placeholder={placeholder}
+        onFocus={() => setOpen(true)}
+        onChange={(e) => {
+          setQuery(e.target.value);
+          setOpen(true);
+          // Free typing clears the committed value until a suggestion is picked
+          // or the text exactly matches an option.
+          const exact = options.find((o) => o.toLowerCase() === e.target.value.trim().toLowerCase());
+          onChange(exact ?? "");
+        }}
+        onKeyDown={(e) => {
+          if (e.key === "Enter" && suggestions.length > 0) {
+            e.preventDefault();
+            onChange(suggestions[0]);
+            setQuery(suggestions[0]);
+            setOpen(false);
+          }
+        }}
+      />
+      <ChevronDown className="pointer-events-none absolute right-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
+      {open && !disabled && suggestions.length > 0 && (
+        <ul className="absolute z-20 mt-1 max-h-52 w-full overflow-y-auto rounded-xl border border-slate-200 bg-white py-1 shadow-xl">
+          {suggestions.map((s) => (
+            <li key={s}>
+              <button
+                type="button"
+                onClick={() => { onChange(s); setQuery(s); setOpen(false); }}
+                className={`block w-full px-4 py-2 text-left text-sm hover:bg-medical-50 ${s === value ? "bg-medical-50 font-semibold text-medical-700" : "text-slate-700"}`}
+              >
+                {s}
+              </button>
+            </li>
+          ))}
+        </ul>
+      )}
+    </div>
+  );
+}
+
+/** A list of PhoneInputs with "add another number". */
+function PhoneList({
+  values,
+  onChange,
+  addLabel,
+}: {
+  values: string[];
+  onChange: (v: string[]) => void;
+  addLabel: string;
+}) {
+  return (
+    <div className="space-y-2">
+      {values.map((v, i) => (
+        <div key={i} className="flex items-start gap-2">
+          <div className="min-w-0 flex-1">
+            <PhoneInput value={v} onChange={(nv) => onChange(values.map((x, xi) => (xi === i ? nv : x)))} />
+          </div>
+          {i > 0 && (
+            <button
+              type="button"
+              onClick={() => onChange(values.filter((_, xi) => xi !== i))}
+              className="mt-2.5 rounded-lg p-1.5 text-slate-400 hover:bg-slate-100 hover:text-slate-600"
+              title="Remove number"
+            >
+              <X className="h-4 w-4" />
+            </button>
+          )}
+        </div>
+      ))}
+      {values.length < 3 && (
+        <button
+          type="button"
+          onClick={() => onChange([...values, ""])}
+          className="inline-flex items-center gap-1.5 text-xs font-medium text-medical-600 hover:text-medical-700"
+        >
+          <Plus className="h-3.5 w-3.5" /> {addLabel}
+        </button>
+      )}
+    </div>
+  );
+}
+
 /**
- * Minimalist multi-step client onboarding form. Used by the public QR page
- * (`/o/[labSlug]`, source="qr") and the dashboard walk-in flow (source="walk_in").
- * The QR flow collects the full self-service queue intake (referral type,
- * split names, DOB, WhatsApp, complaint, payment mode) and never shows prices.
+ * Client onboarding form — one identical multi-step flow for the public QR
+ * page (`/o/[labSlug]`, source="qr") and the queue's "Register walk-in"
+ * (source="walk_in"). No prices are ever shown. "New registration" is the
+ * default; "I have a Poveon code" sits to the right (and auto-opens when an
+ * `initialCode` arrives via the emailed check-in link).
  */
 export function LabOnboardForm({
   lab,
   source,
   templates = [],
+  initialCode,
   onSuccess,
 }: {
   lab: OnboardLab;
   source: "qr" | "walk_in";
   templates?: OnboardTemplate[];
+  /** Pre-applied Poveon code (from the arrival email link) — auto-reveals. */
+  initialCode?: string;
   onSuccess?: (code: string) => void;
 }) {
   const isQr = source === "qr";
   const [step, setStep] = useState<Step>(0);
-  // Walk-in keeps a single name field; QR splits surname / first / middle.
-  const [name, setName] = useState("");
   const [surname, setSurname] = useState("");
   const [firstName, setFirstName] = useState("");
   const [middleName, setMiddleName] = useState("");
-  const [phone, setPhone] = useState("");
+  // Multiple phone / WhatsApp numbers — first phone is the primary.
+  const [phones, setPhones] = useState<string[]>([""]);
   const [phoneIsWhatsapp, setPhoneIsWhatsapp] = useState<"" | "yes" | "no">("");
-  const [whatsapp, setWhatsapp] = useState("");
+  const [whatsapps, setWhatsapps] = useState<string[]>([""]);
   const [email, setEmail] = useState("");
-  const [age, setAge] = useState("");
   const [dob, setDob] = useState("");
   const [sex, setSex] = useState("");
+  // Where the client is coming from
+  const [country, setCountry] = useState("Nigeria");
+  const [stateOf, setStateOf] = useState("");
+  const [lga, setLga] = useState("");
   const [referralType, setReferralType] = useState<"" | "self" | "doctor" | "hmo">("");
   const [doctorNameText, setDoctorNameText] = useState("");
   const [referringOrg, setReferringOrg] = useState("");
@@ -114,54 +240,53 @@ export function LabOnboardForm({
   const [consent, setConsent] = useState(false);
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [code, setCode] = useState<string | null>(null);
+  const [done, setDone] = useState<{ code: string; queueNumber?: number | null; statusPath?: string | null } | null>(null);
 
-  // Referring doctor (manual path) — picked from the lab's pool (walk-in only).
-  const [doctor, setDoctor] = useState<PickedDoctor | null>(null);
-  const canAddDoctor = source === "walk_in"; // front desk can add; public QR uses free text
-
-  // "I have a Poveon code" reveal-and-confirm path. Both QR self-service and
-  // front-desk manual registration lead with the code prompt; "New
-  // registration" is one toggle away for walk-ins without a code.
-  const [entryMode, setEntryMode] = useState<"code" | "manual">("code");
-  const [lookupCode, setLookupCode] = useState("");
+  // "New registration" leads; "I have a Poveon code" is the secondary path on
+  // the right. An emailed check-in link pre-applies the code and auto-reveals.
+  const [entryMode, setEntryMode] = useState<"manual" | "code">(initialCode ? "code" : "manual");
+  const [lookupCode, setLookupCode] = useState(initialCode ?? "");
   const [looking, setLooking] = useState(false);
   const [confirming, setConfirming] = useState(false);
   const [revealed, setRevealed] = useState<{ code: string; tests: string; doctor_name: string | null } | null>(null);
+  // Code-path editable fields (simple single values — the referral already
+  // carries the structured data).
+  const [cName, setCName] = useState("");
+  const [cPhone, setCPhone] = useState("");
+  const [cEmail, setCEmail] = useState("");
+  const [cAge, setCAge] = useState("");
+  const [cSex, setCSex] = useState("");
+  const autoRevealed = useRef(false);
 
-  const fullName = isQr
-    ? [firstName.trim(), middleName.trim(), surname.trim()].filter(Boolean).join(" ")
-    : name.trim();
+  const isNigeria = country.trim().toLowerCase() === "nigeria";
+  const fullName = [firstName.trim(), middleName.trim(), surname.trim()].filter(Boolean).join(" ");
+  const dobParsed = parseDobText(dob);
+  const primaryPhone = phones[0] ?? "";
+  const validPhones = phones.map((p) => p.trim()).filter((p) => p && phoneValid(p));
+  const validWhatsapps = whatsapps.map((p) => p.trim()).filter((p) => p && phoneValid(p));
 
-  const dobParsed = isQr ? parseDobText(dob) : null;
+  const detailsValid =
+    !!referralType &&
+    surname.trim().length > 0 &&
+    firstName.trim().length > 0 &&
+    middleName.trim().length > 0 &&
+    !!dobParsed &&
+    sex.trim().length > 0 &&
+    phoneValid(primaryPhone) &&
+    phoneIsWhatsapp !== "" &&
+    EMAIL_RE.test(email.trim()) &&
+    country.trim().length > 0 &&
+    (!isNigeria || (stateOf.trim().length > 0 && lga.trim().length > 0));
 
-  const detailsValid = isQr
-    ? !!referralType &&
-      surname.trim().length > 0 &&
-      firstName.trim().length > 0 &&
-      middleName.trim().length > 0 &&
-      !!dobParsed &&
-      sex.trim().length > 0 &&
-      phoneValid(phone) &&
-      phoneIsWhatsapp !== "" &&
-      EMAIL_RE.test(email.trim())
-    : name.trim().length > 0 && phone.trim().length >= 5;
+  const referralValid =
+    referralType === "doctor"
+      ? doctorNameText.trim().length > 0
+      : referralType === "hmo"
+      ? referringOrg.trim().length > 0 && policyNumber.trim().length > 0
+      : true;
 
-  const referralValid = !isQr
-    ? true
-    : referralType === "doctor"
-    ? doctorNameText.trim().length > 0
-    : referralType === "hmo"
-    ? referringOrg.trim().length > 0 && policyNumber.trim().length > 0
-    : true;
-
-  const testsValid = tests.length > 0 && (!isQr || (!!paymentMode && referralValid));
-
-  // Running cost estimate from catalog-priced tests — shown to front-desk staff
-  // only. The public QR flow hides all prices from patients.
-  const knownTotal = tests.reduce((s, t) => s + (typeof t.price === "number" ? t.price : 0), 0);
-  const hasUnpriced = tests.some((t) => typeof t.price !== "number");
-  const showPrices = source === "walk_in";
+  // Tests are optional — the lab confirms them at the desk.
+  const visitValid = !!paymentMode && referralValid;
 
   function addTemplate(t: OnboardTemplate) {
     const existing = new Set(tests.map((x) => x.name.toLowerCase()));
@@ -175,6 +300,8 @@ export function LabOnboardForm({
     setSubmitting(true);
     setError(null);
     try {
+      // If the main number is on WhatsApp, duplicate it as the WhatsApp number.
+      const whatsappList = phoneIsWhatsapp === "yes" ? [primaryPhone.trim()] : validWhatsapps;
       const res = await fetch("/api/onboard/lab-intake", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -183,27 +310,34 @@ export function LabOnboardForm({
           lab_slug: lab.slug,
           source,
           patient_name: fullName,
-          patient_phone: phone.trim(),
-          patient_email: email.trim() || undefined,
-          patient_age: !isQr && age ? Number(age) : isQr && dobParsed ? dobParsed.age : undefined,
-          dob: isQr && dobParsed ? dobParsed.iso : undefined,
+          patient_phone: validPhones.join(", "),
+          patient_email: email.trim(),
+          patient_age: dobParsed?.age,
+          dob: dobParsed?.iso,
           sex: sex || undefined,
-          tests: tests.map((t) => t.name).join(", "),
+          location_country: country.trim() || undefined,
+          location_state: stateOf.trim() || undefined,
+          location_lga: lga.trim() || undefined,
+          tests: tests.length > 0 ? tests.map((t) => t.name).join(", ") : undefined,
           condition: condition.trim() || undefined,
-          professional_id: doctor?.id,
-          referral_type: isQr && referralType ? referralType : undefined,
-          whatsapp_phone: isQr && phoneIsWhatsapp === "no" ? whatsapp.trim() || undefined : undefined,
-          referring_doctor_name: isQr && referralType !== "self" ? doctorNameText.trim() || undefined : undefined,
-          referring_org: isQr ? referringOrg.trim() || undefined : undefined,
-          policy_number: isQr && referralType === "hmo" ? policyNumber.trim() || undefined : undefined,
-          payment_mode: isQr && paymentMode ? paymentMode : undefined,
+          referral_type: referralType || undefined,
+          whatsapp_phone: whatsappList.join(", ") || undefined,
+          referring_doctor_name: referralType !== "self" ? doctorNameText.trim() || undefined : undefined,
+          referring_org: referringOrg.trim() || undefined,
+          policy_number: referralType === "hmo" ? policyNumber.trim() || undefined : undefined,
+          payment_mode: paymentMode || undefined,
           consent: true,
         }),
       });
       const data = await res.json();
       if (!res.ok || !data.success) throw new Error(data.error || "Submission failed");
-      setCode(data.code);
       onSuccess?.(data.code);
+      // QR self-service continues to the personalised live queue-status page.
+      if (isQr && data.status_path) {
+        window.location.assign(data.status_path);
+        return;
+      }
+      setDone({ code: data.code, queueNumber: data.queue_number, statusPath: data.status_path });
     } catch (e) {
       setError(e instanceof Error ? e.message : "Something went wrong");
     } finally {
@@ -212,8 +346,8 @@ export function LabOnboardForm({
   }
 
   // Reveal an existing Poveon request by code so the client can confirm details.
-  async function reveal() {
-    const c = lookupCode.trim().toUpperCase();
+  async function reveal(codeOverride?: string) {
+    const c = (codeOverride ?? lookupCode).trim().toUpperCase();
     if (!c) { setError("Enter your Poveon code"); return; }
     setLooking(true); setError(null);
     try {
@@ -225,11 +359,11 @@ export function LabOnboardForm({
       const data = await res.json();
       if (!res.ok || !data.success) throw new Error(data.error || "Request not found");
       const r = data.request;
-      setName(r.patient_name ?? "");
-      setPhone(r.patient_phone ?? "");
-      setEmail(r.patient_email ?? "");
-      setAge(r.patient_age != null ? String(r.patient_age) : "");
-      setSex((r.sex ?? "").toLowerCase());
+      setCName(r.patient_name ?? "");
+      setCPhone(r.patient_phone ?? "");
+      setCEmail(r.patient_email ?? "");
+      setCAge(r.patient_age != null ? String(r.patient_age) : "");
+      setCSex((r.sex ?? "").toLowerCase());
       setRevealed({ code: r.code, tests: r.tests ?? "", doctor_name: r.doctor_name ?? null });
     } catch (e) {
       setError(e instanceof Error ? e.message : "Lookup failed");
@@ -238,7 +372,17 @@ export function LabOnboardForm({
     }
   }
 
-  // Confirm the revealed details and submit (updates the existing request).
+  // Auto-reveal when the emailed check-in link pre-applies a code.
+  useEffect(() => {
+    if (initialCode && !autoRevealed.current) {
+      autoRevealed.current = true;
+      reveal(initialCode);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [initialCode]);
+
+  // Confirm the revealed details and submit (updates the existing request and
+  // places the client in the queue).
   async function confirmDetails() {
     if (!revealed) return;
     setConfirming(true); setError(null);
@@ -250,18 +394,22 @@ export function LabOnboardForm({
           lab_id: lab.id,
           lab_slug: lab.slug,
           code: revealed.code,
-          patient_name: name.trim(),
-          patient_phone: phone.trim(),
-          patient_email: email.trim() || undefined,
-          patient_age: age ? Number(age) : undefined,
-          sex: sex || undefined,
+          patient_name: cName.trim(),
+          patient_phone: cPhone.trim(),
+          patient_email: cEmail.trim() || undefined,
+          patient_age: cAge ? Number(cAge) : undefined,
+          sex: cSex || undefined,
           consent: true,
         }),
       });
       const data = await res.json();
       if (!res.ok || !data.success) throw new Error(data.error || "Could not confirm");
-      setCode(data.code);
       onSuccess?.(data.code);
+      if (isQr && data.status_path) {
+        window.location.assign(data.status_path);
+        return;
+      }
+      setDone({ code: data.code, queueNumber: data.queue_number, statusPath: data.status_path });
     } catch (e) {
       setError(e instanceof Error ? e.message : "Could not confirm");
     } finally {
@@ -269,39 +417,31 @@ export function LabOnboardForm({
     }
   }
 
-  if (code) {
+  if (done) {
     return (
       <div className="text-center py-6">
         <div className="mx-auto flex h-14 w-14 items-center justify-center rounded-full bg-emerald-100">
           <Check className="h-7 w-7 text-emerald-600" />
         </div>
-        <h3 className="mt-4 text-lg font-semibold text-slate-900">{isQr ? "You're in the queue!" : "You're registered!"}</h3>
+        <h3 className="mt-4 text-lg font-semibold text-slate-900">In the queue!</h3>
         <p className="mt-1 text-sm text-slate-500">
-          {isQr
-            ? `You've joined the queue at ${lab.name}. The team will attend to you in order of arrival.`
-            : `Show this code at ${lab.name}.`}
+          {done.queueNumber != null ? `Queue number #${done.queueNumber} at ${lab.name}.` : `Registered at ${lab.name}.`}
         </p>
         <div className="mt-4 inline-flex items-center gap-2 rounded-xl border border-slate-200 bg-slate-50 px-4 py-3">
-          <span className="text-2xl font-bold tracking-wider text-medical-700">{code}</span>
-          <button onClick={() => navigator.clipboard?.writeText(code)} className="text-slate-400 hover:text-slate-600" title="Copy code">
+          <span className="text-2xl font-bold tracking-wider text-medical-700">{done.code}</span>
+          <button onClick={() => navigator.clipboard?.writeText(done.code)} className="text-slate-400 hover:text-slate-600" title="Copy code">
             <Copy className="h-4 w-4" />
           </button>
         </div>
-        {isQr && email.trim() && (
-          <p className="mt-3 text-xs text-slate-400">A confirmation has also been sent to your email.</p>
-        )}
       </div>
     );
   }
 
-  const inputCls = "w-full rounded-xl border border-slate-200 bg-white px-4 py-2.5 text-sm text-slate-800 focus:border-medical-400 focus:ring-2 focus:ring-medical-500/30 outline-none transition";
-  const labelCls = "mb-1 block text-xs font-medium text-slate-600";
-
   return (
     <div>
-      {/* Entry mode toggle */}
+      {/* Entry mode toggle — New registration first, Poveon code to the right */}
       <div className="mb-4 inline-flex w-full rounded-xl border border-slate-200 bg-slate-50 p-1">
-        {([["code", "I have a Poveon code"], ["manual", "New registration"]] as const).map(([m, label]) => (
+        {([["manual", "New registration"], ["code", "I have a Poveon code"]] as const).map(([m, label]) => (
           <button key={m} type="button" onClick={() => { setEntryMode(m); setError(null); }} className={`flex-1 rounded-lg px-3 py-1.5 text-xs font-medium transition ${entryMode === m ? "bg-medical-600 text-white" : "text-slate-500 hover:text-slate-700"}`}>{label}</button>
         ))}
       </div>
@@ -320,7 +460,7 @@ export function LabOnboardForm({
               placeholder="e.g. 8X4K29Q"
               className={`${inputCls} font-mono uppercase tracking-wider`}
             />
-            <button type="button" onClick={reveal} disabled={looking || !lookupCode.trim()} className="inline-flex shrink-0 items-center gap-1.5 rounded-xl bg-medical-600 px-4 text-sm font-semibold text-white hover:bg-medical-700 disabled:opacity-50">
+            <button type="button" onClick={() => reveal()} disabled={looking || !lookupCode.trim()} className="inline-flex shrink-0 items-center gap-1.5 rounded-xl bg-medical-600 px-4 text-sm font-semibold text-white hover:bg-medical-700 disabled:opacity-50">
               {looking ? <Loader2 className="h-4 w-4 animate-spin" /> : <Search className="h-4 w-4" />} Find
             </button>
           </div>
@@ -331,27 +471,27 @@ export function LabOnboardForm({
         <div className="space-y-3">
           <div>
             <label className={labelCls}>Full name *</label>
-            <input className={inputCls} value={name} onChange={(e) => setName(e.target.value)} />
+            <input className={inputCls} value={cName} onChange={(e) => setCName(e.target.value)} />
           </div>
           <div>
             <label className={labelCls}>Phone number *</label>
-            <input className={inputCls} value={phone} onChange={(e) => setPhone(e.target.value)} inputMode="tel" />
+            <input className={inputCls} value={cPhone} onChange={(e) => setCPhone(e.target.value)} inputMode="tel" />
           </div>
           <div className="grid grid-cols-2 gap-3">
             <div>
               <label className={labelCls}>Age</label>
-              <input className={inputCls} value={age} onChange={(e) => setAge(e.target.value.replace(/\D/g, ""))} inputMode="numeric" />
+              <input className={inputCls} value={cAge} onChange={(e) => setCAge(e.target.value.replace(/\D/g, ""))} inputMode="numeric" />
             </div>
             <div>
               <label className={labelCls}>Sex</label>
-              <select className={inputCls} value={sex} onChange={(e) => setSex(e.target.value)}>
+              <select className={inputCls} value={cSex} onChange={(e) => setCSex(e.target.value)}>
                 <option value="">—</option><option value="male">Male</option><option value="female">Female</option><option value="other">Other</option>
               </select>
             </div>
           </div>
           <div>
             <label className={labelCls}>Email (optional)</label>
-            <input className={inputCls} value={email} onChange={(e) => setEmail(e.target.value)} inputMode="email" />
+            <input className={inputCls} value={cEmail} onChange={(e) => setCEmail(e.target.value)} inputMode="email" />
           </div>
           <div className="rounded-xl border border-slate-200 bg-slate-50 p-3 text-sm">
             <p className="text-xs font-medium text-slate-500">Tests requested</p>
@@ -360,76 +500,33 @@ export function LabOnboardForm({
               <p className="mt-2 inline-flex items-center gap-1.5 text-xs text-slate-500"><Stethoscope className="h-3.5 w-3.5" /> Referred by {revealed.doctor_name} <Lock className="h-3 w-3" /></p>
             )}
           </div>
-          <button type="button" onClick={confirmDetails} disabled={confirming || (name.trim().length === 0 || phone.trim().length < 5)} className="inline-flex w-full items-center justify-center gap-2 rounded-xl bg-medical-600 py-2.5 text-sm font-semibold text-white hover:bg-medical-700 disabled:opacity-50">
-            {confirming ? <Loader2 className="h-4 w-4 animate-spin" /> : <Check className="h-4 w-4" />} Confirm &amp; send
+          <button type="button" onClick={confirmDetails} disabled={confirming || cName.trim().length === 0 || cPhone.trim().length < 5} className="inline-flex w-full items-center justify-center gap-2 rounded-xl bg-medical-600 py-2.5 text-sm font-semibold text-white hover:bg-medical-700 disabled:opacity-50">
+            {confirming ? <Loader2 className="h-4 w-4 animate-spin" /> : <Check className="h-4 w-4" />} Confirm &amp; join the queue
           </button>
         </div>
       )}
 
-      {/* Manual path */}
+      {/* Manual path — identical for QR self-service and walk-in registration */}
       {entryMode === "manual" && (<>
       {/* Stepper */}
       <div className="mb-5 flex items-center gap-2">
         {STEP_META.map((s, i) => {
           const Icon = s.icon;
           const active = step === i;
-          const done = step > i;
+          const stepDone = step > i;
           return (
             <div key={s.label} className="flex flex-1 items-center gap-2 last:flex-none">
-              <div className={`flex h-8 w-8 items-center justify-center rounded-full ${done ? "bg-emerald-500 text-white" : active ? "bg-medical-600 text-white" : "bg-slate-100 text-slate-400"}`}>
-                {done ? <Check className="h-4 w-4" /> : <Icon className="h-4 w-4" />}
+              <div className={`flex h-8 w-8 items-center justify-center rounded-full ${stepDone ? "bg-emerald-500 text-white" : active ? "bg-medical-600 text-white" : "bg-slate-100 text-slate-400"}`}>
+                {stepDone ? <Check className="h-4 w-4" /> : <Icon className="h-4 w-4" />}
               </div>
               <span className={`hidden sm:block text-xs font-medium ${active ? "text-slate-900" : "text-slate-400"}`}>{s.label}</span>
-              {i < STEP_META.length - 1 && <div className={`h-0.5 flex-1 rounded ${done ? "bg-emerald-400" : "bg-slate-100"}`} />}
+              {i < STEP_META.length - 1 && <div className={`h-0.5 flex-1 rounded ${stepDone ? "bg-emerald-400" : "bg-slate-100"}`} />}
             </div>
           );
         })}
       </div>
 
-      {step === 0 && !isQr && (
-        <div className="space-y-3">
-          <div>
-            <label className={labelCls}>Full name *</label>
-            <input className={inputCls} value={name} onChange={(e) => setName(e.target.value)} placeholder="Jane Doe" />
-          </div>
-          <div>
-            <label className={labelCls}>Phone number *</label>
-            <input className={inputCls} value={phone} onChange={(e) => setPhone(e.target.value)} placeholder="+234..." inputMode="tel" />
-          </div>
-          <div className="grid grid-cols-2 gap-3">
-            <div>
-              <label className={labelCls}>Age</label>
-              <input className={inputCls} value={age} onChange={(e) => setAge(e.target.value.replace(/\D/g, ""))} placeholder="e.g. 34" inputMode="numeric" />
-            </div>
-            <div>
-              <label className={labelCls}>Sex</label>
-              <select className={inputCls} value={sex} onChange={(e) => setSex(e.target.value)}>
-                <option value="">—</option>
-                <option value="male">Male</option>
-                <option value="female">Female</option>
-                <option value="other">Other</option>
-              </select>
-            </div>
-          </div>
-          <div>
-            <label className={labelCls}>Email (optional)</label>
-            <input className={inputCls} value={email} onChange={(e) => setEmail(e.target.value)} placeholder="you@email.com" inputMode="email" />
-          </div>
-          <div>
-            <label className={labelCls}>Referring doctor (optional)</label>
-            <DoctorSearchSelect labId={lab.id} canAdd={canAddDoctor} value={doctor} onChange={setDoctor} />
-          </div>
-          <button
-            onClick={() => setStep(1)}
-            disabled={!detailsValid}
-            className="mt-2 w-full rounded-xl bg-medical-600 py-2.5 text-sm font-semibold text-white hover:bg-medical-700 disabled:opacity-50"
-          >
-            Continue
-          </button>
-        </div>
-      )}
-
-      {step === 0 && isQr && (
+      {step === 0 && (
         <div className="space-y-3">
           <div>
             <label className={labelCls}>How were you referred? *</label>
@@ -494,7 +591,7 @@ export function LabOnboardForm({
           </div>
           <div>
             <label className={labelCls}>Phone number *</label>
-            <PhoneInput value={phone} onChange={setPhone} />
+            <PhoneList values={phones} onChange={setPhones} addLabel="Add another phone number" />
           </div>
           <div>
             <label className={labelCls}>Is this number on WhatsApp? *</label>
@@ -514,7 +611,7 @@ export function LabOnboardForm({
           {phoneIsWhatsapp === "no" && (
             <div>
               <label className={labelCls}>WhatsApp number (optional)</label>
-              <PhoneInput value={whatsapp} onChange={setWhatsapp} />
+              <PhoneList values={whatsapps} onChange={setWhatsapps} addLabel="Add another WhatsApp number" />
             </div>
           )}
           <div>
@@ -523,6 +620,29 @@ export function LabOnboardForm({
             {email.trim().length > 0 && !EMAIL_RE.test(email.trim()) && (
               <p className="mt-1 text-[11px] font-medium text-red-600">Enter a valid email address</p>
             )}
+          </div>
+          <div>
+            <label className={`${labelCls} flex items-center gap-1.5`}><MapPin className="h-3.5 w-3.5 text-slate-400" /> Where are you coming from? *</label>
+            <div className="space-y-2">
+              <input className={inputCls} value={country} onChange={(e) => { setCountry(e.target.value); if (e.target.value.trim().toLowerCase() !== "nigeria") { setStateOf(""); setLga(""); } }} placeholder="Country (e.g. Nigeria)" />
+              {isNigeria && (
+                <div className="grid grid-cols-2 gap-3">
+                  <FuzzyCombo
+                    value={stateOf}
+                    onChange={(v) => { setStateOf(v); setLga(""); }}
+                    options={STATE_NAMES}
+                    placeholder="State *"
+                  />
+                  <FuzzyCombo
+                    value={lga}
+                    onChange={setLga}
+                    options={lgasForState(stateOf)}
+                    placeholder={stateOf ? "Local government *" : "Pick a state first"}
+                    disabled={!stateOf}
+                  />
+                </div>
+              )}
+            </div>
           </div>
           <button
             onClick={() => setStep(1)}
@@ -536,7 +656,7 @@ export function LabOnboardForm({
 
       {step === 1 && (
         <div className="space-y-3">
-          {isQr && referralType === "doctor" && (
+          {referralType === "doctor" && (
             <>
               <div>
                 <label className={labelCls}>Referring doctor&apos;s name *</label>
@@ -548,7 +668,7 @@ export function LabOnboardForm({
               </div>
             </>
           )}
-          {isQr && referralType === "hmo" && (
+          {referralType === "hmo" && (
             <>
               <div>
                 <label className={labelCls}>Name of HMO *</label>
@@ -577,21 +697,13 @@ export function LabOnboardForm({
             </div>
           )}
           <div>
-            <label className={labelCls}>Tests / investigations *</label>
+            <label className={labelCls}>Tests / investigations (optional)</label>
             <TestTagInput value={tests} onChange={setTests} labId={lab.id} />
+            <p className="mt-1 text-[11px] text-slate-400">Not sure? Leave it blank — the team will confirm your tests at the desk.</p>
           </div>
-          {showPrices && tests.length > 0 && (
-            <div className="rounded-xl border border-slate-200 bg-slate-50 px-3 py-2 text-sm">
-              <div className="flex justify-between font-medium text-slate-800">
-                <span>Estimated total</span>
-                <span className="tabular-nums">₦{Math.round(knownTotal).toLocaleString()}{hasUnpriced ? "+" : ""}</span>
-              </div>
-              {hasUnpriced && <p className="mt-0.5 text-[11px] text-slate-400">Some tests aren&rsquo;t price-listed yet — the lab confirms the final total.</p>}
-            </div>
-          )}
           <div>
             <label className={`${labelCls} flex items-center gap-1.5`}>
-              {isQr ? "Complaint (optional)" : "Symptoms / notes (optional)"}
+              Complaint (optional)
               <button
                 type="button"
                 onClick={() => setComplaintHelpOpen((v) => !v)}
@@ -607,28 +719,26 @@ export function LabOnboardForm({
                 Briefly describe what&apos;s bothering you or why you&apos;re doing these tests — e.g. &ldquo;fever and headache for 3 days&rdquo; or &ldquo;routine annual check-up&rdquo;. This helps our team serve you better.
               </p>
             )}
-            <textarea className={inputCls} rows={3} value={condition} onChange={(e) => setCondition(e.target.value)} placeholder={isQr ? "e.g. Fever and headache for 3 days" : "Anything the lab should know"} />
+            <textarea className={inputCls} rows={3} value={condition} onChange={(e) => setCondition(e.target.value)} placeholder="e.g. Fever and headache for 3 days" />
           </div>
-          {isQr && (
-            <div>
-              <label className={labelCls}>How will you pay? *</label>
-              <div className="grid grid-cols-2 gap-1.5">
-                {PAYMENT_OPTIONS.map((o) => (
-                  <button
-                    key={o.value}
-                    type="button"
-                    onClick={() => setPaymentMode(o.value)}
-                    className={`rounded-xl border px-3 py-2 text-xs font-medium transition ${paymentMode === o.value ? "border-medical-500 bg-medical-50 text-medical-800" : "border-slate-200 bg-white text-slate-600 hover:border-slate-300"}`}
-                  >
-                    {o.label}
-                  </button>
-                ))}
-              </div>
+          <div>
+            <label className={labelCls}>How will you pay? *</label>
+            <div className="grid grid-cols-2 gap-1.5">
+              {PAYMENT_OPTIONS.map((o) => (
+                <button
+                  key={o.value}
+                  type="button"
+                  onClick={() => setPaymentMode(o.value)}
+                  className={`rounded-xl border px-3 py-2 text-xs font-medium transition ${paymentMode === o.value ? "border-medical-500 bg-medical-50 text-medical-800" : "border-slate-200 bg-white text-slate-600 hover:border-slate-300"}`}
+                >
+                  {o.label}
+                </button>
+              ))}
             </div>
-          )}
+          </div>
           <div className="flex gap-2">
             <button onClick={() => setStep(0)} className="rounded-xl border border-slate-200 px-4 py-2.5 text-sm font-medium text-slate-600 hover:bg-slate-50">Back</button>
-            <button onClick={() => setStep(2)} disabled={!testsValid} className="flex-1 rounded-xl bg-medical-600 py-2.5 text-sm font-semibold text-white hover:bg-medical-700 disabled:opacity-50">Continue</button>
+            <button onClick={() => setStep(2)} disabled={!visitValid} className="flex-1 rounded-xl bg-medical-600 py-2.5 text-sm font-semibold text-white hover:bg-medical-700 disabled:opacity-50">Continue</button>
           </div>
         </div>
       )}
@@ -638,27 +748,24 @@ export function LabOnboardForm({
           <div className="rounded-xl border border-slate-200 bg-slate-50 p-4 text-sm">
             <p className="font-medium text-slate-900">
               {fullName}
-              {isQr && dob && <span className="text-slate-400"> · {dob}{dobParsed ? ` (${dobParsed.age}y)` : ""}</span>}
-              {!isQr && age && <span className="text-slate-400"> · {age}y</span>}
+              {dob && <span className="text-slate-400"> · {dob}{dobParsed ? ` (${dobParsed.age}y)` : ""}</span>}
               {sex && <span className="text-slate-400"> · {sex}</span>}
             </p>
-            <p className="text-slate-500">{phone}{isQr && phoneIsWhatsapp === "no" && whatsapp ? ` · WhatsApp: ${whatsapp}` : ""}{email ? ` · ${email}` : ""}</p>
-            {isQr && referralType && (
+            <p className="text-slate-500">{validPhones.join(", ")}{phoneIsWhatsapp === "no" && validWhatsapps.length > 0 ? ` · WhatsApp: ${validWhatsapps.join(", ")}` : ""}</p>
+            <p className="text-slate-500">{email}</p>
+            {(lga || stateOf || country) && (
+              <p className="mt-1 text-xs text-slate-500">From: {[lga, stateOf, country].filter(Boolean).join(", ")}</p>
+            )}
+            {referralType && (
               <p className="mt-1 text-xs text-slate-500">
                 {REFERRAL_OPTIONS.find((o) => o.value === referralType)?.label}
                 {referralType !== "self" && (doctorNameText.trim() || referringOrg.trim()) ? ` — ${[doctorNameText.trim(), referringOrg.trim()].filter(Boolean).join(", ")}` : ""}
                 {referralType === "hmo" && policyNumber.trim() ? ` · Policy ${policyNumber.trim()}` : ""}
               </p>
             )}
-            <p className="mt-2 text-slate-700">{tests.map((t) => t.name).join(", ")}</p>
-            {isQr && paymentMode && (
+            <p className="mt-2 text-slate-700">{tests.length > 0 ? tests.map((t) => t.name).join(", ") : "Tests to be confirmed at the lab"}</p>
+            {paymentMode && (
               <p className="mt-1 text-xs text-slate-500">Payment: {PAYMENT_OPTIONS.find((o) => o.value === paymentMode)?.label}</p>
-            )}
-            {showPrices && (
-              <div className="mt-2 flex justify-between border-t border-slate-200 pt-2 font-semibold text-slate-900">
-                <span>Estimated total</span>
-                <span className="tabular-nums">₦{Math.round(knownTotal).toLocaleString()}{hasUnpriced ? "+" : ""}</span>
-              </div>
             )}
           </div>
           <label className="flex items-start gap-2 text-sm text-slate-600">
@@ -669,7 +776,7 @@ export function LabOnboardForm({
             <button onClick={() => setStep(1)} className="rounded-xl border border-slate-200 px-4 py-2.5 text-sm font-medium text-slate-600 hover:bg-slate-50">Back</button>
             <button onClick={submit} disabled={!consent || submitting} className="flex-1 inline-flex items-center justify-center gap-2 rounded-xl bg-medical-600 py-2.5 text-sm font-semibold text-white hover:bg-medical-700 disabled:opacity-50">
               {submitting && <Loader2 className="h-4 w-4 animate-spin" />}
-              {source === "walk_in" ? "Register client" : "Join the queue"}
+              {source === "walk_in" ? "Register & join queue" : "Join the queue"}
             </button>
           </div>
         </div>

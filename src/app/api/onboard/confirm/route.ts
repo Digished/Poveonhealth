@@ -38,16 +38,30 @@ export async function POST(request: NextRequest) {
   if (!d.lab_id && !d.lab_slug) return NextResponse.json({ success: false, error: "Lab not specified" }, { status: 400, headers: CORS });
 
   const lab = d.lab_id
-    ? await prisma.lab.findUnique({ where: { id: d.lab_id }, select: { id: true } })
-    : await prisma.lab.findUnique({ where: { slug: d.lab_slug! }, select: { id: true } });
+    ? await prisma.lab.findUnique({ where: { id: d.lab_id }, select: { id: true, slug: true } })
+    : await prisma.lab.findUnique({ where: { slug: d.lab_slug! }, select: { id: true, slug: true } });
   if (!lab) return NextResponse.json({ success: false, error: "Laboratory not found" }, { status: 404, headers: CORS });
 
   const req = await prisma.request.findFirst({
     where: { lab_id: lab.id, OR: [{ code: d.code }, { code: { endsWith: `-${d.code}` } }] },
-    select: { id: true, status: true, code: true },
+    select: { id: true, status: true, code: true, queue_confirmed_at: true, queue_number: true },
   });
   if (!req) return NextResponse.json({ success: false, error: "No request found with that code" }, { status: 404, headers: CORS });
   if (req.status === "done") return NextResponse.json({ success: false, error: "This request is already completed" }, { status: 409, headers: CORS });
+
+  // Confirming details at the lab also places the client in the waiting
+  // queue (first confirmation only) with a stable daily ticket number.
+  let queueNumber = req.queue_number;
+  let queueJoin: { queue_confirmed_at: Date; queue_number: number } | Record<string, never> = {};
+  if (!req.queue_confirmed_at) {
+    const startOfDay = new Date();
+    startOfDay.setHours(0, 0, 0, 0);
+    const todayCount = await prisma.request.count({
+      where: { lab_id: lab.id, queue_confirmed_at: { gte: startOfDay } },
+    });
+    queueNumber = todayCount + 1;
+    queueJoin = { queue_confirmed_at: new Date(), queue_number: queueNumber };
+  }
 
   await prisma.request.update({
     where: { id: req.id },
@@ -58,8 +72,18 @@ export async function POST(request: NextRequest) {
       patient_age: d.patient_age ?? null,
       sex: d.sex || null,
       consent_at: new Date(),
+      arrived_at: new Date(), // confirming on-site means the client is here
+      ...queueJoin,
     },
   });
 
-  return NextResponse.json({ success: true, code: req.code }, { headers: CORS });
+  return NextResponse.json(
+    {
+      success: true,
+      code: req.code,
+      queue_number: queueNumber,
+      status_path: lab.slug ? `/o/${lab.slug}/q/${req.code}` : null,
+    },
+    { headers: CORS }
+  );
 }

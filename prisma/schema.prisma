@@ -221,8 +221,9 @@ model Request {
   whatsapp_phone        String? // WhatsApp number when the main phone isn't on WhatsApp
   payment_mode          String? // cash | card | transfer | bill_hospital — client's declared payment mode
   arrived_at            DateTime? // client physically arrived at the lab (onboarding "Arrived" button)
-  queue_confirmed_at    DateTime? // lab confirmed a QR self-registration into the waiting queue
+  queue_confirmed_at    DateTime? // request joined the self-service waiting queue
   attended_at           DateTime? // client was attended to (removes them from the queue)
+  queue_number          Int? // stable per-lab daily ticket number, assigned when joining the queue
   current_stage         String? // denormalized latest journey stage (registered|collected|received|in_analysis|verified|reported)
   consent_at            DateTime? // patient consent captured at onboarding (ISO 15189 data-integrity)
   result_link           String? // URL to online results (stored when lab sends results)

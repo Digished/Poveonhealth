@@ -56,6 +56,19 @@ function fmtDate(iso: string | null): string {
   return new Date(iso).toLocaleDateString("en-GB", { day: "numeric", month: "short", year: "numeric" });
 }
 
+function fmtDateTime(iso: string | null): string {
+  if (!iso) return "—";
+  return new Date(iso).toLocaleString("en-GB", { day: "numeric", month: "short", year: "numeric", hour: "numeric", minute: "2-digit" });
+}
+
+/** Local "YYYY-MM-DD HH:mm" for spreadsheet cells (date + time). */
+function csvDateTime(iso: string | null): string {
+  if (!iso) return "";
+  const d = new Date(iso);
+  const p = (n: number) => String(n).padStart(2, "0");
+  return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())} ${p(d.getHours())}:${p(d.getMinutes())}`;
+}
+
 function csvEscape(v: string | number | null | undefined): string {
   const s = v == null ? "" : String(v);
   return /[",\n\r]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s;
@@ -75,6 +88,8 @@ export function CustomersView({ labName, live = false }: { labName: string; live
   const [updatedAt, setUpdatedAt] = useState<Date | null>(null);
   const [sourceF, setSourceF] = useState<SourceTab>("app");
   const [arrivedF, setArrivedF] = useState<"" | "arrived" | "not_arrived">("");
+  const [dateFrom, setDateFrom] = useState("");
+  const [dateTo, setDateTo] = useState("");
   const [query, setQuery] = useState("");
 
   const load = useCallback(async (silent = false) => {
@@ -111,13 +126,15 @@ export function CustomersView({ labName, live = false }: { labName: string; live
       if (sourceF === "registered" && src === "poveon") return false;
       if (arrivedF === "arrived" && !r.arrived) return false;
       if (arrivedF === "not_arrived" && r.arrived) return false;
+      if (dateFrom && new Date(r.created_at).getTime() < new Date(dateFrom + "T00:00:00").getTime()) return false;
+      if (dateTo && new Date(r.created_at).getTime() > new Date(dateTo + "T23:59:59").getTime()) return false;
       if (q) {
         const hay = [r.patient_name, r.patient_phone, r.patient_email, r.code, r.doctor_name, r.tests].filter(Boolean).join(" ").toLowerCase();
         if (!hay.includes(q)) return false;
       }
       return true;
     });
-  }, [rows, sourceF, arrivedF, query]);
+  }, [rows, sourceF, arrivedF, dateFrom, dateTo, query]);
 
   const stats = useMemo(() => ({
     total: filtered.length,
@@ -158,11 +175,11 @@ export function CustomersView({ labName, live = false }: { labName: string; live
         r.is_paid ? "Yes" : "No",
         r.status,
         r.code,
-        r.created_at ? new Date(r.created_at).toISOString().slice(0, 10) : "",
+        csvDateTime(r.created_at),
         r.arrived ? "Yes" : "No",
-        r.attend_date ? new Date(r.attend_date).toISOString().slice(0, 10) : "",
-        r.attended_at ? new Date(r.attended_at).toISOString().slice(0, 10) : "",
-        r.completed_at ? new Date(r.completed_at).toISOString().slice(0, 10) : "",
+        csvDateTime(r.attend_date),
+        csvDateTime(r.attended_at),
+        csvDateTime(r.completed_at),
       ].map(csvEscape).join(","));
     }
     // BOM so Excel opens the file with correct encoding. The export mirrors
@@ -279,6 +296,31 @@ export function CustomersView({ labName, live = false }: { labName: string; live
           <option value="arrived" className="bg-slate-800">Arrived only</option>
           <option value="not_arrived" className="bg-slate-800">Not arrived only</option>
         </select>
+        <div className="flex items-center gap-1.5">
+          <input
+            type="date"
+            value={dateFrom}
+            onChange={(e) => setDateFrom(e.target.value)}
+            className="rounded-xl border border-white/10 bg-white/5 px-3 py-2 text-sm text-slate-200 outline-none"
+            title="Referred from"
+          />
+          <span className="text-xs text-slate-500">to</span>
+          <input
+            type="date"
+            value={dateTo}
+            onChange={(e) => setDateTo(e.target.value)}
+            className="rounded-xl border border-white/10 bg-white/5 px-3 py-2 text-sm text-slate-200 outline-none"
+            title="Referred until"
+          />
+          {(dateFrom || dateTo) && (
+            <button
+              onClick={() => { setDateFrom(""); setDateTo(""); }}
+              className="rounded-lg px-2 py-1 text-xs text-slate-400 hover:bg-white/5 hover:text-white"
+            >
+              Clear
+            </button>
+          )}
+        </div>
       </div>
 
       {/* Table (horizontal scroll keeps it usable on phones) */}
@@ -330,7 +372,7 @@ export function CustomersView({ labName, live = false }: { labName: string; live
                     <td className="whitespace-nowrap px-4 py-3 text-xs text-slate-300">{fmtDate(r.created_at)}</td>
                     <td className="whitespace-nowrap px-4 py-3 text-xs">
                       {r.arrived ? (
-                        <span className="inline-flex items-center gap-1 rounded-full bg-emerald-500/15 px-2 py-0.5 font-medium text-emerald-300"><Check className="h-3 w-3" /> {fmtDate(r.attend_date)}</span>
+                        <span className="inline-flex items-center gap-1 whitespace-nowrap rounded-full bg-emerald-500/15 px-2 py-0.5 font-medium text-emerald-300"><Check className="h-3 w-3" /> {fmtDateTime(r.attend_date)}</span>
                       ) : (
                         <span className="inline-flex items-center gap-1 rounded-full bg-amber-500/15 px-2 py-0.5 font-medium text-amber-300"><Clock className="h-3 w-3" /> Not arrived</span>
                       )}

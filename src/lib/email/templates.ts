@@ -1840,23 +1840,34 @@ export function patientQueueJoined({
   labName,
   code,
   tests,
+  queueNumber,
+  statusUrl,
   brand,
 }: {
   patientName: string;
   labName: string;
   code: string;
   tests: string;
+  queueNumber?: number | null;
+  statusUrl?: string | null;
   brand?: { name: string };
 }) {
   return base(`
-    <h2 style="margin:0 0 8px;color:#0259a0;font-size:20px;font-weight:700;">You're Registered ✔</h2>
+    <h2 style="margin:0 0 8px;color:#0259a0;font-size:20px;font-weight:700;">You're in the Queue ✔</h2>
     <p style="margin:0 0 24px;color:#4b5563;font-size:15px;">
       Dear ${escapeHtml(patientName)},<br><br>
-      Your registration at <strong>${escapeHtml(labName)}</strong> has been received and you are now in the queue.
+      Your registration at <strong>${escapeHtml(labName)}</strong> has been received${queueNumber != null ? ` and your queue number is <strong>#${queueNumber}</strong>` : " and you are now in the queue"}.
       The team will attend to you in order of arrival.
     </p>
 
     ${codeBox(code)}
+
+    ${statusUrl ? `<div style="text-align:center;margin:24px 0;">
+      <a href="${statusUrl}" style="display:inline-block;background:linear-gradient(135deg,#0259a0,#0270c3);color:#ffffff;text-decoration:none;padding:14px 32px;border-radius:10px;font-weight:700;font-size:15px;letter-spacing:0.2px;">
+        Track Your Position Live
+      </a>
+      <p style="margin:8px 0 0;color:#9ca3af;font-size:12px;">Watch your place in the queue update in real time — no refresh needed.</p>
+    </div>` : ""}
 
     ${label("Tests Requested")}
     ${value(escapeHtml(tests))}
@@ -1865,6 +1876,46 @@ export function patientQueueJoined({
 
     <p style="margin:0;color:#6b7280;font-size:13px;line-height:1.6;">
       Keep this code handy — the laboratory team may ask for it. If any of your details are wrong, just let the front desk know and they'll correct them.
+    </p>
+  `, brand);
+}
+
+// =============================================================================
+// TEMPLATE: Patient — You've Arrived, Complete Self-Service Check-in
+// =============================================================================
+export function patientArrivedSelfService({
+  patientName,
+  labName,
+  code,
+  selfServiceUrl,
+  brand,
+}: {
+  patientName: string;
+  labName: string;
+  code: string;
+  selfServiceUrl: string;
+  brand?: { name: string };
+}) {
+  return base(`
+    <h2 style="margin:0 0 8px;color:#0259a0;font-size:20px;font-weight:700;">Welcome to ${escapeHtml(labName)} 👋</h2>
+    <p style="margin:0 0 24px;color:#4b5563;font-size:15px;">
+      Dear ${escapeHtml(patientName)},<br><br>
+      Thanks for coming in! To speed things up, please complete your self-service check-in below.
+      Your details are already filled in from your referral — just confirm they're correct.
+    </p>
+
+    <div style="text-align:center;margin:0 0 24px;">
+      <a href="${selfServiceUrl}" style="display:inline-block;background:linear-gradient(135deg,#0259a0,#0270c3);color:#ffffff;text-decoration:none;padding:14px 32px;border-radius:10px;font-weight:700;font-size:15px;letter-spacing:0.2px;">
+        Complete My Check-in
+      </a>
+    </div>
+
+    ${codeBox(code)}
+
+    ${divider}
+
+    <p style="margin:0;color:#6b7280;font-size:13px;line-height:1.6;">
+      The link opens your check-in with the code above already applied. If anything looks wrong you can correct it — except your referring doctor, which is locked to your referral.
     </p>
   `, brand);
 }

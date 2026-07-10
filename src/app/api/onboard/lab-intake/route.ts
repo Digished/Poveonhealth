@@ -2,11 +2,12 @@
  * POST /api/onboard/lab-intake
  *
  * Public client onboarding for a lab — used by the QR-code intake form
- * (`/o/[labSlug]`) and the dashboard "Register walk-in" flow. Creates an
+ * (`/o/[labSlug]`) and the queue's "Register walk-in" flow. Creates an
  * `incoming` request tagged with its source, records consent, seeds the
- * `registered` journey event, and upserts the patient profile. QR
- * self-registrations also notify the lab (dashboard queue + email) and the
- * patient (email confirmation).
+ * `registered` journey event, and upserts the patient profile. Every intake
+ * joins the waiting queue with a stable daily ticket number; QR
+ * self-registrations also notify the lab and the patient by email, with a
+ * link to the client's live queue-status page.
  */
 
 import { NextRequest, NextResponse } from "next/server";
@@ -24,18 +25,23 @@ const Schema = z.object({
   lab_id: z.string().uuid().optional(),
   source: z.enum(["qr", "walk_in"]).default("qr"),
   patient_name: z.string().min(1).max(200),
-  patient_phone: z.string().min(5).max(50),
+  patient_phone: z.string().min(5).max(300),
   patient_email: z.string().email().optional().or(z.literal("")),
   patient_age: z.number().int().min(0).max(150).optional(),
   dob: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional().or(z.literal("")),
   sex: z.string().max(20).optional().or(z.literal("")),
   address: z.string().max(500).optional().or(z.literal("")),
-  tests: z.string().min(1).max(3000),
+  // Where the client is coming from (country / state / LGA)
+  location_country: z.string().max(100).optional().or(z.literal("")),
+  location_state: z.string().max(100).optional().or(z.literal("")),
+  location_lga: z.string().max(100).optional().or(z.literal("")),
+  // Tests are optional at self-service — the lab confirms them at the desk.
+  tests: z.string().max(3000).optional().or(z.literal("")),
   condition: z.string().max(1000).optional().or(z.literal("")),
   professional_id: z.string().uuid().optional(),
   // ── QR self-service queue intake fields ──────────────────────────────────
   referral_type: z.enum(["self", "doctor", "hmo"]).optional(),
-  whatsapp_phone: z.string().max(50).optional().or(z.literal("")),
+  whatsapp_phone: z.string().max(300).optional().or(z.literal("")),
   referring_doctor_name: z.string().max(200).optional().or(z.literal("")),
   referring_org: z.string().max(200).optional().or(z.literal("")),
   policy_number: z.string().max(100).optional().or(z.literal("")),
@@ -97,7 +103,10 @@ export async function POST(request: NextRequest) {
       }
     }
 
-    const testsField = data.condition ? `${data.tests}\n\nNotes: ${data.condition}` : data.tests;
+    const testsRaw = data.tests?.trim() || "";
+    const testsField = testsRaw
+      ? (data.condition ? `${testsRaw}\n\nNotes: ${data.condition}` : testsRaw)
+      : (data.condition ? `To be confirmed at the lab\n\nNotes: ${data.condition}` : "To be confirmed at the lab");
 
     const code = await generateUniqueCode(lab.prefix, async (candidate) => {
       const existing = await prisma.request.findUnique({ where: { code: candidate }, select: { id: true } });
@@ -106,12 +115,14 @@ export async function POST(request: NextRequest) {
 
     let quotedPrice: number | null = null;
     let testBreakdown: unknown = null;
-    try {
-      const breakdown = await resolveTests(data.tests, lab.id);
-      quotedPrice = totalFromBreakdown(breakdown);
-      testBreakdown = breakdown;
-    } catch (e) {
-      console.error("[lab-intake] resolve-tests failed:", e);
+    if (testsRaw) {
+      try {
+        const breakdown = await resolveTests(testsRaw, lab.id);
+        quotedPrice = totalFromBreakdown(breakdown);
+        testBreakdown = breakdown;
+      } catch (e) {
+        console.error("[lab-intake] resolve-tests failed:", e);
+      }
     }
 
     const email = data.patient_email?.trim() || null;
@@ -122,12 +133,17 @@ export async function POST(request: NextRequest) {
     const dob = data.dob?.trim() || null;
     const patientAge = data.patient_age ?? (dob ? ageFromDob(dob) : null);
 
+    // Where the client is coming from — stored in the address field as
+    // "LGA, State, Country" (falls back to any free-text address supplied).
+    const locationParts = [data.location_lga?.trim(), data.location_state?.trim(), data.location_country?.trim()].filter(Boolean);
+    const address = locationParts.length > 0 ? locationParts.join(", ") : data.address?.trim() || null;
+
     // A chosen referring doctor (from the lab's pool) makes this a referral —
     // otherwise fall back to the free-text doctor/organisation the client typed.
     let doctorName =
-      data.source === "walk_in" ? "Walk-in"
-      : data.referral_type === "doctor" ? "Doctor Referral"
+      data.referral_type === "doctor" ? "Doctor Referral"
       : data.referral_type === "hmo" ? "HMO Referral"
+      : data.source === "walk_in" ? "Walk-in"
       : "Self Service";
     let doctorEmail: string | null = null;
     let doctorPhone: string | null = null;
@@ -147,6 +163,14 @@ export async function POST(request: NextRequest) {
       doctorName = data.referring_doctor_name.trim();
     }
 
+    // Stable daily ticket number: nth client to join this lab's queue today.
+    const startOfDay = new Date();
+    startOfDay.setHours(0, 0, 0, 0);
+    const todayCount = await prisma.request.count({
+      where: { lab_id: lab.id, queue_confirmed_at: { gte: startOfDay } },
+    });
+    const queueNumber = todayCount + 1;
+
     const newRequest = await prisma.request.create({
       data: {
         code,
@@ -157,7 +181,7 @@ export async function POST(request: NextRequest) {
         patient_age: patientAge,
         dob: dob ? new Date(dob + "T00:00:00Z") : null,
         sex: data.sex || null,
-        address: data.address || null,
+        address,
         doctor_name: doctorName,
         doctor_email: doctorEmail,
         doctor_phone: doctorPhone,
@@ -172,9 +196,10 @@ export async function POST(request: NextRequest) {
         policy_number: data.policy_number?.trim() || null,
         whatsapp_phone: data.whatsapp_phone?.trim() || null,
         payment_mode: data.payment_mode ?? null,
-        // QR self-registrations join the waiting queue immediately — the lab
-        // edits/adjusts details on the queue itself rather than pre-approving.
-        queue_confirmed_at: data.source === "qr" ? new Date() : null,
+        // Every intake joins the waiting queue immediately — the lab edits
+        // and adjusts details on the queue itself rather than pre-approving.
+        queue_confirmed_at: new Date(),
+        queue_number: queueNumber,
         current_stage: "registered",
         consent_at: new Date(),
       },
@@ -188,16 +213,18 @@ export async function POST(request: NextRequest) {
       prisma.patientProfile
         .upsert({
           where: { email },
-          create: { email, name: data.patient_name, phone: data.patient_phone, sex: data.sex || null, address: data.address || null },
-          update: { name: data.patient_name, phone: data.patient_phone, ...(data.sex ? { sex: data.sex } : {}), ...(data.address ? { address: data.address } : {}) },
+          create: { email, name: data.patient_name, phone: data.patient_phone, sex: data.sex || null, address },
+          update: { name: data.patient_name, phone: data.patient_phone, ...(data.sex ? { sex: data.sex } : {}), ...(address ? { address } : {}) },
         })
         .catch((e) => console.error("[lab-intake] patient upsert failed:", e));
     }
 
+    const appUrl = process.env.NEXT_PUBLIC_APP_URL || "https://poveon.com";
+    const statusUrl = lab.slug ? `${appUrl}/o/${lab.slug}/q/${code}` : null;
+
     // QR self-registration → notify the lab and the patient by email
     // (fire-and-forget; the dashboard queue polls for the on-screen alert).
     if (data.source === "qr") {
-      const appUrl = process.env.NEXT_PUBLIC_APP_URL || "https://poveon.com";
       const labTo = lab.request_email || lab.email;
       if (labTo) {
         resend.emails
@@ -219,7 +246,7 @@ export async function POST(request: NextRequest) {
               policyNumber: data.policy_number?.trim() || null,
               complaint: data.condition || null,
               paymentMode: data.payment_mode ?? null,
-              tests: data.tests,
+              tests: testsField,
               code,
               appUrl,
             }),
@@ -232,12 +259,14 @@ export async function POST(request: NextRequest) {
           .send({
             from: labSender(lab),
             to: email,
-            subject: `You're registered at ${lab.name} — code ${code}`,
+            subject: `You're #${queueNumber} in the queue at ${lab.name}`,
             html: patientQueueJoined({
               patientName: data.patient_name,
               labName: lab.name,
               code,
-              tests: data.tests,
+              tests: testsField,
+              queueNumber,
+              statusUrl,
               brand: lab.notification_email ? { name: lab.name } : undefined,
             }),
           })
@@ -248,7 +277,15 @@ export async function POST(request: NextRequest) {
 
     logApiCall({ method: "POST", path: "/api/onboard/lab-intake", status: 200, lab_id: lab.id, duration_ms: Date.now() - start });
     return NextResponse.json(
-      { success: true, code, requestId: newRequest.id, lab: { name: lab.name, address: lab.address } },
+      {
+        success: true,
+        code,
+        requestId: newRequest.id,
+        queue_number: queueNumber,
+        status_url: statusUrl,
+        status_path: lab.slug ? `/o/${lab.slug}/q/${code}` : null,
+        lab: { name: lab.name, address: lab.address },
+      },
       { headers: CORS_HEADERS }
     );
   } catch (error) {

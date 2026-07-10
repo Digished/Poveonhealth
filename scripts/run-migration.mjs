@@ -1344,6 +1344,11 @@ const migrations = [
     sql: `ALTER TABLE requests ADD COLUMN IF NOT EXISTS attended_at TIMESTAMP(3)`,
     continueOnError: true,
   },
+  {
+    desc: "requests.queue_number column (stable daily queue ticket number)",
+    sql: `ALTER TABLE requests ADD COLUMN IF NOT EXISTS queue_number INTEGER`,
+    continueOnError: true,
+  },
 ];
 
 let failed = false;
