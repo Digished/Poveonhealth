@@ -13,6 +13,8 @@ const Schema = z.object({
   tests_confirmed: z.boolean().optional(),
   is_paid: z.boolean().optional(),
   arrived: z.boolean().optional(),
+  // Email the client their self-registration link (code pre-applied).
+  send_registration_link: z.boolean().optional(),
 });
 
 /**
@@ -30,7 +32,7 @@ export async function POST(request: NextRequest) {
   const body = await request.json();
   const parsed = Schema.safeParse(body);
   if (!parsed.success) return NextResponse.json({ success: false, error: "Invalid input" }, { status: 400 });
-  const { requestId, tests_confirmed, is_paid, arrived } = parsed.data;
+  const { requestId, tests_confirmed, is_paid, arrived, send_registration_link } = parsed.data;
 
   const req = await prisma.request.findUnique({
     where: { id: requestId },
@@ -47,27 +49,35 @@ export async function POST(request: NextRequest) {
   if (tests_confirmed !== undefined) data.tests_confirmed = tests_confirmed;
   if (is_paid !== undefined) data.is_paid = is_paid;
   if (arrived !== undefined) data.arrived_at = arrived ? new Date() : null;
-  if (Object.keys(data).length === 0) return NextResponse.json({ success: false, error: "Nothing to update" }, { status: 400 });
+  if (Object.keys(data).length === 0 && !send_registration_link) {
+    return NextResponse.json({ success: false, error: "Nothing to update" }, { status: 400 });
+  }
 
-  await prisma.request.update({ where: { id: requestId }, data });
+  if (Object.keys(data).length > 0) {
+    await prisma.request.update({ where: { id: requestId }, data });
+  }
 
   // Marking the client as paid also marks the request seen + accrues commission.
   if (is_paid === true) {
     await markSeenWithCommission(requestId).catch((e) => console.error("[registration] markSeen failed:", e));
   }
 
-  // Marking a Poveon referral as arrived emails the client their self-service
-  // check-in link with their code pre-applied — the form auto-fills their
-  // referral details (referring doctor stays locked). Only on the first
-  // arrival mark, and only when the lab has a public QR page.
-  if (arrived === true && !req.arrived_at && req.source === "poveon" && req.patient_email && req.lab.slug) {
+  // "Register client" emails the client their self-registration link with the
+  // code pre-applied — the form auto-fills their referral details (referring
+  // doctor stays locked). Completing it places them in the queue from that
+  // moment.
+  if (send_registration_link) {
+    if (!req.patient_email) return NextResponse.json({ success: false, error: "No email on file for this client" }, { status: 400 });
+    if (!req.lab.slug) return NextResponse.json({ success: false, error: "Set a public URL slug for your lab to enable self-registration links" }, { status: 400 });
+  }
+  if (send_registration_link && req.patient_email && req.lab.slug) {
     const appUrl = process.env.NEXT_PUBLIC_APP_URL || "https://poveon.com";
     const selfServiceUrl = `${appUrl}/o/${req.lab.slug}?code=${encodeURIComponent(req.code)}`;
     resend.emails
       .send({
         from: labSender(req.lab),
         to: req.patient_email,
-        subject: `Welcome to ${req.lab.name} — complete your check-in`,
+        subject: `${req.lab.name} — complete your registration`,
         html: patientArrivedSelfService({
           patientName: req.patient_name ?? "there",
           labName: req.lab.name,
@@ -81,7 +91,7 @@ export async function POST(request: NextRequest) {
   }
 
   if (auth.actor_email) {
-    const parts = [tests_confirmed !== undefined ? `tests ${tests_confirmed ? "confirmed" : "unconfirmed"}` : null, is_paid !== undefined ? (is_paid ? "marked paid" : "marked unpaid") : null, arrived !== undefined ? (arrived ? "marked arrived" : "arrival cleared") : null].filter(Boolean).join(", ");
+    const parts = [tests_confirmed !== undefined ? `tests ${tests_confirmed ? "confirmed" : "unconfirmed"}` : null, is_paid !== undefined ? (is_paid ? "marked paid" : "marked unpaid") : null, arrived !== undefined ? (arrived ? "marked arrived" : "arrival cleared") : null, send_registration_link ? "registration link sent" : null].filter(Boolean).join(", ");
     logLabActivity({ lab_id: auth.lab_id, actor_email: auth.actor_email, action: "request_registration", detail: `Request ${req.code}: ${parts}` });
   }
 

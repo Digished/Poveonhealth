@@ -13,7 +13,10 @@ export async function GET(request: NextRequest) {
   try {
     const auth = await getLabAuth(request);
     if (!auth) return NextResponse.json({ success: false, error: "Authentication required" }, { status: 401 });
-    if (!auth.permissions.can_view_clients) return NextResponse.json({ success: false, error: "Forbidden" }, { status: 403 });
+    // Powers both the Customers table (clients permission) and Analytics.
+    if (!auth.permissions.can_view_clients && !auth.permissions.can_view_analytics) {
+      return NextResponse.json({ success: false, error: "Forbidden" }, { status: 403 });
+    }
 
     const rows = await prisma.request.findMany({
       where: { lab_id: auth.lab_id },

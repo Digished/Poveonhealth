@@ -147,6 +147,10 @@ export function QueueView({
   const [detailFor, setDetailFor] = useState<QueueReq | null>(null);
   const [tab, setTab] = useState<QueueTab>("queue");
   const [payF, setPayF] = useState<"" | "unpaid" | "paid">("");
+  // Day filter — the queue is a daily affair, so "Today" leads; pick any
+  // other date to review that day.
+  const [dayF, setDayF] = useState<"today" | "all" | "date">("today");
+  const [dayDate, setDayDate] = useState("");
   const [query, setQuery] = useState("");
   const [walkInOpen, setWalkInOpen] = useState(false);
   const [walkInTemplates, setWalkInTemplates] = useState<OnboardTemplate[]>([]);
@@ -214,20 +218,35 @@ export function QueueView({
       .filter(Boolean).join(" ").toLowerCase().includes(q);
   }, [query]);
 
-  // One combined queue (waiting + paid) ordered by when each client joined —
-  // ticket numbers stay stable while the count shrinks as people are attended.
-  const inQueue = useMemo(() => {
+  const inDay = useCallback((r: QueueReq) => {
+    if (dayF === "all") return true;
+    const joined = new Date(r.queue_confirmed_at ?? r.created_at);
+    const target = dayF === "today" ? new Date() : dayDate ? new Date(dayDate + "T12:00:00") : null;
+    if (!target) return true;
+    return joined.getFullYear() === target.getFullYear() && joined.getMonth() === target.getMonth() && joined.getDate() === target.getDate();
+  }, [dayF, dayDate]);
+
+  // One combined queue (waiting + paid) ordered by when each client joined.
+  // Positions are live: when someone ahead is attended they leave the list
+  // and everyone below moves up a number.
+  const { inQueue, positions } = useMemo(() => {
     const all = [...waiting, ...paid].sort((a, b) =>
       new Date(a.queue_confirmed_at ?? a.created_at).getTime() - new Date(b.queue_confirmed_at ?? b.created_at).getTime()
     );
-    return all.filter((r) => {
-      if (payF === "unpaid" && r.is_paid) return false;
-      if (payF === "paid" && !r.is_paid) return false;
-      return matches(r);
-    });
-  }, [waiting, paid, payF, matches]);
+    const dayList = all.filter(inDay);
+    const pos = new Map<string, number>();
+    dayList.forEach((r, i) => pos.set(r.id, i + 1));
+    return {
+      positions: pos,
+      inQueue: dayList.filter((r) => {
+        if (payF === "unpaid" && r.is_paid) return false;
+        if (payF === "paid" && !r.is_paid) return false;
+        return matches(r);
+      }),
+    };
+  }, [waiting, paid, payF, matches, inDay]);
 
-  const attendedShown = useMemo(() => attended.filter(matches), [attended, matches]);
+  const attendedShown = useMemo(() => attended.filter((r) => inDay(r) && matches(r)), [attended, matches, inDay]);
 
   const TABS: { key: QueueTab; label: string; count: number | null; icon: React.ReactNode; show: boolean }[] = [
     { key: "queue", label: "In queue", count: waiting.length + paid.length, icon: <Hourglass className="h-3.5 w-3.5" />, show: true },
@@ -303,10 +322,27 @@ export function QueueView({
                 onChange={(e) => setPayF(e.target.value as typeof payF)}
                 className="cursor-pointer rounded-xl border border-white/10 bg-white/5 px-3 py-2 text-sm text-slate-200 outline-none"
               >
-                <option value="" className="bg-slate-800">Waiting & paid</option>
+                <option value="" className="bg-slate-800">All</option>
                 <option value="unpaid" className="bg-slate-800">Waiting (unpaid)</option>
                 <option value="paid" className="bg-slate-800">Paid</option>
               </select>
+            )}
+            <select
+              value={dayF}
+              onChange={(e) => setDayF(e.target.value as typeof dayF)}
+              className="cursor-pointer rounded-xl border border-white/10 bg-white/5 px-3 py-2 text-sm text-slate-200 outline-none"
+            >
+              <option value="today" className="bg-slate-800">Today</option>
+              <option value="date" className="bg-slate-800">Pick a date</option>
+              <option value="all" className="bg-slate-800">All days</option>
+            </select>
+            {dayF === "date" && (
+              <input
+                type="date"
+                value={dayDate}
+                onChange={(e) => setDayDate(e.target.value)}
+                className="rounded-xl border border-white/10 bg-white/5 px-3 py-2 text-sm text-slate-200 outline-none"
+              />
             )}
           </div>
 
@@ -331,8 +367,8 @@ export function QueueView({
                 >
                   <div className="flex items-start gap-3">
                     {tab !== "attended" ? (
-                      <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-medical-600/25 text-base font-bold text-medical-200" title="Queue number — stays with the client all day">
-                        {r.queue_number ?? "•"}
+                      <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-medical-600/25 text-base font-bold text-medical-200" title="Live queue position — moves up as clients ahead are attended to">
+                        {positions.get(r.id) ?? "•"}
                       </span>
                     ) : (
                       <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-emerald-500/15">
@@ -422,6 +458,7 @@ export function QueueView({
       {detailFor && (
         <QueueDetailModal
           request={detailFor}
+          position={positions.get(detailFor.id) ?? null}
           canManage={canManage}
           busy={busyId === detailFor.id}
           onAction={(action, msg) => act(detailFor.id, action, msg)}
@@ -444,6 +481,7 @@ export function QueueView({
 /** Fullscreen client detail popup — everything the client submitted, plus actions. */
 function QueueDetailModal({
   request: r,
+  position,
   canManage,
   busy,
   onAction,
@@ -451,6 +489,7 @@ function QueueDetailModal({
   onClose,
 }: {
   request: QueueReq;
+  position: number | null;
   canManage: boolean;
   busy: boolean;
   onAction: (action: QueueAction, okMsg: string) => void;
@@ -473,7 +512,7 @@ function QueueDetailModal({
 
   return (
     <FullViewModal
-      title={<span>{r.patient_name || "Unnamed"} {r.queue_number != null && <span className="ml-1 rounded-full bg-medical-600/25 px-2 py-0.5 text-xs font-bold text-medical-200">#{r.queue_number}</span>}</span>}
+      title={<span>{r.patient_name || "Unnamed"} {position != null && <span className="ml-1 rounded-full bg-medical-600/25 px-2 py-0.5 text-xs font-bold text-medical-200" title="Live queue position">#{position}</span>}</span>}
       subtitle={`${r.code} · joined ${timeAgo(r.queue_confirmed_at ?? r.created_at)}`}
       maxWidth="max-w-3xl"
       onClose={onClose}

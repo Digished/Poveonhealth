@@ -124,9 +124,7 @@ export function QueueStatusClient({ code }: { code: string }) {
                   ? "Please stay close — you'll be called any moment now."
                   : `${data.ahead} ${data.ahead === 1 ? "person is" : "people are"} ahead of you.`}
               </p>
-              {data.queue_number != null && (
-                <p className="mt-1 text-xs text-slate-400">Your queue number is <span className="font-semibold text-slate-600">#{data.queue_number}</span> — it never changes, even as the line moves.</p>
-              )}
+              <p className="mt-1 text-xs text-slate-400">Your position moves up automatically as the clients ahead of you are attended to.</p>
             </>
           )}
 

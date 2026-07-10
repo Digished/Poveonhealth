@@ -13,7 +13,7 @@ import { Calendar } from "@/components/ui/Calendar";
 import { ScheduleCalendar } from "@/components/lab/ScheduleCalendar";
 import { useLabTour } from "@/components/lab/tour/TourProvider";
 import { requestDepartments, breakdownItemDepartment, WORKFLOWS, stageLabel, stageColorClasses, stageDurations, formatDuration, awaitingPhrase, awaitingLabel, DEFAULT_DEPARTMENTS, type DepartmentConfig } from "@/lib/lims-shared";
-import { nextPendingAction, directToDepartments, type PendingAction } from "@/lib/lab-pending";
+import { nextPendingAction, type PendingAction } from "@/lib/lab-pending";
 
 function fmtDateTime(iso: string | null | undefined): string {
   if (!iso) return "—";
@@ -57,7 +57,7 @@ interface WReq {
   raw_input: string | null; diagnosis: string | null;
   is_paid: boolean; tests_confirmed: boolean;
   created_at: string; seen_at: string | null; completed_at: string | null;
-  arrived_at: string | null; attended_at: string | null;
+  arrived_at: string | null; attended_at: string | null; queue_confirmed_at: string | null;
   referral_type: string | null; whatsapp_phone: string | null; payment_mode: string | null;
   test_breakdown: unknown; journey_events: JEvent[];
 }
@@ -189,8 +189,8 @@ export function Workspace({
   // Workstation pipeline sub-filter: "" = all active, otherwise a workflow stage key.
   const [stageF, setStageF] = useState("");
   // Onboarding filters: registration status and payment.
-  // Onboarding arrived tabs: "" = everyone, arrived / not_arrived.
-  const [arrivedF, setArrivedF] = useState<"" | "arrived" | "not_arrived">("");
+  // Onboarding arrived tabs — "Not arrived" leads (the actionable list).
+  const [arrivedF, setArrivedF] = useState<"" | "arrived" | "not_arrived">("not_arrived");
   // List ordering by registration time (newest ↔ oldest).
   const [sortDir, setSortDir] = useState<"newest" | "oldest">("newest");
   // Time-window filter (applies to both onboarding and workstation lists).
@@ -207,20 +207,6 @@ export function Workspace({
 
   // Switching department resets the pipeline sub-filter.
   const selectDept = useCallback((d: string) => { setDeptF(d); setStageF(""); }, []);
-
-  // New-QR-registration notifications (onboarding only): poll, then bubble up
-  // any QR self-registrations that arrived since this device last acknowledged.
-  const [lastSeenQr, setLastSeenQr] = useState<number>(() => Date.now());
-  const [fabOpen, setFabOpen] = useState(false);
-  useEffect(() => {
-    if (!isOnboarding) return;
-    try {
-      const key = `poveon_onboard_lastseen_${labId}`;
-      const stored = localStorage.getItem(key);
-      if (stored) setLastSeenQr(Number(stored));
-      else localStorage.setItem(key, String(Date.now()));
-    } catch { /* ignore */ }
-  }, [isOnboarding, labId]);
 
   // `silent` background refreshes update the list in place without blanking the
   // content behind a spinner (prevents the flicker on the 20s poll).
@@ -246,17 +232,6 @@ export function Workspace({
     return () => clearInterval(id);
   }, [isOnboarding, load]);
 
-  const newQr = useMemo(
-    () => (isOnboarding ? requests.filter((r) => (r.source ?? "") === "qr" && new Date(r.created_at).getTime() > lastSeenQr) : []),
-    [requests, isOnboarding, lastSeenQr]
-  );
-  function markQrSeen() {
-    const now = Date.now();
-    setLastSeenQr(now);
-    setFabOpen(false);
-    try { localStorage.setItem(`poveon_onboard_lastseen_${labId}`, String(now)); } catch { /* ignore */ }
-  }
-
   const matchesQuery = useCallback((r: WReq) => {
     if (!query) return true;
     const q = query.toLowerCase();
@@ -279,21 +254,16 @@ export function Workspace({
     if (periodFrom != null && new Date(r.created_at).getTime() < periodFrom) return false;
 
     if (isOnboarding) {
-      if (obView === "register") {
-        // Registration queue — not yet completed.
-        if (r.status === "done") return false;
-        // Once confirmed & paid the client is fully registered — they move on to
-        // the Journey subtab and leave the Register queue.
-        if (r.is_paid && r.tests_confirmed) return false;
-        // Pre-arrival Poveon leads stay hidden until their code is entered via
-        // the "Have a Poveon code?" box (which opens them directly).
-        if (r.source === "poveon" && r.status === "incoming") return false;
-        if (arrivedF === "arrived" && !r.arrived_at) return false;
-        if (arrivedF === "not_arrived" && r.arrived_at) return false;
-        return true;
-      }
-      // Journey subtab — registered (paid) patients still in the pipeline.
-      return r.is_paid && r.status !== "done";
+      // Onboarding is strictly for clients referred via the Poveon site —
+      // QR/self-service and walk-in registrations live in the Queue only.
+      if (r.source !== "poveon") return false;
+      if (r.status === "done") return false;
+      // Once they've completed self-registration they're in the queue and
+      // managed there.
+      if (r.queue_confirmed_at) return false;
+      if (arrivedF === "arrived" && !r.arrived_at) return false;
+      if (arrivedF === "not_arrived" && r.arrived_at) return false;
+      return true;
     }
 
     // Workstation: paid requests only (unpaid live in Onboarding).
@@ -330,8 +300,8 @@ export function Workspace({
     if (isOnboarding && obView === "register") {
       return {
         register: true,
-        unregistered: filtered.filter((r) => r.status === "incoming").length,
-        awaitingPayment: filtered.filter((r) => r.status !== "incoming" && r.status !== "done" && !(r.is_paid && r.tests_confirmed)).length,
+        unregistered: filtered.filter((r) => !r.arrived_at).length,
+        awaitingPayment: filtered.filter((r) => !!r.arrived_at).length,
         stageCounts: [] as { stage: string; label: string; count: number }[],
       };
     }
@@ -404,14 +374,15 @@ export function Workspace({
     }
   }
 
-  async function registration(r: WReq, flags: { tests_confirmed?: boolean; is_paid?: boolean; arrived?: boolean }) {
+  async function registration(r: WReq, flags: { tests_confirmed?: boolean; is_paid?: boolean; arrived?: boolean; send_registration_link?: boolean }) {
     setBusy(true);
     try {
       const res = await fetch("/api/lab/requests/registration", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ requestId: r.id, ...flags }) });
       const data = await res.json();
       if (!res.ok || data.success === false) throw new Error(data.error || "Failed");
       toast.success(
-        flags.is_paid ? "Marked as paid"
+        flags.send_registration_link ? "Registration link sent to the client's email"
+        : flags.is_paid ? "Marked as paid"
         : flags.tests_confirmed ? "Tests confirmed"
         : flags.arrived === true ? "Client marked as arrived"
         : flags.arrived === false ? "Arrival cleared"
@@ -486,8 +457,8 @@ export function Workspace({
       <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
         {isOnboarding && obView === "register" ? (
           <>
-            <StatCard label="To register" value={stats.unregistered ?? 0} accent="amber" icon={<UserPlus className="h-4 w-4" />} />
-            <StatCard label="Tests & payment" value={stats.awaitingPayment ?? 0} accent="amber" icon={<CreditCard className="h-4 w-4" />} />
+            <StatCard label="Not yet arrived" value={stats.unregistered ?? 0} accent="amber" icon={<Clock className="h-4 w-4" />} />
+            <StatCard label="Arrived" value={stats.awaitingPayment ?? 0} accent="emerald" icon={<Check className="h-4 w-4" />} />
           </>
         ) : (
           <>
@@ -514,10 +485,10 @@ export function Workspace({
       </div>
       )}
 
-      {/* Onboarding "Register" tabs: everyone / arrived / not arrived */}
+      {/* Onboarding "Register" tabs: not arrived / arrived / all */}
       {isOnboarding && obView === "register" && (
         <div className="inline-flex rounded-xl border border-white/10 bg-white/5 p-1">
-          {([["", "All"], ["arrived", "Arrived"], ["not_arrived", "Not arrived"]] as const).map(([v, label]) => (
+          {([["not_arrived", "Not arrived"], ["arrived", "Arrived"], ["", "All"]] as const).map(([v, label]) => (
             <button
               key={v}
               onClick={() => setArrivedF(v)}
@@ -625,14 +596,12 @@ export function Workspace({
                   </div>
                 </div>
                 {isOnboarding && obView === "register" ? (
-                  // Register subtab: source + payment + registration status (these
-                  // patients aren't in the pipeline yet, so no pipeline pills).
+                  // Onboarding: Poveon referrals awaiting arrival / self-registration.
                   <div className="flex flex-wrap items-center gap-1.5">
                     <SourceBadge source={r.source} />
                     <span className={`inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[10px] font-medium ${r.arrived_at ? "bg-emerald-500/15 text-emerald-300" : "bg-slate-500/15 text-slate-400"}`}>
                       {r.arrived_at ? <Check className="h-3 w-3" /> : <Clock className="h-3 w-3" />} {r.arrived_at ? "Arrived" : "Not arrived"}
                     </span>
-                    {pending && <PendingBadge action={pending} />}
                   </div>
                 ) : (
                   // Journey subtab + workstation: pipeline status + natural "waiting" line.
@@ -685,29 +654,6 @@ export function Workspace({
         />
       )}
 
-      {/* New-QR-registration notification FAB (onboarding) */}
-      {isOnboarding && newQr.length > 0 && (
-        <div className="fixed bottom-6 right-6 z-[9998] flex flex-col items-end">
-          {fabOpen && (
-            <div className="mb-3 max-h-80 w-72 overflow-y-auto rounded-2xl border border-white/10 bg-slate-800 p-2 shadow-2xl">
-              <div className="flex items-center justify-between px-2 py-1">
-                <p className="text-xs font-semibold text-slate-300">New QR registrations</p>
-                <button onClick={markQrSeen} className="text-[11px] text-medical-300 hover:text-white">Mark all seen</button>
-              </div>
-              {newQr.map((r) => (
-                <button key={r.id} onClick={() => { setSelected(r); setFabOpen(false); }} className="block w-full rounded-lg px-2 py-2 text-left hover:bg-white/10">
-                  <span className="block truncate text-sm text-white">{r.patient_name || "Unnamed"} <span className="font-mono text-xs text-slate-400">· {r.code}</span></span>
-                  <span className="block text-[10px] text-slate-400">Registered {timeAgo(r.created_at)}</span>
-                </button>
-              ))}
-            </div>
-          )}
-          <button onClick={() => setFabOpen((v) => !v)} className="relative inline-flex h-14 w-14 items-center justify-center rounded-full bg-medical-600 text-white shadow-xl transition hover:bg-medical-700" title="New QR registrations">
-            <Bell className="h-6 w-6" />
-            <span className="absolute -right-1 -top-1 inline-flex h-6 min-w-[1.5rem] items-center justify-center rounded-full bg-rose-500 px-1.5 text-xs font-bold text-white">{newQr.length}</span>
-          </button>
-        </div>
-      )}
     </div>
   );
 }
@@ -730,7 +676,7 @@ function WorkspaceDrawer({
   busy: boolean;
   onMarkSeen: () => void;
   onAdvance: (track: Track, stage: string, label?: string, note?: string, scheduledAt?: string) => Promise<void> | void;
-  onRegistration: (flags: { tests_confirmed?: boolean; is_paid?: boolean; arrived?: boolean }) => Promise<void> | void;
+  onRegistration: (flags: { tests_confirmed?: boolean; is_paid?: boolean; arrived?: boolean; send_registration_link?: boolean }) => Promise<void> | void;
   onChanged: () => void;
 }) {
   // Onboarding "Register" handles intake/payment; the pipeline (tracks/results)
@@ -743,8 +689,6 @@ function WorkspaceDrawer({
   const [resultsFor, setResultsFor] = useState<{ department: string } | null>(null);
   const [collectFor, setCollectFor] = useState<Track | null>(null);
   const [milestone, setMilestone] = useState<{ track: Track; stage: string } | null>(null);
-  const [editOpen, setEditOpen] = useState(false);
-  const [testsOpen, setTestsOpen] = useState(false);
   const [results, setResults] = useState<RResult[]>([]);
 
   // Contextual tutorial: when the drawer opens with the Guide on, jump to the
@@ -785,16 +729,13 @@ function WorkspaceDrawer({
     return idx >= 0 && idx < stages.length - 1 ? stages[idx + 1] : null;
   }
 
-  // Where to physically direct the client once paid (Laboratory vs Radiology).
-  const directions = directToDepartments(request.test_breakdown, departments);
-
   return (
     <FullViewModal
       title={request.patient_name || "Patient"}
       subtitle={`${request.code} · ${statusLabel(request.status)}`}
       onClose={onClose}
     >
-      <div className="grid grid-cols-1 gap-5 lg:grid-cols-2">
+      <div className={`grid grid-cols-1 gap-5 ${showPipeline ? "lg:grid-cols-2" : ""}`}>
         {/* Left column — client & request details */}
         <div>
             {/* Raw request as typed by the physician — always shown for reference,
@@ -802,7 +743,7 @@ function WorkspaceDrawer({
                 free-form input (full-form requests). */}
             {(request.raw_input || request.tests) && (
               <div className="mt-1 rounded-xl border border-white/10 bg-white/5 px-3 py-2.5">
-                <p className="text-[11px] font-semibold uppercase tracking-wide text-slate-400">Request as written by the doctor</p>
+                <p className="text-[11px] font-semibold uppercase tracking-wide text-slate-400">{request.source === "poveon" ? "Request as written by the doctor" : "Requested tests / investigations"}</p>
                 <p className="mt-1 whitespace-pre-wrap text-sm leading-relaxed text-slate-200">“{request.raw_input || request.tests}”</p>
               </div>
             )}
@@ -866,19 +807,31 @@ function WorkspaceDrawer({
               </div>
             )}
             {showRegistration && canAdvance && (
-              <div className="mt-3 flex flex-wrap gap-2">
-                <button
-                  onClick={() => onRegistration({ arrived: !request.arrived_at })}
-                  disabled={busy}
-                  title={request.arrived_at ? `Arrived ${fmtDayTime(request.arrived_at)} — click to undo` : "Mark that the client has physically arrived at the lab"}
-                  className={`inline-flex items-center gap-1.5 rounded-lg px-2.5 py-1 text-xs font-semibold disabled:opacity-50 ${request.arrived_at ? "border border-emerald-500/30 bg-emerald-600/20 text-emerald-300" : "bg-emerald-600 text-white hover:bg-emerald-700"}`}
-                >
-                  {request.arrived_at ? <Check className="h-3.5 w-3.5" /> : <MapPin className="h-3.5 w-3.5" />}
-                  {request.arrived_at ? "Arrived" : "Client has arrived"}
-                </button>
-                <button data-tour="ob-edit-details" onClick={() => setEditOpen(true)} className="inline-flex items-center gap-1.5 rounded-lg border border-white/10 px-2.5 py-1 text-xs font-medium text-medical-300 hover:bg-white/5">
-                  <Pencil className="h-3.5 w-3.5" /> Edit client details
-                </button>
+              <div className="mt-4 space-y-2">
+                <div className="flex flex-wrap gap-2">
+                  <button
+                    onClick={() => onRegistration({ arrived: !request.arrived_at })}
+                    disabled={busy}
+                    title={request.arrived_at ? `Arrived ${fmtDayTime(request.arrived_at)} — click to undo` : "Mark that the client has physically arrived at the lab"}
+                    className={`inline-flex items-center gap-1.5 rounded-lg px-3 py-2 text-xs font-semibold disabled:opacity-50 ${request.arrived_at ? "border border-emerald-500/30 bg-emerald-600/20 text-emerald-300" : "bg-emerald-600 text-white hover:bg-emerald-700"}`}
+                  >
+                    {request.arrived_at ? <Check className="h-3.5 w-3.5" /> : <MapPin className="h-3.5 w-3.5" />}
+                    {request.arrived_at ? "Arrived" : "Client has arrived"}
+                  </button>
+                  <button
+                    data-tour="ob-edit-details"
+                    onClick={() => onRegistration({ send_registration_link: true })}
+                    disabled={busy || !request.patient_email}
+                    title={request.patient_email ? "Email the client their self-registration link — their referral details come pre-filled" : "No email on file for this client"}
+                    className="inline-flex items-center gap-1.5 rounded-lg bg-medical-600 px-3 py-2 text-xs font-semibold text-white hover:bg-medical-700 disabled:opacity-50"
+                  >
+                    {busy ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Send className="h-3.5 w-3.5" />} Register client
+                  </button>
+                </div>
+                <p className="text-[11px] leading-relaxed text-slate-500">
+                  “Register client” emails a self-registration link with their Poveon code applied — their details load pre-filled (everything editable except the referring doctor). Completing it places them in the queue from that moment.
+                  {!request.patient_email && <span className="text-amber-300"> No email on file — the client can also scan the QR and use “I have a Poveon code”.</span>}
+                </p>
               </div>
             )}
             {/* Print the visit checklist from the Journey / workstation views too
@@ -893,113 +846,6 @@ function WorkspaceDrawer({
 
         {/* Right column — checklist (onboarding) / pipeline (workstation) */}
         <div className="space-y-4">
-
-        {/* Lite mode skips the step-by-step checklist: just the cost summary and
-            the two actions, so the important information stays front and centre. */}
-        {lite && showRegistration && request.status !== "done" && canAdvance && !request.is_paid && (
-          <div className="rounded-2xl border border-white/10 bg-white/5 p-4">
-            <p className="flex items-center gap-2 text-sm font-semibold text-white"><CreditCard className="h-4 w-4 text-medical-300" /> Tests &amp; payment</p>
-            <div className="mt-3 flex flex-wrap gap-2">
-              <button onClick={() => onRegistration({ tests_confirmed: !request.tests_confirmed })} disabled={busy}
-                className={`inline-flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-xs font-semibold disabled:opacity-50 ${request.tests_confirmed ? "border border-emerald-500/30 bg-emerald-600/20 text-emerald-300" : "bg-white/10 text-slate-200 hover:bg-white/15"}`}>
-                {request.tests_confirmed ? <Check className="h-3.5 w-3.5" /> : <FlaskConical className="h-3.5 w-3.5" />} {request.tests_confirmed ? "Tests confirmed" : "Confirm tests"}
-              </button>
-              <button onClick={() => setTestsOpen(true)} className="inline-flex items-center gap-1.5 rounded-lg border border-white/10 px-3 py-1.5 text-xs font-medium text-slate-200 hover:bg-white/5">
-                <Pencil className="h-3.5 w-3.5" /> Edit tests
-              </button>
-              <button onClick={() => onRegistration({ is_paid: true })} disabled={busy || !request.tests_confirmed}
-                className="inline-flex items-center gap-1.5 rounded-lg bg-medical-600 px-3 py-1.5 text-xs font-semibold text-white hover:bg-medical-700 disabled:opacity-50">
-                {busy ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <CreditCard className="h-3.5 w-3.5" />} Mark as paid
-              </button>
-              <a href={`/api/lab/requests/${request.id}/checklist-pdf`} target="_blank" rel="noreferrer"
-                className="inline-flex items-center gap-1.5 rounded-lg border border-white/10 px-3 py-1.5 text-xs font-medium text-medical-300 hover:bg-white/5">
-                <Printer className="h-3.5 w-3.5" /> Print visit checklist
-              </a>
-            </div>
-            {!request.tests_confirmed && <p className="mt-2 text-[11px] text-slate-400">Confirm the tests to enable “Mark as paid”.</p>}
-          </div>
-        )}
-
-        {/* Onboarding checklist — confirm tests, take payment, then direct the client */}
-        {!lite && showRegistration && request.status !== "done" && canAdvance && !request.is_paid && (
-          <div className="rounded-2xl border border-amber-500/25 bg-amber-500/10 p-4">
-            <p className="flex items-center gap-2 text-sm font-semibold text-amber-200"><AlertTriangle className="h-4 w-4" /> Onboarding checklist</p>
-            <p className="mt-1 text-xs text-amber-100/80">Work top to bottom — the next step to do is highlighted.</p>
-
-            {/* Step list */}
-            <ol className="mt-3 space-y-1.5 text-xs">
-              <ChecklistItem done={!!request.patient_name} label="1. Confirm client details" />
-              <ChecklistItem done={request.tests_confirmed} label="2. Edit & confirm the tests" />
-              <ChecklistItem done={request.is_paid} label="3. Take payment & mark as paid" />
-              <ChecklistItem done={false} label="4. Direct the client to the right department" />
-            </ol>
-
-            <div className="mt-3 flex flex-wrap gap-2">
-              <button data-tour="ob-confirm-tests" onClick={() => onRegistration({ tests_confirmed: !request.tests_confirmed })} disabled={busy}
-                className={`inline-flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-xs font-semibold disabled:opacity-50 ${request.tests_confirmed ? "border border-emerald-500/30 bg-emerald-600/20 text-emerald-300" : `bg-white/10 text-slate-200 hover:bg-white/15 ${pendIs("confirm_tests") ? pulse : ""}`}`}>
-                {request.tests_confirmed ? <Check className="h-3.5 w-3.5" /> : <FlaskConical className="h-3.5 w-3.5" />} {request.tests_confirmed ? "Tests confirmed" : "Confirm tests"}
-              </button>
-              <button data-tour="ob-edit-tests" onClick={() => setTestsOpen(true)} className="inline-flex items-center gap-1.5 rounded-lg border border-white/10 px-3 py-1.5 text-xs font-medium text-slate-200 hover:bg-white/5">
-                <Pencil className="h-3.5 w-3.5" /> Edit tests
-              </button>
-              <button data-tour="ob-mark-paid" onClick={() => onRegistration({ is_paid: true })} disabled={busy || !request.tests_confirmed}
-                className={`inline-flex items-center gap-1.5 rounded-lg bg-medical-600 px-3 py-1.5 text-xs font-semibold text-white hover:bg-medical-700 disabled:opacity-50 ${pendIs("mark_paid") ? pulse : ""}`}>
-                {busy ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <CreditCard className="h-3.5 w-3.5" />} Mark as paid
-              </button>
-            </div>
-            {!request.tests_confirmed && <p className="mt-2 text-[11px] text-amber-100/60">Confirm the tests to enable “Mark as paid”.</p>}
-
-            {/* Direct-to-department guidance */}
-            <div data-tour="ob-direct" className="mt-3 border-t border-amber-500/20 pt-3">
-              <p className="flex items-center gap-1.5 text-[11px] font-semibold uppercase tracking-wide text-amber-200/80"><MapPin className="h-3.5 w-3.5" /> Direct the client to</p>
-              <div className="mt-2 flex flex-wrap gap-1.5">
-                {directions.map((d) => (
-                  <span key={d.department} className={`inline-flex items-center gap-1 rounded-full border px-2 py-1 text-[11px] ${stageColorClasses(d.workflow === "imaging" ? "scheduled" : "collected")}`}>
-                    <span className="font-semibold">{d.department}</span><span className="opacity-70">· {d.hint}</span>
-                  </span>
-                ))}
-              </div>
-              {/* Final onboarding step — give the client a printed checklist to carry
-                  between departments. Enabled once the front desk has confirmed the tests. */}
-              <a
-                href={request.tests_confirmed ? `/api/lab/requests/${request.id}/checklist-pdf` : undefined}
-                target="_blank"
-                rel="noreferrer"
-                aria-disabled={!request.tests_confirmed}
-                onClick={(e) => { if (!request.tests_confirmed) e.preventDefault(); }}
-                className={`mt-3 inline-flex items-center gap-1.5 rounded-lg border border-medical-400/40 bg-medical-600/20 px-3 py-1.5 text-xs font-semibold text-medical-100 hover:bg-medical-600/30 ${request.tests_confirmed ? "" : "pointer-events-none opacity-50"}`}
-              >
-                <Printer className="h-3.5 w-3.5" /> Print visit checklist
-              </a>
-              {!request.tests_confirmed && <p className="mt-1 text-[11px] text-amber-100/60">Confirm the tests to print the client&apos;s checklist.</p>}
-            </div>
-          </div>
-        )}
-        {showRegistration && request.is_paid && request.status !== "done" && (
-          <div className="rounded-xl bg-emerald-500/10 p-3 text-xs font-medium text-emerald-300">
-            <p className="flex items-center gap-2"><Check className="h-4 w-4" /> {lite ? "Confirmed & paid." : "Confirmed & paid — moved to the workstation."}</p>
-            {lite && (
-              <a href={`/api/lab/requests/${request.id}/checklist-pdf`} target="_blank" rel="noreferrer"
-                className="mt-2 inline-flex items-center gap-1.5 rounded-lg border border-emerald-400/40 bg-emerald-500/15 px-3 py-1.5 text-xs font-semibold text-emerald-100 hover:bg-emerald-500/25">
-                <Printer className="h-3.5 w-3.5" /> Print visit checklist
-              </a>
-            )}
-            {!lite && (
-              <>
-                <div className="mt-2 flex flex-wrap gap-1.5">
-                  <span className="inline-flex items-center gap-1 text-emerald-200/80"><MapPin className="h-3 w-3" /> Send to:</span>
-                  {directions.map((d) => (
-                    <span key={d.department} className="rounded-full bg-emerald-500/15 px-2 py-0.5 text-emerald-200">{d.department} · {d.hint}</span>
-                  ))}
-                </div>
-                <a href={`/api/lab/requests/${request.id}/checklist-pdf`} target="_blank" rel="noreferrer"
-                  className="mt-2 inline-flex items-center gap-1.5 rounded-lg border border-emerald-400/40 bg-emerald-500/15 px-3 py-1.5 text-xs font-semibold text-emerald-100 hover:bg-emerald-500/25">
-                  <Printer className="h-3.5 w-3.5" /> Print visit checklist
-                </a>
-              </>
-            )}
-          </div>
-        )}
 
         {/* Department tracks (workstation pipeline; read-only in onboarding's Journey) */}
         {showPipeline && (
@@ -1134,106 +980,7 @@ function WorkspaceDrawer({
           />
         )}
 
-        {editOpen && (
-          <PatientEditForm
-            request={request}
-            onClose={() => setEditOpen(false)}
-            onSaved={() => { setEditOpen(false); onChanged(); }}
-          />
-        )}
-
-        {testsOpen && (
-          <TestsEditForm
-            request={request}
-            labId={labId}
-            onClose={() => setTestsOpen(false)}
-            onSaved={() => { setTestsOpen(false); onChanged(); }}
-          />
-        )}
     </FullViewModal>
-  );
-}
-
-/** A single onboarding-checklist line with done/pending state. */
-function ChecklistItem({ done, label }: { done: boolean; label: string }) {
-  return (
-    <li className={`flex items-center gap-2 ${done ? "text-emerald-300" : "text-amber-100/80"}`}>
-      <span className={`flex h-4 w-4 shrink-0 items-center justify-center rounded-full border ${done ? "border-emerald-400 bg-emerald-500/20" : "border-amber-300/40"}`}>
-        {done && <Check className="h-2.5 w-2.5" />}
-      </span>
-      {label}
-    </li>
-  );
-}
-
-/** Add or remove the tests to be done on a registered request (walk-in/Poveon/QR). */
-function TestsEditForm({
-  request, labId, onClose, onSaved,
-}: {
-  request: WReq;
-  labId: string;
-  onClose: () => void;
-  onSaved: () => void;
-}) {
-  // Seed from the resolved breakdown so catalog-recognised tests show as recognised
-  // (green pills with their catalog id) instead of collapsing to plain free text.
-  const [tests, setTests] = useState<TestTag[]>(() => {
-    const bd = Array.isArray(request.test_breakdown)
-      ? (request.test_breakdown as { raw?: string; canonical_name?: string; category?: string; unit_price?: number; source?: string; lab_offered_test_id?: string | null }[])
-      : [];
-    if (bd.length > 0) {
-      return bd
-        .map((it): TestTag => {
-          const recognized = it.source === "lab_catalog";
-          return {
-            name: it.canonical_name || it.raw || "",
-            catalog_test_id: recognized ? (it.lab_offered_test_id ?? null) : null,
-            price: it.unit_price,
-            category: it.category,
-            low_confidence: !recognized,
-          };
-        })
-        .filter((t) => t.name);
-    }
-    return (request.tests || "").split(",").map((s) => s.trim()).filter(Boolean).map((n) => ({ name: n, catalog_test_id: null }));
-  });
-  const [saving, setSaving] = useState(false);
-
-  async function save() {
-    if (tests.length === 0) { toast.error("Add at least one test"); return; }
-    setSaving(true);
-    try {
-      const res = await fetch("/api/lab/requests/update-tests", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ requestId: request.id, tests: tests.map((t) => t.name).join(", ") }),
-      });
-      const data = await res.json();
-      if (!res.ok || data.success === false) throw new Error(data.error || "Failed");
-      toast.success("Tests updated");
-      onSaved();
-    } catch (e) {
-      toast.error(e instanceof Error ? e.message : "Failed");
-    } finally { setSaving(false); }
-  }
-
-  return (
-    <div className="fixed inset-0 z-[10000] flex items-end justify-center bg-black/70 backdrop-blur-sm sm:items-center" onClick={onClose}>
-      <div className="max-h-[88vh] w-full max-w-md overflow-y-auto rounded-t-3xl border border-white/10 bg-slate-900 p-5 sm:rounded-3xl" onClick={(e) => e.stopPropagation()}>
-        <div className="mb-4 flex items-center justify-between">
-          <h3 className="text-lg font-semibold text-white">Edit tests</h3>
-          <button onClick={onClose} className="text-slate-400 hover:text-white"><X className="h-5 w-5" /></button>
-        </div>
-        <p className="mb-2 text-xs text-slate-400">Add or remove the investigations to be done. Department tracks update automatically.</p>
-        <TestTagInput value={tests} onChange={setTests} labId={labId} />
-        <div className="mt-5 flex justify-end gap-2">
-          <button onClick={onClose} className="rounded-xl border border-white/10 px-3 py-2 text-sm text-slate-200 hover:bg-white/5">Cancel</button>
-          <button onClick={save} disabled={saving || tests.length === 0} className="inline-flex items-center gap-1.5 rounded-xl bg-medical-600 px-4 py-2 text-sm font-semibold text-white hover:bg-medical-700 disabled:opacity-50">
-            {saving ? <Loader2 className="h-4 w-4 animate-spin" /> : <Check className="h-4 w-4" />} Save tests
-          </button>
-        </div>
-      </div>
-    </div>
   );
 }
 
@@ -1348,124 +1095,6 @@ function splitName(full: string): { first: string; other: string; surname: strin
   if (parts.length === 1) return { first: parts[0], other: "", surname: "" };
   if (parts.length === 2) return { first: parts[0], other: "", surname: parts[1] };
   return { first: parts[0], other: parts.slice(1, -1).join(" "), surname: parts[parts.length - 1] };
-}
-
-/** Register / correct a client's details (name, age, sex, phone, email). */
-function PatientEditForm({
-  request, onClose, onSaved,
-}: {
-  request: WReq;
-  onClose: () => void;
-  onSaved: () => void;
-}) {
-  const initial = splitName(request.patient_name ?? "");
-  const [firstName, setFirstName] = useState(initial.first);
-  const [otherName, setOtherName] = useState(initial.other);
-  const [surname, setSurname] = useState(initial.surname);
-  const [age, setAge] = useState(request.patient_age != null ? String(request.patient_age) : "");
-  const [sex, setSex] = useState((request.sex ?? "").toLowerCase());
-  const [phone, setPhone] = useState(request.patient_phone ?? "");
-  const [email, setEmail] = useState(request.patient_email ?? "");
-  const [saving, setSaving] = useState(false);
-
-  const fullName = [firstName.trim(), otherName.trim(), surname.trim()].filter(Boolean).join(" ");
-
-  const inputCls = "w-full rounded-xl border border-white/10 bg-white/5 px-3 py-2 text-sm text-white placeholder:text-slate-500 focus:border-medical-400 focus:outline-none";
-
-  async function save() {
-    setSaving(true);
-    try {
-      const res = await fetch("/api/lab/requests/update-patient", {
-        method: "PATCH",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          requestId: request.id,
-          patient_name: fullName,
-          age: age.trim() === "" ? "" : Number(age),
-          sex: sex || "",
-          patient_phone: phone.trim(),
-          patient_email: email.trim(),
-        }),
-      });
-      const data = await res.json();
-      if (!res.ok || data.success === false) throw new Error(data.error || "Failed");
-      toast.success("Client details updated");
-      onSaved();
-    } catch (e) {
-      toast.error(e instanceof Error ? e.message : "Failed");
-    } finally {
-      setSaving(false);
-    }
-  }
-
-  return (
-    <div className="fixed inset-0 z-[10000] flex items-end justify-center bg-black/70 backdrop-blur-sm sm:items-center" onClick={onClose}>
-      <div className="max-h-[88vh] w-full max-w-md overflow-y-auto rounded-t-3xl border border-white/10 bg-slate-900 p-5 sm:rounded-3xl" onClick={(e) => e.stopPropagation()}>
-        <div className="mb-4 flex items-center justify-between">
-          <h3 className="text-lg font-semibold text-white">Client details</h3>
-          <button onClick={onClose} className="text-slate-400 hover:text-white"><X className="h-5 w-5" /></button>
-        </div>
-
-        <div className="space-y-3">
-          {(request.doctor_name || request.doctor_email) && (
-            <div>
-              <label className="mb-1 block text-xs font-medium text-slate-400">Referring doctor</label>
-              <div className="flex items-center gap-2 rounded-xl border border-white/10 bg-white/5 px-3 py-2 text-sm text-slate-300">
-                <Stethoscope className="h-4 w-4 shrink-0 text-medical-300" />
-                <span className="truncate">{request.doctor_name || request.doctor_email}</span>
-                <Lock className="ml-auto h-3.5 w-3.5 shrink-0 text-slate-500" />
-              </div>
-              <p className="mt-1 text-[11px] text-slate-500">From the Poveon referral — locked, can&rsquo;t be changed here.</p>
-            </div>
-          )}
-          <div>
-            <label className="mb-1 block text-xs font-medium text-slate-400">Surname</label>
-            <input className={inputCls} value={surname} onChange={(e) => setSurname(e.target.value)} placeholder="e.g. Okafor" />
-          </div>
-          <div className="grid grid-cols-2 gap-3">
-            <div>
-              <label className="mb-1 block text-xs font-medium text-slate-400">First name</label>
-              <input className={inputCls} value={firstName} onChange={(e) => setFirstName(e.target.value)} placeholder="e.g. Ada" />
-            </div>
-            <div>
-              <label className="mb-1 block text-xs font-medium text-slate-400">Other name</label>
-              <input className={inputCls} value={otherName} onChange={(e) => setOtherName(e.target.value)} placeholder="e.g. Chidi" />
-            </div>
-          </div>
-          <div className="grid grid-cols-2 gap-3">
-            <div>
-              <label className="mb-1 block text-xs font-medium text-slate-400">Age</label>
-              <input className={inputCls} value={age} onChange={(e) => setAge(e.target.value.replace(/[^0-9]/g, ""))} inputMode="numeric" placeholder="e.g. 34" />
-            </div>
-            <div>
-              <label className="mb-1 block text-xs font-medium text-slate-400">Sex</label>
-              <select className={inputCls} value={sex} onChange={(e) => setSex(e.target.value)}>
-                <option value="" className="bg-slate-800">—</option>
-                <option value="male" className="bg-slate-800">Male</option>
-                <option value="female" className="bg-slate-800">Female</option>
-                <option value="other" className="bg-slate-800">Other</option>
-              </select>
-            </div>
-          </div>
-          <div>
-            <label className="mb-1 block text-xs font-medium text-slate-400">Phone</label>
-            <input className={inputCls} value={phone} onChange={(e) => setPhone(e.target.value)} placeholder="Phone number" />
-          </div>
-          <div>
-            <label className="mb-1 block text-xs font-medium text-slate-400">Email</label>
-            <input className={inputCls} value={email} onChange={(e) => setEmail(e.target.value)} type="email" placeholder="Email (optional)" />
-          </div>
-        </div>
-
-        <div className="mt-5 flex justify-end gap-2">
-          <button onClick={onClose} className="rounded-xl border border-white/10 px-3 py-2 text-sm text-slate-200 hover:bg-white/5">Cancel</button>
-          <button onClick={save} disabled={saving} className="inline-flex items-center gap-1.5 rounded-xl bg-medical-600 px-4 py-2 text-sm font-semibold text-white hover:bg-medical-700 disabled:opacity-50">
-            {saving ? <Loader2 className="h-4 w-4 animate-spin" /> : <Check className="h-4 w-4" />} Save
-          </button>
-        </div>
-      </div>
-    </div>
-  );
 }
 
 /**

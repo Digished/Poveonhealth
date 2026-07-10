@@ -75,6 +75,17 @@ const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 const inputCls = "w-full rounded-xl border border-slate-200 bg-white px-4 py-2.5 text-sm text-slate-800 focus:border-medical-400 focus:ring-2 focus:ring-medical-500/30 outline-none transition";
 const labelCls = "mb-1 block text-xs font-medium text-slate-600";
 
+/** One tidy label/value line on the review step. */
+function ReviewRow({ label, value }: { label: string; value: string }) {
+  if (!value) return null;
+  return (
+    <div className="flex items-start gap-3 px-4 py-2.5">
+      <dt className="w-24 shrink-0 text-xs font-medium uppercase tracking-wide text-slate-400 pt-0.5">{label}</dt>
+      <dd className="min-w-0 flex-1 text-slate-700">{value}</dd>
+    </div>
+  );
+}
+
 /** Predictive (fuzzy) combobox for states / LGAs — type-ahead with suggestions. */
 function FuzzyCombo({
   value,
@@ -594,7 +605,9 @@ export function LabOnboardForm({
             <PhoneList values={phones} onChange={setPhones} addLabel="Add another phone number" />
           </div>
           <div>
-            <label className={labelCls}>Is this number on WhatsApp? *</label>
+            <label className={labelCls}>
+              Is <span className="font-semibold text-slate-800">{primaryPhone.trim() || "your phone number"}</span> on WhatsApp? *
+            </label>
             <div className="flex gap-2">
               {([["yes", "Yes, it's on WhatsApp"], ["no", "No"]] as const).map(([v, label]) => (
                 <button
@@ -745,28 +758,27 @@ export function LabOnboardForm({
 
       {step === 2 && (
         <div className="space-y-4">
-          <div className="rounded-xl border border-slate-200 bg-slate-50 p-4 text-sm">
-            <p className="font-medium text-slate-900">
-              {fullName}
-              {dob && <span className="text-slate-400"> · {dob}{dobParsed ? ` (${dobParsed.age}y)` : ""}</span>}
-              {sex && <span className="text-slate-400"> · {sex}</span>}
-            </p>
-            <p className="text-slate-500">{validPhones.join(", ")}{phoneIsWhatsapp === "no" && validWhatsapps.length > 0 ? ` · WhatsApp: ${validWhatsapps.join(", ")}` : ""}</p>
-            <p className="text-slate-500">{email}</p>
-            {(lga || stateOf || country) && (
-              <p className="mt-1 text-xs text-slate-500">From: {[lga, stateOf, country].filter(Boolean).join(", ")}</p>
-            )}
-            {referralType && (
-              <p className="mt-1 text-xs text-slate-500">
-                {REFERRAL_OPTIONS.find((o) => o.value === referralType)?.label}
-                {referralType !== "self" && (doctorNameText.trim() || referringOrg.trim()) ? ` — ${[doctorNameText.trim(), referringOrg.trim()].filter(Boolean).join(", ")}` : ""}
-                {referralType === "hmo" && policyNumber.trim() ? ` · Policy ${policyNumber.trim()}` : ""}
+          <div className="overflow-hidden rounded-2xl border border-slate-200 bg-white">
+            <div className="border-b border-slate-100 bg-slate-50 px-4 py-3">
+              <p className="text-sm font-semibold text-slate-900">{fullName}</p>
+              <p className="mt-0.5 text-xs text-slate-500">
+                {[dob ? `${dob}${dobParsed ? ` · ${dobParsed.age} yrs` : ""}` : null, sex ? sex.charAt(0).toUpperCase() + sex.slice(1) : null].filter(Boolean).join("  ·  ")}
               </p>
-            )}
-            <p className="mt-2 text-slate-700">{tests.length > 0 ? tests.map((t) => t.name).join(", ") : "Tests to be confirmed at the lab"}</p>
-            {paymentMode && (
-              <p className="mt-1 text-xs text-slate-500">Payment: {PAYMENT_OPTIONS.find((o) => o.value === paymentMode)?.label}</p>
-            )}
+            </div>
+            <dl className="divide-y divide-slate-100 text-sm">
+              <ReviewRow label="Phone" value={validPhones.join(", ")} />
+              <ReviewRow label="WhatsApp" value={phoneIsWhatsapp === "yes" ? `${primaryPhone.trim()} (same number)` : validWhatsapps.join(", ") || "—"} />
+              <ReviewRow label="Email" value={email.trim()} />
+              <ReviewRow label="Coming from" value={[lga, stateOf, country].filter(Boolean).join(", ")} />
+              <ReviewRow label="Referral" value={REFERRAL_OPTIONS.find((o) => o.value === referralType)?.label ?? ""} />
+              {referralType !== "self" && (doctorNameText.trim() || referringOrg.trim()) && (
+                <ReviewRow label={referralType === "hmo" ? "HMO" : "Doctor"} value={[doctorNameText.trim(), referringOrg.trim()].filter(Boolean).join(" · ")} />
+              )}
+              {referralType === "hmo" && policyNumber.trim() && <ReviewRow label="Policy no." value={policyNumber.trim()} />}
+              <ReviewRow label="Tests" value={tests.length > 0 ? tests.map((t) => t.name).join(", ") : "To be confirmed at the lab"} />
+              {condition.trim() && <ReviewRow label="Complaint" value={condition.trim()} />}
+              <ReviewRow label="Payment" value={PAYMENT_OPTIONS.find((o) => o.value === paymentMode)?.label ?? ""} />
+            </dl>
           </div>
           <label className="flex items-start gap-2 text-sm text-slate-600">
             <input type="checkbox" checked={consent} onChange={(e) => setConsent(e.target.checked)} className="mt-0.5 h-4 w-4 rounded border-slate-300 text-medical-600" />
