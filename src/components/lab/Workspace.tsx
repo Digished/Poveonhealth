@@ -374,7 +374,7 @@ export function Workspace({
     }
   }
 
-  async function registration(r: WReq, flags: { tests_confirmed?: boolean; is_paid?: boolean; arrived?: boolean; send_registration_link?: boolean }) {
+  async function registration(r: WReq, flags: { tests_confirmed?: boolean; is_paid?: boolean; arrived?: boolean; send_registration_link?: boolean; email?: string }) {
     setBusy(true);
     try {
       const res = await fetch("/api/lab/requests/registration", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ requestId: r.id, ...flags }) });
@@ -676,7 +676,7 @@ function WorkspaceDrawer({
   busy: boolean;
   onMarkSeen: () => void;
   onAdvance: (track: Track, stage: string, label?: string, note?: string, scheduledAt?: string) => Promise<void> | void;
-  onRegistration: (flags: { tests_confirmed?: boolean; is_paid?: boolean; arrived?: boolean; send_registration_link?: boolean }) => Promise<void> | void;
+  onRegistration: (flags: { tests_confirmed?: boolean; is_paid?: boolean; arrived?: boolean; send_registration_link?: boolean; email?: string }) => Promise<void> | void;
   onChanged: () => void;
 }) {
   // Onboarding "Register" handles intake/payment; the pipeline (tracks/results)
@@ -689,6 +689,7 @@ function WorkspaceDrawer({
   const [resultsFor, setResultsFor] = useState<{ department: string } | null>(null);
   const [collectFor, setCollectFor] = useState<Track | null>(null);
   const [milestone, setMilestone] = useState<{ track: Track; stage: string } | null>(null);
+  const [regLinkOpen, setRegLinkOpen] = useState(false);
   const [results, setResults] = useState<RResult[]>([]);
 
   // Contextual tutorial: when the drawer opens with the Guide on, jump to the
@@ -818,19 +819,22 @@ function WorkspaceDrawer({
                     {request.arrived_at ? <Check className="h-3.5 w-3.5" /> : <MapPin className="h-3.5 w-3.5" />}
                     {request.arrived_at ? "Arrived" : "Client has arrived"}
                   </button>
-                  <button
-                    data-tour="ob-edit-details"
-                    onClick={() => onRegistration({ send_registration_link: true })}
-                    disabled={busy || !request.patient_email}
-                    title={request.patient_email ? "Email the client their self-registration link — their referral details come pre-filled" : "No email on file for this client"}
-                    className="inline-flex items-center gap-1.5 rounded-lg bg-medical-600 px-3 py-2 text-xs font-semibold text-white hover:bg-medical-700 disabled:opacity-50"
-                  >
-                    {busy ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Send className="h-3.5 w-3.5" />} Register client
-                  </button>
+                  {request.arrived_at && (
+                    <button
+                      data-tour="ob-edit-details"
+                      onClick={() => setRegLinkOpen(true)}
+                      disabled={busy}
+                      title="Email the client their self-registration link — their referral details come pre-filled"
+                      className="inline-flex items-center gap-1.5 rounded-lg bg-medical-600 px-3 py-2 text-xs font-semibold text-white hover:bg-medical-700 disabled:opacity-50"
+                    >
+                      <Send className="h-3.5 w-3.5" /> Register client
+                    </button>
+                  )}
                 </div>
                 <p className="text-[11px] leading-relaxed text-slate-500">
-                  “Register client” emails a self-registration link with their Poveon code applied — their details load pre-filled (everything editable except the referring doctor). Completing it places them in the queue from that moment.
-                  {!request.patient_email && <span className="text-amber-300"> No email on file — the client can also scan the QR and use “I have a Poveon code”.</span>}
+                  {request.arrived_at
+                    ? "“Register client” emails a self-registration link with their Poveon code applied — their details load pre-filled (everything editable except the referring doctor). Completing it places them in the queue from that moment."
+                    : "Mark the client as arrived to unlock “Register client”, which emails them their self-registration link."}
                 </p>
               </div>
             )}
@@ -942,6 +946,19 @@ function WorkspaceDrawer({
         </div>
       </div>
 
+        {regLinkOpen && (
+          <RegisterLinkModal
+            initialEmail={request.patient_email ?? ""}
+            patientName={request.patient_name}
+            busy={busy}
+            onClose={() => setRegLinkOpen(false)}
+            onSend={async (email) => {
+              await onRegistration({ send_registration_link: true, email });
+              setRegLinkOpen(false);
+            }}
+          />
+        )}
+
         {resultsFor && (
           <ResultEntry
             request={request}
@@ -981,6 +998,62 @@ function WorkspaceDrawer({
         )}
 
     </FullViewModal>
+  );
+}
+
+/** Confirm or capture the client's email before sending the registration link. */
+function RegisterLinkModal({
+  initialEmail, patientName, busy, onClose, onSend,
+}: {
+  initialEmail: string;
+  patientName: string | null;
+  busy: boolean;
+  onClose: () => void;
+  onSend: (email: string) => Promise<void> | void;
+}) {
+  const [email, setEmail] = useState(initialEmail);
+  const valid = /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email.trim());
+  const inputCls = "w-full rounded-xl border border-white/10 bg-white/5 px-3 py-2 text-sm text-white placeholder:text-slate-500 focus:border-medical-400 focus:outline-none";
+
+  return (
+    <div className="fixed inset-0 z-[10000] flex items-end justify-center bg-black/70 backdrop-blur-sm sm:items-center" onClick={onClose}>
+      <div className="w-full max-w-md rounded-t-3xl border border-white/10 bg-slate-900 p-5 sm:rounded-3xl" onClick={(e) => e.stopPropagation()}>
+        <div className="mb-3 flex items-start justify-between">
+          <div>
+            <h3 className="text-lg font-semibold text-white">Send registration link</h3>
+            <p className="text-xs text-slate-400">{patientName || "Client"} will receive a link with their code pre-applied.</p>
+          </div>
+          <button onClick={onClose} className="text-slate-400 hover:text-white"><X className="h-5 w-5" /></button>
+        </div>
+        <label className="mb-1 block text-xs font-medium text-slate-400">
+          {initialEmail ? "Confirm or correct the client's email *" : "The client has no email on file — enter one *"}
+        </label>
+        <input
+          autoFocus
+          className={inputCls}
+          value={email}
+          onChange={(e) => setEmail(e.target.value)}
+          onKeyDown={(e) => { if (e.key === "Enter" && valid && !busy) onSend(email.trim()); }}
+          placeholder="client@email.com"
+          inputMode="email"
+          type="email"
+        />
+        {email.trim().length > 0 && !valid && (
+          <p className="mt-1 text-[11px] font-medium text-rose-400">Enter a valid email address</p>
+        )}
+        <p className="mt-2 text-[11px] text-slate-500">The email is saved to the client&apos;s record and the link is sent immediately.</p>
+        <div className="mt-4 flex justify-end gap-2">
+          <button onClick={onClose} className="rounded-xl border border-white/10 px-3 py-2 text-sm text-slate-200 hover:bg-white/5">Cancel</button>
+          <button
+            onClick={() => onSend(email.trim())}
+            disabled={busy || !valid}
+            className="inline-flex items-center gap-1.5 rounded-xl bg-medical-600 px-4 py-2 text-sm font-semibold text-white hover:bg-medical-700 disabled:opacity-50"
+          >
+            {busy ? <Loader2 className="h-4 w-4 animate-spin" /> : <Send className="h-4 w-4" />} Send link
+          </button>
+        </div>
+      </div>
+    </div>
   );
 }
 

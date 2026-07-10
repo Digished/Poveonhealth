@@ -72,6 +72,22 @@ function phoneValid(p: string): boolean {
 
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
+/** Split a stored full name ("First Other Surname") back into its parts. */
+function splitName(full: string): { first: string; other: string; surname: string } {
+  const parts = full.trim().split(/\s+/).filter(Boolean);
+  if (parts.length === 0) return { first: "", other: "", surname: "" };
+  if (parts.length === 1) return { first: parts[0], other: "", surname: "" };
+  if (parts.length === 2) return { first: parts[0], other: "", surname: parts[1] };
+  return { first: parts[0], other: parts.slice(1, -1).join(" "), surname: parts[parts.length - 1] };
+}
+
+/** ISO yyyy-mm-dd → dd/mm/yyyy for the DOB field. */
+function isoToDdmmyyyy(iso: string | null): string {
+  if (!iso) return "";
+  const m = iso.match(/^(\d{4})-(\d{2})-(\d{2})/);
+  return m ? `${m[3]}/${m[2]}/${m[1]}` : "";
+}
+
 const inputCls = "w-full rounded-xl border border-slate-200 bg-white px-4 py-2.5 text-sm text-slate-800 focus:border-medical-400 focus:ring-2 focus:ring-medical-500/30 outline-none transition";
 const labelCls = "mb-1 block text-xs font-medium text-slate-600";
 
@@ -259,15 +275,11 @@ export function LabOnboardForm({
   const [lookupCode, setLookupCode] = useState(initialCode ?? "");
   const [looking, setLooking] = useState(false);
   const [confirming, setConfirming] = useState(false);
-  const [revealed, setRevealed] = useState<{ code: string; tests: string; doctor_name: string | null } | null>(null);
-  // Code-path editable fields (simple single values — the referral already
-  // carries the structured data).
-  const [cName, setCName] = useState("");
-  const [cPhone, setCPhone] = useState("");
-  const [cEmail, setCEmail] = useState("");
-  const [cAge, setCAge] = useState("");
-  const [cSex, setCSex] = useState("");
+  const [revealed, setRevealed] = useState<{ code: string; tests: string; doctor_name: string | null; doctor_hospital: string | null } | null>(null);
   const autoRevealed = useRef(false);
+  // A revealed Poveon code reuses the full manual form, pre-filled — the
+  // referral (doctor + tests) stays locked.
+  const codeMode = entryMode === "code" && !!revealed;
 
   const isNigeria = country.trim().toLowerCase() === "nigeria";
   const fullName = [firstName.trim(), middleName.trim(), surname.trim()].filter(Boolean).join(" ");
@@ -277,10 +289,10 @@ export function LabOnboardForm({
   const validWhatsapps = whatsapps.map((p) => p.trim()).filter((p) => p && phoneValid(p));
 
   const detailsValid =
-    !!referralType &&
+    (codeMode || !!referralType) &&
     surname.trim().length > 0 &&
     firstName.trim().length > 0 &&
-    middleName.trim().length > 0 &&
+    (codeMode || middleName.trim().length > 0) &&
     !!dobParsed &&
     sex.trim().length > 0 &&
     phoneValid(primaryPhone) &&
@@ -297,7 +309,7 @@ export function LabOnboardForm({
       : true;
 
   // Tests are optional — the lab confirms them at the desk.
-  const visitValid = !!paymentMode && referralValid;
+  const visitValid = !!paymentMode && (codeMode || referralValid);
 
   function addTemplate(t: OnboardTemplate) {
     const existing = new Set(tests.map((x) => x.name.toLowerCase()));
@@ -370,12 +382,44 @@ export function LabOnboardForm({
       const data = await res.json();
       if (!res.ok || !data.success) throw new Error(data.error || "Request not found");
       const r = data.request;
-      setCName(r.patient_name ?? "");
-      setCPhone(r.patient_phone ?? "");
-      setCEmail(r.patient_email ?? "");
-      setCAge(r.patient_age != null ? String(r.patient_age) : "");
-      setCSex((r.sex ?? "").toLowerCase());
-      setRevealed({ code: r.code, tests: r.tests ?? "", doctor_name: r.doctor_name ?? null });
+      // Pre-fill every field of the standard form from the referral.
+      const names = splitName(r.patient_name ?? "");
+      setFirstName(names.first);
+      setMiddleName(names.other);
+      setSurname(names.surname);
+      const phoneList = (r.patient_phone ?? "").split(",").map((x: string) => x.trim()).filter(Boolean);
+      setPhones(phoneList.length > 0 ? phoneList : [""]);
+      const waList = (r.whatsapp_phone ?? "").split(",").map((x: string) => x.trim()).filter(Boolean);
+      if (waList.length > 0) {
+        if (waList.length === 1 && phoneList[0] && waList[0] === phoneList[0]) {
+          setPhoneIsWhatsapp("yes");
+        } else {
+          setPhoneIsWhatsapp("no");
+          setWhatsapps(waList);
+        }
+      }
+      setEmail(r.patient_email ?? "");
+      setDob(isoToDdmmyyyy(r.dob ?? null));
+      setSex((r.sex ?? "").toLowerCase());
+      if (r.payment_mode) setPaymentMode(r.payment_mode);
+      // Address is stored as "LGA, State, Country" — restore whatever matches.
+      const addrParts = (r.address ?? "").split(",").map((x: string) => x.trim()).filter(Boolean);
+      if (addrParts.length >= 3) {
+        setCountry(addrParts[addrParts.length - 1]);
+        const st = STATE_NAMES.find((n) => n.toLowerCase() === addrParts[1].toLowerCase());
+        if (st) {
+          setStateOf(st);
+          const lg = lgasForState(st).find((n) => n.toLowerCase() === addrParts[0].toLowerCase());
+          if (lg) setLga(lg);
+        }
+      }
+      setStep(0);
+      setRevealed({
+        code: r.code,
+        tests: r.tests ?? "",
+        doctor_name: [r.doctor_prefix, r.doctor_name].filter(Boolean).join(" ") || null,
+        doctor_hospital: r.doctor_hospital ?? null,
+      });
     } catch (e) {
       setError(e instanceof Error ? e.message : "Lookup failed");
     } finally {
@@ -398,6 +442,7 @@ export function LabOnboardForm({
     if (!revealed) return;
     setConfirming(true); setError(null);
     try {
+      const whatsappList = phoneIsWhatsapp === "yes" ? [primaryPhone.trim()] : validWhatsapps;
       const res = await fetch("/api/onboard/confirm", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -405,11 +450,18 @@ export function LabOnboardForm({
           lab_id: lab.id,
           lab_slug: lab.slug,
           code: revealed.code,
-          patient_name: cName.trim(),
-          patient_phone: cPhone.trim(),
-          patient_email: cEmail.trim() || undefined,
-          patient_age: cAge ? Number(cAge) : undefined,
-          sex: cSex || undefined,
+          patient_name: fullName,
+          patient_phone: validPhones.join(", "),
+          patient_email: email.trim() || undefined,
+          patient_age: dobParsed?.age,
+          dob: dobParsed?.iso,
+          sex: sex || undefined,
+          whatsapp_phone: whatsappList.join(", ") || undefined,
+          payment_mode: paymentMode || undefined,
+          location_country: country.trim() || undefined,
+          location_state: stateOf.trim() || undefined,
+          location_lga: lga.trim() || undefined,
+          condition: condition.trim() || undefined,
           consent: true,
         }),
       });
@@ -478,47 +530,22 @@ export function LabOnboardForm({
         </div>
       )}
 
-      {entryMode === "code" && revealed && (
-        <div className="space-y-3">
-          <div>
-            <label className={labelCls}>Full name *</label>
-            <input className={inputCls} value={cName} onChange={(e) => setCName(e.target.value)} />
-          </div>
-          <div>
-            <label className={labelCls}>Phone number *</label>
-            <input className={inputCls} value={cPhone} onChange={(e) => setCPhone(e.target.value)} inputMode="tel" />
-          </div>
-          <div className="grid grid-cols-2 gap-3">
-            <div>
-              <label className={labelCls}>Age</label>
-              <input className={inputCls} value={cAge} onChange={(e) => setCAge(e.target.value.replace(/\D/g, ""))} inputMode="numeric" />
-            </div>
-            <div>
-              <label className={labelCls}>Sex</label>
-              <select className={inputCls} value={cSex} onChange={(e) => setCSex(e.target.value)}>
-                <option value="">—</option><option value="male">Male</option><option value="female">Female</option><option value="other">Other</option>
-              </select>
-            </div>
-          </div>
-          <div>
-            <label className={labelCls}>Email (optional)</label>
-            <input className={inputCls} value={cEmail} onChange={(e) => setCEmail(e.target.value)} inputMode="email" />
-          </div>
-          <div className="rounded-xl border border-slate-200 bg-slate-50 p-3 text-sm">
-            <p className="text-xs font-medium text-slate-500">Tests requested</p>
-            <p className="mt-0.5 text-slate-700">{revealed.tests || "—"}</p>
-            {revealed.doctor_name && (
-              <p className="mt-2 inline-flex items-center gap-1.5 text-xs text-slate-500"><Stethoscope className="h-3.5 w-3.5" /> Referred by {revealed.doctor_name} <Lock className="h-3 w-3" /></p>
-            )}
-          </div>
-          <button type="button" onClick={confirmDetails} disabled={confirming || cName.trim().length === 0 || cPhone.trim().length < 5} className="inline-flex w-full items-center justify-center gap-2 rounded-xl bg-medical-600 py-2.5 text-sm font-semibold text-white hover:bg-medical-700 disabled:opacity-50">
-            {confirming ? <Loader2 className="h-4 w-4 animate-spin" /> : <Check className="h-4 w-4" />} Confirm &amp; join the queue
-          </button>
+      {/* Manual path — identical for QR self-service and walk-in registration.
+          A revealed Poveon code reuses the same full form, pre-filled. */}
+      {(entryMode === "manual" || codeMode) && (<>
+      {/* Locked referral summary (code path) */}
+      {codeMode && revealed && (
+        <div className="mb-4 rounded-xl border border-medical-200 bg-medical-50 p-3 text-sm">
+          <p className="flex items-center gap-1.5 text-xs font-semibold uppercase tracking-wide text-medical-700">
+            <Stethoscope className="h-3.5 w-3.5" /> Your referral <Lock className="h-3 w-3" />
+          </p>
+          {revealed.doctor_name && (
+            <p className="mt-1 font-medium text-slate-800">{revealed.doctor_name}{revealed.doctor_hospital ? ` · ${revealed.doctor_hospital}` : ""}</p>
+          )}
+          <p className="mt-1 text-xs text-slate-600">{revealed.tests || "Tests to be confirmed at the lab"}</p>
+          <p className="mt-1.5 text-[11px] text-slate-500">Your referring doctor and requested tests come from your referral and can&apos;t be changed here.</p>
         </div>
       )}
-
-      {/* Manual path — identical for QR self-service and walk-in registration */}
-      {entryMode === "manual" && (<>
       {/* Stepper */}
       <div className="mb-5 flex items-center gap-2">
         {STEP_META.map((s, i) => {
@@ -539,6 +566,7 @@ export function LabOnboardForm({
 
       {step === 0 && (
         <div className="space-y-3">
+          {!codeMode && (
           <div>
             <label className={labelCls}>How were you referred? *</label>
             <div className="grid grid-cols-1 gap-1.5">
@@ -557,6 +585,7 @@ export function LabOnboardForm({
               ))}
             </div>
           </div>
+          )}
           <div>
             <label className={labelCls}>Surname *</label>
             <input className={inputCls} value={surname} onChange={(e) => setSurname(e.target.value)} placeholder="e.g. Okafor" autoComplete="family-name" />
@@ -567,7 +596,7 @@ export function LabOnboardForm({
               <input className={inputCls} value={firstName} onChange={(e) => setFirstName(e.target.value)} placeholder="e.g. Ada" autoComplete="given-name" />
             </div>
             <div>
-              <label className={labelCls}>Other name *</label>
+              <label className={labelCls}>Other name {codeMode ? "" : "*"}</label>
               <input className={inputCls} value={middleName} onChange={(e) => setMiddleName(e.target.value)} placeholder="e.g. Chidi" autoComplete="additional-name" />
             </div>
           </div>
@@ -669,7 +698,7 @@ export function LabOnboardForm({
 
       {step === 1 && (
         <div className="space-y-3">
-          {referralType === "doctor" && (
+          {!codeMode && referralType === "doctor" && (
             <>
               <div>
                 <label className={labelCls}>Referring doctor&apos;s name *</label>
@@ -681,7 +710,7 @@ export function LabOnboardForm({
               </div>
             </>
           )}
-          {referralType === "hmo" && (
+          {!codeMode && referralType === "hmo" && (
             <>
               <div>
                 <label className={labelCls}>Name of HMO *</label>
@@ -697,7 +726,7 @@ export function LabOnboardForm({
               </div>
             </>
           )}
-          {templates.length > 0 && (
+          {!codeMode && templates.length > 0 && (
             <div>
               <p className="mb-1.5 text-xs font-medium text-slate-600">Quick panels</p>
               <div className="flex flex-wrap gap-2">
@@ -709,11 +738,18 @@ export function LabOnboardForm({
               </div>
             </div>
           )}
-          <div>
-            <label className={labelCls}>Tests / investigations (optional)</label>
-            <TestTagInput value={tests} onChange={setTests} labId={lab.id} />
-            <p className="mt-1 text-[11px] text-slate-400">Not sure? Leave it blank — the team will confirm your tests at the desk.</p>
-          </div>
+          {codeMode && revealed ? (
+            <div className="rounded-xl border border-slate-200 bg-slate-50 p-3 text-sm">
+              <p className="flex items-center gap-1.5 text-xs font-medium text-slate-500">Tests requested <Lock className="h-3 w-3" /></p>
+              <p className="mt-0.5 text-slate-700">{revealed.tests || "To be confirmed at the lab"}</p>
+            </div>
+          ) : (
+            <div>
+              <label className={labelCls}>Tests / investigations (optional)</label>
+              <TestTagInput value={tests} onChange={setTests} labId={lab.id} />
+              <p className="mt-1 text-[11px] text-slate-400">Not sure? Leave it blank — the team will confirm your tests at the desk.</p>
+            </div>
+          )}
           <div>
             <label className={`${labelCls} flex items-center gap-1.5`}>
               Complaint (optional)
@@ -770,12 +806,18 @@ export function LabOnboardForm({
               <ReviewRow label="WhatsApp" value={phoneIsWhatsapp === "yes" ? `${primaryPhone.trim()} (same number)` : validWhatsapps.join(", ") || "—"} />
               <ReviewRow label="Email" value={email.trim()} />
               <ReviewRow label="Coming from" value={[lga, stateOf, country].filter(Boolean).join(", ")} />
-              <ReviewRow label="Referral" value={REFERRAL_OPTIONS.find((o) => o.value === referralType)?.label ?? ""} />
-              {referralType !== "self" && (doctorNameText.trim() || referringOrg.trim()) && (
-                <ReviewRow label={referralType === "hmo" ? "HMO" : "Doctor"} value={[doctorNameText.trim(), referringOrg.trim()].filter(Boolean).join(" · ")} />
+              {codeMode ? (
+                <ReviewRow label="Referral" value={[revealed?.doctor_name, revealed?.doctor_hospital].filter(Boolean).join(" · ") || "Poveon referral"} />
+              ) : (
+                <>
+                  <ReviewRow label="Referral" value={REFERRAL_OPTIONS.find((o) => o.value === referralType)?.label ?? ""} />
+                  {referralType !== "self" && (doctorNameText.trim() || referringOrg.trim()) && (
+                    <ReviewRow label={referralType === "hmo" ? "HMO" : "Doctor"} value={[doctorNameText.trim(), referringOrg.trim()].filter(Boolean).join(" · ")} />
+                  )}
+                  {referralType === "hmo" && policyNumber.trim() && <ReviewRow label="Policy no." value={policyNumber.trim()} />}
+                </>
               )}
-              {referralType === "hmo" && policyNumber.trim() && <ReviewRow label="Policy no." value={policyNumber.trim()} />}
-              <ReviewRow label="Tests" value={tests.length > 0 ? tests.map((t) => t.name).join(", ") : "To be confirmed at the lab"} />
+              <ReviewRow label="Tests" value={codeMode ? (revealed?.tests || "To be confirmed at the lab") : tests.length > 0 ? tests.map((t) => t.name).join(", ") : "To be confirmed at the lab"} />
               {condition.trim() && <ReviewRow label="Complaint" value={condition.trim()} />}
               <ReviewRow label="Payment" value={PAYMENT_OPTIONS.find((o) => o.value === paymentMode)?.label ?? ""} />
             </dl>
@@ -786,9 +828,9 @@ export function LabOnboardForm({
           </label>
           <div className="flex gap-2">
             <button onClick={() => setStep(1)} className="rounded-xl border border-slate-200 px-4 py-2.5 text-sm font-medium text-slate-600 hover:bg-slate-50">Back</button>
-            <button onClick={submit} disabled={!consent || submitting} className="flex-1 inline-flex items-center justify-center gap-2 rounded-xl bg-medical-600 py-2.5 text-sm font-semibold text-white hover:bg-medical-700 disabled:opacity-50">
-              {submitting && <Loader2 className="h-4 w-4 animate-spin" />}
-              {source === "walk_in" ? "Register & join queue" : "Join the queue"}
+            <button onClick={codeMode ? confirmDetails : submit} disabled={!consent || submitting || confirming} className="flex-1 inline-flex items-center justify-center gap-2 rounded-xl bg-medical-600 py-2.5 text-sm font-semibold text-white hover:bg-medical-700 disabled:opacity-50">
+              {(submitting || confirming) && <Loader2 className="h-4 w-4 animate-spin" />}
+              {codeMode ? "Confirm & join the queue" : source === "walk_in" ? "Register & join queue" : "Join the queue"}
             </button>
           </div>
         </div>

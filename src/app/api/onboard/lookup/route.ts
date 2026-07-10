@@ -42,11 +42,15 @@ export async function POST(request: NextRequest) {
     select: {
       code: true, status: true, is_paid: true,
       patient_name: true, patient_phone: true, patient_email: true, patient_age: true, sex: true,
-      tests: true, doctor_name: true,
+      dob: true, address: true, whatsapp_phone: true, payment_mode: true,
+      tests: true, doctor_prefix: true, doctor_name: true, doctor_hospital: true,
     },
   });
   if (!req) return NextResponse.json({ success: false, error: "No request found with that code" }, { status: 404, headers: CORS });
   if (req.status === "done") return NextResponse.json({ success: false, error: "This request is already completed" }, { status: 409, headers: CORS });
 
-  return NextResponse.json({ success: true, request: req }, { headers: CORS });
+  return NextResponse.json(
+    { success: true, request: { ...req, dob: req.dob ? req.dob.toISOString().slice(0, 10) : null } },
+    { headers: CORS }
+  );
 }

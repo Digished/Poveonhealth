@@ -15,6 +15,8 @@ const Schema = z.object({
   arrived: z.boolean().optional(),
   // Email the client their self-registration link (code pre-applied).
   send_registration_link: z.boolean().optional(),
+  // Confirmed / corrected email to send the link to (also saved on the request).
+  email: z.string().email().optional(),
 });
 
 /**
@@ -32,7 +34,7 @@ export async function POST(request: NextRequest) {
   const body = await request.json();
   const parsed = Schema.safeParse(body);
   if (!parsed.success) return NextResponse.json({ success: false, error: "Invalid input" }, { status: 400 });
-  const { requestId, tests_confirmed, is_paid, arrived, send_registration_link } = parsed.data;
+  const { requestId, tests_confirmed, is_paid, arrived, send_registration_link, email } = parsed.data;
 
   const req = await prisma.request.findUnique({
     where: { id: requestId },
@@ -49,6 +51,7 @@ export async function POST(request: NextRequest) {
   if (tests_confirmed !== undefined) data.tests_confirmed = tests_confirmed;
   if (is_paid !== undefined) data.is_paid = is_paid;
   if (arrived !== undefined) data.arrived_at = arrived ? new Date() : null;
+  if (send_registration_link && email) data.patient_email = email.trim().toLowerCase();
   if (Object.keys(data).length === 0 && !send_registration_link) {
     return NextResponse.json({ success: false, error: "Nothing to update" }, { status: 400 });
   }
@@ -66,17 +69,18 @@ export async function POST(request: NextRequest) {
   // code pre-applied — the form auto-fills their referral details (referring
   // doctor stays locked). Completing it places them in the queue from that
   // moment.
+  const sendTo = send_registration_link ? (email?.trim().toLowerCase() || req.patient_email) : null;
   if (send_registration_link) {
-    if (!req.patient_email) return NextResponse.json({ success: false, error: "No email on file for this client" }, { status: 400 });
+    if (!sendTo) return NextResponse.json({ success: false, error: "No email on file for this client — enter one first" }, { status: 400 });
     if (!req.lab.slug) return NextResponse.json({ success: false, error: "Set a public URL slug for your lab to enable self-registration links" }, { status: 400 });
   }
-  if (send_registration_link && req.patient_email && req.lab.slug) {
+  if (send_registration_link && sendTo && req.lab.slug) {
     const appUrl = process.env.NEXT_PUBLIC_APP_URL || "https://poveon.com";
     const selfServiceUrl = `${appUrl}/o/${req.lab.slug}?code=${encodeURIComponent(req.code)}`;
     resend.emails
       .send({
         from: labSender(req.lab),
-        to: req.patient_email,
+        to: sendTo,
         subject: `${req.lab.name} — complete your registration`,
         html: patientArrivedSelfService({
           patientName: req.patient_name ?? "there",
