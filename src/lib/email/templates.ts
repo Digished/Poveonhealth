@@ -1758,6 +1758,7 @@ export function labQueueRegistration({
   referralType,
   doctorName,
   referringOrg,
+  policyNumber,
   complaint,
   paymentMode,
   tests,
@@ -1774,6 +1775,7 @@ export function labQueueRegistration({
   referralType?: string | null;
   doctorName?: string | null;
   referringOrg?: string | null;
+  policyNumber?: string | null;
   complaint?: string | null;
   paymentMode?: string | null;
   tests: string;
@@ -1794,8 +1796,8 @@ export function labQueueRegistration({
   return base(`
     <h2 style="margin:0 0 8px;color:#0259a0;font-size:20px;font-weight:700;">New Self-Service Registration</h2>
     <p style="margin:0 0 24px;color:#4b5563;font-size:15px;">
-      A client just registered through your QR self-service portal and is waiting in the queue.
-      Please confirm their details on your dashboard to add them to the queue.
+      A client just registered through your QR self-service portal and has joined your waiting queue.
+      You can review, correct and manage their details right on the queue.
     </p>
 
     ${codeBox(code)}
@@ -1815,6 +1817,7 @@ export function labQueueRegistration({
     ${referralType ? `${label("Referral")}${value(referralLabel[referralType] ?? escapeHtml(referralType))}` : ""}
     ${doctorName ? `${label("Referring Doctor")}${value(escapeHtml(doctorName))}` : ""}
     ${referringOrg ? `${label("Hospital / HMO / Company")}${value(escapeHtml(referringOrg))}` : ""}
+    ${policyNumber ? `${label("HMO Policy Number")}${value(escapeHtml(policyNumber))}` : ""}
     ${complaint ? `${label("Complaint")}${value(escapeHtml(complaint))}` : ""}
     ${paymentMode ? `${label("Payment Mode")}${value(paymentLabel[paymentMode] ?? escapeHtml(paymentMode))}` : ""}
 
@@ -1849,8 +1852,8 @@ export function patientQueueJoined({
     <h2 style="margin:0 0 8px;color:#0259a0;font-size:20px;font-weight:700;">You're Registered ✔</h2>
     <p style="margin:0 0 24px;color:#4b5563;font-size:15px;">
       Dear ${escapeHtml(patientName)},<br><br>
-      Your registration at <strong>${escapeHtml(labName)}</strong> has been received and you've been added to the waiting list.
-      The team will confirm your details shortly and attend to you in order of arrival.
+      Your registration at <strong>${escapeHtml(labName)}</strong> has been received and you are now in the queue.
+      The team will attend to you in order of arrival.
     </p>
 
     ${codeBox(code)}

@@ -1315,6 +1315,11 @@ const migrations = [
     continueOnError: true,
   },
   {
+    desc: "requests.policy_number column (HMO policy number)",
+    sql: `ALTER TABLE requests ADD COLUMN IF NOT EXISTS policy_number TEXT`,
+    continueOnError: true,
+  },
+  {
     desc: "requests.whatsapp_phone column (QR intake WhatsApp number)",
     sql: `ALTER TABLE requests ADD COLUMN IF NOT EXISTS whatsapp_phone TEXT`,
     continueOnError: true,

@@ -38,6 +38,7 @@ const Schema = z.object({
   whatsapp_phone: z.string().max(50).optional().or(z.literal("")),
   referring_doctor_name: z.string().max(200).optional().or(z.literal("")),
   referring_org: z.string().max(200).optional().or(z.literal("")),
+  policy_number: z.string().max(100).optional().or(z.literal("")),
   payment_mode: z.enum(["cash", "card", "transfer", "bill_hospital"]).optional(),
   consent: z.literal(true),
 });
@@ -114,6 +115,10 @@ export async function POST(request: NextRequest) {
     }
 
     const email = data.patient_email?.trim() || null;
+    // The self-service queue notifies patients by email, so QR intake requires one.
+    if (data.source === "qr" && !email) {
+      return NextResponse.json({ success: false, error: "Email is required" }, { status: 400, headers: CORS_HEADERS });
+    }
     const dob = data.dob?.trim() || null;
     const patientAge = data.patient_age ?? (dob ? ageFromDob(dob) : null);
 
@@ -164,8 +169,12 @@ export async function POST(request: NextRequest) {
         status: "incoming",
         source: data.source,
         referral_type: data.referral_type ?? null,
+        policy_number: data.policy_number?.trim() || null,
         whatsapp_phone: data.whatsapp_phone?.trim() || null,
         payment_mode: data.payment_mode ?? null,
+        // QR self-registrations join the waiting queue immediately — the lab
+        // edits/adjusts details on the queue itself rather than pre-approving.
+        queue_confirmed_at: data.source === "qr" ? new Date() : null,
         current_stage: "registered",
         consent_at: new Date(),
       },
@@ -207,6 +216,7 @@ export async function POST(request: NextRequest) {
               referralType: data.referral_type ?? null,
               doctorName: data.referral_type && data.referral_type !== "self" ? doctorName : null,
               referringOrg: doctorHospital,
+              policyNumber: data.policy_number?.trim() || null,
               complaint: data.condition || null,
               paymentMode: data.payment_mode ?? null,
               tests: data.tests,

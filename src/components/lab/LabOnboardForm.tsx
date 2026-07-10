@@ -4,6 +4,7 @@ import { useState } from "react";
 import { User, FlaskConical, ShieldCheck, Check, Loader2, Copy, Search, Stethoscope, Lock, HelpCircle, MessageCircle } from "lucide-react";
 import { TestTagInput, TestTag } from "@/components/ui/TestTagInput";
 import { DoctorSearchSelect, PickedDoctor } from "@/components/lab/DoctorSearchSelect";
+import { PhoneInput } from "@/components/PhoneInput";
 
 export interface OnboardLab {
   id?: string;
@@ -39,6 +40,38 @@ const PAYMENT_OPTIONS = [
   { value: "bill_hospital", label: "Bill to my hospital" },
 ] as const;
 
+/** Auto-format a dd/mm/yyyy date as the user types (digits only, slashes inserted). */
+function formatDobText(v: string): string {
+  const d = v.replace(/\D/g, "").slice(0, 8);
+  if (d.length <= 2) return d;
+  if (d.length <= 4) return `${d.slice(0, 2)}/${d.slice(2)}`;
+  return `${d.slice(0, 2)}/${d.slice(2, 4)}/${d.slice(4)}`;
+}
+
+/** Validate a dd/mm/yyyy string; returns its ISO date and the age in years. */
+function parseDobText(v: string): { iso: string; age: number } | null {
+  const m = v.match(/^(\d{2})\/(\d{2})\/(\d{4})$/);
+  if (!m) return null;
+  const day = Number(m[1]), mon = Number(m[2]), yr = Number(m[3]);
+  const d = new Date(Date.UTC(yr, mon - 1, day));
+  if (d.getUTCFullYear() !== yr || d.getUTCMonth() !== mon - 1 || d.getUTCDate() !== day) return null;
+  if (d.getTime() > Date.now()) return null;
+  const now = new Date();
+  let age = now.getFullYear() - yr;
+  const mDiff = now.getMonth() + 1 - mon;
+  if (mDiff < 0 || (mDiff === 0 && now.getDate() < day)) age--;
+  if (age < 0 || age > 130) return null;
+  return { iso: `${m[3]}-${m[2]}-${m[1]}`, age };
+}
+
+/** A PhoneInput value ("+234 8031234567") counts as valid with 7+ local digits. */
+function phoneValid(p: string): boolean {
+  const local = p.trim().split(/\s+/).slice(1).join("");
+  return local.replace(/\D/g, "").length >= 7;
+}
+
+const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+
 /**
  * Minimalist multi-step client onboarding form. Used by the public QR page
  * (`/o/[labSlug]`, source="qr") and the dashboard walk-in flow (source="walk_in").
@@ -73,6 +106,7 @@ export function LabOnboardForm({
   const [referralType, setReferralType] = useState<"" | "self" | "doctor" | "hmo">("");
   const [doctorNameText, setDoctorNameText] = useState("");
   const [referringOrg, setReferringOrg] = useState("");
+  const [policyNumber, setPolicyNumber] = useState("");
   const [paymentMode, setPaymentMode] = useState<"" | "cash" | "card" | "transfer" | "bill_hospital">("");
   const [complaintHelpOpen, setComplaintHelpOpen] = useState(false);
   const [tests, setTests] = useState<TestTag[]>([]);
@@ -99,14 +133,18 @@ export function LabOnboardForm({
     ? [firstName.trim(), middleName.trim(), surname.trim()].filter(Boolean).join(" ")
     : name.trim();
 
+  const dobParsed = isQr ? parseDobText(dob) : null;
+
   const detailsValid = isQr
     ? !!referralType &&
       surname.trim().length > 0 &&
       firstName.trim().length > 0 &&
-      dob.trim().length > 0 &&
+      middleName.trim().length > 0 &&
+      !!dobParsed &&
       sex.trim().length > 0 &&
-      phone.trim().length >= 5 &&
-      phoneIsWhatsapp !== ""
+      phoneValid(phone) &&
+      phoneIsWhatsapp !== "" &&
+      EMAIL_RE.test(email.trim())
     : name.trim().length > 0 && phone.trim().length >= 5;
 
   const referralValid = !isQr
@@ -114,7 +152,7 @@ export function LabOnboardForm({
     : referralType === "doctor"
     ? doctorNameText.trim().length > 0
     : referralType === "hmo"
-    ? referringOrg.trim().length > 0
+    ? referringOrg.trim().length > 0 && policyNumber.trim().length > 0
     : true;
 
   const testsValid = tests.length > 0 && (!isQr || (!!paymentMode && referralValid));
@@ -147,8 +185,8 @@ export function LabOnboardForm({
           patient_name: fullName,
           patient_phone: phone.trim(),
           patient_email: email.trim() || undefined,
-          patient_age: age ? Number(age) : undefined,
-          dob: isQr && dob ? dob : undefined,
+          patient_age: !isQr && age ? Number(age) : isQr && dobParsed ? dobParsed.age : undefined,
+          dob: isQr && dobParsed ? dobParsed.iso : undefined,
           sex: sex || undefined,
           tests: tests.map((t) => t.name).join(", "),
           condition: condition.trim() || undefined,
@@ -157,6 +195,7 @@ export function LabOnboardForm({
           whatsapp_phone: isQr && phoneIsWhatsapp === "no" ? whatsapp.trim() || undefined : undefined,
           referring_doctor_name: isQr && referralType !== "self" ? doctorNameText.trim() || undefined : undefined,
           referring_org: isQr ? referringOrg.trim() || undefined : undefined,
+          policy_number: isQr && referralType === "hmo" ? policyNumber.trim() || undefined : undefined,
           payment_mode: isQr && paymentMode ? paymentMode : undefined,
           consent: true,
         }),
@@ -236,10 +275,10 @@ export function LabOnboardForm({
         <div className="mx-auto flex h-14 w-14 items-center justify-center rounded-full bg-emerald-100">
           <Check className="h-7 w-7 text-emerald-600" />
         </div>
-        <h3 className="mt-4 text-lg font-semibold text-slate-900">You&apos;re registered!</h3>
+        <h3 className="mt-4 text-lg font-semibold text-slate-900">{isQr ? "You're in the queue!" : "You're registered!"}</h3>
         <p className="mt-1 text-sm text-slate-500">
           {isQr
-            ? `You've been added to the waiting list at ${lab.name}. The team will confirm your details and call you in order of arrival.`
+            ? `You've joined the queue at ${lab.name}. The team will attend to you in order of arrival.`
             : `Show this code at ${lab.name}.`}
         </p>
         <div className="mt-4 inline-flex items-center gap-2 rounded-xl border border-slate-200 bg-slate-50 px-4 py-3">
@@ -420,14 +459,28 @@ export function LabOnboardForm({
               <input className={inputCls} value={firstName} onChange={(e) => setFirstName(e.target.value)} placeholder="e.g. Ada" autoComplete="given-name" />
             </div>
             <div>
-              <label className={labelCls}>Middle name</label>
-              <input className={inputCls} value={middleName} onChange={(e) => setMiddleName(e.target.value)} placeholder="Optional" autoComplete="additional-name" />
+              <label className={labelCls}>Other name *</label>
+              <input className={inputCls} value={middleName} onChange={(e) => setMiddleName(e.target.value)} placeholder="e.g. Chidi" autoComplete="additional-name" />
             </div>
           </div>
           <div className="grid grid-cols-2 gap-3">
             <div>
               <label className={labelCls}>Date of birth *</label>
-              <input type="date" className={inputCls} value={dob} onChange={(e) => setDob(e.target.value)} max={new Date().toISOString().slice(0, 10)} />
+              <input
+                className={inputCls}
+                value={dob}
+                onChange={(e) => setDob(formatDobText(e.target.value))}
+                placeholder="dd/mm/yyyy"
+                inputMode="numeric"
+                autoComplete="bday"
+              />
+              {dob.length === 10 && (
+                dobParsed ? (
+                  <p className="mt-1 text-[11px] font-medium text-emerald-600">Age: {dobParsed.age} year{dobParsed.age === 1 ? "" : "s"}</p>
+                ) : (
+                  <p className="mt-1 text-[11px] font-medium text-red-600">Enter a valid date (dd/mm/yyyy)</p>
+                )
+              )}
             </div>
             <div>
               <label className={labelCls}>Sex *</label>
@@ -441,7 +494,7 @@ export function LabOnboardForm({
           </div>
           <div>
             <label className={labelCls}>Phone number *</label>
-            <input className={inputCls} value={phone} onChange={(e) => setPhone(e.target.value)} placeholder="+234..." inputMode="tel" autoComplete="tel" />
+            <PhoneInput value={phone} onChange={setPhone} />
           </div>
           <div>
             <label className={labelCls}>Is this number on WhatsApp? *</label>
@@ -461,12 +514,15 @@ export function LabOnboardForm({
           {phoneIsWhatsapp === "no" && (
             <div>
               <label className={labelCls}>WhatsApp number (optional)</label>
-              <input className={inputCls} value={whatsapp} onChange={(e) => setWhatsapp(e.target.value)} placeholder="+234..." inputMode="tel" />
+              <PhoneInput value={whatsapp} onChange={setWhatsapp} />
             </div>
           )}
           <div>
-            <label className={labelCls}>Email (optional)</label>
+            <label className={labelCls}>Email *</label>
             <input className={inputCls} value={email} onChange={(e) => setEmail(e.target.value)} placeholder="you@email.com" inputMode="email" autoComplete="email" />
+            {email.trim().length > 0 && !EMAIL_RE.test(email.trim()) && (
+              <p className="mt-1 text-[11px] font-medium text-red-600">Enter a valid email address</p>
+            )}
           </div>
           <button
             onClick={() => setStep(1)}
@@ -480,15 +536,31 @@ export function LabOnboardForm({
 
       {step === 1 && (
         <div className="space-y-3">
-          {isQr && referralType !== "self" && (
+          {isQr && referralType === "doctor" && (
             <>
               <div>
-                <label className={labelCls}>Referring doctor&apos;s name {referralType === "doctor" ? "*" : ""}</label>
+                <label className={labelCls}>Referring doctor&apos;s name *</label>
                 <input className={inputCls} value={doctorNameText} onChange={(e) => setDoctorNameText(e.target.value)} placeholder="e.g. Dr. John Ade" />
               </div>
               <div>
-                <label className={labelCls}>Referring hospital / HMO / company {referralType === "hmo" ? "*" : ""}</label>
-                <input className={inputCls} value={referringOrg} onChange={(e) => setReferringOrg(e.target.value)} placeholder="e.g. St. Mary's Hospital or Hygeia HMO" />
+                <label className={labelCls}>Referring hospital / company (optional)</label>
+                <input className={inputCls} value={referringOrg} onChange={(e) => setReferringOrg(e.target.value)} placeholder="e.g. St. Mary's Hospital" />
+              </div>
+            </>
+          )}
+          {isQr && referralType === "hmo" && (
+            <>
+              <div>
+                <label className={labelCls}>Name of HMO *</label>
+                <input className={inputCls} value={referringOrg} onChange={(e) => setReferringOrg(e.target.value)} placeholder="e.g. Hygeia HMO" />
+              </div>
+              <div>
+                <label className={labelCls}>Policy number *</label>
+                <input className={inputCls} value={policyNumber} onChange={(e) => setPolicyNumber(e.target.value)} placeholder="Your HMO policy / enrollee number" />
+              </div>
+              <div>
+                <label className={labelCls}>Referring doctor&apos;s name (optional)</label>
+                <input className={inputCls} value={doctorNameText} onChange={(e) => setDoctorNameText(e.target.value)} placeholder="e.g. Dr. John Ade" />
               </div>
             </>
           )}
@@ -532,7 +604,7 @@ export function LabOnboardForm({
             </label>
             {complaintHelpOpen && (
               <p className="mb-1.5 rounded-lg bg-medical-50 px-3 py-2 text-[11px] leading-relaxed text-medical-800">
-                Briefly describe what&apos;s bothering you or why you&apos;re doing these tests — e.g. &ldquo;fever and headache for 3 days&rdquo; or &ldquo;routine annual check-up&rdquo;. This helps the lab team serve you better.
+                Briefly describe what&apos;s bothering you or why you&apos;re doing these tests — e.g. &ldquo;fever and headache for 3 days&rdquo; or &ldquo;routine annual check-up&rdquo;. This helps our team serve you better.
               </p>
             )}
             <textarea className={inputCls} rows={3} value={condition} onChange={(e) => setCondition(e.target.value)} placeholder={isQr ? "e.g. Fever and headache for 3 days" : "Anything the lab should know"} />
@@ -566,7 +638,7 @@ export function LabOnboardForm({
           <div className="rounded-xl border border-slate-200 bg-slate-50 p-4 text-sm">
             <p className="font-medium text-slate-900">
               {fullName}
-              {isQr && dob && <span className="text-slate-400"> · {dob}</span>}
+              {isQr && dob && <span className="text-slate-400"> · {dob}{dobParsed ? ` (${dobParsed.age}y)` : ""}</span>}
               {!isQr && age && <span className="text-slate-400"> · {age}y</span>}
               {sex && <span className="text-slate-400"> · {sex}</span>}
             </p>
@@ -575,6 +647,7 @@ export function LabOnboardForm({
               <p className="mt-1 text-xs text-slate-500">
                 {REFERRAL_OPTIONS.find((o) => o.value === referralType)?.label}
                 {referralType !== "self" && (doctorNameText.trim() || referringOrg.trim()) ? ` — ${[doctorNameText.trim(), referringOrg.trim()].filter(Boolean).join(", ")}` : ""}
+                {referralType === "hmo" && policyNumber.trim() ? ` · Policy ${policyNumber.trim()}` : ""}
               </p>
             )}
             <p className="mt-2 text-slate-700">{tests.map((t) => t.name).join(", ")}</p>

@@ -217,6 +217,7 @@ model Request {
   status                String    @default("incoming")
   source                String    @default("poveon") // poveon | walk_in | qr — how the client reached the lab
   referral_type         String? // self | doctor | hmo — how the client says they were referred (QR self-service intake)
+  policy_number         String? // HMO policy number (when referred by an HMO)
   whatsapp_phone        String? // WhatsApp number when the main phone isn't on WhatsApp
   payment_mode          String? // cash | card | transfer | bill_hospital — client's declared payment mode
   arrived_at            DateTime? // client physically arrived at the lab (onboarding "Arrived" button)

@@ -4,6 +4,8 @@ import { z } from "zod";
 import { prisma } from "@/lib/prisma";
 import { getLabAuth } from "@/lib/lab-auth";
 import { logLabActivity } from "@/lib/lab-activity";
+import { markSeenWithCommission } from "@/lib/lims";
+import type { Prisma } from "@prisma/client";
 
 const QUEUE_SELECT = {
   id: true,
@@ -22,21 +24,35 @@ const QUEUE_SELECT = {
   tests: true,
   diagnosis: true,
   referral_type: true,
+  policy_number: true,
   whatsapp_phone: true,
   payment_mode: true,
   is_paid: true,
+  quoted_price: true,
+  test_breakdown: true,
   created_at: true,
   arrived_at: true,
   queue_confirmed_at: true,
   attended_at: true,
 } as const;
 
+type QueueRow = Prisma.RequestGetPayload<{ select: typeof QUEUE_SELECT }>;
+
+function serialize(r: QueueRow) {
+  return {
+    ...r,
+    quoted_price: r.quoted_price != null ? Number(r.quoted_price) : null,
+    dob: r.dob ? r.dob.toISOString().slice(0, 10) : null,
+  };
+}
+
 /**
  * GET /api/lab/queue
- * The self-service (QR) waiting queue, first-come-first-served:
- *  - pending:  new QR registrations awaiting the lab's confirmation
- *  - queued:   confirmed clients waiting to be attended, in arrival order
- *  - attended: clients ticked off in the last 24h (for undo / reference)
+ * The self-service (QR) waiting queue. Registrations join the queue on
+ * submission and move through simple journey stages, first-come-first-served:
+ *  - waiting:  in the queue, payment not yet taken
+ *  - paid:     payment taken, waiting to be attended to
+ *  - attended: ticked off in the last 24h (for undo / reference)
  */
 export async function GET(request: NextRequest) {
   const auth = await getLabAuth(request);
@@ -46,32 +62,40 @@ export async function GET(request: NextRequest) {
   }
 
   const base = { lab_id: auth.lab_id, source: "qr" };
-  const [pending, queued, attended] = await Promise.all([
+  // A waiting queue is a same-day affair — cap the active lists at 7 days so
+  // stale registrations (or pre-feature history) don't pile up forever.
+  const activeSince = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000);
+  const [waiting, paid, attended] = await Promise.all([
     prisma.request.findMany({
-      where: { ...base, queue_confirmed_at: null, attended_at: null, status: { not: "done" } },
+      where: { ...base, is_paid: false, attended_at: null, status: { not: "done" }, created_at: { gt: activeSince } },
       orderBy: { created_at: "asc" },
       select: QUEUE_SELECT,
     }),
     prisma.request.findMany({
-      where: { ...base, queue_confirmed_at: { not: null }, attended_at: null, status: { not: "done" } },
+      where: { ...base, is_paid: true, attended_at: null, status: { not: "done" }, created_at: { gt: activeSince } },
       orderBy: { created_at: "asc" },
       select: QUEUE_SELECT,
     }),
     prisma.request.findMany({
       where: { ...base, attended_at: { gt: new Date(Date.now() - 24 * 60 * 60 * 1000) } },
       orderBy: { attended_at: "desc" },
-      take: 50,
+      take: 100,
       select: QUEUE_SELECT,
     }),
   ]);
 
-  return NextResponse.json({ success: true, pending, queued, attended });
+  return NextResponse.json({
+    success: true,
+    waiting: waiting.map(serialize),
+    paid: paid.map(serialize),
+    attended: attended.map(serialize),
+  });
 }
 
 const ActionSchema = z.object({
   requestId: z.string().uuid(),
-  action: z.enum(["confirm", "attend", "unattend", "return_to_pending"]),
-  // Optional edits applied when confirming (the lab corrects details first).
+  action: z.enum(["confirm", "mark_paid", "attend", "unattend"]),
+  // Optional edits applied when saving (the lab corrects details on the queue).
   edits: z
     .object({
       patient_name: z.string().max(200).optional(),
@@ -85,6 +109,7 @@ const ActionSchema = z.object({
       referral_type: z.enum(["self", "doctor", "hmo"]).nullable().optional(),
       doctor_name: z.string().max(200).optional(),
       doctor_hospital: z.string().max(200).optional(),
+      policy_number: z.string().max(100).optional(),
       diagnosis: z.string().max(1000).optional(),
     })
     .optional(),
@@ -92,8 +117,9 @@ const ActionSchema = z.object({
 
 /**
  * POST /api/lab/queue
- * Queue transitions: confirm a pending QR registration into the queue (with
- * optional edits), tick a client as attended, or undo either.
+ * Queue transitions: save edits for a queued client, record their payment
+ * (moves them to the Paid tab and accrues commission, mirroring the
+ * onboarding registration flow), tick them as attended, or undo.
  */
 export async function POST(request: NextRequest) {
   const auth = await getLabAuth(request);
@@ -105,7 +131,7 @@ export async function POST(request: NextRequest) {
   if (!parsed.success) return NextResponse.json({ success: false, error: "Invalid input" }, { status: 400 });
   const { requestId, action, edits } = parsed.data;
 
-  const req = await prisma.request.findUnique({ where: { id: requestId }, select: { id: true, lab_id: true, code: true, arrived_at: true } });
+  const req = await prisma.request.findUnique({ where: { id: requestId }, select: { id: true, lab_id: true, code: true } });
   if (!req) return NextResponse.json({ success: false, error: "Request not found" }, { status: 404 });
   if (req.lab_id !== auth.lab_id) return NextResponse.json({ success: false, error: "Unauthorized" }, { status: 403 });
 
@@ -113,40 +139,44 @@ export async function POST(request: NextRequest) {
   let activity = "";
 
   if (action === "confirm") {
+    if (!edits) return NextResponse.json({ success: false, error: "Nothing to update" }, { status: 400 });
     data.queue_confirmed_at = new Date();
-    // Confirming a QR self-registration means the client is physically here.
-    if (!req.arrived_at) data.arrived_at = new Date();
-    if (edits) {
-      if (edits.patient_name !== undefined) data.patient_name = edits.patient_name.trim() || null;
-      if (edits.patient_phone !== undefined) data.patient_phone = edits.patient_phone.trim() || null;
-      if (edits.patient_email !== undefined) data.patient_email = edits.patient_email.trim() || null;
-      if (edits.patient_age !== undefined) data.patient_age = edits.patient_age;
-      if (edits.sex !== undefined) data.sex = edits.sex || null;
-      if (edits.tests !== undefined && edits.tests.trim()) data.tests = edits.tests.trim();
-      if (edits.whatsapp_phone !== undefined) data.whatsapp_phone = edits.whatsapp_phone.trim() || null;
-      if (edits.payment_mode !== undefined) data.payment_mode = edits.payment_mode;
-      if (edits.referral_type !== undefined) data.referral_type = edits.referral_type;
-      if (edits.doctor_name !== undefined && edits.doctor_name.trim()) data.doctor_name = edits.doctor_name.trim();
-      if (edits.doctor_hospital !== undefined) data.doctor_hospital = edits.doctor_hospital.trim() || null;
-      if (edits.diagnosis !== undefined) data.diagnosis = edits.diagnosis.trim() || null;
-    }
-    activity = "confirmed into queue";
+    if (edits.patient_name !== undefined) data.patient_name = edits.patient_name.trim() || null;
+    if (edits.patient_phone !== undefined) data.patient_phone = edits.patient_phone.trim() || null;
+    if (edits.patient_email !== undefined) data.patient_email = edits.patient_email.trim() || null;
+    if (edits.patient_age !== undefined) data.patient_age = edits.patient_age;
+    if (edits.sex !== undefined) data.sex = edits.sex || null;
+    if (edits.tests !== undefined && edits.tests.trim()) data.tests = edits.tests.trim();
+    if (edits.whatsapp_phone !== undefined) data.whatsapp_phone = edits.whatsapp_phone.trim() || null;
+    if (edits.payment_mode !== undefined) data.payment_mode = edits.payment_mode;
+    if (edits.referral_type !== undefined) data.referral_type = edits.referral_type;
+    if (edits.doctor_name !== undefined && edits.doctor_name.trim()) data.doctor_name = edits.doctor_name.trim();
+    if (edits.doctor_hospital !== undefined) data.doctor_hospital = edits.doctor_hospital.trim() || null;
+    if (edits.policy_number !== undefined) data.policy_number = edits.policy_number.trim() || null;
+    if (edits.diagnosis !== undefined) data.diagnosis = edits.diagnosis.trim() || null;
+    activity = "queue details updated";
+  } else if (action === "mark_paid") {
+    data.is_paid = true;
+    activity = "marked paid (queue)";
   } else if (action === "attend") {
     data.attended_at = new Date();
     activity = "marked attended";
-  } else if (action === "unattend") {
+  } else {
     data.attended_at = null;
     activity = "returned to queue";
-  } else {
-    data.queue_confirmed_at = null;
-    activity = "returned to pending";
   }
 
   const updated = await prisma.request.update({ where: { id: requestId }, data, select: QUEUE_SELECT });
+
+  // Payment also promotes the request to "seen" and accrues commission —
+  // identical to marking paid from the onboarding checklist.
+  if (action === "mark_paid") {
+    await markSeenWithCommission(requestId).catch((e) => console.error("[queue] markSeen failed:", e));
+  }
 
   if (auth.actor_email) {
     logLabActivity({ lab_id: auth.lab_id, actor_email: auth.actor_email, action: "queue_update", detail: `Request ${req.code}: ${activity}` });
   }
 
-  return NextResponse.json({ success: true, request: updated });
+  return NextResponse.json({ success: true, request: serialize(updated) });
 }

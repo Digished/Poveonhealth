@@ -38,6 +38,7 @@ export async function GET(request: NextRequest) {
         tests: true,
         diagnosis: true,
         referral_type: true,
+        policy_number: true,
         whatsapp_phone: true,
         payment_mode: true,
         is_paid: true,
@@ -52,9 +53,11 @@ export async function GET(request: NextRequest) {
     const customers = rows.map((r) => ({
       ...r,
       dob: r.dob ? r.dob.toISOString().slice(0, 10) : null,
-      // "Attend date" = when the client actually showed up / was checked in.
-      attend_date: r.arrived_at ?? r.seen_at ?? null,
-      arrived: !!(r.arrived_at ?? r.seen_at),
+      // "Arrived" strictly means staff pressed the onboarding "Client has
+      // arrived" button — a revealed/entered code does not imply the client
+      // physically showed up.
+      attend_date: r.arrived_at ?? null,
+      arrived: !!r.arrived_at,
     }));
 
     return NextResponse.json({ success: true, customers });
