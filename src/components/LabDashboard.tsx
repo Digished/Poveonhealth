@@ -734,8 +734,7 @@ export function LabDashboard({ lab, isOwner = false, roleName = "Lab Owner", can
               { key: "queue", label: "Queue", icon: <ListOrdered className="w-4 h-4" />, show: tabVisibleEff.queue },
               { key: "workspace", label: "Workstation", icon: <Workflow className="w-4 h-4" />, show: tabVisibleEff.workspace },
               { key: "departments", label: "Departments", icon: <Layers className="w-4 h-4" />, show: tabVisibleEff.departments },
-              // Result templates hidden for now — re-enable by restoring `show: tabVisibleEff.templates`.
-              { key: "templates", label: "Result Templates", icon: <FileText className="w-4 h-4" />, show: false },
+              { key: "templates", label: "Result Templates", icon: <FileText className="w-4 h-4" />, show: tabVisibleEff.templates },
               { key: "sops", label: "SOPs", icon: <ClipboardList className="w-4 h-4" />, show: tabVisibleEff.sops },
               { key: "clients", label: "Clients", icon: <UserCircle className="w-4 h-4" />, show: tabVisibleEff.clients },
               { key: "customers", label: "Customers", icon: <UsersRound className="w-4 h-4" />, show: tabVisibleEff.customers },
