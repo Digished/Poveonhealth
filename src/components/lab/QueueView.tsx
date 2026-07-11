@@ -417,14 +417,17 @@ export function QueueView({
                           <Undo2 className="h-3 w-3" /> Undo paid
                         </button>
                       )}
+                      {/* Attended is only offered once payment has been recorded. */}
                       {tab === "queue" ? (
-                        <button
-                          onClick={() => act(r.id, "attend", `${r.patient_name || "Client"} marked as attended`)}
-                          disabled={busyId === r.id}
-                          className="inline-flex items-center gap-1.5 rounded-lg bg-emerald-600 px-3 py-1.5 text-[11px] font-semibold text-white hover:bg-emerald-700 disabled:opacity-50"
-                        >
-                          {busyId === r.id ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Check className="h-3.5 w-3.5" />} Attended
-                        </button>
+                        r.is_paid && (
+                          <button
+                            onClick={() => act(r.id, "attend", `${r.patient_name || "Client"} marked as attended`)}
+                            disabled={busyId === r.id}
+                            className="inline-flex items-center gap-1.5 rounded-lg bg-emerald-600 px-3 py-1.5 text-[11px] font-semibold text-white hover:bg-emerald-700 disabled:opacity-50"
+                          >
+                            {busyId === r.id ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Check className="h-3.5 w-3.5" />} Attended
+                          </button>
+                        )
                       ) : (
                         <button
                           onClick={() => act(r.id, "unattend", "Returned to the queue")}
@@ -623,14 +626,19 @@ function QueueDetailModal({
                   {busy ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <CreditCard className="h-3.5 w-3.5" />} Payment made
                 </button>
               ))}
+              {/* Attended only unlocks after payment is recorded. */}
               {attended ? (
                 <button onClick={() => onAction("unattend", "Returned to the queue")} disabled={busy} className="inline-flex items-center gap-1.5 rounded-lg border border-white/10 px-3 py-2 text-xs text-slate-300 hover:bg-white/5 hover:text-white disabled:opacity-50">
                   <Undo2 className="h-3.5 w-3.5" /> Return to queue
                 </button>
-              ) : (
+              ) : r.is_paid ? (
                 <button onClick={() => onAction("attend", `${r.patient_name || "Client"} marked as attended`)} disabled={busy} className="inline-flex items-center gap-1.5 rounded-lg bg-emerald-600 px-3.5 py-2 text-xs font-semibold text-white hover:bg-emerald-700 disabled:opacity-50">
                   {busy ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Check className="h-3.5 w-3.5" />} Attended
                 </button>
+              ) : (
+                <span className="inline-flex items-center gap-1.5 rounded-lg border border-dashed border-white/10 px-3 py-2 text-xs text-slate-500">
+                  <CreditCard className="h-3.5 w-3.5" /> Record payment to attend
+                </span>
               )}
             </>
           )}

@@ -153,12 +153,11 @@ function FuzzyCombo({
   }
 
   const modal = (
-    <div className="fixed inset-0 z-[10050] flex flex-col justify-end sm:items-center sm:justify-center" role="dialog" aria-modal="true" aria-label={placeholder}>
+    <div className="fixed inset-0 z-[10050] flex flex-col sm:items-center sm:justify-center" role="dialog" aria-modal="true" aria-label={placeholder}>
       <div className="absolute inset-0 bg-black/40 backdrop-blur-[2px]" onClick={() => setOpen(false)} aria-hidden="true" />
-      <div className="relative flex max-h-[85vh] w-full flex-col rounded-t-2xl bg-white shadow-2xl sm:mx-4 sm:max-h-[600px] sm:w-[420px] sm:rounded-2xl">
-        <div className="sm:hidden flex justify-center pb-1 pt-3">
-          <div className="h-1 w-10 rounded-full bg-slate-200" />
-        </div>
+      {/* Mobile: top-anchored full-height panel so the search stays above the
+          on-screen keyboard and the list scrolls beneath it. Desktop: centred dialog. */}
+      <div className="relative flex h-full max-h-full w-full flex-col bg-white shadow-2xl sm:mx-4 sm:h-auto sm:max-h-[600px] sm:w-[420px] sm:rounded-2xl">
         <div className="flex items-center justify-between border-b border-slate-100 px-5 py-3.5">
           <h2 className="text-base font-semibold text-slate-800">{placeholder.replace(" *", "")}</h2>
           <button type="button" onClick={() => setOpen(false)} className="rounded-lg p-1.5 text-slate-500 hover:bg-slate-100 hover:text-slate-700" aria-label="Close">
