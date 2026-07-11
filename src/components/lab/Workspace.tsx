@@ -1412,9 +1412,9 @@ function ResultEntry({
   const [resultId, setResultId] = useState<string | null>(null);
   const [status, setStatus] = useState<string>("new");
   const [busy, setBusy] = useState(false);
-  // Result templates hidden for now — new results are delivered as a document or link.
-  // The "editor" branch is retained only to display previously-entered template results.
-  const [mode, setMode] = useState<"editor" | "document" | "link">("document");
+  // Delivery modes: enter structured results from a template ("editor"), or
+  // deliver an uploaded document / external link.
+  const [mode, setMode] = useState<"editor" | "document" | "link">("editor");
   const [docFile, setDocFile] = useState<File | null>(null);
   const [linkUrl, setLinkUrl] = useState("");
   const [sendOnAttach, setSendOnAttach] = useState(true);
@@ -1520,7 +1520,7 @@ function ResultEntry({
         {/* Result delivery mode */}
         {!existing && (
           <div className="mb-4 inline-flex w-full rounded-xl border border-white/10 bg-white/5 p-1">
-            {([["document", "Attach document"], ["link", "Send a link"]] as const).map(([m, label]) => (
+            {([["editor", "Use template"], ["document", "Attach document"], ["link", "Send a link"]] as const).map(([m, label]) => (
               <button key={m} onClick={() => setMode(m)} className={`flex-1 rounded-lg px-3 py-1.5 text-xs font-medium transition ${mode === m ? "bg-medical-600 text-white" : "text-slate-300 hover:text-white"}`}>{label}</button>
             ))}
           </div>
