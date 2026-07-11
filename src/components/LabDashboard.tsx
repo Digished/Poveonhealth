@@ -21,6 +21,7 @@ const Workspace = dynamic(() => import("@/components/lab/Workspace").then(m => (
 const ResultTemplatesManager = dynamic(() => import("@/components/lab/ResultTemplatesManager").then(m => ({ default: m.ResultTemplatesManager })), { ssr: false });
 const SopManager = dynamic(() => import("@/components/lab/SopManager").then(m => ({ default: m.SopManager })), { ssr: false });
 const MirthInterfacesPanel = dynamic(() => import("@/components/lab/MirthInterfacesPanel").then(m => ({ default: m.MirthInterfacesPanel })), { ssr: false });
+const ResultsHub = dynamic(() => import("@/components/lab/ResultsHub").then(m => ({ default: m.ResultsHub })), { ssr: false });
 const DepartmentsManager = dynamic(() => import("@/components/lab/DepartmentsManager").then(m => ({ default: m.DepartmentsManager })), { ssr: false });
 const LabQrCard = dynamic(() => import("@/components/lab/LabQrCard").then(m => ({ default: m.LabQrCard })), { ssr: false });
 const QueueView = dynamic(() => import("@/components/lab/QueueView").then(m => ({ default: m.QueueView })), { ssr: false });
@@ -112,8 +113,8 @@ export function LabDashboard({ lab, isOwner = false, roleName = "Lab Owner", can
   const router = useRouter();
   const searchParams = useSearchParams();
   const { isLight, toggle, themeClass } = useDashTheme("lab_dash_theme");
-  type MainView = "workspace" | "requests" | "journey" | "onboarding" | "queue" | "departments" | "templates" | "sops" | "network" | "referrals" | "professionals" | "clients" | "customers" | "analytics" | "activity" | "feedback" | "poveon" | "price-list" | "marketers" | "team" | "partners";
-  const VALID_TABS: MainView[] = ["onboarding", "queue", "workspace", "requests", "journey", "departments", "templates", "sops", "network", "referrals", "professionals", "clients", "customers", "analytics", "activity", "feedback", "poveon", "price-list", "marketers", "team", "partners"];
+  type MainView = "workspace" | "requests" | "journey" | "onboarding" | "queue" | "departments" | "results" | "templates" | "sops" | "network" | "referrals" | "professionals" | "clients" | "customers" | "analytics" | "activity" | "feedback" | "poveon" | "price-list" | "marketers" | "team" | "partners";
+  const VALID_TABS: MainView[] = ["onboarding", "queue", "workspace", "requests", "journey", "departments", "results", "templates", "sops", "network", "referrals", "professionals", "clients", "customers", "analytics", "activity", "feedback", "poveon", "price-list", "marketers", "team", "partners"];
   // Legacy tabs now fold into the unified Workspace.
   const LEGACY_TO_WORKSPACE = new Set(["requests", "journey"]);
   // Which permission gates each tab (used by the sidebar and the initial landing).
@@ -125,6 +126,7 @@ export function LabDashboard({ lab, isOwner = false, roleName = "Lab Owner", can
     queue: canMarkSeen || isOwner || canViewRequestsEff,
     customers: isOwner || canViewClients,
     departments: isOwner,
+    results: canSendResults || canMarkDone || isOwner || canManageTemplates,
     templates: canViewRequestsEff || isOwner || canManageTemplates,
     sops: canViewRequestsEff || isOwner || canManageTemplates,
     network: isOwner || canViewReferrals || canManageProfessionals,
@@ -734,6 +736,7 @@ export function LabDashboard({ lab, isOwner = false, roleName = "Lab Owner", can
               { key: "queue", label: "Queue", icon: <ListOrdered className="w-4 h-4" />, show: tabVisibleEff.queue },
               { key: "workspace", label: "Workstation", icon: <Workflow className="w-4 h-4" />, show: tabVisibleEff.workspace },
               { key: "departments", label: "Departments", icon: <Layers className="w-4 h-4" />, show: tabVisibleEff.departments },
+              { key: "results", label: "Results", icon: <FlaskConical className="w-4 h-4" />, show: tabVisibleEff.results },
               { key: "templates", label: "Result Templates", icon: <FileText className="w-4 h-4" />, show: tabVisibleEff.templates },
               { key: "sops", label: "SOPs", icon: <ClipboardList className="w-4 h-4" />, show: tabVisibleEff.sops },
               { key: "clients", label: "Clients", icon: <UserCircle className="w-4 h-4" />, show: tabVisibleEff.clients },
@@ -1096,6 +1099,11 @@ export function LabDashboard({ lab, isOwner = false, roleName = "Lab Owner", can
         {/* Departments — per-lab pipeline configuration */}
         {mainView === "departments" && isOwner && (
           <DepartmentsManager />
+        )}
+
+        {/* Results hub — pending worklist + create/edit/send results */}
+        {mainView === "results" && (isOwner || canManageTemplates || canSendResults || canMarkDone) && (
+          <ResultsHub canSendResults={canSendResults || isOwner} memberDepartment={memberDepartment} />
         )}
 
         {/* Result report templates view */}
