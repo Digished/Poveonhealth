@@ -249,6 +249,11 @@ export function LabDashboard({ lab, isOwner = false, roleName = "Lab Owner", can
   const [teamMembers, setTeamMembers] = useState<{ id: string; email: string; role: { id?: string; name: string }; last_sign_in_at: string | null }[]>([]);
   const [teamLoading, setTeamLoading] = useState(false);
   const [labRolesList, setLabRolesList] = useState<{ id: string; name: string }[]>([]);
+  // Add-member form + remove state (lab owner / can_manage_team)
+  const [newMemberEmail, setNewMemberEmail] = useState("");
+  const [newMemberRoleId, setNewMemberRoleId] = useState("");
+  const [addingMember, setAddingMember] = useState(false);
+  const [removingMemberId, setRemovingMemberId] = useState<string | null>(null);
 
   const assignMemberRole = useCallback(async (memberId: string, roleId: string) => {
     try {
@@ -264,6 +269,46 @@ export function LabDashboard({ lab, isOwner = false, roleName = "Lab Owner", can
       toast.error(e instanceof Error ? e.message : "Failed to update role");
     }
   }, [labRolesList]);
+
+  const addTeamMember = useCallback(async () => {
+    const email = newMemberEmail.trim();
+    if (!email) { toast.error("Enter the member's email"); return; }
+    if (!newMemberRoleId) { toast.error("Pick a role"); return; }
+    setAddingMember(true);
+    try {
+      const res = await fetch("/api/lab/team", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ email, role_id: newMemberRoleId }),
+      });
+      const data = await res.json();
+      if (!res.ok || !data.success) throw new Error(data.error || "Failed to add member");
+      setTeamMembers((prev) => [...prev, { id: data.member.id, email: data.member.email, role: { id: data.member.role.id, name: data.member.role.name }, last_sign_in_at: null }]);
+      setNewMemberEmail("");
+      setNewMemberRoleId("");
+      toast.success(`${email} added — login details emailed`);
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : "Failed to add member");
+    } finally {
+      setAddingMember(false);
+    }
+  }, [newMemberEmail, newMemberRoleId]);
+
+  const removeTeamMember = useCallback(async (memberId: string, email: string) => {
+    if (!window.confirm(`Remove ${email}? Their login will be deleted and they'll lose access immediately.`)) return;
+    setRemovingMemberId(memberId);
+    try {
+      const res = await fetch(`/api/lab/team/${memberId}`, { method: "DELETE" });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok || data.success === false) throw new Error(data.error || "Failed to remove member");
+      setTeamMembers((prev) => prev.filter((m) => m.id !== memberId));
+      toast.success("Member removed");
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : "Failed to remove member");
+    } finally {
+      setRemovingMemberId(null);
+    }
+  }, []);
 
   // Clients state
   type ClientRecord = {
@@ -2304,10 +2349,45 @@ export function LabDashboard({ lab, isOwner = false, roleName = "Lab Owner", can
                       <UserCircle className="w-4 h-4 text-slate-500" />
                       <p className="text-xs text-slate-500 font-semibold uppercase tracking-wider">Team Members</p>
                     </div>
+                    {/* Add a new staff member — lab owner builds their own team */}
+                    <div className="mb-3 rounded-xl border border-white/10 bg-white/5 p-3">
+                      <p className="mb-2 text-xs font-medium text-slate-300">Add a team member</p>
+                      {labRolesList.length === 0 ? (
+                        <p className="text-xs text-slate-500">Create a role below first, then you can add members to it.</p>
+                      ) : (
+                        <div className="flex flex-col gap-2 sm:flex-row">
+                          <input
+                            type="email"
+                            value={newMemberEmail}
+                            onChange={(e) => setNewMemberEmail(e.target.value)}
+                            placeholder="member@email.com"
+                            className="min-w-0 flex-1 rounded-lg border border-white/10 bg-white/5 px-3 py-2 text-sm text-white placeholder-slate-500 outline-none focus:border-medical-400"
+                          />
+                          <select
+                            value={newMemberRoleId}
+                            onChange={(e) => setNewMemberRoleId(e.target.value)}
+                            className="rounded-lg border border-white/10 bg-white/5 px-2 py-2 text-sm text-slate-200 outline-none cursor-pointer sm:max-w-[9rem]"
+                          >
+                            <option value="" className="bg-slate-800">Role…</option>
+                            {labRolesList.map((r) => (
+                              <option key={r.id} value={r.id} className="bg-slate-800">{r.name}</option>
+                            ))}
+                          </select>
+                          <button
+                            onClick={addTeamMember}
+                            disabled={addingMember || !newMemberEmail.trim() || !newMemberRoleId}
+                            className="inline-flex items-center justify-center gap-1.5 rounded-lg bg-medical-600 px-3 py-2 text-sm font-semibold text-white hover:bg-medical-700 disabled:opacity-50"
+                          >
+                            {addingMember ? <RefreshCw className="h-4 w-4 animate-spin" /> : <Plus className="h-4 w-4" />} Add
+                          </button>
+                        </div>
+                      )}
+                      <p className="mt-2 text-[11px] text-slate-500">They&apos;ll get an email with a temporary password to sign in at the lab login.</p>
+                    </div>
                     {teamLoading ? (
                       <p className="text-sm text-slate-500 text-center py-4">Loading…</p>
                     ) : teamMembers.length === 0 ? (
-                      <p className="text-sm text-slate-500 text-center py-4">No team members yet. Add them from the admin panel.</p>
+                      <p className="text-sm text-slate-500 text-center py-4">No team members yet — add your first above.</p>
                     ) : (
                       <div className="space-y-2">
                         {teamMembers.map((m) => (
@@ -2320,20 +2400,30 @@ export function LabDashboard({ lab, isOwner = false, roleName = "Lab Owner", can
                                   : <span>never logged in</span>}
                               </p>
                             </div>
-                            {(isOwner || canManageRoles) && labRolesList.length > 0 ? (
-                              <select
-                                value={m.role.id ?? ""}
-                                onChange={(e) => assignMemberRole(m.id, e.target.value)}
-                                className="shrink-0 bg-white/5 border border-white/10 rounded-lg px-2 py-1.5 text-xs text-slate-200 outline-none cursor-pointer max-w-[9rem]"
+                            <div className="flex shrink-0 items-center gap-2">
+                              {(isOwner || canManageRoles) && labRolesList.length > 0 ? (
+                                <select
+                                  value={m.role.id ?? ""}
+                                  onChange={(e) => assignMemberRole(m.id, e.target.value)}
+                                  className="bg-white/5 border border-white/10 rounded-lg px-2 py-1.5 text-xs text-slate-200 outline-none cursor-pointer max-w-[8rem]"
+                                >
+                                  {!m.role.id && <option value="" className="bg-slate-800">{m.role.name}</option>}
+                                  {labRolesList.map((r) => (
+                                    <option key={r.id} value={r.id} className="bg-slate-800">{r.name}</option>
+                                  ))}
+                                </select>
+                              ) : (
+                                <span className="text-xs text-slate-400">{m.role.name}</span>
+                              )}
+                              <button
+                                onClick={() => removeTeamMember(m.id, m.email)}
+                                disabled={removingMemberId === m.id}
+                                title="Remove member"
+                                className="rounded-lg p-1.5 text-slate-500 hover:bg-rose-500/10 hover:text-rose-400 disabled:opacity-50"
                               >
-                                {!m.role.id && <option value="" className="bg-slate-800">{m.role.name}</option>}
-                                {labRolesList.map((r) => (
-                                  <option key={r.id} value={r.id} className="bg-slate-800">{r.name}</option>
-                                ))}
-                              </select>
-                            ) : (
-                              <span className="shrink-0 text-xs text-slate-400">{m.role.name}</span>
-                            )}
+                                {removingMemberId === m.id ? <RefreshCw className="h-4 w-4 animate-spin" /> : <X className="h-4 w-4" />}
+                              </button>
+                            </div>
                           </div>
                         ))}
                       </div>

@@ -91,6 +91,13 @@ function isoToDdmmyyyy(iso: string | null): string {
 const inputCls = "w-full rounded-xl border border-slate-200 bg-white px-4 py-2.5 text-sm text-slate-800 focus:border-medical-400 focus:ring-2 focus:ring-medical-500/30 outline-none transition";
 const labelCls = "mb-1 block text-xs font-medium text-slate-600";
 
+/** Wraps a field group so it only appears (with a soft fade) once the prior
+ *  group is filled — the progressive-reveal pattern used on the doctor side. */
+function Reveal({ when, children }: { when: boolean; children: React.ReactNode }) {
+  if (!when) return null;
+  return <div className="animate-fade-in-up">{children}</div>;
+}
+
 /** One tidy label/value line on the review step. */
 function ReviewRow({ label, value }: { label: string; value: string }) {
   if (!value) return null;
@@ -281,7 +288,7 @@ export function LabOnboardForm({
   // referral (doctor + tests) stays locked.
   const codeMode = entryMode === "code" && !!revealed;
 
-  const isNigeria = country.trim().toLowerCase() === "nigeria";
+  // Country is fixed to Nigeria for now (no editing).
   const fullName = [firstName.trim(), middleName.trim(), surname.trim()].filter(Boolean).join(" ");
   const dobParsed = parseDobText(dob);
   const primaryPhone = phones[0] ?? "";
@@ -298,8 +305,18 @@ export function LabOnboardForm({
     phoneValid(primaryPhone) &&
     phoneIsWhatsapp !== "" &&
     EMAIL_RE.test(email.trim()) &&
-    country.trim().length > 0 &&
-    (!isNigeria || (stateOf.trim().length > 0 && lga.trim().length > 0));
+    stateOf.trim().length > 0 &&
+    lga.trim().length > 0;
+
+  // ── Progressive reveal — each field group appears once the prior one is
+  // filled, so the form never looks like a wall of inputs. ──────────────────
+  const rvSurname = codeMode || !!referralType;
+  const rvNames = rvSurname && surname.trim().length > 0;
+  const rvDobSex = rvNames && firstName.trim().length > 0;
+  const rvPhone = rvDobSex && !!dobParsed && sex.trim().length > 0;
+  const rvWhatsAppQ = rvPhone && phoneValid(primaryPhone);
+  const rvEmail = rvWhatsAppQ && phoneIsWhatsapp !== "";
+  const rvLocation = rvEmail && EMAIL_RE.test(email.trim());
 
   const referralValid =
     referralType === "doctor"
@@ -310,6 +327,25 @@ export function LabOnboardForm({
 
   // Tests are optional — the lab confirms them at the desk.
   const visitValid = !!paymentMode && (codeMode || referralValid);
+
+  // Overall progress (0–100) across the required fields of the whole form.
+  const progressPct = (() => {
+    const checks = [
+      codeMode || !!referralType,
+      surname.trim().length > 0,
+      firstName.trim().length > 0,
+      !!dobParsed,
+      sex.trim().length > 0,
+      phoneValid(primaryPhone),
+      phoneIsWhatsapp !== "",
+      EMAIL_RE.test(email.trim()),
+      stateOf.trim().length > 0 && lga.trim().length > 0,
+      codeMode || referralValid,
+      !!paymentMode,
+      consent,
+    ];
+    return Math.round((checks.filter(Boolean).length / checks.length) * 100);
+  })();
 
   function addTemplate(t: OnboardTemplate) {
     const existing = new Set(tests.map((x) => x.name.toLowerCase()));
@@ -546,22 +582,16 @@ export function LabOnboardForm({
           <p className="mt-1.5 text-[11px] text-slate-500">Your referring doctor and requested tests come from your referral and can&apos;t be changed here.</p>
         </div>
       )}
-      {/* Stepper */}
-      <div className="mb-5 flex items-center gap-2">
-        {STEP_META.map((s, i) => {
-          const Icon = s.icon;
-          const active = step === i;
-          const stepDone = step > i;
-          return (
-            <div key={s.label} className="flex flex-1 items-center gap-2 last:flex-none">
-              <div className={`flex h-8 w-8 items-center justify-center rounded-full ${stepDone ? "bg-emerald-500 text-white" : active ? "bg-medical-600 text-white" : "bg-slate-100 text-slate-400"}`}>
-                {stepDone ? <Check className="h-4 w-4" /> : <Icon className="h-4 w-4" />}
-              </div>
-              <span className={`hidden sm:block text-xs font-medium ${active ? "text-slate-900" : "text-slate-400"}`}>{s.label}</span>
-              {i < STEP_META.length - 1 && <div className={`h-0.5 flex-1 rounded ${stepDone ? "bg-emerald-400" : "bg-slate-100"}`} />}
-            </div>
-          );
-        })}
+      {/* Progress bar — shows how far along the whole form the client is, and
+          which short step they're on. Keeps the flow from feeling long. */}
+      <div className="mb-5">
+        <div className="mb-1.5 flex items-center justify-between">
+          <p className="text-xs font-semibold text-slate-700">{STEP_META[step].label}</p>
+          <p className="text-xs font-medium text-slate-400">Step {step + 1} of {STEP_META.length} · {progressPct}%</p>
+        </div>
+        <div className="h-1.5 w-full overflow-hidden rounded-full bg-slate-100">
+          <div className="h-full rounded-full bg-medical-500 transition-all duration-300" style={{ width: `${Math.max(progressPct, 4)}%` }} />
+        </div>
       </div>
 
       {step === 0 && (
@@ -586,54 +616,58 @@ export function LabOnboardForm({
             </div>
           </div>
           )}
-          <div>
+          <Reveal when={rvSurname}>
             <label className={labelCls}>Surname *</label>
-            <input className={inputCls} value={surname} onChange={(e) => setSurname(e.target.value)} placeholder="e.g. Okafor" autoComplete="family-name" />
-          </div>
-          <div className="grid grid-cols-2 gap-3">
-            <div>
-              <label className={labelCls}>First name *</label>
-              <input className={inputCls} value={firstName} onChange={(e) => setFirstName(e.target.value)} placeholder="e.g. Ada" autoComplete="given-name" />
+            <input className={inputCls} value={surname} onChange={(e) => setSurname(e.target.value)} placeholder="e.g. Okafor" autoComplete="family-name" autoFocus={!codeMode} />
+          </Reveal>
+          <Reveal when={rvNames}>
+            <div className="grid grid-cols-2 gap-3">
+              <div>
+                <label className={labelCls}>First name *</label>
+                <input className={inputCls} value={firstName} onChange={(e) => setFirstName(e.target.value)} placeholder="e.g. Ada" autoComplete="given-name" />
+              </div>
+              <div>
+                <label className={labelCls}>Other name {codeMode ? "" : "*"}</label>
+                <input className={inputCls} value={middleName} onChange={(e) => setMiddleName(e.target.value)} placeholder="e.g. Chidi" autoComplete="additional-name" />
+              </div>
             </div>
-            <div>
-              <label className={labelCls}>Other name {codeMode ? "" : "*"}</label>
-              <input className={inputCls} value={middleName} onChange={(e) => setMiddleName(e.target.value)} placeholder="e.g. Chidi" autoComplete="additional-name" />
+          </Reveal>
+          <Reveal when={rvDobSex}>
+            <div className="grid grid-cols-2 gap-3">
+              <div>
+                <label className={labelCls}>Date of birth *</label>
+                <input
+                  className={inputCls}
+                  value={dob}
+                  onChange={(e) => setDob(formatDobText(e.target.value))}
+                  placeholder="dd/mm/yyyy"
+                  inputMode="numeric"
+                  autoComplete="bday"
+                />
+                {dob.length === 10 && (
+                  dobParsed ? (
+                    <p className="mt-1 text-[11px] font-medium text-emerald-600">Age: {dobParsed.age} year{dobParsed.age === 1 ? "" : "s"}</p>
+                  ) : (
+                    <p className="mt-1 text-[11px] font-medium text-red-600">Enter a valid date (dd/mm/yyyy)</p>
+                  )
+                )}
+              </div>
+              <div>
+                <label className={labelCls}>Sex *</label>
+                <select className={inputCls} value={sex} onChange={(e) => setSex(e.target.value)}>
+                  <option value="">—</option>
+                  <option value="male">Male</option>
+                  <option value="female">Female</option>
+                  <option value="other">Other</option>
+                </select>
+              </div>
             </div>
-          </div>
-          <div className="grid grid-cols-2 gap-3">
-            <div>
-              <label className={labelCls}>Date of birth *</label>
-              <input
-                className={inputCls}
-                value={dob}
-                onChange={(e) => setDob(formatDobText(e.target.value))}
-                placeholder="dd/mm/yyyy"
-                inputMode="numeric"
-                autoComplete="bday"
-              />
-              {dob.length === 10 && (
-                dobParsed ? (
-                  <p className="mt-1 text-[11px] font-medium text-emerald-600">Age: {dobParsed.age} year{dobParsed.age === 1 ? "" : "s"}</p>
-                ) : (
-                  <p className="mt-1 text-[11px] font-medium text-red-600">Enter a valid date (dd/mm/yyyy)</p>
-                )
-              )}
-            </div>
-            <div>
-              <label className={labelCls}>Sex *</label>
-              <select className={inputCls} value={sex} onChange={(e) => setSex(e.target.value)}>
-                <option value="">—</option>
-                <option value="male">Male</option>
-                <option value="female">Female</option>
-                <option value="other">Other</option>
-              </select>
-            </div>
-          </div>
-          <div>
+          </Reveal>
+          <Reveal when={rvPhone}>
             <label className={labelCls}>Phone number *</label>
             <PhoneList values={phones} onChange={setPhones} addLabel="Add another phone number" />
-          </div>
-          <div>
+          </Reveal>
+          <Reveal when={rvWhatsAppQ}>
             <label className={labelCls}>
               Is <span className="font-semibold text-slate-800">{primaryPhone.trim() || "your phone number"}</span> on WhatsApp? *
             </label>
@@ -649,43 +683,39 @@ export function LabOnboardForm({
                 </button>
               ))}
             </div>
-          </div>
-          {phoneIsWhatsapp === "no" && (
-            <div>
-              <label className={labelCls}>WhatsApp number (optional)</label>
-              <PhoneList values={whatsapps} onChange={setWhatsapps} addLabel="Add another WhatsApp number" />
-            </div>
-          )}
-          <div>
+            {phoneIsWhatsapp === "no" && (
+              <div className="mt-3">
+                <label className={labelCls}>WhatsApp number (optional)</label>
+                <PhoneList values={whatsapps} onChange={setWhatsapps} addLabel="Add another WhatsApp number" />
+              </div>
+            )}
+          </Reveal>
+          <Reveal when={rvEmail}>
             <label className={labelCls}>Email *</label>
             <input className={inputCls} value={email} onChange={(e) => setEmail(e.target.value)} placeholder="you@email.com" inputMode="email" autoComplete="email" />
             {email.trim().length > 0 && !EMAIL_RE.test(email.trim()) && (
               <p className="mt-1 text-[11px] font-medium text-red-600">Enter a valid email address</p>
             )}
-          </div>
-          <div>
+          </Reveal>
+          <Reveal when={rvLocation}>
             <label className={`${labelCls} flex items-center gap-1.5`}><MapPin className="h-3.5 w-3.5 text-slate-400" /> Where are you coming from? *</label>
-            <div className="space-y-2">
-              <input className={inputCls} value={country} onChange={(e) => { setCountry(e.target.value); if (e.target.value.trim().toLowerCase() !== "nigeria") { setStateOf(""); setLga(""); } }} placeholder="Country (e.g. Nigeria)" />
-              {isNigeria && (
-                <div className="grid grid-cols-2 gap-3">
-                  <FuzzyCombo
-                    value={stateOf}
-                    onChange={(v) => { setStateOf(v); setLga(""); }}
-                    options={STATE_NAMES}
-                    placeholder="State *"
-                  />
-                  <FuzzyCombo
-                    value={lga}
-                    onChange={setLga}
-                    options={lgasForState(stateOf)}
-                    placeholder={stateOf ? "Local government *" : "Pick a state first"}
-                    disabled={!stateOf}
-                  />
-                </div>
-              )}
+            <div className="grid grid-cols-2 gap-3">
+              <FuzzyCombo
+                value={stateOf}
+                onChange={(v) => { setStateOf(v); setLga(""); }}
+                options={STATE_NAMES}
+                placeholder="State *"
+              />
+              <FuzzyCombo
+                value={lga}
+                onChange={setLga}
+                options={lgasForState(stateOf)}
+                placeholder={stateOf ? "Local government *" : "Pick a state first"}
+                disabled={!stateOf}
+              />
             </div>
-          </div>
+            <p className="mt-1 text-[11px] text-slate-400">Nigeria</p>
+          </Reveal>
           <button
             onClick={() => setStep(1)}
             disabled={!detailsValid}
@@ -770,7 +800,7 @@ export function LabOnboardForm({
             )}
             <textarea className={inputCls} rows={3} value={condition} onChange={(e) => setCondition(e.target.value)} placeholder="e.g. Fever and headache for 3 days" />
           </div>
-          <div>
+          <Reveal when={codeMode || referralValid}>
             <label className={labelCls}>How will you pay? *</label>
             <div className="grid grid-cols-2 gap-1.5">
               {PAYMENT_OPTIONS.map((o) => (
@@ -784,7 +814,7 @@ export function LabOnboardForm({
                 </button>
               ))}
             </div>
-          </div>
+          </Reveal>
           <div className="flex gap-2">
             <button onClick={() => setStep(0)} className="rounded-xl border border-slate-200 px-4 py-2.5 text-sm font-medium text-slate-600 hover:bg-slate-50">Back</button>
             <button onClick={() => setStep(2)} disabled={!visitValid} className="flex-1 rounded-xl bg-medical-600 py-2.5 text-sm font-semibold text-white hover:bg-medical-700 disabled:opacity-50">Continue</button>

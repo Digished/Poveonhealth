@@ -248,9 +248,14 @@ export function QueueView({
 
   const attendedShown = useMemo(() => attended.filter((r) => inDay(r) && matches(r)), [attended, matches, inDay]);
 
+  // Tab count badges reflect the selected day filter (so "Today" shows today's
+  // totals), independent of the within-tab payment filter and search.
+  const queueDayCount = useMemo(() => [...waiting, ...paid].filter(inDay).length, [waiting, paid, inDay]);
+  const attendedDayCount = useMemo(() => attended.filter(inDay).length, [attended, inDay]);
+
   const TABS: { key: QueueTab; label: string; count: number | null; icon: React.ReactNode; show: boolean }[] = [
-    { key: "queue", label: "In queue", count: waiting.length + paid.length, icon: <Hourglass className="h-3.5 w-3.5" />, show: true },
-    { key: "attended", label: "Attended", count: attended.length, icon: <UserCheck className="h-3.5 w-3.5" />, show: true },
+    { key: "queue", label: "In queue", count: queueDayCount, icon: <Hourglass className="h-3.5 w-3.5" />, show: true },
+    { key: "attended", label: "Attended", count: attendedDayCount, icon: <UserCheck className="h-3.5 w-3.5" />, show: true },
     { key: "journey", label: "Journey", count: null, icon: <Workflow className="h-3.5 w-3.5" />, show: !lite },
   ];
 
@@ -350,7 +355,7 @@ export function QueueView({
             <div className="rounded-2xl border border-white/10 bg-white/5 py-14 text-center">
               <QrCode className="mx-auto mb-3 h-8 w-8 text-slate-500" />
               <p className="text-sm font-medium text-slate-300">
-                {query || payF ? "No matches" : tab === "queue" ? "The queue is empty" : "No one attended in the last 24h"}
+                {query || payF ? "No matches" : tab === "queue" ? "The queue is empty" : dayF === "today" ? "No one attended today yet" : "No one attended in this period"}
               </p>
               {!query && tab === "queue" && <p className="mt-1 text-xs text-slate-500">Clients who register via your QR portal or the walk-in form appear here instantly.</p>}
             </div>
