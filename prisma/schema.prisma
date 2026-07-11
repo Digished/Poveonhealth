@@ -33,6 +33,7 @@ model Lab {
   mirth_enabled      Boolean  @default(false)
   mirth_url          String? // Mirth HTTP Listener URL for outbound result messages
   mirth_auth_token   String? // optional bearer token sent as Authorization header
+  mirth_inbound_secret String? // shared secret Mirth presents when POSTing inbound results
   created_at         DateTime @default(now())
 
   lab_users       LabUser[]

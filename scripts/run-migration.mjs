@@ -47,7 +47,8 @@ const migrations = [
     sql: `ALTER TABLE labs
       ADD COLUMN IF NOT EXISTS mirth_enabled BOOLEAN NOT NULL DEFAULT false,
       ADD COLUMN IF NOT EXISTS mirth_url TEXT,
-      ADD COLUMN IF NOT EXISTS mirth_auth_token TEXT`,
+      ADD COLUMN IF NOT EXISTS mirth_auth_token TEXT,
+      ADD COLUMN IF NOT EXISTS mirth_inbound_secret TEXT`,
     continueOnError: true,
   },
   {

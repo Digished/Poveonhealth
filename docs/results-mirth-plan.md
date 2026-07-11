@@ -25,7 +25,20 @@ Genuinely new work: **receipts** and **Mirth/HL7/ASTM**.
 - ✅ Phase 0 (spreadsheet-grid editor + LOINC/test-code/specimen coding) — shipped.
 - ✅ Phase 2 (outbound HL7 ORU to Mirth) — shipped: per-lab Mirth config, HL7
   ORU builder, fire-and-forget push on report, HL7 message log + resend, UI panel.
-- ⏳ Phase 3 (inbound ASTM/HL7 from analyzers via Mirth) — pending.
+- ✅ Phase 3 (inbound ASTM/HL7 from analyzers via Mirth) — shipped: authenticated
+  per-lab webhook, HL7 parser, match by request code (PID-3) → DRAFT result,
+  inbound audit log, rotatable inbound secret + URL in the panel. **Needs
+  validation against a real analyzer/Mirth channel.**
+
+## Open items / decisions for the user
+
+- **Inbound matching key.** Currently matches on the Poveon request code in
+  PID-3 (round-trips with our outbound format). Real analyzers may key on an
+  accession/order number instead — confirm what your Mirth channel will emit.
+- **Receipts vs is_paid.** Receipts are decoupled from `Request.is_paid` (issue
+  independently). Link them if you want issuing to mark paid.
+- **ASTM.** Handled by Mirth normalising ASTM→HL7 in-channel; Poveon parses HL7
+  only. If you need Poveon to parse raw ASTM directly, that's extra work.
 
 ## Working assumptions (defaults; override any)
 
