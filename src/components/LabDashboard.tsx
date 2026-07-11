@@ -16,7 +16,6 @@ import dynamic from "next/dynamic";
 const LabPriceListManager = dynamic(() => import("@/components/LabPriceListManager"), { ssr: false });
 const JourneyView = dynamic(() => import("@/components/lab/JourneyView").then(m => ({ default: m.JourneyView })), { ssr: false });
 const ReferralsView = dynamic(() => import("@/components/lab/ReferralsView").then(m => ({ default: m.ReferralsView })), { ssr: false });
-const RolesManager = dynamic(() => import("@/components/lab/RolesManager").then(m => ({ default: m.RolesManager })), { ssr: false });
 const TemplatesManager = dynamic(() => import("@/components/lab/TemplatesManager").then(m => ({ default: m.TemplatesManager })), { ssr: false });
 const Workspace = dynamic(() => import("@/components/lab/Workspace").then(m => ({ default: m.Workspace })), { ssr: false });
 const ResultTemplatesManager = dynamic(() => import("@/components/lab/ResultTemplatesManager").then(m => ({ default: m.ResultTemplatesManager })), { ssr: false });
@@ -27,6 +26,8 @@ const QueueView = dynamic(() => import("@/components/lab/QueueView").then(m => (
 const CustomersView = dynamic(() => import("@/components/lab/CustomersView").then(m => ({ default: m.CustomersView })), { ssr: false });
 const AnalyticsView = dynamic(() => import("@/components/lab/AnalyticsView").then(m => ({ default: m.AnalyticsView })), { ssr: false });
 const QueueNotifyFab = dynamic(() => import("@/components/lab/QueueNotifyFab").then(m => ({ default: m.QueueNotifyFab })), { ssr: false });
+const TeamView = dynamic(() => import("@/components/lab/TeamView").then(m => ({ default: m.TeamView })), { ssr: false });
+const PartnersView = dynamic(() => import("@/components/lab/PartnersView").then(m => ({ default: m.PartnersView })), { ssr: false });
 import { useDashTheme } from "@/hooks/useDashTheme";
 import { TourProvider } from "@/components/lab/tour/TourProvider";
 import { GuideToggle } from "@/components/lab/tour/GuideToggle";
@@ -110,8 +111,8 @@ export function LabDashboard({ lab, isOwner = false, roleName = "Lab Owner", can
   const router = useRouter();
   const searchParams = useSearchParams();
   const { isLight, toggle, themeClass } = useDashTheme("lab_dash_theme");
-  type MainView = "workspace" | "requests" | "journey" | "onboarding" | "queue" | "departments" | "templates" | "sops" | "network" | "referrals" | "professionals" | "clients" | "customers" | "analytics" | "activity" | "feedback" | "poveon" | "price-list" | "marketers";
-  const VALID_TABS: MainView[] = ["onboarding", "queue", "workspace", "requests", "journey", "departments", "templates", "sops", "network", "referrals", "professionals", "clients", "customers", "analytics", "activity", "feedback", "poveon", "price-list", "marketers"];
+  type MainView = "workspace" | "requests" | "journey" | "onboarding" | "queue" | "departments" | "templates" | "sops" | "network" | "referrals" | "professionals" | "clients" | "customers" | "analytics" | "activity" | "feedback" | "poveon" | "price-list" | "marketers" | "team" | "partners";
+  const VALID_TABS: MainView[] = ["onboarding", "queue", "workspace", "requests", "journey", "departments", "templates", "sops", "network", "referrals", "professionals", "clients", "customers", "analytics", "activity", "feedback", "poveon", "price-list", "marketers", "team", "partners"];
   // Legacy tabs now fold into the unified Workspace.
   const LEGACY_TO_WORKSPACE = new Set(["requests", "journey"]);
   // Which permission gates each tab (used by the sidebar and the initial landing).
@@ -135,6 +136,8 @@ export function LabDashboard({ lab, isOwner = false, roleName = "Lab Owner", can
     poveon: isOwner || canViewWallet,
     "price-list": isOwner || canViewWallet,
     marketers: isOwner || canViewMarketers,
+    team: isOwner || canManageRoles || canViewMarketers,
+    partners: isOwner || canManageProfessionals || canViewRequestsEff,
   };
   // ── Lite / LIMS (beta) mode ───────────────────────────────────────────────
   // Lite (default) trims the dashboard to Onboarding, Referrals, Marketers and
@@ -152,8 +155,8 @@ export function LabDashboard({ lab, isOwner = false, roleName = "Lab Owner", can
     setLabMode(m);
     try { localStorage.setItem(`lab_dash_mode_${lab.id}`, m); } catch { /* ignore */ }
   }, [lab.id]);
-  const LITE_SIDEBAR = new Set<MainView>(["onboarding", "queue", "customers", "analytics", "feedback", "network", "marketers", "price-list"]);
-  const LITE_ALLOWED = new Set<MainView>(["onboarding", "queue", "customers", "analytics", "feedback", "network", "referrals", "professionals", "marketers", "price-list"]);
+  const LITE_SIDEBAR = new Set<MainView>(["onboarding", "queue", "customers", "analytics", "feedback", "network", "partners", "team", "price-list"]);
+  const LITE_ALLOWED = new Set<MainView>(["onboarding", "queue", "customers", "analytics", "feedback", "network", "referrals", "professionals", "partners", "team", "price-list"]);
   const tabVisibleEff: Record<MainView, boolean> = labMode === "lite"
     ? (Object.fromEntries((Object.keys(tabVisible) as MainView[]).map((k) => [k, tabVisible[k] && LITE_SIDEBAR.has(k)])) as Record<MainView, boolean>)
     : tabVisible;
@@ -162,7 +165,10 @@ export function LabDashboard({ lab, isOwner = false, roleName = "Lab Owner", can
   const firstVisibleLiteTab = (VALID_TABS.find((t) => t !== "requests" && t !== "journey" && !STANDALONE_NETWORK.has(t) && tabVisibleEff[t]) ?? "onboarding") as MainView;
   const rawTabParam = searchParams.get("tab") as MainView | null;
   // Old deep links (requests/journey/onboarding) resolve to the Workspace.
-  const tabParam: MainView | null = rawTabParam && LEGACY_TO_WORKSPACE.has(rawTabParam) ? "workspace" : rawTabParam;
+  const tabParam: MainView | null =
+    rawTabParam && LEGACY_TO_WORKSPACE.has(rawTabParam) ? "workspace"
+    : rawTabParam === "marketers" ? "team"
+    : rawTabParam;
   const initialTab: MainView =
     tabParam && VALID_TABS.includes(tabParam) && tabVisible[tabParam]
       ? tabParam
@@ -219,20 +225,6 @@ export function LabDashboard({ lab, isOwner = false, roleName = "Lab Owner", can
   const [agreementBannerDismissed, setAgreementBannerDismissed] = useState(false);
   const [mobileHeaderOpen, setMobileHeaderOpen] = useState(false);
 
-  // Marketers tab state
-  const [marketers, setMarketers] = useState<any[]>([]);
-  const [marketerLoading, setMarketerLoading] = useState(false);
-  const [showAddMarketerModal, setShowAddMarketerModal] = useState(false);
-  const [newMarketerEmail, setNewMarketerEmail] = useState("");
-  const [newMarketerName, setNewMarketerName] = useState("");
-  const [addingMarketer, setAddingMarketer] = useState(false);
-  const [expandedMarketer, setExpandedMarketer] = useState<string | null>(null);
-  const [marketerDoctors, setMarketerDoctors] = useState<Record<string, any[]>>({});
-  const [loadingDoctors, setLoadingDoctors] = useState<Record<string, boolean>>({});
-  const [removeMarketerConfirm, setRemoveMarketerConfirm] = useState<{ marketerId: string; marketerName: string } | null>(null);
-  const [removeMarketerNameInput, setRemoveMarketerNameInput] = useState("");
-  const [unassignDoctorConfirm, setUnassignDoctorConfirm] = useState<{ marketerId: string; doctorEmail: string; doctorName: string } | null>(null);
-  const [unassigningDoctor, setUnassigningDoctor] = useState(false);
 
   const [activeTab, setActiveTab] = useState<RequestStatus>("seen");
   const [requests, setRequests] = useState<LabRequest[]>([]);
@@ -246,69 +238,6 @@ export function LabDashboard({ lab, isOwner = false, roleName = "Lab Owner", can
   const [mobileDetailOpen, setMobileDetailOpen] = useState(false);
   const [profileOpen, setProfileOpen] = useState(false);
   const [changePasswordOpen, setChangePasswordOpen] = useState(false);
-  const [teamMembers, setTeamMembers] = useState<{ id: string; email: string; role: { id?: string; name: string }; last_sign_in_at: string | null }[]>([]);
-  const [teamLoading, setTeamLoading] = useState(false);
-  const [labRolesList, setLabRolesList] = useState<{ id: string; name: string }[]>([]);
-  // Add-member form + remove state (lab owner / can_manage_team)
-  const [newMemberEmail, setNewMemberEmail] = useState("");
-  const [newMemberRoleId, setNewMemberRoleId] = useState("");
-  const [addingMember, setAddingMember] = useState(false);
-  const [removingMemberId, setRemovingMemberId] = useState<string | null>(null);
-
-  const assignMemberRole = useCallback(async (memberId: string, roleId: string) => {
-    try {
-      const res = await fetch(`/api/lab/team/${memberId}`, {
-        method: "PATCH",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ role_id: roleId }),
-      });
-      if (!res.ok) throw new Error((await res.json()).error || "Failed");
-      setTeamMembers((prev) => prev.map((m) => (m.id === memberId ? { ...m, role: { id: roleId, name: labRolesList.find((r) => r.id === roleId)?.name ?? m.role.name } } : m)));
-      toast.success("Role updated");
-    } catch (e) {
-      toast.error(e instanceof Error ? e.message : "Failed to update role");
-    }
-  }, [labRolesList]);
-
-  const addTeamMember = useCallback(async () => {
-    const email = newMemberEmail.trim();
-    if (!email) { toast.error("Enter the member's email"); return; }
-    if (!newMemberRoleId) { toast.error("Pick a role"); return; }
-    setAddingMember(true);
-    try {
-      const res = await fetch("/api/lab/team", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ email, role_id: newMemberRoleId }),
-      });
-      const data = await res.json();
-      if (!res.ok || !data.success) throw new Error(data.error || "Failed to add member");
-      setTeamMembers((prev) => [...prev, { id: data.member.id, email: data.member.email, role: { id: data.member.role.id, name: data.member.role.name }, last_sign_in_at: null }]);
-      setNewMemberEmail("");
-      setNewMemberRoleId("");
-      toast.success(`${email} added — login details emailed`);
-    } catch (e) {
-      toast.error(e instanceof Error ? e.message : "Failed to add member");
-    } finally {
-      setAddingMember(false);
-    }
-  }, [newMemberEmail, newMemberRoleId]);
-
-  const removeTeamMember = useCallback(async (memberId: string, email: string) => {
-    if (!window.confirm(`Remove ${email}? Their login will be deleted and they'll lose access immediately.`)) return;
-    setRemovingMemberId(memberId);
-    try {
-      const res = await fetch(`/api/lab/team/${memberId}`, { method: "DELETE" });
-      const data = await res.json().catch(() => ({}));
-      if (!res.ok || data.success === false) throw new Error(data.error || "Failed to remove member");
-      setTeamMembers((prev) => prev.filter((m) => m.id !== memberId));
-      toast.success("Member removed");
-    } catch (e) {
-      toast.error(e instanceof Error ? e.message : "Failed to remove member");
-    } finally {
-      setRemovingMemberId(null);
-    }
-  }, []);
 
   // Clients state
   type ClientRecord = {
@@ -441,47 +370,11 @@ export function LabDashboard({ lab, isOwner = false, roleName = "Lab Owner", can
     }
   }, []);
 
-  const fetchMarketers = useCallback(async () => {
-    setMarketerLoading(true);
-    try {
-      const res = await fetch(`/api/lab/${lab.id}/marketers`);
-      const data = await res.json();
-      if (!data.success) throw new Error(data.error);
-      setMarketers(data.marketers ?? []);
-    } catch (error) {
-      console.error("[fetchMarketers]", error);
-      toast.error("Failed to load marketers");
-    } finally {
-      setMarketerLoading(false);
-    }
-  }, [lab.id]);
-
-  const fetchMarketerDoctors = useCallback(async (marketerId: string) => {
-    setLoadingDoctors((prev) => ({ ...prev, [marketerId]: true }));
-    try {
-      const res = await fetch(`/api/lab/${lab.id}/marketers/${marketerId}`);
-      const data = await res.json();
-      if (!data.success) throw new Error(data.error);
-      setMarketerDoctors((prev) => ({ ...prev, [marketerId]: data.doctors ?? [] }));
-    } catch (error) {
-      console.error("[fetchMarketerDoctors]", error);
-      toast.error("Failed to load doctors");
-    } finally {
-      setLoadingDoctors((prev) => ({ ...prev, [marketerId]: false }));
-    }
-  }, [lab.id]);
 
   useEffect(() => {
     if (mainView === "clients" && (isOwner || canViewClients)) fetchClients();
-    if ((mainView === "marketers" || mainView === "analytics") && (isOwner || canViewMarketers)) fetchMarketers();
-  }, [mainView, fetchClients, fetchMarketers, isOwner, canViewClients, canViewMarketers]);
+  }, [mainView, fetchClients, isOwner, canViewClients]);
 
-  // Load the lab's roles for the team member role-assignment dropdown.
-  useEffect(() => {
-    if (profileOpen && (isOwner || canManageRoles) && labRolesList.length === 0) {
-      fetch("/api/lab/roles").then((r) => (r.ok ? r.json() : null)).then((d) => { if (d?.roles) setLabRolesList(d.roles.map((x: { id: string; name: string }) => ({ id: x.id, name: x.name }))); }).catch(() => {});
-    }
-  }, [profileOpen, isOwner, canManageRoles, labRolesList.length]);
 
   const [requestSourceFilter, setRequestSourceFilter] = useState("");
   const [clientSourceFilter, setClientSourceFilter] = useState("");
@@ -649,82 +542,6 @@ export function LabDashboard({ lab, isOwner = false, roleName = "Lab Owner", can
     router.refresh();
   }
 
-  async function handleAddMarketer() {
-    if (!newMarketerEmail.trim()) { toast.error("Email is required"); return; }
-    setAddingMarketer(true);
-    try {
-      const res = await fetch(`/api/lab/${lab.id}/marketers`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ email: newMarketerEmail.trim(), name: newMarketerName.trim() || undefined }),
-      });
-      const data = await res.json();
-      if (!data.success) { toast.error(data.error ?? "Failed to add marketer"); return; }
-      toast.success(`Marketer ${data.marketer_email} added`);
-      setShowAddMarketerModal(false);
-      setNewMarketerEmail("");
-      setNewMarketerName("");
-      await fetchMarketers();
-    } catch (error) {
-      console.error("[handleAddMarketer]", error);
-      toast.error("Network error");
-    } finally {
-      setAddingMarketer(false);
-    }
-  }
-
-  function openRemoveMarketerModal(marketerId: string, marketerName: string) {
-    setRemoveMarketerConfirm({ marketerId, marketerName });
-    setRemoveMarketerNameInput("");
-  }
-
-  async function handleConfirmRemoveMarketer() {
-    if (!removeMarketerConfirm) return;
-    if (removeMarketerNameInput !== removeMarketerConfirm.marketerName) {
-      toast.error("Please type the marketer's full name correctly");
-      return;
-    }
-    try {
-      const res = await fetch(`/api/lab/${lab.id}/marketers/${removeMarketerConfirm.marketerId}`, { method: "DELETE" });
-      const data = await res.json();
-      if (!data.success) { toast.error(data.error ?? "Failed to remove"); return; }
-      toast.success("Marketer removed");
-      setRemoveMarketerConfirm(null);
-      setRemoveMarketerNameInput("");
-      await fetchMarketers();
-    } catch (error) {
-      console.error("[handleRemoveMarketer]", error);
-      toast.error("Network error");
-    }
-  }
-
-  async function handleUnassignDoctor(marketerId: string, doctorEmail: string, doctorName: string) {
-    setUnassignDoctorConfirm({ marketerId, doctorEmail, doctorName });
-  }
-
-  async function handleConfirmUnassignDoctor() {
-    if (!unassignDoctorConfirm) return;
-    setUnassigningDoctor(true);
-    try {
-      const res = await fetch(
-        `/api/lab/${lab.id}/marketers/${unassignDoctorConfirm.marketerId}/doctors?email=${encodeURIComponent(unassignDoctorConfirm.doctorEmail)}`,
-        { method: "DELETE" }
-      );
-      const data = await res.json();
-      if (!data.success) { toast.error(data.error ?? "Failed to unassign"); return; }
-      toast.success("Doctor unassigned");
-      setUnassignDoctorConfirm(null);
-      await fetchMarketers();
-      if (expandedMarketer === unassignDoctorConfirm.marketerId) {
-        await fetchMarketerDoctors(unassignDoctorConfirm.marketerId);
-      }
-    } catch (error) {
-      console.error("[handleUnassignDoctor]", error);
-      toast.error("Network error");
-    } finally {
-      setUnassigningDoctor(false);
-    }
-  }
 
   function openEditPatient(req: LabRequest) {
     setEditPatientRequest(req);
@@ -835,19 +652,7 @@ export function LabDashboard({ lab, isOwner = false, roleName = "Lab Owner", can
                 {isLight ? <Moon className="w-4 h-4" /> : <Sun className="w-4 h-4" />}
               </button>
               <button
-                onClick={async () => {
-                  setProfileOpen(true);
-                  if (isOwner && teamMembers.length === 0) {
-                    setTeamLoading(true);
-                    try {
-                      const res = await fetch("/api/lab/team");
-                      const data = await res.json();
-                      if (data.success) setTeamMembers(data.members ?? []);
-                    } finally {
-                      setTeamLoading(false);
-                    }
-                  }
-                }}
+                onClick={() => setProfileOpen(true)}
                 className="p-2 rounded-lg hover:bg-white/10 transition-colors text-slate-400 hover:text-white"
                 title="Lab Profile"
               >
@@ -890,18 +695,7 @@ export function LabDashboard({ lab, isOwner = false, roleName = "Lab Owner", can
                     </button>
                     {labMode !== "lite" && <GuideToggle variant="row" />}
                     <button
-                      onClick={async () => {
-                        setMobileHeaderOpen(false);
-                        setProfileOpen(true);
-                        if (isOwner && teamMembers.length === 0) {
-                          setTeamLoading(true);
-                          try {
-                            const res = await fetch("/api/lab/team");
-                            const data = await res.json();
-                            if (data.success) setTeamMembers(data.members ?? []);
-                          } finally { setTeamLoading(false); }
-                        }
-                      }}
+                      onClick={() => { setMobileHeaderOpen(false); setProfileOpen(true); }}
                       className="flex items-center gap-3 w-full px-4 py-3 text-sm text-slate-300 hover:bg-white/8 transition-colors border-b border-white/5"
                     >
                       <UserCircle className="w-4 h-4 text-slate-500" />
@@ -947,7 +741,8 @@ export function LabDashboard({ lab, isOwner = false, roleName = "Lab Owner", can
             ] },
             { label: "Network", items: [
               { key: "network", label: "Referrals", icon: <Stethoscope className="w-4 h-4" />, show: tabVisibleEff.network },
-              { key: "marketers", label: "Marketers", icon: <Users className="w-4 h-4" />, show: tabVisibleEff.marketers },
+              { key: "partners", label: "Partners", icon: <Link2 className="w-4 h-4" />, show: tabVisibleEff.partners },
+              { key: "team", label: "Team", icon: <Users className="w-4 h-4" />, show: tabVisibleEff.team },
             ] },
             { label: "Insights", items: [
               { key: "analytics", label: "Analytics", icon: <BarChart3 className="w-4 h-4" />, show: tabVisibleEff.analytics },
@@ -1283,6 +1078,21 @@ export function LabDashboard({ lab, isOwner = false, roleName = "Lab Owner", can
           <CustomersView labName={lab.name} />
         )}
 
+        {/* Team — staff, marketers and roles, in the nav (Lite + LIMS) */}
+        {mainView === "team" && (isOwner || canManageRoles || canViewMarketers) && (
+          <TeamView
+            labId={lab.id}
+            isOwner={isOwner}
+            canManageRoles={canManageRoles}
+            canViewMarketers={isOwner || canViewMarketers}
+          />
+        )}
+
+        {/* Partners — HMOs / hospitals / companies the lab works with */}
+        {mainView === "partners" && (isOwner || canManageProfessionals || canViewRequestsEff) && (
+          <PartnersView canManage={isOwner || canManageProfessionals} />
+        )}
+
         {/* Departments — per-lab pipeline configuration */}
         {mainView === "departments" && isOwner && (
           <DepartmentsManager />
@@ -1345,206 +1155,6 @@ export function LabDashboard({ lab, isOwner = false, roleName = "Lab Owner", can
               canSendResults={canSendResultsEff}
               memberDepartment={memberDepartment}
             />
-          </div>
-        )}
-
-        {/* Marketers tab */}
-        {mainView === "marketers" && (isOwner || canViewMarketers) && (
-          <div className="space-y-5">
-            <div className="flex items-center justify-between">
-              <div>
-                <h2 className="text-lg font-semibold text-white">Lab Marketers</h2>
-                <p className="text-sm text-slate-400 mt-1">Manage marketers and track their doctors</p>
-              </div>
-              <button
-                onClick={() => setShowAddMarketerModal(true)}
-                className="flex items-center gap-1.5 px-4 py-2 rounded-lg bg-emerald-600/20 border border-emerald-600/30 text-emerald-400 text-sm font-semibold hover:bg-emerald-600/30 transition-colors"
-              >
-                <Plus className="w-4 h-4" />
-                Add Marketer
-              </button>
-            </div>
-
-            {showAddMarketerModal && (
-              <div className="bg-emerald-500/10 border border-emerald-500/20 rounded-2xl p-5 space-y-3">
-                <p className="text-sm font-semibold text-emerald-300">Add New Marketer</p>
-                <input
-                  type="email"
-                  placeholder="Email address"
-                  value={newMarketerEmail}
-                  onChange={(e) => setNewMarketerEmail(e.target.value)}
-                  className="w-full bg-white/5 border border-white/10 rounded-xl px-4 py-2.5 text-sm text-white placeholder-slate-500 focus:outline-none focus:ring-2 focus:ring-emerald-500/50"
-                />
-                <input
-                  type="text"
-                  placeholder="Name (optional)"
-                  value={newMarketerName}
-                  onChange={(e) => setNewMarketerName(e.target.value)}
-                  className="w-full bg-white/5 border border-white/10 rounded-xl px-4 py-2.5 text-sm text-white placeholder-slate-500 focus:outline-none focus:ring-2 focus:ring-emerald-500/50"
-                />
-                <div className="flex gap-2">
-                  <button
-                    onClick={handleAddMarketer}
-                    disabled={addingMarketer || !newMarketerEmail.trim()}
-                    className="flex items-center gap-1.5 px-4 py-2 rounded-lg bg-emerald-600 text-white text-sm font-semibold hover:bg-emerald-500 disabled:opacity-50 transition-colors"
-                  >
-                    {addingMarketer ? <RefreshCw className="w-4 h-4 animate-spin" /> : <Check className="w-4 h-4" />}
-                    {addingMarketer ? "Adding..." : "Add"}
-                  </button>
-                  <button
-                    onClick={() => { setShowAddMarketerModal(false); setNewMarketerEmail(""); setNewMarketerName(""); }}
-                    className="px-4 py-2 rounded-lg bg-white/8 text-slate-400 text-sm font-semibold hover:text-white transition-colors"
-                  >
-                    Cancel
-                  </button>
-                </div>
-              </div>
-            )}
-
-            {/* Remove Marketer Confirmation Modal */}
-            {removeMarketerConfirm && (
-              <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
-                <div className="bg-slate-900 border border-slate-700 rounded-2xl max-w-md w-full p-6 space-y-4">
-                  <div>
-                    <h3 className="text-lg font-bold text-white mb-2">Remove Marketer?</h3>
-                    <p className="text-sm text-slate-400">
-                      This will remove <span className="font-semibold text-white">{removeMarketerConfirm.marketerName}</span> from your lab. All doctor assignments will remain intact.
-                    </p>
-                  </div>
-                  <div className="bg-rose-500/10 border border-rose-500/20 rounded-lg p-3">
-                    <p className="text-xs text-slate-400 mb-2">Type the marketer's full name to confirm:</p>
-                    <input
-                      type="text"
-                      placeholder={removeMarketerConfirm.marketerName}
-                      value={removeMarketerNameInput}
-                      onChange={(e) => setRemoveMarketerNameInput(e.target.value)}
-                      className="w-full bg-white/5 border border-rose-500/30 rounded-lg px-3 py-2 text-sm text-white placeholder-slate-600 focus:outline-none focus:ring-2 focus:ring-rose-500/50"
-                    />
-                  </div>
-                  <div className="flex gap-2">
-                    <button
-                      onClick={handleConfirmRemoveMarketer}
-                      disabled={removeMarketerNameInput !== removeMarketerConfirm.marketerName}
-                      className="flex-1 px-4 py-2 rounded-lg bg-rose-600 text-white text-sm font-semibold hover:bg-rose-500 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
-                    >
-                      Remove
-                    </button>
-                    <button
-                      onClick={() => { setRemoveMarketerConfirm(null); setRemoveMarketerNameInput(""); }}
-                      className="flex-1 px-4 py-2 rounded-lg bg-white/8 text-slate-400 text-sm font-semibold hover:text-white transition-colors"
-                    >
-                      Cancel
-                    </button>
-                  </div>
-                </div>
-              </div>
-            )}
-
-            {/* Unassign Doctor Confirmation Modal */}
-            {unassignDoctorConfirm && (
-              <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
-                <div className="bg-slate-900 border border-slate-700 rounded-2xl max-w-md w-full p-6 space-y-4">
-                  <div>
-                    <h3 className="text-lg font-bold text-white mb-2">Unassign Doctor?</h3>
-                    <p className="text-sm text-slate-400">
-                      This will remove <span className="font-semibold text-white">{unassignDoctorConfirm.doctorName}</span> from this marketer.
-                    </p>
-                  </div>
-                  <div className="flex gap-2">
-                    <button
-                      onClick={handleConfirmUnassignDoctor}
-                      disabled={unassigningDoctor}
-                      className="flex-1 px-4 py-2 rounded-lg bg-rose-600 text-white text-sm font-semibold hover:bg-rose-500 disabled:opacity-50 disabled:cursor-not-allowed transition-colors flex items-center justify-center gap-2"
-                    >
-                      {unassigningDoctor && <RefreshCw className="w-4 h-4 animate-spin" />}
-                      Unassign
-                    </button>
-                    <button
-                      onClick={() => setUnassignDoctorConfirm(null)}
-                      className="flex-1 px-4 py-2 rounded-lg bg-white/8 text-slate-400 text-sm font-semibold hover:text-white transition-colors"
-                    >
-                      Cancel
-                    </button>
-                  </div>
-                </div>
-              </div>
-            )}
-
-            {marketerLoading ? (
-              <div className="space-y-2">{[...Array(3)].map((_, i) => <div key={i} className="bg-white/5 border border-white/10 rounded-xl h-16 animate-pulse" />)}</div>
-            ) : marketers.length === 0 ? (
-              <div className="text-center py-12 text-slate-400">
-                <Users className="w-12 h-12 mx-auto mb-3 opacity-30" />
-                <p className="text-sm">No marketers added yet. Click "Add Marketer" to get started.</p>
-              </div>
-            ) : (
-              <div className="space-y-3">
-                {marketers.map((m) => (
-                  <div key={m.id} className="bg-white/5 border border-white/10 rounded-xl overflow-hidden">
-                    <button
-                      onClick={() => {
-                        if (expandedMarketer === m.marketer_id) {
-                          setExpandedMarketer(null);
-                        } else {
-                          setExpandedMarketer(m.marketer_id);
-                          if (!marketerDoctors[m.marketer_id]) {
-                            fetchMarketerDoctors(m.marketer_id);
-                          }
-                        }
-                      }}
-                      className="w-full flex items-center gap-3 px-4 py-3 text-left hover:bg-white/8 transition-colors"
-                    >
-                      <div className="flex-1 min-w-0">
-                        <p className="text-sm font-semibold text-white">{m.marketer.name}</p>
-                        <p className="text-xs text-slate-400">{m.marketer.email}</p>
-                      </div>
-                      <div className="text-right shrink-0">
-                        <p className="text-xs text-emerald-400 font-semibold">{m.doctors_count} doctor{m.doctors_count !== 1 ? "s" : ""}</p>
-                        <ChevronDown className={`w-4 h-4 text-slate-500 mt-1 transition-transform ${expandedMarketer === m.marketer_id ? "rotate-180" : ""}`} />
-                      </div>
-                    </button>
-
-                    {expandedMarketer === m.marketer_id && (
-                      <div className="border-t border-white/8 px-4 py-4 space-y-3 bg-slate-950/40">
-                        <p className="text-xs text-slate-400 font-semibold uppercase tracking-wider">Doctors ({m.doctors_count})</p>
-                        {loadingDoctors[m.marketer_id] ? (
-                          <p className="text-sm text-slate-400">Loading doctors...</p>
-                        ) : (marketerDoctors[m.marketer_id] ?? []).length === 0 ? (
-                          <p className="text-sm text-slate-500">No doctors added yet</p>
-                        ) : (
-                          <div className="space-y-1.5">
-                            {(marketerDoctors[m.marketer_id] ?? []).map((doc) => (
-                              <div key={doc.email} className="flex items-center justify-between bg-white/5 border border-white/10 rounded-lg px-3 py-2">
-                                <div className="min-w-0 flex-1">
-                                  <p className="text-xs font-medium text-white truncate">{doc.name}</p>
-                                  <p className="text-xs text-slate-400 truncate">{doc.email}</p>
-                                </div>
-                                <div className="flex items-center gap-2 ml-2 shrink-0">
-                                  <span className="text-xs text-slate-400">{doc.request_count} requests</span>
-                                  <button
-                                    onClick={() => handleUnassignDoctor(m.marketer_id, doc.email, doc.name)}
-                                    className="text-xs text-slate-400 hover:text-rose-400 p-1 rounded hover:bg-rose-500/10 transition-colors"
-                                    title="Unassign doctor"
-                                  >
-                                    ×
-                                  </button>
-                                </div>
-                              </div>
-                            ))}
-                          </div>
-                        )}
-                        <button
-                          onClick={() => openRemoveMarketerModal(m.marketer_id, m.marketer.name)}
-                          className="w-full text-xs text-rose-400 hover:text-rose-300 border border-rose-500/20 hover:border-rose-500/40 px-3 py-1.5 rounded-lg transition-colors mt-2"
-                        >
-                          Remove Marketer
-                        </button>
-                      </div>
-                    )}
-                  </div>
-                ))}
-              </div>
-            )}
           </div>
         )}
 
@@ -2342,99 +1952,16 @@ export function LabDashboard({ lab, isOwner = false, roleName = "Lab Owner", can
                   <p className="text-center text-slate-500 text-sm py-6">No additional profile information yet.</p>
                 )}
 
-                {/* Team members — visible to lab owner only */}
-                {isOwner && (
-                  <div>
-                    <div className="flex items-center gap-2 mb-3">
-                      <UserCircle className="w-4 h-4 text-slate-500" />
-                      <p className="text-xs text-slate-500 font-semibold uppercase tracking-wider">Team Members</p>
-                    </div>
-                    {/* Add a new staff member — lab owner builds their own team */}
-                    <div className="mb-3 rounded-xl border border-white/10 bg-white/5 p-3">
-                      <p className="mb-2 text-xs font-medium text-slate-300">Add a team member</p>
-                      {labRolesList.length === 0 ? (
-                        <p className="text-xs text-slate-500">Create a role below first, then you can add members to it.</p>
-                      ) : (
-                        <div className="flex flex-col gap-2 sm:flex-row">
-                          <input
-                            type="email"
-                            value={newMemberEmail}
-                            onChange={(e) => setNewMemberEmail(e.target.value)}
-                            placeholder="member@email.com"
-                            className="min-w-0 flex-1 rounded-lg border border-white/10 bg-white/5 px-3 py-2 text-sm text-white placeholder-slate-500 outline-none focus:border-medical-400"
-                          />
-                          <select
-                            value={newMemberRoleId}
-                            onChange={(e) => setNewMemberRoleId(e.target.value)}
-                            className="rounded-lg border border-white/10 bg-white/5 px-2 py-2 text-sm text-slate-200 outline-none cursor-pointer sm:max-w-[9rem]"
-                          >
-                            <option value="" className="bg-slate-800">Role…</option>
-                            {labRolesList.map((r) => (
-                              <option key={r.id} value={r.id} className="bg-slate-800">{r.name}</option>
-                            ))}
-                          </select>
-                          <button
-                            onClick={addTeamMember}
-                            disabled={addingMember || !newMemberEmail.trim() || !newMemberRoleId}
-                            className="inline-flex items-center justify-center gap-1.5 rounded-lg bg-medical-600 px-3 py-2 text-sm font-semibold text-white hover:bg-medical-700 disabled:opacity-50"
-                          >
-                            {addingMember ? <RefreshCw className="h-4 w-4 animate-spin" /> : <Plus className="h-4 w-4" />} Add
-                          </button>
-                        </div>
-                      )}
-                      <p className="mt-2 text-[11px] text-slate-500">They&apos;ll get an email with a temporary password to sign in at the lab login.</p>
-                    </div>
-                    {teamLoading ? (
-                      <p className="text-sm text-slate-500 text-center py-4">Loading…</p>
-                    ) : teamMembers.length === 0 ? (
-                      <p className="text-sm text-slate-500 text-center py-4">No team members yet — add your first above.</p>
-                    ) : (
-                      <div className="space-y-2">
-                        {teamMembers.map((m) => (
-                          <div key={m.id} className="bg-white/5 border border-white/8 rounded-xl px-4 py-3 flex items-center justify-between gap-3">
-                            <div className="min-w-0">
-                              <p className="text-sm text-white truncate">{m.email ?? "—"}</p>
-                              <p className="text-xs text-slate-500 mt-0.5">
-                                {m.last_sign_in_at
-                                  ? <span>last login {new Date(m.last_sign_in_at).toLocaleDateString("en-GB", { day: "numeric", month: "short", year: "numeric" })}</span>
-                                  : <span>never logged in</span>}
-                              </p>
-                            </div>
-                            <div className="flex shrink-0 items-center gap-2">
-                              {(isOwner || canManageRoles) && labRolesList.length > 0 ? (
-                                <select
-                                  value={m.role.id ?? ""}
-                                  onChange={(e) => assignMemberRole(m.id, e.target.value)}
-                                  className="bg-white/5 border border-white/10 rounded-lg px-2 py-1.5 text-xs text-slate-200 outline-none cursor-pointer max-w-[8rem]"
-                                >
-                                  {!m.role.id && <option value="" className="bg-slate-800">{m.role.name}</option>}
-                                  {labRolesList.map((r) => (
-                                    <option key={r.id} value={r.id} className="bg-slate-800">{r.name}</option>
-                                  ))}
-                                </select>
-                              ) : (
-                                <span className="text-xs text-slate-400">{m.role.name}</span>
-                              )}
-                              <button
-                                onClick={() => removeTeamMember(m.id, m.email)}
-                                disabled={removingMemberId === m.id}
-                                title="Remove member"
-                                className="rounded-lg p-1.5 text-slate-500 hover:bg-rose-500/10 hover:text-rose-400 disabled:opacity-50"
-                              >
-                                {removingMemberId === m.id ? <RefreshCw className="h-4 w-4 animate-spin" /> : <X className="h-4 w-4" />}
-                              </button>
-                            </div>
-                          </div>
-                        ))}
-                      </div>
-                    )}
-                  </div>
-                )}
-
-                {/* Roles & permissions — lab admins only */}
+                {/* Team management moved to its own nav tab */}
                 {(isOwner || canManageRoles) && (
-                  <div className="mt-6 border-t border-white/10 pt-5">
-                    <RolesManager />
+                  <div className="rounded-xl border border-white/10 bg-white/5 px-4 py-3">
+                    <p className="text-sm text-slate-300">Team members, marketers and roles now live in the <span className="font-semibold text-white">Team</span> tab.</p>
+                    <button
+                      onClick={() => { setProfileOpen(false); navigateToTab("team"); }}
+                      className="mt-2 inline-flex items-center gap-1.5 rounded-lg bg-medical-600 px-3 py-1.5 text-xs font-semibold text-white hover:bg-medical-700"
+                    >
+                      <Users className="w-3.5 h-3.5" /> Open Team
+                    </button>
                   </div>
                 )}
               </div>

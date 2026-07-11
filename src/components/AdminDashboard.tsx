@@ -20,6 +20,7 @@ import { AdminSkinConsultsTab } from "@/components/admin/AdminSkinConsultsTab";
 import { AdminEncountersTab } from "@/components/admin/AdminEncountersTab";
 import { AdminBroadcastTab } from "@/components/admin/AdminBroadcastTab";
 import { AdminHmoTab } from "@/components/admin/AdminHmoTab";
+import { AdminClientsTab } from "@/components/admin/AdminClientsTab";
 import { SpecialtyTreePicker } from "@/components/admin/SpecialtyTreePicker";
 import { HospitalDoctorsPanel } from "@/components/admin/HospitalDoctorsPanel";
 import { Button } from "@/components/ui/Button";
@@ -31,7 +32,7 @@ import { format } from "date-fns";
 import { createClient } from "@/lib/supabase/client"; // still used for auth sign-out
 import { useRouter } from "next/navigation";
 
-type AdminTab = "metrics" | "requests" | "referrals" | "labs" | "analytics" | "marketers" | "lab-marketers" | "professionals" | "settings" | "transactions" | "knowledge-base" | "users" | "hospitals" | "agreements" | "skin" | "encounters" | "broadcast" | "hmo";
+type AdminTab = "metrics" | "clients" | "requests" | "referrals" | "labs" | "analytics" | "marketers" | "lab-marketers" | "professionals" | "settings" | "transactions" | "knowledge-base" | "users" | "hospitals" | "agreements" | "skin" | "encounters" | "broadcast" | "hmo";
 
 interface ReferralGroup {
   key: string; // doctor_email
@@ -618,6 +619,7 @@ export function AdminDashboard() {
         {(() => {
           const tabs = [
             { key: "metrics" as AdminTab, label: "Metrics", icon: <BarChart3 className="w-4 h-4" /> },
+            { key: "clients" as AdminTab, label: "Clients", icon: <Users className="w-4 h-4" /> },
             { key: "requests" as AdminTab, label: "All Requests", icon: <List className="w-4 h-4" /> },
             { key: "referrals" as AdminTab, label: "Referrals", icon: <Users className="w-4 h-4" /> },
             { key: "labs" as AdminTab, label: "Labs", icon: <Building2 className="w-4 h-4" /> },
@@ -1832,6 +1834,8 @@ export function AdminDashboard() {
 
         {/* ── SKIN CONSULTS ── */}
         {activeTab === "skin" && <AdminSkinConsultsTab />}
+
+        {activeTab === "clients" && <AdminClientsTab />}
 
         {activeTab === "encounters" && <AdminEncountersTab />}
 

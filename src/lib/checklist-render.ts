@@ -53,8 +53,13 @@ function buildGroups(testBreakdown: unknown, testsString: string, departments: D
       push(department, workflow, { name, sub });
     }
   } else {
-    // No structured breakdown — split the free-text tests string and route each.
-    const names = testsString.split(/[,;\n]+/).map((s) => s.trim()).filter(Boolean);
+    // No structured breakdown — split the free-text tests string and route
+    // each. Legacy records may carry a "Notes: …" line appended by an older
+    // intake — that's the complaint, not an investigation, so drop it.
+    const names = testsString
+      .split(/[,;\n]+/)
+      .map((s) => s.trim())
+      .filter((s) => s && !/^notes\s*:/i.test(s));
     for (const name of names) {
       const { department, workflow } = categoryToDepartment(name, departments);
       push(department, workflow, { name });

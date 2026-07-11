@@ -1349,6 +1349,29 @@ const migrations = [
     sql: `ALTER TABLE requests ADD COLUMN IF NOT EXISTS queue_number INTEGER`,
     continueOnError: true,
   },
+  {
+    desc: "lab_partners table (HMOs / hospitals / companies a lab works with)",
+    sql: `CREATE TABLE IF NOT EXISTS lab_partners (
+      id TEXT PRIMARY KEY,
+      lab_id TEXT NOT NULL REFERENCES labs(id) ON DELETE CASCADE,
+      type TEXT NOT NULL,
+      name TEXT NOT NULL,
+      contact_name TEXT,
+      phone TEXT,
+      email TEXT,
+      address TEXT,
+      notes TEXT,
+      is_active BOOLEAN NOT NULL DEFAULT true,
+      created_at TIMESTAMP(3) NOT NULL DEFAULT now(),
+      updated_at TIMESTAMP(3) NOT NULL DEFAULT now()
+    )`,
+    continueOnError: true,
+  },
+  {
+    desc: "lab_partners index (lab_id, type)",
+    sql: `CREATE INDEX IF NOT EXISTS lab_partners_lab_id_type_idx ON lab_partners (lab_id, type)`,
+    continueOnError: true,
+  },
 ];
 
 let failed = false;

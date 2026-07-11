@@ -47,6 +47,7 @@ model Lab {
   marketers       LabMarketer[]       @relation("lab_marketers")
   test_templates  LabTestTemplate[]
   professionals   LabProfessional[]
+  partners        LabPartner[]
   professional_commissions ProfessionalCommission[]
   result_templates LabResultTemplate[]
   request_results  RequestResult[]
@@ -545,6 +546,28 @@ model ApiLog {
 }
 
 // Lab feedback / ratings submitted by patients and doctors
+// HMOs, hospitals and companies a lab is partnered with — managed by the lab
+// itself (Team/Partners view, Lite + LIMS).
+model LabPartner {
+  id           String   @id @default(uuid())
+  lab_id       String
+  type         String // "hmo" | "hospital" | "company"
+  name         String
+  contact_name String?
+  phone        String?
+  email        String?
+  address      String?
+  notes        String?
+  is_active    Boolean  @default(true)
+  created_at   DateTime @default(now())
+  updated_at   DateTime @default(now()) @updatedAt
+
+  lab Lab @relation(fields: [lab_id], references: [id], onDelete: Cascade)
+
+  @@index([lab_id, type])
+  @@map("lab_partners")
+}
+
 model LabFeedback {
   id                 String   @id @default(uuid())
   lab_id             String
