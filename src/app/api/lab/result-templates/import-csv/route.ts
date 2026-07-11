@@ -3,6 +3,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { getLabAuth } from "@/lib/lab-auth";
 import { logLabActivity } from "@/lib/lab-activity";
+import { normalizeParam } from "@/lib/result-template-shared";
 
 /**
  * POST /api/lab/result-templates/import-csv
@@ -15,7 +16,7 @@ import { logLabActivity } from "@/lib/lab-activity";
  * sheet is idempotent). Requires can_manage_templates.
  */
 
-interface Param { name: string; unit: string; reference_range: string; group: string }
+interface Param { name: string; unit: string; reference_range: string; group: string; loinc?: string; test_code?: string; specimen?: string }
 
 /** Minimal CSV line splitter that respects double-quoted fields. */
 function splitCsvLine(line: string): string[] {
@@ -62,6 +63,9 @@ export async function POST(request: NextRequest) {
   const uIdx = idx("unit", "units");
   const rIdx = idx("reference_range", "reference", "range", "ref_range");
   const gIdx = idx("group", "section");
+  const lIdx = idx("loinc", "loinc_code");
+  const cIdx = idx("test_code", "code", "local_code");
+  const sIdx = idx("specimen", "sample", "specimen_type");
 
   // Group rows into templates (preserving first-seen order).
   const order: string[] = [];
@@ -81,6 +85,9 @@ export async function POST(request: NextRequest) {
       unit: (uIdx !== -1 ? cols[uIdx] : "")?.trim() || "",
       reference_range: (rIdx !== -1 ? cols[rIdx] : "")?.trim() || "",
       group: (gIdx !== -1 ? cols[gIdx] : "")?.trim() || "",
+      loinc: (lIdx !== -1 ? cols[lIdx] : "")?.trim() || "",
+      test_code: (cIdx !== -1 ? cols[cIdx] : "")?.trim() || "",
+      specimen: (sIdx !== -1 ? cols[sIdx] : "")?.trim() || "",
     });
   }
 
@@ -90,7 +97,7 @@ export async function POST(request: NextRequest) {
   let replaced = 0;
   for (const key of order) {
     const t = map.get(key)!;
-    const parameters = t.params.map((p) => ({ name: p.name, unit: p.unit, reference_range: p.reference_range, group: p.group }));
+    const parameters = t.params.map(normalizeParam);
     const existing = await prisma.labResultTemplate.findFirst({ where: { lab_id: auth.lab_id, name: t.name } });
     if (existing) {
       await prisma.labResultTemplate.update({

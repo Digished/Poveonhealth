@@ -3,12 +3,16 @@ import { NextRequest, NextResponse } from "next/server";
 import { z } from "zod";
 import { prisma } from "@/lib/prisma";
 import { getLabAuth } from "@/lib/lab-auth";
+import { normalizeParam } from "@/lib/result-template-shared";
 
 const ParamSchema = z.object({
   name: z.string().min(1).max(120),
   unit: z.string().max(40).optional().or(z.literal("")),
   reference_range: z.string().max(80).optional().or(z.literal("")),
   group: z.string().max(80).optional().or(z.literal("")),
+  loinc: z.string().max(20).optional().or(z.literal("")),
+  test_code: z.string().max(40).optional().or(z.literal("")),
+  specimen: z.string().max(40).optional().or(z.literal("")),
 });
 
 const PatchSchema = z.object({
@@ -40,7 +44,7 @@ export async function PATCH(request: NextRequest, { params }: { params: { id: st
       ...(d.name !== undefined ? { name: d.name } : {}),
       ...(d.department !== undefined ? { department: d.department } : {}),
       ...(d.interpretation !== undefined ? { interpretation: d.interpretation } : {}),
-      ...(d.parameters ? { parameters: d.parameters.map((p) => ({ name: p.name, unit: p.unit || "", reference_range: p.reference_range || "", group: p.group || "" })) } : {}),
+      ...(d.parameters ? { parameters: d.parameters.map(normalizeParam) } : {}),
     },
   });
   return NextResponse.json({ template });
