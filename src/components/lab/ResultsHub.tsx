@@ -3,7 +3,7 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { Loader2, Search, FlaskConical, FileText, Send, ChevronRight, RefreshCw } from "lucide-react";
 import { requestDepartments } from "@/lib/lims-shared";
-import { ResultEntry } from "@/components/lab/ResultEntry";
+import { ResultComposer } from "@/components/lab/ResultComposer";
 
 interface PendingResult { id: string; department: string | null; status: string; template_id: string | null; kind: string; updated_at: string }
 interface PendingReq {
@@ -45,7 +45,7 @@ export function ResultsHub({ canSendResults, memberDepartment }: { canSendResult
   const [loading, setLoading] = useState(true);
   const [query, setQuery] = useState("");
   const [filter, setFilter] = useState<"all" | "awaiting" | "in_progress">("all");
-  const [entry, setEntry] = useState<{ req: PendingReq; department: string } | null>(null);
+  const [composerReq, setComposerReq] = useState<PendingReq | null>(null);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -129,13 +129,18 @@ export function ResultsHub({ canSendResults, memberDepartment }: { canSendResult
                     {req.doctor_name ? ` · Ref: ${req.doctor_name}` : ""}
                   </p>
                 </div>
-                <span className="text-[11px] text-slate-500">{fmtAgo(req.created_at)}</span>
+                <div className="flex items-center gap-2">
+                  <span className="text-[11px] text-slate-500">{fmtAgo(req.created_at)}</span>
+                  <button onClick={() => setComposerReq(req)} className="inline-flex items-center gap-1.5 rounded-lg bg-medical-600 px-3 py-1.5 text-xs font-semibold text-white hover:bg-medical-700">
+                    <Send className="h-3.5 w-3.5" /> Enter results
+                  </button>
+                </div>
               </div>
               <div className="mt-3 flex flex-wrap gap-2">
-                {items.map(({ dept, status, resultId }) => (
+                {items.map(({ dept, status }) => (
                   <button
                     key={dept}
-                    onClick={() => setEntry({ req, department: dept })}
+                    onClick={() => setComposerReq(req)}
                     className="group inline-flex items-center gap-2 rounded-xl border border-white/10 bg-white/5 px-3 py-1.5 text-xs text-slate-200 hover:border-medical-400/40 hover:bg-white/10"
                   >
                     <span className="font-medium">{dept}</span>
@@ -153,13 +158,17 @@ export function ResultsHub({ canSendResults, memberDepartment }: { canSendResult
         </div>
       )}
 
-      {entry && (
-        <ResultEntry
-          request={{ id: entry.req.id, code: entry.req.code }}
-          department={entry.department}
+      {composerReq && (
+        <ResultComposer
+          request={{
+            id: composerReq.id, code: composerReq.code,
+            patient_name: composerReq.patient_name, patient_phone: composerReq.patient_phone,
+            patient_age: composerReq.patient_age, sex: composerReq.sex,
+            tests: composerReq.tests, test_breakdown: composerReq.test_breakdown,
+          }}
           canSendResults={canSendResults}
-          onClose={() => setEntry(null)}
-          onChanged={load}
+          onClose={() => setComposerReq(null)}
+          onSaved={load}
         />
       )}
     </div>
