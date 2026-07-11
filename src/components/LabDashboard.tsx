@@ -20,6 +20,7 @@ const TemplatesManager = dynamic(() => import("@/components/lab/TemplatesManager
 const Workspace = dynamic(() => import("@/components/lab/Workspace").then(m => ({ default: m.Workspace })), { ssr: false });
 const ResultTemplatesManager = dynamic(() => import("@/components/lab/ResultTemplatesManager").then(m => ({ default: m.ResultTemplatesManager })), { ssr: false });
 const SopManager = dynamic(() => import("@/components/lab/SopManager").then(m => ({ default: m.SopManager })), { ssr: false });
+const MirthInterfacesPanel = dynamic(() => import("@/components/lab/MirthInterfacesPanel").then(m => ({ default: m.MirthInterfacesPanel })), { ssr: false });
 const DepartmentsManager = dynamic(() => import("@/components/lab/DepartmentsManager").then(m => ({ default: m.DepartmentsManager })), { ssr: false });
 const LabQrCard = dynamic(() => import("@/components/lab/LabQrCard").then(m => ({ default: m.LabQrCard })), { ssr: false });
 const QueueView = dynamic(() => import("@/components/lab/QueueView").then(m => ({ default: m.QueueView })), { ssr: false });
@@ -1106,6 +1107,9 @@ export function LabDashboard({ lab, isOwner = false, roleName = "Lab Owner", can
               <p className="text-sm text-slate-400 mt-1">Define result reports (parameters + reference ranges) used to enter, print and send results.</p>
             </div>
             <ResultTemplatesManager canManage={isOwner || canManageTemplates} />
+            <div className="border-t border-white/10 pt-5">
+              <MirthInterfacesPanel canManage={isOwner || canManageTemplates} />
+            </div>
           </div>
         )}
 

@@ -28,6 +28,11 @@ model Lab {
   service_categories Json     @default("[]")
   certifications     Json     @default("[]")
   free_trial         Boolean  @default(false) // if true, no commission is recorded
+  // Mirth Connect (NextGen Connect) integration — per-lab HTTP endpoint the lab's
+  // Mirth channel exposes. Poveon POSTs HL7 to it; Mirth handles MLLP to analyzers.
+  mirth_enabled      Boolean  @default(false)
+  mirth_url          String? // Mirth HTTP Listener URL for outbound result messages
+  mirth_auth_token   String? // optional bearer token sent as Authorization header
   created_at         DateTime @default(now())
 
   lab_users       LabUser[]
@@ -52,6 +57,7 @@ model Lab {
   result_templates LabResultTemplate[]
   request_results  RequestResult[]
   request_receipts RequestReceipt[]
+  hl7_messages     HL7Message[]
   sops             LabSop[]
   departments      LabDepartment[]
 
@@ -1200,6 +1206,32 @@ model RequestReceipt {
   @@index([request_id])
   @@index([lab_id])
   @@map("request_receipts")
+}
+
+// Audit + queue record for HL7 messages exchanged with a lab's Mirth Connect
+// channel. Outbound = result reports (ORU) pushed to Mirth; inbound = analyzer
+// results received from Mirth (Phase 3). Stores the raw payload and the ACK so
+// failures can be inspected and resent.
+model HL7Message {
+  id           String   @id @default(uuid())
+  lab_id       String
+  request_id   String? // the request this message concerns, if known
+  result_id    String? // the RequestResult this message concerns, if known
+  direction    String   @default("outbound") // outbound | inbound
+  message_type String   @default("ORU^R01")
+  control_id   String // MSH-10 message control id
+  payload      String   @db.Text // raw HL7 (segments separated by \r)
+  status       String   @default("queued") // queued | sent | ack | error
+  ack_text     String?  @db.Text // Mirth response / ACK body or error detail
+  attempts     Int      @default(0)
+  created_at   DateTime @default(now())
+  updated_at   DateTime @default(now()) @updatedAt
+
+  lab Lab @relation(fields: [lab_id], references: [id], onDelete: Cascade)
+
+  @@index([lab_id, direction, created_at])
+  @@index([result_id])
+  @@map("hl7_messages")
 }
 
 // ─────────────────────────────────────────────────────────────────────────────

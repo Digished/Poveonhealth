@@ -5,6 +5,7 @@ import { prisma } from "@/lib/prisma";
 import { getLabAuth } from "@/lib/lab-auth";
 import { logLabActivity } from "@/lib/lab-activity";
 import { renderResultPdf } from "@/lib/result-render";
+import { sendResultToMirth } from "@/lib/hl7/send";
 import { createAdminClient } from "@/lib/supabase/server";
 import { resend, labSender } from "@/lib/email/resend";
 import { labResultsDoctor, labResultsPatient } from "@/lib/email/templates";
@@ -72,6 +73,11 @@ export async function POST(request: NextRequest, { params }: { params: { id: str
   }
 
   if (auth.actor_email) logLabActivity({ lab_id: auth.lab_id, actor_email: auth.actor_email, action: send ? "results_sent" : "result_reported", detail: `Result report for ${rendered.code}${send ? " sent" : " generated"}` });
+
+  // Push the result to the lab's Mirth channel (HL7 ORU), if enabled.
+  // Fire-and-forget: it records its own HL7Message audit row and never blocks
+  // the report response.
+  sendResultToMirth(result.id, auth.lab_id).catch((e) => console.error("[result-report] mirth push:", e));
 
   return NextResponse.json({ success: true, pdf_url: publicUrl, sent: !!send });
 }

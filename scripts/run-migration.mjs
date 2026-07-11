@@ -43,6 +43,43 @@ async function execWithRetry(sql, attempts = 4) {
 
 const migrations = [
   {
+    desc: "labs Mirth integration columns",
+    sql: `ALTER TABLE labs
+      ADD COLUMN IF NOT EXISTS mirth_enabled BOOLEAN NOT NULL DEFAULT false,
+      ADD COLUMN IF NOT EXISTS mirth_url TEXT,
+      ADD COLUMN IF NOT EXISTS mirth_auth_token TEXT`,
+    continueOnError: true,
+  },
+  {
+    desc: "hl7_messages table (Mirth HL7 audit / queue)",
+    sql: `CREATE TABLE IF NOT EXISTS hl7_messages (
+      id TEXT PRIMARY KEY,
+      lab_id TEXT NOT NULL,
+      request_id TEXT,
+      result_id TEXT,
+      direction TEXT NOT NULL DEFAULT 'outbound',
+      message_type TEXT NOT NULL DEFAULT 'ORU^R01',
+      control_id TEXT NOT NULL,
+      payload TEXT NOT NULL,
+      status TEXT NOT NULL DEFAULT 'queued',
+      ack_text TEXT,
+      attempts INTEGER NOT NULL DEFAULT 0,
+      created_at TIMESTAMP(3) NOT NULL DEFAULT now(),
+      updated_at TIMESTAMP(3) NOT NULL DEFAULT now()
+    )`,
+    continueOnError: true,
+  },
+  {
+    desc: "hl7_messages index (lab_id, direction, created_at)",
+    sql: `CREATE INDEX IF NOT EXISTS hl7_messages_lab_dir_created_idx ON hl7_messages (lab_id, direction, created_at)`,
+    continueOnError: true,
+  },
+  {
+    desc: "hl7_messages index (result_id)",
+    sql: `CREATE INDEX IF NOT EXISTS hl7_messages_result_id_idx ON hl7_messages (result_id)`,
+    continueOnError: true,
+  },
+  {
     desc: "request_receipts table (payment / collection receipts)",
     sql: `CREATE TABLE IF NOT EXISTS request_receipts (
       id TEXT PRIMARY KEY,

@@ -19,6 +19,14 @@ with **Mirth Connect (NextGen Connect)** over HL7 / ASTM.
 
 Genuinely new work: **receipts** and **Mirth/HL7/ASTM**.
 
+## Status
+
+- ✅ Phase 1 (Receipts) — shipped.
+- ✅ Phase 0 (spreadsheet-grid editor + LOINC/test-code/specimen coding) — shipped.
+- ✅ Phase 2 (outbound HL7 ORU to Mirth) — shipped: per-lab Mirth config, HL7
+  ORU builder, fire-and-forget push on report, HL7 message log + resend, UI panel.
+- ⏳ Phase 3 (inbound ASTM/HL7 from analyzers via Mirth) — pending.
+
 ## Working assumptions (defaults; override any)
 
 - **Transport:** HTTP both ways. Poveon POSTs to a Mirth HTTP Listener; Mirth
