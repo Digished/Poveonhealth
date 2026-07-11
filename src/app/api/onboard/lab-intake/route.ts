@@ -103,10 +103,10 @@ export async function POST(request: NextRequest) {
       }
     }
 
+    // Tests stay pure test names — the complaint lives in `diagnosis`, never
+    // mixed into the investigations (it was leaking into the checklist PDF).
     const testsRaw = data.tests?.trim() || "";
-    const testsField = testsRaw
-      ? (data.condition ? `${testsRaw}\n\nNotes: ${data.condition}` : testsRaw)
-      : (data.condition ? `To be confirmed at the lab\n\nNotes: ${data.condition}` : "To be confirmed at the lab");
+    const testsField = testsRaw || "To be confirmed at the lab";
 
     const code = await generateUniqueCode(lab.prefix, async (candidate) => {
       const existing = await prisma.request.findUnique({ where: { code: candidate }, select: { id: true } });

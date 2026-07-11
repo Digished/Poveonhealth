@@ -81,9 +81,11 @@ export async function GET(request: NextRequest) {
       select: QUEUE_SELECT,
     }),
     prisma.request.findMany({
-      where: { ...base, queue_confirmed_at: { not: null }, attended_at: { gt: new Date(Date.now() - 24 * 60 * 60 * 1000) } },
+      // Keep the last 7 days of attended clients so the queue's day filter can
+      // review any recent day (not just the last 24h).
+      where: { ...base, queue_confirmed_at: { not: null }, attended_at: { gt: activeSince } },
       orderBy: { attended_at: "desc" },
-      take: 100,
+      take: 300,
       select: QUEUE_SELECT,
     }),
   ]);

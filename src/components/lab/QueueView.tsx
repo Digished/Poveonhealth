@@ -6,6 +6,7 @@ import toast from "react-hot-toast";
 import dynamic from "next/dynamic";
 import { FullViewModal } from "@/components/ui/FullViewModal";
 import { LabOnboardForm, OnboardTemplate } from "@/components/lab/LabOnboardForm";
+import { TestTagInput, TestTag } from "@/components/ui/TestTagInput";
 import { SourceBadge } from "@/components/lab/SourceBadge";
 
 const JourneyView = dynamic(() => import("@/components/lab/JourneyView").then((m) => ({ default: m.JourneyView })), { ssr: false });
@@ -248,9 +249,14 @@ export function QueueView({
 
   const attendedShown = useMemo(() => attended.filter((r) => inDay(r) && matches(r)), [attended, matches, inDay]);
 
+  // Tab count badges reflect the selected day filter (so "Today" shows today's
+  // totals), independent of the within-tab payment filter and search.
+  const queueDayCount = useMemo(() => [...waiting, ...paid].filter(inDay).length, [waiting, paid, inDay]);
+  const attendedDayCount = useMemo(() => attended.filter(inDay).length, [attended, inDay]);
+
   const TABS: { key: QueueTab; label: string; count: number | null; icon: React.ReactNode; show: boolean }[] = [
-    { key: "queue", label: "In queue", count: waiting.length + paid.length, icon: <Hourglass className="h-3.5 w-3.5" />, show: true },
-    { key: "attended", label: "Attended", count: attended.length, icon: <UserCheck className="h-3.5 w-3.5" />, show: true },
+    { key: "queue", label: "In queue", count: queueDayCount, icon: <Hourglass className="h-3.5 w-3.5" />, show: true },
+    { key: "attended", label: "Attended", count: attendedDayCount, icon: <UserCheck className="h-3.5 w-3.5" />, show: true },
     { key: "journey", label: "Journey", count: null, icon: <Workflow className="h-3.5 w-3.5" />, show: !lite },
   ];
 
@@ -350,7 +356,7 @@ export function QueueView({
             <div className="rounded-2xl border border-white/10 bg-white/5 py-14 text-center">
               <QrCode className="mx-auto mb-3 h-8 w-8 text-slate-500" />
               <p className="text-sm font-medium text-slate-300">
-                {query || payF ? "No matches" : tab === "queue" ? "The queue is empty" : "No one attended in the last 24h"}
+                {query || payF ? "No matches" : tab === "queue" ? "The queue is empty" : dayF === "today" ? "No one attended today yet" : "No one attended in this period"}
               </p>
               {!query && tab === "queue" && <p className="mt-1 text-xs text-slate-500">Clients who register via your QR portal or the walk-in form appear here instantly.</p>}
             </div>
@@ -411,14 +417,17 @@ export function QueueView({
                           <Undo2 className="h-3 w-3" /> Undo paid
                         </button>
                       )}
+                      {/* Attended is only offered once payment has been recorded. */}
                       {tab === "queue" ? (
-                        <button
-                          onClick={() => act(r.id, "attend", `${r.patient_name || "Client"} marked as attended`)}
-                          disabled={busyId === r.id}
-                          className="inline-flex items-center gap-1.5 rounded-lg bg-emerald-600 px-3 py-1.5 text-[11px] font-semibold text-white hover:bg-emerald-700 disabled:opacity-50"
-                        >
-                          {busyId === r.id ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Check className="h-3.5 w-3.5" />} Attended
-                        </button>
+                        r.is_paid && (
+                          <button
+                            onClick={() => act(r.id, "attend", `${r.patient_name || "Client"} marked as attended`)}
+                            disabled={busyId === r.id}
+                            className="inline-flex items-center gap-1.5 rounded-lg bg-emerald-600 px-3 py-1.5 text-[11px] font-semibold text-white hover:bg-emerald-700 disabled:opacity-50"
+                          >
+                            {busyId === r.id ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Check className="h-3.5 w-3.5" />} Attended
+                          </button>
+                        )
                       ) : (
                         <button
                           onClick={() => act(r.id, "unattend", "Returned to the queue")}
@@ -470,6 +479,7 @@ export function QueueView({
       {editFor && (
         <QueueEditModal
           request={editFor}
+          labId={labId}
           onClose={() => setEditFor(null)}
           onDone={() => { setEditFor(null); load(true); }}
         />
@@ -616,14 +626,19 @@ function QueueDetailModal({
                   {busy ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <CreditCard className="h-3.5 w-3.5" />} Payment made
                 </button>
               ))}
+              {/* Attended only unlocks after payment is recorded. */}
               {attended ? (
                 <button onClick={() => onAction("unattend", "Returned to the queue")} disabled={busy} className="inline-flex items-center gap-1.5 rounded-lg border border-white/10 px-3 py-2 text-xs text-slate-300 hover:bg-white/5 hover:text-white disabled:opacity-50">
                   <Undo2 className="h-3.5 w-3.5" /> Return to queue
                 </button>
-              ) : (
+              ) : r.is_paid ? (
                 <button onClick={() => onAction("attend", `${r.patient_name || "Client"} marked as attended`)} disabled={busy} className="inline-flex items-center gap-1.5 rounded-lg bg-emerald-600 px-3.5 py-2 text-xs font-semibold text-white hover:bg-emerald-700 disabled:opacity-50">
                   {busy ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Check className="h-3.5 w-3.5" />} Attended
                 </button>
+              ) : (
+                <span className="inline-flex items-center gap-1.5 rounded-lg border border-dashed border-white/10 px-3 py-2 text-xs text-slate-500">
+                  <CreditCard className="h-3.5 w-3.5" /> Record payment to attend
+                </span>
               )}
             </>
           )}
@@ -639,10 +654,12 @@ function QueueDetailModal({
  */
 function QueueEditModal({
   request,
+  labId,
   onClose,
   onDone,
 }: {
   request: QueueReq;
+  labId: string;
   onClose: () => void;
   onDone: () => void;
 }) {
@@ -659,7 +676,32 @@ function QueueEditModal({
   const [org, setOrg] = useState(request.doctor_hospital ?? "");
   const [policyNumber, setPolicyNumber] = useState(request.policy_number ?? "");
   const [paymentMode, setPaymentMode] = useState(request.payment_mode ?? "");
-  const [testsText, setTestsText] = useState(request.tests);
+  // Proper catalog test picker — seeded from the resolved breakdown so
+  // recognised tests keep their catalog link (same as the onboarding editor).
+  const [tests, setTests] = useState<TestTag[]>(() => {
+    const bd = Array.isArray(request.test_breakdown)
+      ? (request.test_breakdown as { raw?: string; canonical_name?: string; category?: string; unit_price?: number; source?: string; lab_offered_test_id?: string | null }[])
+      : [];
+    if (bd.length > 0) {
+      return bd
+        .map((it): TestTag => {
+          const recognized = it.source === "lab_catalog";
+          return {
+            name: it.canonical_name || it.raw || "",
+            catalog_test_id: recognized ? (it.lab_offered_test_id ?? null) : null,
+            price: it.unit_price,
+            category: it.category,
+            low_confidence: !recognized,
+          };
+        })
+        .filter((t) => t.name);
+    }
+    return (request.tests || "")
+      .split(/[,\n]+/)
+      .map((x) => x.trim())
+      .filter((x) => x && !x.toLowerCase().startsWith("notes:") && x.toLowerCase() !== "to be confirmed at the lab")
+      .map((n) => ({ name: n, catalog_test_id: null }));
+  });
   const [complaint, setComplaint] = useState(request.diagnosis ?? "");
   const [saving, setSaving] = useState(false);
 
@@ -682,7 +724,6 @@ function QueueEditModal({
             patient_email: email,
             patient_age: age.trim() === "" ? null : Number(age),
             sex,
-            tests: testsText,
             whatsapp_phone: whatsapp,
             payment_mode: (paymentMode || null) as "cash" | "card" | "transfer" | "bill_hospital" | null,
             referral_type: (referralType || null) as "self" | "doctor" | "hmo" | null,
@@ -695,6 +736,19 @@ function QueueEditModal({
       });
       const data = await res.json();
       if (!res.ok || !data.success) throw new Error(data.error || "Failed");
+
+      // Tests go through the dedicated endpoint so the catalog breakdown and
+      // department tracks are recomputed.
+      if (tests.length > 0) {
+        const tRes = await fetch("/api/lab/requests/update-tests", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ requestId: request.id, tests: tests.map((t) => t.name).join(", ") }),
+        });
+        const tData = await tRes.json();
+        if (!tRes.ok || tData.success === false) throw new Error(tData.error || "Details saved, but the tests could not be updated");
+      }
+
       toast.success("Details updated");
       onDone();
     } catch (e) {
@@ -794,7 +848,8 @@ function QueueEditModal({
           )}
           <div className="sm:col-span-2">
             <label className={labelCls}>Tests / investigations</label>
-            <textarea className={inputCls} rows={2} value={testsText} onChange={(e) => setTestsText(e.target.value)} />
+            <TestTagInput value={tests} onChange={setTests} labId={labId} />
+            <p className="mt-1 text-[11px] text-slate-500">Search your catalog or type a test and press Enter. Department tracks update automatically.</p>
           </div>
           <div className="sm:col-span-2">
             <label className={labelCls}>Complaint</label>

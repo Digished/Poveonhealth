@@ -5,22 +5,22 @@ import { Loader2, Plus, Trash2, Shield } from "lucide-react";
 import toast from "react-hot-toast";
 
 const PERMISSION_LABELS: Record<string, string> = {
-  can_view_requests: "View requests",
-  can_mark_seen: "Mark patient seen",
-  can_mark_done: "Mark done / results",
+  can_view_requests: "View requests, workstation & queue",
+  can_mark_seen: "Onboarding & queue actions (arrive, register, pay, attend)",
+  can_mark_done: "Mark done / enter results",
   can_send_results: "Send results",
-  can_manage_team: "Manage team",
+  can_manage_team: "Add & remove team members",
   can_manage_api_keys: "Manage API keys",
   can_view_referrals: "View referrals",
-  can_view_clients: "View clients",
+  can_view_clients: "View clients & customers (incl. spreadsheet export)",
   can_view_analytics: "View analytics & TAT",
   can_view_activity: "View activity log",
-  can_view_feedback: "View feedback",
-  can_view_wallet: "View revenue & wallet",
-  can_view_marketers: "View marketers",
-  can_manage_roles: "Manage roles",
-  can_manage_professionals: "Manage professionals",
-  can_manage_templates: "Manage test templates",
+  can_view_feedback: "View feedback (incl. QR reviews)",
+  can_view_wallet: "View revenue, wallet & price list",
+  can_view_marketers: "View & manage marketers",
+  can_manage_roles: "Manage roles & team",
+  can_manage_professionals: "Manage referral doctors & partners",
+  can_manage_templates: "Manage test templates & SOPs",
 };
 
 interface Role {
