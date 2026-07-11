@@ -374,7 +374,7 @@ export function Workspace({
     }
   }
 
-  async function registration(r: WReq, flags: { tests_confirmed?: boolean; is_paid?: boolean; arrived?: boolean; send_registration_link?: boolean; email?: string }) {
+  async function registration(r: WReq, flags: { tests_confirmed?: boolean; is_paid?: boolean; arrived?: boolean; send_registration_link?: boolean; email?: string }): Promise<boolean> {
     setBusy(true);
     try {
       const res = await fetch("/api/lab/requests/registration", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ requestId: r.id, ...flags }) });
@@ -389,8 +389,10 @@ export function Workspace({
         : "Updated"
       );
       await load();
+      return true;
     } catch (e) {
       toast.error(e instanceof Error ? e.message : "Failed");
+      return false;
     } finally {
       setBusy(false);
     }
@@ -676,7 +678,7 @@ function WorkspaceDrawer({
   busy: boolean;
   onMarkSeen: () => void;
   onAdvance: (track: Track, stage: string, label?: string, note?: string, scheduledAt?: string) => Promise<void> | void;
-  onRegistration: (flags: { tests_confirmed?: boolean; is_paid?: boolean; arrived?: boolean; send_registration_link?: boolean; email?: string }) => Promise<void> | void;
+  onRegistration: (flags: { tests_confirmed?: boolean; is_paid?: boolean; arrived?: boolean; send_registration_link?: boolean; email?: string }) => Promise<boolean> | boolean | void;
   onChanged: () => void;
 }) {
   // Onboarding "Register" handles intake/payment; the pipeline (tracks/results)
@@ -690,6 +692,10 @@ function WorkspaceDrawer({
   const [collectFor, setCollectFor] = useState<Track | null>(null);
   const [milestone, setMilestone] = useState<{ track: Track; stage: string } | null>(null);
   const [regLinkOpen, setRegLinkOpen] = useState(false);
+  // Remember that the registration link went out for THIS client — the button
+  // flips to "sent" but stays clickable to resend (e.g. email had an issue).
+  const [regLinkSentAt, setRegLinkSentAt] = useState<number | null>(null);
+  useEffect(() => { setRegLinkSentAt(null); setRegLinkOpen(false); }, [request.id]);
   const [results, setResults] = useState<RResult[]>([]);
 
   // Contextual tutorial: when the drawer opens with the Guide on, jump to the
@@ -824,10 +830,13 @@ function WorkspaceDrawer({
                       data-tour="ob-edit-details"
                       onClick={() => setRegLinkOpen(true)}
                       disabled={busy}
-                      title="Email the client their self-registration link — their referral details come pre-filled"
-                      className="inline-flex items-center gap-1.5 rounded-lg bg-medical-600 px-3 py-2 text-xs font-semibold text-white hover:bg-medical-700 disabled:opacity-50"
+                      title={regLinkSentAt
+                        ? "Registration link sent — click to resend if the email didn't arrive"
+                        : "Email the client their self-registration link — their referral details come pre-filled"}
+                      className={`inline-flex items-center gap-1.5 rounded-lg px-3 py-2 text-xs font-semibold disabled:opacity-50 ${regLinkSentAt ? "border border-emerald-500/30 bg-emerald-600/20 text-emerald-300 hover:bg-emerald-600/30" : "bg-medical-600 text-white hover:bg-medical-700"}`}
                     >
-                      <Send className="h-3.5 w-3.5" /> Register client
+                      {regLinkSentAt ? <Check className="h-3.5 w-3.5" /> : <Send className="h-3.5 w-3.5" />}
+                      {regLinkSentAt ? "Link sent · Resend" : "Register client"}
                     </button>
                   )}
                 </div>
@@ -951,10 +960,14 @@ function WorkspaceDrawer({
             initialEmail={request.patient_email ?? ""}
             patientName={request.patient_name}
             busy={busy}
+            alreadySent={regLinkSentAt != null}
             onClose={() => setRegLinkOpen(false)}
             onSend={async (email) => {
-              await onRegistration({ send_registration_link: true, email });
-              setRegLinkOpen(false);
+              const ok = await onRegistration({ send_registration_link: true, email });
+              if (ok !== false) {
+                setRegLinkSentAt(Date.now());
+                setRegLinkOpen(false);
+              }
             }}
           />
         )}
@@ -1003,11 +1016,12 @@ function WorkspaceDrawer({
 
 /** Confirm or capture the client's email before sending the registration link. */
 function RegisterLinkModal({
-  initialEmail, patientName, busy, onClose, onSend,
+  initialEmail, patientName, busy, alreadySent, onClose, onSend,
 }: {
   initialEmail: string;
   patientName: string | null;
   busy: boolean;
+  alreadySent?: boolean;
   onClose: () => void;
   onSend: (email: string) => Promise<void> | void;
 }) {
@@ -1020,8 +1034,8 @@ function RegisterLinkModal({
       <div className="w-full max-w-md rounded-t-3xl border border-white/10 bg-slate-900 p-5 sm:rounded-3xl" onClick={(e) => e.stopPropagation()}>
         <div className="mb-3 flex items-start justify-between">
           <div>
-            <h3 className="text-lg font-semibold text-white">Send registration link</h3>
-            <p className="text-xs text-slate-400">{patientName || "Client"} will receive a link with their code pre-applied.</p>
+            <h3 className="text-lg font-semibold text-white">{alreadySent ? "Resend registration link" : "Send registration link"}</h3>
+            <p className="text-xs text-slate-400">{patientName || "Client"} will receive a link with their code pre-applied.{alreadySent ? " A link was already sent — resend if it didn't arrive or the email was wrong." : ""}</p>
           </div>
           <button onClick={onClose} className="text-slate-400 hover:text-white"><X className="h-5 w-5" /></button>
         </div>
@@ -1049,7 +1063,7 @@ function RegisterLinkModal({
             disabled={busy || !valid}
             className="inline-flex items-center gap-1.5 rounded-xl bg-medical-600 px-4 py-2 text-sm font-semibold text-white hover:bg-medical-700 disabled:opacity-50"
           >
-            {busy ? <Loader2 className="h-4 w-4 animate-spin" /> : <Send className="h-4 w-4" />} Send link
+            {busy ? <Loader2 className="h-4 w-4 animate-spin" /> : <Send className="h-4 w-4" />} {alreadySent ? "Resend link" : "Send link"}
           </button>
         </div>
       </div>

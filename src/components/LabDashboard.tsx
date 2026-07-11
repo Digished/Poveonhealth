@@ -152,8 +152,8 @@ export function LabDashboard({ lab, isOwner = false, roleName = "Lab Owner", can
     setLabMode(m);
     try { localStorage.setItem(`lab_dash_mode_${lab.id}`, m); } catch { /* ignore */ }
   }, [lab.id]);
-  const LITE_SIDEBAR = new Set<MainView>(["onboarding", "queue", "customers", "analytics", "network", "marketers", "price-list"]);
-  const LITE_ALLOWED = new Set<MainView>(["onboarding", "queue", "customers", "analytics", "network", "referrals", "professionals", "marketers", "price-list"]);
+  const LITE_SIDEBAR = new Set<MainView>(["onboarding", "queue", "customers", "analytics", "feedback", "network", "marketers", "price-list"]);
+  const LITE_ALLOWED = new Set<MainView>(["onboarding", "queue", "customers", "analytics", "feedback", "network", "referrals", "professionals", "marketers", "price-list"]);
   const tabVisibleEff: Record<MainView, boolean> = labMode === "lite"
     ? (Object.fromEntries((Object.keys(tabVisible) as MainView[]).map((k) => [k, tabVisible[k] && LITE_SIDEBAR.has(k)])) as Record<MainView, boolean>)
     : tabVisible;
@@ -1236,7 +1236,7 @@ export function LabDashboard({ lab, isOwner = false, roleName = "Lab Owner", can
 
         {/* Feedback view */}
         {mainView === "feedback" && (isOwner || canViewFeedback) && (
-          <LabFeedbackView labId={lab.id} />
+          <LabFeedbackView labId={lab.id} labSlug={lab.slug ?? null} />
         )}
 
         {/* Poveon commission view */}
@@ -2848,14 +2848,27 @@ function FeedbackStars({ value, size = "sm" }: { value: number | null; size?: "s
   );
 }
 
-function LabFeedbackView({ labId }: { labId: string }) {
+function LabFeedbackView({ labId, labSlug }: { labId: string; labSlug: string | null }) {
   const [feedbacks, setFeedbacks] = useState<FeedbackRecord[]>([]);
   const [averages, setAverages] = useState<FeedbackAverages | null>(null);
   const [total, setTotal] = useState(0);
   const [loading, setLoading] = useState(true);
   const [offset, setOffset] = useState(0);
-  const [filterType, setFilterType] = useState<"all" | "patient" | "doctor">("all");
+  const [filterType, setFilterType] = useState<"all" | "qr" | "patient" | "doctor">("all");
+  // Shareable feedback link + QR (printed and displayed at the lab)
+  const [fbUrl, setFbUrl] = useState("");
+  const [fbQr, setFbQr] = useState<string | null>(null);
   const PAGE = 20;
+
+  useEffect(() => {
+    if (!labSlug || typeof window === "undefined") return;
+    const link = `${window.location.origin}/f/${labSlug}`;
+    setFbUrl(link);
+    import("qrcode")
+      .then((m) => (m.default ?? m).toDataURL(link, { width: 480, margin: 1, color: { dark: "#0f172a", light: "#ffffff" } }))
+      .then(setFbQr)
+      .catch(() => {});
+  }, [labSlug]);
 
   const fetchFeedback = useCallback(async (off: number) => {
     setLoading(true);
@@ -2889,8 +2902,8 @@ function LabFeedbackView({ labId }: { labId: string }) {
       {/* Header */}
       <div className="flex items-center justify-between flex-wrap gap-3">
         <div>
-          <h2 className="font-semibold text-white text-base">Patient & Doctor Feedback</h2>
-          <p className="text-xs text-slate-500 mt-0.5">Reviews and ratings from your clients</p>
+          <h2 className="font-semibold text-white text-base">Client Feedback</h2>
+          <p className="text-xs text-slate-500 mt-0.5">Reviews from patients, doctors and your in-lab QR / link</p>
         </div>
         <div className="flex items-center gap-2">
           <span className="text-xs text-slate-500 bg-white/5 border border-white/8 rounded-full px-2.5 py-1">{total} review{total !== 1 ? "s" : ""}</span>
@@ -2898,6 +2911,54 @@ function LabFeedbackView({ labId }: { labId: string }) {
             <RefreshCw className="w-4 h-4" />
           </button>
         </div>
+      </div>
+
+      {/* Feedback link + QR — print and display so clients can review via QR */}
+      <div className="rounded-2xl border border-white/10 bg-white/5 p-5">
+        <p className="flex items-center gap-2 text-sm font-semibold text-white"><QrCode className="w-4 h-4 text-medical-300" /> Collect feedback with a link or QR code</p>
+        <p className="mt-1 text-xs text-slate-400">Share the link or print the QR code and display it at your desk. Clients enter their name and email, then rate their experience — reviews land here tagged &ldquo;QR&rdquo;.</p>
+        {!labSlug ? (
+          <div className="mt-3 rounded-xl bg-amber-500/10 p-3 text-xs text-amber-200">Set a public URL slug for your lab to enable the feedback link and QR.</div>
+        ) : (
+          <div className="mt-4 flex flex-col gap-4 sm:flex-row sm:items-start">
+            <div className="shrink-0 self-center rounded-2xl bg-white p-2.5 sm:self-start">
+              {fbQr ? (
+                // eslint-disable-next-line @next/next/no-img-element
+                <img src={fbQr} alt="Feedback QR" className="h-32 w-32" />
+              ) : (
+                <div className="flex h-32 w-32 items-center justify-center"><RefreshCw className="h-5 w-5 animate-spin text-slate-400" /></div>
+              )}
+            </div>
+            <div className="min-w-0 flex-1 space-y-2">
+              <div className="flex items-center gap-2">
+                <input readOnly value={fbUrl} className="min-w-0 flex-1 truncate rounded-lg border border-white/10 bg-white/5 px-2.5 py-2 text-xs text-slate-300" />
+                <button
+                  onClick={() => { navigator.clipboard?.writeText(fbUrl); toast.success("Feedback link copied"); }}
+                  className="rounded-lg border border-white/10 p-2 text-slate-300 hover:bg-white/5 hover:text-white" title="Copy link"
+                >
+                  <Copy className="h-4 w-4" />
+                </button>
+                <a href={fbUrl} target="_blank" rel="noreferrer" className="rounded-lg border border-white/10 p-2 text-slate-300 hover:bg-white/5 hover:text-white" title="Open feedback page">
+                  <ExternalLink className="h-4 w-4" />
+                </a>
+              </div>
+              <button
+                onClick={() => {
+                  if (!fbQr) return;
+                  const a = document.createElement("a");
+                  a.href = fbQr;
+                  a.download = `${labSlug}-feedback-qr.png`;
+                  a.click();
+                }}
+                disabled={!fbQr}
+                className="inline-flex items-center gap-2 rounded-lg border border-white/10 px-3 py-2 text-xs font-medium text-slate-200 hover:bg-white/5 disabled:opacity-50"
+              >
+                <ArrowUpRight className="h-4 w-4 rotate-45" /> Download QR image
+              </button>
+              <p className="text-[11px] text-slate-500">Tip: stick the QR next to your exit or reception so clients can review while they wait.</p>
+            </div>
+          </div>
+        )}
       </div>
 
       {/* Averages overview */}
@@ -2929,12 +2990,12 @@ function LabFeedbackView({ labId }: { labId: string }) {
       {/* Filter */}
       <div className="flex items-center gap-2 flex-wrap">
         <span className="text-xs text-slate-500 font-medium">Filter:</span>
-        {(["all", "patient", "doctor"] as const).map((t) => (
+        {(["all", "qr", "patient", "doctor"] as const).map((t) => (
           <button key={t} onClick={() => setFilterType(t)}
             className={`text-xs font-semibold px-3 py-1.5 rounded-full transition-colors capitalize ${
               filterType === t ? "bg-medical-600 text-white" : "bg-white/5 text-slate-400 hover:text-white hover:bg-white/10"
             }`}>
-            {t === "all" ? "All" : t === "patient" ? "Patients" : "Doctors"}
+            {t === "all" ? "All" : t === "qr" ? "QR / in-lab" : t === "patient" ? "Patients" : "Doctors"}
           </button>
         ))}
       </div>
@@ -2947,15 +3008,20 @@ function LabFeedbackView({ labId }: { labId: string }) {
         <div className="text-center py-16">
           <MessageSquare className="w-10 h-10 text-slate-600 mx-auto mb-3" />
           <p className="text-slate-400 font-medium text-sm">No feedback yet</p>
-          <p className="text-slate-500 text-xs mt-1">Feedback from patients and doctors will appear here</p>
+          <p className="text-slate-500 text-xs mt-1">Share your feedback link or QR code above — reviews will appear here</p>
         </div>
       ) : (
         <div className="space-y-3">
           {filtered.map((fb) => {
             const reviewer = fb.is_anonymous
               ? (fb.display_name ?? "Anonymous")
+              : fb.reviewer_type === "qr"
+              ? (fb.display_name ?? fb.reviewer_email)
               : fb.reviewer_email;
-            const typeColor = fb.reviewer_type === "patient" ? "text-sky-400 bg-sky-400/10" : "text-violet-400 bg-violet-400/10";
+            const typeColor =
+              fb.reviewer_type === "patient" ? "text-sky-400 bg-sky-400/10"
+              : fb.reviewer_type === "qr" ? "text-emerald-400 bg-emerald-400/10"
+              : "text-violet-400 bg-violet-400/10";
             return (
               <div key={fb.id} className="bg-white/5 border border-white/10 rounded-2xl p-4 sm:p-5">
                 {/* Top row */}
@@ -2963,14 +3029,17 @@ function LabFeedbackView({ labId }: { labId: string }) {
                   <div className="min-w-0">
                     <div className="flex items-center gap-2 flex-wrap mb-0.5">
                       <p className="text-sm font-semibold text-white truncate">{reviewer}</p>
-                      <span className={`text-xs font-semibold px-2 py-0.5 rounded-full capitalize ${typeColor}`}>
-                        {fb.reviewer_type}
+                      <span className={`text-xs font-semibold px-2 py-0.5 rounded-full ${typeColor}`}>
+                        {fb.reviewer_type === "qr" ? "QR" : fb.reviewer_type.charAt(0).toUpperCase() + fb.reviewer_type.slice(1)}
                       </span>
                       {fb.is_anonymous && (
                         <span className="text-xs text-slate-500 bg-white/5 px-2 py-0.5 rounded-full">anonymous</span>
                       )}
                     </div>
-                    <p className="text-xs text-slate-500">{format(new Date(fb.updated_at), "dd MMM yyyy")}</p>
+                    <p className="text-xs text-slate-500">
+                      {fb.reviewer_type === "qr" && fb.display_name ? <span>{fb.reviewer_email} · </span> : null}
+                      {format(new Date(fb.updated_at), "dd MMM yyyy")}
+                    </p>
                   </div>
                   <div className="shrink-0">
                     <FeedbackStars value={fb.rating_overall} size="md" />

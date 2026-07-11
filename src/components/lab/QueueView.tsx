@@ -6,6 +6,7 @@ import toast from "react-hot-toast";
 import dynamic from "next/dynamic";
 import { FullViewModal } from "@/components/ui/FullViewModal";
 import { LabOnboardForm, OnboardTemplate } from "@/components/lab/LabOnboardForm";
+import { TestTagInput, TestTag } from "@/components/ui/TestTagInput";
 import { SourceBadge } from "@/components/lab/SourceBadge";
 
 const JourneyView = dynamic(() => import("@/components/lab/JourneyView").then((m) => ({ default: m.JourneyView })), { ssr: false });
@@ -475,6 +476,7 @@ export function QueueView({
       {editFor && (
         <QueueEditModal
           request={editFor}
+          labId={labId}
           onClose={() => setEditFor(null)}
           onDone={() => { setEditFor(null); load(true); }}
         />
@@ -644,10 +646,12 @@ function QueueDetailModal({
  */
 function QueueEditModal({
   request,
+  labId,
   onClose,
   onDone,
 }: {
   request: QueueReq;
+  labId: string;
   onClose: () => void;
   onDone: () => void;
 }) {
@@ -664,7 +668,32 @@ function QueueEditModal({
   const [org, setOrg] = useState(request.doctor_hospital ?? "");
   const [policyNumber, setPolicyNumber] = useState(request.policy_number ?? "");
   const [paymentMode, setPaymentMode] = useState(request.payment_mode ?? "");
-  const [testsText, setTestsText] = useState(request.tests);
+  // Proper catalog test picker — seeded from the resolved breakdown so
+  // recognised tests keep their catalog link (same as the onboarding editor).
+  const [tests, setTests] = useState<TestTag[]>(() => {
+    const bd = Array.isArray(request.test_breakdown)
+      ? (request.test_breakdown as { raw?: string; canonical_name?: string; category?: string; unit_price?: number; source?: string; lab_offered_test_id?: string | null }[])
+      : [];
+    if (bd.length > 0) {
+      return bd
+        .map((it): TestTag => {
+          const recognized = it.source === "lab_catalog";
+          return {
+            name: it.canonical_name || it.raw || "",
+            catalog_test_id: recognized ? (it.lab_offered_test_id ?? null) : null,
+            price: it.unit_price,
+            category: it.category,
+            low_confidence: !recognized,
+          };
+        })
+        .filter((t) => t.name);
+    }
+    return (request.tests || "")
+      .split(/[,\n]+/)
+      .map((x) => x.trim())
+      .filter((x) => x && !x.toLowerCase().startsWith("notes:") && x.toLowerCase() !== "to be confirmed at the lab")
+      .map((n) => ({ name: n, catalog_test_id: null }));
+  });
   const [complaint, setComplaint] = useState(request.diagnosis ?? "");
   const [saving, setSaving] = useState(false);
 
@@ -687,7 +716,6 @@ function QueueEditModal({
             patient_email: email,
             patient_age: age.trim() === "" ? null : Number(age),
             sex,
-            tests: testsText,
             whatsapp_phone: whatsapp,
             payment_mode: (paymentMode || null) as "cash" | "card" | "transfer" | "bill_hospital" | null,
             referral_type: (referralType || null) as "self" | "doctor" | "hmo" | null,
@@ -700,6 +728,19 @@ function QueueEditModal({
       });
       const data = await res.json();
       if (!res.ok || !data.success) throw new Error(data.error || "Failed");
+
+      // Tests go through the dedicated endpoint so the catalog breakdown and
+      // department tracks are recomputed.
+      if (tests.length > 0) {
+        const tRes = await fetch("/api/lab/requests/update-tests", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ requestId: request.id, tests: tests.map((t) => t.name).join(", ") }),
+        });
+        const tData = await tRes.json();
+        if (!tRes.ok || tData.success === false) throw new Error(tData.error || "Details saved, but the tests could not be updated");
+      }
+
       toast.success("Details updated");
       onDone();
     } catch (e) {
@@ -799,7 +840,8 @@ function QueueEditModal({
           )}
           <div className="sm:col-span-2">
             <label className={labelCls}>Tests / investigations</label>
-            <textarea className={inputCls} rows={2} value={testsText} onChange={(e) => setTestsText(e.target.value)} />
+            <TestTagInput value={tests} onChange={setTests} labId={labId} />
+            <p className="mt-1 text-[11px] text-slate-500">Search your catalog or type a test and press Enter. Department tracks update automatically.</p>
           </div>
           <div className="sm:col-span-2">
             <label className={labelCls}>Complaint</label>

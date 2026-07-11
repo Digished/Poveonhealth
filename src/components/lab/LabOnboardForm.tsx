@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
+import { createPortal } from "react-dom";
 import { User, FlaskConical, ShieldCheck, Check, Loader2, Copy, Search, Stethoscope, Lock, HelpCircle, MessageCircle, Plus, X, MapPin, ChevronDown } from "lucide-react";
 import { TestTagInput, TestTag } from "@/components/ui/TestTagInput";
 import { PhoneInput } from "@/components/PhoneInput";
@@ -109,7 +110,12 @@ function ReviewRow({ label, value }: { label: string; value: string }) {
   );
 }
 
-/** Predictive (fuzzy) combobox for states / LGAs — type-ahead with suggestions. */
+/**
+ * Predictive picker for states / LGAs. The field is a trigger that opens a
+ * portal-rendered popup (bottom sheet on mobile, centred dialog on desktop)
+ * with fuzzy type-ahead — consistent with the phone country picker, and never
+ * clipped behind buttons like an inline dropdown.
+ */
 function FuzzyCombo({
   value,
   onChange,
@@ -123,64 +129,94 @@ function FuzzyCombo({
   placeholder: string;
   disabled?: boolean;
 }) {
-  const [query, setQuery] = useState(value);
   const [open, setOpen] = useState(false);
-  const wrapRef = useRef<HTMLDivElement>(null);
+  const [query, setQuery] = useState("");
+  const [mounted, setMounted] = useState(false);
+  const searchRef = useRef<HTMLInputElement>(null);
 
-  useEffect(() => { setQuery(value); }, [value]);
+  useEffect(() => { setMounted(true); }, []);
 
   useEffect(() => {
-    function onDoc(e: MouseEvent) {
-      if (wrapRef.current && !wrapRef.current.contains(e.target as Node)) setOpen(false);
-    }
-    document.addEventListener("mousedown", onDoc);
-    return () => document.removeEventListener("mousedown", onDoc);
-  }, []);
+    if (!open) return;
+    const prev = document.body.style.overflow;
+    document.body.style.overflow = "hidden";
+    setTimeout(() => searchRef.current?.focus(), 80);
+    return () => { document.body.style.overflow = prev; };
+  }, [open]);
 
-  const suggestions = fuzzyFilter(query, options, 8);
+  const suggestions = fuzzyFilter(query, options, 50);
+
+  function pick(v: string) {
+    onChange(v);
+    setQuery("");
+    setOpen(false);
+  }
+
+  const modal = (
+    <div className="fixed inset-0 z-[10050] flex flex-col justify-end sm:items-center sm:justify-center" role="dialog" aria-modal="true" aria-label={placeholder}>
+      <div className="absolute inset-0 bg-black/40 backdrop-blur-[2px]" onClick={() => setOpen(false)} aria-hidden="true" />
+      <div className="relative flex max-h-[85vh] w-full flex-col rounded-t-2xl bg-white shadow-2xl sm:mx-4 sm:max-h-[600px] sm:w-[420px] sm:rounded-2xl">
+        <div className="sm:hidden flex justify-center pb-1 pt-3">
+          <div className="h-1 w-10 rounded-full bg-slate-200" />
+        </div>
+        <div className="flex items-center justify-between border-b border-slate-100 px-5 py-3.5">
+          <h2 className="text-base font-semibold text-slate-800">{placeholder.replace(" *", "")}</h2>
+          <button type="button" onClick={() => setOpen(false)} className="rounded-lg p-1.5 text-slate-500 hover:bg-slate-100 hover:text-slate-700" aria-label="Close">
+            <X className="h-5 w-5" />
+          </button>
+        </div>
+        <div className="border-b border-slate-100 px-4 py-3">
+          <div className="relative">
+            <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
+            <input
+              ref={searchRef}
+              value={query}
+              onChange={(e) => setQuery(e.target.value)}
+              onKeyDown={(e) => {
+                if (e.key === "Escape") setOpen(false);
+                if (e.key === "Enter" && suggestions.length > 0) { e.preventDefault(); pick(suggestions[0]); }
+              }}
+              placeholder="Type to search…"
+              className="w-full rounded-xl border border-slate-200 bg-slate-50 py-2.5 pl-9 pr-4 text-sm placeholder-slate-400 focus:border-medical-400 focus:outline-none focus:ring-2 focus:ring-medical-500"
+            />
+          </div>
+        </div>
+        <ul className="flex-1 overflow-y-auto overscroll-contain py-1">
+          {suggestions.length === 0 ? (
+            <li className="px-5 py-8 text-center text-sm text-slate-400">No matches found</li>
+          ) : (
+            suggestions.map((o) => (
+              <li key={o}>
+                <button
+                  type="button"
+                  onClick={() => pick(o)}
+                  className={`flex w-full items-center justify-between px-5 py-3 text-left text-sm transition-colors active:bg-medical-50 ${o === value ? "bg-medical-50 font-semibold text-medical-700" : "text-slate-700 hover:bg-slate-50"}`}
+                >
+                  {o}
+                  {o === value && <span className="h-2 w-2 shrink-0 rounded-full bg-medical-500" />}
+                </button>
+              </li>
+            ))
+          )}
+        </ul>
+        <div className="sm:hidden" style={{ paddingBottom: "env(safe-area-inset-bottom, 0px)" }} />
+      </div>
+    </div>
+  );
 
   return (
-    <div ref={wrapRef} className="relative">
-      <input
-        className={`${inputCls} pr-9 disabled:bg-slate-50 disabled:text-slate-400`}
-        value={query}
+    <>
+      <button
+        type="button"
         disabled={disabled}
-        placeholder={placeholder}
-        onFocus={() => setOpen(true)}
-        onChange={(e) => {
-          setQuery(e.target.value);
-          setOpen(true);
-          // Free typing clears the committed value until a suggestion is picked
-          // or the text exactly matches an option.
-          const exact = options.find((o) => o.toLowerCase() === e.target.value.trim().toLowerCase());
-          onChange(exact ?? "");
-        }}
-        onKeyDown={(e) => {
-          if (e.key === "Enter" && suggestions.length > 0) {
-            e.preventDefault();
-            onChange(suggestions[0]);
-            setQuery(suggestions[0]);
-            setOpen(false);
-          }
-        }}
-      />
-      <ChevronDown className="pointer-events-none absolute right-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
-      {open && !disabled && suggestions.length > 0 && (
-        <ul className="absolute z-20 mt-1 max-h-52 w-full overflow-y-auto rounded-xl border border-slate-200 bg-white py-1 shadow-xl">
-          {suggestions.map((s) => (
-            <li key={s}>
-              <button
-                type="button"
-                onClick={() => { onChange(s); setQuery(s); setOpen(false); }}
-                className={`block w-full px-4 py-2 text-left text-sm hover:bg-medical-50 ${s === value ? "bg-medical-50 font-semibold text-medical-700" : "text-slate-700"}`}
-              >
-                {s}
-              </button>
-            </li>
-          ))}
-        </ul>
-      )}
-    </div>
+        onClick={() => setOpen(true)}
+        className={`${inputCls} flex items-center justify-between gap-2 text-left disabled:bg-slate-50 disabled:text-slate-400`}
+      >
+        <span className={`truncate ${value ? "text-slate-800" : "text-slate-400"}`}>{value || placeholder}</span>
+        <ChevronDown className="h-4 w-4 shrink-0 text-slate-400" />
+      </button>
+      {mounted && open && !disabled && createPortal(modal, document.body)}
+    </>
   );
 }
 
