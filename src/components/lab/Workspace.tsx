@@ -75,6 +75,7 @@ function testPills(r: WReq): TestPill[] {
 interface Track { department: string; workflow: string; currentStage: string; events: JEvent[]; collections: JEvent[]; tests: string[] }
 interface ResultTemplate { id: string; name: string; department: string | null; parameters: { name: string; unit?: string; reference_range?: string; group?: string }[] }
 interface RResult { id: string; request_id: string; department: string | null; status: string; values: { name: string; value?: string; unit?: string; reference_range?: string; group?: string; flag?: string }[]; comment: string | null; pdf_url: string | null }
+interface RReceipt { id: string; receipt_no: number; kind: string; amount: string; currency: string; created_at: string }
 
 function tracksFor(r: WReq, departments: DepartmentConfig[] = DEFAULT_DEPARTMENTS): Track[] {
   const depts = requestDepartments(r.test_breakdown, departments);
@@ -697,6 +698,43 @@ function WorkspaceDrawer({
   const [regLinkSentAt, setRegLinkSentAt] = useState<number | null>(null);
   useEffect(() => { setRegLinkSentAt(null); setRegLinkOpen(false); }, [request.id]);
   const [results, setResults] = useState<RResult[]>([]);
+  const [receipts, setReceipts] = useState<RReceipt[]>([]);
+  const [issuingReceipt, setIssuingReceipt] = useState(false);
+
+  // Load receipts already issued for this request.
+  const loadReceipts = useCallback(() => {
+    fetch(`/api/lab/receipts?request_id=${request.id}`, { cache: "no-store" })
+      .then((r) => (r.ok ? r.json() : null))
+      .then((d) => { if (Array.isArray(d?.receipts)) setReceipts(d.receipts); })
+      .catch(() => {});
+  }, [request.id]);
+  useEffect(() => { setReceipts([]); loadReceipts(); }, [loadReceipts]);
+
+  // Issue a new receipt, then open it for printing. A blank tab is opened
+  // synchronously on the click so the PDF isn't swallowed by popup blockers.
+  async function issueReceipt() {
+    if (issuingReceipt) return;
+    setIssuingReceipt(true);
+    const win = window.open("", "_blank");
+    try {
+      const res = await fetch("/api/lab/receipts", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ request_id: request.id, kind: "payment" }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || "Failed to issue receipt");
+      const url = `/api/lab/receipts/${data.receipt.id}/pdf`;
+      if (win) win.location.href = url; else window.open(url, "_blank");
+      toast.success(`Receipt #${String(data.receipt.receipt_no).padStart(5, "0")} issued`);
+      loadReceipts();
+    } catch (e) {
+      if (win) win.close();
+      toast.error(e instanceof Error ? e.message : "Failed to issue receipt");
+    } finally {
+      setIssuingReceipt(false);
+    }
+  }
 
   // Contextual tutorial: when the drawer opens with the Guide on, jump to the
   // client-detail steps; restore the list step when it closes.
@@ -854,6 +892,34 @@ function WorkspaceDrawer({
                 className="mt-3 inline-flex items-center gap-1.5 rounded-lg border border-white/10 px-2.5 py-1 text-xs font-medium text-medical-300 hover:bg-white/5">
                 <Printer className="h-3.5 w-3.5" /> Print visit checklist
               </a>
+            )}
+
+            {/* Receipts — issue a payment receipt and reprint previously issued ones. */}
+            {!readOnly && (
+              <div className="mt-3 rounded-xl border border-white/10 bg-white/5 p-3">
+                <div className="flex flex-wrap items-center justify-between gap-2">
+                  <p className="flex items-center gap-1.5 text-xs font-semibold text-white"><CreditCard className="h-3.5 w-3.5 text-medical-300" /> Receipts</p>
+                  <button
+                    onClick={issueReceipt}
+                    disabled={issuingReceipt}
+                    title={request.is_paid ? undefined : "You can still issue a receipt; mark the client as paid to reflect payment status."}
+                    className="inline-flex items-center gap-1.5 rounded-lg bg-medical-600 px-2.5 py-1 text-xs font-semibold text-white hover:bg-medical-700 disabled:opacity-50"
+                  >
+                    {issuingReceipt ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Printer className="h-3.5 w-3.5" />} Issue receipt
+                  </button>
+                </div>
+                {receipts.length > 0 && (
+                  <div className="mt-2 space-y-1">
+                    {receipts.map((rc) => (
+                      <a key={rc.id} href={`/api/lab/receipts/${rc.id}/pdf`} target="_blank" rel="noreferrer"
+                        className="flex items-center justify-between rounded-lg px-2 py-1 text-[11px] text-slate-300 hover:bg-white/5">
+                        <span className="flex items-center gap-1.5"><FileText className="h-3 w-3 text-medical-300" /> Receipt #{String(rc.receipt_no).padStart(5, "0")}</span>
+                        <span className="text-slate-500">{fmtDayTime(rc.created_at)}</span>
+                      </a>
+                    ))}
+                  </div>
+                )}
+              </div>
             )}
         </div>
 

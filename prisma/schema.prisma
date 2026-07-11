@@ -51,6 +51,7 @@ model Lab {
   professional_commissions ProfessionalCommission[]
   result_templates LabResultTemplate[]
   request_results  RequestResult[]
+  request_receipts RequestReceipt[]
   sops             LabSop[]
   departments      LabDepartment[]
 
@@ -245,6 +246,7 @@ model Request {
   branch LabBranch? @relation(fields: [branch_id], references: [id])
   journey_events RequestJourneyEvent[]
   results        RequestResult[]
+  receipts       RequestReceipt[]
 
   @@map("requests")
 }
@@ -1170,6 +1172,34 @@ model RequestResult {
   @@index([request_id])
   @@index([lab_id, status])
   @@map("request_results")
+}
+
+// A printable/emailable receipt issued against a request — either a payment
+// receipt (client paid the lab for the tests) or a specimen-collection /
+// acknowledgement slip. Rendered into a branded PDF, reusing the same
+// @react-pdf pipeline as result reports. `receipt_no` is a stable per-lab
+// human-facing number assigned at issue time.
+model RequestReceipt {
+  id           String   @id @default(uuid())
+  lab_id       String
+  request_id   String
+  receipt_no   Int // per-lab sequential number (see @@unique)
+  kind         String   @default("payment") // payment | collection
+  currency     String   @default("NGN")
+  amount       Decimal  @default(0) @db.Decimal(12, 2)
+  items        Json     @default("[]") // [{ name, qty, unit_price, amount }]
+  payment_mode String? // cash | card | transfer | bill_hospital (snapshot)
+  note         String?
+  issued_by    String? // actor email
+  created_at   DateTime @default(now())
+
+  lab     Lab     @relation(fields: [lab_id], references: [id], onDelete: Cascade)
+  request Request @relation(fields: [request_id], references: [id], onDelete: Cascade)
+
+  @@unique([lab_id, receipt_no])
+  @@index([request_id])
+  @@index([lab_id])
+  @@map("request_receipts")
 }
 
 // ─────────────────────────────────────────────────────────────────────────────

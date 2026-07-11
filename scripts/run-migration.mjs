@@ -43,6 +43,39 @@ async function execWithRetry(sql, attempts = 4) {
 
 const migrations = [
   {
+    desc: "request_receipts table (payment / collection receipts)",
+    sql: `CREATE TABLE IF NOT EXISTS request_receipts (
+      id TEXT PRIMARY KEY,
+      lab_id TEXT NOT NULL,
+      request_id TEXT NOT NULL,
+      receipt_no INTEGER NOT NULL,
+      kind TEXT NOT NULL DEFAULT 'payment',
+      currency TEXT NOT NULL DEFAULT 'NGN',
+      amount DECIMAL(12,2) NOT NULL DEFAULT 0,
+      items JSONB NOT NULL DEFAULT '[]',
+      payment_mode TEXT,
+      note TEXT,
+      issued_by TEXT,
+      created_at TIMESTAMP(3) NOT NULL DEFAULT now()
+    )`,
+    continueOnError: true,
+  },
+  {
+    desc: "request_receipts unique (lab_id, receipt_no)",
+    sql: `CREATE UNIQUE INDEX IF NOT EXISTS request_receipts_lab_id_receipt_no_key ON request_receipts (lab_id, receipt_no)`,
+    continueOnError: true,
+  },
+  {
+    desc: "request_receipts index (request_id)",
+    sql: `CREATE INDEX IF NOT EXISTS request_receipts_request_id_idx ON request_receipts (request_id)`,
+    continueOnError: true,
+  },
+  {
+    desc: "request_receipts index (lab_id)",
+    sql: `CREATE INDEX IF NOT EXISTS request_receipts_lab_id_idx ON request_receipts (lab_id)`,
+    continueOnError: true,
+  },
+  {
     desc: "requests.patient_age column (age replaces dob for new requests)",
     sql: `ALTER TABLE requests ADD COLUMN IF NOT EXISTS patient_age INTEGER`,
     continueOnError: true,
