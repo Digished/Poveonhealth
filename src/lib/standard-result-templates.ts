@@ -6,10 +6,12 @@
 export interface StandardTemplate {
   name: string;
   department: string;
+  icon?: string;
+  description?: string;
   parameters: { name: string; unit?: string; reference_range?: string; group?: string }[];
 }
 
-export const STANDARD_RESULT_TEMPLATES: StandardTemplate[] = [
+const BASE_TEMPLATES: StandardTemplate[] = [
   {
     name: "Full Blood Count (FBC)",
     department: "Hematology",
@@ -476,3 +478,73 @@ export const STANDARD_RESULT_TEMPLATES: StandardTemplate[] = [
     ],
   },
 ];
+
+// Emoji icon + plain-English "about this test" per template. Descriptions are
+// written for patients/clinicians and are editable per lab.
+const TEMPLATE_META: Record<string, { icon: string; description: string }> = {
+  "Full Blood Count (FBC)": { icon: "🩸", description: "A full blood count measures the different cells in your blood — red cells (which carry oxygen), white cells (which fight infection) and platelets (which help clotting). It screens for anaemia, infection, inflammation and clotting problems." },
+  "Lipid Profile": { icon: "🫀", description: "The lipid profile measures fats in the blood — total, LDL ('bad'), HDL ('good') cholesterol and triglycerides — to estimate your risk of heart disease and stroke. Generally, lower LDL and higher HDL are better." },
+  "Liver Function Test (LFT)": { icon: "🫁", description: "Liver function tests check how well the liver is working. Enzymes (AST, ALT, ALP) rise when liver cells are injured, while bilirubin, protein and albumin reflect the liver's processing and building functions." },
+  "Kidney Function Test (U&E/Cr)": { icon: "🫘", description: "Assesses how well the kidneys filter waste. Urea and creatinine rise when kidney function falls; sodium, potassium and bicarbonate show the body's salt and acid balance. Creatinine is used to estimate eGFR — the kidney's filtering rate." },
+  "Serum Electrolytes, Urea & Creatinine (E/U/Cr)": { icon: "🫘", description: "Checks kidney function and the body's salt/water balance. Urea and creatinine indicate filtering ability, while sodium, potassium, chloride and bicarbonate reflect hydration and acid-base balance. Creatinine underlies the eGFR: >90 normal, 60–89 mildly reduced, 30–59 moderately reduced, 15–29 severely reduced, <15 kidney failure." },
+  "Fasting Blood Sugar (FBS)": { icon: "🩸", description: "Measures blood glucose after fasting. 70–100 mg/dL is normal, 100–125 suggests pre-diabetes, and 126 or above on two occasions indicates diabetes." },
+  "Random Blood Sugar (RBS)": { icon: "🩸", description: "A blood glucose taken at any time regardless of meals. A value of 200 mg/dL or more with symptoms suggests diabetes and warrants a fasting or HbA1c confirmation." },
+  "HbA1c": { icon: "📊", description: "HbA1c reflects average blood sugar over the past 2–3 months. Below 5.7% is normal, 5.7–6.4% is pre-diabetes, and 6.5% or above indicates diabetes. It's used to monitor long-term glucose control." },
+  "Thyroid Function Test (TFT)": { icon: "🦋", description: "Checks the thyroid gland, which controls metabolism. A high TSH with low T4 suggests an underactive thyroid (hypothyroidism); a low TSH with high T4/T3 suggests an overactive thyroid (hyperthyroidism)." },
+  "Urinalysis": { icon: "🧫", description: "A dipstick and visual check of urine that screens for urinary infection, kidney disease and diabetes by detecting protein, blood, glucose, ketones and signs of infection." },
+  "Malaria Parasite (MP)": { icon: "🦟", description: "Looks for malaria parasites in a blood film. 'Not seen' means none were found; a positive result reports the parasite density and guides treatment." },
+  "Prostate Specific Antigen (PSA)": { icon: "🧍", description: "PSA is a protein from the prostate. Levels rise with age, prostate enlargement, infection or cancer. A total PSA under 4 ng/mL is generally reassuring; the free/total ratio helps clarify borderline results." },
+  "2-Hour Post-Prandial Glucose (2HPP)": { icon: "🩸", description: "Blood glucose measured two hours after a meal. Under 140 mg/dL is normal; 140–199 suggests impaired tolerance and 200+ suggests diabetes." },
+  "Oral Glucose Tolerance Test (OGTT)": { icon: "🩸", description: "Measures how the body handles a glucose drink over two hours. It diagnoses diabetes and gestational diabetes; a 2-hour value of 200 mg/dL or more is diagnostic." },
+  "Serum Uric Acid": { icon: "🦴", description: "Uric acid is a waste product; high levels can cause gout (painful joints) and kidney stones. Levels can rise with rich diets, dehydration and some medications." },
+  "C-Reactive Protein (CRP)": { icon: "🔥", description: "CRP is a marker of inflammation or infection anywhere in the body. It rises quickly with acute infection and falls as it settles; higher values suggest more active inflammation." },
+  "Bone Profile (Ca / PO₄ / Mg)": { icon: "🦴", description: "Measures calcium, phosphate and magnesium — minerals important for bones, nerves and muscles. Abnormal levels can point to bone, parathyroid or kidney problems." },
+  "Iron Studies": { icon: "🧲", description: "Assesses the body's iron stores. Low iron and ferritin with a high TIBC suggest iron-deficiency anaemia, while very high ferritin can indicate iron overload or inflammation." },
+  "Vitamin D (25-OH)": { icon: "☀️", description: "Vitamin D supports bone health and immunity. Below 20 ng/mL is deficient, 20–29 insufficient, and 30–100 sufficient." },
+  "Serum Amylase & Lipase": { icon: "🫃", description: "Enzymes from the pancreas that rise sharply in pancreatitis. Lipase is the more specific marker for pancreatic inflammation." },
+  "Erythrocyte Sedimentation Rate (ESR)": { icon: "⏱️", description: "A non-specific marker of inflammation — how fast red cells settle in an hour. A raised ESR points to infection, inflammation or other illness and is followed over time." },
+  "Blood Group & Rhesus": { icon: "🅰️", description: "Determines your ABO blood group (A, B, AB or O) and Rhesus (positive or negative) — essential before transfusion, in pregnancy and for donation." },
+  "Haemoglobin Genotype": { icon: "🧬", description: "Identifies the type of haemoglobin you carry. AA is normal, AS is sickle-cell trait (a carrier), and SS or SC indicate sickle-cell disease. Important for family planning and health." },
+  "Clotting Profile (PT / INR / APTT)": { icon: "🩹", description: "Measures how well blood clots. PT/INR and APTT assess different parts of the clotting pathway; the INR is used to monitor blood-thinning medication such as warfarin." },
+  "Reticulocyte Count": { icon: "🔬", description: "Reticulocytes are young red blood cells. A high count means the bone marrow is producing red cells quickly (e.g. after blood loss); a low count suggests reduced production." },
+  "HIV Screening (Retroviral)": { icon: "🎗️", description: "Screens for antibodies to HIV. 'Non-reactive' means none were detected; a reactive result requires a confirmatory test before any diagnosis." },
+  "Hepatitis B Surface Antigen (HBsAg)": { icon: "🧫", description: "Detects active hepatitis B infection. 'Non-reactive' is negative; a reactive result means the virus is present and needs further evaluation." },
+  "Hepatitis B Profile": { icon: "🧫", description: "A panel that clarifies hepatitis B status — whether there is active infection, past infection or immunity from vaccination." },
+  "Hepatitis C Antibody (Anti-HCV)": { icon: "🧫", description: "Screens for exposure to hepatitis C. A reactive result needs a confirmatory viral (RNA) test, as antibodies can persist after the infection has cleared." },
+  "VDRL (Syphilis)": { icon: "🧫", description: "Screens for syphilis infection. 'Non-reactive' is negative; reactive results are confirmed with a specific treponemal test." },
+  "Widal Test": { icon: "🦠", description: "A screening test for typhoid fever that detects antibodies against Salmonella. Rising or high titres (e.g. ≥1:160) support the diagnosis, but results should be interpreted with symptoms." },
+  "Helicobacter Pylori (H. pylori)": { icon: "🦠", description: "Detects H. pylori, a stomach bacterium linked to ulcers and gastritis. A positive result may explain long-standing indigestion and can guide treatment." },
+  "Beta-hCG (Pregnancy)": { icon: "🤰", description: "hCG is the pregnancy hormone. Levels below 5 mIU/mL suggest no pregnancy; rising levels support an ongoing pregnancy and can help estimate its stage." },
+  "Urine Microscopy, Culture & Sensitivity (M/C/S)": { icon: "🧫", description: "Examines urine under the microscope and grows any bacteria to diagnose urinary tract infection. If bacteria grow, the report names the organism and which antibiotics will treat it." },
+  "Stool Microscopy (Stool R/E)": { icon: "🔬", description: "Examines stool for parasites, their eggs (ova), cysts and signs of infection or bleeding — useful for diarrhoea and abdominal symptoms." },
+  "Seminal Fluid Analysis (Semen)": { icon: "🔬", description: "Assesses male fertility by measuring semen volume and the number, movement and shape of sperm. Values are compared with WHO reference thresholds." },
+  "Electrocardiogram (ECG)": { icon: "❤️", description: "Records the heart's electrical activity to check the rate, rhythm and conduction, and to look for signs of strain or a previous heart attack." },
+  "Chest X-Ray (PA)": { icon: "🩻", description: "An X-ray image of the chest that shows the lungs, heart and bones — used to detect infections such as pneumonia, fluid, heart enlargement and other chest problems." },
+  "Abdominal Ultrasound Scan": { icon: "🩻", description: "A painless scan using sound waves to image the liver, gallbladder, pancreas, spleen, kidneys and bladder, looking for stones, cysts, enlargement or other changes." },
+  "Obstetric Ultrasound Scan": { icon: "🤰", description: "A pregnancy scan that checks the baby's growth, heartbeat, position and the placenta, and estimates the age and due date." },
+  "Pelvic Ultrasound Scan": { icon: "🩻", description: "Images the uterus and ovaries to investigate pelvic pain, abnormal bleeding, fibroids, cysts and other gynaecological concerns." },
+  "Echocardiography": { icon: "❤️", description: "An ultrasound of the heart that shows how well it pumps (ejection fraction), how the valves and chambers work, and whether there is fluid around the heart." },
+  "CT Scan (Brain)": { icon: "🧠", description: "A detailed cross-sectional X-ray of the brain used to look for bleeding, stroke, tumours or injury." },
+  "MRI Report": { icon: "🧲", description: "A detailed scan using magnetic fields to image soft tissues such as the brain, spine and joints — without X-rays." },
+  "Mammography": { icon: "🩻", description: "A low-dose breast X-ray used to screen for and investigate breast lumps and cancer. Findings are summarised with a BI-RADS category." },
+};
+
+/** Emoji fallback when a template has no specific icon. */
+function iconForDepartment(dept: string): string {
+  const d = dept.toLowerCase();
+  if (d.includes("hemato") || d.includes("haemato")) return "🩸";
+  if (d.includes("chem")) return "🧪";
+  if (d.includes("micro")) return "🦠";
+  if (d.includes("sero") || d.includes("immun")) return "🧫";
+  if (d.includes("radio") || d.includes("imag")) return "🩻";
+  return "🧪";
+}
+
+export const STANDARD_RESULT_TEMPLATES: StandardTemplate[] = BASE_TEMPLATES.map((t) => {
+  const meta = TEMPLATE_META[t.name];
+  return {
+    ...t,
+    icon: meta?.icon ?? iconForDepartment(t.department),
+    description: meta?.description ?? `${t.name} — a ${t.department} investigation. Reference ranges are typical adult values; interpret alongside the clinical picture.`,
+  };
+});

@@ -1125,6 +1125,8 @@ model LabResultTemplate {
   department     String?
   parameters     Json     @default("[]") // [{ name, unit, reference_range, group? }]
   interpretation String?  // optional default interpretation/comment
+  description    String?  @db.Text // plain-English "about this test" shown on the report
+  icon           String?  // emoji icon for quick visual identification
   created_by     String?
   created_at     DateTime @default(now())
   updated_at     DateTime @default(now()) @updatedAt

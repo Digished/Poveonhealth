@@ -34,6 +34,8 @@ const CreateSchema = z.object({
   department: z.string().max(60).optional().or(z.literal("")),
   parameters: z.array(ParamSchema).min(1).max(200),
   interpretation: z.string().max(2000).optional().or(z.literal("")),
+  description: z.string().max(4000).optional().or(z.literal("")),
+  icon: z.string().max(16).optional().or(z.literal("")),
 });
 
 /** POST /api/lab/result-templates — create a result template. Requires can_manage_templates. */
@@ -57,6 +59,8 @@ export async function POST(request: NextRequest) {
       department: d.department || null,
       parameters: d.parameters.map(normalizeParam),
       interpretation: d.interpretation || null,
+      description: d.description || null,
+      icon: d.icon || null,
       created_by: auth.actor_email ?? null,
     },
   });

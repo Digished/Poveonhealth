@@ -77,6 +77,9 @@ export async function renderResultPdf(resultId: string, labId: string): Promise<
   if (!result || result.lab_id !== labId) return null;
 
   const params = (Array.isArray(result.values) ? result.values : []) as ResultParam[];
+  const about = result.template_id
+    ? (await prisma.labResultTemplate.findUnique({ where: { id: result.template_id }, select: { description: true } }))?.description ?? null
+    : null;
   const brand = await labBrandProps(result.lab);
   const buffer = await renderToBuffer(
     ResultReportPdf({
@@ -87,7 +90,7 @@ export async function renderResultPdf(resultId: string, labId: string): Promise<
       patientAge: result.request.patient_age,
       patientSex: result.request.sex,
       patientPhone: result.request.patient_phone,
-      sections: [{ parameters: params, comment: result.comment, verifiedBy: result.verified_by, verifiedAt: result.verified_at }],
+      sections: [{ parameters: params, comment: result.comment, about, verifiedBy: result.verified_by, verifiedAt: result.verified_at }],
     })
   );
   return { buffer: buffer as Buffer, code: result.request.code };
@@ -115,14 +118,16 @@ export async function renderResultsPdf(resultIds: string[], labId: string): Prom
   // Resolve template names for section titles.
   const templateIds = Array.from(new Set(results.map((r) => r.template_id).filter(Boolean))) as string[];
   const templates = templateIds.length
-    ? await prisma.labResultTemplate.findMany({ where: { id: { in: templateIds } }, select: { id: true, name: true } })
+    ? await prisma.labResultTemplate.findMany({ where: { id: { in: templateIds } }, select: { id: true, name: true, description: true } })
     : [];
   const tName = new Map(templates.map((t) => [t.id, t.name]));
+  const tAbout = new Map(templates.map((t) => [t.id, t.description]));
 
   const sections: ResultSection[] = results.map((r) => ({
     title: (r.template_id && tName.get(r.template_id)) || r.department || "Result",
     parameters: (Array.isArray(r.values) ? r.values : []) as ResultParam[],
     comment: r.comment,
+    about: (r.template_id && tAbout.get(r.template_id)) || null,
     verifiedBy: r.verified_by,
     verifiedAt: r.verified_at,
   }));

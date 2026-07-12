@@ -43,6 +43,13 @@ async function execWithRetry(sql, attempts = 4) {
 
 const migrations = [
   {
+    desc: "lab_result_templates description & icon columns",
+    sql: `ALTER TABLE lab_result_templates
+      ADD COLUMN IF NOT EXISTS description TEXT,
+      ADD COLUMN IF NOT EXISTS icon TEXT`,
+    continueOnError: true,
+  },
+  {
     desc: "labs Mirth integration columns",
     sql: `ALTER TABLE labs
       ADD COLUMN IF NOT EXISTS mirth_enabled BOOLEAN NOT NULL DEFAULT false,

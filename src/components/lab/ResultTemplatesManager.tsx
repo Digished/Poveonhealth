@@ -20,6 +20,8 @@ interface ResultTemplate {
   department: string | null;
   parameters: Param[];
   interpretation: string | null;
+  description: string | null;
+  icon: string | null;
 }
 
 const inputCls = "w-full rounded-xl border border-white/10 bg-white/5 px-3 py-2 text-sm text-white placeholder:text-slate-500 focus:border-medical-400 focus:outline-none";
@@ -42,6 +44,9 @@ export function ResultTemplatesManager({ canManage }: { canManage: boolean }) {
   const [name, setName] = useState("");
   const [department, setDepartment] = useState("");
   const [interpretation, setInterpretation] = useState("");
+  const [description, setDescription] = useState("");
+  const [icon, setIcon] = useState("");
+  const [generating, setGenerating] = useState(false);
   const [params, setParams] = useState<Param[]>([emptyParam()]);
   const [saving, setSaving] = useState(false);
   const [seeding, setSeeding] = useState(false);
@@ -87,13 +92,34 @@ export function ResultTemplatesManager({ canManage }: { canManage: boolean }) {
   useEffect(() => { load(); }, [load]);
 
   function openNew() {
-    setEditing(null); setName(""); setDepartment(""); setInterpretation("");
+    setEditing(null); setName(""); setDepartment(""); setInterpretation(""); setDescription(""); setIcon("");
     setParams([emptyParam()]); setShowForm(true);
   }
   function openEdit(t: ResultTemplate) {
     setEditing(t); setName(t.name); setDepartment(t.department ?? ""); setInterpretation(t.interpretation ?? "");
+    setDescription(t.description ?? ""); setIcon(t.icon ?? "");
     setParams(t.parameters.length ? t.parameters.map((p) => ({ ...emptyParam(), ...p })) : [emptyParam()]);
     setShowForm(true);
+  }
+
+  async function generateDescription() {
+    if (!name.trim()) { toast.error("Enter a template name first"); return; }
+    setGenerating(true);
+    try {
+      const res = await fetch("/api/lab/result-templates/generate-description", {
+        method: "POST", headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ name: name.trim(), department, parameters: params.map((p) => p.name).filter(Boolean) }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || "Failed");
+      if (data.description) setDescription(data.description);
+      if (data.icon && !icon.trim()) setIcon(data.icon);
+      toast.success("Description generated — review & edit before saving");
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : "Failed to generate");
+    } finally {
+      setGenerating(false);
+    }
   }
 
   function setParam(i: number, patch: Partial<Param>) {
@@ -105,7 +131,7 @@ export function ResultTemplatesManager({ canManage }: { canManage: boolean }) {
     if (!name.trim() || cleaned.length === 0) { toast.error("Add a name and at least one parameter"); return; }
     setSaving(true);
     try {
-      const payload = { name: name.trim(), department: department || undefined, interpretation: interpretation || undefined, parameters: cleaned };
+      const payload = { name: name.trim(), department: department || undefined, interpretation: interpretation || undefined, description: description || undefined, icon: icon || undefined, parameters: cleaned };
       const res = editing
         ? await fetch(`/api/lab/result-templates/${editing.id}`, { method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify(payload) })
         : await fetch("/api/lab/result-templates", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(payload) });
@@ -307,9 +333,12 @@ export function ResultTemplatesManager({ canManage }: { canManage: boolean }) {
           {templates.map((t) => (
             <div key={t.id} className="rounded-2xl border border-white/10 bg-white/5 p-4">
               <div className="flex items-start justify-between gap-2">
-                <div className="min-w-0">
-                  <p className="truncate text-sm font-semibold text-white">{t.name}</p>
-                  {t.department && <p className="text-xs text-slate-400">{t.department}</p>}
+                <div className="flex min-w-0 items-start gap-2">
+                  {t.icon && <span className="text-xl leading-none">{t.icon}</span>}
+                  <div className="min-w-0">
+                    <p className="truncate text-sm font-semibold text-white">{t.name}</p>
+                    {t.department && <p className="text-xs text-slate-400">{t.department}</p>}
+                  </div>
                 </div>
                 {canManage && (
                   <div className="flex shrink-0 items-center gap-1">
@@ -332,11 +361,24 @@ export function ResultTemplatesManager({ canManage }: { canManage: boolean }) {
               <button onClick={() => setShowForm(false)} className="text-slate-400 hover:text-white"><X className="h-5 w-5" /></button>
             </div>
             <div className="space-y-3">
-              <input className={inputCls} placeholder="Template name (e.g. Full Blood Count)" value={name} onChange={(e) => setName(e.target.value)} />
+              <div className="flex gap-2">
+                <input className={`${inputCls} w-16 text-center text-lg`} placeholder="🧪" value={icon} onChange={(e) => setIcon(e.target.value)} maxLength={8} title="Emoji icon" />
+                <input className={inputCls} placeholder="Template name (e.g. Full Blood Count)" value={name} onChange={(e) => setName(e.target.value)} />
+              </div>
               <select className={inputCls} value={department} onChange={(e) => setDepartment(e.target.value)}>
                 <option value="" className="bg-slate-800">No department</option>
                 {DEPARTMENTS.map((d) => <option key={d} value={d} className="bg-slate-800">{d}</option>)}
               </select>
+
+              <div>
+                <div className="mb-1.5 flex items-center justify-between">
+                  <p className="text-xs font-medium text-slate-400">About this test (shown on the report)</p>
+                  <button onClick={generateDescription} disabled={generating} className="inline-flex items-center gap-1 rounded-lg border border-white/10 px-2 py-1 text-[11px] font-medium text-medical-300 hover:bg-white/5 disabled:opacity-50">
+                    {generating ? <Loader2 className="h-3 w-3 animate-spin" /> : <Wand2 className="h-3 w-3" />} Generate
+                  </button>
+                </div>
+                <textarea className={inputCls} rows={3} placeholder="Plain-English explanation of what this test checks and what the results mean…" value={description} onChange={(e) => setDescription(e.target.value)} />
+              </div>
 
               <div>
                 <p className="mb-1.5 text-xs font-medium text-slate-400">Parameters</p>

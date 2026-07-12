@@ -40,6 +40,8 @@ const styles = StyleSheet.create({
   narrativeText: { fontSize: 10, color: "#1e293b", lineHeight: 1.55 },
   commentBox: { marginTop: 12, backgroundColor: "#f0f7ff", borderLeftWidth: 3, borderLeftColor: ACCENT, borderRadius: 4, paddingVertical: 8, paddingHorizontal: 10 },
   commentText: { fontSize: 9.5, color: "#1e293b", lineHeight: 1.6 },
+  aboutBox: { marginTop: 10, backgroundColor: "#f8fafc", borderWidth: 1, borderColor: "#e2e8f0", borderRadius: 4, paddingVertical: 8, paddingHorizontal: 10 },
+  aboutText: { fontSize: 9, color: MUTED, lineHeight: 1.55 },
   signatureBlock: { marginTop: 20, paddingTop: 10, borderTopWidth: 1, borderTopColor: "#e2e8f0", flexDirection: "row", justifyContent: "space-between", alignItems: "flex-end" },
   sigName: { fontSize: 11, fontFamily: "Helvetica-Bold", color: INK },
   footer: { position: "absolute", bottom: 26, left: 44, right: 44, flexDirection: "row", justifyContent: "space-between", borderTopWidth: 1, borderTopColor: "#e2e8f0", paddingTop: 8 },
@@ -52,6 +54,7 @@ export type ResultSection = {
   title?: string | null; // template / department name
   parameters: ResultParam[];
   comment?: string | null;
+  about?: string | null; // plain-English "about this test" note
   verifiedBy?: string | null;
   verifiedAt?: Date | null;
 };
@@ -129,6 +132,13 @@ function SectionBody({ section }: { section: ResultSection }) {
         <View style={styles.commentBox}>
           <Text style={styles.sectionLabel}>Comment</Text>
           <Text style={styles.commentText}>{section.comment}</Text>
+        </View>
+      ) : null}
+
+      {section.about ? (
+        <View style={styles.aboutBox} wrap={false}>
+          <Text style={styles.sectionLabel}>About this test</Text>
+          <Text style={styles.aboutText}>{section.about}</Text>
         </View>
       ) : null}
     </View>

@@ -20,6 +20,8 @@ const PatchSchema = z.object({
   department: z.string().max(60).nullable().optional(),
   parameters: z.array(ParamSchema).min(1).max(200).optional(),
   interpretation: z.string().max(2000).nullable().optional(),
+  description: z.string().max(4000).nullable().optional(),
+  icon: z.string().max(16).nullable().optional(),
 });
 
 async function ownTemplate(labId: string, id: string) {
@@ -44,6 +46,8 @@ export async function PATCH(request: NextRequest, { params }: { params: { id: st
       ...(d.name !== undefined ? { name: d.name } : {}),
       ...(d.department !== undefined ? { department: d.department } : {}),
       ...(d.interpretation !== undefined ? { interpretation: d.interpretation } : {}),
+      ...(d.description !== undefined ? { description: d.description } : {}),
+      ...(d.icon !== undefined ? { icon: d.icon } : {}),
       ...(d.parameters ? { parameters: d.parameters.map(normalizeParam) } : {}),
     },
   });
