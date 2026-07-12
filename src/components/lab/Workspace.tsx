@@ -1009,11 +1009,8 @@ function WorkspaceDrawer({
                   </div>
                 )}
 
-                {pipelineInteractive && canEnterResults && (
-                  <button data-tour="ws-results" onClick={() => setResultsFor({ department: track.department })} className={`mt-3 inline-flex items-center gap-1.5 rounded-lg border border-white/10 px-3 py-1.5 text-xs font-medium text-medical-300 hover:bg-white/5 ${pendIs("enter_results") ? pulse : ""}`}>
-                    <FlaskConical className="h-3.5 w-3.5" /> Enter / send results
-                  </button>
-                )}
+                {/* Result entry now lives in the dedicated Results tab (search + multi-template
+                    composer). The per-track shortcut here is hidden to keep one entry point. */}
               </div>
             );
           })}

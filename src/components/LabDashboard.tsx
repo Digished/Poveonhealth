@@ -22,6 +22,7 @@ const ResultTemplatesManager = dynamic(() => import("@/components/lab/ResultTemp
 const SopManager = dynamic(() => import("@/components/lab/SopManager").then(m => ({ default: m.SopManager })), { ssr: false });
 const MirthInterfacesPanel = dynamic(() => import("@/components/lab/MirthInterfacesPanel").then(m => ({ default: m.MirthInterfacesPanel })), { ssr: false });
 const ResultsHub = dynamic(() => import("@/components/lab/ResultsHub").then(m => ({ default: m.ResultsHub })), { ssr: false });
+const PastResults = dynamic(() => import("@/components/lab/PastResults").then(m => ({ default: m.PastResults })), { ssr: false });
 const DepartmentsManager = dynamic(() => import("@/components/lab/DepartmentsManager").then(m => ({ default: m.DepartmentsManager })), { ssr: false });
 const LabQrCard = dynamic(() => import("@/components/lab/LabQrCard").then(m => ({ default: m.LabQrCard })), { ssr: false });
 const QueueView = dynamic(() => import("@/components/lab/QueueView").then(m => ({ default: m.QueueView })), { ssr: false });
@@ -113,8 +114,8 @@ export function LabDashboard({ lab, isOwner = false, roleName = "Lab Owner", can
   const router = useRouter();
   const searchParams = useSearchParams();
   const { isLight, toggle, themeClass } = useDashTheme("lab_dash_theme");
-  type MainView = "workspace" | "requests" | "journey" | "onboarding" | "queue" | "departments" | "results" | "templates" | "sops" | "network" | "referrals" | "professionals" | "clients" | "customers" | "analytics" | "activity" | "feedback" | "poveon" | "price-list" | "marketers" | "team" | "partners";
-  const VALID_TABS: MainView[] = ["onboarding", "queue", "workspace", "requests", "journey", "departments", "results", "templates", "sops", "network", "referrals", "professionals", "clients", "customers", "analytics", "activity", "feedback", "poveon", "price-list", "marketers", "team", "partners"];
+  type MainView = "workspace" | "requests" | "journey" | "onboarding" | "queue" | "departments" | "results" | "past" | "templates" | "sops" | "network" | "referrals" | "professionals" | "clients" | "customers" | "analytics" | "activity" | "feedback" | "poveon" | "price-list" | "marketers" | "team" | "partners";
+  const VALID_TABS: MainView[] = ["onboarding", "queue", "workspace", "requests", "journey", "departments", "results", "past", "templates", "sops", "network", "referrals", "professionals", "clients", "customers", "analytics", "activity", "feedback", "poveon", "price-list", "marketers", "team", "partners"];
   // Legacy tabs now fold into the unified Workspace.
   const LEGACY_TO_WORKSPACE = new Set(["requests", "journey"]);
   // Which permission gates each tab (used by the sidebar and the initial landing).
@@ -127,6 +128,7 @@ export function LabDashboard({ lab, isOwner = false, roleName = "Lab Owner", can
     customers: isOwner || canViewClients,
     departments: isOwner,
     results: canSendResults || canMarkDone || isOwner || canManageTemplates,
+    past: canViewRequestsEff || canSendResults || isOwner,
     templates: canViewRequestsEff || isOwner || canManageTemplates,
     sops: canViewRequestsEff || isOwner || canManageTemplates,
     network: isOwner || canViewReferrals || canManageProfessionals,
@@ -185,6 +187,36 @@ export function LabDashboard({ lab, isOwner = false, roleName = "Lab Owner", can
     next.set("tab", tab);
     router.replace(`/lab-dashboard?${next.toString()}`);
   }, [router, searchParams]);
+
+  // Grouped views — a parent nav entry reveals a sub-tab strip above the content.
+  const SUBTAB_GROUPS: { key: MainView; children: { key: MainView; label: string }[] }[] = [
+    { key: "results", children: [
+      { key: "results", label: "Worklist" },
+      { key: "past", label: "Past Results" },
+      { key: "templates", label: "Result Templates" },
+    ] },
+    { key: "customers", children: [
+      { key: "customers", label: "Customers" },
+      { key: "clients", label: "Clients" },
+    ] },
+    { key: "departments", children: [
+      { key: "departments", label: "Departments" },
+      { key: "sops", label: "SOPs" },
+      { key: "team", label: "Team" },
+    ] },
+    { key: "analytics", children: [
+      { key: "analytics", label: "Overview" },
+      { key: "feedback", label: "Feedback" },
+      { key: "activity", label: "Activity" },
+    ] },
+  ];
+  const groupChildren = (parent: MainView) =>
+    (SUBTAB_GROUPS.find((g) => g.key === parent)?.children ?? []).filter((c) => tabVisibleEff[c.key]);
+  const groupForView = (view: MainView) => SUBTAB_GROUPS.find((g) => g.children.some((c) => c.key === view));
+  const groupVisible = (parent: MainView) => groupChildren(parent).length > 0;
+  const firstChild = (parent: MainView): MainView => groupChildren(parent)[0]?.key ?? parent;
+  const activeGroup = groupForView(mainView);
+  const subTabs = activeGroup ? groupChildren(activeGroup.key) : [];
   // In Lite mode, keep the active view inside the allowed set (covers toggling
   // to Lite while on a LIMS-only tab, and stale `?tab=` deep links).
   useEffect(() => {
@@ -735,22 +767,18 @@ export function LabDashboard({ lab, isOwner = false, roleName = "Lab Owner", can
               { key: "onboarding", label: "Onboarding", icon: <QrCode className="w-4 h-4" />, show: tabVisibleEff.onboarding },
               { key: "queue", label: "Queue", icon: <ListOrdered className="w-4 h-4" />, show: tabVisibleEff.queue },
               { key: "workspace", label: "Workstation", icon: <Workflow className="w-4 h-4" />, show: tabVisibleEff.workspace },
-              { key: "departments", label: "Departments", icon: <Layers className="w-4 h-4" />, show: tabVisibleEff.departments },
-              { key: "results", label: "Results", icon: <FlaskConical className="w-4 h-4" />, show: tabVisibleEff.results },
-              { key: "templates", label: "Result Templates", icon: <FileText className="w-4 h-4" />, show: tabVisibleEff.templates },
-              { key: "sops", label: "SOPs", icon: <ClipboardList className="w-4 h-4" />, show: tabVisibleEff.sops },
-              { key: "clients", label: "Clients", icon: <UserCircle className="w-4 h-4" />, show: tabVisibleEff.clients },
-              { key: "customers", label: "Customers", icon: <UsersRound className="w-4 h-4" />, show: tabVisibleEff.customers },
+              { key: "results", label: "Results", icon: <FlaskConical className="w-4 h-4" />, show: groupVisible("results") },
+            ] },
+            { label: "People", items: [
+              { key: "customers", label: "Customers", icon: <UsersRound className="w-4 h-4" />, show: groupVisible("customers") },
+              { key: "departments", label: "HR", icon: <Users className="w-4 h-4" />, show: groupVisible("departments") },
             ] },
             { label: "Network", items: [
               { key: "network", label: "Referrals", icon: <Stethoscope className="w-4 h-4" />, show: tabVisibleEff.network },
               { key: "partners", label: "Partners", icon: <Link2 className="w-4 h-4" />, show: tabVisibleEff.partners },
-              { key: "team", label: "Team", icon: <Users className="w-4 h-4" />, show: tabVisibleEff.team },
             ] },
             { label: "Insights", items: [
-              { key: "analytics", label: "Analytics", icon: <BarChart3 className="w-4 h-4" />, show: tabVisibleEff.analytics },
-              { key: "activity", label: "Activity", icon: <Activity className="w-4 h-4" />, show: tabVisibleEff.activity },
-              { key: "feedback", label: "Feedback", icon: <Star className="w-4 h-4" />, show: tabVisibleEff.feedback },
+              { key: "analytics", label: "Analytics", icon: <BarChart3 className="w-4 h-4" />, show: groupVisible("analytics") },
             ] },
             { label: "Finance", items: [
               { key: "poveon", label: "Revenue", icon: <CreditCard className="w-4 h-4" />, show: tabVisibleEff.poveon },
@@ -760,14 +788,20 @@ export function LabDashboard({ lab, isOwner = false, roleName = "Lab Owner", can
           const NAV_SECTIONS = RAW_SECTIONS.map((s) => ({ ...s, items: s.items.filter((i) => i.show) })).filter((s) => s.items.length > 0);
 
           const onNav = (key: MainView) => {
-            navigateToTab(key);
+            // Group parents land on their first visible child.
+            const target = groupForView(key)?.key === key ? firstChild(key) : key;
+            navigateToTab(target);
             setMobileNavOpen(false);
-            if (key === "price-list") fetchPriceList();
+            if (target === "price-list") fetchPriceList();
           };
 
           const allItems = NAV_SECTIONS.flatMap((s) => s.items);
-          // Treat the standalone referrals/professionals deep links as the combined Network tab.
-          const isItemActive = (key: MainView) => key === mainView || (key === "network" && STANDALONE_NETWORK.has(mainView));
+          // A parent item is active when the current view is any of its children.
+          const isItemActive = (key: MainView) => {
+            const grp = SUBTAB_GROUPS.find((g) => g.key === key);
+            if (grp) return grp.children.some((c) => c.key === mainView);
+            return key === mainView || (key === "network" && STANDALONE_NETWORK.has(mainView));
+          };
           const currentItem = allItems.find((n) => isItemActive(n.key)) ?? allItems[0];
 
           const itemClass = (active: boolean) =>
@@ -833,6 +867,23 @@ export function LabDashboard({ lab, isOwner = false, roleName = "Lab Owner", can
         })()}
 
         <main className="min-w-0 flex-1">
+
+        {/* Sub-tab strip for grouped sections (Results / Customers / HR / Analytics) */}
+        {subTabs.length > 1 && (
+          <div className="mb-5 flex flex-wrap gap-1 border-b border-white/10 pb-2">
+            {subTabs.map((st) => (
+              <button
+                key={st.key}
+                onClick={() => navigateToTab(st.key)}
+                className={`rounded-lg px-3 py-1.5 text-sm font-medium transition-colors ${
+                  mainView === st.key ? "bg-medical-600/20 text-white border border-medical-500/30" : "text-slate-400 hover:text-slate-200 hover:bg-white/5 border border-transparent"
+                }`}
+              >
+                {st.label}
+              </button>
+            ))}
+          </div>
+        )}
 
         {/* Amount-owed and unsigned-agreement banners intentionally hidden —
             this info still lives on the Revenue tab. */}
@@ -1104,6 +1155,11 @@ export function LabDashboard({ lab, isOwner = false, roleName = "Lab Owner", can
         {/* Results hub — pending worklist + create/edit/send results */}
         {mainView === "results" && (isOwner || canManageTemplates || canSendResults || canMarkDone) && (
           <ResultsHub canSendResults={canSendResults || isOwner} memberDepartment={memberDepartment} />
+        )}
+
+        {/* Past results — search & reprint reported results */}
+        {mainView === "past" && (isOwner || canViewRequestsEff || canSendResults) && (
+          <PastResults />
         )}
 
         {/* Result report templates view */}
