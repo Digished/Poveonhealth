@@ -12,6 +12,7 @@ import { FullViewModal } from "@/components/ui/FullViewModal";
 import { Calendar } from "@/components/ui/Calendar";
 import { ScheduleCalendar } from "@/components/lab/ScheduleCalendar";
 import { useLabTour } from "@/components/lab/tour/TourProvider";
+import { ResultEntry } from "@/components/lab/ResultEntry";
 import { requestDepartments, breakdownItemDepartment, WORKFLOWS, stageLabel, stageColorClasses, stageDurations, formatDuration, awaitingPhrase, awaitingLabel, DEFAULT_DEPARTMENTS, type DepartmentConfig } from "@/lib/lims-shared";
 import { nextPendingAction, type PendingAction } from "@/lib/lab-pending";
 
@@ -75,6 +76,7 @@ function testPills(r: WReq): TestPill[] {
 interface Track { department: string; workflow: string; currentStage: string; events: JEvent[]; collections: JEvent[]; tests: string[] }
 interface ResultTemplate { id: string; name: string; department: string | null; parameters: { name: string; unit?: string; reference_range?: string; group?: string }[] }
 interface RResult { id: string; request_id: string; department: string | null; status: string; values: { name: string; value?: string; unit?: string; reference_range?: string; group?: string; flag?: string }[]; comment: string | null; pdf_url: string | null }
+interface RReceipt { id: string; receipt_no: number; kind: string; amount: string; currency: string; created_at: string }
 
 function tracksFor(r: WReq, departments: DepartmentConfig[] = DEFAULT_DEPARTMENTS): Track[] {
   const depts = requestDepartments(r.test_breakdown, departments);
@@ -697,6 +699,43 @@ function WorkspaceDrawer({
   const [regLinkSentAt, setRegLinkSentAt] = useState<number | null>(null);
   useEffect(() => { setRegLinkSentAt(null); setRegLinkOpen(false); }, [request.id]);
   const [results, setResults] = useState<RResult[]>([]);
+  const [receipts, setReceipts] = useState<RReceipt[]>([]);
+  const [issuingReceipt, setIssuingReceipt] = useState(false);
+
+  // Load receipts already issued for this request.
+  const loadReceipts = useCallback(() => {
+    fetch(`/api/lab/receipts?request_id=${request.id}`, { cache: "no-store" })
+      .then((r) => (r.ok ? r.json() : null))
+      .then((d) => { if (Array.isArray(d?.receipts)) setReceipts(d.receipts); })
+      .catch(() => {});
+  }, [request.id]);
+  useEffect(() => { setReceipts([]); loadReceipts(); }, [loadReceipts]);
+
+  // Issue a new receipt, then open it for printing. A blank tab is opened
+  // synchronously on the click so the PDF isn't swallowed by popup blockers.
+  async function issueReceipt() {
+    if (issuingReceipt) return;
+    setIssuingReceipt(true);
+    const win = window.open("", "_blank");
+    try {
+      const res = await fetch("/api/lab/receipts", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ request_id: request.id, kind: "payment" }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || "Failed to issue receipt");
+      const url = `/api/lab/receipts/${data.receipt.id}/pdf`;
+      if (win) win.location.href = url; else window.open(url, "_blank");
+      toast.success(`Receipt #${String(data.receipt.receipt_no).padStart(5, "0")} issued`);
+      loadReceipts();
+    } catch (e) {
+      if (win) win.close();
+      toast.error(e instanceof Error ? e.message : "Failed to issue receipt");
+    } finally {
+      setIssuingReceipt(false);
+    }
+  }
 
   // Contextual tutorial: when the drawer opens with the Guide on, jump to the
   // client-detail steps; restore the list step when it closes.
@@ -855,6 +894,35 @@ function WorkspaceDrawer({
                 <Printer className="h-3.5 w-3.5" /> Print visit checklist
               </a>
             )}
+
+            {/* Receipts — issue a payment receipt and reprint previously issued ones.
+                Hidden for now (feature paused). */}
+            {false && !readOnly && (
+              <div className="mt-3 rounded-xl border border-white/10 bg-white/5 p-3">
+                <div className="flex flex-wrap items-center justify-between gap-2">
+                  <p className="flex items-center gap-1.5 text-xs font-semibold text-white"><CreditCard className="h-3.5 w-3.5 text-medical-300" /> Receipts</p>
+                  <button
+                    onClick={issueReceipt}
+                    disabled={issuingReceipt}
+                    title={request.is_paid ? undefined : "You can still issue a receipt; mark the client as paid to reflect payment status."}
+                    className="inline-flex items-center gap-1.5 rounded-lg bg-medical-600 px-2.5 py-1 text-xs font-semibold text-white hover:bg-medical-700 disabled:opacity-50"
+                  >
+                    {issuingReceipt ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Printer className="h-3.5 w-3.5" />} Issue receipt
+                  </button>
+                </div>
+                {receipts.length > 0 && (
+                  <div className="mt-2 space-y-1">
+                    {receipts.map((rc) => (
+                      <a key={rc.id} href={`/api/lab/receipts/${rc.id}/pdf`} target="_blank" rel="noreferrer"
+                        className="flex items-center justify-between rounded-lg px-2 py-1 text-[11px] text-slate-300 hover:bg-white/5">
+                        <span className="flex items-center gap-1.5"><FileText className="h-3 w-3 text-medical-300" /> Receipt #{String(rc.receipt_no).padStart(5, "0")}</span>
+                        <span className="text-slate-500">{fmtDayTime(rc.created_at)}</span>
+                      </a>
+                    ))}
+                  </div>
+                )}
+              </div>
+            )}
         </div>
 
         {/* Right column — checklist (onboarding) / pipeline (workstation) */}
@@ -942,11 +1010,8 @@ function WorkspaceDrawer({
                   </div>
                 )}
 
-                {pipelineInteractive && canEnterResults && (
-                  <button data-tour="ws-results" onClick={() => setResultsFor({ department: track.department })} className={`mt-3 inline-flex items-center gap-1.5 rounded-lg border border-white/10 px-3 py-1.5 text-xs font-medium text-medical-300 hover:bg-white/5 ${pendIs("enter_results") ? pulse : ""}`}>
-                    <FlaskConical className="h-3.5 w-3.5" /> Enter / send results
-                  </button>
-                )}
+                {/* Result entry now lives in the dedicated Results tab (search + multi-template
+                    composer). The per-track shortcut here is hidden to keep one entry point. */}
               </div>
             );
           })}
@@ -1324,216 +1389,6 @@ function CollectionPicker({
             {busy ? <Loader2 className="h-4 w-4 animate-spin" /> : <Check className="h-4 w-4" />} Log {selected.size > 0 ? `${selected.size} ` : ""}collection{selected.size === 1 ? "" : "s"}
           </button>
         </div>
-      </div>
-    </div>
-  );
-}
-
-function ResultEntry({
-  request, department, canSendResults, onClose, onChanged,
-}: {
-  request: WReq;
-  department: string;
-  canSendResults: boolean;
-  onClose: () => void;
-  onChanged: () => void;
-}) {
-  const [templates, setTemplates] = useState<ResultTemplate[]>([]);
-  const [existing, setExisting] = useState<RResult | null>(null);
-  const [templateId, setTemplateId] = useState<string>("");
-  const [rows, setRows] = useState<{ name: string; value: string; unit: string; reference_range: string; group: string }[]>([]);
-  const [comment, setComment] = useState("");
-  const [resultId, setResultId] = useState<string | null>(null);
-  const [status, setStatus] = useState<string>("new");
-  const [busy, setBusy] = useState(false);
-  // Result templates hidden for now — new results are delivered as a document or link.
-  // The "editor" branch is retained only to display previously-entered template results.
-  const [mode, setMode] = useState<"editor" | "document" | "link">("document");
-  const [docFile, setDocFile] = useState<File | null>(null);
-  const [linkUrl, setLinkUrl] = useState("");
-  const [sendOnAttach, setSendOnAttach] = useState(true);
-
-  async function attach(kind: "document" | "link") {
-    if (kind === "document" && !docFile) { toast.error("Choose a file"); return; }
-    if (kind === "link" && !linkUrl.trim()) { toast.error("Enter a link"); return; }
-    setBusy(true);
-    try {
-      const fd = new FormData();
-      fd.append("request_id", request.id);
-      if (department) fd.append("department", department);
-      fd.append("kind", kind);
-      fd.append("send", String(sendOnAttach && canSendResults));
-      if (kind === "document" && docFile) fd.append("file", docFile);
-      if (kind === "link") fd.append("url", linkUrl.trim());
-      const res = await fetch("/api/lab/results/attach", { method: "POST", body: fd });
-      const data = await res.json();
-      if (!res.ok) throw new Error(data.error || "Failed");
-      toast.success(data.sent ? "Result sent to patient" : "Result attached");
-      onChanged();
-      onClose();
-    } catch (e) {
-      toast.error(e instanceof Error ? e.message : "Failed");
-    } finally { setBusy(false); }
-  }
-
-  useEffect(() => {
-    (async () => {
-      const [tRes, rRes] = await Promise.all([
-        fetch("/api/lab/result-templates", { cache: "no-store" }),
-        fetch(`/api/lab/results?requestId=${request.id}`, { cache: "no-store" }),
-      ]);
-      if (tRes.ok) { const d = await tRes.json(); setTemplates((d.templates ?? []).filter((t: ResultTemplate) => !t.department || t.department === department || !DEFAULT_DEPARTMENTS.some((dd) => dd.name === department))); }
-      if (rRes.ok) {
-        const d = await rRes.json();
-        const found = (d.results ?? []).find((x: RResult) => (x.department ?? "") === department) ?? null;
-        if (found) {
-          setExisting(found); setResultId(found.id); setStatus(found.status); setComment(found.comment ?? "");
-          setRows((found.values ?? []).map((v: RResult["values"][number]) => ({ name: v.name, value: v.value ?? "", unit: v.unit ?? "", reference_range: v.reference_range ?? "", group: v.group ?? "" })));
-        }
-      }
-    })();
-  }, [request.id, department]);
-
-  function applyTemplate(id: string) {
-    setTemplateId(id);
-    const t = templates.find((x) => x.id === id);
-    if (t) setRows(t.parameters.map((p) => ({ name: p.name, value: "", unit: p.unit ?? "", reference_range: p.reference_range ?? "", group: p.group ?? "" })));
-  }
-
-  async function saveDraft(): Promise<string | null> {
-    setBusy(true);
-    try {
-      const res = await fetch("/api/lab/results", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ id: resultId ?? undefined, request_id: request.id, template_id: templateId || undefined, department, values: rows, comment }) });
-      const data = await res.json();
-      if (!res.ok) throw new Error(data.error || "Failed");
-      setResultId(data.result.id); setStatus(data.result.status);
-      toast.success("Saved");
-      return data.result.id as string;
-    } catch (e) {
-      toast.error(e instanceof Error ? e.message : "Failed"); return null;
-    } finally { setBusy(false); }
-  }
-
-  async function verify() {
-    const id = resultId ?? (await saveDraft());
-    if (!id) return;
-    setBusy(true);
-    try {
-      const res = await fetch(`/api/lab/results/${id}/verify`, { method: "POST" });
-      if (!res.ok) throw new Error((await res.json()).error || "Failed");
-      setStatus("verified"); toast.success("Verified");
-    } catch (e) { toast.error(e instanceof Error ? e.message : "Failed"); } finally { setBusy(false); }
-  }
-
-  async function report(send: boolean) {
-    const id = resultId; if (!id) { toast.error("Save & verify first"); return; }
-    setBusy(true);
-    try {
-      const res = await fetch(`/api/lab/results/${id}/report`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ send }) });
-      const data = await res.json();
-      if (!res.ok) throw new Error(data.error || "Failed");
-      toast.success(send ? "Report sent to patient" : "Report generated");
-      setStatus("reported");
-      onChanged();
-    } catch (e) { toast.error(e instanceof Error ? e.message : "Failed"); } finally { setBusy(false); }
-  }
-
-  const inputCls = "w-full rounded-lg border border-white/10 bg-white/5 px-2 py-1.5 text-sm text-white placeholder:text-slate-500 focus:border-medical-400 focus:outline-none";
-
-  return (
-    <div className="fixed inset-0 z-[10000] flex items-end justify-center bg-black/70 backdrop-blur-sm sm:items-center" onClick={onClose}>
-      <div className="max-h-[92vh] w-full max-w-xl overflow-y-auto rounded-t-3xl border border-white/10 bg-slate-900 p-5 sm:rounded-3xl" onClick={(e) => e.stopPropagation()}>
-        <div className="mb-4 flex items-center justify-between">
-          <div>
-            <h3 className="text-lg font-semibold text-white">{department} result</h3>
-            <p className="font-mono text-xs text-slate-400">{request.code} · {status}</p>
-          </div>
-          <button onClick={onClose} className="text-slate-400 hover:text-white"><X className="h-5 w-5" /></button>
-        </div>
-
-        {/* Result delivery mode */}
-        {!existing && (
-          <div className="mb-4 inline-flex w-full rounded-xl border border-white/10 bg-white/5 p-1">
-            {([["document", "Attach document"], ["link", "Send a link"]] as const).map(([m, label]) => (
-              <button key={m} onClick={() => setMode(m)} className={`flex-1 rounded-lg px-3 py-1.5 text-xs font-medium transition ${mode === m ? "bg-medical-600 text-white" : "text-slate-300 hover:text-white"}`}>{label}</button>
-            ))}
-          </div>
-        )}
-
-        {(existing || mode === "editor") && (
-          <>
-            {!existing && (
-              <select value={templateId} onChange={(e) => applyTemplate(e.target.value)} className="mb-3 w-full rounded-xl border border-white/10 bg-white/5 px-3 py-2 text-sm text-slate-200 outline-none">
-                <option value="" className="bg-slate-800">Pick a result template…</option>
-                {templates.map((t) => <option key={t.id} value={t.id} className="bg-slate-800">{t.name}</option>)}
-              </select>
-            )}
-
-            {rows.length === 0 ? (
-              <p className="rounded-xl border border-white/10 bg-white/5 py-6 text-center text-sm text-slate-400">Pick a template to load its parameters.</p>
-            ) : (
-              <div className="space-y-2">
-                <div className="grid grid-cols-12 gap-2 px-1 text-[10px] font-semibold uppercase tracking-wide text-slate-500">
-                  <span className="col-span-5">Parameter</span><span className="col-span-3">Result</span><span className="col-span-4">Reference</span>
-                </div>
-                {rows.map((row, i) => (
-                  <div key={i} className="grid grid-cols-12 items-center gap-2">
-                    <span className="col-span-5 truncate text-sm text-slate-200">{row.name}{row.unit ? <span className="text-slate-500"> ({row.unit})</span> : null}</span>
-                    <input className={`${inputCls} col-span-3`} value={row.value} disabled={status === "reported"} onChange={(e) => setRows((prev) => prev.map((r, idx) => idx === i ? { ...r, value: e.target.value } : r))} />
-                    <span className="col-span-4 truncate text-xs text-slate-400">{row.reference_range || "—"}</span>
-                  </div>
-                ))}
-                <textarea className={`${inputCls} mt-2`} rows={2} placeholder="Comment (optional)" value={comment} disabled={status === "reported"} onChange={(e) => setComment(e.target.value)} />
-              </div>
-            )}
-
-            {rows.length > 0 && (
-              <div className="mt-4 flex flex-wrap gap-2">
-                {status !== "reported" && <button onClick={saveDraft} disabled={busy} className="rounded-xl border border-white/10 px-3 py-2 text-sm text-slate-200 hover:bg-white/5 disabled:opacity-50">Save draft</button>}
-                {status !== "reported" && <button onClick={verify} disabled={busy} className="rounded-xl bg-medical-600 px-3 py-2 text-sm font-semibold text-white hover:bg-medical-700 disabled:opacity-50">{busy ? <Loader2 className="h-4 w-4 animate-spin" /> : "Verify"}</button>}
-                {resultId && (status === "verified" || status === "reported") && (
-                  <>
-                    <a href={`/api/lab/results/${resultId}/pdf`} target="_blank" rel="noreferrer" className="inline-flex items-center gap-1.5 rounded-xl border border-white/10 px-3 py-2 text-sm text-slate-200 hover:bg-white/5"><Printer className="h-4 w-4" /> Print</a>
-                    {canSendResults && <button onClick={() => report(true)} disabled={busy} className="inline-flex items-center gap-1.5 rounded-xl bg-emerald-600 px-3 py-2 text-sm font-semibold text-white hover:bg-emerald-700 disabled:opacity-50"><Send className="h-4 w-4" /> Send to patient</button>}
-                  </>
-                )}
-              </div>
-            )}
-          </>
-        )}
-
-        {!existing && mode === "document" && (
-          <div className="space-y-3">
-            <label className="flex cursor-pointer flex-col items-center justify-center rounded-2xl border border-dashed border-white/15 bg-white/5 py-8 text-center hover:bg-white/10">
-              <Printer className="mb-2 h-6 w-6 text-medical-300" />
-              <span className="text-sm text-slate-200">{docFile ? docFile.name : "Click to choose a result document"}</span>
-              <span className="mt-1 text-xs text-slate-500">PDF, image or scan · max 15MB</span>
-              <input type="file" accept=".pdf,image/*,.doc,.docx" className="hidden" onChange={(e) => setDocFile(e.target.files?.[0] ?? null)} />
-            </label>
-            {canSendResults && (
-              <label className="flex items-center gap-2 text-sm text-slate-300">
-                <input type="checkbox" checked={sendOnAttach} onChange={(e) => setSendOnAttach(e.target.checked)} /> Email it to the patient/doctor now
-              </label>
-            )}
-            <button onClick={() => attach("document")} disabled={busy || !docFile} className="inline-flex w-full items-center justify-center gap-2 rounded-xl bg-medical-600 py-2.5 text-sm font-semibold text-white hover:bg-medical-700 disabled:opacity-50">
-              {busy ? <Loader2 className="h-4 w-4 animate-spin" /> : <Send className="h-4 w-4" />} {sendOnAttach && canSendResults ? "Attach & send" : "Attach result"}
-            </button>
-          </div>
-        )}
-
-        {!existing && mode === "link" && (
-          <div className="space-y-3">
-            <input className={`${inputCls} px-3 py-2`} placeholder="https://… (link to the result)" value={linkUrl} onChange={(e) => setLinkUrl(e.target.value)} />
-            {canSendResults && (
-              <label className="flex items-center gap-2 text-sm text-slate-300">
-                <input type="checkbox" checked={sendOnAttach} onChange={(e) => setSendOnAttach(e.target.checked)} /> Email it to the patient/doctor now
-              </label>
-            )}
-            <button onClick={() => attach("link")} disabled={busy || !linkUrl.trim()} className="inline-flex w-full items-center justify-center gap-2 rounded-xl bg-medical-600 py-2.5 text-sm font-semibold text-white hover:bg-medical-700 disabled:opacity-50">
-              {busy ? <Loader2 className="h-4 w-4 animate-spin" /> : <Send className="h-4 w-4" />} {sendOnAttach && canSendResults ? "Save & send link" : "Save link"}
-            </button>
-          </div>
-        )}
       </div>
     </div>
   );

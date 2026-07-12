@@ -1,7 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useState } from "react";
-import { Loader2, Plus, X, Check, RefreshCw, Users, Shield, Megaphone, ChevronDown, Activity as ActivityIcon } from "lucide-react";
+import { Loader2, Plus, X, Check, RefreshCw, Users, Shield, Megaphone, ChevronDown, Activity as ActivityIcon, PenLine } from "lucide-react";
 import toast from "react-hot-toast";
 import dynamic from "next/dynamic";
 
@@ -10,6 +10,8 @@ const RolesManager = dynamic(() => import("@/components/lab/RolesManager").then(
 interface Member {
   id: string;
   email: string;
+  name?: string | null;
+  signature_url?: string | null;
   role: { id?: string; name: string };
   last_sign_in_at: string | null;
 }
@@ -66,8 +68,10 @@ export function TeamView({
   const [roles, setRoles] = useState<Role[]>([]);
   const [loading, setLoading] = useState(true);
   const [newEmail, setNewEmail] = useState("");
+  const [newName, setNewName] = useState("");
   const [newRoleId, setNewRoleId] = useState("");
   const [adding, setAdding] = useState(false);
+  const [uploadingSig, setUploadingSig] = useState<string | null>(null);
   const [removingId, setRemovingId] = useState<string | null>(null);
   const [stats, setStats] = useState<Map<string, ActorStat>>(new Map());
   const [expandedMember, setExpandedMember] = useState<string | null>(null);
@@ -97,6 +101,23 @@ export function TeamView({
 
   useEffect(() => { loadStaff(); }, [loadStaff]);
 
+  async function uploadSignature(memberId: string, file: File) {
+    setUploadingSig(memberId);
+    try {
+      const fd = new FormData();
+      fd.append("file", file);
+      const res = await fetch(`/api/lab/team/${memberId}/signature`, { method: "POST", body: fd });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || "Upload failed");
+      setMembers((prev) => prev.map((m) => (m.id === memberId ? { ...m, signature_url: data.signature_url } : m)));
+      toast.success("Signature uploaded");
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : "Upload failed");
+    } finally {
+      setUploadingSig(null);
+    }
+  }
+
   async function addMember() {
     const email = newEmail.trim();
     if (!email || !newRoleId) { toast.error("Enter an email and pick a role"); return; }
@@ -105,12 +126,13 @@ export function TeamView({
       const res = await fetch("/api/lab/team", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ email, role_id: newRoleId }),
+        body: JSON.stringify({ email, name: newName.trim() || undefined, role_id: newRoleId }),
       });
       const data = await res.json();
       if (!res.ok || !data.success) throw new Error(data.error || "Failed to add member");
-      setMembers((prev) => [...prev, { id: data.member.id, email: data.member.email, role: { id: data.member.role.id, name: data.member.role.name }, last_sign_in_at: null }]);
+      setMembers((prev) => [...prev, { id: data.member.id, email: data.member.email, name: data.member.name ?? null, signature_url: null, role: { id: data.member.role.id, name: data.member.role.name }, last_sign_in_at: null }]);
       setNewEmail("");
+      setNewName("");
       setNewRoleId("");
       toast.success(`${email} added — login details emailed`);
     } catch (e) {
@@ -252,6 +274,13 @@ export function TeamView({
               ) : (
                 <div className="flex flex-col gap-2 sm:flex-row">
                   <input
+                    type="text"
+                    value={newName}
+                    onChange={(e) => setNewName(e.target.value)}
+                    placeholder="Full name (e.g. Dr. Ada Obi)"
+                    className="min-w-0 flex-1 rounded-lg border border-white/10 bg-white/5 px-3 py-2 text-sm text-white placeholder-slate-500 outline-none focus:border-medical-400"
+                  />
+                  <input
                     type="email"
                     value={newEmail}
                     onChange={(e) => setNewEmail(e.target.value)}
@@ -298,7 +327,8 @@ export function TeamView({
                   <div key={m.id} className="rounded-2xl border border-white/10 bg-white/5">
                     <div className="flex flex-wrap items-center justify-between gap-3 px-4 py-3">
                       <div className="min-w-0">
-                        <p className="truncate text-sm font-medium text-white">{m.email ?? "—"}</p>
+                        <p className="truncate text-sm font-medium text-white">{m.name || m.email || "—"}</p>
+                        {m.name && <p className="truncate text-[11px] text-slate-400">{m.email}</p>}
                         <p className="mt-0.5 text-xs text-slate-500">
                           {stat?.last_active
                             ? <>Active {timeAgo(stat.last_active)}</>
@@ -309,6 +339,13 @@ export function TeamView({
                         </p>
                       </div>
                       <div className="flex shrink-0 items-center gap-2">
+                        {canManage && (
+                          <label className={`inline-flex cursor-pointer items-center gap-1 rounded-lg border px-2 py-1.5 text-xs ${m.signature_url ? "border-emerald-500/30 text-emerald-300" : "border-white/10 text-slate-300 hover:bg-white/5"}`} title={m.signature_url ? "Signature uploaded — click to replace" : "Upload signature image"}>
+                            {uploadingSig === m.id ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <PenLine className="h-3.5 w-3.5" />}
+                            {m.signature_url ? "Signature ✓" : "Signature"}
+                            <input type="file" accept="image/png,image/jpeg,image/webp" className="hidden" onChange={(e) => { const f = e.target.files?.[0]; e.target.value = ""; if (f) uploadSignature(m.id, f); }} />
+                          </label>
+                        )}
                         {canManage && roles.length > 0 ? (
                           <select
                             value={m.role.id ?? ""}

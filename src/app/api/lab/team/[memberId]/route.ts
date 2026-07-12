@@ -6,11 +6,15 @@ import { createAdminClient } from "@/lib/supabase/server";
 import { getLabAuth } from "@/lib/lab-auth";
 import { logLabActivity } from "@/lib/lab-activity";
 
-const PatchSchema = z.object({ role_id: z.string().uuid() });
+const PatchSchema = z.object({
+  role_id: z.string().uuid().optional(),
+  name: z.string().max(120).nullable().optional(),
+});
 
 /**
  * PATCH /api/lab/team/[memberId]
- * Reassign a team member's role. Gated by can_manage_roles (owners via FULL_PERMISSIONS).
+ * Reassign a member's role and/or set their display name. Gated by
+ * can_manage_roles (owners via FULL_PERMISSIONS).
  */
 export async function PATCH(request: NextRequest, { params }: { params: { memberId: string } }) {
   const auth = await getLabAuth(request);
@@ -24,13 +28,23 @@ export async function PATCH(request: NextRequest, { params }: { params: { member
   const member = await prisma.labMember.findUnique({ where: { id: params.memberId }, select: { lab_id: true, email: true } });
   if (!member || member.lab_id !== auth.lab_id) return NextResponse.json({ error: "Member not found" }, { status: 404 });
 
-  const role = await prisma.labRole.findUnique({ where: { id: parsed.data.role_id }, select: { lab_id: true, name: true } });
-  if (!role || role.lab_id !== auth.lab_id) return NextResponse.json({ error: "Role not found" }, { status: 404 });
+  let roleName: string | null = null;
+  if (parsed.data.role_id) {
+    const role = await prisma.labRole.findUnique({ where: { id: parsed.data.role_id }, select: { lab_id: true, name: true } });
+    if (!role || role.lab_id !== auth.lab_id) return NextResponse.json({ error: "Role not found" }, { status: 404 });
+    roleName = role.name;
+  }
 
-  await prisma.labMember.update({ where: { id: params.memberId }, data: { role_id: parsed.data.role_id } });
+  await prisma.labMember.update({
+    where: { id: params.memberId },
+    data: {
+      ...(parsed.data.role_id ? { role_id: parsed.data.role_id } : {}),
+      ...(parsed.data.name !== undefined ? { name: parsed.data.name?.trim() || null } : {}),
+    },
+  });
 
-  if (auth.actor_email) {
-    logLabActivity({ lab_id: auth.lab_id, actor_email: auth.actor_email, action: "member_role_changed", detail: `${member.email ?? "member"} → ${role.name}` });
+  if (auth.actor_email && roleName) {
+    logLabActivity({ lab_id: auth.lab_id, actor_email: auth.actor_email, action: "member_role_changed", detail: `${member.email ?? "member"} → ${roleName}` });
   }
 
   return NextResponse.json({ success: true });

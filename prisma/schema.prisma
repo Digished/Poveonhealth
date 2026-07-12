@@ -28,6 +28,12 @@ model Lab {
   service_categories Json     @default("[]")
   certifications     Json     @default("[]")
   free_trial         Boolean  @default(false) // if true, no commission is recorded
+  // Mirth Connect (NextGen Connect) integration — per-lab HTTP endpoint the lab's
+  // Mirth channel exposes. Poveon POSTs HL7 to it; Mirth handles MLLP to analyzers.
+  mirth_enabled      Boolean  @default(false)
+  mirth_url          String? // Mirth HTTP Listener URL for outbound result messages
+  mirth_auth_token   String? // optional bearer token sent as Authorization header
+  mirth_inbound_secret String? // shared secret Mirth presents when POSTing inbound results
   created_at         DateTime @default(now())
 
   lab_users       LabUser[]
@@ -51,6 +57,8 @@ model Lab {
   professional_commissions ProfessionalCommission[]
   result_templates LabResultTemplate[]
   request_results  RequestResult[]
+  request_receipts RequestReceipt[]
+  hl7_messages     HL7Message[]
   sops             LabSop[]
   departments      LabDepartment[]
 
@@ -88,12 +96,14 @@ model LabUser {
 
 // Lab staff members with custom roles
 model LabMember {
-  id         String   @id @default(uuid())
-  lab_id     String
-  user_id    String   @unique
-  email      String?
-  role_id    String
-  created_at DateTime @default(now())
+  id            String   @id @default(uuid())
+  lab_id        String
+  user_id       String   @unique
+  email         String?
+  name          String? // display name for reports (e.g. the scientist's name)
+  signature_url String? // uploaded signature image, shown on signed results
+  role_id       String
+  created_at    DateTime @default(now())
 
   lab  Lab     @relation(fields: [lab_id], references: [id], onDelete: Cascade)
   role LabRole @relation(fields: [role_id], references: [id])
@@ -245,6 +255,7 @@ model Request {
   branch LabBranch? @relation(fields: [branch_id], references: [id])
   journey_events RequestJourneyEvent[]
   results        RequestResult[]
+  receipts       RequestReceipt[]
 
   @@map("requests")
 }
@@ -1116,6 +1127,8 @@ model LabResultTemplate {
   department     String?
   parameters     Json     @default("[]") // [{ name, unit, reference_range, group? }]
   interpretation String?  // optional default interpretation/comment
+  description    String?  @db.Text // plain-English "about this test" shown on the report
+  icon           String?  // emoji icon for quick visual identification
   created_by     String?
   created_at     DateTime @default(now())
   updated_at     DateTime @default(now()) @updatedAt
@@ -1160,6 +1173,10 @@ model RequestResult {
   status       String    @default("draft") // draft | verified | reported
   verified_by String?
   verified_at DateTime?
+  analyst_name           String? // scientist who analysed the sample (snapshot)
+  analyst_signature_url  String?
+  verifier_name          String? // scientist who verified/authorised the result (snapshot)
+  verifier_signature_url String?
   pdf_url     String?
   created_at  DateTime  @default(now())
   updated_at  DateTime  @default(now()) @updatedAt
@@ -1170,6 +1187,60 @@ model RequestResult {
   @@index([request_id])
   @@index([lab_id, status])
   @@map("request_results")
+}
+
+// A printable/emailable receipt issued against a request — either a payment
+// receipt (client paid the lab for the tests) or a specimen-collection /
+// acknowledgement slip. Rendered into a branded PDF, reusing the same
+// @react-pdf pipeline as result reports. `receipt_no` is a stable per-lab
+// human-facing number assigned at issue time.
+model RequestReceipt {
+  id           String   @id @default(uuid())
+  lab_id       String
+  request_id   String
+  receipt_no   Int // per-lab sequential number (see @@unique)
+  kind         String   @default("payment") // payment | collection
+  currency     String   @default("NGN")
+  amount       Decimal  @default(0) @db.Decimal(12, 2)
+  items        Json     @default("[]") // [{ name, qty, unit_price, amount }]
+  payment_mode String? // cash | card | transfer | bill_hospital (snapshot)
+  note         String?
+  issued_by    String? // actor email
+  created_at   DateTime @default(now())
+
+  lab     Lab     @relation(fields: [lab_id], references: [id], onDelete: Cascade)
+  request Request @relation(fields: [request_id], references: [id], onDelete: Cascade)
+
+  @@unique([lab_id, receipt_no])
+  @@index([request_id])
+  @@index([lab_id])
+  @@map("request_receipts")
+}
+
+// Audit + queue record for HL7 messages exchanged with a lab's Mirth Connect
+// channel. Outbound = result reports (ORU) pushed to Mirth; inbound = analyzer
+// results received from Mirth (Phase 3). Stores the raw payload and the ACK so
+// failures can be inspected and resent.
+model HL7Message {
+  id           String   @id @default(uuid())
+  lab_id       String
+  request_id   String? // the request this message concerns, if known
+  result_id    String? // the RequestResult this message concerns, if known
+  direction    String   @default("outbound") // outbound | inbound
+  message_type String   @default("ORU^R01")
+  control_id   String // MSH-10 message control id
+  payload      String   @db.Text // raw HL7 (segments separated by \r)
+  status       String   @default("queued") // queued | sent | ack | error
+  ack_text     String?  @db.Text // Mirth response / ACK body or error detail
+  attempts     Int      @default(0)
+  created_at   DateTime @default(now())
+  updated_at   DateTime @default(now()) @updatedAt
+
+  lab Lab @relation(fields: [lab_id], references: [id], onDelete: Cascade)
+
+  @@index([lab_id, direction, created_at])
+  @@index([result_id])
+  @@map("hl7_messages")
 }
 
 // ─────────────────────────────────────────────────────────────────────────────

@@ -43,6 +43,100 @@ async function execWithRetry(sql, attempts = 4) {
 
 const migrations = [
   {
+    desc: "lab_members name & signature columns",
+    sql: `ALTER TABLE lab_members
+      ADD COLUMN IF NOT EXISTS name TEXT,
+      ADD COLUMN IF NOT EXISTS signature_url TEXT`,
+    continueOnError: true,
+  },
+  {
+    desc: "request_results analyst/verifier columns",
+    sql: `ALTER TABLE request_results
+      ADD COLUMN IF NOT EXISTS analyst_name TEXT,
+      ADD COLUMN IF NOT EXISTS analyst_signature_url TEXT,
+      ADD COLUMN IF NOT EXISTS verifier_name TEXT,
+      ADD COLUMN IF NOT EXISTS verifier_signature_url TEXT`,
+    continueOnError: true,
+  },
+  {
+    desc: "lab_result_templates description & icon columns",
+    sql: `ALTER TABLE lab_result_templates
+      ADD COLUMN IF NOT EXISTS description TEXT,
+      ADD COLUMN IF NOT EXISTS icon TEXT`,
+    continueOnError: true,
+  },
+  {
+    desc: "labs Mirth integration columns",
+    sql: `ALTER TABLE labs
+      ADD COLUMN IF NOT EXISTS mirth_enabled BOOLEAN NOT NULL DEFAULT false,
+      ADD COLUMN IF NOT EXISTS mirth_url TEXT,
+      ADD COLUMN IF NOT EXISTS mirth_auth_token TEXT,
+      ADD COLUMN IF NOT EXISTS mirth_inbound_secret TEXT`,
+    continueOnError: true,
+  },
+  {
+    desc: "hl7_messages table (Mirth HL7 audit / queue)",
+    sql: `CREATE TABLE IF NOT EXISTS hl7_messages (
+      id TEXT PRIMARY KEY,
+      lab_id TEXT NOT NULL,
+      request_id TEXT,
+      result_id TEXT,
+      direction TEXT NOT NULL DEFAULT 'outbound',
+      message_type TEXT NOT NULL DEFAULT 'ORU^R01',
+      control_id TEXT NOT NULL,
+      payload TEXT NOT NULL,
+      status TEXT NOT NULL DEFAULT 'queued',
+      ack_text TEXT,
+      attempts INTEGER NOT NULL DEFAULT 0,
+      created_at TIMESTAMP(3) NOT NULL DEFAULT now(),
+      updated_at TIMESTAMP(3) NOT NULL DEFAULT now()
+    )`,
+    continueOnError: true,
+  },
+  {
+    desc: "hl7_messages index (lab_id, direction, created_at)",
+    sql: `CREATE INDEX IF NOT EXISTS hl7_messages_lab_dir_created_idx ON hl7_messages (lab_id, direction, created_at)`,
+    continueOnError: true,
+  },
+  {
+    desc: "hl7_messages index (result_id)",
+    sql: `CREATE INDEX IF NOT EXISTS hl7_messages_result_id_idx ON hl7_messages (result_id)`,
+    continueOnError: true,
+  },
+  {
+    desc: "request_receipts table (payment / collection receipts)",
+    sql: `CREATE TABLE IF NOT EXISTS request_receipts (
+      id TEXT PRIMARY KEY,
+      lab_id TEXT NOT NULL,
+      request_id TEXT NOT NULL,
+      receipt_no INTEGER NOT NULL,
+      kind TEXT NOT NULL DEFAULT 'payment',
+      currency TEXT NOT NULL DEFAULT 'NGN',
+      amount DECIMAL(12,2) NOT NULL DEFAULT 0,
+      items JSONB NOT NULL DEFAULT '[]',
+      payment_mode TEXT,
+      note TEXT,
+      issued_by TEXT,
+      created_at TIMESTAMP(3) NOT NULL DEFAULT now()
+    )`,
+    continueOnError: true,
+  },
+  {
+    desc: "request_receipts unique (lab_id, receipt_no)",
+    sql: `CREATE UNIQUE INDEX IF NOT EXISTS request_receipts_lab_id_receipt_no_key ON request_receipts (lab_id, receipt_no)`,
+    continueOnError: true,
+  },
+  {
+    desc: "request_receipts index (request_id)",
+    sql: `CREATE INDEX IF NOT EXISTS request_receipts_request_id_idx ON request_receipts (request_id)`,
+    continueOnError: true,
+  },
+  {
+    desc: "request_receipts index (lab_id)",
+    sql: `CREATE INDEX IF NOT EXISTS request_receipts_lab_id_idx ON request_receipts (lab_id)`,
+    continueOnError: true,
+  },
+  {
     desc: "requests.patient_age column (age replaces dob for new requests)",
     sql: `ALTER TABLE requests ADD COLUMN IF NOT EXISTS patient_age INTEGER`,
     continueOnError: true,

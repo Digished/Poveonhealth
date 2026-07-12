@@ -30,6 +30,8 @@ export async function POST(request: NextRequest) {
         lab_id: auth.lab_id,
         name: t.name,
         department: t.department || null,
+        icon: t.icon || null,
+        description: t.description || null,
         parameters: t.parameters.map((p) => ({ name: p.name, unit: p.unit || "", reference_range: p.reference_range || "", group: p.group || "" })),
         created_by: auth.actor_email ?? null,
       },

@@ -4,12 +4,16 @@ import { z } from "zod";
 import { prisma } from "@/lib/prisma";
 import { getLabAuth } from "@/lib/lab-auth";
 import { logLabActivity } from "@/lib/lab-activity";
+import { normalizeParam } from "@/lib/result-template-shared";
 
 const ParamSchema = z.object({
   name: z.string().min(1).max(120),
   unit: z.string().max(40).optional().or(z.literal("")),
   reference_range: z.string().max(80).optional().or(z.literal("")),
   group: z.string().max(80).optional().or(z.literal("")),
+  loinc: z.string().max(20).optional().or(z.literal("")),
+  test_code: z.string().max(40).optional().or(z.literal("")),
+  specimen: z.string().max(40).optional().or(z.literal("")),
 });
 
 /** GET /api/lab/result-templates — list result-report templates. */
@@ -30,6 +34,8 @@ const CreateSchema = z.object({
   department: z.string().max(60).optional().or(z.literal("")),
   parameters: z.array(ParamSchema).min(1).max(200),
   interpretation: z.string().max(2000).optional().or(z.literal("")),
+  description: z.string().max(4000).optional().or(z.literal("")),
+  icon: z.string().max(16).optional().or(z.literal("")),
 });
 
 /** POST /api/lab/result-templates — create a result template. Requires can_manage_templates. */
@@ -51,8 +57,10 @@ export async function POST(request: NextRequest) {
       lab_id: auth.lab_id,
       name: d.name,
       department: d.department || null,
-      parameters: d.parameters.map((p) => ({ name: p.name, unit: p.unit || "", reference_range: p.reference_range || "", group: p.group || "" })),
+      parameters: d.parameters.map(normalizeParam),
       interpretation: d.interpretation || null,
+      description: d.description || null,
+      icon: d.icon || null,
       created_by: auth.actor_email ?? null,
     },
   });

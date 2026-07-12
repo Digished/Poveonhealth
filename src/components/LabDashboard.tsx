@@ -20,6 +20,9 @@ const TemplatesManager = dynamic(() => import("@/components/lab/TemplatesManager
 const Workspace = dynamic(() => import("@/components/lab/Workspace").then(m => ({ default: m.Workspace })), { ssr: false });
 const ResultTemplatesManager = dynamic(() => import("@/components/lab/ResultTemplatesManager").then(m => ({ default: m.ResultTemplatesManager })), { ssr: false });
 const SopManager = dynamic(() => import("@/components/lab/SopManager").then(m => ({ default: m.SopManager })), { ssr: false });
+const MirthInterfacesPanel = dynamic(() => import("@/components/lab/MirthInterfacesPanel").then(m => ({ default: m.MirthInterfacesPanel })), { ssr: false });
+const ResultsHub = dynamic(() => import("@/components/lab/ResultsHub").then(m => ({ default: m.ResultsHub })), { ssr: false });
+const PastResults = dynamic(() => import("@/components/lab/PastResults").then(m => ({ default: m.PastResults })), { ssr: false });
 const DepartmentsManager = dynamic(() => import("@/components/lab/DepartmentsManager").then(m => ({ default: m.DepartmentsManager })), { ssr: false });
 const LabQrCard = dynamic(() => import("@/components/lab/LabQrCard").then(m => ({ default: m.LabQrCard })), { ssr: false });
 const QueueView = dynamic(() => import("@/components/lab/QueueView").then(m => ({ default: m.QueueView })), { ssr: false });
@@ -111,8 +114,8 @@ export function LabDashboard({ lab, isOwner = false, roleName = "Lab Owner", can
   const router = useRouter();
   const searchParams = useSearchParams();
   const { isLight, toggle, themeClass } = useDashTheme("lab_dash_theme");
-  type MainView = "workspace" | "requests" | "journey" | "onboarding" | "queue" | "departments" | "templates" | "sops" | "network" | "referrals" | "professionals" | "clients" | "customers" | "analytics" | "activity" | "feedback" | "poveon" | "price-list" | "marketers" | "team" | "partners";
-  const VALID_TABS: MainView[] = ["onboarding", "queue", "workspace", "requests", "journey", "departments", "templates", "sops", "network", "referrals", "professionals", "clients", "customers", "analytics", "activity", "feedback", "poveon", "price-list", "marketers", "team", "partners"];
+  type MainView = "workspace" | "requests" | "journey" | "onboarding" | "queue" | "departments" | "results" | "past" | "templates" | "sops" | "network" | "referrals" | "professionals" | "clients" | "customers" | "analytics" | "activity" | "feedback" | "poveon" | "price-list" | "marketers" | "team" | "partners";
+  const VALID_TABS: MainView[] = ["onboarding", "queue", "workspace", "requests", "journey", "departments", "results", "past", "templates", "sops", "network", "referrals", "professionals", "clients", "customers", "analytics", "activity", "feedback", "poveon", "price-list", "marketers", "team", "partners"];
   // Legacy tabs now fold into the unified Workspace.
   const LEGACY_TO_WORKSPACE = new Set(["requests", "journey"]);
   // Which permission gates each tab (used by the sidebar and the initial landing).
@@ -124,6 +127,8 @@ export function LabDashboard({ lab, isOwner = false, roleName = "Lab Owner", can
     queue: canMarkSeen || isOwner || canViewRequestsEff,
     customers: isOwner || canViewClients,
     departments: isOwner,
+    results: canSendResults || canMarkDone || isOwner || canManageTemplates,
+    past: canViewRequestsEff || canSendResults || isOwner,
     templates: canViewRequestsEff || isOwner || canManageTemplates,
     sops: canViewRequestsEff || isOwner || canManageTemplates,
     network: isOwner || canViewReferrals || canManageProfessionals,
@@ -144,21 +149,26 @@ export function LabDashboard({ lab, isOwner = false, roleName = "Lab Owner", can
   // Price list — no journey map and no journey sub-tab in onboarding. LIMS (beta)
   // exposes the full suite. Persisted per-lab in localStorage (effect-based to
   // avoid hydration mismatch; mirrors useDashTheme).
-  const [labMode, setLabMode] = useState<"lite" | "lims">("lite");
+  type LabMode = "micro" | "lite" | "lims";
+  const [labMode, setLabMode] = useState<LabMode>("lite");
   useEffect(() => {
     try {
       const stored = localStorage.getItem(`lab_dash_mode_${lab.id}`);
-      if (stored === "lims" || stored === "lite") setLabMode(stored);
+      if (stored === "lims" || stored === "lite" || stored === "micro") setLabMode(stored);
     } catch { /* ignore */ }
   }, [lab.id]);
-  const applyLabMode = useCallback((m: "lite" | "lims") => {
+  const applyLabMode = useCallback((m: LabMode) => {
     setLabMode(m);
     try { localStorage.setItem(`lab_dash_mode_${lab.id}`, m); } catch { /* ignore */ }
   }, [lab.id]);
+  // Micro: the smallest footprint — front desk + referrals + pricing only.
+  const MICRO_SIDEBAR = new Set<MainView>(["onboarding", "customers", "network", "price-list"]);
+  const MICRO_ALLOWED = new Set<MainView>(["onboarding", "customers", "clients", "network", "referrals", "professionals", "price-list"]);
   const LITE_SIDEBAR = new Set<MainView>(["onboarding", "queue", "customers", "analytics", "feedback", "network", "partners", "team", "price-list"]);
   const LITE_ALLOWED = new Set<MainView>(["onboarding", "queue", "customers", "analytics", "feedback", "network", "referrals", "professionals", "partners", "team", "price-list"]);
-  const tabVisibleEff: Record<MainView, boolean> = labMode === "lite"
-    ? (Object.fromEntries((Object.keys(tabVisible) as MainView[]).map((k) => [k, tabVisible[k] && LITE_SIDEBAR.has(k)])) as Record<MainView, boolean>)
+  const modeSidebar = labMode === "micro" ? MICRO_SIDEBAR : labMode === "lite" ? LITE_SIDEBAR : null;
+  const tabVisibleEff: Record<MainView, boolean> = modeSidebar
+    ? (Object.fromEntries((Object.keys(tabVisible) as MainView[]).map((k) => [k, tabVisible[k] && modeSidebar.has(k)])) as Record<MainView, boolean>)
     : tabVisible;
   const STANDALONE_NETWORK = new Set(["referrals", "professionals"]);
   const firstVisibleTab = (VALID_TABS.find((t) => t !== "requests" && t !== "journey" && !STANDALONE_NETWORK.has(t) && tabVisible[t]) ?? "workspace") as MainView;
@@ -182,10 +192,41 @@ export function LabDashboard({ lab, isOwner = false, roleName = "Lab Owner", can
     next.set("tab", tab);
     router.replace(`/lab-dashboard?${next.toString()}`);
   }, [router, searchParams]);
-  // In Lite mode, keep the active view inside the allowed set (covers toggling
-  // to Lite while on a LIMS-only tab, and stale `?tab=` deep links).
+
+  // Grouped views — a parent nav entry reveals a sub-tab strip above the content.
+  const SUBTAB_GROUPS: { key: MainView; children: { key: MainView; label: string }[] }[] = [
+    { key: "results", children: [
+      { key: "results", label: "Worklist" },
+      { key: "past", label: "Past Results" },
+      { key: "templates", label: "Result Templates" },
+    ] },
+    { key: "customers", children: [
+      { key: "customers", label: "Customers" },
+      { key: "clients", label: "Clients" },
+    ] },
+    { key: "departments", children: [
+      { key: "departments", label: "Departments" },
+      { key: "sops", label: "SOPs" },
+      { key: "team", label: "Team" },
+    ] },
+    { key: "analytics", children: [
+      { key: "analytics", label: "Overview" },
+      { key: "feedback", label: "Feedback" },
+      { key: "activity", label: "Activity" },
+    ] },
+  ];
+  const groupChildren = (parent: MainView) =>
+    (SUBTAB_GROUPS.find((g) => g.key === parent)?.children ?? []).filter((c) => tabVisibleEff[c.key]);
+  const groupForView = (view: MainView) => SUBTAB_GROUPS.find((g) => g.children.some((c) => c.key === view));
+  const groupVisible = (parent: MainView) => groupChildren(parent).length > 0;
+  const firstChild = (parent: MainView): MainView => groupChildren(parent)[0]?.key ?? parent;
+  const activeGroup = groupForView(mainView);
+  const subTabs = activeGroup ? groupChildren(activeGroup.key) : [];
+  // In Micro/Lite modes, keep the active view inside the allowed set (covers
+  // toggling modes while on a hidden tab, and stale `?tab=` deep links).
+  const allowedForMode = labMode === "micro" ? MICRO_ALLOWED : labMode === "lite" ? LITE_ALLOWED : null;
   useEffect(() => {
-    if (labMode === "lite" && !LITE_ALLOWED.has(mainView)) {
+    if (allowedForMode && !allowedForMode.has(mainView)) {
       navigateToTab(firstVisibleLiteTab);
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -597,7 +638,7 @@ export function LabDashboard({ lab, isOwner = false, roleName = "Lab Owner", can
 
   return (
     // Lite mode has no tutorial — the guided tour only exists in LIMS mode.
-    <TourProvider disabled={labMode === "lite"}>
+    <TourProvider disabled={labMode !== "lims"}>
     <div className={`min-h-screen bg-gradient-to-br from-slate-900 via-medical-950 to-slate-900 text-white transition-colors duration-300 ${themeClass}`}>
       {/* Top bar */}
       <header className="border-b border-white/10 backdrop-blur-sm bg-white/5 sticky top-0 z-10">
@@ -622,8 +663,15 @@ export function LabDashboard({ lab, isOwner = false, roleName = "Lab Owner", can
               </div>
             </div>
           </div>
-          {/* Lite / LIMS (beta) mode switch — always visible */}
+          {/* Micro / Lite / LIMS mode switch — always visible */}
           <div className="inline-flex items-center rounded-lg border border-white/10 bg-white/5 p-0.5 text-xs shrink-0">
+            <button
+              onClick={() => applyLabMode("micro")}
+              className={`px-2.5 py-1 rounded-md font-semibold transition ${labMode === "micro" ? "bg-medical-600 text-white shadow-sm" : "text-slate-400 hover:text-white"}`}
+              title="Micro mode — onboarding, customers, referrals & price list only"
+            >
+              Micro
+            </button>
             <button
               onClick={() => applyLabMode("lite")}
               className={`px-2.5 py-1 rounded-md font-semibold transition ${labMode === "lite" ? "bg-medical-600 text-white shadow-sm" : "text-slate-400 hover:text-white"}`}
@@ -643,7 +691,7 @@ export function LabDashboard({ lab, isOwner = false, roleName = "Lab Owner", can
           <div className="flex items-center gap-2">
             {/* Desktop: individual action buttons */}
             <div className="hidden sm:flex items-center gap-2">
-              {labMode !== "lite" && <GuideToggle />}
+              {labMode === "lims" && <GuideToggle />}
               <button
                 onClick={toggle}
                 className="p-2 rounded-lg hover:bg-white/10 transition-colors text-slate-400 hover:text-white"
@@ -693,7 +741,7 @@ export function LabDashboard({ lab, isOwner = false, roleName = "Lab Owner", can
                       {isLight ? <Moon className="w-4 h-4 text-slate-500" /> : <Sun className="w-4 h-4 text-slate-500" />}
                       {isLight ? "Dark Mode" : "Light Mode"}
                     </button>
-                    {labMode !== "lite" && <GuideToggle variant="row" />}
+                    {labMode === "lims" && <GuideToggle variant="row" />}
                     <button
                       onClick={() => { setMobileHeaderOpen(false); setProfileOpen(true); }}
                       className="flex items-center gap-3 w-full px-4 py-3 text-sm text-slate-300 hover:bg-white/8 transition-colors border-b border-white/5"
@@ -732,22 +780,18 @@ export function LabDashboard({ lab, isOwner = false, roleName = "Lab Owner", can
               { key: "onboarding", label: "Onboarding", icon: <QrCode className="w-4 h-4" />, show: tabVisibleEff.onboarding },
               { key: "queue", label: "Queue", icon: <ListOrdered className="w-4 h-4" />, show: tabVisibleEff.queue },
               { key: "workspace", label: "Workstation", icon: <Workflow className="w-4 h-4" />, show: tabVisibleEff.workspace },
-              { key: "departments", label: "Departments", icon: <Layers className="w-4 h-4" />, show: tabVisibleEff.departments },
-              // Result templates hidden for now — re-enable by restoring `show: tabVisibleEff.templates`.
-              { key: "templates", label: "Result Templates", icon: <FileText className="w-4 h-4" />, show: false },
-              { key: "sops", label: "SOPs", icon: <ClipboardList className="w-4 h-4" />, show: tabVisibleEff.sops },
-              { key: "clients", label: "Clients", icon: <UserCircle className="w-4 h-4" />, show: tabVisibleEff.clients },
-              { key: "customers", label: "Customers", icon: <UsersRound className="w-4 h-4" />, show: tabVisibleEff.customers },
+              { key: "results", label: "Results", icon: <FlaskConical className="w-4 h-4" />, show: groupVisible("results") },
+            ] },
+            { label: "People", items: [
+              { key: "customers", label: "Customers", icon: <UsersRound className="w-4 h-4" />, show: groupVisible("customers") },
+              { key: "departments", label: "HR", icon: <Users className="w-4 h-4" />, show: groupVisible("departments") },
             ] },
             { label: "Network", items: [
               { key: "network", label: "Referrals", icon: <Stethoscope className="w-4 h-4" />, show: tabVisibleEff.network },
               { key: "partners", label: "Partners", icon: <Link2 className="w-4 h-4" />, show: tabVisibleEff.partners },
-              { key: "team", label: "Team", icon: <Users className="w-4 h-4" />, show: tabVisibleEff.team },
             ] },
             { label: "Insights", items: [
-              { key: "analytics", label: "Analytics", icon: <BarChart3 className="w-4 h-4" />, show: tabVisibleEff.analytics },
-              { key: "activity", label: "Activity", icon: <Activity className="w-4 h-4" />, show: tabVisibleEff.activity },
-              { key: "feedback", label: "Feedback", icon: <Star className="w-4 h-4" />, show: tabVisibleEff.feedback },
+              { key: "analytics", label: "Analytics", icon: <BarChart3 className="w-4 h-4" />, show: groupVisible("analytics") },
             ] },
             { label: "Finance", items: [
               { key: "poveon", label: "Revenue", icon: <CreditCard className="w-4 h-4" />, show: tabVisibleEff.poveon },
@@ -757,14 +801,20 @@ export function LabDashboard({ lab, isOwner = false, roleName = "Lab Owner", can
           const NAV_SECTIONS = RAW_SECTIONS.map((s) => ({ ...s, items: s.items.filter((i) => i.show) })).filter((s) => s.items.length > 0);
 
           const onNav = (key: MainView) => {
-            navigateToTab(key);
+            // Group parents land on their first visible child.
+            const target = groupForView(key)?.key === key ? firstChild(key) : key;
+            navigateToTab(target);
             setMobileNavOpen(false);
-            if (key === "price-list") fetchPriceList();
+            if (target === "price-list") fetchPriceList();
           };
 
           const allItems = NAV_SECTIONS.flatMap((s) => s.items);
-          // Treat the standalone referrals/professionals deep links as the combined Network tab.
-          const isItemActive = (key: MainView) => key === mainView || (key === "network" && STANDALONE_NETWORK.has(mainView));
+          // A parent item is active when the current view is any of its children.
+          const isItemActive = (key: MainView) => {
+            const grp = SUBTAB_GROUPS.find((g) => g.key === key);
+            if (grp) return grp.children.some((c) => c.key === mainView);
+            return key === mainView || (key === "network" && STANDALONE_NETWORK.has(mainView));
+          };
           const currentItem = allItems.find((n) => isItemActive(n.key)) ?? allItems[0];
 
           const itemClass = (active: boolean) =>
@@ -830,6 +880,23 @@ export function LabDashboard({ lab, isOwner = false, roleName = "Lab Owner", can
         })()}
 
         <main className="min-w-0 flex-1">
+
+        {/* Sub-tab strip for grouped sections (Results / Customers / HR / Analytics) */}
+        {subTabs.length > 1 && (
+          <div className="mb-5 flex flex-wrap gap-1 border-b border-white/10 pb-2">
+            {subTabs.map((st) => (
+              <button
+                key={st.key}
+                onClick={() => navigateToTab(st.key)}
+                className={`rounded-lg px-3 py-1.5 text-sm font-medium transition-colors ${
+                  mainView === st.key ? "bg-medical-600/20 text-white border border-medical-500/30" : "text-slate-400 hover:text-slate-200 hover:bg-white/5 border border-transparent"
+                }`}
+              >
+                {st.label}
+              </button>
+            ))}
+          </div>
+        )}
 
         {/* Amount-owed and unsigned-agreement banners intentionally hidden —
             this info still lives on the Revenue tab. */}
@@ -1009,7 +1076,7 @@ export function LabDashboard({ lab, isOwner = false, roleName = "Lab Owner", can
 
         {/* Analytics view — full breakdown of everything the lab gathers */}
         {mainView === "analytics" && (isOwner || canViewAnalytics) && (
-          <AnalyticsView labId={lab.id} lite={labMode === "lite"} />
+          <AnalyticsView labId={lab.id} lite={labMode !== "lims"} />
         )}
 
         {/* Journey / sample tracking view */}
@@ -1066,7 +1133,7 @@ export function LabDashboard({ lab, isOwner = false, roleName = "Lab Owner", can
         {mainView === "queue" && (isOwner || canMarkSeen || canViewRequestsEff) && (
           <QueueView
             canManage={isOwner || canMarkSeen}
-            lite={labMode === "lite"}
+            lite={labMode !== "lims"}
             labId={lab.id}
             labName={lab.name}
             labSlug={lab.slug ?? null}
@@ -1098,6 +1165,16 @@ export function LabDashboard({ lab, isOwner = false, roleName = "Lab Owner", can
           <DepartmentsManager />
         )}
 
+        {/* Results hub — pending worklist + create/edit/send results */}
+        {mainView === "results" && (isOwner || canManageTemplates || canSendResults || canMarkDone) && (
+          <ResultsHub canSendResults={canSendResults || isOwner} memberDepartment={memberDepartment} />
+        )}
+
+        {/* Past results — search & reprint reported results */}
+        {mainView === "past" && (isOwner || canViewRequestsEff || canSendResults) && (
+          <PastResults />
+        )}
+
         {/* Result report templates view */}
         {mainView === "templates" && (isOwner || canViewRequestsEff || canManageTemplates) && (
           <div className="space-y-5">
@@ -1106,6 +1183,9 @@ export function LabDashboard({ lab, isOwner = false, roleName = "Lab Owner", can
               <p className="text-sm text-slate-400 mt-1">Define result reports (parameters + reference ranges) used to enter, print and send results.</p>
             </div>
             <ResultTemplatesManager canManage={isOwner || canManageTemplates} />
+            <div className="border-t border-white/10 pt-5">
+              <MirthInterfacesPanel canManage={isOwner || canManageTemplates} />
+            </div>
           </div>
         )}
 
@@ -1120,14 +1200,14 @@ export function LabDashboard({ lab, isOwner = false, roleName = "Lab Owner", can
             <div>
               <h2 className="text-lg font-semibold text-white">Onboarding</h2>
               <p className="text-sm text-slate-400 mt-1">
-                {labMode === "lite"
+                {labMode !== "lims"
                   ? "Check in Poveon arrivals, confirm their details and take payment. New walk-ins register from the Queue."
                   : "Check in Poveon arrivals, confirm tests and take payment. Paid clients move on to the Workstation; new walk-ins register from the Queue."}
               </p>
             </div>
             <Workspace
               mode="onboarding"
-              lite={labMode === "lite"}
+              lite={labMode !== "lims"}
               labId={lab.id}
               labName={lab.name}
               labSlug={lab.slug ?? null}
