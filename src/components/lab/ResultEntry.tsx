@@ -125,8 +125,10 @@ export function ResultEntry({
   }
 
   async function preview() {
+    const win = window.open("", "_blank");
     const id = resultId ?? (await saveDraft());
-    if (id) window.open(`/api/lab/results/${id}/pdf`, "_blank");
+    if (id) { if (win) win.location.href = `/api/lab/results/${id}/pdf`; else window.open(`/api/lab/results/${id}/pdf`, "_blank"); }
+    else if (win) { win.close(); }
   }
 
   async function verify() {

@@ -149,21 +149,26 @@ export function LabDashboard({ lab, isOwner = false, roleName = "Lab Owner", can
   // Price list — no journey map and no journey sub-tab in onboarding. LIMS (beta)
   // exposes the full suite. Persisted per-lab in localStorage (effect-based to
   // avoid hydration mismatch; mirrors useDashTheme).
-  const [labMode, setLabMode] = useState<"lite" | "lims">("lite");
+  type LabMode = "micro" | "lite" | "lims";
+  const [labMode, setLabMode] = useState<LabMode>("lite");
   useEffect(() => {
     try {
       const stored = localStorage.getItem(`lab_dash_mode_${lab.id}`);
-      if (stored === "lims" || stored === "lite") setLabMode(stored);
+      if (stored === "lims" || stored === "lite" || stored === "micro") setLabMode(stored);
     } catch { /* ignore */ }
   }, [lab.id]);
-  const applyLabMode = useCallback((m: "lite" | "lims") => {
+  const applyLabMode = useCallback((m: LabMode) => {
     setLabMode(m);
     try { localStorage.setItem(`lab_dash_mode_${lab.id}`, m); } catch { /* ignore */ }
   }, [lab.id]);
+  // Micro: the smallest footprint — front desk + referrals + pricing only.
+  const MICRO_SIDEBAR = new Set<MainView>(["onboarding", "customers", "network", "price-list"]);
+  const MICRO_ALLOWED = new Set<MainView>(["onboarding", "customers", "clients", "network", "referrals", "professionals", "price-list"]);
   const LITE_SIDEBAR = new Set<MainView>(["onboarding", "queue", "customers", "analytics", "feedback", "network", "partners", "team", "price-list"]);
   const LITE_ALLOWED = new Set<MainView>(["onboarding", "queue", "customers", "analytics", "feedback", "network", "referrals", "professionals", "partners", "team", "price-list"]);
-  const tabVisibleEff: Record<MainView, boolean> = labMode === "lite"
-    ? (Object.fromEntries((Object.keys(tabVisible) as MainView[]).map((k) => [k, tabVisible[k] && LITE_SIDEBAR.has(k)])) as Record<MainView, boolean>)
+  const modeSidebar = labMode === "micro" ? MICRO_SIDEBAR : labMode === "lite" ? LITE_SIDEBAR : null;
+  const tabVisibleEff: Record<MainView, boolean> = modeSidebar
+    ? (Object.fromEntries((Object.keys(tabVisible) as MainView[]).map((k) => [k, tabVisible[k] && modeSidebar.has(k)])) as Record<MainView, boolean>)
     : tabVisible;
   const STANDALONE_NETWORK = new Set(["referrals", "professionals"]);
   const firstVisibleTab = (VALID_TABS.find((t) => t !== "requests" && t !== "journey" && !STANDALONE_NETWORK.has(t) && tabVisible[t]) ?? "workspace") as MainView;
@@ -217,10 +222,11 @@ export function LabDashboard({ lab, isOwner = false, roleName = "Lab Owner", can
   const firstChild = (parent: MainView): MainView => groupChildren(parent)[0]?.key ?? parent;
   const activeGroup = groupForView(mainView);
   const subTabs = activeGroup ? groupChildren(activeGroup.key) : [];
-  // In Lite mode, keep the active view inside the allowed set (covers toggling
-  // to Lite while on a LIMS-only tab, and stale `?tab=` deep links).
+  // In Micro/Lite modes, keep the active view inside the allowed set (covers
+  // toggling modes while on a hidden tab, and stale `?tab=` deep links).
+  const allowedForMode = labMode === "micro" ? MICRO_ALLOWED : labMode === "lite" ? LITE_ALLOWED : null;
   useEffect(() => {
-    if (labMode === "lite" && !LITE_ALLOWED.has(mainView)) {
+    if (allowedForMode && !allowedForMode.has(mainView)) {
       navigateToTab(firstVisibleLiteTab);
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -632,7 +638,7 @@ export function LabDashboard({ lab, isOwner = false, roleName = "Lab Owner", can
 
   return (
     // Lite mode has no tutorial — the guided tour only exists in LIMS mode.
-    <TourProvider disabled={labMode === "lite"}>
+    <TourProvider disabled={labMode !== "lims"}>
     <div className={`min-h-screen bg-gradient-to-br from-slate-900 via-medical-950 to-slate-900 text-white transition-colors duration-300 ${themeClass}`}>
       {/* Top bar */}
       <header className="border-b border-white/10 backdrop-blur-sm bg-white/5 sticky top-0 z-10">
@@ -657,8 +663,15 @@ export function LabDashboard({ lab, isOwner = false, roleName = "Lab Owner", can
               </div>
             </div>
           </div>
-          {/* Lite / LIMS (beta) mode switch — always visible */}
+          {/* Micro / Lite / LIMS mode switch — always visible */}
           <div className="inline-flex items-center rounded-lg border border-white/10 bg-white/5 p-0.5 text-xs shrink-0">
+            <button
+              onClick={() => applyLabMode("micro")}
+              className={`px-2.5 py-1 rounded-md font-semibold transition ${labMode === "micro" ? "bg-medical-600 text-white shadow-sm" : "text-slate-400 hover:text-white"}`}
+              title="Micro mode — onboarding, customers, referrals & price list only"
+            >
+              Micro
+            </button>
             <button
               onClick={() => applyLabMode("lite")}
               className={`px-2.5 py-1 rounded-md font-semibold transition ${labMode === "lite" ? "bg-medical-600 text-white shadow-sm" : "text-slate-400 hover:text-white"}`}
@@ -678,7 +691,7 @@ export function LabDashboard({ lab, isOwner = false, roleName = "Lab Owner", can
           <div className="flex items-center gap-2">
             {/* Desktop: individual action buttons */}
             <div className="hidden sm:flex items-center gap-2">
-              {labMode !== "lite" && <GuideToggle />}
+              {labMode === "lims" && <GuideToggle />}
               <button
                 onClick={toggle}
                 className="p-2 rounded-lg hover:bg-white/10 transition-colors text-slate-400 hover:text-white"
@@ -728,7 +741,7 @@ export function LabDashboard({ lab, isOwner = false, roleName = "Lab Owner", can
                       {isLight ? <Moon className="w-4 h-4 text-slate-500" /> : <Sun className="w-4 h-4 text-slate-500" />}
                       {isLight ? "Dark Mode" : "Light Mode"}
                     </button>
-                    {labMode !== "lite" && <GuideToggle variant="row" />}
+                    {labMode === "lims" && <GuideToggle variant="row" />}
                     <button
                       onClick={() => { setMobileHeaderOpen(false); setProfileOpen(true); }}
                       className="flex items-center gap-3 w-full px-4 py-3 text-sm text-slate-300 hover:bg-white/8 transition-colors border-b border-white/5"
@@ -1063,7 +1076,7 @@ export function LabDashboard({ lab, isOwner = false, roleName = "Lab Owner", can
 
         {/* Analytics view — full breakdown of everything the lab gathers */}
         {mainView === "analytics" && (isOwner || canViewAnalytics) && (
-          <AnalyticsView labId={lab.id} lite={labMode === "lite"} />
+          <AnalyticsView labId={lab.id} lite={labMode !== "lims"} />
         )}
 
         {/* Journey / sample tracking view */}
@@ -1120,7 +1133,7 @@ export function LabDashboard({ lab, isOwner = false, roleName = "Lab Owner", can
         {mainView === "queue" && (isOwner || canMarkSeen || canViewRequestsEff) && (
           <QueueView
             canManage={isOwner || canMarkSeen}
-            lite={labMode === "lite"}
+            lite={labMode !== "lims"}
             labId={lab.id}
             labName={lab.name}
             labSlug={lab.slug ?? null}
@@ -1187,14 +1200,14 @@ export function LabDashboard({ lab, isOwner = false, roleName = "Lab Owner", can
             <div>
               <h2 className="text-lg font-semibold text-white">Onboarding</h2>
               <p className="text-sm text-slate-400 mt-1">
-                {labMode === "lite"
+                {labMode !== "lims"
                   ? "Check in Poveon arrivals, confirm their details and take payment. New walk-ins register from the Queue."
                   : "Check in Poveon arrivals, confirm tests and take payment. Paid clients move on to the Workstation; new walk-ins register from the Queue."}
               </p>
             </div>
             <Workspace
               mode="onboarding"
-              lite={labMode === "lite"}
+              lite={labMode !== "lims"}
               labId={lab.id}
               labName={lab.name}
               labSlug={lab.slug ?? null}

@@ -149,10 +149,18 @@ export function ResultComposer({ request, canSendResults, onClose, onSaved }: {
   }
 
   async function preview() {
+    // Open the tab synchronously (on the click) so it isn't blocked, then point
+    // it at the PDF once the drafts are saved.
+    const win = window.open("", "_blank");
     setBusy(true);
     try {
       const ids = await saveAll();
-      if (ids && ids.length) window.open(`/api/lab/results/preview?ids=${ids.join(",")}`, "_blank");
+      if (ids && ids.length) {
+        const url = `/api/lab/results/preview?ids=${ids.join(",")}`;
+        if (win) win.location.href = url; else window.open(url, "_blank");
+      } else if (win) { win.close(); }
+    } catch {
+      if (win) win.close();
     } finally { setBusy(false); }
   }
 
