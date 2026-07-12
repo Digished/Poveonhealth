@@ -249,10 +249,16 @@ be available for Lab A but not Lab B.
   paid/unpaid flag. APIs: `src/app/api/admin/{perks,perks/[id],rides,rides/[id],logistics,logistics/[id]}`.
 - **Doctor redemption:** in the doctor request form (`DoctorRequestForm.tsx`, step 3)
   a small opt-in prompt appears when `POST /api/perks/available` returns a perk for
-  that doctor+lab. The doctor confirms the patient and enters a pickup address; the
-  ride is created as part of `POST /api/requests/create` (`free_ride`,
-  `free_ride_perk_id`, `ride_pickup_address`). Redemption logic + notifications live
-  in `src/lib/rides.ts`.
+  that doctor+lab. The doctor confirms/edits the patient's name, **phone (country-code
+  input)** and **email (required — the arrival code is emailed there)**, enters a
+  pickup address, and must pass a **login-code gate** (`POST /api/perks/doctor-pin`):
+  they enter their 4-digit login PIN, or create one inline if they have none (it
+  doubles as their portal login and starts a `doc_token` session). The ride is created
+  as part of `POST /api/requests/create` (`free_ride`, `free_ride_perk_id`,
+  `ride_pickup_address`) — which server-side only redeems when a valid doctor session
+  matches. Redemption logic + notifications live in `src/lib/rides.ts`. On success the
+  doctor is told the patient received 2 emails (request + free-ride/arrival code), with
+  a 3rd (rider phone) to follow.
 - **Notifications:** patient (free-ride details + secret arrival code, redeem within
   7 days, address locked), lab (`request_email`, order carries a free ride), and the
   lab's assigned logistics partner(s). A second patient email carries the rider's
@@ -269,10 +275,14 @@ be available for Lab A but not Lab B.
   told not to share the code until they reach the lab, so a correct code confirms
   arrival. APIs: `src/app/api/rider-login/*`, `src/app/api/rider/*`; helper
   `src/lib/rider-auth.ts`.
+- **Lab view:** the lab dashboard has a **"Free Rides"** panel (Operations section →
+  `mainView === "rides"`, `GET /api/lab/rides`) listing patients arriving via a free
+  ride and each ride's progress (pending → assigned → completed), plus a "Free Ride"
+  badge on the flagged request.
 - **Schema:** `DoctorPerk`, `RidePerk`, `LogisticsPartner`, `LogisticsPartnerLab`,
-  `Rider`, and `*Otp`/`*Session` models; `Request.has_free_ride` flag (a "Free Ride"
-  badge shows in the lab dashboard). Production tables/columns added in
-  `scripts/run-migration.mjs`.
+  `Rider`, and `*Otp`/`*Session` models; `Request.has_free_ride` flag. The redemption
+  window is **7 days** everywhere (`RIDE_REDEEM_DAYS` in `src/lib/rides.ts`).
+  Production tables/columns added in `scripts/run-migration.mjs`.
 
 ## Next Tasks
 1. Improve admin test catalog modal (current task)

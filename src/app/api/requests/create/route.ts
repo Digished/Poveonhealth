@@ -522,7 +522,21 @@ export async function POST(request: NextRequest) {
       const pickup = (data.ride_pickup_address || "").trim();
       const patientPhone = (data.patient_phone || "").trim();
       const patientName = (data.patient_name || "").trim();
-      if (pickup && patientPhone && patientName) {
+      const patientEmail = (data.patient_email || "").trim();
+
+      // Login-code gate: only redeem when a valid doctor session (set by the PIN
+      // step) matches this doctor's email. Prevents redeeming someone else's perk.
+      const docToken = request.cookies.get("doc_token")?.value;
+      let doctorAuthed = false;
+      if (docToken) {
+        const sess = await prisma.doctorSession.findUnique({ where: { id: docToken } }).catch(() => null);
+        doctorAuthed = !!sess && sess.expires_at > new Date() && sess.doctor_email === data.doctor_email.trim().toLowerCase();
+      }
+
+      if (!doctorAuthed) {
+        console.warn("[create] free_ride requested without a valid doctor login — skipped");
+      } else if (pickup && patientPhone && patientName && patientEmail) {
+        // The patient's email is required — the arrival code is delivered there.
         const ride = await redeemFreeRide({
           perkId: data.free_ride_perk_id ?? null,
           doctorEmail: data.doctor_email,
@@ -536,7 +550,7 @@ export async function POST(request: NextRequest) {
         }).catch((e) => { console.error("[create] free-ride redeem failed:", e); return null; });
         freeRideRedeemed = !!ride;
       } else {
-        console.warn("[create] free_ride requested but missing pickup/patient name/phone — skipped");
+        console.warn("[create] free_ride requested but missing pickup/patient name/phone/email — skipped");
       }
     }
 

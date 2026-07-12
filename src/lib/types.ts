@@ -208,6 +208,7 @@ export interface CreateRequestResponse {
   code?: string;
   requestId?: string;
   lab?: Pick<Lab, "name" | "address" | "phones" | "whatsapp">;
+  free_ride_redeemed?: boolean;
   error?: string;
 }
 
