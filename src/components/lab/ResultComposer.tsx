@@ -1,7 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { X, Loader2, Search, Plus, Trash2, Eye, Send, Save, Check, FileText, ArrowRight, ArrowLeft } from "lucide-react";
+import { X, Loader2, Search, Plus, Trash2, Eye, Send, Save, Check, FileText, ArrowRight, ArrowLeft, Wand2 } from "lucide-react";
 import toast from "react-hot-toast";
 import { requestDepartments } from "@/lib/lims-shared";
 import type { ResultTemplateLite } from "@/components/lab/ResultEntry";
@@ -36,6 +36,7 @@ export function ResultComposer({ request, canSendResults, onClose, onSaved }: {
   const [selected, setSelected] = useState<Selected[]>([]);
   const [query, setQuery] = useState("");
   const [busy, setBusy] = useState(false);
+  const [genComment, setGenComment] = useState<string | null>(null); // key of section generating a comment
 
   const derivedDepts = useMemo(() => requestDepartments(request.test_breakdown).map((d) => d.department), [request.test_breakdown]);
   const deptForTemplate = useCallback((tpl: ResultTemplateLite) => {
@@ -105,6 +106,25 @@ export function ResultComposer({ request, canSendResults, onClose, onSaved }: {
     setSelected((prev) => prev.map((s) => s.key === k ? { ...s, comment, dirty: true } : s));
   }
 
+  async function generateComment(s: Selected) {
+    if (!s.rows.some((r) => r.value.trim())) { toast.error("Enter some results first"); return; }
+    setGenComment(s.key);
+    try {
+      const res = await fetch("/api/lab/results/generate-comment", {
+        method: "POST", headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ templateName: s.name, department: s.department, values: s.rows.map((r) => ({ name: r.name, value: r.value, unit: r.unit, reference_range: r.reference_range })) }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || "Failed");
+      if (data.comment) setComment(s.key, data.comment);
+      toast.success("Comment drafted — review & edit");
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : "Failed to generate");
+    } finally {
+      setGenComment(null);
+    }
+  }
+
   /** Persist every selected template as a RequestResult; returns their ids in order. */
   async function saveAll(): Promise<string[] | null> {
     const ids: string[] = [];
@@ -137,6 +157,9 @@ export function ResultComposer({ request, canSendResults, onClose, onSaved }: {
   }
 
   async function sendAll(send: boolean) {
+    // Every result must carry a comment before it can be reported/sent.
+    const missing = selected.filter((s) => !s.comment.trim());
+    if (missing.length > 0) { toast.error(`Add a comment for: ${missing.map((s) => s.name).join(", ")}`); return; }
     setBusy(true);
     try {
       const ids = await saveAll();
@@ -251,7 +274,13 @@ export function ResultComposer({ request, canSendResults, onClose, onSaved }: {
                           <span className="col-span-4 truncate text-xs text-slate-400">{row.reference_range || "—"}</span>
                         </div>
                       ))}
-                      <textarea className={`${cellCls} mt-1`} rows={2} placeholder="Comment (optional)" value={s.comment} disabled={s.status === "reported"} onChange={(e) => setComment(s.key, e.target.value)} />
+                      <div className="mt-1 flex items-center justify-between">
+                        <p className="text-[11px] font-medium text-slate-400">Comment <span className="text-amber-300">(required)</span></p>
+                        <button onClick={() => generateComment(s)} disabled={genComment === s.key || s.status === "reported"} className="inline-flex items-center gap-1 rounded-lg border border-white/10 px-2 py-1 text-[11px] font-medium text-medical-300 hover:bg-white/5 disabled:opacity-50">
+                          {genComment === s.key ? <Loader2 className="h-3 w-3 animate-spin" /> : <Wand2 className="h-3 w-3" />} Generate
+                        </button>
+                      </div>
+                      <textarea className={cellCls} rows={2} placeholder="Interpretive comment for this result…" value={s.comment} disabled={s.status === "reported"} onChange={(e) => setComment(s.key, e.target.value)} />
                     </div>
                   </div>
                 ))}
