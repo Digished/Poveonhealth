@@ -80,7 +80,11 @@ export async function renderResultPdf(resultId: string, labId: string): Promise<
   const about = result.template_id
     ? (await prisma.labResultTemplate.findUnique({ where: { id: result.template_id }, select: { description: true } }))?.description ?? null
     : null;
-  const brand = await labBrandProps(result.lab);
+  const [brand, analystSig, verifierSig] = await Promise.all([
+    labBrandProps(result.lab),
+    fetchLogoDataUrl(result.analyst_signature_url),
+    fetchLogoDataUrl(result.verifier_signature_url),
+  ]);
   const buffer = await renderToBuffer(
     ResultReportPdf({
       ...brand,
@@ -90,7 +94,11 @@ export async function renderResultPdf(resultId: string, labId: string): Promise<
       patientAge: result.request.patient_age,
       patientSex: result.request.sex,
       patientPhone: result.request.patient_phone,
-      sections: [{ parameters: params, comment: result.comment, about, verifiedBy: result.verified_by, verifiedAt: result.verified_at }],
+      sections: [{
+        parameters: params, comment: result.comment, about, verifiedBy: result.verified_by, verifiedAt: result.verified_at,
+        analystName: result.analyst_name, analystSignature: analystSig,
+        verifierName: result.verifier_name, verifierSignature: verifierSig,
+      }],
     })
   );
   return { buffer: buffer as Buffer, code: result.request.code };
@@ -123,13 +131,23 @@ export async function renderResultsPdf(resultIds: string[], labId: string): Prom
   const tName = new Map(templates.map((t) => [t.id, t.name]));
   const tAbout = new Map(templates.map((t) => [t.id, t.description]));
 
-  const sections: ResultSection[] = results.map((r) => ({
+  // Fetch each result's signature images (data URIs) in parallel.
+  const sigs = await Promise.all(results.map(async (r) => ({
+    analyst: await fetchLogoDataUrl(r.analyst_signature_url),
+    verifier: await fetchLogoDataUrl(r.verifier_signature_url),
+  })));
+
+  const sections: ResultSection[] = results.map((r, i) => ({
     title: (r.template_id && tName.get(r.template_id)) || r.department || "Result",
     parameters: (Array.isArray(r.values) ? r.values : []) as ResultParam[],
     comment: r.comment,
     about: (r.template_id && tAbout.get(r.template_id)) || null,
     verifiedBy: r.verified_by,
     verifiedAt: r.verified_at,
+    analystName: r.analyst_name,
+    analystSignature: sigs[i].analyst,
+    verifierName: r.verifier_name,
+    verifierSignature: sigs[i].verifier,
   }));
 
   const brand = await labBrandProps(results[0].lab);

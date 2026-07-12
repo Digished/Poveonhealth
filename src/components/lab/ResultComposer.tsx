@@ -1,7 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { X, Loader2, Search, Plus, Trash2, Eye, Send, Save, Check, FileText, ArrowRight, ArrowLeft, Wand2 } from "lucide-react";
+import { X, Loader2, Search, Plus, Trash2, Eye, Send, Save, Check, FileText, ArrowRight, ArrowLeft, Wand2, PenLine } from "lucide-react";
 import toast from "react-hot-toast";
 import { requestDepartments } from "@/lib/lims-shared";
 import type { ResultTemplateLite } from "@/components/lab/ResultEntry";
@@ -9,6 +9,7 @@ import type { ResultTemplateLite } from "@/components/lab/ResultEntry";
 interface Row { name: string; value: string; unit: string; reference_range: string; group: string }
 interface Selected { key: string; templateId: string; name: string; department: string; rows: Row[]; comment: string; resultId: string | null; status: string; dirty: boolean }
 interface ExistingResult { id: string; department: string | null; status: string; template_id: string | null; values: Row[]; comment: string | null; kind: string }
+interface Staff { id: string; name: string; email: string | null; has_signature: boolean }
 
 interface ComposerReq {
   id: string; code: string;
@@ -37,6 +38,11 @@ export function ResultComposer({ request, canSendResults, onClose, onSaved }: {
   const [query, setQuery] = useState("");
   const [busy, setBusy] = useState(false);
   const [genComment, setGenComment] = useState<string | null>(null); // key of section generating a comment
+  const [staff, setStaff] = useState<Staff[]>([]);
+  const [showVerify, setShowVerify] = useState(false);
+  const [analystId, setAnalystId] = useState("");
+  const [verifierId, setVerifierId] = useState("");
+  const [verifiedAll, setVerifiedAll] = useState(false);
 
   const derivedDepts = useMemo(() => requestDepartments(request.test_breakdown).map((d) => d.department), [request.test_breakdown]);
   const deptForTemplate = useCallback((tpl: ResultTemplateLite) => {
@@ -49,13 +55,15 @@ export function ResultComposer({ request, canSendResults, onClose, onSaved }: {
   const load = useCallback(async () => {
     setLoading(true);
     try {
-      const [tRes, rRes] = await Promise.all([
+      const [tRes, rRes, sRes] = await Promise.all([
         fetch("/api/lab/result-templates", { cache: "no-store" }),
         fetch(`/api/lab/results?requestId=${request.id}`, { cache: "no-store" }),
+        fetch("/api/lab/staff", { cache: "no-store" }),
       ]);
       const tData = tRes.ok ? await tRes.json() : { templates: [] };
       const tpls: ResultTemplateLite[] = tData.templates ?? [];
       setTemplates(tpls);
+      if (sRes.ok) { const sd = await sRes.json(); setStaff(Array.isArray(sd.staff) ? sd.staff : []); }
       // Preselect any results already entered from a template.
       const rData = rRes.ok ? await rRes.json() : { results: [] };
       const existing: ExistingResult[] = rData.results ?? [];
@@ -101,6 +109,7 @@ export function ResultComposer({ request, canSendResults, onClose, onSaved }: {
   function removeSelected(k: string) { setSelected((prev) => prev.filter((s) => s.key !== k)); }
   function setRow(k: string, i: number, value: string) {
     setSelected((prev) => prev.map((s) => s.key === k ? { ...s, dirty: true, rows: s.rows.map((r, idx) => idx === i ? { ...r, value } : r) } : s));
+    setVerifiedAll(false); // edits require re-verification
   }
   function setComment(k: string, comment: string) {
     setSelected((prev) => prev.map((s) => s.key === k ? { ...s, comment, dirty: true } : s));
@@ -164,18 +173,37 @@ export function ResultComposer({ request, canSendResults, onClose, onSaved }: {
     } finally { setBusy(false); }
   }
 
-  async function sendAll(send: boolean) {
-    // Every result must carry a comment before it can be reported/sent.
+  // Step 1 of sign-off: capture analyst/verifier and mark verified.
+  async function doVerify() {
     const missing = selected.filter((s) => !s.comment.trim());
     if (missing.length > 0) { toast.error(`Add a comment for: ${missing.map((s) => s.name).join(", ")}`); return; }
+    if (!analystId) { toast.error("Select who analysed the results"); return; }
+    if (!verifierId) { toast.error("Select who verified the results"); return; }
     setBusy(true);
     try {
       const ids = await saveAll();
       if (!ids || ids.length === 0) return;
-      const res = await fetch("/api/lab/results/send-combined", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ ids, send }) });
+      const res = await fetch("/api/lab/results/send-combined", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ ids, verify_only: true, analyst_id: analystId, verifier_id: verifierId }) });
       const data = await res.json();
       if (!res.ok) throw new Error(data.error || "Failed");
-      toast.success(send ? "Results sent to patient" : "Results reported");
+      setVerifiedAll(true); setShowVerify(false);
+      toast.success("Verified — you can now send to the patient");
+      onSaved();
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : "Failed");
+    } finally { setBusy(false); }
+  }
+
+  // Step 2: report + email the combined PDF (only after verification).
+  async function sendToPatient() {
+    setBusy(true);
+    try {
+      const ids = await saveAll();
+      if (!ids || ids.length === 0) return;
+      const res = await fetch("/api/lab/results/send-combined", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ ids, send: true, analyst_id: analystId, verifier_id: verifierId }) });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || "Failed");
+      toast.success("Results sent to patient");
       onSaved(); onClose();
     } catch (e) {
       toast.error(e instanceof Error ? e.message : "Failed");
@@ -313,12 +341,51 @@ export function ResultComposer({ request, canSendResults, onClose, onSaved }: {
             <button onClick={saveDrafts} disabled={busy} className="inline-flex items-center gap-1.5 rounded-xl border border-white/10 px-3 py-2 text-sm text-slate-200 hover:bg-white/5 disabled:opacity-50"><Save className="h-4 w-4" /> Save drafts</button>
             <button onClick={preview} disabled={busy || selected.length === 0} className="inline-flex items-center gap-1.5 rounded-xl border border-white/10 px-3 py-2 text-sm text-slate-200 hover:bg-white/5 disabled:opacity-50"><Eye className="h-4 w-4" /> Preview PDF</button>
             <div className="ml-auto flex items-center gap-2">
-              <button onClick={() => sendAll(false)} disabled={busy || selected.length === 0} className="inline-flex items-center gap-1.5 rounded-xl bg-medical-600 px-3 py-2 text-sm font-semibold text-white hover:bg-medical-700 disabled:opacity-50"><Check className="h-4 w-4" /> Verify & report</button>
-              {canSendResults && <button onClick={() => sendAll(true)} disabled={busy || selected.length === 0} className="inline-flex items-center gap-1.5 rounded-xl bg-emerald-600 px-4 py-2 text-sm font-semibold text-white hover:bg-emerald-700 disabled:opacity-50">{busy ? <Loader2 className="h-4 w-4 animate-spin" /> : <Send className="h-4 w-4" />} Send to patient</button>}
+              {verifiedAll ? (
+                <>
+                  <span className="inline-flex items-center gap-1 text-xs font-medium text-emerald-300"><Check className="h-4 w-4" /> Verified</span>
+                  {canSendResults && <button onClick={sendToPatient} disabled={busy || selected.length === 0} className="inline-flex items-center gap-1.5 rounded-xl bg-emerald-600 px-4 py-2 text-sm font-semibold text-white hover:bg-emerald-700 disabled:opacity-50">{busy ? <Loader2 className="h-4 w-4 animate-spin" /> : <Send className="h-4 w-4" />} Send to patient</button>}
+                </>
+              ) : (
+                <button onClick={() => setShowVerify(true)} disabled={busy || selected.length === 0} className="inline-flex items-center gap-1.5 rounded-xl bg-medical-600 px-4 py-2 text-sm font-semibold text-white hover:bg-medical-700 disabled:opacity-50"><PenLine className="h-4 w-4" /> Verify</button>
+              )}
             </div>
           </>
         )}
       </div>
+
+      {/* Verify dialog — capture the analyst & verifier before sending. */}
+      {showVerify && (
+        <div className="fixed inset-0 z-[10001] flex items-center justify-center bg-black/70 p-4" onClick={() => setShowVerify(false)}>
+          <div className="w-full max-w-md rounded-2xl border border-white/10 bg-slate-900 p-5" onClick={(e) => e.stopPropagation()}>
+            <div className="mb-3 flex items-center justify-between">
+              <h3 className="flex items-center gap-2 text-base font-semibold text-white"><PenLine className="h-4 w-4 text-medical-300" /> Verify results</h3>
+              <button onClick={() => setShowVerify(false)} className="text-slate-400 hover:text-white"><X className="h-5 w-5" /></button>
+            </div>
+            <p className="mb-4 text-xs text-slate-400">Select the scientist who analysed and the one who verified these results. Their name and signature (if uploaded) appear on the report.</p>
+            <div className="space-y-3">
+              <div>
+                <label className="mb-1 block text-xs font-medium text-slate-400">Analysed by</label>
+                <select value={analystId} onChange={(e) => setAnalystId(e.target.value)} className="w-full rounded-xl border border-white/10 bg-white/5 px-3 py-2 text-sm text-white focus:border-medical-400 focus:outline-none">
+                  <option value="" className="bg-slate-800">Select staff…</option>
+                  {staff.map((s) => <option key={s.id} value={s.id} className="bg-slate-800">{s.name}{s.has_signature ? " ✍️" : ""}</option>)}
+                </select>
+              </div>
+              <div>
+                <label className="mb-1 block text-xs font-medium text-slate-400">Verified by</label>
+                <select value={verifierId} onChange={(e) => setVerifierId(e.target.value)} className="w-full rounded-xl border border-white/10 bg-white/5 px-3 py-2 text-sm text-white focus:border-medical-400 focus:outline-none">
+                  <option value="" className="bg-slate-800">Select staff…</option>
+                  {staff.map((s) => <option key={s.id} value={s.id} className="bg-slate-800">{s.name}{s.has_signature ? " ✍️" : ""}</option>)}
+                </select>
+              </div>
+              {staff.length === 0 && <p className="text-[11px] text-amber-300">No staff found. Add team members with names (and signatures) in HR → Team.</p>}
+              <button onClick={doVerify} disabled={busy} className="inline-flex w-full items-center justify-center gap-2 rounded-xl bg-medical-600 py-2.5 text-sm font-semibold text-white hover:bg-medical-700 disabled:opacity-50">
+                {busy ? <Loader2 className="h-4 w-4 animate-spin" /> : <Check className="h-4 w-4" />} Confirm & verify
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

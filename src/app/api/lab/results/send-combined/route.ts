@@ -11,7 +11,13 @@ import { resend, labSender } from "@/lib/email/resend";
 import { labResultsDoctor, labResultsPatient } from "@/lib/email/templates";
 
 const RESULTS_BUCKET = "lab-results";
-const Schema = z.object({ ids: z.array(z.string().min(1)).min(1).max(30), send: z.boolean().optional() });
+const Schema = z.object({
+  ids: z.array(z.string().min(1)).min(1).max(30),
+  send: z.boolean().optional(),
+  verify_only: z.boolean().optional(), // set analyst/verifier + mark verified, no report/email
+  analyst_id: z.string().uuid().optional(),
+  verifier_id: z.string().uuid().optional(),
+});
 
 /**
  * POST /api/lab/results/send-combined
@@ -26,7 +32,21 @@ export async function POST(request: NextRequest) {
 
   const parsed = Schema.safeParse(await request.json().catch(() => null));
   if (!parsed.success) return NextResponse.json({ error: "Invalid input" }, { status: 400 });
-  const { ids, send } = parsed.data;
+  const { ids, send, verify_only, analyst_id, verifier_id } = parsed.data;
+
+  // Resolve analyst / verifier from the lab's staff (name + signature snapshot).
+  const signerIds = [analyst_id, verifier_id].filter(Boolean) as string[];
+  const signers = signerIds.length
+    ? await prisma.labMember.findMany({ where: { id: { in: signerIds }, lab_id: auth.lab_id }, select: { id: true, name: true, email: true, signature_url: true } })
+    : [];
+  const signerName = (id?: string) => { const m = signers.find((s) => s.id === id); return m ? (m.name || m.email || null) : null; };
+  const signerSig = (id?: string) => signers.find((s) => s.id === id)?.signature_url ?? null;
+  const analystName = signerName(analyst_id);
+  const verifierName = signerName(verifier_id);
+  const signFields = {
+    ...(analyst_id ? { analyst_name: analystName, analyst_signature_url: signerSig(analyst_id) } : {}),
+    ...(verifier_id ? { verifier_name: verifierName, verifier_signature_url: signerSig(verifier_id) } : {}),
+  };
 
   const results = await prisma.requestResult.findMany({
     where: { id: { in: ids }, lab_id: auth.lab_id },
@@ -41,12 +61,23 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ error: "Your role is limited to the " + auth.department + " department" }, { status: 403 });
   }
 
-  // Mark each result verified (if still draft) before rendering the report.
+  // Mark each result verified and stamp the analyst / verifier (name + signature).
   const now = new Date();
   for (const r of results) {
-    if (r.status === "draft") {
-      await prisma.requestResult.update({ where: { id: r.id }, data: { status: "verified", verified_at: r.verified_at ?? now, verified_by: r.verified_by ?? auth.actor_email ?? null } });
-    }
+    await prisma.requestResult.update({
+      where: { id: r.id },
+      data: {
+        ...(r.status === "draft" ? { status: "verified", verified_at: r.verified_at ?? now } : {}),
+        verified_by: verifierName ?? r.verified_by ?? auth.actor_email ?? null,
+        ...signFields,
+      },
+    });
+  }
+
+  // Verify-only: analyst/verifier captured, results verified — stop before report.
+  if (verify_only) {
+    if (auth.actor_email) logLabActivity({ lab_id: auth.lab_id, actor_email: auth.actor_email, action: "results_verified", detail: `${results.length} result(s) for ${req.code}` });
+    return NextResponse.json({ success: true, verified: true, count: results.length });
   }
 
   const rendered = await renderResultsPdf(results.map((r) => r.id), auth.lab_id);

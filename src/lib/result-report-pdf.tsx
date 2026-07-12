@@ -43,7 +43,10 @@ const styles = StyleSheet.create({
   aboutBox: { marginTop: 10, backgroundColor: "#f8fafc", borderWidth: 1, borderColor: "#e2e8f0", borderRadius: 4, paddingVertical: 8, paddingHorizontal: 10 },
   aboutText: { fontSize: 9, color: MUTED, lineHeight: 1.55 },
   signatureBlock: { marginTop: 20, paddingTop: 10, borderTopWidth: 1, borderTopColor: "#e2e8f0", flexDirection: "row", justifyContent: "space-between", alignItems: "flex-end" },
+  sigCol: { width: "48%" },
+  sigImg: { height: 34, marginBottom: 2, objectFit: "contain" },
   sigName: { fontSize: 11, fontFamily: "Helvetica-Bold", color: INK },
+  sigLine: { borderTopWidth: 1, borderTopColor: "#cbd5e1", marginTop: 2, paddingTop: 2 },
   footer: { position: "absolute", bottom: 26, left: 44, right: 44, flexDirection: "row", justifyContent: "space-between", borderTopWidth: 1, borderTopColor: "#e2e8f0", paddingTop: 8 },
   footerText: { fontSize: 7.5, color: FAINT },
 });
@@ -57,6 +60,10 @@ export type ResultSection = {
   about?: string | null; // plain-English "about this test" note
   verifiedBy?: string | null;
   verifiedAt?: Date | null;
+  analystName?: string | null;
+  analystSignature?: string | null; // data URI
+  verifierName?: string | null;
+  verifierSignature?: string | null; // data URI
 };
 
 export type ResultReportProps = {
@@ -148,9 +155,13 @@ function SectionBody({ section }: { section: ResultSection }) {
 export function ResultReportPdf(props: ResultReportProps) {
   const dateStr = props.reportedAt.toLocaleDateString("en-GB", { day: "numeric", month: "long", year: "numeric" });
   const multi = props.sections.length > 1;
-  // Verification line: use the last verified section (or the first with data).
-  const verifier = [...props.sections].reverse().find((s) => s.verifiedBy)?.verifiedBy ?? null;
-  const verifiedAt = [...props.sections].reverse().find((s) => s.verifiedAt)?.verifiedAt ?? null;
+  const rev = [...props.sections].reverse();
+  const verifiedAt = rev.find((s) => s.verifiedAt)?.verifiedAt ?? null;
+  // Sign-off: prefer explicit analyst/verifier; fall back to legacy verifiedBy.
+  const analystName = rev.find((s) => s.analystName)?.analystName ?? null;
+  const analystSig = rev.find((s) => s.analystSignature)?.analystSignature ?? null;
+  const verifierName = rev.find((s) => s.verifierName)?.verifierName ?? rev.find((s) => s.verifiedBy)?.verifiedBy ?? null;
+  const verifierSig = rev.find((s) => s.verifierSignature)?.verifierSignature ?? null;
 
   return (
     <Document title={`Result ${props.code}`} author={props.labName}>
@@ -190,12 +201,19 @@ export function ResultReportPdf(props: ResultReportProps) {
         ))}
 
         <View style={styles.signatureBlock} wrap={false}>
-          <View>
-            <Text style={styles.sectionLabel}>Verified by</Text>
-            <Text style={styles.sigName}>{verifier || "—"}</Text>
-            {verifiedAt ? <Text style={styles.cell}>{verifiedAt.toLocaleString("en-GB", { day: "numeric", month: "short", year: "numeric", hour: "2-digit", minute: "2-digit" })}</Text> : null}
+          <View style={styles.sigCol}>
+            <Text style={styles.sectionLabel}>Analysed by</Text>
+            {analystSig ? <Image style={styles.sigImg} src={analystSig} /> : null}
+            <View style={styles.sigLine}><Text style={styles.sigName}>{analystName || "—"}</Text></View>
           </View>
-          <Text style={[styles.footerText, { fontStyle: "italic" }]}>This is a computer-generated report.</Text>
+          <View style={styles.sigCol}>
+            <Text style={styles.sectionLabel}>Verified by</Text>
+            {verifierSig ? <Image style={styles.sigImg} src={verifierSig} /> : null}
+            <View style={styles.sigLine}>
+              <Text style={styles.sigName}>{verifierName || "—"}</Text>
+              {verifiedAt ? <Text style={styles.cell}>{verifiedAt.toLocaleString("en-GB", { day: "numeric", month: "short", year: "numeric", hour: "2-digit", minute: "2-digit" })}</Text> : null}
+            </View>
+          </View>
         </View>
 
         <View style={styles.footer} fixed>

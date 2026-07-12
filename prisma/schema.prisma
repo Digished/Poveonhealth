@@ -96,12 +96,14 @@ model LabUser {
 
 // Lab staff members with custom roles
 model LabMember {
-  id         String   @id @default(uuid())
-  lab_id     String
-  user_id    String   @unique
-  email      String?
-  role_id    String
-  created_at DateTime @default(now())
+  id            String   @id @default(uuid())
+  lab_id        String
+  user_id       String   @unique
+  email         String?
+  name          String? // display name for reports (e.g. the scientist's name)
+  signature_url String? // uploaded signature image, shown on signed results
+  role_id       String
+  created_at    DateTime @default(now())
 
   lab  Lab     @relation(fields: [lab_id], references: [id], onDelete: Cascade)
   role LabRole @relation(fields: [role_id], references: [id])
@@ -1171,6 +1173,10 @@ model RequestResult {
   status       String    @default("draft") // draft | verified | reported
   verified_by String?
   verified_at DateTime?
+  analyst_name           String? // scientist who analysed the sample (snapshot)
+  analyst_signature_url  String?
+  verifier_name          String? // scientist who verified/authorised the result (snapshot)
+  verifier_signature_url String?
   pdf_url     String?
   created_at  DateTime  @default(now())
   updated_at  DateTime  @default(now()) @updatedAt

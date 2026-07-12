@@ -54,6 +54,7 @@ export async function GET() {
 const InviteSchema = z.object({
   email: z.string().email(),
   role_id: z.string().uuid(),
+  name: z.string().max(120).optional(),
 });
 
 function generatePassword(): string {
@@ -76,7 +77,7 @@ export async function POST(request: NextRequest) {
 
   const parsed = InviteSchema.safeParse(await request.json().catch(() => null));
   if (!parsed.success) return NextResponse.json({ success: false, error: "A valid email and role are required" }, { status: 400 });
-  const { email, role_id } = parsed.data;
+  const { email, role_id, name } = parsed.data;
 
   const lab = await prisma.lab.findUnique({ where: { id: auth.lab_id }, select: { id: true, name: true } });
   if (!lab) return NextResponse.json({ success: false, error: "Lab not found" }, { status: 404 });
@@ -102,7 +103,7 @@ export async function POST(request: NextRequest) {
   }
 
   const member = await prisma.labMember.create({
-    data: { lab_id: auth.lab_id, user_id: authData.user.id, email, role_id },
+    data: { lab_id: auth.lab_id, user_id: authData.user.id, email, name: name?.trim() || null, role_id },
     include: { role: { select: { id: true, name: true } } },
   });
 

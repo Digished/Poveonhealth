@@ -43,6 +43,22 @@ async function execWithRetry(sql, attempts = 4) {
 
 const migrations = [
   {
+    desc: "lab_members name & signature columns",
+    sql: `ALTER TABLE lab_members
+      ADD COLUMN IF NOT EXISTS name TEXT,
+      ADD COLUMN IF NOT EXISTS signature_url TEXT`,
+    continueOnError: true,
+  },
+  {
+    desc: "request_results analyst/verifier columns",
+    sql: `ALTER TABLE request_results
+      ADD COLUMN IF NOT EXISTS analyst_name TEXT,
+      ADD COLUMN IF NOT EXISTS analyst_signature_url TEXT,
+      ADD COLUMN IF NOT EXISTS verifier_name TEXT,
+      ADD COLUMN IF NOT EXISTS verifier_signature_url TEXT`,
+    continueOnError: true,
+  },
+  {
     desc: "lab_result_templates description & icon columns",
     sql: `ALTER TABLE lab_result_templates
       ADD COLUMN IF NOT EXISTS description TEXT,
