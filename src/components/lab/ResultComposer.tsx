@@ -210,6 +210,7 @@ export function ResultComposer({ request, canSendResults, onClose, onSaved }: {
     } finally { setBusy(false); }
   }
 
+  const allCommented = selected.length > 0 && selected.every((s) => s.comment.trim());
   const cellCls = "w-full rounded-lg border border-white/10 bg-white/5 px-2 py-1.5 text-sm text-white placeholder:text-slate-500 focus:border-medical-400 focus:outline-none";
 
   return (
@@ -347,7 +348,7 @@ export function ResultComposer({ request, canSendResults, onClose, onSaved }: {
                   {canSendResults && <button onClick={sendToPatient} disabled={busy || selected.length === 0} className="inline-flex items-center gap-1.5 rounded-xl bg-emerald-600 px-4 py-2 text-sm font-semibold text-white hover:bg-emerald-700 disabled:opacity-50">{busy ? <Loader2 className="h-4 w-4 animate-spin" /> : <Send className="h-4 w-4" />} Send to patient</button>}
                 </>
               ) : (
-                <button onClick={() => setShowVerify(true)} disabled={busy || selected.length === 0} className="inline-flex items-center gap-1.5 rounded-xl bg-medical-600 px-4 py-2 text-sm font-semibold text-white hover:bg-medical-700 disabled:opacity-50"><PenLine className="h-4 w-4" /> Verify</button>
+                <button onClick={() => setShowVerify(true)} disabled={busy || selected.length === 0 || !allCommented} title={!allCommented ? "Add a comment to every result first" : undefined} className="inline-flex items-center gap-1.5 rounded-xl bg-medical-600 px-4 py-2 text-sm font-semibold text-white hover:bg-medical-700 disabled:opacity-50"><PenLine className="h-4 w-4" /> Verify</button>
               )}
             </div>
           </>
@@ -379,9 +380,10 @@ export function ResultComposer({ request, canSendResults, onClose, onSaved }: {
                 </select>
               </div>
               {staff.length === 0 && <p className="text-[11px] text-amber-300">No staff found. Add team members with names (and signatures) in HR → Team.</p>}
-              <button onClick={doVerify} disabled={busy} className="inline-flex w-full items-center justify-center gap-2 rounded-xl bg-medical-600 py-2.5 text-sm font-semibold text-white hover:bg-medical-700 disabled:opacity-50">
+              <button onClick={doVerify} disabled={busy || !analystId || !verifierId} className="inline-flex w-full items-center justify-center gap-2 rounded-xl bg-medical-600 py-2.5 text-sm font-semibold text-white hover:bg-medical-700 disabled:opacity-50">
                 {busy ? <Loader2 className="h-4 w-4 animate-spin" /> : <Check className="h-4 w-4" />} Confirm & verify
               </button>
+              {(!analystId || !verifierId) && <p className="text-center text-[11px] text-slate-500">Select both fields to continue.</p>}
             </div>
           </div>
         </div>

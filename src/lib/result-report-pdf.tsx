@@ -24,7 +24,13 @@ const styles = StyleSheet.create({
   patientField: { width: "25%", marginBottom: 4, paddingRight: 8 },
   fieldLabel: { fontSize: 7, color: FAINT, textTransform: "uppercase", letterSpacing: 0.8 },
   fieldValue: { fontSize: 10, color: INK, fontFamily: "Helvetica-Bold", marginTop: 1 },
-  reportTitle: { fontSize: 12, fontFamily: "Helvetica-Bold", color: ACCENT, marginTop: 6, marginBottom: 8, paddingBottom: 4, borderBottomWidth: 1, borderBottomColor: "#e2e8f0" },
+  timingStrip: { flexDirection: "row", flexWrap: "wrap", marginTop: -8, marginBottom: 14, paddingVertical: 6, paddingHorizontal: 10, backgroundColor: "#f1f5f9", borderRadius: 6 },
+  timingItem: { marginRight: 16 },
+  timingLabel: { fontSize: 6.5, color: FAINT, textTransform: "uppercase", letterSpacing: 0.6 },
+  timingValue: { fontSize: 8.5, color: INK, fontFamily: "Helvetica-Bold" },
+  sectionHeader: { flexDirection: "row", alignItems: "center", marginTop: 6, marginBottom: 6, paddingBottom: 4, borderBottomWidth: 1, borderBottomColor: "#e2e8f0" },
+  sectionIcon: { width: 14, height: 14, marginRight: 5, objectFit: "contain" },
+  reportTitle: { fontSize: 12, fontFamily: "Helvetica-Bold", color: ACCENT },
   groupHeading: { fontSize: 10, fontFamily: "Helvetica-Bold", color: INK, marginTop: 10, marginBottom: 4 },
   thead: { flexDirection: "row", backgroundColor: "#f1f5f9", paddingVertical: 5, paddingHorizontal: 6, borderRadius: 3 },
   tr: { flexDirection: "row", paddingVertical: 4, paddingHorizontal: 6, borderBottomWidth: 0.5, borderBottomColor: "#eef2f7" },
@@ -42,11 +48,14 @@ const styles = StyleSheet.create({
   commentText: { fontSize: 9.5, color: "#1e293b", lineHeight: 1.6 },
   aboutBox: { marginTop: 10, backgroundColor: "#f8fafc", borderWidth: 1, borderColor: "#e2e8f0", borderRadius: 4, paddingVertical: 8, paddingHorizontal: 10 },
   aboutText: { fontSize: 9, color: MUTED, lineHeight: 1.55 },
-  signatureBlock: { marginTop: 20, paddingTop: 10, borderTopWidth: 1, borderTopColor: "#e2e8f0", flexDirection: "row", justifyContent: "space-between", alignItems: "flex-end" },
-  sigCol: { width: "48%" },
-  sigImg: { height: 34, marginBottom: 2, objectFit: "contain" },
-  sigName: { fontSize: 11, fontFamily: "Helvetica-Bold", color: INK },
-  sigLine: { borderTopWidth: 1, borderTopColor: "#cbd5e1", marginTop: 2, paddingTop: 2 },
+  signatureBlock: { marginTop: 14, paddingTop: 8, borderTopWidth: 1, borderTopColor: "#e2e8f0", flexDirection: "row", justifyContent: "space-between" },
+  sigCol: { width: "48%", flexDirection: "row", alignItems: "flex-end", gap: 6 },
+  sigImg: { height: 20, width: 48, objectFit: "contain" },
+  sigMeta: { flex: 1 },
+  sigRole: { fontSize: 6.5, color: FAINT, textTransform: "uppercase", letterSpacing: 0.6 },
+  sigName: { fontSize: 9, fontFamily: "Helvetica-Bold", color: INK },
+  sigDate: { fontSize: 7, color: MUTED },
+  endReport: { marginTop: 14, textAlign: "center", fontSize: 7.5, color: FAINT, letterSpacing: 1 },
   footer: { position: "absolute", bottom: 26, left: 44, right: 44, flexDirection: "row", justifyContent: "space-between", borderTopWidth: 1, borderTopColor: "#e2e8f0", paddingTop: 8 },
   footerText: { fontSize: 7.5, color: FAINT },
 });
@@ -55,6 +64,7 @@ export type ResultParam = { name: string; value?: string; unit?: string; referen
 
 export type ResultSection = {
   title?: string | null; // template / department name
+  iconImage?: string | null; // template icon rendered as a data-URI image
   parameters: ResultParam[];
   comment?: string | null;
   about?: string | null; // plain-English "about this test" note
@@ -74,12 +84,20 @@ export type ResultReportProps = {
   labEmail?: string | null;
   code: string;
   reportedAt: Date;
+  collectedAt?: Date | null;
+  receivedAt?: Date | null;
   patientName?: string | null;
   patientAge?: number | null;
   patientSex?: string | null;
   patientPhone?: string | null;
   sections: ResultSection[];
 };
+
+/** Compact date-time for the ISO timing strip. */
+function dt(d?: Date | null): string {
+  if (!d) return "—";
+  return d.toLocaleString("en-GB", { day: "2-digit", month: "short", year: "numeric", hour: "2-digit", minute: "2-digit" });
+}
 
 function FlagText({ flag }: { flag?: string }) {
   if (flag === "H" || flag === "HH") return <Text style={styles.flagH}>High</Text>;
@@ -154,7 +172,6 @@ function SectionBody({ section }: { section: ResultSection }) {
 
 export function ResultReportPdf(props: ResultReportProps) {
   const dateStr = props.reportedAt.toLocaleDateString("en-GB", { day: "numeric", month: "long", year: "numeric" });
-  const multi = props.sections.length > 1;
   const rev = [...props.sections].reverse();
   const verifiedAt = rev.find((s) => s.verifiedAt)?.verifiedAt ?? null;
   // Sign-off: prefer explicit analyst/verifier; fall back to legacy verifiedBy.
@@ -193,28 +210,44 @@ export function ResultReportPdf(props: ResultReportProps) {
           </View>
         </View>
 
+        <View style={styles.timingStrip}>
+          <View style={styles.timingItem}><Text style={styles.timingLabel}>Accession</Text><Text style={styles.timingValue}>{props.code}</Text></View>
+          <View style={styles.timingItem}><Text style={styles.timingLabel}>Collected</Text><Text style={styles.timingValue}>{dt(props.collectedAt)}</Text></View>
+          <View style={styles.timingItem}><Text style={styles.timingLabel}>Received</Text><Text style={styles.timingValue}>{dt(props.receivedAt)}</Text></View>
+          <View style={styles.timingItem}><Text style={styles.timingLabel}>Reported</Text><Text style={styles.timingValue}>{dt(props.reportedAt)}</Text></View>
+        </View>
+
         {props.sections.map((section, si) => (
           <View key={si}>
-            {multi && section.title ? <Text style={styles.reportTitle}>{section.title}</Text> : null}
+            {(section.title || section.iconImage) ? (
+              <View style={styles.sectionHeader}>
+                {section.iconImage ? <Image style={styles.sectionIcon} src={section.iconImage} /> : null}
+                <Text style={styles.reportTitle}>{section.title || "Result"}</Text>
+              </View>
+            ) : null}
             <SectionBody section={section} />
           </View>
         ))}
 
         <View style={styles.signatureBlock} wrap={false}>
           <View style={styles.sigCol}>
-            <Text style={styles.sectionLabel}>Analysed by</Text>
             {analystSig ? <Image style={styles.sigImg} src={analystSig} /> : null}
-            <View style={styles.sigLine}><Text style={styles.sigName}>{analystName || "—"}</Text></View>
+            <View style={styles.sigMeta}>
+              <Text style={styles.sigRole}>Analysed by</Text>
+              <Text style={styles.sigName}>{analystName || "—"}</Text>
+            </View>
           </View>
           <View style={styles.sigCol}>
-            <Text style={styles.sectionLabel}>Verified by</Text>
             {verifierSig ? <Image style={styles.sigImg} src={verifierSig} /> : null}
-            <View style={styles.sigLine}>
+            <View style={styles.sigMeta}>
+              <Text style={styles.sigRole}>Verified by</Text>
               <Text style={styles.sigName}>{verifierName || "—"}</Text>
-              {verifiedAt ? <Text style={styles.cell}>{verifiedAt.toLocaleString("en-GB", { day: "numeric", month: "short", year: "numeric", hour: "2-digit", minute: "2-digit" })}</Text> : null}
+              {verifiedAt ? <Text style={styles.sigDate}>{dt(verifiedAt)}</Text> : null}
             </View>
           </View>
         </View>
+
+        <Text style={styles.endReport}>— End of report —</Text>
 
         <View style={styles.footer} fixed>
           <Text style={styles.footerText}>{props.labName} · Powered by Poveon</Text>

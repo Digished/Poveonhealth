@@ -65,6 +65,37 @@ async function labBrandProps(lab: LabBrand) {
 
 const LAB_SELECT = { name: true, logo_url: true, address: true, phones: true, email: true } as const;
 
+/** Twemoji filename (codepoints, FE0F stripped) for an emoji. */
+function twemojiName(emoji: string): string {
+  const cps: string[] = [];
+  for (const ch of emoji) {
+    const cp = ch.codePointAt(0);
+    if (cp && cp !== 0xfe0f) cps.push(cp.toString(16));
+  }
+  return cps.join("-");
+}
+
+/** Render a template's emoji icon into a small PNG data URI via Twemoji (best-effort). */
+async function iconToDataUrl(emoji: string | null | undefined): Promise<string | null> {
+  if (!emoji || !emoji.trim()) return null;
+  const name = twemojiName(emoji.trim());
+  if (!name) return null;
+  return fetchLogoDataUrl(`https://cdn.jsdelivr.net/gh/twitter/twemoji@14.0.2/assets/72x72/${name}.png`);
+}
+
+/** Earliest specimen-collection and sample-received times from the journey log. */
+async function specimenTimes(requestId: string): Promise<{ collectedAt: Date | null; receivedAt: Date | null }> {
+  const events = await prisma.requestJourneyEvent.findMany({
+    where: { request_id: requestId, stage: { in: ["collected", "received"] } },
+    select: { stage: true, created_at: true },
+    orderBy: { created_at: "asc" },
+  });
+  return {
+    collectedAt: events.find((e) => e.stage === "collected")?.created_at ?? null,
+    receivedAt: events.find((e) => e.stage === "received")?.created_at ?? null,
+  };
+}
+
 /** Render a single stored RequestResult into a branded PDF buffer. Returns null if not found / wrong lab. */
 export async function renderResultPdf(resultId: string, labId: string): Promise<{ buffer: Buffer; code: string } | null> {
   const result = await prisma.requestResult.findUnique({
@@ -77,25 +108,30 @@ export async function renderResultPdf(resultId: string, labId: string): Promise<
   if (!result || result.lab_id !== labId) return null;
 
   const params = (Array.isArray(result.values) ? result.values : []) as ResultParam[];
-  const about = result.template_id
-    ? (await prisma.labResultTemplate.findUnique({ where: { id: result.template_id }, select: { description: true } }))?.description ?? null
+  const tpl = result.template_id
+    ? await prisma.labResultTemplate.findUnique({ where: { id: result.template_id }, select: { name: true, icon: true, description: true } })
     : null;
-  const [brand, analystSig, verifierSig] = await Promise.all([
+  const [brand, analystSig, verifierSig, times, iconImage] = await Promise.all([
     labBrandProps(result.lab),
     fetchLogoDataUrl(result.analyst_signature_url),
     fetchLogoDataUrl(result.verifier_signature_url),
+    specimenTimes(result.request_id),
+    iconToDataUrl(tpl?.icon),
   ]);
   const buffer = await renderToBuffer(
     ResultReportPdf({
       ...brand,
       code: result.request.code,
       reportedAt: result.verified_at ?? new Date(),
+      collectedAt: times.collectedAt,
+      receivedAt: times.receivedAt,
       patientName: result.request.patient_name,
       patientAge: result.request.patient_age,
       patientSex: result.request.sex,
       patientPhone: result.request.patient_phone,
       sections: [{
-        parameters: params, comment: result.comment, about, verifiedBy: result.verified_by, verifiedAt: result.verified_at,
+        title: tpl?.name ?? result.department, iconImage,
+        parameters: params, comment: result.comment, about: tpl?.description ?? null, verifiedBy: result.verified_by, verifiedAt: result.verified_at,
         analystName: result.analyst_name, analystSignature: analystSig,
         verifierName: result.verifier_name, verifierSignature: verifierSig,
       }],
@@ -126,19 +162,22 @@ export async function renderResultsPdf(resultIds: string[], labId: string): Prom
   // Resolve template names for section titles.
   const templateIds = Array.from(new Set(results.map((r) => r.template_id).filter(Boolean))) as string[];
   const templates = templateIds.length
-    ? await prisma.labResultTemplate.findMany({ where: { id: { in: templateIds } }, select: { id: true, name: true, description: true } })
+    ? await prisma.labResultTemplate.findMany({ where: { id: { in: templateIds } }, select: { id: true, name: true, icon: true, description: true } })
     : [];
   const tName = new Map(templates.map((t) => [t.id, t.name]));
   const tAbout = new Map(templates.map((t) => [t.id, t.description]));
+  const tIcon = new Map(templates.map((t) => [t.id, t.icon]));
 
-  // Fetch each result's signature images (data URIs) in parallel.
+  // Fetch each result's signature + icon images (data URIs) in parallel.
   const sigs = await Promise.all(results.map(async (r) => ({
     analyst: await fetchLogoDataUrl(r.analyst_signature_url),
     verifier: await fetchLogoDataUrl(r.verifier_signature_url),
+    icon: await iconToDataUrl(r.template_id ? tIcon.get(r.template_id) : null),
   })));
 
   const sections: ResultSection[] = results.map((r, i) => ({
     title: (r.template_id && tName.get(r.template_id)) || r.department || "Result",
+    iconImage: sigs[i].icon,
     parameters: (Array.isArray(r.values) ? r.values : []) as ResultParam[],
     comment: r.comment,
     about: (r.template_id && tAbout.get(r.template_id)) || null,
@@ -150,12 +189,14 @@ export async function renderResultsPdf(resultIds: string[], labId: string): Prom
     verifierSignature: sigs[i].verifier,
   }));
 
-  const brand = await labBrandProps(results[0].lab);
+  const [brand, times] = await Promise.all([labBrandProps(results[0].lab), specimenTimes(req.id)]);
   const buffer = await renderToBuffer(
     ResultReportPdf({
       ...brand,
       code: req.code,
       reportedAt: new Date(),
+      collectedAt: times.collectedAt,
+      receivedAt: times.receivedAt,
       patientName: req.patient_name,
       patientAge: req.patient_age,
       patientSex: req.sex,

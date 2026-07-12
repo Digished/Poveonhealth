@@ -895,8 +895,9 @@ function WorkspaceDrawer({
               </a>
             )}
 
-            {/* Receipts — issue a payment receipt and reprint previously issued ones. */}
-            {!readOnly && (
+            {/* Receipts — issue a payment receipt and reprint previously issued ones.
+                Hidden for now (feature paused). */}
+            {false && !readOnly && (
               <div className="mt-3 rounded-xl border border-white/10 bg-white/5 p-3">
                 <div className="flex flex-wrap items-center justify-between gap-2">
                   <p className="flex items-center gap-1.5 text-xs font-semibold text-white"><CreditCard className="h-3.5 w-3.5 text-medical-300" /> Receipts</p>
