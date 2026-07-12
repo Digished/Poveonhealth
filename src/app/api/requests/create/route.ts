@@ -13,6 +13,7 @@ import { isValidNigerianPhone, checkPhoneSmsRateLimit, checkDailySmsCap } from "
 import { parseReferralText } from "@/lib/parse-referral";
 import { ensureProfessional } from "@/lib/lims";
 import { hasMinLetters, MIN_NAME_LETTERS } from "@/lib/name-validation";
+import { redeemFreeRide } from "@/lib/rides";
 
 const CreateRequestSchema = z.object({
   patient_name: z.string().min(1).max(200).optional().or(z.literal("")),
@@ -44,6 +45,10 @@ const CreateRequestSchema = z.object({
   needs_ambulance: z.boolean().optional().default(false),
   ambulance_notes: z.string().max(500).optional().or(z.literal("")),
   test_image_url: z.string().url().optional().or(z.literal("")),
+  // Free-ride perk redemption (doctor offers the patient a free ride to the lab).
+  free_ride: z.boolean().optional().default(false),
+  free_ride_perk_id: z.string().uuid().optional(),
+  ride_pickup_address: z.string().max(500).optional().or(z.literal("")),
   // Fast Mode: doctor's plain-language input, sorted into fields server-side.
   fast_mode: z.boolean().optional().default(false),
   raw_input: z.string().max(4000).optional().or(z.literal("")),
@@ -508,9 +513,36 @@ export async function POST(request: NextRequest) {
       await sendNotifications();
     }
 
+    // Free-ride perk: if the doctor opted to offer a ride and holds an active
+    // perk for this lab, redeem it now (creates the ride + notifies patient, lab
+    // and the assigned logistics partner). Awaited because this runtime has no
+    // post-response background primitive; failures never block the request.
+    let freeRideRedeemed = false;
+    if (data.free_ride) {
+      const pickup = (data.ride_pickup_address || "").trim();
+      const patientPhone = (data.patient_phone || "").trim();
+      const patientName = (data.patient_name || "").trim();
+      if (pickup && patientPhone && patientName) {
+        const ride = await redeemFreeRide({
+          perkId: data.free_ride_perk_id ?? null,
+          doctorEmail: data.doctor_email,
+          labId: data.lab_id,
+          requestId: newRequest.id,
+          patientName,
+          patientPhone,
+          pickupAddress: pickup,
+          labName: lab.name,
+          labAddress,
+        }).catch((e) => { console.error("[create] free-ride redeem failed:", e); return null; });
+        freeRideRedeemed = !!ride;
+      } else {
+        console.warn("[create] free_ride requested but missing pickup/patient name/phone — skipped");
+      }
+    }
+
     logApiCall({ method: "POST", path: "/api/requests/create", status: 200, duration_ms: Date.now() - start });
     return NextResponse.json(
-      { success: true, code, requestId: newRequest.id, lab: { name: lab.name, address: labAddress, phones: (lab.phones ?? []) as { number: string; label: string }[], whatsapp: lab.whatsapp ?? null } },
+      { success: true, code, requestId: newRequest.id, free_ride_redeemed: freeRideRedeemed, lab: { name: lab.name, address: labAddress, phones: (lab.phones ?? []) as { number: string; label: string }[], whatsapp: lab.whatsapp ?? null } },
       { headers: CORS_HEADERS }
     );
   } catch (error) {

@@ -1563,7 +1563,7 @@ export function LabDashboard({ lab, isOwner = false, roleName = "Lab Owner", can
                       </DetailRow>
                     )}
                     {/* Flags */}
-                    {(selectedRequest.is_critical || selectedRequest.needs_ambulance) && (
+                    {(selectedRequest.is_critical || selectedRequest.needs_ambulance || selectedRequest.has_free_ride) && (
                       <div className="flex flex-wrap gap-2 pt-1">
                         {selectedRequest.is_critical && (
                           <span className="flex items-center gap-1 text-xs font-semibold bg-red-500/20 text-red-400 border border-red-500/30 px-2.5 py-1 rounded-full">
@@ -1575,6 +1575,12 @@ export function LabDashboard({ lab, isOwner = false, roleName = "Lab Owner", can
                           <span className="flex items-center gap-1 text-xs font-semibold bg-orange-500/20 text-orange-400 border border-orange-500/30 px-2.5 py-1 rounded-full">
                             <Truck className="w-3 h-3" />
                             Ambulance Requested
+                          </span>
+                        )}
+                        {selectedRequest.has_free_ride && (
+                          <span className="flex items-center gap-1 text-xs font-semibold bg-emerald-500/20 text-emerald-400 border border-emerald-500/30 px-2.5 py-1 rounded-full">
+                            <Truck className="w-3 h-3" />
+                            Free Ride (redeem within 7 days)
                           </span>
                         )}
                       </div>
@@ -2176,7 +2182,7 @@ export function LabDashboard({ lab, isOwner = false, roleName = "Lab Owner", can
                   </div>
                 )}
                 {/* Flags */}
-                {(selectedRequest.is_critical || selectedRequest.needs_ambulance) && (
+                {(selectedRequest.is_critical || selectedRequest.needs_ambulance || selectedRequest.has_free_ride) && (
                   <div className="flex flex-wrap gap-2">
                     {selectedRequest.is_critical && (
                       <span className="flex items-center gap-1 text-xs font-semibold bg-red-500/20 text-red-400 border border-red-500/30 px-2.5 py-1 rounded-full">
@@ -2188,6 +2194,12 @@ export function LabDashboard({ lab, isOwner = false, roleName = "Lab Owner", can
                       <span className="flex items-center gap-1 text-xs font-semibold bg-orange-500/20 text-orange-400 border border-orange-500/30 px-2.5 py-1 rounded-full">
                         <Truck className="w-3 h-3" />
                         Ambulance Requested
+                      </span>
+                    )}
+                    {selectedRequest.has_free_ride && (
+                      <span className="flex items-center gap-1 text-xs font-semibold bg-emerald-500/20 text-emerald-400 border border-emerald-500/30 px-2.5 py-1 rounded-full">
+                        <Truck className="w-3 h-3" />
+                        Free Ride (redeem within 7 days)
                       </span>
                     )}
                   </div>
