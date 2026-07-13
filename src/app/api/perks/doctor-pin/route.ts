@@ -17,20 +17,22 @@ export async function OPTIONS() {
 
 const Schema = z.object({
   email: z.string().email(),
-  action: z.enum(["status", "verify", "create"]),
+  action: z.enum(["status", "verify"]),
   pin: z.string().optional(),
 });
 
 /**
  * POST /api/perks/doctor-pin
  * The login-code gate a doctor passes before sending a free ride:
- *  • action "status"  → { has_pin } so the UI knows whether to ask for or create one
+ *  • action "status"  → { has_pin } so the UI knows whether to ask for a code or
+ *                       start email-verified PIN creation
  *  • action "verify"  → check the 4-digit code against the doctor's login PIN
- *  • action "create"  → set a login PIN when the doctor doesn't yet have one
  *
- * verify/create also start a doctor portal session (cookie `doc_token`) so the
- * code doubles as logging in — the create route requires this session before it
- * will redeem a perk.
+ * verify starts a doctor portal session (cookie `doc_token`) so the code doubles
+ * as logging in — the create route requires this session before it will redeem a
+ * perk. Creating a PIN when the doctor has none is done via the email-OTP flow
+ * (`/api/doc-login/send-otp` → `verify-otp` → `set-pin`), never here, so a login
+ * code can only be created after verifying ownership of the email.
  */
 export async function POST(req: NextRequest) {
   const parsed = Schema.safeParse(await req.json());
@@ -45,29 +47,18 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ has_pin: !!profile?.pin_hash }, { headers: CORS_HEADERS });
   }
 
+  // verify
   const pin = String(parsed.data.pin ?? "").trim();
   if (!/^\d{4}$/.test(pin)) {
     return NextResponse.json({ error: "Your login code must be 4 digits." }, { status: 400, headers: CORS_HEADERS });
   }
   const pinHash = createHash("sha256").update(pin).digest("hex");
 
-  if (action === "create") {
-    if (profile?.pin_hash) {
-      return NextResponse.json({ error: "You already have a login code. Please enter it instead.", has_pin: true }, { status: 409, headers: CORS_HEADERS });
-    }
-    await prisma.doctorProfile.upsert({
-      where: { email },
-      create: { email, pin_hash: pinHash, claimed: true },
-      update: { pin_hash: pinHash, claimed: true },
-    });
-  } else {
-    // verify
-    if (!profile?.pin_hash) {
-      return NextResponse.json({ error: "No login code set yet. Create one to continue.", needs_create: true }, { status: 404, headers: CORS_HEADERS });
-    }
-    if (profile.pin_hash !== pinHash) {
-      return NextResponse.json({ error: "Incorrect login code." }, { status: 401, headers: CORS_HEADERS });
-    }
+  if (!profile?.pin_hash) {
+    return NextResponse.json({ error: "No login code set yet. Verify your email to create one.", needs_create: true }, { status: 404, headers: CORS_HEADERS });
+  }
+  if (profile.pin_hash !== pinHash) {
+    return NextResponse.json({ error: "Incorrect login code." }, { status: 401, headers: CORS_HEADERS });
   }
 
   // Start a doctor session so the login code also signs the doctor in.

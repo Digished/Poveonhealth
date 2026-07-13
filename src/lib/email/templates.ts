@@ -1969,9 +1969,13 @@ export function ridePatientEmail({
 
     ${divider}
 
-    <p style="margin:0 0 8px;color:#374151;font-size:14px;line-height:1.6;">
-      A rider will be assigned and you'll receive a second email with their phone number to call when you're ready to be picked up.
-    </p>
+    <div style="background:#f0f7ff;border:1px solid #e0effe;border-radius:8px;padding:14px 16px;margin:0 0 12px;">
+      <p style="margin:0;color:#1e3a5f;font-size:14px;line-height:1.6;">
+        📅 <strong>Your ride will be scheduled</strong> — a rider won't arrive immediately. Once a rider is
+        assigned, you'll receive a second email with their phone number, and you can call them when you're
+        ready to be picked up.
+      </p>
+    </div>
     <p style="margin:0;color:#b45309;font-size:13px;font-weight:600;line-height:1.6;">
       ⏳ This free ride must be redeemed within ${redeemByDays} days. The pickup address cannot be changed.
     </p>

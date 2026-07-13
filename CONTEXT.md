@@ -252,8 +252,10 @@ be available for Lab A but not Lab B.
   that doctor+lab. The doctor confirms/edits the patient's name, **phone (country-code
   input)** and **email (required — the arrival code is emailed there)**, enters a
   pickup address, and must pass a **login-code gate** (`POST /api/perks/doctor-pin`):
-  they enter their 4-digit login PIN, or create one inline if they have none (it
-  doubles as their portal login and starts a `doc_token` session). The ride is created
+  they enter their 4-digit login PIN, or create one inline if they have none —
+  creation requires an **emailed OTP** first (`/api/doc-login/send-otp` → `verify-otp`
+  → `set-pin`), so a code can only be created after proving email ownership. Either
+  path starts a `doc_token` session. The ride is created
   as part of `POST /api/requests/create` (`free_ride`, `free_ride_perk_id`,
   `ride_pickup_address`) — which server-side only redeems when a valid doctor session
   matches. Redemption logic + notifications live in `src/lib/rides.ts`. On success the
