@@ -251,21 +251,22 @@ be available for Lab A but not Lab B.
   a small opt-in prompt appears when `POST /api/perks/available` returns a perk for
   that doctor+lab. The doctor confirms/edits the patient's name, **phone (country-code
   input)** and **email (required — the arrival code is emailed there)**, enters a
-  pickup address, and must pass a **login-code gate** (`POST /api/perks/doctor-pin`):
-  they enter their 4-digit login PIN, or create one inline if they have none —
-  creation requires an **emailed OTP** first (`/api/doc-login/send-otp` → `verify-otp`
-  → `set-pin`), so a code can only be created after proving email ownership. Either
-  path starts a `doc_token` session. The ride is created
+  pickup address, and must pass a **login-code gate** (`POST /api/perks/doctor-pin`,
+  action `verify`): the doctor **must already have a login code** (set up in the
+  doctor portal `/doc-login`) and enters it here — verifying it starts a `doc_token`
+  session. Doctors without a code are pointed to the portal to create one first.
+  The ride is created
   as part of `POST /api/requests/create` (`free_ride`, `free_ride_perk_id`,
   `ride_pickup_address`) — which server-side only redeems when a valid doctor session
   matches. Redemption logic + notifications live in `src/lib/rides.ts`. On success the
   doctor is told the patient received 2 emails (request + free-ride/arrival code), with
   a 3rd (rider phone) to follow.
-- **Notifications:** patient (free-ride details + secret arrival code, redeem within
-  7 days, address locked), lab (`request_email`, order carries a free ride), and the
-  lab's assigned logistics partner(s). A second patient email carries the rider's
-  phone once a rider is assigned. Templates: `ride*`/`portalOtpEmail`/`riderInviteEmail`
-  in `src/lib/email/templates.ts`.
+- **Notifications:** patient (free-ride details, secret arrival code, a note that the
+  ride is *scheduled* not immediate, and the **logistics company's contact details**),
+  doctor (confirmation with the same logistics-company contacts), lab (`request_email`,
+  order carries a free ride), and the lab's assigned logistics partner(s). A second
+  patient email carries the rider's phone once a rider is assigned. Templates:
+  `ride*`/`portalOtpEmail`/`riderInviteEmail` in `src/lib/email/templates.ts`.
 - **Logistics partner portal** (`/logistics`, email-OTP, cookie `logi_token`): a
   mobile-friendly dashboard of pending/assigned rides for their labs; they assign a
   rider (patient is emailed the rider's phone) and manage their own riders. Riders and

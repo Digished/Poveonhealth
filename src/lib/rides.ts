@@ -9,9 +9,11 @@ import { prisma } from "@/lib/prisma";
 import { resend, labSender, FROM_ADDRESS } from "@/lib/email/resend";
 import {
   ridePatientEmail,
+  rideDoctorEmail,
   rideLabEmail,
   rideLogisticsEmail,
   rideRiderPhoneEmail,
+  type RidePartnerContact,
 } from "@/lib/email/templates";
 
 // A free ride must be redeemed within this many days of being issued. Surfaced
@@ -148,6 +150,16 @@ export async function notifyRideRedeemed(rideId: string): Promise<void> {
     const dashboardUrl = `${appUrl()}/logistics`;
     const sends: Promise<unknown>[] = [];
 
+    // The logistics companies assigned to this lab — their contact details are
+    // shared with both the patient and the doctor.
+    const partners = await partnersForLab(ride.lab_id);
+    const partnerContacts: RidePartnerContact[] = partners.map((p) => ({
+      name: p.name,
+      contact_name: p.contact_name,
+      phone: p.phone,
+      email: p.email,
+    }));
+
     // Patient — only if we can reach them by email. The ride email itself is the
     // record of the perk; the rider's phone number follows in a second email
     // once the logistics partner assigns a rider.
@@ -165,8 +177,33 @@ export async function notifyRideRedeemed(rideId: string): Promise<void> {
             destinationAddress: ride.destination_address,
             arrivalCode: ride.code,
             redeemByDays: RIDE_REDEEM_DAYS,
+            partners: partnerContacts,
           }),
         }).then((r) => { if (r.error) console.error("[rides] patient email:", JSON.stringify(r.error)); })
+      );
+    }
+
+    // Doctor — confirmation with the same logistics-company contact details.
+    if (ride.doctor_email) {
+      const docProfile = await prisma.doctorProfile.findUnique({
+        where: { email: ride.doctor_email },
+        select: { full_name: true },
+      }).catch(() => null);
+      sends.push(
+        resend.emails.send({
+          from: labSender(lab),
+          to: ride.doctor_email,
+          subject: `Free ride sent for ${ride.patient_name}`,
+          html: rideDoctorEmail({
+            doctorName: docProfile?.full_name ?? "",
+            patientName: ride.patient_name,
+            labName: lab.name,
+            pickupAddress: ride.pickup_address,
+            destinationAddress: ride.destination_address,
+            redeemByDays: RIDE_REDEEM_DAYS,
+            partners: partnerContacts,
+          }),
+        }).then((r) => { if (r.error) console.error("[rides] doctor email:", JSON.stringify(r.error)); })
       );
     }
 
@@ -189,7 +226,6 @@ export async function notifyRideRedeemed(rideId: string): Promise<void> {
 
     // Assigned logistics partner(s) — a pending ride to fulfil. They only get the
     // patient's first name, phone and pickup location.
-    const partners = await partnersForLab(ride.lab_id);
     for (const partner of partners) {
       if (!partner.email) continue;
       sends.push(

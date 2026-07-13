@@ -1937,6 +1937,36 @@ const arrivalCodeBox = (code: string) => `
   </div>
 `;
 
+/** A logistics partner's public contact details (shown to patient & doctor). */
+export interface RidePartnerContact {
+  name: string;
+  contact_name?: string | null;
+  phone?: string | null;
+  email?: string | null;
+}
+
+/** Renders the logistics company contact card(s), or a fallback note if none yet. */
+const logisticsContactBlock = (partners: RidePartnerContact[]) => {
+  if (!partners || partners.length === 0) {
+    return `
+      <div style="background:#f8fafc;border:1px solid #e2e8f0;border-radius:8px;padding:14px 16px;margin:0 0 16px;">
+        <p style="margin:0;color:#475569;font-size:13px;line-height:1.6;">
+          Your ride will be handled by our logistics partner. You'll receive the rider's contact details once a rider is assigned.
+        </p>
+      </div>`;
+  }
+  const cards = partners.map((p) => `
+    <div style="background:#f0f7ff;border:1px solid #e0effe;border-radius:8px;padding:14px 16px;margin:0 0 10px;">
+      <p style="margin:0 0 4px;color:#1e3a5f;font-size:15px;font-weight:700;">${escapeHtml(p.name)}</p>
+      ${p.contact_name ? `<p style="margin:0 0 2px;color:#475569;font-size:13px;">Contact: ${escapeHtml(p.contact_name)}</p>` : ""}
+      ${p.phone ? `<p style="margin:0 0 2px;color:#475569;font-size:13px;">Phone: <a href="tel:${escapeHtml(p.phone)}" style="color:#0270c3;text-decoration:none;font-weight:600;">${escapeHtml(p.phone)}</a></p>` : ""}
+      ${p.email ? `<p style="margin:0;color:#475569;font-size:13px;">Email: <a href="mailto:${escapeHtml(p.email)}" style="color:#0270c3;text-decoration:none;">${escapeHtml(p.email)}</a></p>` : ""}
+    </div>`).join("");
+  return `
+    <p style="margin:0 0 8px;color:#6b7280;font-size:12px;font-weight:600;text-transform:uppercase;letter-spacing:0.5px;">Logistics ${partners.length > 1 ? "companies" : "company"}</p>
+    ${cards}`;
+};
+
 // TEMPLATE: Patient — a free ride comes with their order
 export function ridePatientEmail({
   patientName,
@@ -1945,6 +1975,7 @@ export function ridePatientEmail({
   destinationAddress,
   arrivalCode,
   redeemByDays,
+  partners = [],
 }: {
   patientName: string;
   labName: string;
@@ -1952,6 +1983,7 @@ export function ridePatientEmail({
   destinationAddress: string;
   arrivalCode: string;
   redeemByDays: number;
+  partners?: RidePartnerContact[];
 }) {
   return base(`
     <h2 style="margin:0 0 8px;color:#0259a0;font-size:20px;font-weight:700;">You have a free ride 🚕</h2>
@@ -1964,6 +1996,8 @@ export function ridePatientEmail({
       <tr><td style="padding:6px 0;">${label("Pickup from")}${value(escapeHtml(pickupAddress))}</td></tr>
       <tr><td style="padding:6px 0;">${label("Drop-off at")}${value(escapeHtml(destinationAddress))}</td></tr>
     </table>
+
+    ${logisticsContactBlock(partners)}
 
     ${arrivalCodeBox(arrivalCode)}
 
@@ -1978,6 +2012,50 @@ export function ridePatientEmail({
     </div>
     <p style="margin:0;color:#b45309;font-size:13px;font-weight:600;line-height:1.6;">
       ⏳ This free ride must be redeemed within ${redeemByDays} days. The pickup address cannot be changed.
+    </p>
+  `);
+}
+
+// TEMPLATE: Doctor — confirmation that a free ride was sent for their patient
+export function rideDoctorEmail({
+  doctorName,
+  patientName,
+  labName,
+  pickupAddress,
+  destinationAddress,
+  redeemByDays,
+  partners = [],
+}: {
+  doctorName: string;
+  patientName: string;
+  labName: string;
+  pickupAddress: string;
+  destinationAddress: string;
+  redeemByDays: number;
+  partners?: RidePartnerContact[];
+}) {
+  return base(`
+    <h2 style="margin:0 0 8px;color:#0259a0;font-size:20px;font-weight:700;">Free ride sent 🚕</h2>
+    <p style="margin:0 0 20px;color:#4b5563;font-size:15px;line-height:1.6;">
+      ${doctorName ? `Hi ${escapeHtml(doctorName)}, ` : ""}your free-ride perk has been redeemed for
+      <strong>${escapeHtml(patientName || "your patient")}</strong>. We've emailed the patient their ride
+      details and arrival code. Here's a summary and the logistics company handling it:
+    </p>
+
+    <table width="100%" cellpadding="0" cellspacing="0" style="margin:0 0 20px;">
+      <tr><td style="padding:6px 0;">${label("Patient")}${value(escapeHtml(patientName || "—"))}</td></tr>
+      <tr><td style="padding:6px 0;">${label("Pickup from")}${value(escapeHtml(pickupAddress))}</td></tr>
+      <tr><td style="padding:6px 0;">${label("Drop-off at")}${value(escapeHtml(destinationAddress))}</td></tr>
+    </table>
+
+    ${logisticsContactBlock(partners)}
+
+    ${divider}
+
+    <p style="margin:0;color:#6b7280;font-size:13px;line-height:1.6;">
+      The ride will be scheduled — a rider is assigned by the logistics company, after which the patient
+      receives the rider's phone number. The ride must be redeemed within ${redeemByDays} days and the pickup
+      address cannot be changed.
     </p>
   `);
 }

@@ -814,11 +814,6 @@ export function DoctorRequestForm({
   // creating one inline if they don't have one — it doubles as their login code).
   const [doctorHasPin, setDoctorHasPin] = useState<boolean | null>(null);
   const [ridePin, setRidePin] = useState("");
-  const [ridePinConfirm, setRidePinConfirm] = useState("");
-  // Creating a login code first requires verifying the doctor's email by OTP.
-  const [rideOtpSent, setRideOtpSent] = useState(false);
-  const [rideOtp, setRideOtp] = useState("");
-  const [rideOtpSending, setRideOtpSending] = useState(false);
 
   // Auto-fill from patient profile when phone is entered
   useEffect(() => {
@@ -1297,72 +1292,31 @@ export function DoctorRequestForm({
     return () => { clearTimeout(t1); clearTimeout(t2); clearTimeout(t3); clearTimeout(t4); };
   }, [imageExtracting]);
 
-  // Send the doctor an email code — required before they can create a login code.
-  async function sendRideOtp() {
-    const email = form.doctor_email.trim();
-    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) { toast.error("Enter a valid email first."); return; }
-    setRideOtpSending(true);
-    try {
-      const res = await fetch("/api/doc-login/send-otp", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ email }),
-      });
-      const data = await res.json();
-      if (!res.ok) { toast.error(data.error ?? "Failed to send code."); return; }
-      setRideOtpSent(true);
-      toast.success("We emailed you a 6-digit code.");
-    } catch {
-      toast.error("Network error sending the code.");
-    } finally {
-      setRideOtpSending(false);
-    }
-  }
-
   async function handleSubmit() {
     if (!validateStep(2) || !validateStep(3)) return;
 
-    // Login-code gate: a free ride can only be sent after the doctor authenticates.
-    // If they already have a login code they enter it; otherwise they verify their
-    // email by OTP and set a new code — either way this signs them in for the
-    // redemption (the create route requires a matching doctor session).
+    // Login-code gate: a free ride can only be sent by a doctor who already has a
+    // login code and enters it here. Verifying it signs them in for the redemption
+    // (the create route requires a matching doctor session).
     if (freeRideEnabled && availablePerks.length > 0) {
-      const creating = doctorHasPin === false;
-      if (!/^\d{4}$/.test(ridePin)) { toast.error("Enter a 4-digit login code to send the free ride."); return; }
-      if (creating && ridePin !== ridePinConfirm) { toast.error("Your login codes don't match."); return; }
-      if (creating && rideOtp.length !== 6) { toast.error("Enter the 6-digit code we emailed you."); return; }
+      if (doctorHasPin !== true) {
+        toast.error("Set up a login code in your doctor portal before sending a free ride.");
+        return;
+      }
+      if (!/^\d{4}$/.test(ridePin)) { toast.error("Enter your 4-digit login code to send the free ride."); return; }
       setSubmitting(true);
       try {
-        if (creating) {
-          // 1) verify email ownership → creates a doctor session
-          const otpRes = await fetch("/api/doc-login/verify-otp", {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ email: form.doctor_email.trim(), code: rideOtp }),
-          });
-          const otpData = await otpRes.json();
-          if (!otpRes.ok) { toast.error(otpData?.error ?? "Invalid email code."); setSubmitting(false); return; }
-          // 2) set the login code on the now-authenticated session
-          const setRes = await fetch("/api/doc-login/set-pin", {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ pin: ridePin }),
-          });
-          const setData = await setRes.json();
-          if (!setRes.ok) { toast.error(setData?.error ?? "Could not set your login code."); setSubmitting(false); return; }
-        } else {
-          const pinRes = await fetch("/api/perks/doctor-pin", {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ email: form.doctor_email.trim(), action: "verify", pin: ridePin }),
-          });
-          const pinData = await pinRes.json();
-          if (!pinRes.ok) {
-            if (pinData?.needs_create) setDoctorHasPin(false);
-            toast.error(pinData?.error ?? "Could not verify your login code.");
-            setSubmitting(false);
-            return;
-          }
+        const pinRes = await fetch("/api/perks/doctor-pin", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ email: form.doctor_email.trim(), action: "verify", pin: ridePin }),
+        });
+        const pinData = await pinRes.json();
+        if (!pinRes.ok) {
+          if (pinData?.needs_create) setDoctorHasPin(false);
+          toast.error(pinData?.error ?? "Could not verify your login code.");
+          setSubmitting(false);
+          return;
         }
       } catch {
         toast.error("Network error verifying your login code.");
@@ -1577,8 +1531,8 @@ export function DoctorRequestForm({
         const patientEmailOk = /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(form.patient_email.trim());
         const patientPhoneOk = form.patient_phone.replace(/\D/g, "").length >= 7;
         const pickupOk = ridePickupAddress.trim().length > 0;
-        const creating = doctorHasPin === false;
-        const pinOk = /^\d{4}$/.test(ridePin) && (!creating || (ridePin === ridePinConfirm && rideOtp.length === 6));
+        // The doctor must already have a login code and enter it here.
+        const pinOk = doctorHasPin === true && /^\d{4}$/.test(ridePin);
         rideOk = patientEmailOk && patientPhoneOk && pickupOk && pinOk;
       }
       return emailOk && nameOk && hasMinLetters(form.doctor_hospital) && rideOk;
@@ -2071,45 +2025,26 @@ export function DoctorRequestForm({
                     )}
                   </div>
 
-                  {/* Login-code gate */}
+                  {/* Login-code gate — the doctor must already have a login code. */}
                   <div className="rounded-xl bg-white/70 border border-emerald-100 px-3 py-3 space-y-2">
                     {doctorHasPin === false ? (
-                      <>
-                        <p className="text-xs font-semibold text-emerald-800">Create a 4-digit login code</p>
-                        <p className="text-[11px] text-slate-500 -mt-1">First verify your email, then set a code you&apos;ll use to log in next time.</p>
-
-                        {/* Step 1 — email verification */}
-                        <div className="flex gap-2 items-center">
-                          <button type="button" onClick={sendRideOtp} disabled={rideOtpSending}
-                            className="text-xs font-semibold px-3 py-2 rounded-lg bg-emerald-600 hover:bg-emerald-700 disabled:opacity-60 text-white transition shrink-0">
-                            {rideOtpSending ? "Sending…" : rideOtpSent ? "Resend email code" : "Send email code"}
-                          </button>
-                          {rideOtpSent && (
-                            <input inputMode="numeric" maxLength={6} placeholder="Email code" value={rideOtp}
-                              onChange={(e) => setRideOtp(e.target.value.replace(/\D/g, "").slice(0, 6))}
-                              className="flex-1 min-w-0 px-3 py-2 rounded-lg border border-slate-200 bg-white text-slate-800 text-center tracking-[0.3em] font-bold focus:outline-none focus:ring-2 focus:ring-emerald-400" />
-                          )}
-                        </div>
-
-                        {/* Step 2 — choose a login code */}
-                        <div className="flex gap-2">
-                          <input inputMode="numeric" maxLength={4} placeholder="New code" value={ridePin}
-                            onChange={(e) => setRidePin(e.target.value.replace(/\D/g, "").slice(0, 4))}
-                            className="flex-1 px-3 py-2 rounded-lg border border-slate-200 bg-white text-slate-800 text-center tracking-[0.4em] font-bold text-lg focus:outline-none focus:ring-2 focus:ring-emerald-400" />
-                          <input inputMode="numeric" maxLength={4} placeholder="Confirm" value={ridePinConfirm}
-                            onChange={(e) => setRidePinConfirm(e.target.value.replace(/\D/g, "").slice(0, 4))}
-                            className="flex-1 px-3 py-2 rounded-lg border border-slate-200 bg-white text-slate-800 text-center tracking-[0.4em] font-bold text-lg focus:outline-none focus:ring-2 focus:ring-emerald-400" />
-                        </div>
-                        {ridePin.length === 4 && ridePinConfirm.length === 4 && ridePin !== ridePinConfirm && (
-                          <p className="text-[11px] text-red-600">Codes don&apos;t match.</p>
-                        )}
-                      </>
+                      <div className="flex items-start gap-2">
+                        <AlertTriangle className="w-4 h-4 text-amber-600 shrink-0 mt-0.5" />
+                        <p className="text-xs text-slate-600 leading-snug">
+                          You need a login code to send a free ride. Set one up in your{" "}
+                          <a href={`/doc-login?email=${encodeURIComponent(form.doctor_email.trim())}`} target="_blank" rel="noopener noreferrer"
+                            className="font-semibold text-medical-600 underline underline-offset-2">doctor portal</a>, then return here.
+                        </p>
+                      </div>
                     ) : (
                       <>
                         <p className="text-xs font-semibold text-emerald-800">Enter your login code to authorise this free ride</p>
                         <input inputMode="numeric" maxLength={4} placeholder="4-digit code" value={ridePin}
                           onChange={(e) => setRidePin(e.target.value.replace(/\D/g, "").slice(0, 4))}
                           className="w-full px-3 py-2 rounded-lg border border-slate-200 bg-white text-slate-800 text-center tracking-[0.4em] font-bold text-lg focus:outline-none focus:ring-2 focus:ring-emerald-400" />
+                        {doctorHasPin === null && (
+                          <p className="text-[11px] text-slate-400">Checking your account…</p>
+                        )}
                       </>
                     )}
                   </div>
