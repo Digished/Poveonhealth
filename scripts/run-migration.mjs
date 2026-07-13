@@ -1466,6 +1466,180 @@ const migrations = [
     sql: `CREATE INDEX IF NOT EXISTS lab_partners_lab_id_type_idx ON lab_partners (lab_id, type)`,
     continueOnError: true,
   },
+  {
+    desc: "requests.has_free_ride column (free-ride perk redeemed)",
+    sql: `ALTER TABLE requests ADD COLUMN IF NOT EXISTS has_free_ride BOOLEAN NOT NULL DEFAULT false`,
+    continueOnError: true,
+  },
+  {
+    desc: "doctor_perks table (admin-granted, lab-specific doctor perks)",
+    sql: `CREATE TABLE IF NOT EXISTS doctor_perks (
+      id TEXT PRIMARY KEY,
+      doctor_email TEXT NOT NULL,
+      lab_id TEXT NOT NULL,
+      type TEXT NOT NULL DEFAULT 'free_ride',
+      remaining_uses INTEGER NOT NULL DEFAULT 1,
+      total_uses INTEGER NOT NULL DEFAULT 1,
+      is_active BOOLEAN NOT NULL DEFAULT true,
+      note TEXT,
+      created_at TIMESTAMP(3) NOT NULL DEFAULT now(),
+      updated_at TIMESTAMP(3) NOT NULL DEFAULT now()
+    )`,
+    continueOnError: true,
+  },
+  {
+    desc: "doctor_perks index (doctor_email, lab_id, is_active)",
+    sql: `CREATE INDEX IF NOT EXISTS doctor_perks_doctor_lab_active_idx ON doctor_perks (doctor_email, lab_id, is_active)`,
+    continueOnError: true,
+  },
+  {
+    desc: "ride_perks table (redeemed free rides)",
+    sql: `CREATE TABLE IF NOT EXISTS ride_perks (
+      id TEXT PRIMARY KEY,
+      code TEXT NOT NULL UNIQUE,
+      perk_id TEXT,
+      doctor_email TEXT NOT NULL,
+      lab_id TEXT NOT NULL,
+      request_id TEXT,
+      partner_id TEXT,
+      rider_id TEXT,
+      patient_name TEXT NOT NULL,
+      patient_phone TEXT NOT NULL,
+      pickup_address TEXT NOT NULL,
+      destination_address TEXT NOT NULL,
+      destination_lab TEXT NOT NULL,
+      status TEXT NOT NULL DEFAULT 'pending',
+      cost DECIMAL(12,2),
+      is_paid_to_partner BOOLEAN NOT NULL DEFAULT false,
+      rider_notified_at TIMESTAMP(3),
+      redeem_by TIMESTAMP(3) NOT NULL,
+      created_at TIMESTAMP(3) NOT NULL DEFAULT now(),
+      updated_at TIMESTAMP(3) NOT NULL DEFAULT now(),
+      assigned_at TIMESTAMP(3),
+      completed_at TIMESTAMP(3)
+    )`,
+    continueOnError: true,
+  },
+  {
+    desc: "ride_perks indexes",
+    sql: `CREATE INDEX IF NOT EXISTS ride_perks_lab_status_idx ON ride_perks (lab_id, status);
+      CREATE INDEX IF NOT EXISTS ride_perks_partner_status_idx ON ride_perks (partner_id, status);
+      CREATE INDEX IF NOT EXISTS ride_perks_rider_status_idx ON ride_perks (rider_id, status)`,
+    continueOnError: true,
+  },
+  {
+    desc: "logistics_partners table",
+    sql: `CREATE TABLE IF NOT EXISTS logistics_partners (
+      id TEXT PRIMARY KEY,
+      name TEXT NOT NULL,
+      email TEXT NOT NULL UNIQUE,
+      contact_name TEXT,
+      phone TEXT,
+      address TEXT,
+      is_active BOOLEAN NOT NULL DEFAULT true,
+      created_at TIMESTAMP(3) NOT NULL DEFAULT now(),
+      updated_at TIMESTAMP(3) NOT NULL DEFAULT now()
+    )`,
+    continueOnError: true,
+  },
+  {
+    desc: "logistics_partner_labs table (partner ↔ lab assignment)",
+    sql: `CREATE TABLE IF NOT EXISTS logistics_partner_labs (
+      id TEXT PRIMARY KEY,
+      partner_id TEXT NOT NULL,
+      lab_id TEXT NOT NULL,
+      created_at TIMESTAMP(3) NOT NULL DEFAULT now()
+    )`,
+    continueOnError: true,
+  },
+  {
+    desc: "logistics_partner_labs unique + index",
+    sql: `CREATE UNIQUE INDEX IF NOT EXISTS logistics_partner_labs_partner_lab_key ON logistics_partner_labs (partner_id, lab_id);
+      CREATE INDEX IF NOT EXISTS logistics_partner_labs_lab_idx ON logistics_partner_labs (lab_id)`,
+    continueOnError: true,
+  },
+  {
+    desc: "riders table (dispatch riders added by logistics partners)",
+    sql: `CREATE TABLE IF NOT EXISTS riders (
+      id TEXT PRIMARY KEY,
+      partner_id TEXT NOT NULL,
+      name TEXT NOT NULL,
+      email TEXT NOT NULL UNIQUE,
+      phone TEXT NOT NULL,
+      is_active BOOLEAN NOT NULL DEFAULT true,
+      created_at TIMESTAMP(3) NOT NULL DEFAULT now()
+    )`,
+    continueOnError: true,
+  },
+  {
+    desc: "riders index (partner_id)",
+    sql: `CREATE INDEX IF NOT EXISTS riders_partner_idx ON riders (partner_id)`,
+    continueOnError: true,
+  },
+  {
+    desc: "logistics_otps table",
+    sql: `CREATE TABLE IF NOT EXISTS logistics_otps (
+      id TEXT PRIMARY KEY,
+      email TEXT NOT NULL,
+      code_hash TEXT NOT NULL,
+      expires_at TIMESTAMP(3) NOT NULL,
+      used BOOLEAN NOT NULL DEFAULT false,
+      created_at TIMESTAMP(3) NOT NULL DEFAULT now()
+    )`,
+    continueOnError: true,
+  },
+  {
+    desc: "logistics_otps index (email)",
+    sql: `CREATE INDEX IF NOT EXISTS logistics_otps_email_idx ON logistics_otps (email)`,
+    continueOnError: true,
+  },
+  {
+    desc: "logistics_sessions table",
+    sql: `CREATE TABLE IF NOT EXISTS logistics_sessions (
+      id TEXT PRIMARY KEY,
+      partner_id TEXT NOT NULL,
+      expires_at TIMESTAMP(3) NOT NULL,
+      created_at TIMESTAMP(3) NOT NULL DEFAULT now()
+    )`,
+    continueOnError: true,
+  },
+  {
+    desc: "logistics_sessions index (partner_id)",
+    sql: `CREATE INDEX IF NOT EXISTS logistics_sessions_partner_idx ON logistics_sessions (partner_id)`,
+    continueOnError: true,
+  },
+  {
+    desc: "rider_otps table",
+    sql: `CREATE TABLE IF NOT EXISTS rider_otps (
+      id TEXT PRIMARY KEY,
+      email TEXT NOT NULL,
+      code_hash TEXT NOT NULL,
+      expires_at TIMESTAMP(3) NOT NULL,
+      used BOOLEAN NOT NULL DEFAULT false,
+      created_at TIMESTAMP(3) NOT NULL DEFAULT now()
+    )`,
+    continueOnError: true,
+  },
+  {
+    desc: "rider_otps index (email)",
+    sql: `CREATE INDEX IF NOT EXISTS rider_otps_email_idx ON rider_otps (email)`,
+    continueOnError: true,
+  },
+  {
+    desc: "rider_sessions table",
+    sql: `CREATE TABLE IF NOT EXISTS rider_sessions (
+      id TEXT PRIMARY KEY,
+      rider_id TEXT NOT NULL,
+      expires_at TIMESTAMP(3) NOT NULL,
+      created_at TIMESTAMP(3) NOT NULL DEFAULT now()
+    )`,
+    continueOnError: true,
+  },
+  {
+    desc: "rider_sessions index (rider_id)",
+    sql: `CREATE INDEX IF NOT EXISTS rider_sessions_rider_idx ON rider_sessions (rider_id)`,
+    continueOnError: true,
+  },
 ];
 
 let failed = false;

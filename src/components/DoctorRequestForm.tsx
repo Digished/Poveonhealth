@@ -805,6 +805,16 @@ export function DoctorRequestForm({
   // Cache for doctor fields (name, phone, hospital) keyed by email — persists across form interactions
   const docFieldsCacheRef = useRef<Record<string, { name?: string; phone?: string; hospital?: string }>>({});
 
+  // Step 3: free-ride perks available to this doctor for the selected lab.
+  // A limited, admin-granted benefit surfaced as a small, opt-in prompt.
+  const [availablePerks, setAvailablePerks] = useState<{ id: string; remaining_uses: number; note: string | null }[]>([]);
+  const [freeRideEnabled, setFreeRideEnabled] = useState(false);
+  const [ridePickupAddress, setRidePickupAddress] = useState("");
+  // Login-code gate for sending a free ride (doctor authenticates with their PIN,
+  // creating one inline if they don't have one — it doubles as their login code).
+  const [doctorHasPin, setDoctorHasPin] = useState<boolean | null>(null);
+  const [ridePin, setRidePin] = useState("");
+
   // Auto-fill from patient profile when phone is entered
   useEffect(() => {
     const phone = form.patient_phone;
@@ -940,6 +950,57 @@ export function DoctorRequestForm({
     }, 600);
     return () => { clearTimeout(timer); controller.abort(); };
   }, [form.doctor_email]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // Step 3: look up free-ride perks the doctor holds for the selected lab.
+  useEffect(() => {
+    const email = form.doctor_email.trim();
+    const labId = form.lab_id;
+    const validEmail = /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email);
+    if (step !== 3 || !validEmail || !labId) {
+      setAvailablePerks([]);
+      return;
+    }
+    const controller = new AbortController();
+    const timer = setTimeout(() => {
+      fetch("/api/perks/available", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ doctor_email: email, lab_id: labId }),
+        signal: controller.signal,
+      })
+        .then((r) => (r.ok ? r.json() : null))
+        .then((data) => setAvailablePerks(data?.perks ?? []))
+        .catch(() => {});
+    }, 500);
+    return () => { clearTimeout(timer); controller.abort(); };
+  }, [step, form.doctor_email, form.lab_id]);
+
+  // If the perk disappears (email/lab change), reset the opt-in so we never submit a stale one.
+  useEffect(() => {
+    if (availablePerks.length === 0 && freeRideEnabled) {
+      setFreeRideEnabled(false);
+    }
+  }, [availablePerks, freeRideEnabled]);
+
+  // When the free ride is switched on, find out whether the doctor already has a
+  // login code so we can either ask for it or prompt them to create one.
+  useEffect(() => {
+    const email = form.doctor_email.trim();
+    if (!freeRideEnabled || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
+      setDoctorHasPin(null);
+      return;
+    }
+    let cancelled = false;
+    fetch("/api/perks/doctor-pin", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ email, action: "status" }),
+    })
+      .then((r) => (r.ok ? r.json() : null))
+      .then((d) => { if (!cancelled && d) setDoctorHasPin(!!d.has_pin); })
+      .catch(() => {});
+    return () => { cancelled = true; };
+  }, [freeRideEnabled, form.doctor_email]);
 
   const fetchLabs = useCallback((forceRefresh = false) => {
     // Lab-specific pages never show the search — skip entirely
@@ -1233,7 +1294,39 @@ export function DoctorRequestForm({
 
   async function handleSubmit() {
     if (!validateStep(2) || !validateStep(3)) return;
-    setSubmitting(true);
+
+    // Login-code gate: a free ride can only be sent by a doctor who already has a
+    // login code and enters it here. Verifying it signs them in for the redemption
+    // (the create route requires a matching doctor session).
+    if (freeRideEnabled && availablePerks.length > 0) {
+      if (doctorHasPin !== true) {
+        toast.error("Set up a login code in your doctor portal before sending a free ride.");
+        return;
+      }
+      if (!/^\d{4}$/.test(ridePin)) { toast.error("Enter your 4-digit login code to send the free ride."); return; }
+      setSubmitting(true);
+      try {
+        const pinRes = await fetch("/api/perks/doctor-pin", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ email: form.doctor_email.trim(), action: "verify", pin: ridePin }),
+        });
+        const pinData = await pinRes.json();
+        if (!pinRes.ok) {
+          if (pinData?.needs_create) setDoctorHasPin(false);
+          toast.error(pinData?.error ?? "Could not verify your login code.");
+          setSubmitting(false);
+          return;
+        }
+      } catch {
+        toast.error("Network error verifying your login code.");
+        setSubmitting(false);
+        return;
+      }
+    } else {
+      setSubmitting(true);
+    }
+
     try {
       const res = await fetch("/api/requests/create", {
         method: "POST",
@@ -1245,6 +1338,9 @@ export function DoctorRequestForm({
           is_critical: isCritical,
           needs_ambulance: needsAmbulance,
           ambulance_notes: ambulanceNotes || undefined,
+          free_ride: freeRideEnabled && availablePerks.length > 0,
+          free_ride_perk_id: freeRideEnabled ? availablePerks[0]?.id : undefined,
+          ride_pickup_address: freeRideEnabled ? ridePickupAddress.trim() : undefined,
         }),
       });
       const data: CreateRequestResponse = await res.json();
@@ -1252,6 +1348,12 @@ export function DoctorRequestForm({
         setProgress(100);
         persistDoctorProfile();
         setResult(data);
+        if (data.free_ride_redeemed) {
+          toast.success(
+            "Free ride sent! The patient has been emailed 2 messages — their lab request and their free-ride details with the arrival code. A 3rd email follows with the rider's phone once assigned.",
+            { duration: 9000 }
+          );
+        }
       } else {
         toast.error(data.error ?? "Failed to submit request");
       }
@@ -1422,7 +1524,18 @@ export function DoctorRequestForm({
     if (step === 3) {
       const emailOk = form.doctor_email.trim().length > 0 && /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(form.doctor_email);
       const nameOk = (docProfileStatus === "found_complete" && !form.doctor_name.trim()) || hasMinLetters(form.doctor_name);
-      return emailOk && nameOk && hasMinLetters(form.doctor_hospital);
+      // A free ride requires the patient's email (for the code) + phone, a pickup
+      // address, and the doctor's 4-digit login code (created or entered).
+      let rideOk = true;
+      if (freeRideEnabled) {
+        const patientEmailOk = /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(form.patient_email.trim());
+        const patientPhoneOk = form.patient_phone.replace(/\D/g, "").length >= 7;
+        const pickupOk = ridePickupAddress.trim().length > 0;
+        // The doctor must already have a login code and enter it here.
+        const pinOk = doctorHasPin === true && /^\d{4}$/.test(ridePin);
+        rideOk = patientEmailOk && patientPhoneOk && pickupOk && pinOk;
+      }
+      return emailOk && nameOk && hasMinLetters(form.doctor_hospital) && rideOk;
     }
     return true;
   })();
@@ -1837,6 +1950,113 @@ export function DoctorRequestForm({
               )}
             </div>
           </div>
+
+          {/* Free-ride perk — small, opt-in prompt shown only when the doctor
+              holds an active free-ride perk for the selected lab. */}
+          {availablePerks.length > 0 && (
+            <div className="rounded-2xl border border-emerald-200 bg-emerald-50/60 overflow-hidden shadow-sm animate-fade-in">
+              <button
+                type="button"
+                onClick={() => setFreeRideEnabled((v) => !v)}
+                className="w-full flex items-center gap-3 px-4 py-3 text-left hover:bg-emerald-100/50 transition-colors"
+              >
+                <div className="w-9 h-9 rounded-xl bg-emerald-500 flex items-center justify-center shrink-0 shadow-sm">
+                  <Truck className="w-5 h-5 text-white" />
+                </div>
+                <div className="flex-1 min-w-0">
+                  <p className="text-sm font-bold text-emerald-800">Offer a free ride to the lab 🚕</p>
+                  <p className="text-xs text-emerald-700/80 leading-snug">
+                    You can give this patient a free ride to the laboratory. Reserve it for patients who truly need help getting there — it&apos;s limited.
+                  </p>
+                </div>
+                <div className={`w-11 h-6 rounded-full shrink-0 relative transition-colors ${freeRideEnabled ? "bg-emerald-500" : "bg-slate-300"}`}>
+                  <div className={`absolute top-0.5 w-5 h-5 rounded-full bg-white shadow transition-all ${freeRideEnabled ? "left-[22px]" : "left-0.5"}`} />
+                </div>
+              </button>
+
+              {freeRideEnabled && (
+                <div className="px-4 pb-4 pt-2 space-y-3 border-t border-emerald-100">
+                  <p className="text-xs text-emerald-800/90 leading-snug">
+                    Confirm the patient&apos;s details. Their <strong>email is required</strong> — the arrival code is sent there.
+                  </p>
+
+                  {/* Patient name */}
+                  <div>
+                    <label className="block text-xs font-semibold text-emerald-800 mb-1">Patient name</label>
+                    <Input
+                      placeholder="Full name"
+                      value={form.patient_name}
+                      onChange={(e) => set("patient_name", e.target.value)}
+                    />
+                  </div>
+
+                  {/* Patient phone — country-code input */}
+                  <div>
+                    <label className="block text-xs font-semibold text-emerald-800 mb-1">Patient phone</label>
+                    <PhoneInput value={form.patient_phone} onChange={(v) => set("patient_phone", v)} />
+                  </div>
+
+                  {/* Patient email (required for the arrival code) */}
+                  <div>
+                    <label className="block text-xs font-semibold text-emerald-800 mb-1">Patient email <span className="text-red-500">*</span></label>
+                    <Input
+                      type="email"
+                      placeholder="patient@email.com"
+                      value={form.patient_email}
+                      onChange={(e) => set("patient_email", e.target.value)}
+                    />
+                    {freeRideEnabled && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(form.patient_email.trim()) && (
+                      <p className="text-[11px] text-red-600 mt-1">A valid patient email is required — the arrival code is emailed to them.</p>
+                    )}
+                  </div>
+
+                  {/* Pickup address */}
+                  <div>
+                    <label className="block text-xs font-semibold text-emerald-800 mb-1 flex items-center gap-1.5">
+                      <MapPin className="w-3.5 h-3.5" /> Pickup address
+                    </label>
+                    <Input
+                      placeholder="Where should the rider pick the patient up?"
+                      value={ridePickupAddress}
+                      onChange={(e) => setRidePickupAddress(e.target.value)}
+                    />
+                    {ridePickupAddress.trim().length === 0 && (
+                      <p className="text-[11px] text-red-600 mt-1">Enter a pickup address to send the free ride.</p>
+                    )}
+                  </div>
+
+                  {/* Login-code gate — the doctor must already have a login code. */}
+                  <div className="rounded-xl bg-white/70 border border-emerald-100 px-3 py-3 space-y-2">
+                    {doctorHasPin === false ? (
+                      <div className="flex items-start gap-2">
+                        <AlertTriangle className="w-4 h-4 text-amber-600 shrink-0 mt-0.5" />
+                        <p className="text-xs text-slate-600 leading-snug">
+                          You need a login code to send a free ride. Set one up in your{" "}
+                          <a href={`/doc-login?email=${encodeURIComponent(form.doctor_email.trim())}`} target="_blank" rel="noopener noreferrer"
+                            className="font-semibold text-medical-600 underline underline-offset-2">doctor portal</a>, then return here.
+                        </p>
+                      </div>
+                    ) : (
+                      <>
+                        <p className="text-xs font-semibold text-emerald-800">Enter your login code to authorise this free ride</p>
+                        <input inputMode="numeric" maxLength={4} placeholder="4-digit code" value={ridePin}
+                          onChange={(e) => setRidePin(e.target.value.replace(/\D/g, "").slice(0, 4))}
+                          className="w-full px-3 py-2 rounded-lg border border-slate-200 bg-white text-slate-800 text-center tracking-[0.4em] font-bold text-lg focus:outline-none focus:ring-2 focus:ring-emerald-400" />
+                        {doctorHasPin === null && (
+                          <p className="text-[11px] text-slate-400">Checking your account…</p>
+                        )}
+                      </>
+                    )}
+                  </div>
+
+                  <p className="text-[11px] text-amber-700 leading-snug flex items-start gap-1.5">
+                    <AlertTriangle className="w-3.5 h-3.5 shrink-0 mt-px" />
+                    This perk must be used within 7 days and the pickup address cannot be changed once sent. Destination is {hasLocations ? (locations[selectedLocIdx]?.name ?? "the lab") : (selectedLab?.name ?? preselectedLabName ?? "the lab")}.
+                  </p>
+                </div>
+              )}
+            </div>
+          )}
 
           {/* Review summary */}
           <div className="rounded-2xl border border-slate-200/80 overflow-hidden shadow-sm">

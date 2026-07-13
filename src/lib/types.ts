@@ -167,6 +167,7 @@ export interface LabRequest {
   test_image_url: string | null;
   is_critical: boolean | null;
   needs_ambulance: boolean | null;
+  has_free_ride?: boolean | null;
   fast_mode?: boolean | null;
   raw_input?: string | null;
   source?: string | null;
@@ -207,6 +208,7 @@ export interface CreateRequestResponse {
   code?: string;
   requestId?: string;
   lab?: Pick<Lab, "name" | "address" | "phones" | "whatsapp">;
+  free_ride_redeemed?: boolean;
   error?: string;
 }
 

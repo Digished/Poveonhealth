@@ -1919,3 +1919,320 @@ export function patientArrivedSelfService({
     </p>
   `, brand);
 }
+
+// =============================================================================
+// FREE-RIDE PERK TEMPLATES
+// =============================================================================
+
+/** Shared arrival-code box with the "keep secret until you arrive" warning. */
+const arrivalCodeBox = (code: string) => `
+  <div style="background:#ecfdf5;border:2px dashed #10b981;border-radius:8px;padding:20px;text-align:center;margin:24px 0;">
+    <p style="margin:0 0 4px;color:#047857;font-size:12px;font-weight:600;text-transform:uppercase;letter-spacing:1px;">Arrival Code</p>
+    <p style="margin:0;color:#047857;font-size:32px;font-weight:800;letter-spacing:4px;font-family:monospace;">${escapeHtml(code)}</p>
+  </div>
+  <div style="background:#fef2f2;border:1px solid #fecaca;border-radius:8px;padding:14px 16px;margin:0 0 8px;">
+    <p style="margin:0;color:#b91c1c;font-size:13px;font-weight:600;line-height:1.5;">
+      🔒 Do <u>not</u> share this code with your rider until you have arrived at the laboratory. The rider ends the trip by entering it.
+    </p>
+  </div>
+`;
+
+/** A logistics partner's public contact details (shown to patient & doctor). */
+export interface RidePartnerContact {
+  name: string;
+  contact_name?: string | null;
+  phone?: string | null;
+  email?: string | null;
+}
+
+/** Renders the logistics company contact card(s), or a fallback note if none yet. */
+const logisticsContactBlock = (partners: RidePartnerContact[]) => {
+  if (!partners || partners.length === 0) {
+    return `
+      <div style="background:#f8fafc;border:1px solid #e2e8f0;border-radius:8px;padding:14px 16px;margin:0 0 16px;">
+        <p style="margin:0;color:#475569;font-size:13px;line-height:1.6;">
+          Your ride will be handled by our logistics partner. You'll receive the rider's contact details once a rider is assigned.
+        </p>
+      </div>`;
+  }
+  const cards = partners.map((p) => `
+    <div style="background:#f0f7ff;border:1px solid #e0effe;border-radius:8px;padding:14px 16px;margin:0 0 10px;">
+      <p style="margin:0 0 4px;color:#1e3a5f;font-size:15px;font-weight:700;">${escapeHtml(p.name)}</p>
+      ${p.contact_name ? `<p style="margin:0 0 2px;color:#475569;font-size:13px;">Contact: ${escapeHtml(p.contact_name)}</p>` : ""}
+      ${p.phone ? `<p style="margin:0 0 2px;color:#475569;font-size:13px;">Phone: <a href="tel:${escapeHtml(p.phone)}" style="color:#0270c3;text-decoration:none;font-weight:600;">${escapeHtml(p.phone)}</a></p>` : ""}
+      ${p.email ? `<p style="margin:0;color:#475569;font-size:13px;">Email: <a href="mailto:${escapeHtml(p.email)}" style="color:#0270c3;text-decoration:none;">${escapeHtml(p.email)}</a></p>` : ""}
+    </div>`).join("");
+  return `
+    <p style="margin:0 0 8px;color:#6b7280;font-size:12px;font-weight:600;text-transform:uppercase;letter-spacing:0.5px;">Logistics ${partners.length > 1 ? "companies" : "company"}</p>
+    ${cards}`;
+};
+
+// TEMPLATE: Patient — a free ride comes with their order
+export function ridePatientEmail({
+  patientName,
+  labName,
+  pickupAddress,
+  destinationAddress,
+  arrivalCode,
+  redeemByDays,
+  partners = [],
+}: {
+  patientName: string;
+  labName: string;
+  pickupAddress: string;
+  destinationAddress: string;
+  arrivalCode: string;
+  redeemByDays: number;
+  partners?: RidePartnerContact[];
+}) {
+  return base(`
+    <h2 style="margin:0 0 8px;color:#0259a0;font-size:20px;font-weight:700;">You have a free ride 🚕</h2>
+    <p style="margin:0 0 20px;color:#4b5563;font-size:15px;line-height:1.6;">
+      ${patientName ? `Hi ${escapeHtml(patientName)}, ` : ""}your lab order comes with a <strong>free ride</strong> to
+      <strong>${escapeHtml(labName)}</strong>, courtesy of your doctor. Here are the details:
+    </p>
+
+    <table width="100%" cellpadding="0" cellspacing="0" style="margin:0 0 20px;">
+      <tr><td style="padding:6px 0;">${label("Pickup from")}${value(escapeHtml(pickupAddress))}</td></tr>
+      <tr><td style="padding:6px 0;">${label("Drop-off at")}${value(escapeHtml(destinationAddress))}</td></tr>
+    </table>
+
+    ${logisticsContactBlock(partners)}
+
+    ${arrivalCodeBox(arrivalCode)}
+
+    ${divider}
+
+    <div style="background:#f0f7ff;border:1px solid #e0effe;border-radius:8px;padding:14px 16px;margin:0 0 12px;">
+      <p style="margin:0;color:#1e3a5f;font-size:14px;line-height:1.6;">
+        📅 <strong>Your ride will be scheduled</strong> — a rider won't arrive immediately. Once a rider is
+        assigned, you'll receive a second email with their phone number, and you can call them when you're
+        ready to be picked up.
+      </p>
+    </div>
+    <p style="margin:0;color:#b45309;font-size:13px;font-weight:600;line-height:1.6;">
+      ⏳ This free ride must be redeemed within ${redeemByDays} days. The pickup address cannot be changed.
+    </p>
+  `);
+}
+
+// TEMPLATE: Doctor — confirmation that a free ride was sent for their patient
+export function rideDoctorEmail({
+  doctorName,
+  patientName,
+  labName,
+  pickupAddress,
+  destinationAddress,
+  redeemByDays,
+  partners = [],
+}: {
+  doctorName: string;
+  patientName: string;
+  labName: string;
+  pickupAddress: string;
+  destinationAddress: string;
+  redeemByDays: number;
+  partners?: RidePartnerContact[];
+}) {
+  return base(`
+    <h2 style="margin:0 0 8px;color:#0259a0;font-size:20px;font-weight:700;">Free ride sent 🚕</h2>
+    <p style="margin:0 0 20px;color:#4b5563;font-size:15px;line-height:1.6;">
+      ${doctorName ? `Hi ${escapeHtml(doctorName)}, ` : ""}your free-ride perk has been redeemed for
+      <strong>${escapeHtml(patientName || "your patient")}</strong>. We've emailed the patient their ride
+      details and arrival code. Here's a summary and the logistics company handling it:
+    </p>
+
+    <table width="100%" cellpadding="0" cellspacing="0" style="margin:0 0 20px;">
+      <tr><td style="padding:6px 0;">${label("Patient")}${value(escapeHtml(patientName || "—"))}</td></tr>
+      <tr><td style="padding:6px 0;">${label("Pickup from")}${value(escapeHtml(pickupAddress))}</td></tr>
+      <tr><td style="padding:6px 0;">${label("Drop-off at")}${value(escapeHtml(destinationAddress))}</td></tr>
+    </table>
+
+    ${logisticsContactBlock(partners)}
+
+    ${divider}
+
+    <p style="margin:0;color:#6b7280;font-size:13px;line-height:1.6;">
+      The ride will be scheduled — a rider is assigned by the logistics company, after which the patient
+      receives the rider's phone number. The ride must be redeemed within ${redeemByDays} days and the pickup
+      address cannot be changed.
+    </p>
+  `);
+}
+
+// TEMPLATE: Patient — the assigned rider's phone number
+export function rideRiderPhoneEmail({
+  patientName,
+  labName,
+  riderName,
+  riderPhone,
+  arrivalCode,
+}: {
+  patientName: string;
+  labName: string;
+  riderName: string;
+  riderPhone: string;
+  arrivalCode: string;
+}) {
+  return base(`
+    <h2 style="margin:0 0 8px;color:#0259a0;font-size:20px;font-weight:700;">Your rider is ready 🚗</h2>
+    <p style="margin:0 0 20px;color:#4b5563;font-size:15px;line-height:1.6;">
+      ${patientName ? `Hi ${escapeHtml(patientName)}, ` : ""}a rider has been assigned for your free ride to
+      <strong>${escapeHtml(labName)}</strong>. Call them when you're ready to be picked up.
+    </p>
+
+    <div style="background:#f0f7ff;border:1px solid #e0effe;border-radius:10px;padding:20px;margin:0 0 20px;text-align:center;">
+      <p style="margin:0 0 4px;color:#6b7280;font-size:12px;font-weight:600;text-transform:uppercase;letter-spacing:1px;">Your Rider</p>
+      <p style="margin:0 0 6px;color:#1e3a5f;font-size:18px;font-weight:700;">${escapeHtml(riderName)}</p>
+      <a href="tel:${escapeHtml(riderPhone)}" style="color:#0270c3;font-size:22px;font-weight:800;text-decoration:none;font-family:monospace;">${escapeHtml(riderPhone)}</a>
+    </div>
+
+    ${arrivalCodeBox(arrivalCode)}
+  `);
+}
+
+// TEMPLATE: Lab — this order carries a free patient ride
+export function rideLabEmail({
+  labName,
+  patientName,
+  pickupAddress,
+  redeemByDays,
+}: {
+  labName: string;
+  patientName: string;
+  pickupAddress: string;
+  redeemByDays: number;
+}) {
+  return base(`
+    <h2 style="margin:0 0 8px;color:#0259a0;font-size:20px;font-weight:700;">Order with a free patient ride 🚕</h2>
+    <p style="margin:0 0 20px;color:#4b5563;font-size:15px;line-height:1.6;">
+      A referring doctor has attached a <strong>free ride</strong> for their patient
+      ${patientName ? `<strong>${escapeHtml(patientName)}</strong>` : ""} to <strong>${escapeHtml(labName)}</strong>.
+    </p>
+
+    <table width="100%" cellpadding="0" cellspacing="0" style="margin:0 0 20px;">
+      <tr><td style="padding:6px 0;">${label("Patient")}${value(escapeHtml(patientName || "—"))}</td></tr>
+      <tr><td style="padding:6px 0;">${label("Pickup from")}${value(escapeHtml(pickupAddress))}</td></tr>
+    </table>
+
+    ${divider}
+
+    <p style="margin:0;color:#b45309;font-size:13px;font-weight:600;line-height:1.6;">
+      ⏳ The patient has a free ride to be redeemed within ${redeemByDays} days. Please expect them accordingly.
+    </p>
+  `);
+}
+
+// TEMPLATE: Logistics partner — a new pending ride to fulfil
+export function rideLogisticsEmail({
+  partnerName,
+  patientFirstName,
+  patientPhone,
+  pickupAddress,
+  destinationLab,
+  dashboardUrl,
+}: {
+  partnerName: string;
+  patientFirstName: string;
+  patientPhone: string;
+  pickupAddress: string;
+  destinationLab: string;
+  dashboardUrl: string;
+}) {
+  return base(`
+    <h2 style="margin:0 0 8px;color:#0259a0;font-size:20px;font-weight:700;">New pending ride 🚗</h2>
+    <p style="margin:0 0 20px;color:#4b5563;font-size:15px;line-height:1.6;">
+      Hi ${escapeHtml(partnerName)}, a new ride has been requested for a patient heading to
+      <strong>${escapeHtml(destinationLab)}</strong>. Assign a rider from your dashboard.
+    </p>
+
+    <table width="100%" cellpadding="0" cellspacing="0" style="margin:0 0 20px;">
+      <tr><td style="padding:6px 0;">${label("Patient")}${value(escapeHtml(patientFirstName))}</td></tr>
+      <tr><td style="padding:6px 0;">${label("Phone")}${value(escapeHtml(patientPhone))}</td></tr>
+      <tr><td style="padding:6px 0;">${label("Pickup from")}${value(escapeHtml(pickupAddress))}</td></tr>
+      <tr><td style="padding:6px 0;">${label("Drop-off at")}${value(escapeHtml(destinationLab))}</td></tr>
+    </table>
+
+    <div style="text-align:center;margin:0 0 8px;">
+      <a href="${dashboardUrl}" style="display:inline-block;background:linear-gradient(135deg,#0259a0,#0270c3);color:#ffffff;text-decoration:none;padding:14px 32px;border-radius:10px;font-weight:700;font-size:15px;">
+        Open Dashboard
+      </a>
+    </div>
+  `);
+}
+
+// TEMPLATE: Logistics partner / Rider — email OTP login code
+export function portalOtpEmail({
+  email,
+  otp,
+  portalName,
+}: {
+  email: string;
+  otp: string;
+  portalName: string;
+}) {
+  return base(`
+    <h2 style="margin:0 0 8px;color:#0259a0;font-size:20px;font-weight:700;">Your Login Code</h2>
+    <p style="margin:0 0 24px;color:#4b5563;font-size:15px;">
+      Use the code below to sign in to your ${escapeHtml(portalName)}. It expires in <strong>10 minutes</strong>.
+    </p>
+
+    <div style="background:#f0f7ff;border:2px dashed #0270c3;border-radius:8px;padding:24px;text-align:center;margin:24px 0;">
+      <p style="margin:0 0 6px;color:#0259a0;font-size:12px;font-weight:600;text-transform:uppercase;letter-spacing:1px;">One-Time Passcode</p>
+      <p style="margin:0;color:#0259a0;font-size:40px;font-weight:800;letter-spacing:10px;font-family:monospace;">${otp}</p>
+    </div>
+
+    ${divider}
+
+    <p style="margin:0 0 8px;color:#6b7280;font-size:13px;">Signing in as: <strong style="color:#1e3a5f;">${escapeHtml(email)}</strong></p>
+    <p style="margin:12px 0 0;color:#dc2626;font-size:13px;font-weight:500;">
+      If you did not request this code, you can safely ignore this email.
+    </p>
+  `);
+}
+
+// TEMPLATE: Rider — welcome / invite from their logistics company
+export function riderInviteEmail({
+  riderName,
+  partnerName,
+  loginUrl,
+}: {
+  riderName: string;
+  partnerName: string;
+  loginUrl: string;
+}) {
+  return base(`
+    <h2 style="margin:0 0 8px;color:#0259a0;font-size:20px;font-weight:700;">You've been added as a rider 🚗</h2>
+    <p style="margin:0 0 20px;color:#4b5563;font-size:15px;line-height:1.6;">
+      Hi ${escapeHtml(riderName)}, <strong>${escapeHtml(partnerName)}</strong> has added you as a dispatch rider on Poveon.
+      Sign in with this email to see rides assigned to you and end trips using the patient's arrival code.
+    </p>
+    <div style="text-align:center;margin:0 0 8px;">
+      <a href="${loginUrl}" style="display:inline-block;background:linear-gradient(135deg,#0259a0,#0270c3);color:#ffffff;text-decoration:none;padding:14px 32px;border-radius:10px;font-weight:700;font-size:15px;">
+        Open Rider App
+      </a>
+    </div>
+  `);
+}
+
+// TEMPLATE: Logistics partner — welcome from Poveon
+export function logisticsInviteEmail({
+  partnerName,
+  loginUrl,
+}: {
+  partnerName: string;
+  loginUrl: string;
+}) {
+  return base(`
+    <h2 style="margin:0 0 8px;color:#0259a0;font-size:20px;font-weight:700;">Welcome to Poveon Logistics 🚚</h2>
+    <p style="margin:0 0 20px;color:#4b5563;font-size:15px;line-height:1.6;">
+      Hi ${escapeHtml(partnerName)}, your logistics company has been added to Poveon. Sign in with this email to
+      manage pending patient rides for your assigned labs and add your own dispatch riders.
+    </p>
+    <div style="text-align:center;margin:0 0 8px;">
+      <a href="${loginUrl}" style="display:inline-block;background:linear-gradient(135deg,#0259a0,#0270c3);color:#ffffff;text-decoration:none;padding:14px 32px;border-radius:10px;font-weight:700;font-size:15px;">
+        Open Dashboard
+      </a>
+    </div>
+  `);
+}

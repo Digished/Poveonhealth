@@ -114,8 +114,8 @@ export function LabDashboard({ lab, isOwner = false, roleName = "Lab Owner", can
   const router = useRouter();
   const searchParams = useSearchParams();
   const { isLight, toggle, themeClass } = useDashTheme("lab_dash_theme");
-  type MainView = "workspace" | "requests" | "journey" | "onboarding" | "queue" | "departments" | "results" | "past" | "templates" | "sops" | "network" | "referrals" | "professionals" | "clients" | "customers" | "analytics" | "activity" | "feedback" | "poveon" | "price-list" | "marketers" | "team" | "partners";
-  const VALID_TABS: MainView[] = ["onboarding", "queue", "workspace", "requests", "journey", "departments", "results", "past", "templates", "sops", "network", "referrals", "professionals", "clients", "customers", "analytics", "activity", "feedback", "poveon", "price-list", "marketers", "team", "partners"];
+  type MainView = "workspace" | "requests" | "journey" | "onboarding" | "queue" | "departments" | "results" | "past" | "templates" | "sops" | "network" | "referrals" | "professionals" | "clients" | "customers" | "analytics" | "activity" | "feedback" | "poveon" | "price-list" | "marketers" | "team" | "partners" | "rides";
+  const VALID_TABS: MainView[] = ["onboarding", "queue", "workspace", "requests", "journey", "departments", "results", "past", "templates", "sops", "network", "referrals", "professionals", "clients", "customers", "analytics", "activity", "feedback", "poveon", "price-list", "marketers", "team", "partners", "rides"];
   // Legacy tabs now fold into the unified Workspace.
   const LEGACY_TO_WORKSPACE = new Set(["requests", "journey"]);
   // Which permission gates each tab (used by the sidebar and the initial landing).
@@ -143,6 +143,7 @@ export function LabDashboard({ lab, isOwner = false, roleName = "Lab Owner", can
     marketers: isOwner || canViewMarketers,
     team: isOwner || canManageRoles || canViewMarketers,
     partners: isOwner || canManageProfessionals || canViewRequestsEff,
+    rides: isOwner || canMarkSeen || canViewRequestsEff,
   };
   // ── Lite / LIMS (beta) mode ───────────────────────────────────────────────
   // Lite (default) trims the dashboard to Onboarding, Referrals, Marketers and
@@ -164,8 +165,8 @@ export function LabDashboard({ lab, isOwner = false, roleName = "Lab Owner", can
   // Micro: the smallest footprint — front desk + referrals + pricing only.
   const MICRO_SIDEBAR = new Set<MainView>(["onboarding", "customers", "network", "price-list"]);
   const MICRO_ALLOWED = new Set<MainView>(["onboarding", "customers", "clients", "network", "referrals", "professionals", "price-list"]);
-  const LITE_SIDEBAR = new Set<MainView>(["onboarding", "queue", "customers", "analytics", "feedback", "network", "partners", "team", "price-list"]);
-  const LITE_ALLOWED = new Set<MainView>(["onboarding", "queue", "customers", "analytics", "feedback", "network", "referrals", "professionals", "partners", "team", "price-list"]);
+  const LITE_SIDEBAR = new Set<MainView>(["onboarding", "queue", "rides", "customers", "analytics", "feedback", "network", "partners", "team", "price-list"]);
+  const LITE_ALLOWED = new Set<MainView>(["onboarding", "queue", "rides", "customers", "analytics", "feedback", "network", "referrals", "professionals", "partners", "team", "price-list"]);
   const modeSidebar = labMode === "micro" ? MICRO_SIDEBAR : labMode === "lite" ? LITE_SIDEBAR : null;
   const tabVisibleEff: Record<MainView, boolean> = modeSidebar
     ? (Object.fromEntries((Object.keys(tabVisible) as MainView[]).map((k) => [k, tabVisible[k] && modeSidebar.has(k)])) as Record<MainView, boolean>)
@@ -294,6 +295,14 @@ export function LabDashboard({ lab, isOwner = false, roleName = "Lab Owner", can
   };
   const [clients, setClients] = useState<ClientRecord[]>([]);
   const [clientsLoading, setClientsLoading] = useState(false);
+  type LabRide = {
+    id: string; code: string; status: string; patient_name: string; patient_phone: string;
+    pickup_address: string; destination_lab: string; partner_name: string | null;
+    rider_name: string | null; rider_phone: string | null; redeem_by: string;
+    created_at: string; assigned_at: string | null; completed_at: string | null;
+  };
+  const [labRides, setLabRides] = useState<LabRide[]>([]);
+  const [labRidesLoading, setLabRidesLoading] = useState(false);
   const [selectedClient, setSelectedClient] = useState<ClientRecord | null>(null);
 
   // Patient info edit modal state
@@ -415,6 +424,24 @@ export function LabDashboard({ lab, isOwner = false, roleName = "Lab Owner", can
   useEffect(() => {
     if (mainView === "clients" && (isOwner || canViewClients)) fetchClients();
   }, [mainView, fetchClients, isOwner, canViewClients]);
+
+  const fetchLabRides = useCallback(async () => {
+    setLabRidesLoading(true);
+    try {
+      const res = await fetch("/api/lab/rides");
+      const data = await res.json();
+      if (!data.success) throw new Error(data.error);
+      setLabRides(data.rides ?? []);
+    } catch {
+      toast.error("Failed to load free rides");
+    } finally {
+      setLabRidesLoading(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    if (mainView === "rides") fetchLabRides();
+  }, [mainView, fetchLabRides]);
 
 
   const [requestSourceFilter, setRequestSourceFilter] = useState("");
@@ -779,6 +806,7 @@ export function LabDashboard({ lab, isOwner = false, roleName = "Lab Owner", can
             { label: "Operations", items: [
               { key: "onboarding", label: "Onboarding", icon: <QrCode className="w-4 h-4" />, show: tabVisibleEff.onboarding },
               { key: "queue", label: "Queue", icon: <ListOrdered className="w-4 h-4" />, show: tabVisibleEff.queue },
+              { key: "rides", label: "Free Rides", icon: <Truck className="w-4 h-4" />, show: tabVisibleEff.rides },
               { key: "workspace", label: "Workstation", icon: <Workflow className="w-4 h-4" />, show: tabVisibleEff.workspace },
               { key: "results", label: "Results", icon: <FlaskConical className="w-4 h-4" />, show: groupVisible("results") },
             ] },
@@ -1158,6 +1186,52 @@ export function LabDashboard({ lab, isOwner = false, roleName = "Lab Owner", can
         {/* Partners — HMOs / hospitals / companies the lab works with */}
         {mainView === "partners" && (isOwner || canManageProfessionals || canViewRequestsEff) && (
           <PartnersView canManage={isOwner || canManageProfessionals} />
+        )}
+
+        {/* Free Rides — patients coming in via a doctor's free-ride perk */}
+        {mainView === "rides" && (isOwner || canMarkSeen || canViewRequestsEff) && (
+          <div className="space-y-4">
+            <div className="flex items-center justify-between flex-wrap gap-3">
+              <div>
+                <h2 className="text-lg font-bold text-white flex items-center gap-2"><Truck className="w-5 h-5" /> Free Rides</h2>
+                <p className="text-xs text-slate-400 mt-0.5">Patients arriving via a doctor&apos;s free-ride perk, and each ride&apos;s progress.</p>
+              </div>
+              <button onClick={fetchLabRides} className="flex items-center gap-1.5 text-xs text-slate-300 hover:text-white bg-white/10 px-3 py-2 rounded-lg">
+                <RefreshCw className={`w-4 h-4 ${labRidesLoading ? "animate-spin" : ""}`} /> Refresh
+              </button>
+            </div>
+
+            {labRides.length === 0 ? (
+              <p className="text-sm text-slate-400 text-center py-10">{labRidesLoading ? "Loading…" : "No free rides yet."}</p>
+            ) : (
+              <div className="space-y-2.5">
+                {labRides.map((r) => {
+                  const styles: Record<string, string> = {
+                    pending: "bg-amber-500/20 text-amber-300",
+                    assigned: "bg-blue-500/20 text-blue-300",
+                    completed: "bg-emerald-500/20 text-emerald-300",
+                    cancelled: "bg-slate-500/20 text-slate-400",
+                  };
+                  return (
+                    <div key={r.id} className="bg-white/5 border border-white/10 rounded-xl p-3.5">
+                      <div className="flex items-start justify-between gap-2 mb-1.5">
+                        <div className="min-w-0">
+                          <p className="text-sm font-semibold text-white truncate">{r.patient_name} <span className="text-slate-500 font-mono text-xs">· {r.code}</span></p>
+                          <p className="text-xs text-slate-400 truncate flex items-center gap-1"><MapPin className="w-3 h-3" /> {r.pickup_address} → {r.destination_lab}</p>
+                        </div>
+                        <span className={`text-[11px] font-semibold px-2 py-0.5 rounded-full shrink-0 ${styles[r.status] ?? styles.pending}`}>{r.status}</span>
+                      </div>
+                      <div className="flex items-center gap-3 flex-wrap text-[11px] text-slate-400 pt-1.5 border-t border-white/10">
+                        <span className="flex items-center gap-1"><Phone className="w-3 h-3" /> {r.patient_phone}</span>
+                        <span>{r.partner_name ? `Partner: ${r.partner_name}` : "Awaiting partner"}</span>
+                        {r.rider_name && <span>Rider: {r.rider_name}{r.rider_phone ? ` (${r.rider_phone})` : ""}</span>}
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            )}
+          </div>
         )}
 
         {/* Departments — per-lab pipeline configuration */}
@@ -1563,7 +1637,7 @@ export function LabDashboard({ lab, isOwner = false, roleName = "Lab Owner", can
                       </DetailRow>
                     )}
                     {/* Flags */}
-                    {(selectedRequest.is_critical || selectedRequest.needs_ambulance) && (
+                    {(selectedRequest.is_critical || selectedRequest.needs_ambulance || selectedRequest.has_free_ride) && (
                       <div className="flex flex-wrap gap-2 pt-1">
                         {selectedRequest.is_critical && (
                           <span className="flex items-center gap-1 text-xs font-semibold bg-red-500/20 text-red-400 border border-red-500/30 px-2.5 py-1 rounded-full">
@@ -1575,6 +1649,12 @@ export function LabDashboard({ lab, isOwner = false, roleName = "Lab Owner", can
                           <span className="flex items-center gap-1 text-xs font-semibold bg-orange-500/20 text-orange-400 border border-orange-500/30 px-2.5 py-1 rounded-full">
                             <Truck className="w-3 h-3" />
                             Ambulance Requested
+                          </span>
+                        )}
+                        {selectedRequest.has_free_ride && (
+                          <span className="flex items-center gap-1 text-xs font-semibold bg-emerald-500/20 text-emerald-400 border border-emerald-500/30 px-2.5 py-1 rounded-full">
+                            <Truck className="w-3 h-3" />
+                            Free Ride (redeem within 7 days)
                           </span>
                         )}
                       </div>
@@ -2176,7 +2256,7 @@ export function LabDashboard({ lab, isOwner = false, roleName = "Lab Owner", can
                   </div>
                 )}
                 {/* Flags */}
-                {(selectedRequest.is_critical || selectedRequest.needs_ambulance) && (
+                {(selectedRequest.is_critical || selectedRequest.needs_ambulance || selectedRequest.has_free_ride) && (
                   <div className="flex flex-wrap gap-2">
                     {selectedRequest.is_critical && (
                       <span className="flex items-center gap-1 text-xs font-semibold bg-red-500/20 text-red-400 border border-red-500/30 px-2.5 py-1 rounded-full">
@@ -2188,6 +2268,12 @@ export function LabDashboard({ lab, isOwner = false, roleName = "Lab Owner", can
                       <span className="flex items-center gap-1 text-xs font-semibold bg-orange-500/20 text-orange-400 border border-orange-500/30 px-2.5 py-1 rounded-full">
                         <Truck className="w-3 h-3" />
                         Ambulance Requested
+                      </span>
+                    )}
+                    {selectedRequest.has_free_ride && (
+                      <span className="flex items-center gap-1 text-xs font-semibold bg-emerald-500/20 text-emerald-400 border border-emerald-500/30 px-2.5 py-1 rounded-full">
+                        <Truck className="w-3 h-3" />
+                        Free Ride (redeem within 7 days)
                       </span>
                     )}
                   </div>

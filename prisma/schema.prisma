@@ -225,6 +225,7 @@ model Request {
   is_critical           Boolean   @default(false) // Patient marked as critical
   needs_ambulance       Boolean   @default(false) // Ambulance service requested
   ambulance_notes       String? // Pickup address / extra ambulance details
+  has_free_ride         Boolean   @default(false) // a free-ride perk was redeemed for this request
   status                String    @default("incoming")
   source                String    @default("poveon") // poveon | walk_in | qr — how the client reached the lab
   referral_type         String? // self | doctor | hmo — how the client says they were referred (QR self-service intake)
@@ -1661,4 +1662,155 @@ model HmoAlertEmailLog {
 
   @@index([doctor_email, member_id, created_at])
   @@map("hmo_alert_email_logs")
+}
+
+// ── Doctor perks & free rides ───────────────────────────────────────────────
+//
+// A perk is a benefit an admin grants a doctor manually, scoped to a single lab
+// (e.g. "free ride to Lab A"). A doctor may hold several perks; a free ride can
+// be available for Lab A but not Lab B. When a doctor creates a request and an
+// active perk with remaining uses exists for that lab, they may redeem it to
+// give the patient a free ride from a pickup address to the lab.
+model DoctorPerk {
+  id             String   @id @default(uuid())
+  doctor_email   String
+  lab_id         String
+  type           String   @default("free_ride") // free_ride (only type for now)
+  remaining_uses Int      @default(1) // limited — decremented on each redemption
+  total_uses     Int      @default(1) // original allotment (for admin display)
+  is_active      Boolean  @default(true)
+  note           String? // admin note, e.g. "Q3 promo — city patients"
+  created_at     DateTime @default(now())
+  updated_at     DateTime @default(now()) @updatedAt
+
+  @@index([doctor_email, lab_id, is_active])
+  @@map("doctor_perks")
+}
+
+// A redeemed free-ride perk — one ride for one patient. Created when a doctor
+// redeems a free-ride perk during a request. Poveon tracks each ride and its
+// cost; a logistics partner (assigned to the lab) fulfils it and a rider ends
+// the ride using the patient's arrival code.
+model RidePerk {
+  id                  String   @id @default(uuid())
+  code                String   @unique // arrival code shared by patient once they reach the lab
+  perk_id             String? // the DoctorPerk this came from (null if perk later deleted)
+  doctor_email        String
+  lab_id              String
+  request_id          String? // the lab request this ride is attached to
+  partner_id          String? // logistics partner assigned to fulfil (via lab assignment)
+  rider_id            String? // dispatch rider assigned by the partner
+  patient_name        String
+  patient_phone       String
+  pickup_address      String // cannot be changed once created
+  destination_address String // the partnered laboratory's address
+  destination_lab     String // lab name (denormalised for partner/rider views)
+  status              String   @default("pending") // pending | assigned | completed | cancelled
+  cost                Decimal? @db.Decimal(12, 2) // what Poveon pays the partner — set manually by admin
+  is_paid_to_partner  Boolean  @default(false) // admin marks paid after fulfilment
+  rider_notified_at   DateTime? // when the patient was emailed the rider's phone
+  redeem_by           DateTime // ride must be redeemed within 7 days of creation
+  created_at          DateTime @default(now())
+  updated_at          DateTime @default(now()) @updatedAt
+  assigned_at         DateTime?
+  completed_at        DateTime?
+
+  @@index([lab_id, status])
+  @@index([partner_id, status])
+  @@index([rider_id, status])
+  @@map("ride_perks")
+}
+
+// A third-party logistics company added by Poveon (admin). Partners log in with
+// email OTP to a mobile-friendly dashboard, are assigned to specific labs, and
+// see/manage pending rides for those labs.
+model LogisticsPartner {
+  id           String   @id @default(uuid())
+  name         String
+  email        String   @unique // login identity
+  contact_name String?
+  phone        String?
+  address      String?
+  is_active    Boolean  @default(true)
+  created_at   DateTime @default(now())
+  updated_at   DateTime @default(now()) @updatedAt
+
+  @@map("logistics_partners")
+}
+
+// Assigns a logistics partner to a lab. A ride created for that lab notifies the
+// assigned partner(s). Unique per (partner, lab).
+model LogisticsPartnerLab {
+  id         String   @id @default(uuid())
+  partner_id String
+  lab_id     String
+  created_at DateTime @default(now())
+
+  @@unique([partner_id, lab_id])
+  @@index([lab_id])
+  @@map("logistics_partner_labs")
+}
+
+// A dispatch rider added by a logistics company (by email). Riders log in with
+// email OTP to a minimal dashboard where they enter a patient's arrival code to
+// end a ride. Riders only ever see the patient's first name, phone and location.
+model Rider {
+  id         String   @id @default(uuid())
+  partner_id String
+  name       String // first name only
+  email      String   @unique // login identity
+  phone      String
+  is_active  Boolean  @default(true)
+  created_at DateTime @default(now())
+
+  @@index([partner_id])
+  @@map("riders")
+}
+
+// Email OTP codes for the logistics-partner portal
+model LogisticsOtp {
+  id         String   @id @default(uuid())
+  email      String
+  code_hash  String
+  expires_at DateTime
+  used       Boolean  @default(false)
+  created_at DateTime @default(now())
+
+  @@index([email])
+  @@map("logistics_otps")
+}
+
+// Active logistics-partner portal sessions
+model LogisticsSession {
+  id         String   @id @default(uuid())
+  partner_id String
+  expires_at DateTime
+  created_at DateTime @default(now())
+
+  @@index([partner_id])
+  @@map("logistics_sessions")
+}
+
+// Email OTP codes for the rider portal
+model RiderOtp {
+  id         String   @id @default(uuid())
+  email      String
+  code_hash  String
+  expires_at DateTime
+  used       Boolean  @default(false)
+  created_at DateTime @default(now())
+
+  @@index([email])
+  @@map("rider_otps")
+}
+
+// Active rider portal sessions
+model RiderSession {
+  id         String   @id @default(uuid())
+  rider_id   String
+  expires_at DateTime
+  created_at DateTime @default(now())
+
+  @@index([rider_id])
+  @@map("rider_sessions")
 }

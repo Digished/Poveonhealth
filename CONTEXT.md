@@ -236,6 +236,57 @@ expiry tracked).
 
 ---
 
+## Doctor Perks & Free Rides (`/logistics`, `/rider`)
+
+Admins grant doctors **perks** (currently a **free ride** to a partnered lab), scoped
+per-lab and limited by a use count. A doctor may hold several perks; a free ride can
+be available for Lab A but not Lab B.
+
+- **Assigning perks / partners / tracking:** Admin → "Perks & Rides" tab →
+  `src/components/admin/AdminPerksTab.tsx`. Three sub-tabs: assign doctor perks,
+  manage logistics partners (add + assign to labs + add riders count), and track
+  every ride with a manually-set **cost** (what Poveon pays the partner) and a
+  paid/unpaid flag. APIs: `src/app/api/admin/{perks,perks/[id],rides,rides/[id],logistics,logistics/[id]}`.
+- **Doctor redemption:** in the doctor request form (`DoctorRequestForm.tsx`, step 3)
+  a small opt-in prompt appears when `POST /api/perks/available` returns a perk for
+  that doctor+lab. The doctor confirms/edits the patient's name, **phone (country-code
+  input)** and **email (required — the arrival code is emailed there)**, enters a
+  pickup address, and must pass a **login-code gate** (`POST /api/perks/doctor-pin`,
+  action `verify`): the doctor **must already have a login code** (set up in the
+  doctor portal `/doc-login`) and enters it here — verifying it starts a `doc_token`
+  session. Doctors without a code are pointed to the portal to create one first.
+  The ride is created
+  as part of `POST /api/requests/create` (`free_ride`, `free_ride_perk_id`,
+  `ride_pickup_address`) — which server-side only redeems when a valid doctor session
+  matches. Redemption logic + notifications live in `src/lib/rides.ts`. On success the
+  doctor is told the patient received 2 emails (request + free-ride/arrival code), with
+  a 3rd (rider phone) to follow.
+- **Notifications:** patient (free-ride details, secret arrival code, a note that the
+  ride is *scheduled* not immediate, and the **logistics company's contact details**),
+  doctor (confirmation with the same logistics-company contacts), lab (`request_email`,
+  order carries a free ride), and the lab's assigned logistics partner(s). A second
+  patient email carries the rider's phone once a rider is assigned. Templates:
+  `ride*`/`portalOtpEmail`/`riderInviteEmail` in `src/lib/email/templates.ts`.
+- **Logistics partner portal** (`/logistics`, email-OTP, cookie `logi_token`): a
+  mobile-friendly dashboard of pending/assigned rides for their labs; they assign a
+  rider (patient is emailed the rider's phone) and manage their own riders. Riders and
+  partners only ever see the patient's **first name, phone and pickup location**.
+  APIs: `src/app/api/logistics-login/*`, `src/app/api/logistics/*`; auth helper
+  `src/lib/logistics-auth.ts`.
+- **Rider portal** (`/rider`, email-OTP, cookie `rider_token`): a minimal dashboard
+  where the rider ends a trip by entering the patient's **arrival code**. Patients are
+  told not to share the code until they reach the lab, so a correct code confirms
+  arrival. APIs: `src/app/api/rider-login/*`, `src/app/api/rider/*`; helper
+  `src/lib/rider-auth.ts`.
+- **Lab view:** the lab dashboard has a **"Free Rides"** panel (Operations section →
+  `mainView === "rides"`, `GET /api/lab/rides`) listing patients arriving via a free
+  ride and each ride's progress (pending → assigned → completed), plus a "Free Ride"
+  badge on the flagged request.
+- **Schema:** `DoctorPerk`, `RidePerk`, `LogisticsPartner`, `LogisticsPartnerLab`,
+  `Rider`, and `*Otp`/`*Session` models; `Request.has_free_ride` flag. The redemption
+  window is **7 days** everywhere (`RIDE_REDEEM_DAYS` in `src/lib/rides.ts`).
+  Production tables/columns added in `scripts/run-migration.mjs`.
+
 ## Next Tasks
 1. Improve admin test catalog modal (current task)
    - Add category filtering (dynamic dropdown)
