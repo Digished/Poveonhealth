@@ -224,7 +224,7 @@ export function patientRequestCode({
 }
 
 // =============================================================================
-// TEMPLATE: Doctor — Lab Confirmed Order
+// TEMPLATE: Doctor — Patient Arrived at Lab
 // =============================================================================
 export function doctorPatientArrived({
   doctorName,
@@ -240,10 +240,10 @@ export function doctorPatientArrived({
   brand?: { name: string };
 }) {
   return base(`
-    <h2 style="margin:0 0 8px;color:#0270c3;font-size:20px;font-weight:700;">Order Confirmed by Lab</h2>
+    <h2 style="margin:0 0 8px;color:#0270c3;font-size:20px;font-weight:700;">Your Patient Has Arrived at the Lab</h2>
     <p style="margin:0 0 24px;color:#4b5563;font-size:15px;">
       Dear Dr. ${doctorName},<br><br>
-      <strong>${labName}</strong> has confirmed the order for your patient <strong>${patientName}</strong>.
+      Your patient <strong>${patientName}</strong> has arrived at <strong>${labName}</strong> and their order has been confirmed.
     </p>
 
     ${divider}
