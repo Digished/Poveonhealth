@@ -60,8 +60,13 @@ export async function POST(request: NextRequest) {
     await prisma.request.update({ where: { id: requestId }, data });
   }
 
-  // Marking the client as paid also marks the request seen + accrues commission.
-  if (is_paid === true) {
+  // Marking the client as arrived — or as paid — promotes the request to "seen"
+  // (the documented meaning of "seen": the patient has arrived at the lab). This
+  // updates the status globally (admin "All requests" and every dashboard) and
+  // emails the referring doctor. markSeenWithCommission is idempotent — guarded
+  // on status='incoming' — so arriving then paying won't double-charge or
+  // double-notify.
+  if (arrived === true || is_paid === true) {
     await markSeenWithCommission(requestId).catch((e) => console.error("[registration] markSeen failed:", e));
   }
 
