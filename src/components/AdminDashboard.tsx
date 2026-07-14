@@ -85,6 +85,9 @@ export function AdminDashboard() {
   const [labs, setLabs] = useState<Lab[]>([]);
   const [requests, setRequests] = useState<LabRequest[]>([]);
   const [metrics, setMetrics] = useState<AdminMetrics | null>(null);
+  const [metricsFrom, setMetricsFrom] = useState<string>("");
+  const [metricsTo, setMetricsTo] = useState<string>("");
+  const [metricsRefreshing, setMetricsRefreshing] = useState(false);
   const [loading, setLoading] = useState(true);
   const [showCreateLab, setShowCreateLab] = useState(false);
   const [byLabOpen, setByLabOpen] = useState(false);
@@ -104,6 +107,8 @@ export function AdminDashboard() {
   const [deleteConfirmMarketer, setDeleteConfirmMarketer] = useState<typeof marketers[number] | null>(null);
   const [deletingRequestId, setDeletingRequestId] = useState<string | null>(null);
   const [selectedReferralGroup, setSelectedReferralGroup] = useState<ReferralGroup | null>(null);
+  const [referralGroupsRemote, setReferralGroupsRemote] = useState<ReferralGroup[] | null>(null);
+  const [referralsLoading, setReferralsLoading] = useState(false);
   const [apiLogs, setApiLogs] = useState<ApiLog[]>([]);
   const [apiLogSummary, setApiLogSummary] = useState<ApiLogSummary | null>(null);
   const [expandedLabIntegration, setExpandedLabIntegration] = useState<string | null>(null);
@@ -340,6 +345,48 @@ export function AdminDashboard() {
 
   useEffect(() => { fetchData(); }, [fetchData]);
   useEffect(() => { if (activeTab === "lab-marketers") fetchLabMarketers(); }, [activeTab, fetchLabMarketers]);
+
+  // Re-fetch just the status metrics when the date range changes. Only the
+  // metric counts are date-scoped — the request list itself is untouched.
+  const fetchMetrics = useCallback(async (from: string, to: string) => {
+    setMetricsRefreshing(true);
+    try {
+      const p = new URLSearchParams({ limit: "1" });
+      if (from) p.set("from", from);
+      if (to) p.set("to", to);
+      const res = await fetch(`/api/admin/requests?${p.toString()}`);
+      const data = await res.json();
+      if (data.success) setMetrics(data.metrics ?? null);
+    } catch {
+      toast.error("Failed to load metrics");
+    } finally {
+      setMetricsRefreshing(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    if (activeTab !== "metrics") return;
+    if (!metricsFrom && !metricsTo) return; // initial (unfiltered) load handled by fetchData
+    const t = setTimeout(() => fetchMetrics(metricsFrom, metricsTo), 300);
+    return () => clearTimeout(t);
+  }, [activeTab, metricsFrom, metricsTo, fetchMetrics]);
+
+  // Referral tracking aggregated over ALL requests (server-side) so counts are
+  // accurate rather than limited to the latest page loaded on the dashboard.
+  const fetchReferralTracking = useCallback(async () => {
+    setReferralsLoading(true);
+    try {
+      const res = await fetch("/api/admin/referral-tracking");
+      const data = await res.json();
+      if (data.success) setReferralGroupsRemote(data.groups ?? []);
+    } catch {
+      toast.error("Failed to load referral tracking");
+    } finally {
+      setReferralsLoading(false);
+    }
+  }, []);
+
+  useEffect(() => { if (activeTab === "referrals") fetchReferralTracking(); }, [activeTab, fetchReferralTracking]);
 
   // ── All Requests tab: searchable, paginated back to the very first request ──
   const [allReqs, setAllReqs] = useState<LabRequest[]>([]);
@@ -705,15 +752,50 @@ export function AdminDashboard() {
         {/* ── METRICS ── */}
         {activeTab === "metrics" && (
           <div className="animate-fade-in space-y-6">
+            {/* Date-range filter for the status metrics */}
+            <div className="flex flex-wrap items-end gap-3 rounded-2xl border border-white/8 bg-white/3 px-4 py-3">
+              <div className="flex flex-col gap-1">
+                <label className="text-[10px] font-semibold uppercase tracking-wider text-slate-500">From</label>
+                <input
+                  type="date"
+                  value={metricsFrom}
+                  max={metricsTo || undefined}
+                  onChange={(e) => setMetricsFrom(e.target.value)}
+                  className="rounded-lg border border-white/10 bg-white/8 px-2.5 py-1.5 text-xs text-slate-200 focus:outline-none focus:ring-1 focus:ring-medical-500"
+                />
+              </div>
+              <div className="flex flex-col gap-1">
+                <label className="text-[10px] font-semibold uppercase tracking-wider text-slate-500">To</label>
+                <input
+                  type="date"
+                  value={metricsTo}
+                  min={metricsFrom || undefined}
+                  onChange={(e) => setMetricsTo(e.target.value)}
+                  className="rounded-lg border border-white/10 bg-white/8 px-2.5 py-1.5 text-xs text-slate-200 focus:outline-none focus:ring-1 focus:ring-medical-500"
+                />
+              </div>
+              {(metricsFrom || metricsTo) && (
+                <button
+                  onClick={() => { setMetricsFrom(""); setMetricsTo(""); fetchMetrics("", ""); }}
+                  className="rounded-lg border border-white/10 px-3 py-1.5 text-xs text-slate-300 transition-colors hover:bg-white/5 hover:text-white"
+                >
+                  Clear
+                </button>
+              )}
+              <span className="ml-auto text-[11px] text-slate-500">
+                {metricsRefreshing ? "Updating…" : (metricsFrom || metricsTo) ? "Filtered by date" : "All time"}
+              </span>
+            </div>
+
             {loading ? (
-              <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-                {[...Array(4)].map((_, i) => (
+              <div className="grid grid-cols-2 md:grid-cols-3 gap-4">
+                {[...Array(3)].map((_, i) => (
                   <div key={i} className="bg-white/5 border border-white/10 rounded-2xl p-5 animate-pulse h-24" />
                 ))}
               </div>
             ) : metrics ? (
               <>
-                <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+                <div className="grid grid-cols-2 md:grid-cols-3 gap-4">
                   <button
                     onClick={() => setByLabOpen(true)}
                     className="bg-gradient-to-br from-blue-500/20 to-blue-600/10 border border-blue-500/30 rounded-2xl p-5 text-left hover:border-blue-400/50 hover:from-blue-500/25 transition-all group"
@@ -724,8 +806,7 @@ export function AdminDashboard() {
                   </button>
                   {[
                     { label: "Incoming", value: metrics.incoming, color: "from-blue-400/20 to-blue-500/10 border-blue-400/30" },
-                    { label: "Seen", value: metrics.seen, color: "from-amber-400/20 to-amber-500/10 border-amber-400/30" },
-                    { label: "Done", value: metrics.done, color: "from-emerald-400/20 to-emerald-500/10 border-emerald-400/30" },
+                    { label: "Arrived", value: metrics.seen, color: "from-emerald-400/20 to-emerald-500/10 border-emerald-400/30" },
                   ].map((stat) => (
                     <div key={stat.label} className={`bg-gradient-to-br ${stat.color} border rounded-2xl p-5`}>
                       <p className="text-xs text-slate-400 font-medium uppercase tracking-wider mb-1">{stat.label}</p>
@@ -1072,24 +1153,29 @@ export function AdminDashboard() {
         )}
 
         {/* ── REFERRALS ── */}
-        {activeTab === "referrals" && (
+        {activeTab === "referrals" && (() => {
+          // Prefer the server-side aggregate (all requests); fall back to the
+          // page-scoped memo only while the full set is still loading.
+          const groups = referralGroupsRemote ?? referralGroups;
+          const groupsLoading = referralsLoading && referralGroupsRemote === null;
+          return (
           <div className="animate-fade-in space-y-4">
             <div className="flex items-center justify-between">
               <h2 className="font-semibold text-white">Referral Tracking</h2>
-              <span className="text-xs text-slate-500 bg-white/5 px-3 py-1.5 rounded-full">{referralGroups.length} referrer{referralGroups.length !== 1 ? "s" : ""}</span>
+              <span className="text-xs text-slate-500 bg-white/5 px-3 py-1.5 rounded-full">{groups.length} referrer{groups.length !== 1 ? "s" : ""}</span>
             </div>
 
-            {loading ? (
+            {groupsLoading ? (
               <div className="space-y-1">
                 {[...Array(6)].map((_, i) => (
                   <div key={i} className="bg-white/5 border border-white/10 rounded-xl h-14 animate-pulse" />
                 ))}
               </div>
-            ) : referralGroups.length === 0 ? (
+            ) : groups.length === 0 ? (
               <div className="text-center py-20 text-slate-500">No referrals yet</div>
             ) : (
               <div className="rounded-2xl overflow-hidden border border-white/8 divide-y divide-white/5">
-                {referralGroups.map((group) => (
+                {groups.map((group) => (
                   <button
                     key={group.key}
                     onClick={() => setSelectedReferralGroup(group)}
@@ -1123,7 +1209,8 @@ export function AdminDashboard() {
               </div>
             )}
           </div>
-        )}
+          );
+        })()}
 
         {/* ── LABS ── */}
         {activeTab === "labs" && (

@@ -25,6 +25,22 @@ export async function GET(request: NextRequest) {
     const limit = Math.min(200, parseInt(searchParams.get("limit") ?? "50"));
     const skip = (page - 1) * limit;
 
+    // Optional created_at range for the metric counts (YYYY-MM-DD). `to` is
+    // treated as inclusive of the whole day.
+    const fromParam = searchParams.get("from")?.trim();
+    const toParam = searchParams.get("to")?.trim();
+    const fromDate = fromParam ? new Date(`${fromParam}T00:00:00.000Z`) : null;
+    const toDate = toParam ? new Date(`${toParam}T23:59:59.999Z`) : null;
+    const dateFilter =
+      (fromDate && !isNaN(fromDate.getTime())) || (toDate && !isNaN(toDate.getTime()))
+        ? {
+            created_at: {
+              ...(fromDate && !isNaN(fromDate.getTime()) ? { gte: fromDate } : {}),
+              ...(toDate && !isNaN(toDate.getTime()) ? { lte: toDate } : {}),
+            },
+          }
+        : {};
+
     const where = {
       ...(labId ? { lab_id: labId } : {}),
       ...(status ? { status } : {}),
@@ -53,10 +69,10 @@ export async function GET(request: NextRequest) {
         take: limit,
       }),
       prisma.request.count({ where }),
-      prisma.request.count({ where: { status: "incoming" } }),
-      prisma.request.count({ where: { status: "seen" } }),
-      prisma.request.count({ where: { status: "done" } }),
-      prisma.request.groupBy({ by: ["lab_id"], _count: { id: true } }),
+      prisma.request.count({ where: { status: "incoming", ...dateFilter } }),
+      prisma.request.count({ where: { status: "seen", ...dateFilter } }),
+      prisma.request.count({ where: { status: "done", ...dateFilter } }),
+      prisma.request.groupBy({ by: ["lab_id"], _count: { id: true }, where: dateFilter }),
     ]);
 
     const labIds = byLabCounts.map((l) => l.lab_id);
