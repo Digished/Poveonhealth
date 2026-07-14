@@ -1,6 +1,8 @@
 import { prisma } from "@/lib/prisma";
 import { requestDepartments, JourneyStage, DEFAULT_DEPARTMENTS, type DepartmentConfig, type WorkflowType } from "@/lib/lims-shared";
 import { resolveTests } from "@/lib/resolve-tests";
+import { resend, labSender } from "@/lib/email/resend";
+import { doctorPatientArrived } from "@/lib/email/templates";
 
 /**
  * Load a lab's configured departments, falling back to the built-in defaults
@@ -101,9 +103,10 @@ export async function markSeenWithCommission(requestId: string): Promise<boolean
   const req = await prisma.request.findUnique({
     where: { id: requestId },
     select: {
-      id: true, lab_id: true, tests: true, test_breakdown: true, status: true,
+      id: true, code: true, lab_id: true, tests: true, test_breakdown: true, status: true,
+      patient_name: true,
       doctor_email: true, doctor_name: true, doctor_phone: true, doctor_hospital: true,
-      lab: { select: { free_trial: true } },
+      lab: { select: { name: true, notification_email: true, free_trial: true } },
     },
   });
   if (!req || req.status !== "incoming") return false;
@@ -147,18 +150,40 @@ export async function markSeenWithCommission(requestId: string): Promise<boolean
   }
 
   // Guarded UPDATE (status='incoming') keeps the wallet deduction single-shot
-  // even under a concurrent manual + journey-driven trigger.
+  // even under a concurrent manual + journey-driven trigger. The affected-row
+  // count tells us whether *this* call performed the transition, so the doctor
+  // notification fires exactly once.
   const breakdownJson = breakdown.length > 0 ? JSON.stringify(breakdown) : null;
+  let updated: number;
   if (breakdownJson) {
-    await prisma.$executeRawUnsafe(
+    updated = await prisma.$executeRawUnsafe(
       `UPDATE requests SET status='seen', seen_at=NOW(), test_breakdown=$1::jsonb, poveon_amount=$2, lab_revenue_amount=$3, is_paid_to_poveon=$4 WHERE id=$5 AND status='incoming'`,
       breakdownJson, poveonFee, labRevenue, isPaidToPoveon, requestId,
     );
   } else {
-    await prisma.$executeRawUnsafe(
+    updated = await prisma.$executeRawUnsafe(
       `UPDATE requests SET status='seen', seen_at=NOW(), poveon_amount=$1, lab_revenue_amount=$2, is_paid_to_poveon=$3 WHERE id=$4 AND status='incoming'`,
       poveonFee, labRevenue, isPaidToPoveon, requestId,
     );
+  }
+
+  // Only the call that actually flipped incoming → seen notifies the doctor.
+  if (updated > 0 && req.doctor_email) {
+    const brand = req.lab.notification_email ? { name: req.lab.name } : undefined;
+    resend.emails.send({
+      from: labSender(req.lab),
+      to: req.doctor_email,
+      subject: `Order Confirmed — ${req.lab.name} has confirmed the order for ${req.patient_name ?? "Patient"}`,
+      html: doctorPatientArrived({
+        doctorName: req.doctor_name,
+        patientName: req.patient_name ?? "Patient",
+        labName: req.lab.name,
+        code: req.code,
+        brand,
+      }),
+    })
+      .then(({ error }) => { if (error) console.error("[email] patient arrived:", JSON.stringify(error)); })
+      .catch((e) => console.error("[email] patient arrived error:", e));
   }
 
   await accrueProfessionalCommission({ labId: req.lab_id, requestId, doctorEmail: req.doctor_email, labRevenue });
