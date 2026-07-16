@@ -21,7 +21,8 @@ export interface Lab {
   logo_url: string | null;
   hero_image_url: string | null;
   whatsapp: string | null;
-  request_email: string | null;
+  request_email: string | null; // Primary/legacy new-request alert recipient
+  request_emails: string[]; // Additional new-request alert recipients
   hidden: boolean;
   search_hidden: boolean;
   free_trial: boolean;

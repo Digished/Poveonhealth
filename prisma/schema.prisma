@@ -22,7 +22,8 @@ model Lab {
   hero_image_url     String? // Custom background image for the lab's unique page
   whatsapp           String? // WhatsApp number for FAB contact buttons
   notification_email String? // Branded "from" address for result/notification emails
-  request_email      String? // Dedicated address for incoming new-request alerts
+  request_email      String? // Primary/legacy address for incoming new-request alerts
+  request_emails     Json     @default("[]") // Additional recipient addresses for new-request alerts
   hidden             Boolean  @default(false)
   search_hidden      Boolean  @default(false) // hides from search/directory but unique page still works
   service_categories Json     @default("[]")

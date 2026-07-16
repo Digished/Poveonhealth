@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { z } from "zod";
 import { prisma } from "@/lib/prisma";
 import { generateUniqueCode } from "@/lib/code-generator";
-import { resend, labSender, FROM_ADDRESS } from "@/lib/email/resend";
+import { resend, labSender, labRequestRecipients, FROM_ADDRESS } from "@/lib/email/resend";
 import { doctorRequestConfirmation, patientRequestCode, labNewRequest, marketerNewRequest } from "@/lib/email/templates";
 import { testsToCategories } from "@/lib/test-categories";
 import { resolveTests, totalFromBreakdown, type ResolvedTest } from "@/lib/resolve-tests";
@@ -419,12 +419,13 @@ export async function POST(request: NextRequest) {
         );
       }
 
-      if (lab.request_email) {
+      const requestRecipients = labRequestRecipients(lab);
+      if (requestRecipients.length > 0) {
         const isUrgent = data.needs_ambulance || data.is_critical;
         sends.push(
           resend.emails.send({
             from: labSender(lab),
-            to: lab.request_email,
+            to: requestRecipients,
             subject: `New Lab Request${isUrgent ? " — URGENT" : ""}`,
             html: labNewRequest({
               labName: lab.name,

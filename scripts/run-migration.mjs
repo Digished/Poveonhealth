@@ -1626,6 +1626,11 @@ const migrations = [
     continueOnError: true,
   },
   {
+    desc: "labs.request_emails column (multiple new-request notification recipients)",
+    sql: `ALTER TABLE labs ADD COLUMN IF NOT EXISTS request_emails JSONB NOT NULL DEFAULT '[]'`,
+    continueOnError: true,
+  },
+  {
     desc: "rider_sessions table",
     sql: `CREATE TABLE IF NOT EXISTS rider_sessions (
       id TEXT PRIMARY KEY,
