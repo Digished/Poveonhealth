@@ -6,7 +6,7 @@
 // =============================================================================
 
 import { prisma } from "@/lib/prisma";
-import { resend, labSender, FROM_ADDRESS } from "@/lib/email/resend";
+import { resend, labSender, labRequestRecipients, FROM_ADDRESS } from "@/lib/email/resend";
 import {
   ridePatientEmail,
   rideDoctorEmail,
@@ -208,11 +208,12 @@ export async function notifyRideRedeemed(rideId: string): Promise<void> {
     }
 
     // Lab — flag the free ride on this order.
-    if (lab.request_email) {
+    const labRecipients = labRequestRecipients(lab);
+    if (labRecipients.length > 0) {
       sends.push(
         resend.emails.send({
           from: labSender(lab),
-          to: lab.request_email,
+          to: labRecipients,
           subject: `Order with free patient ride — ${ride.destination_lab}`,
           html: rideLabEmail({
             labName: lab.name,

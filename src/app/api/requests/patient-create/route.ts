@@ -9,7 +9,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { z } from "zod";
 import { prisma } from "@/lib/prisma";
 import { generateUniqueCode } from "@/lib/code-generator";
-import { resend, labSender } from "@/lib/email/resend";
+import { resend, labSender, labRequestRecipients } from "@/lib/email/resend";
 import { labNewRequest, patientRequestCode } from "@/lib/email/templates";
 import { testsToCategories } from "@/lib/test-categories";
 import { resolveTests, totalFromBreakdown } from "@/lib/resolve-tests";
@@ -149,11 +149,12 @@ export async function POST(request: NextRequest) {
     const labPhones = (lab.phones as { number: string; label: string }[]) ?? [];
 
     // Notify lab by email (fire-and-forget)
-    if (lab.request_email) {
+    const requestRecipients = labRequestRecipients(lab);
+    if (requestRecipients.length > 0) {
       const appUrl = process.env.NEXT_PUBLIC_APP_URL || "https://poveon.com";
       resend.emails.send({
         from: labSender(lab),
-        to: lab.request_email,
+        to: requestRecipients,
         subject: `New Self-Service Request`,
         html: labNewRequest({
           labName: lab.name,

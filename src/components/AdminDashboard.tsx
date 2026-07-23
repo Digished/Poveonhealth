@@ -8,7 +8,7 @@ import {
   Phone, Upload, Check, MapPin, Users, ChevronRight, ChevronDown, ChevronUp,
   Code2, Key, Copy, TrendingUp, Link, Sun, Moon, Star, GitBranch,
   ArrowUpRight, ArrowDownRight, ArrowDownToLine, Settings, CreditCard, MessageCircle,
-  BookOpen, Database, Sparkles, Search, Layers, UserCircle, Wallet, FileText, AlertCircle, Filter, Download, Stethoscope, Mail, Zap, HeartPulse, Gift,
+  BookOpen, Database, Sparkles, Search, Layers, UserCircle, Wallet, FileText, AlertCircle, Filter, Download, Stethoscope, Mail, Zap, HeartPulse, Gift, HeartHandshake,
 } from "lucide-react";
 import { useDashTheme } from "@/hooks/useDashTheme";
 import { renderLabSla, EMPTY_LAB_SLA, type LabSlaData } from "@/lib/labSlaTemplate";
@@ -22,6 +22,7 @@ import { AdminBroadcastTab } from "@/components/admin/AdminBroadcastTab";
 import { AdminHmoTab } from "@/components/admin/AdminHmoTab";
 import { AdminClientsTab } from "@/components/admin/AdminClientsTab";
 import { AdminPerksTab } from "@/components/admin/AdminPerksTab";
+import { AdminLabPartnersModal } from "@/components/admin/AdminLabPartnersModal";
 import { SpecialtyTreePicker } from "@/components/admin/SpecialtyTreePicker";
 import { HospitalDoctorsPanel } from "@/components/admin/HospitalDoctorsPanel";
 import { Button } from "@/components/ui/Button";
@@ -118,6 +119,7 @@ export function AdminDashboard() {
   const [sendAgreementLab, setSendAgreementLab] = useState<Lab | null>(null);
   const [transferEmailLab, setTransferEmailLab] = useState<Lab | null>(null);
   const [catalogLab, setCatalogLab] = useState<Lab | null>(null);
+  const [partnersLab, setPartnersLab] = useState<Lab | null>(null);
   type AgreementRecord = { id: string; version: string; signed_at: string; signer_name: string; signer_email: string; signer_title: string | null; pdf_hash: string; lab: { id: string; name: string; email: string } };
   const [agreements, setAgreements] = useState<AgreementRecord[]>([]);
   const [agreementsLoading, setAgreementsLoading] = useState(false);
@@ -1346,6 +1348,9 @@ export function AdminDashboard() {
                           <button onClick={() => setCatalogLab(lab)} title="Test Catalog" className="p-2 rounded-lg hover:bg-teal-500/15 text-slate-500 hover:text-teal-400 transition-colors">
                             <FlaskConical className="w-3.5 h-3.5" />
                           </button>
+                          <button onClick={() => setPartnersLab(lab)} title="Partners (HMOs, hospitals, companies)" className="p-2 rounded-lg hover:bg-rose-500/15 text-slate-500 hover:text-rose-400 transition-colors">
+                            <HeartHandshake className="w-3.5 h-3.5" />
+                          </button>
                           <button onClick={() => setExpandedLabIntegration(lab.id)} title="Dev / Integration" className="p-2 rounded-lg hover:bg-blue-500/15 text-slate-500 hover:text-blue-400 transition-colors">
                             <Code2 className="w-3.5 h-3.5" />
                           </button>
@@ -1480,6 +1485,9 @@ export function AdminDashboard() {
                             </button>
                             <button onClick={() => setCatalogLab(lab)} className="flex items-center justify-center gap-1.5 px-3 py-2 rounded-xl bg-teal-500/10 hover:bg-teal-500/20 text-teal-400 text-xs font-medium transition-colors">
                               <FlaskConical className="w-3.5 h-3.5" />Catalog
+                            </button>
+                            <button onClick={() => setPartnersLab(lab)} className="flex items-center justify-center gap-1.5 px-3 py-2 rounded-xl bg-rose-500/10 hover:bg-rose-500/20 text-rose-400 text-xs font-medium transition-colors">
+                              <HeartHandshake className="w-3.5 h-3.5" />Partners
                             </button>
                             <button onClick={() => setExpandedLabIntegration(lab.id)} className="flex items-center justify-center gap-1.5 px-3 py-2 rounded-xl bg-blue-500/10 hover:bg-blue-500/20 text-blue-400 text-xs font-medium transition-colors">
                               <Code2 className="w-3.5 h-3.5" />Dev
@@ -1972,6 +1980,10 @@ export function AdminDashboard() {
       )}
       {catalogLab && (
         <AdminLabCatalogModal lab={catalogLab} onClose={() => setCatalogLab(null)} />
+      )}
+
+      {partnersLab && (
+        <AdminLabPartnersModal lab={partnersLab} onClose={() => setPartnersLab(null)} />
       )}
       {selectedReferralGroup && (
         <ReferralDetailModal group={selectedReferralGroup} onClose={() => setSelectedReferralGroup(null)} />

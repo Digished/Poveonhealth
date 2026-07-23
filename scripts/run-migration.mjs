@@ -16,10 +16,67 @@ const { PrismaClient } = require("@prisma/client");
 // pooled DATABASE_URL goes through PgBouncer in transaction mode, where each
 // $executeRawUnsafe can land on a different backend and lose its prepared
 // statement ("prepared statement \"sNN\" does not exist", SQLSTATE 26000).
-const directUrl = process.env.DIRECT_URL || process.env.DATABASE_URL;
-const prisma = new PrismaClient(
-  directUrl ? { datasources: { db: { url: directUrl } } } : undefined
-);
+const pooledUrl = process.env.DATABASE_URL;
+const directUrl = process.env.DIRECT_URL || pooledUrl;
+
+function clientFor(url) {
+  return new PrismaClient(url ? { datasources: { db: { url } } } : undefined);
+}
+
+// Connection-level failures (DNS, refused, stale Supabase pooler tenant,
+// bad password) — as opposed to per-statement SQL errors.
+function isConnectionError(err) {
+  const msg = String(err?.message ?? "");
+  return (
+    msg.includes("ENOTFOUND") ||
+    msg.includes("ECONNREFUSED") ||
+    msg.includes("ETIMEDOUT") ||
+    msg.includes("Timed out") ||
+    msg.includes("tenant/user") || // Supavisor: "FATAL: tenant/user ... not found"
+    msg.includes("Can't reach database server") ||
+    msg.includes("password authentication failed")
+  );
+}
+
+function shortError(err) {
+  const lines = String(err?.message ?? err).split("\n").map((l) => l.trim()).filter(Boolean);
+  return lines[lines.length - 1] ?? "unknown error";
+}
+
+// Probe the connection before running anything: a dead connection would
+// otherwise surface as dozens of confusing per-statement failures (and
+// continueOnError steps would silently report "already applied"). If the
+// direct connection is broken but the pooled one works, fall back to it —
+// execWithRetry below already handles pooler prepared-statement artifacts.
+let prisma = clientFor(directUrl);
+try {
+  await prisma.$queryRawUnsafe("SELECT 1");
+} catch (err) {
+  if (isConnectionError(err) && pooledUrl && pooledUrl !== directUrl) {
+    console.warn(`  ! DIRECT_URL connection failed (${shortError(err)}) — falling back to DATABASE_URL`);
+    await prisma.$disconnect().catch(() => {});
+    prisma = clientFor(pooledUrl);
+    try {
+      await prisma.$queryRawUnsafe("SELECT 1");
+    } catch (err2) {
+      console.error(`  ✗ DATABASE_URL connection also failed: ${shortError(err2)}`);
+      console.error(
+        "\nCannot reach the database, so no migrations can run. Check the DATABASE_URL and DIRECT_URL " +
+          "environment variables in your deployment settings — a \"tenant/user ... not found\" error means " +
+          "the Supabase connection string is stale (get a fresh one from Supabase Dashboard → Connect)."
+      );
+      process.exit(1);
+    }
+  } else {
+    console.error(`  ✗ Database connection failed: ${shortError(err)}`);
+    console.error(
+      "\nCannot reach the database, so no migrations can run. Check the DATABASE_URL and DIRECT_URL " +
+        "environment variables in your deployment settings — a \"tenant/user ... not found\" error means " +
+        "the Supabase connection string is stale (get a fresh one from Supabase Dashboard → Connect)."
+    );
+    process.exit(1);
+  }
+}
 
 // Belt-and-suspenders: even on a direct connection, retry the pooler artifact.
 function isPreparedStmtArtifact(err) {
@@ -1623,6 +1680,11 @@ const migrations = [
   {
     desc: "rider_otps index (email)",
     sql: `CREATE INDEX IF NOT EXISTS rider_otps_email_idx ON rider_otps (email)`,
+    continueOnError: true,
+  },
+  {
+    desc: "labs.request_emails column (multiple new-request notification recipients)",
+    sql: `ALTER TABLE labs ADD COLUMN IF NOT EXISTS request_emails JSONB NOT NULL DEFAULT '[]'`,
     continueOnError: true,
   },
   {

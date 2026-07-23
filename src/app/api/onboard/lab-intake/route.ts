@@ -17,7 +17,7 @@ import { generateUniqueCode } from "@/lib/code-generator";
 import { resolveTests, totalFromBreakdown } from "@/lib/resolve-tests";
 import { seedDepartmentTracks } from "@/lib/lims";
 import { logApiCall } from "@/lib/api-logger";
-import { resend, FROM_ADDRESS, labSender } from "@/lib/email/resend";
+import { resend, FROM_ADDRESS, labSender, labRequestRecipients } from "@/lib/email/resend";
 import { labQueueRegistration, patientQueueJoined } from "@/lib/email/templates";
 
 const Schema = z.object({
@@ -225,8 +225,9 @@ export async function POST(request: NextRequest) {
     // QR self-registration → notify the lab and the patient by email
     // (fire-and-forget; the dashboard queue polls for the on-screen alert).
     if (data.source === "qr") {
-      const labTo = lab.request_email || lab.email;
-      if (labTo) {
+      const labRecipients = labRequestRecipients(lab);
+      const labTo = labRecipients.length > 0 ? labRecipients : (lab.email ? [lab.email] : []);
+      if (labTo.length > 0) {
         resend.emails
           .send({
             from: FROM_ADDRESS,

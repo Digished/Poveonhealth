@@ -4,7 +4,7 @@ import { z } from "zod";
 import { verifyAdmin } from "@/lib/admin-auth";
 import { prisma } from "@/lib/prisma";
 import { processJob } from "@/lib/synonym-job-processor";
-import { resend, labSender } from "@/lib/email/resend";
+import { resend, labSender, labRequestRecipients } from "@/lib/email/resend";
 
 async function syncSynonymsToKb(rawName: string, newSyns: string[]) {
   const existingKb = await prisma.kbTest.findFirst({
@@ -146,14 +146,15 @@ export async function POST(
         // After job completes, send notification email
         const lab = await prisma.lab.findUnique({
           where: { id },
-          select: { name: true, request_email: true },
+          select: { name: true, request_email: true, request_emails: true },
         });
 
-        if (lab?.request_email) {
+        const completionRecipients = lab ? labRequestRecipients(lab) : [];
+        if (completionRecipients.length > 0) {
           try {
             await resend.emails.send({
-              from: labSender(lab),
-              to: lab.request_email,
+              from: labSender(lab!),
+              to: completionRecipients,
               subject: `AI Synonyms Generation Complete`,
               html: `
                 <h2>Synonym Generation Complete</h2>

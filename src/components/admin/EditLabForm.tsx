@@ -435,7 +435,22 @@ export function EditLabForm({
   const [notificationEmail, setNotificationEmail] = useState(
     lab.notification_email ?? ""
   );
-  const [requestEmail, setRequestEmail] = useState(lab.request_email ?? "");
+  const [requestEmails, setRequestEmails] = useState<string[]>(() => {
+    const list: string[] = [];
+    if (lab.request_email) list.push(lab.request_email);
+    if (Array.isArray(lab.request_emails)) {
+      for (const e of lab.request_emails) {
+        if (
+          typeof e === "string" &&
+          e.trim() &&
+          !list.some((x) => x.toLowerCase() === e.trim().toLowerCase())
+        ) {
+          list.push(e.trim());
+        }
+      }
+    }
+    return list.length ? list : [""];
+  });
 
   // ── Submit state ──────────────────────────────────────────────────────────
   const [loading, setLoading] = useState(false);
@@ -561,7 +576,7 @@ export function EditLabForm({
       notification_email: notificationEmail.trim() || null,
       slug: slug.trim() || null,
       whatsapp: cleanedWhatsapp.length ? JSON.stringify(cleanedWhatsapp) : null,
-      request_email: requestEmail.trim() || null,
+      request_emails: requestEmails.map((e) => e.trim()).filter(Boolean),
       service_categories: serviceCategories,
       certifications: certifications,
     };
@@ -930,18 +945,47 @@ export function EditLabForm({
 
               <div className="border-t border-slate-700/60 pt-5">
                 <label className={LABEL}>
-                  New Request Notification Email{" "}
+                  New Request Notification Emails{" "}
                   <span className="text-slate-500 font-normal">(optional)</span>
                 </label>
-                <input
-                  type="email"
-                  className={INPUT}
-                  placeholder="requests@hospital.com"
-                  value={requestEmail}
-                  onChange={(e) => setRequestEmail(e.target.value)}
-                />
+                <div className="space-y-2.5">
+                  {requestEmails.map((email, i) => (
+                    <div key={i} className="flex items-center gap-2">
+                      <input
+                        type="email"
+                        className={INPUT}
+                        placeholder="requests@hospital.com"
+                        value={email}
+                        onChange={(e) => {
+                          const next = [...requestEmails];
+                          next[i] = e.target.value;
+                          setRequestEmails(next);
+                        }}
+                      />
+                      {requestEmails.length > 1 && (
+                        <button
+                          type="button"
+                          onClick={() =>
+                            setRequestEmails(requestEmails.filter((_, j) => j !== i))
+                          }
+                          className="shrink-0 p-2.5 rounded-xl border border-slate-700 text-slate-400 hover:text-red-400 hover:border-red-500/50 transition-colors"
+                          aria-label="Remove email"
+                        >
+                          <Trash2 className="w-4 h-4" />
+                        </button>
+                      )}
+                    </div>
+                  ))}
+                  <button
+                    type="button"
+                    onClick={() => setRequestEmails([...requestEmails, ""])}
+                    className="flex items-center gap-1.5 text-xs text-medical-400 hover:text-medical-300 font-medium transition-colors"
+                  >
+                    <Plus className="w-3.5 h-3.5" /> Add notification email
+                  </button>
+                </div>
                 <p className={HINT}>
-                  When a new lab request is submitted, an alert is sent to this address.
+                  When a new lab request is submitted, an alert is sent to every address listed here.
                 </p>
               </div>
             </div>

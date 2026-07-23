@@ -26,6 +26,7 @@ const PatchSchema = z.object({
   slug: z.string().regex(/^[a-z0-9-]+$/).max(80).nullable().optional(),
   whatsapp: z.string().max(500).nullable().optional(),
   request_email: z.string().email().nullable().optional(),
+  request_emails: z.array(z.string().email()).optional(),
 });
 
 export async function PATCH(
@@ -44,9 +45,27 @@ export async function PATCH(
       return NextResponse.json({ success: false, error: "Invalid input" }, { status: 400 });
     }
 
+    // Normalize notification recipients: de-duplicate the request_emails list
+    // (case-insensitive) and keep the legacy singular request_email pointed at
+    // the first entry so older consumers still work.
+    const data: Record<string, unknown> = { ...parsed.data };
+    if (parsed.data.request_emails !== undefined) {
+      const seen = new Set<string>();
+      const emails: string[] = [];
+      for (const raw of parsed.data.request_emails) {
+        const email = raw.trim();
+        const key = email.toLowerCase();
+        if (!email || seen.has(key)) continue;
+        seen.add(key);
+        emails.push(email);
+      }
+      data.request_emails = emails;
+      data.request_email = emails[0] ?? null;
+    }
+
     const lab = await prisma.lab.update({
       where: { id: params.id },
-      data: parsed.data,
+      data,
     });
 
     return NextResponse.json({ success: true, lab });

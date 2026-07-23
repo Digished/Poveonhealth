@@ -1497,6 +1497,7 @@ export function DoctorRequestForm({
     free_trial: false,
     notification_email: null,
     request_email: null,
+    request_emails: [],
     created_at: "",
   } as Lab) : null);
 
