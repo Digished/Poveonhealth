@@ -122,12 +122,15 @@ function FuzzyCombo({
   options,
   placeholder,
   disabled,
+  allowCustom,
 }: {
   value: string;
   onChange: (v: string) => void;
   options: string[];
   placeholder: string;
   disabled?: boolean;
+  /** Lets the user keep what they typed when it isn't in the list. */
+  allowCustom?: boolean;
 }) {
   const [open, setOpen] = useState(false);
   const [query, setQuery] = useState("");
@@ -145,6 +148,11 @@ function FuzzyCombo({
   }, [open]);
 
   const suggestions = fuzzyFilter(query, options, 50);
+  // Offer "use what I typed" unless the query exactly matches a listed option.
+  const customEntry =
+    allowCustom && query.trim() && !options.some((o) => o.toLowerCase() === query.trim().toLowerCase())
+      ? query.trim()
+      : null;
 
   function pick(v: string) {
     onChange(v);
@@ -173,7 +181,11 @@ function FuzzyCombo({
               onChange={(e) => setQuery(e.target.value)}
               onKeyDown={(e) => {
                 if (e.key === "Escape") setOpen(false);
-                if (e.key === "Enter" && suggestions.length > 0) { e.preventDefault(); pick(suggestions[0]); }
+                if (e.key === "Enter") {
+                  e.preventDefault();
+                  if (suggestions.length > 0) pick(suggestions[0]);
+                  else if (customEntry) pick(customEntry);
+                }
               }}
               placeholder="Type to search…"
               className="w-full rounded-xl border border-slate-200 bg-slate-50 py-2.5 pl-9 pr-4 text-sm placeholder-slate-400 focus:border-medical-400 focus:outline-none focus:ring-2 focus:ring-medical-500"
@@ -181,8 +193,20 @@ function FuzzyCombo({
           </div>
         </div>
         <ul className="flex-1 overflow-y-auto overscroll-contain py-1">
+          {customEntry && (
+            <li>
+              <button
+                type="button"
+                onClick={() => pick(customEntry)}
+                className="flex w-full items-center gap-2 px-5 py-3 text-left text-sm text-medical-700 transition-colors hover:bg-medical-50 active:bg-medical-50"
+              >
+                <Plus className="h-4 w-4 shrink-0" />
+                <span className="min-w-0 truncate">Use &ldquo;{customEntry}&rdquo;</span>
+              </button>
+            </li>
+          )}
           {suggestions.length === 0 ? (
-            <li className="px-5 py-8 text-center text-sm text-slate-400">No matches found</li>
+            !customEntry && <li className="px-5 py-8 text-center text-sm text-slate-400">No matches found</li>
           ) : (
             suggestions.map((o) => (
               <li key={o}>
@@ -322,6 +346,18 @@ export function LabOnboardForm({
   // A revealed Poveon code reuses the full manual form, pre-filled — the
   // referral (doctor + tests) stays locked.
   const codeMode = entryMode === "code" && !!revealed;
+
+  // Hospital / HMO name lists for the referral pickers — the lab's partners
+  // first, then the platform directory. Fields stay plain inputs until loaded.
+  const [orgOptions, setOrgOptions] = useState<{ hospitals: string[]; hmos: string[] }>({ hospitals: [], hmos: [] });
+  useEffect(() => {
+    if (!lab.id && !lab.slug) return;
+    const q = lab.id ? `lab_id=${encodeURIComponent(lab.id)}` : `lab_slug=${encodeURIComponent(lab.slug!)}`;
+    fetch(`/api/onboard/partner-options?${q}`)
+      .then((r) => r.json())
+      .then((d) => { if (d?.success) setOrgOptions({ hospitals: d.hospitals ?? [], hmos: d.hmos ?? [] }); })
+      .catch(() => {});
+  }, [lab.id, lab.slug]);
 
   // Country is fixed to Nigeria for now (no editing).
   const fullName = [firstName.trim(), middleName.trim(), surname.trim()].filter(Boolean).join(" ");
@@ -639,7 +675,12 @@ export function LabOnboardForm({
                 <button
                   key={o.value}
                   type="button"
-                  onClick={() => setReferralType(o.value)}
+                  onClick={() => {
+                    // The hospital and HMO fields share referringOrg — drop it
+                    // so a hospital picked earlier can't pre-fill the HMO field.
+                    if (o.value !== referralType) setReferringOrg("");
+                    setReferralType(o.value);
+                  }}
                   className={`flex items-center gap-2 rounded-xl border px-3.5 py-2.5 text-left text-sm font-medium transition ${referralType === o.value ? "border-medical-500 bg-medical-50 text-medical-800" : "border-slate-200 bg-white text-slate-600 hover:border-slate-300"}`}
                 >
                   <span className={`flex h-4 w-4 shrink-0 items-center justify-center rounded-full border ${referralType === o.value ? "border-medical-600 bg-medical-600" : "border-slate-300"}`}>
@@ -771,7 +812,17 @@ export function LabOnboardForm({
               </div>
               <div>
                 <label className={labelCls}>Referring hospital / company (optional)</label>
-                <input className={inputCls} value={referringOrg} onChange={(e) => setReferringOrg(e.target.value)} placeholder="e.g. St. Mary's Hospital" />
+                {orgOptions.hospitals.length > 0 ? (
+                  <FuzzyCombo
+                    value={referringOrg}
+                    onChange={setReferringOrg}
+                    options={orgOptions.hospitals}
+                    placeholder="Search hospital / company"
+                    allowCustom
+                  />
+                ) : (
+                  <input className={inputCls} value={referringOrg} onChange={(e) => setReferringOrg(e.target.value)} placeholder="e.g. St. Mary's Hospital" />
+                )}
               </div>
             </>
           )}
@@ -779,7 +830,17 @@ export function LabOnboardForm({
             <>
               <div>
                 <label className={labelCls}>Name of HMO *</label>
-                <input className={inputCls} value={referringOrg} onChange={(e) => setReferringOrg(e.target.value)} placeholder="e.g. Hygeia HMO" />
+                {orgOptions.hmos.length > 0 ? (
+                  <FuzzyCombo
+                    value={referringOrg}
+                    onChange={setReferringOrg}
+                    options={orgOptions.hmos}
+                    placeholder="Search your HMO *"
+                    allowCustom
+                  />
+                ) : (
+                  <input className={inputCls} value={referringOrg} onChange={(e) => setReferringOrg(e.target.value)} placeholder="e.g. Hygeia HMO" />
+                )}
               </div>
               <div>
                 <label className={labelCls}>Policy number *</label>
