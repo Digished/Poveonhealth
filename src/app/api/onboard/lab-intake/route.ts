@@ -45,7 +45,7 @@ const Schema = z.object({
   referring_doctor_name: z.string().max(200).optional().or(z.literal("")),
   referring_org: z.string().max(200).optional().or(z.literal("")),
   policy_number: z.string().max(100).optional().or(z.literal("")),
-  payment_mode: z.enum(["cash", "card", "transfer", "bill_hospital"]).optional(),
+  payment_mode: z.enum(["cash", "card", "transfer", "bill_hospital", "hmo"]).optional(),
   consent: z.literal(true),
 });
 

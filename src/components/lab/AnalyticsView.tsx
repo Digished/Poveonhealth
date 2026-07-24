@@ -44,7 +44,7 @@ const PRESETS: { key: Preset; label: string }[] = [
 
 const SOURCE_LABEL: Record<string, string> = { poveon: "App referral", qr: "Self-service QR", walk_in: "Walk-in" };
 const REFERRAL_LABEL: Record<string, string> = { self: "Self referred", doctor: "Doctor / hospital", hmo: "HMO" };
-const PAYMENT_LABEL: Record<string, string> = { cash: "Cash", card: "Card", transfer: "Transfer", bill_hospital: "Bill to hospital / HMO" };
+const PAYMENT_LABEL: Record<string, string> = { cash: "Cash", card: "Card", transfer: "Transfer", bill_hospital: "Bill to hospital / HMO", hmo: "HMO" };
 
 /** Parse "LGA, State, Country" out of the stored address. */
 function parseLocation(address: string | null): { lga: string | null; state: string | null; country: string | null } {

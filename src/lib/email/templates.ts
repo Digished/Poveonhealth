@@ -1792,6 +1792,7 @@ export function labQueueRegistration({
     card: "Card",
     transfer: "Transfer",
     bill_hospital: "Bill to hospital / HMO",
+    hmo: "HMO",
   };
   return base(`
     <h2 style="margin:0 0 8px;color:#0259a0;font-size:20px;font-weight:700;">New Self-Service Registration</h2>

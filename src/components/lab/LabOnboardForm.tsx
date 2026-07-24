@@ -38,6 +38,7 @@ const PAYMENT_OPTIONS = [
   { value: "cash", label: "Cash" },
   { value: "card", label: "Card" },
   { value: "transfer", label: "Transfer" },
+  { value: "hmo", label: "HMO" },
   { value: "bill_hospital", label: "Bill to my hospital" },
 ] as const;
 
@@ -326,7 +327,7 @@ export function LabOnboardForm({
   const [doctorNameText, setDoctorNameText] = useState("");
   const [referringOrg, setReferringOrg] = useState("");
   const [policyNumber, setPolicyNumber] = useState("");
-  const [paymentMode, setPaymentMode] = useState<"" | "cash" | "card" | "transfer" | "bill_hospital">("");
+  const [paymentMode, setPaymentMode] = useState<"" | "cash" | "card" | "transfer" | "bill_hospital" | "hmo">("");
   const [complaintHelpOpen, setComplaintHelpOpen] = useState(false);
   const [tests, setTests] = useState<TestTag[]>([]);
   const [condition, setCondition] = useState("");
@@ -774,7 +775,7 @@ export function LabOnboardForm({
             )}
           </Reveal>
           <Reveal when={rvLocation}>
-            <label className={`${labelCls} flex items-center gap-1.5`}><MapPin className="h-3.5 w-3.5 text-slate-400" /> Where are you coming from? *</label>
+            <label className={`${labelCls} flex items-center gap-1.5`}><MapPin className="h-3.5 w-3.5 text-slate-400" /> Address *</label>
             <div className="grid grid-cols-2 gap-3">
               <FuzzyCombo
                 value={stateOf}
@@ -931,7 +932,7 @@ export function LabOnboardForm({
               <ReviewRow label="Phone" value={validPhones.join(", ")} />
               <ReviewRow label="WhatsApp" value={phoneIsWhatsapp === "yes" ? `${primaryPhone.trim()} (same number)` : validWhatsapps.join(", ") || "—"} />
               <ReviewRow label="Email" value={email.trim()} />
-              <ReviewRow label="Coming from" value={[lga, stateOf, country].filter(Boolean).join(", ")} />
+              <ReviewRow label="Address" value={[lga, stateOf, country].filter(Boolean).join(", ")} />
               {codeMode ? (
                 <ReviewRow label="Referral" value={[revealed?.doctor_name, revealed?.doctor_hospital].filter(Boolean).join(" · ") || "Poveon referral"} />
               ) : (

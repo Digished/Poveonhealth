@@ -1702,6 +1702,26 @@ const migrations = [
     sql: `CREATE INDEX IF NOT EXISTS rider_sessions_rider_idx ON rider_sessions (rider_id)`,
     continueOnError: true,
   },
+  {
+    desc: "requests.attending_by column (queue soft-lock: staff currently attending)",
+    sql: `ALTER TABLE requests ADD COLUMN IF NOT EXISTS attending_by TEXT`,
+    continueOnError: true,
+  },
+  {
+    desc: "requests.attending_since column (when the staff opened the client)",
+    sql: `ALTER TABLE requests ADD COLUMN IF NOT EXISTS attending_since TIMESTAMP(3)`,
+    continueOnError: true,
+  },
+  {
+    desc: "requests.details_captured_at column (staff finished entering details)",
+    sql: `ALTER TABLE requests ADD COLUMN IF NOT EXISTS details_captured_at TIMESTAMP(3)`,
+    continueOnError: true,
+  },
+  {
+    desc: "requests.details_captured_by column (staff who marked details captured)",
+    sql: `ALTER TABLE requests ADD COLUMN IF NOT EXISTS details_captured_by TEXT`,
+    continueOnError: true,
+  },
 ];
 
 let failed = false;

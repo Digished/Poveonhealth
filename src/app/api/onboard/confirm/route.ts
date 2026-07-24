@@ -24,7 +24,7 @@ const Schema = z.object({
   dob: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional().or(z.literal("")),
   sex: z.string().max(20).optional().or(z.literal("")),
   whatsapp_phone: z.string().max(300).optional().or(z.literal("")),
-  payment_mode: z.enum(["cash", "card", "transfer", "bill_hospital"]).optional(),
+  payment_mode: z.enum(["cash", "card", "transfer", "bill_hospital", "hmo"]).optional(),
   location_country: z.string().max(100).optional().or(z.literal("")),
   location_state: z.string().max(100).optional().or(z.literal("")),
   location_lga: z.string().max(100).optional().or(z.literal("")),
