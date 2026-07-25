@@ -35,6 +35,10 @@ const QUEUE_SELECT = {
   queue_confirmed_at: true,
   attended_at: true,
   queue_number: true,
+  attending_by: true,
+  attending_since: true,
+  details_captured_at: true,
+  details_captured_by: true,
 } as const;
 
 type QueueRow = Prisma.RequestGetPayload<{ select: typeof QUEUE_SELECT }>;
@@ -107,6 +111,9 @@ export async function GET(request: NextRequest) {
 
   return NextResponse.json({
     success: true,
+    // The current actor's email — lets the queue tell "you're attending" from
+    // "a colleague is attending" and avoid prompting yourself.
+    me: auth.actor_email ?? null,
     waiting: waiting.map(serialize),
     paid: paid.map(serialize),
     attended: attended.map(serialize),
@@ -115,7 +122,21 @@ export async function GET(request: NextRequest) {
 
 const ActionSchema = z.object({
   requestId: z.string().uuid(),
-  action: z.enum(["confirm", "mark_paid", "unpay", "attend", "unattend"]),
+  action: z.enum([
+    "confirm",
+    "mark_paid",
+    "unpay",
+    "attend",
+    "unattend",
+    // Soft-lock: a staff member opens a client (claim) / closes it (release) so
+    // colleagues know it's being handled and don't duplicate the work.
+    "claim",
+    "release",
+    // Marks that the client's details have been entered (e.g. into an external
+    // LIMS), so no one re-keys them.
+    "details_done",
+    "details_undone",
+  ]),
   // Optional edits applied when saving (the lab corrects details on the queue).
   edits: z
     .object({
@@ -126,7 +147,7 @@ const ActionSchema = z.object({
       sex: z.string().max(20).optional(),
       tests: z.string().max(3000).optional(),
       whatsapp_phone: z.string().max(50).optional(),
-      payment_mode: z.enum(["cash", "card", "transfer", "bill_hospital"]).nullable().optional(),
+      payment_mode: z.enum(["cash", "card", "transfer", "bill_hospital", "hmo"]).nullable().optional(),
       referral_type: z.enum(["self", "doctor", "hmo"]).nullable().optional(),
       doctor_name: z.string().max(200).optional(),
       doctor_hospital: z.string().max(200).optional(),
@@ -152,7 +173,7 @@ export async function POST(request: NextRequest) {
   if (!parsed.success) return NextResponse.json({ success: false, error: "Invalid input" }, { status: 400 });
   const { requestId, action, edits } = parsed.data;
 
-  const req = await prisma.request.findUnique({ where: { id: requestId }, select: { id: true, lab_id: true, code: true } });
+  const req = await prisma.request.findUnique({ where: { id: requestId }, select: { id: true, lab_id: true, code: true, attending_by: true } });
   if (!req) return NextResponse.json({ success: false, error: "Request not found" }, { status: 404 });
   if (req.lab_id !== auth.lab_id) return NextResponse.json({ success: false, error: "Unauthorized" }, { status: 403 });
 
@@ -185,9 +206,41 @@ export async function POST(request: NextRequest) {
   } else if (action === "attend") {
     data.attended_at = new Date();
     activity = "marked attended";
-  } else {
+  } else if (action === "unattend") {
     data.attended_at = null;
     activity = "returned to queue";
+  } else if (action === "claim") {
+    // The opener takes the soft-lock (last opener wins — the UI warns a
+    // colleague before they take over an already-open client).
+    data.attending_by = auth.actor_email ?? "a colleague";
+    data.attending_since = new Date();
+    activity = "opened client details";
+  } else if (action === "release") {
+    // Only clear the lock if we still hold it, so we never clobber a colleague
+    // who has since taken the client over.
+    if (!req.attending_by || req.attending_by === auth.actor_email) {
+      data.attending_by = null;
+      data.attending_since = null;
+    }
+    activity = "closed client details";
+  } else if (action === "details_done") {
+    data.details_captured_at = new Date();
+    data.details_captured_by = auth.actor_email ?? null;
+    // Finishing the details also frees the soft-lock.
+    data.attending_by = null;
+    data.attending_since = null;
+    activity = "marked details captured";
+  } else {
+    // details_undone
+    data.details_captured_at = null;
+    data.details_captured_by = null;
+    activity = "unmarked details captured";
+  }
+
+  // Nothing to write (e.g. a release when someone else now holds the lock).
+  if (Object.keys(data).length === 0) {
+    const current = await prisma.request.findUnique({ where: { id: requestId }, select: QUEUE_SELECT });
+    return NextResponse.json({ success: true, request: current ? serialize(current) : null });
   }
 
   const updated = await prisma.request.update({ where: { id: requestId }, data, select: QUEUE_SELECT });

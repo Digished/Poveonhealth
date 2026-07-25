@@ -64,7 +64,7 @@ function money(currency: string, n: number): string {
 
 function paymentModeLabel(mode?: string | null): string {
   if (!mode) return "—";
-  return { cash: "Cash", card: "Card", transfer: "Transfer", bill_hospital: "Billed to hospital" }[mode] ?? mode;
+  return { cash: "Cash", card: "Card", transfer: "Transfer", bill_hospital: "Billed to hospital", hmo: "HMO" }[mode] ?? mode;
 }
 
 export function ReceiptPdf(props: ReceiptProps) {

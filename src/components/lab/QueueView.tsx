@@ -1,7 +1,7 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useState } from "react";
-import { Loader2, Check, Search, RefreshCw, Pencil, Phone, Undo2, QrCode, MessageCircle, CreditCard, Stethoscope, Hourglass, UserCheck, UserPlus, X, Printer, AlertTriangle, Workflow, Mail, MapPin, ChevronRight } from "lucide-react";
+import { Children, useCallback, useEffect, useMemo, useState } from "react";
+import { Loader2, Check, Search, RefreshCw, Pencil, Phone, Undo2, QrCode, MessageCircle, CreditCard, Stethoscope, Hourglass, UserCheck, UserPlus, X, Printer, AlertTriangle, Workflow, Mail, MapPin, ChevronRight, Copy, MoreHorizontal, ClipboardCheck, Eye } from "lucide-react";
 import toast from "react-hot-toast";
 import dynamic from "next/dynamic";
 import { FullViewModal } from "@/components/ui/FullViewModal";
@@ -39,10 +39,29 @@ interface QueueReq {
   queue_confirmed_at: string | null;
   attended_at: string | null;
   queue_number: number | null;
+  attending_by: string | null;
+  attending_since: string | null;
+  details_captured_at: string | null;
+  details_captured_by: string | null;
 }
 
 type QueueTab = "queue" | "attended" | "journey";
-type QueueAction = "mark_paid" | "unpay" | "attend" | "unattend";
+type QueueAction = "mark_paid" | "unpay" | "attend" | "unattend" | "claim" | "release" | "details_done" | "details_undone";
+
+// How long a colleague's open-client soft-lock stays "live" before we treat it
+// as stale (they likely closed the tab without releasing it).
+const LOCK_TTL_MS = 10 * 60 * 1000;
+
+function lockIsFresh(since: string | null): boolean {
+  if (!since) return false;
+  return Date.now() - new Date(since).getTime() < LOCK_TTL_MS;
+}
+
+/** A short, readable name for a staff member from their email (before the @). */
+function actorLabel(email: string | null): string {
+  if (!email) return "a colleague";
+  return email.split("@")[0] || email;
+}
 
 const REFERRAL_LABEL: Record<string, string> = {
   self: "Self referred",
@@ -55,7 +74,35 @@ const PAYMENT_LABEL: Record<string, string> = {
   card: "Card",
   transfer: "Transfer",
   bill_hospital: "Bill to hospital",
+  hmo: "HMO",
 };
+
+/**
+ * A plain-text summary of everything the client submitted — one field per line,
+ * ready to paste into an external LIMS. Kept human-readable rather than CSV/JSON
+ * so it drops cleanly into any patient form.
+ */
+function buildCopyText(r: QueueReq): string {
+  const lines: [string, string | null | undefined][] = [
+    ["Name", r.patient_name],
+    ["Phone", r.patient_phone],
+    ["WhatsApp", r.whatsapp_phone],
+    ["Email", r.patient_email],
+    ["Age", r.patient_age != null ? `${r.patient_age}` : null],
+    ["Sex", r.sex],
+    ["Date of birth", r.dob],
+    ["Address", r.address],
+    ["Referral", r.referral_type ? (REFERRAL_LABEL[r.referral_type] ?? r.referral_type) : null],
+    ["Referring doctor", r.referral_type !== "self" ? r.doctor_name : null],
+    ["Hospital / HMO", r.doctor_hospital],
+    ["Policy number", r.policy_number],
+    ["Payment mode", r.payment_mode ? (PAYMENT_LABEL[r.payment_mode] ?? r.payment_mode) : null],
+    ["Complaint", r.diagnosis],
+    ["Tests", testNames(r).join(", ") || null],
+    ["Code", r.code],
+  ];
+  return lines.filter(([, v]) => v != null && String(v).trim() !== "").map(([k, v]) => `${k}: ${String(v).trim()}`).join("\n");
+}
 
 function fmtTime(iso: string | null): string {
   if (!iso) return "—";
@@ -141,6 +188,7 @@ export function QueueView({
   const [waiting, setWaiting] = useState<QueueReq[]>([]);
   const [paid, setPaid] = useState<QueueReq[]>([]);
   const [attended, setAttended] = useState<QueueReq[]>([]);
+  const [me, setMe] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [busyId, setBusyId] = useState<string | null>(null);
@@ -163,6 +211,7 @@ export function QueueView({
       const res = await fetch("/api/lab/queue", { cache: "no-store" });
       const data = await res.json();
       if (!data.success) throw new Error(data.error || "Failed");
+      setMe(data.me ?? null);
       setWaiting(data.waiting ?? []);
       setPaid(data.paid ?? []);
       setAttended(data.attended ?? []);
@@ -203,6 +252,39 @@ export function QueueView({
       setBusyId(null);
     }
   }, [load]);
+
+  // Fire-and-forget queue writes (claim / release the soft-lock) — no toast,
+  // no spinner; the 15s poll reconciles everyone's view.
+  const quietAct = useCallback((requestId: string, action: QueueAction) => {
+    fetch("/api/lab/queue", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ requestId, action }),
+      keepalive: true,
+    })
+      .then(() => load(true))
+      .catch(() => {});
+  }, [load]);
+
+  // Open a client. If a colleague already has them open (a fresh soft-lock),
+  // warn first so two people don't work the same client at once.
+  const openDetail = useCallback((r: QueueReq) => {
+    if (r.attending_by && r.attending_by !== me && lockIsFresh(r.attending_since)) {
+      const ok = window.confirm(
+        `${r.patient_name || "This client"} is currently being attended to by ${actorLabel(r.attending_by)}.\n\nOpen anyway?`
+      );
+      if (!ok) return;
+    }
+    setDetailFor(r);
+    if (canManage) quietAct(r.id, "claim");
+  }, [me, canManage, quietAct]);
+
+  const closeDetail = useCallback(() => {
+    setDetailFor((cur) => {
+      if (cur && canManage) quietAct(cur.id, "release");
+      return null;
+    });
+  }, [canManage, quietAct]);
 
   function openWalkIn() {
     fetch("/api/lab/templates", { cache: "no-store" })
@@ -367,8 +449,8 @@ export function QueueView({
                   key={r.id}
                   role="button"
                   tabIndex={0}
-                  onClick={() => setDetailFor(r)}
-                  onKeyDown={(e) => { if (e.key === "Enter") setDetailFor(r); }}
+                  onClick={() => openDetail(r)}
+                  onKeyDown={(e) => { if (e.key === "Enter") openDetail(r); }}
                   className={`cursor-pointer rounded-2xl border p-4 transition ${tab === "attended" ? "border-white/5 bg-white/3 hover:bg-white/6" : "border-white/10 bg-white/5 hover:bg-white/10"}`}
                 >
                   <div className="flex items-start gap-3">
@@ -392,6 +474,20 @@ export function QueueView({
                         {r.payment_mode && <span>Pays: {PAYMENT_LABEL[r.payment_mode] ?? r.payment_mode}</span>}
                         <span>{tab === "attended" ? `Attended at ${fmtTime(r.attended_at)}` : `Joined ${timeAgo(r.queue_confirmed_at ?? r.created_at)}`}</span>
                       </div>
+                      {(r.details_captured_at || (r.attending_by && lockIsFresh(r.attending_since))) && (
+                        <div className="mt-1.5 flex flex-wrap items-center gap-1.5">
+                          {r.attending_by && lockIsFresh(r.attending_since) && (
+                            <span className="inline-flex items-center gap-1 rounded-full bg-amber-500/15 px-2 py-0.5 text-[10px] font-medium text-amber-300">
+                              <Eye className="h-2.5 w-2.5" /> {r.attending_by === me ? "You're attending" : `${actorLabel(r.attending_by)} is attending`}
+                            </span>
+                          )}
+                          {r.details_captured_at && (
+                            <span className="inline-flex items-center gap-1 rounded-full bg-emerald-500/15 px-2 py-0.5 text-[10px] font-medium text-emerald-300">
+                              <ClipboardCheck className="h-2.5 w-2.5" /> Details captured
+                            </span>
+                          )}
+                        </div>
+                      )}
                       <div className="mt-2"><QueueStages r={r} /></div>
                     </div>
                     <ChevronRight className="mt-3 h-4 w-4 shrink-0 text-slate-500" />
@@ -469,10 +565,12 @@ export function QueueView({
           request={detailFor}
           position={positions.get(detailFor.id) ?? null}
           canManage={canManage}
+          lite={lite}
+          me={me}
           busy={busyId === detailFor.id}
           onAction={(action, msg) => act(detailFor.id, action, msg)}
           onEdit={() => { setEditFor(detailFor); setDetailFor(null); }}
-          onClose={() => setDetailFor(null)}
+          onClose={closeDetail}
         />
       )}
 
@@ -480,9 +578,40 @@ export function QueueView({
         <QueueEditModal
           request={editFor}
           labId={labId}
-          onClose={() => setEditFor(null)}
-          onDone={() => { setEditFor(null); load(true); }}
+          onClose={() => { if (canManage) quietAct(editFor.id, "release"); setEditFor(null); }}
+          onDone={() => { if (canManage) quietAct(editFor.id, "release"); setEditFor(null); load(true); }}
         />
+      )}
+    </div>
+  );
+}
+
+const menuItemCls = "flex w-full items-center gap-2 px-3 py-2 text-left text-xs font-medium text-slate-200 hover:bg-white/5 disabled:opacity-50";
+
+/**
+ * A compact "More" dropdown for the detail modal's secondary actions. Opens
+ * upward (the footer sits at the bottom of the popup) and renders nothing when
+ * it has no actionable children.
+ */
+function ActionMenu({ children }: { children: React.ReactNode }) {
+  const [open, setOpen] = useState(false);
+  const items = Children.toArray(children).filter(Boolean);
+  if (items.length === 0) return null;
+  return (
+    <div className="relative">
+      <button
+        onClick={() => setOpen((v) => !v)}
+        className="inline-flex items-center gap-1.5 rounded-lg border border-white/10 px-3 py-2 text-xs font-medium text-slate-200 hover:bg-white/5"
+      >
+        <MoreHorizontal className="h-3.5 w-3.5" /> More
+      </button>
+      {open && (
+        <>
+          <div className="fixed inset-0 z-10" onClick={() => setOpen(false)} />
+          <div className="absolute bottom-full right-0 z-20 mb-1 w-52 overflow-hidden rounded-xl border border-white/10 bg-slate-800 py-1 shadow-xl" onClick={() => setOpen(false)}>
+            {items}
+          </div>
+        </>
       )}
     </div>
   );
@@ -493,6 +622,8 @@ function QueueDetailModal({
   request: r,
   position,
   canManage,
+  lite,
+  me,
   busy,
   onAction,
   onEdit,
@@ -501,6 +632,9 @@ function QueueDetailModal({
   request: QueueReq;
   position: number | null;
   canManage: boolean;
+  /** Lite / micro mode tucks the checklist + edit under a "More" menu so only one primary action shows. */
+  lite: boolean;
+  me: string | null;
   busy: boolean;
   onAction: (action: QueueAction, okMsg: string) => void;
   onEdit: () => void;
@@ -511,6 +645,18 @@ function QueueDetailModal({
   const total = r.quoted_price ?? rows.reduce((s, x) => s + (x.price ?? 0), 0);
   const names = testNames(r);
   const attended = !!r.attended_at;
+  const detailsCaptured = !!r.details_captured_at;
+  const attendingByOther = !!r.attending_by && r.attending_by !== me && lockIsFresh(r.attending_since);
+  const checklistUrl = `/api/lab/requests/${r.id}/checklist-pdf`;
+
+  async function copyDetails() {
+    try {
+      await navigator.clipboard.writeText(buildCopyText(r));
+      toast.success("Client details copied — paste into your LIMS");
+    } catch {
+      toast.error("Couldn't copy — please try again");
+    }
+  }
 
   const Row = ({ label, value }: { label: string; value: React.ReactNode }) =>
     value ? (
@@ -549,7 +695,7 @@ function QueueDetailModal({
           <Row label="Email" value={r.patient_email && <span className="inline-flex items-center gap-1"><Mail className="h-3.5 w-3.5 text-slate-400" /> {r.patient_email}</span>} />
           <Row label="Age / Sex" value={[r.patient_age != null ? `${r.patient_age} yrs` : null, r.sex].filter(Boolean).join(" · ") || null} />
           <Row label="Date of birth" value={r.dob} />
-          <Row label="Coming from" value={r.address && <span className="inline-flex items-center gap-1"><MapPin className="h-3.5 w-3.5 text-slate-400" /> {r.address}</span>} />
+          <Row label="Address" value={r.address && <span className="inline-flex items-center gap-1"><MapPin className="h-3.5 w-3.5 text-slate-400" /> {r.address}</span>} />
           <Row label="Referral" value={r.referral_type ? (REFERRAL_LABEL[r.referral_type] ?? r.referral_type) : null} />
           <Row label="Referring doctor" value={r.referral_type !== "self" ? r.doctor_name : null} />
           <Row label="Hospital / HMO" value={r.doctor_hospital} />
@@ -603,45 +749,92 @@ function QueueDetailModal({
         </div>
 
         {/* Actions */}
-        <div className="flex flex-wrap items-center justify-end gap-2 border-t border-white/10 pt-4">
-          <a
-            href={`/api/lab/requests/${r.id}/checklist-pdf`}
-            target="_blank"
-            rel="noreferrer"
-            className="inline-flex items-center gap-1.5 rounded-lg border border-white/10 px-3 py-2 text-xs font-medium text-medical-300 hover:bg-white/5"
-          >
-            <Printer className="h-3.5 w-3.5" /> Print visit checklist
-          </a>
-          {canManage && (
-            <>
+        <div className="space-y-3 border-t border-white/10 pt-4">
+          {attendingByOther && (
+            <div className="flex items-start gap-2 rounded-xl bg-amber-500/10 px-3 py-2 text-xs text-amber-200">
+              <Eye className="mt-px h-3.5 w-3.5 shrink-0" />
+              <span>Heads up — {actorLabel(r.attending_by)} also has this client open. Coordinate so the details aren&apos;t entered twice.</span>
+            </div>
+          )}
+
+          <div className="flex flex-wrap items-center justify-end gap-2">
+            {/* Copy everything for an external LIMS — one tap, every mode. */}
+            <button onClick={copyDetails} className="inline-flex items-center gap-1.5 rounded-lg border border-white/10 px-3 py-2 text-xs font-medium text-slate-200 hover:bg-white/5">
+              <Copy className="h-3.5 w-3.5" /> Copy for LIMS
+            </button>
+
+            {/* In LIMS mode the checklist + edit stay in reach; lite/micro tuck them into More. */}
+            {!lite && (
+              <a href={checklistUrl} target="_blank" rel="noreferrer" className="inline-flex items-center gap-1.5 rounded-lg border border-white/10 px-3 py-2 text-xs font-medium text-medical-300 hover:bg-white/5">
+                <Printer className="h-3.5 w-3.5" /> Print visit checklist
+              </a>
+            )}
+            {!lite && canManage && (
               <button onClick={onEdit} className="inline-flex items-center gap-1.5 rounded-lg border border-white/10 px-3 py-2 text-xs font-medium text-slate-200 hover:bg-white/5">
                 <Pencil className="h-3.5 w-3.5" /> Edit details
               </button>
-              {!attended && (r.is_paid ? (
-                <button onClick={() => onAction("unpay", "Payment status undone")} disabled={busy} className="inline-flex items-center gap-1.5 rounded-lg border border-white/10 px-3 py-2 text-xs text-slate-300 hover:bg-white/5 hover:text-white disabled:opacity-50">
-                  <Undo2 className="h-3.5 w-3.5" /> Undo paid
-                </button>
-              ) : (
-                <button onClick={() => onAction("mark_paid", `${r.patient_name || "Client"} marked paid`)} disabled={busy} className="inline-flex items-center gap-1.5 rounded-lg bg-medical-600 px-3.5 py-2 text-xs font-semibold text-white hover:bg-medical-700 disabled:opacity-50">
-                  {busy ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <CreditCard className="h-3.5 w-3.5" />} Payment made
-                </button>
-              ))}
-              {/* Attended only unlocks after payment is recorded. */}
-              {attended ? (
-                <button onClick={() => onAction("unattend", "Returned to the queue")} disabled={busy} className="inline-flex items-center gap-1.5 rounded-lg border border-white/10 px-3 py-2 text-xs text-slate-300 hover:bg-white/5 hover:text-white disabled:opacity-50">
-                  <Undo2 className="h-3.5 w-3.5" /> Return to queue
-                </button>
-              ) : r.is_paid ? (
-                <button onClick={() => onAction("attend", `${r.patient_name || "Client"} marked as attended`)} disabled={busy} className="inline-flex items-center gap-1.5 rounded-lg bg-emerald-600 px-3.5 py-2 text-xs font-semibold text-white hover:bg-emerald-700 disabled:opacity-50">
-                  {busy ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Check className="h-3.5 w-3.5" />} Attended
-                </button>
-              ) : (
-                <span className="inline-flex items-center gap-1.5 rounded-lg border border-dashed border-white/10 px-3 py-2 text-xs text-slate-500">
-                  <CreditCard className="h-3.5 w-3.5" /> Record payment to attend
-                </span>
-              )}
-            </>
-          )}
+            )}
+
+            {canManage && (
+              <>
+                {/* "Done inputting" marker — stops two people re-keying the same client. */}
+                {detailsCaptured ? (
+                  <button onClick={() => onAction("details_undone", "Details capture undone")} disabled={busy} className="inline-flex items-center gap-1.5 rounded-lg border border-emerald-500/40 bg-emerald-500/10 px-3 py-2 text-xs font-medium text-emerald-300 hover:bg-emerald-500/15 disabled:opacity-50">
+                    <ClipboardCheck className="h-3.5 w-3.5" /> Details captured
+                  </button>
+                ) : (
+                  <button onClick={() => onAction("details_done", "Marked as details captured")} disabled={busy} className="inline-flex items-center gap-1.5 rounded-lg border border-white/10 px-3 py-2 text-xs font-medium text-slate-200 hover:bg-white/5 disabled:opacity-50">
+                    <ClipboardCheck className="h-3.5 w-3.5" /> Mark details captured
+                  </button>
+                )}
+
+                {/* Exactly one primary next-step call to action at a time. */}
+                {!attended && !r.is_paid && (
+                  <button onClick={() => onAction("mark_paid", `${r.patient_name || "Client"} marked paid`)} disabled={busy} className="inline-flex items-center gap-1.5 rounded-lg bg-medical-600 px-3.5 py-2 text-xs font-semibold text-white hover:bg-medical-700 disabled:opacity-50">
+                    {busy ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <CreditCard className="h-3.5 w-3.5" />} Payment made
+                  </button>
+                )}
+                {!attended && r.is_paid && (
+                  <button onClick={() => onAction("attend", `${r.patient_name || "Client"} marked as attended`)} disabled={busy} className="inline-flex items-center gap-1.5 rounded-lg bg-emerald-600 px-3.5 py-2 text-xs font-semibold text-white hover:bg-emerald-700 disabled:opacity-50">
+                    {busy ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Check className="h-3.5 w-3.5" />} Attended
+                  </button>
+                )}
+
+                {/* Everything low-frequency (undos + the lite-hidden actions) lives here. */}
+                <ActionMenu>
+                  {lite && (
+                    <a href={checklistUrl} target="_blank" rel="noreferrer" className={menuItemCls}>
+                      <Printer className="h-3.5 w-3.5" /> Print visit checklist
+                    </a>
+                  )}
+                  {lite && (
+                    <button onClick={onEdit} className={menuItemCls}>
+                      <Pencil className="h-3.5 w-3.5" /> Edit details
+                    </button>
+                  )}
+                  {r.is_paid && !attended && (
+                    <button onClick={() => onAction("unpay", "Payment status undone")} disabled={busy} className={menuItemCls}>
+                      <Undo2 className="h-3.5 w-3.5" /> Undo paid
+                    </button>
+                  )}
+                  {attended && (
+                    <button onClick={() => onAction("unattend", "Returned to the queue")} disabled={busy} className={menuItemCls}>
+                      <Undo2 className="h-3.5 w-3.5" /> Return to queue
+                    </button>
+                  )}
+                </ActionMenu>
+              </>
+            )}
+
+            {/* View-only staff in lite mode still get the checklist via More. */}
+            {lite && !canManage && (
+              <ActionMenu>
+                <a href={checklistUrl} target="_blank" rel="noreferrer" className={menuItemCls}>
+                  <Printer className="h-3.5 w-3.5" /> Print visit checklist
+                </a>
+              </ActionMenu>
+            )}
+          </div>
         </div>
       </div>
     </FullViewModal>
@@ -725,7 +918,7 @@ function QueueEditModal({
             patient_age: age.trim() === "" ? null : Number(age),
             sex,
             whatsapp_phone: whatsapp,
-            payment_mode: (paymentMode || null) as "cash" | "card" | "transfer" | "bill_hospital" | null,
+            payment_mode: (paymentMode || null) as "cash" | "card" | "transfer" | "bill_hospital" | "hmo" | null,
             referral_type: (referralType || null) as "self" | "doctor" | "hmo" | null,
             doctor_name: doctorName,
             doctor_hospital: org,
@@ -815,6 +1008,7 @@ function QueueEditModal({
               <option value="cash" className="bg-slate-800">Cash</option>
               <option value="card" className="bg-slate-800">Card</option>
               <option value="transfer" className="bg-slate-800">Transfer</option>
+              <option value="hmo" className="bg-slate-800">HMO</option>
               <option value="bill_hospital" className="bg-slate-800">Bill to hospital / HMO</option>
             </select>
           </div>
