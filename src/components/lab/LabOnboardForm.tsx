@@ -325,6 +325,9 @@ export function LabOnboardForm({
   const [lga, setLga] = useState("");
   const [referralType, setReferralType] = useState<"" | "self" | "doctor" | "hmo">("");
   const [doctorNameText, setDoctorNameText] = useState("");
+  // Clients often can't read the name on the slip they were handed — let them
+  // say so outright instead of guessing or leaving the field blank.
+  const [doctorUnknown, setDoctorUnknown] = useState(false);
   const [referringOrg, setReferringOrg] = useState("");
   const [policyNumber, setPolicyNumber] = useState("");
   const [paymentMode, setPaymentMode] = useState<"" | "cash" | "card" | "transfer" | "bill_hospital" | "hmo">("");
@@ -643,6 +646,37 @@ export function LabOnboardForm({
     );
   }
 
+  // Shared by the doctor and HMO referral branches — the name plus an explicit
+  // "I don't know" escape hatch, which clears and locks the field.
+  const doctorNameField = (
+    <div>
+      <label className={labelCls}>Referring doctor&apos;s name (optional)</label>
+      <input
+        className={`${inputCls} disabled:cursor-not-allowed disabled:bg-slate-50 disabled:text-slate-400`}
+        value={doctorUnknown ? "" : doctorNameText}
+        onChange={(e) => setDoctorNameText(e.target.value)}
+        placeholder={doctorUnknown ? "The lab will confirm this at the desk" : "e.g. Dr. John Ade"}
+        disabled={doctorUnknown}
+      />
+      <button
+        type="button"
+        onClick={() => {
+          const next = !doctorUnknown;
+          setDoctorUnknown(next);
+          if (next) setDoctorNameText("");
+        }}
+        aria-pressed={doctorUnknown}
+        className={`mt-1.5 inline-flex items-center gap-1.5 rounded-full border px-3 py-1 text-[11px] font-medium transition ${
+          doctorUnknown
+            ? "border-medical-500 bg-medical-50 text-medical-800"
+            : "border-slate-200 bg-white text-slate-500 hover:border-slate-300 hover:text-slate-700"
+        }`}
+      >
+        {doctorUnknown && <Check className="h-3 w-3" />} I don&apos;t know
+      </button>
+    </div>
+  );
+
   return (
     <div>
       {/* Entry mode toggle — New registration first, Poveon code to the right */}
@@ -842,10 +876,7 @@ export function LabOnboardForm({
         <div className="space-y-3">
           {!codeMode && referralType === "doctor" && (
             <>
-              <div>
-                <label className={labelCls}>Referring doctor&apos;s name (optional)</label>
-                <input className={inputCls} value={doctorNameText} onChange={(e) => setDoctorNameText(e.target.value)} placeholder="e.g. Dr. John Ade" />
-              </div>
+              {doctorNameField}
               <div>
                 <label className={labelCls}>Referring hospital / company (optional)</label>
                 {orgOptions.hospitals.length > 0 ? (
@@ -882,10 +913,7 @@ export function LabOnboardForm({
                 <label className={labelCls}>Policy number *</label>
                 <input className={inputCls} value={policyNumber} onChange={(e) => setPolicyNumber(e.target.value)} placeholder="Your HMO policy / enrollee number" />
               </div>
-              <div>
-                <label className={labelCls}>Referring doctor&apos;s name (optional)</label>
-                <input className={inputCls} value={doctorNameText} onChange={(e) => setDoctorNameText(e.target.value)} placeholder="e.g. Dr. John Ade" />
-              </div>
+              {doctorNameField}
             </>
           )}
           {!codeMode && templates.length > 0 && (
@@ -1044,8 +1072,11 @@ export function LabOnboardForm({
               ) : (
                 <>
                   <ReviewRow label="Referral" value={REFERRAL_OPTIONS.find((o) => o.value === referralType)?.label ?? ""} />
-                  {referralType !== "self" && (doctorNameText.trim() || referringOrg.trim()) && (
-                    <ReviewRow label={referralType === "hmo" ? "HMO" : "Doctor"} value={[doctorNameText.trim(), referringOrg.trim()].filter(Boolean).join(" · ")} />
+                  {referralType !== "self" && (doctorUnknown || doctorNameText.trim() || referringOrg.trim()) && (
+                    <ReviewRow
+                      label={referralType === "hmo" ? "HMO" : "Doctor"}
+                      value={[doctorUnknown ? "Doctor not known" : doctorNameText.trim(), referringOrg.trim()].filter(Boolean).join(" · ")}
+                    />
                   )}
                   {referralType === "hmo" && policyNumber.trim() && <ReviewRow label="Policy no." value={policyNumber.trim()} />}
                 </>
