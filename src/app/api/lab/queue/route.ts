@@ -22,6 +22,7 @@ const QUEUE_SELECT = {
   doctor_name: true,
   doctor_hospital: true,
   tests: true,
+  test_image_url: true,
   diagnosis: true,
   referral_type: true,
   policy_number: true,

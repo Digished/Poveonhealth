@@ -37,6 +37,8 @@ const Schema = z.object({
   location_lga: z.string().max(100).optional().or(z.literal("")),
   // Tests are optional at self-service — the lab confirms them at the desk.
   tests: z.string().max(3000).optional().or(z.literal("")),
+  // Photo/scan of the referral form the client arrived with ("use my referral form").
+  test_image_url: z.string().url().optional().or(z.literal("")),
   condition: z.string().max(1000).optional().or(z.literal("")),
   professional_id: z.string().uuid().optional(),
   // ── QR self-service queue intake fields ──────────────────────────────────
@@ -106,7 +108,8 @@ export async function POST(request: NextRequest) {
     // Tests stay pure test names — the complaint lives in `diagnosis`, never
     // mixed into the investigations (it was leaking into the checklist PDF).
     const testsRaw = data.tests?.trim() || "";
-    const testsField = testsRaw || "To be confirmed at the lab";
+    const referralFormUrl = data.test_image_url?.trim() || null;
+    const testsField = testsRaw || (referralFormUrl ? "See attached referral form" : "To be confirmed at the lab");
 
     const code = await generateUniqueCode(lab.prefix, async (candidate) => {
       const existing = await prisma.request.findUnique({ where: { code: candidate }, select: { id: true } });
@@ -187,6 +190,7 @@ export async function POST(request: NextRequest) {
         doctor_phone: doctorPhone,
         doctor_hospital: doctorHospital,
         tests: testsField,
+        test_image_url: referralFormUrl,
         diagnosis: data.condition || null,
         quoted_price: quotedPrice,
         test_breakdown: testBreakdown ?? undefined,

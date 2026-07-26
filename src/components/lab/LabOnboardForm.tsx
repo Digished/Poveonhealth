@@ -2,7 +2,7 @@
 
 import { useEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
-import { User, FlaskConical, ShieldCheck, Check, Loader2, Copy, Search, Stethoscope, Lock, HelpCircle, MessageCircle, Plus, X, MapPin, ChevronDown } from "lucide-react";
+import { User, FlaskConical, ShieldCheck, Check, Loader2, Copy, Search, Stethoscope, Lock, HelpCircle, MessageCircle, Plus, X, MapPin, ChevronDown, Camera, FileText, Trash2 } from "lucide-react";
 import { TestTagInput, TestTag } from "@/components/ui/TestTagInput";
 import { PhoneInput } from "@/components/PhoneInput";
 import { STATE_NAMES, lgasForState, fuzzyFilter } from "@/lib/nigeria-locations";
@@ -325,11 +325,20 @@ export function LabOnboardForm({
   const [lga, setLga] = useState("");
   const [referralType, setReferralType] = useState<"" | "self" | "doctor" | "hmo">("");
   const [doctorNameText, setDoctorNameText] = useState("");
+  // Clients often can't read the name on the slip they were handed — let them
+  // say so outright instead of guessing or leaving the field blank.
+  const [doctorUnknown, setDoctorUnknown] = useState(false);
   const [referringOrg, setReferringOrg] = useState("");
   const [policyNumber, setPolicyNumber] = useState("");
   const [paymentMode, setPaymentMode] = useState<"" | "cash" | "card" | "transfer" | "bill_hospital" | "hmo">("");
   const [complaintHelpOpen, setComplaintHelpOpen] = useState(false);
   const [tests, setTests] = useState<TestTag[]>([]);
+  // "Use my referral form" — a photo/scan of the slip the client arrived with,
+  // instead of (or alongside) typing the tests out.
+  const [testsMode, setTestsMode] = useState<"list" | "form">("list");
+  const [formImageUrl, setFormImageUrl] = useState<string | null>(null);
+  const [formUploading, setFormUploading] = useState(false);
+  const [formUploadError, setFormUploadError] = useState<string | null>(null);
   const [condition, setCondition] = useState("");
   const [consent, setConsent] = useState(false);
   const [submitting, setSubmitting] = useState(false);
@@ -390,10 +399,10 @@ export function LabOnboardForm({
   const rvEmail = rvWhatsAppQ && phoneIsWhatsapp !== "";
   const rvLocation = rvEmail && EMAIL_RE.test(email.trim());
 
+  // The referring doctor's name is optional — many clients arrive with a slip
+  // but no legible name, and the lab confirms the referrer at the desk.
   const referralValid =
-    referralType === "doctor"
-      ? doctorNameText.trim().length > 0
-      : referralType === "hmo"
+    referralType === "hmo"
       ? referringOrg.trim().length > 0 && policyNumber.trim().length > 0
       : true;
 
@@ -427,6 +436,34 @@ export function LabOnboardForm({
     setTests([...tests, ...additions]);
   }
 
+  /** Upload a photo/scan of the client's referral form to Supabase Storage. */
+  async function uploadReferralForm(file: File) {
+    const MAX_MB = 10;
+    const allowed = ["image/jpeg", "image/png", "image/webp", "image/heic"];
+    if (!allowed.includes(file.type) && !file.name.toLowerCase().endsWith(".heic")) {
+      setFormUploadError("Please use a JPEG, PNG, WebP or HEIC image.");
+      return;
+    }
+    if (file.size > MAX_MB * 1024 * 1024) {
+      setFormUploadError(`That image is ${(file.size / 1024 / 1024).toFixed(1)} MB — the limit is ${MAX_MB} MB.`);
+      return;
+    }
+    setFormUploading(true);
+    setFormUploadError(null);
+    try {
+      const fd = new FormData();
+      fd.append("file", file);
+      const res = await fetch("/api/requests/upload-image", { method: "POST", body: fd });
+      const data = await res.json();
+      if (!res.ok || !data.success) throw new Error(data.error || "Upload failed");
+      setFormImageUrl(data.url);
+    } catch (e) {
+      setFormUploadError(e instanceof Error ? e.message : "Upload failed — please try again");
+    } finally {
+      setFormUploading(false);
+    }
+  }
+
   async function submit() {
     setSubmitting(true);
     setError(null);
@@ -450,6 +487,7 @@ export function LabOnboardForm({
           location_state: stateOf.trim() || undefined,
           location_lga: lga.trim() || undefined,
           tests: tests.length > 0 ? tests.map((t) => t.name).join(", ") : undefined,
+          test_image_url: formImageUrl || undefined,
           condition: condition.trim() || undefined,
           referral_type: referralType || undefined,
           whatsapp_phone: whatsappList.join(", ") || undefined,
@@ -607,6 +645,37 @@ export function LabOnboardForm({
       </div>
     );
   }
+
+  // Shared by the doctor and HMO referral branches — the name plus an explicit
+  // "I don't know" escape hatch, which clears and locks the field.
+  const doctorNameField = (
+    <div>
+      <label className={labelCls}>Referring doctor&apos;s name (optional)</label>
+      <input
+        className={`${inputCls} disabled:cursor-not-allowed disabled:bg-slate-50 disabled:text-slate-400`}
+        value={doctorUnknown ? "" : doctorNameText}
+        onChange={(e) => setDoctorNameText(e.target.value)}
+        placeholder={doctorUnknown ? "The lab will confirm this at the desk" : "e.g. Dr. John Ade"}
+        disabled={doctorUnknown}
+      />
+      <button
+        type="button"
+        onClick={() => {
+          const next = !doctorUnknown;
+          setDoctorUnknown(next);
+          if (next) setDoctorNameText("");
+        }}
+        aria-pressed={doctorUnknown}
+        className={`mt-1.5 inline-flex items-center gap-1.5 rounded-full border px-3 py-1 text-[11px] font-medium transition ${
+          doctorUnknown
+            ? "border-medical-500 bg-medical-50 text-medical-800"
+            : "border-slate-200 bg-white text-slate-500 hover:border-slate-300 hover:text-slate-700"
+        }`}
+      >
+        {doctorUnknown && <Check className="h-3 w-3" />} I don&apos;t know
+      </button>
+    </div>
+  );
 
   return (
     <div>
@@ -807,10 +876,7 @@ export function LabOnboardForm({
         <div className="space-y-3">
           {!codeMode && referralType === "doctor" && (
             <>
-              <div>
-                <label className={labelCls}>Referring doctor&apos;s name *</label>
-                <input className={inputCls} value={doctorNameText} onChange={(e) => setDoctorNameText(e.target.value)} placeholder="e.g. Dr. John Ade" />
-              </div>
+              {doctorNameField}
               <div>
                 <label className={labelCls}>Referring hospital / company (optional)</label>
                 {orgOptions.hospitals.length > 0 ? (
@@ -847,10 +913,7 @@ export function LabOnboardForm({
                 <label className={labelCls}>Policy number *</label>
                 <input className={inputCls} value={policyNumber} onChange={(e) => setPolicyNumber(e.target.value)} placeholder="Your HMO policy / enrollee number" />
               </div>
-              <div>
-                <label className={labelCls}>Referring doctor&apos;s name (optional)</label>
-                <input className={inputCls} value={doctorNameText} onChange={(e) => setDoctorNameText(e.target.value)} placeholder="e.g. Dr. John Ade" />
-              </div>
+              {doctorNameField}
             </>
           )}
           {!codeMode && templates.length > 0 && (
@@ -873,8 +936,79 @@ export function LabOnboardForm({
           ) : (
             <div>
               <label className={labelCls}>Tests / investigations (optional)</label>
-              <TestTagInput value={tests} onChange={setTests} labId={lab.id} />
-              <p className="mt-1 text-[11px] text-slate-400">Not sure? Leave it blank — the team will confirm your tests at the desk.</p>
+              {/* Two ways to tell the lab what you need: pick the tests, or just
+                  photograph the referral form you arrived with. */}
+              <div className="mb-2 grid grid-cols-2 gap-1.5">
+                <button
+                  type="button"
+                  onClick={() => setTestsMode("list")}
+                  className={`rounded-xl border px-3 py-2 text-xs font-medium transition ${testsMode === "list" ? "border-medical-500 bg-medical-50 text-medical-800" : "border-slate-200 bg-white text-slate-600 hover:border-slate-300"}`}
+                >
+                  Choose my tests
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setTestsMode("form")}
+                  className={`inline-flex items-center justify-center gap-1.5 rounded-xl border px-3 py-2 text-xs font-medium transition ${testsMode === "form" ? "border-medical-500 bg-medical-50 text-medical-800" : "border-slate-200 bg-white text-slate-600 hover:border-slate-300"}`}
+                >
+                  <FileText className="h-3.5 w-3.5" /> Use my referral form
+                </button>
+              </div>
+
+              {testsMode === "list" ? (
+                <>
+                  <TestTagInput value={tests} onChange={setTests} labId={lab.id} />
+                  <p className="mt-1 text-[11px] text-slate-400">Not sure? Leave it blank — the team will confirm your tests at the desk.</p>
+                </>
+              ) : formImageUrl ? (
+                <div className="rounded-xl border border-emerald-200 bg-emerald-50 p-2.5">
+                  {/* eslint-disable-next-line @next/next/no-img-element */}
+                  <img src={formImageUrl} alt="Your referral form" className="max-h-56 w-full rounded-lg object-contain" />
+                  <div className="mt-2 flex items-center justify-between gap-2">
+                    <p className="inline-flex items-center gap-1.5 text-[11px] font-medium text-emerald-700">
+                      <Check className="h-3.5 w-3.5" /> Referral form attached
+                    </p>
+                    <button
+                      type="button"
+                      onClick={() => { setFormImageUrl(null); setFormUploadError(null); }}
+                      className="inline-flex items-center gap-1 text-[11px] font-medium text-slate-500 hover:text-red-600"
+                    >
+                      <Trash2 className="h-3.5 w-3.5" /> Remove
+                    </button>
+                  </div>
+                </div>
+              ) : (
+                <>
+                  <label className={`flex cursor-pointer flex-col items-center justify-center gap-1.5 rounded-xl border-2 border-dashed px-4 py-6 text-center transition ${formUploading ? "border-slate-200 bg-slate-50" : "border-medical-200 bg-medical-50/50 hover:border-medical-400 hover:bg-medical-50"}`}>
+                    {formUploading ? (
+                      <>
+                        <Loader2 className="h-5 w-5 animate-spin text-medical-600" />
+                        <span className="text-xs font-medium text-slate-500">Uploading…</span>
+                      </>
+                    ) : (
+                      <>
+                        <Camera className="h-5 w-5 text-medical-600" />
+                        <span className="text-xs font-semibold text-medical-700">Take a photo or upload your form</span>
+                        <span className="text-[11px] text-slate-400">JPEG, PNG, WebP or HEIC · up to 10 MB</span>
+                      </>
+                    )}
+                    <input
+                      type="file"
+                      accept="image/jpeg,image/png,image/webp,image/heic,.heic"
+                      capture="environment"
+                      className="sr-only"
+                      disabled={formUploading}
+                      onChange={(e) => {
+                        const file = e.target.files?.[0];
+                        e.target.value = "";
+                        if (file) uploadReferralForm(file);
+                      }}
+                    />
+                  </label>
+                  <p className="mt-1 text-[11px] text-slate-400">The lab will read your tests off the form at the desk.</p>
+                </>
+              )}
+              {formUploadError && <p className="mt-1 text-[11px] font-medium text-red-600">{formUploadError}</p>}
             </div>
           )}
           <div>
@@ -938,13 +1072,16 @@ export function LabOnboardForm({
               ) : (
                 <>
                   <ReviewRow label="Referral" value={REFERRAL_OPTIONS.find((o) => o.value === referralType)?.label ?? ""} />
-                  {referralType !== "self" && (doctorNameText.trim() || referringOrg.trim()) && (
-                    <ReviewRow label={referralType === "hmo" ? "HMO" : "Doctor"} value={[doctorNameText.trim(), referringOrg.trim()].filter(Boolean).join(" · ")} />
+                  {referralType !== "self" && (doctorUnknown || doctorNameText.trim() || referringOrg.trim()) && (
+                    <ReviewRow
+                      label={referralType === "hmo" ? "HMO" : "Doctor"}
+                      value={[doctorUnknown ? "Doctor not known" : doctorNameText.trim(), referringOrg.trim()].filter(Boolean).join(" · ")}
+                    />
                   )}
                   {referralType === "hmo" && policyNumber.trim() && <ReviewRow label="Policy no." value={policyNumber.trim()} />}
                 </>
               )}
-              <ReviewRow label="Tests" value={codeMode ? (revealed?.tests || "To be confirmed at the lab") : tests.length > 0 ? tests.map((t) => t.name).join(", ") : "To be confirmed at the lab"} />
+              <ReviewRow label="Tests" value={codeMode ? (revealed?.tests || "To be confirmed at the lab") : tests.length > 0 ? tests.map((t) => t.name).join(", ") : formImageUrl ? "See attached referral form" : "To be confirmed at the lab"} />
               {condition.trim() && <ReviewRow label="Complaint" value={condition.trim()} />}
               <ReviewRow label="Payment" value={PAYMENT_OPTIONS.find((o) => o.value === paymentMode)?.label ?? ""} />
             </dl>
