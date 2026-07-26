@@ -3,7 +3,8 @@ import { prisma } from "@/lib/prisma";
 import { breakdownItemDepartment, categoryToDepartment, DEFAULT_DEPARTMENTS, type DepartmentConfig, type WorkflowType } from "@/lib/lims-shared";
 import { VisitChecklistPdf, type ChecklistGroup, type ChecklistTest } from "@/lib/checklist-pdf";
 
-type BreakdownItem = { raw?: string; canonical_name?: string; category?: string | null; unit_price?: number | null };
+// Prices are intentionally absent: the visit checklist never shows billing.
+type BreakdownItem = { raw?: string; canonical_name?: string; category?: string | null };
 
 const WORKFLOW_HINT: Record<WorkflowType, string> = {
   specimen: "Sample collection",
@@ -72,15 +73,6 @@ function buildGroups(testBreakdown: unknown, testsString: string, departments: D
   });
 }
 
-function nairaTotal(testBreakdown: unknown): string | null {
-  const items = Array.isArray(testBreakdown) ? (testBreakdown as BreakdownItem[]) : [];
-  let sum = 0; let any = false;
-  for (const it of items) {
-    if (typeof it.unit_price === "number" && it.unit_price > 0) { sum += it.unit_price; any = true; }
-  }
-  return any ? `₦${Math.round(sum).toLocaleString("en-NG")}` : null;
-}
-
 /** Render the patient visit checklist for a request into a branded PDF buffer.
  *  Returns null if the request is not found or belongs to a different lab. */
 export async function renderVisitChecklistPdf(
@@ -90,7 +82,7 @@ export async function renderVisitChecklistPdf(
   const request = await prisma.request.findUnique({
     where: { id: requestId },
     select: {
-      lab_id: true, code: true, tests: true, test_breakdown: true, is_paid: true,
+      lab_id: true, code: true, tests: true, test_breakdown: true,
       raw_input: true, diagnosis: true,
       patient_name: true, patient_age: true, sex: true, patient_phone: true, patient_email: true,
       doctor_prefix: true, doctor_name: true, doctor_hospital: true, doctor_phone: true, doctor_email: true,
@@ -145,7 +137,6 @@ export async function renderVisitChecklistPdf(
       rawText: request.raw_input,
       diagnosis: request.diagnosis,
       groups: buildGroups(request.test_breakdown, request.tests, departments),
-      totalLabel: request.is_paid ? nairaTotal(request.test_breakdown) : null,
       verifiedBy: null,
     }),
   );

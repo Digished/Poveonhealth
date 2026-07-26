@@ -5,79 +5,72 @@ import { Document, Page, Text, View, Image, StyleSheet } from "@react-pdf/render
  * Branded "Patient Visit Checklist" — the hand-off slip a client takes around
  * the laboratory after the front desk has verified their tests. Lists patient
  * details, the referring doctor, and every requested test as a tick-box
- * checklist grouped by the department that performs it. Built on the same
- * Helvetica/no-font-download approach as the result and agreement PDFs.
+ * checklist grouped by the department that performs it.
+ *
+ * Sized for an 80mm thermal/POS receipt roll (the printer most front desks
+ * already have) rather than A4: one narrow column, compact type, and a page
+ * height estimated from the content so the printer doesn't feed a long blank
+ * tail. Built on the same Helvetica/no-font-download approach as the result
+ * and agreement PDFs.
+ *
+ * Prices are deliberately never rendered here — this slip is handled by the
+ * client and walked around the departments, so it must not expose billing.
  */
 const BLUE = "#0259a0";
 const INK = "#0f172a";
 const SLATE = "#64748b";
 const LIGHT = "#94a3b8";
 
+/** 80mm POS roll ≈ 226.77pt wide. */
+const PAGE_WIDTH = 226.77;
+const PAGE_PADDING = 10;
+
 const styles = StyleSheet.create({
-  page: { fontFamily: "Helvetica", fontSize: 10, color: "#1a1a2e", paddingTop: 46, paddingBottom: 56, paddingHorizontal: 44, lineHeight: 1.4 },
+  page: { fontFamily: "Helvetica", fontSize: 7.5, color: INK, paddingTop: 10, paddingBottom: 12, paddingHorizontal: PAGE_PADDING, lineHeight: 1.35 },
 
-  // Slim repeat header shown on continuation pages only
-  contHeader: { flexDirection: "row", justifyContent: "space-between", alignItems: "center", borderBottomWidth: 1, borderBottomColor: "#e2e8f0", paddingBottom: 5 },
-  contTitle: { fontSize: 8, fontFamily: "Helvetica-Bold", color: SLATE, textTransform: "uppercase", letterSpacing: 0.8 },
-  contCode: { fontSize: 9, fontFamily: "Helvetica-Bold", color: BLUE, letterSpacing: 0.8 },
+  header: { alignItems: "center", borderBottomWidth: 1.5, borderBottomColor: BLUE, paddingBottom: 6 },
+  logo: { width: 34, height: 34, marginBottom: 4, objectFit: "contain" },
+  labName: { fontSize: 11, fontFamily: "Helvetica-Bold", color: INK, textAlign: "center" },
+  labMeta: { fontSize: 6, color: SLATE, marginTop: 1.5, textAlign: "center" },
 
-  header: { flexDirection: "row", justifyContent: "space-between", alignItems: "flex-start", borderBottomWidth: 2, borderBottomColor: BLUE, paddingBottom: 10, marginBottom: 4 },
-  brandRow: { flexDirection: "row", alignItems: "center", maxWidth: "62%" },
-  logo: { width: 42, height: 42, marginRight: 10, objectFit: "contain" },
-  labName: { fontSize: 15, fontFamily: "Helvetica-Bold", color: INK },
-  labMeta: { fontSize: 7.5, color: SLATE, marginTop: 2, maxWidth: 240 },
-  metaRight: { alignItems: "flex-end" },
-  docTitle: { fontSize: 8, fontFamily: "Helvetica-Bold", color: SLATE, textTransform: "uppercase", letterSpacing: 1 },
-  codeText: { fontSize: 13, fontFamily: "Helvetica-Bold", color: BLUE, letterSpacing: 1, marginTop: 2 },
-  metaDate: { fontSize: 8, color: SLATE, marginTop: 2 },
+  docTitle: { fontSize: 7, fontFamily: "Helvetica-Bold", color: SLATE, textTransform: "uppercase", letterSpacing: 0.8, textAlign: "center", marginTop: 6 },
+  codeText: { fontSize: 13, fontFamily: "Helvetica-Bold", color: BLUE, letterSpacing: 1, textAlign: "center", marginTop: 1 },
+  metaDate: { fontSize: 6.5, color: SLATE, textAlign: "center", marginTop: 1 },
 
-  accent: { height: 3, backgroundColor: "#059669", borderRadius: 2, marginBottom: 12 },
+  divider: { borderBottomWidth: 0.75, borderBottomColor: "#cbd5e1", borderBottomStyle: "dashed", marginVertical: 6 },
 
-  twoCol: { flexDirection: "row", gap: 10, marginBottom: 12 },
-  card: { flex: 1, backgroundColor: "#f8fafc", borderWidth: 1, borderColor: "#e2e8f0", borderRadius: 6, padding: 10 },
-  sectionLabel: { fontSize: 7, fontFamily: "Helvetica-Bold", color: LIGHT, textTransform: "uppercase", letterSpacing: 1.1, marginBottom: 5 },
-  field: { flexDirection: "row", marginBottom: 3 },
-  fieldLabel: { fontSize: 8.5, color: SLATE, width: 58 },
-  fieldValue: { fontSize: 9.5, color: INK, fontFamily: "Helvetica-Bold", flex: 1 },
+  sectionLabel: { fontSize: 6, fontFamily: "Helvetica-Bold", color: LIGHT, textTransform: "uppercase", letterSpacing: 0.9, marginBottom: 3 },
+  field: { flexDirection: "row", marginBottom: 1.5 },
+  fieldLabel: { fontSize: 6.5, color: SLATE, width: 42 },
+  fieldValue: { fontSize: 7.5, color: INK, fontFamily: "Helvetica-Bold", flex: 1 },
 
-  noteCard: { backgroundColor: "#f8fafc", borderWidth: 1, borderColor: "#e2e8f0", borderRadius: 6, padding: 10, marginBottom: 12 },
-  noteText: { fontSize: 9.5, color: INK, lineHeight: 1.5 },
+  noteText: { fontSize: 7, color: INK, lineHeight: 1.4 },
 
-  instruction: { flexDirection: "row", backgroundColor: "#f0f7ff", borderWidth: 1, borderColor: "#bfdbfe", borderRadius: 6, padding: 8, marginBottom: 14 },
-  instructionText: { fontSize: 8.5, color: "#1e3a5f", lineHeight: 1.5, flex: 1 },
+  instruction: { backgroundColor: "#f0f7ff", borderWidth: 0.75, borderColor: "#bfdbfe", borderRadius: 3, padding: 5, marginTop: 6 },
+  instructionText: { fontSize: 6.5, color: "#1e3a5f", lineHeight: 1.45 },
 
-  deptHeading: { flexDirection: "row", alignItems: "center", justifyContent: "space-between", backgroundColor: "#eef5fb", borderLeftWidth: 3, borderLeftColor: BLUE, paddingVertical: 5, paddingHorizontal: 8, marginTop: 8, borderTopLeftRadius: 4, borderTopRightRadius: 4 },
-  deptName: { fontSize: 11, fontFamily: "Helvetica-Bold", color: BLUE },
-  deptHint: { fontSize: 8, color: SLATE },
+  deptHeading: { backgroundColor: "#eef5fb", borderLeftWidth: 2, borderLeftColor: BLUE, paddingVertical: 3, paddingHorizontal: 5, marginTop: 7, marginBottom: 1 },
+  deptName: { fontSize: 8, fontFamily: "Helvetica-Bold", color: BLUE },
+  deptHint: { fontSize: 6, color: SLATE, marginTop: 0.5 },
 
-  thead: { flexDirection: "row", borderBottomWidth: 1, borderBottomColor: "#cbd5e1", paddingVertical: 4, paddingHorizontal: 8 },
-  th: { fontSize: 7.5, fontFamily: "Helvetica-Bold", color: SLATE, textTransform: "uppercase", letterSpacing: 0.5 },
-  tr: { flexDirection: "row", alignItems: "center", paddingVertical: 6, paddingHorizontal: 8, borderBottomWidth: 0.5, borderBottomColor: "#eef2f7" },
-  cBox: { width: "8%" }, cTest: { width: "50%" }, cDone: { width: "21%" }, cStaff: { width: "21%" },
-  checkbox: { width: 11, height: 11, borderWidth: 1, borderColor: "#64748b", borderRadius: 2 },
-  testName: { fontSize: 9.5, color: INK, fontFamily: "Helvetica-Bold" },
-  testSub: { fontSize: 7.5, color: LIGHT },
-  ruleLine: { borderBottomWidth: 1, borderBottomColor: "#cbd5e1", height: 1, marginTop: 8 },
+  testRow: { flexDirection: "row", alignItems: "flex-start", paddingVertical: 4, borderBottomWidth: 0.5, borderBottomColor: "#eef2f7" },
+  checkbox: { width: 9, height: 9, borderWidth: 0.75, borderColor: "#64748b", borderRadius: 1.5, marginRight: 5, marginTop: 0.5 },
+  testBody: { flex: 1 },
+  testName: { fontSize: 7.5, color: INK, fontFamily: "Helvetica-Bold" },
+  testSub: { fontSize: 6, color: LIGHT },
+  staffLine: { flexDirection: "row", marginTop: 3, gap: 6 },
+  staffCell: { flex: 1 },
+  staffLabel: { fontSize: 5.5, color: LIGHT, textTransform: "uppercase", letterSpacing: 0.4 },
+  rule: { borderBottomWidth: 0.5, borderBottomColor: "#cbd5e1", height: 8 },
 
-  summaryRow: { flexDirection: "row", flexWrap: "wrap", gap: 5, marginTop: 4, marginBottom: 4 },
-  chip: { flexDirection: "row", alignItems: "center", borderWidth: 1, borderColor: "#cbd5e1", borderRadius: 10, paddingVertical: 2, paddingHorizontal: 7, backgroundColor: "#ffffff" },
-  chipText: { fontSize: 8, color: INK, fontFamily: "Helvetica-Bold" },
+  verifyBlock: { marginTop: 10 },
+  verifyCol: { marginBottom: 8 },
+  verifyLabel: { fontSize: 6, color: LIGHT, textTransform: "uppercase", letterSpacing: 0.6 },
+  verifyLine: { borderBottomWidth: 0.75, borderBottomColor: "#94a3b8", height: 14, marginTop: 1 },
+  verifyValue: { fontSize: 7.5, fontFamily: "Helvetica-Bold", color: INK, marginTop: 1 },
 
-  totalRow: { flexDirection: "row", justifyContent: "space-between", marginTop: 10, paddingTop: 8, borderTopWidth: 1, borderTopColor: "#e2e8f0" },
-  totalLabel: { fontSize: 9, color: SLATE },
-  totalValue: { fontSize: 11, fontFamily: "Helvetica-Bold", color: INK },
-
-  verifyBlock: { marginTop: 16, flexDirection: "row", gap: 16 },
-  verifyCol: { flex: 1 },
-  verifyLabel: { fontSize: 7.5, color: LIGHT, textTransform: "uppercase", letterSpacing: 0.8 },
-  verifyLine: { borderBottomWidth: 1, borderBottomColor: "#94a3b8", height: 16, marginTop: 2 },
-  verifyValue: { fontSize: 9.5, fontFamily: "Helvetica-Bold", color: INK, marginTop: 2 },
-
-  // Anchored with `top` (A4 is 841.89pt tall): bottom-anchored fixed Views are
-  // dropped from multi-page documents by @react-pdf/renderer 4.x.
-  footerWrap: { position: "absolute", top: 799, left: 44, right: 44 },
-  footer: { flexDirection: "row", justifyContent: "space-between", borderTopWidth: 1, borderTopColor: "#e2e8f0", paddingTop: 7 },
-  footerText: { fontSize: 7, color: LIGHT },
+  footer: { borderTopWidth: 0.75, borderTopColor: "#e2e8f0", paddingTop: 5, marginTop: 8, alignItems: "center" },
+  footerText: { fontSize: 5.5, color: LIGHT, textAlign: "center" },
 });
 
 export type ChecklistTest = { name: string; sub?: string | null };
@@ -104,145 +97,123 @@ export type VisitChecklistProps = {
   /** Clinical details / diagnosis accompanying the request. */
   diagnosis?: string | null;
   groups: ChecklistGroup[];
-  totalLabel?: string | null;     // e.g. "₦12,000" — omit when no pricing
   verifiedBy?: string | null;
 };
 
+/**
+ * Estimate the roll length needed so the printer feeds roughly the content
+ * height instead of a fixed sheet. Deliberately generous — over-estimating
+ * costs a little blank paper, under-estimating splits the slip across pages.
+ */
+function estimateHeight(props: VisitChecklistProps): number {
+  let h = 190; // header, code block and the patient panel
+  if (props.labLogo) h += 38;
+  if (props.doctorName || props.doctorHospital || props.doctorPhone) h += 50;
+  if (props.rawText) h += 20 + Math.ceil(props.rawText.length / 44) * 11;
+  if (props.diagnosis) h += 20 + Math.ceil(props.diagnosis.length / 44) * 11;
+  h += 56; // instruction box
+  for (const g of props.groups) {
+    h += 32; // department heading
+    for (const t of g.tests) h += t.sub ? 58 : 48;
+  }
+  h += 96; // verification + signature
+  h += 34; // footer
+  return Math.max(340, Math.ceil(h));
+}
+
 function Row({ label, value }: { label: string; value?: string | null }) {
+  if (!value || !value.trim()) return null;
   return (
     <View style={styles.field}>
       <Text style={styles.fieldLabel}>{label}</Text>
-      <Text style={styles.fieldValue}>{value && value.trim() ? value : "—"}</Text>
+      <Text style={styles.fieldValue}>{value}</Text>
     </View>
   );
 }
 
 export function VisitChecklistPdf(props: VisitChecklistProps) {
-  const dateStr = props.generatedAt.toLocaleString("en-GB", { day: "numeric", month: "long", year: "numeric", hour: "2-digit", minute: "2-digit" });
-  const departmentNames = props.groups.map((g) => g.department);
+  const dateStr = props.generatedAt.toLocaleString("en-GB", { day: "numeric", month: "short", year: "numeric", hour: "2-digit", minute: "2-digit" });
+  const hasReferral = !!(props.doctorName || props.doctorHospital || props.doctorPhone);
 
   return (
     <Document title={`Visit checklist ${props.code}`} author={props.labName}>
-      <Page size="A4" style={styles.page}>
-        {/* Continuation header — repeats on pages 2+ so a detached sheet is
-            still identifiable; absolutely positioned so page 1 is untouched. */}
-        <View
-          fixed
-          style={{ position: "absolute", top: 16, left: 44, right: 44 }}
-          render={({ pageNumber }) =>
-            pageNumber > 1 ? (
-              <View style={styles.contHeader}>
-                <Text style={styles.contTitle}>{props.labName} · Patient Visit Checklist (continued)</Text>
-                <Text style={styles.contCode}>{props.code}</Text>
-              </View>
-            ) : null
-          }
-        />
-
-        {/* Header — logo + lab identity, code + date */}
+      <Page size={[PAGE_WIDTH, estimateHeight(props)]} style={styles.page}>
+        {/* Header — logo, lab identity, code + date, all centred receipt-style */}
         <View style={styles.header}>
-          <View style={styles.brandRow}>
-            {props.labLogo ? <Image style={styles.logo} src={props.labLogo} /> : null}
-            <View>
-              <Text style={styles.labName}>{props.labName}</Text>
-              {(props.labAddress || props.labPhones) ? (
-                <Text style={styles.labMeta}>{[props.labAddress, props.labPhones].filter(Boolean).join("  ·  ")}</Text>
-              ) : null}
-            </View>
-          </View>
-          <View style={styles.metaRight}>
-            <Text style={styles.docTitle}>Patient Visit Checklist</Text>
-            <Text style={styles.codeText}>{props.code}</Text>
-            <Text style={styles.metaDate}>{dateStr}</Text>
-          </View>
+          {props.labLogo ? <Image style={styles.logo} src={props.labLogo} /> : null}
+          <Text style={styles.labName}>{props.labName}</Text>
+          {props.labAddress ? <Text style={styles.labMeta}>{props.labAddress}</Text> : null}
+          {props.labPhones ? <Text style={styles.labMeta}>{props.labPhones}</Text> : null}
         </View>
-        <View style={styles.accent} />
 
-        {/* Patient + referral */}
-        <View style={styles.twoCol}>
-          <View style={styles.card}>
-            <Text style={styles.sectionLabel}>Patient</Text>
-            <Row label="Name" value={props.patientName} />
-            <Row label="Age / Sex" value={[props.patientAge != null ? `${props.patientAge} yrs` : null, props.patientSex].filter(Boolean).join("  ·  ") || null} />
-            <Row label="Phone" value={props.patientPhone} />
-            <Row label="Email" value={props.patientEmail} />
-          </View>
-          <View style={styles.card}>
+        <Text style={styles.docTitle}>Patient Visit Checklist</Text>
+        <Text style={styles.codeText}>{props.code}</Text>
+        <Text style={styles.metaDate}>{dateStr}</Text>
+
+        <View style={styles.divider} />
+
+        {/* Patient */}
+        <Text style={styles.sectionLabel}>Patient</Text>
+        <Row label="Name" value={props.patientName} />
+        <Row label="Age/Sex" value={[props.patientAge != null ? `${props.patientAge} yrs` : null, props.patientSex].filter(Boolean).join(" · ") || null} />
+        <Row label="Phone" value={props.patientPhone} />
+
+        {/* Referral — only when there is something to show */}
+        {hasReferral ? (
+          <>
+            <View style={styles.divider} />
             <Text style={styles.sectionLabel}>Referral</Text>
             <Row label="Doctor" value={props.doctorName} />
             <Row label="Hospital" value={props.doctorHospital} />
             <Row label="Phone" value={props.doctorPhone} />
-            <Row label="Email" value={props.doctorEmail} />
-            <Row label="Request" value={props.code} />
-          </View>
-        </View>
+          </>
+        ) : null}
 
         {/* The request as the doctor wrote it + clinical details */}
         {(props.rawText || props.diagnosis) ? (
-          <View style={styles.noteCard}>
+          <>
+            <View style={styles.divider} />
             <Text style={styles.sectionLabel}>Doctor&apos;s request</Text>
             {props.rawText ? <Text style={styles.noteText}>&ldquo;{props.rawText}&rdquo;</Text> : null}
-            {props.diagnosis ? (
-              <View style={[styles.field, { marginTop: props.rawText ? 4 : 0 }]}>
-                <Text style={styles.fieldLabel}>Clinical</Text>
-                <Text style={styles.fieldValue}>{props.diagnosis}</Text>
-              </View>
-            ) : null}
-          </View>
+            {props.diagnosis ? <Row label="Clinical" value={props.diagnosis} /> : null}
+          </>
         ) : null}
 
-        {/* Departments to visit + instruction */}
-        {departmentNames.length > 0 ? (
-          <View style={styles.summaryRow}>
-            {departmentNames.map((d, i) => (
-              <View key={i} style={styles.chip}><Text style={styles.chipText}>{d}</Text></View>
-            ))}
-          </View>
-        ) : null}
         <View style={styles.instruction}>
           <Text style={styles.instructionText}>
-            Please present this slip at each department below. A staff member will tick each test, write their initials and the time as it is completed. Keep this copy until all tests are done.
+            Present this slip at each department below. Staff will tick each test and add their initials and the time. Keep this copy until all tests are done.
           </Text>
         </View>
 
-        {/* Test checklist grouped by department. Long departments flow onto
-            following pages: only individual rows are kept atomic, and the
-            heading + column header stay welded to the first few rows so a
-            department never opens as an orphan at the foot of a page. */}
+        {/* Test checklist grouped by department. Rows stay atomic so a test
+            never splits across a page break on a long roll. */}
         {props.groups.map((g, gi) => (
           <View key={gi}>
-            <View wrap={false} minPresenceAhead={72}>
-              <View style={styles.deptHeading}>
-                <Text style={styles.deptName}>{g.department}</Text>
-                <Text style={styles.deptHint}>{g.hint}</Text>
-              </View>
-              <View style={styles.thead}>
-                <Text style={[styles.th, styles.cBox]}>Done</Text>
-                <Text style={[styles.th, styles.cTest]}>Test</Text>
-                <Text style={[styles.th, styles.cDone]}>Sample / Time</Text>
-                <Text style={[styles.th, styles.cStaff]}>Staff initials</Text>
-              </View>
+            <View style={styles.deptHeading} wrap={false} minPresenceAhead={40}>
+              <Text style={styles.deptName}>{g.department}</Text>
+              {g.hint ? <Text style={styles.deptHint}>{g.hint}</Text> : null}
             </View>
             {g.tests.map((t, ti) => (
-              <View key={ti} style={styles.tr} wrap={false}>
-                <View style={styles.cBox}><View style={styles.checkbox} /></View>
-                <View style={styles.cTest}>
+              <View key={ti} style={styles.testRow} wrap={false}>
+                <View style={styles.checkbox} />
+                <View style={styles.testBody}>
                   <Text style={styles.testName}>{t.name}</Text>
                   {t.sub ? <Text style={styles.testSub}>{t.sub}</Text> : null}
+                  <View style={styles.staffLine}>
+                    <View style={styles.staffCell}>
+                      <Text style={styles.staffLabel}>Sample / time</Text>
+                      <View style={styles.rule} />
+                    </View>
+                    <View style={styles.staffCell}>
+                      <Text style={styles.staffLabel}>Initials</Text>
+                      <View style={styles.rule} />
+                    </View>
+                  </View>
                 </View>
-                <View style={styles.cDone}><View style={styles.ruleLine} /></View>
-                <View style={styles.cStaff}><View style={styles.ruleLine} /></View>
               </View>
             ))}
           </View>
         ))}
-
-        {props.totalLabel ? (
-          <View style={styles.totalRow} wrap={false}>
-            <Text style={styles.totalLabel}>Amount paid at front desk</Text>
-            <Text style={styles.totalValue}>{props.totalLabel}</Text>
-          </View>
-        ) : null}
 
         {/* Front-desk verification + patient acknowledgement */}
         <View style={styles.verifyBlock} wrap={false}>
@@ -256,21 +227,10 @@ export function VisitChecklistPdf(props: VisitChecklistProps) {
           </View>
         </View>
 
-        <View
-          fixed
-          style={styles.footerWrap}
-          render={(pageProps) => {
-            // The View render prop's type omits totalPages, but react-pdf
-            // passes it at runtime just like it does for Text.
-            const { pageNumber, totalPages } = pageProps as unknown as { pageNumber: number; totalPages: number };
-            return (
-              <View style={styles.footer}>
-                <Text style={styles.footerText}>{props.labName} · Patient visit checklist · Powered by Poveon</Text>
-                <Text style={styles.footerText}>{`Page ${pageNumber} of ${totalPages}`}</Text>
-              </View>
-            );
-          }}
-        />
+        <View style={styles.footer}>
+          <Text style={styles.footerText}>{props.labName} · Patient visit checklist</Text>
+          <Text style={styles.footerText}>Powered by Poveon</Text>
+        </View>
       </Page>
     </Document>
   );

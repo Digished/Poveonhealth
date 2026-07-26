@@ -1,7 +1,7 @@
 "use client";
 
 import { Children, useCallback, useEffect, useMemo, useState } from "react";
-import { Loader2, Check, Search, RefreshCw, Pencil, Phone, Undo2, QrCode, MessageCircle, CreditCard, Stethoscope, Hourglass, UserCheck, UserPlus, X, Printer, AlertTriangle, Workflow, Mail, MapPin, ChevronRight, Copy, MoreHorizontal, ClipboardCheck, Eye } from "lucide-react";
+import { Loader2, Check, Search, RefreshCw, Pencil, Phone, Undo2, QrCode, MessageCircle, CreditCard, Stethoscope, Hourglass, UserCheck, UserPlus, X, Printer, AlertTriangle, Workflow, Mail, MapPin, ChevronRight, Copy, MoreHorizontal, ClipboardCheck, Eye, FileText, ExternalLink } from "lucide-react";
 import toast from "react-hot-toast";
 import dynamic from "next/dynamic";
 import { FullViewModal } from "@/components/ui/FullViewModal";
@@ -26,6 +26,7 @@ interface QueueReq {
   doctor_name: string | null;
   doctor_hospital: string | null;
   tests: string;
+  test_image_url: string | null;
   diagnosis: string | null;
   referral_type: string | null;
   policy_number: string | null;
@@ -99,6 +100,7 @@ function buildCopyText(r: QueueReq): string {
     ["Payment mode", r.payment_mode ? (PAYMENT_LABEL[r.payment_mode] ?? r.payment_mode) : null],
     ["Complaint", r.diagnosis],
     ["Tests", testNames(r).join(", ") || null],
+    ["Referral form", r.test_image_url],
     ["Code", r.code],
   ];
   return lines.filter(([, v]) => v != null && String(v).trim() !== "").map(([k, v]) => `${k}: ${String(v).trim()}`).join("\n");
@@ -311,17 +313,24 @@ export function QueueView({
 
   // One combined queue (waiting + paid) ordered by when each client joined.
   // Positions are live: when someone ahead is attended they leave the list
-  // and everyone below moves up a number.
+  // and everyone below moves up a number. Numbering restarts every calendar
+  // day — yesterday's leftovers never push today's first client to #14.
   const { inQueue, positions } = useMemo(() => {
     const all = [...waiting, ...paid].sort((a, b) =>
       new Date(a.queue_confirmed_at ?? a.created_at).getTime() - new Date(b.queue_confirmed_at ?? b.created_at).getTime()
     );
-    const dayList = all.filter(inDay);
     const pos = new Map<string, number>();
-    dayList.forEach((r, i) => pos.set(r.id, i + 1));
+    const perDay = new Map<string, number>();
+    for (const r of all) {
+      const joined = new Date(r.queue_confirmed_at ?? r.created_at);
+      const dayKey = `${joined.getFullYear()}-${joined.getMonth()}-${joined.getDate()}`;
+      const n = (perDay.get(dayKey) ?? 0) + 1;
+      perDay.set(dayKey, n);
+      pos.set(r.id, n);
+    }
     return {
       positions: pos,
-      inQueue: dayList.filter((r) => {
+      inQueue: all.filter(inDay).filter((r) => {
         if (payF === "unpaid" && r.is_paid) return false;
         if (payF === "paid" && !r.is_paid) return false;
         return matches(r);
@@ -474,8 +483,13 @@ export function QueueView({
                         {r.payment_mode && <span>Pays: {PAYMENT_LABEL[r.payment_mode] ?? r.payment_mode}</span>}
                         <span>{tab === "attended" ? `Attended at ${fmtTime(r.attended_at)}` : `Joined ${timeAgo(r.queue_confirmed_at ?? r.created_at)}`}</span>
                       </div>
-                      {(r.details_captured_at || (r.attending_by && lockIsFresh(r.attending_since))) && (
+                      {(r.details_captured_at || r.test_image_url || (r.attending_by && lockIsFresh(r.attending_since))) && (
                         <div className="mt-1.5 flex flex-wrap items-center gap-1.5">
+                          {r.test_image_url && (
+                            <span className="inline-flex items-center gap-1 rounded-full bg-sky-500/15 px-2 py-0.5 text-[10px] font-medium text-sky-300">
+                              <FileText className="h-2.5 w-2.5" /> Referral form
+                            </span>
+                          )}
                           {r.attending_by && lockIsFresh(r.attending_since) && (
                             <span className="inline-flex items-center gap-1 rounded-full bg-amber-500/15 px-2 py-0.5 text-[10px] font-medium text-amber-300">
                               <Eye className="h-2.5 w-2.5" /> {r.attending_by === me ? "You're attending" : `${actorLabel(r.attending_by)} is attending`}
@@ -747,6 +761,29 @@ function QueueDetailModal({
             </p>
           )}
         </div>
+
+        {/* The client's own referral form, shown full-width so the desk can read
+            the tests straight off it. */}
+        {r.test_image_url && (
+          <div className="rounded-2xl border border-white/10 bg-white/5 p-4">
+            <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
+              <p className="inline-flex items-center gap-1.5 text-xs font-semibold uppercase tracking-wide text-slate-400">
+                <FileText className="h-3.5 w-3.5" /> Referral form
+              </p>
+              <a href={r.test_image_url} target="_blank" rel="noreferrer" className="inline-flex items-center gap-1.5 rounded-lg border border-white/10 px-2.5 py-1.5 text-[11px] font-medium text-medical-300 hover:bg-white/5">
+                <ExternalLink className="h-3.5 w-3.5" /> Open full size
+              </a>
+            </div>
+            <a href={r.test_image_url} target="_blank" rel="noreferrer" className="block">
+              {/* eslint-disable-next-line @next/next/no-img-element */}
+              <img
+                src={r.test_image_url}
+                alt="Referral form the client submitted"
+                className="max-h-[28rem] w-full rounded-xl bg-white object-contain"
+              />
+            </a>
+          </div>
+        )}
 
         {/* Actions */}
         <div className="space-y-3 border-t border-white/10 pt-4">

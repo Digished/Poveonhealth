@@ -45,15 +45,20 @@ export async function GET(request: NextRequest) {
     return NextResponse.json({ success: false, error: "Not found" }, { status: 404, headers: CORS_HEADERS });
   }
 
-  // People still ahead: joined the queue earlier, not yet attended, not done.
+  // People still ahead: joined the queue earlier the same day, not yet
+  // attended, not done. Bounded to the client's own day so yesterday's
+  // unattended leftovers never inflate today's position — the queue starts
+  // fresh every morning.
   let ahead: number | null = null;
   if (!req.attended_at && req.status !== "done") {
+    const dayStart = new Date(req.queue_confirmed_at);
+    dayStart.setHours(0, 0, 0, 0);
     ahead = await prisma.request.count({
       where: {
         lab_id: req.lab_id,
         attended_at: null,
         status: { not: "done" },
-        queue_confirmed_at: { lt: req.queue_confirmed_at },
+        queue_confirmed_at: { gte: dayStart, lt: req.queue_confirmed_at },
       },
     });
   }
