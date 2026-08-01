@@ -1074,7 +1074,7 @@ export function LabDashboard({ lab, isOwner = false, roleName = "Lab Owner", can
                       {selectedClient.requests.map((req, i) => (
                         <div key={req.id} className={`px-5 py-4 ${i < selectedClient.requests.length - 1 ? "border-b border-white/5" : ""}`}>
                           <div className="flex items-start justify-between gap-3 mb-1.5">
-                            <p className="text-xs text-slate-400">{new Date(req.created_at).toLocaleDateString("en-GB", { day: "numeric", month: "long", year: "numeric" })}</p>
+                            <p className="text-xs text-slate-400">{format(new Date(req.created_at), "d MMMM yyyy · HH:mm")}</p>
                             <StatusBadge status={req.status} />
                           </div>
                           <p className="text-sm text-white font-medium leading-snug line-clamp-2">{displayTests(req.tests)}</p>
@@ -1485,7 +1485,7 @@ export function LabDashboard({ lab, isOwner = false, roleName = "Lab Owner", can
                             <div className="flex items-center gap-2 mt-1 flex-wrap">
                               <p className="text-xs text-slate-500 flex items-center gap-1">
                                 <Calendar className="w-3 h-3" />
-                                {format(new Date(req.created_at), "dd MMM yyyy")}
+                                {format(new Date(req.created_at), "dd MMM yyyy · HH:mm")}
                               </p>
                               </div>
                           </>
@@ -1510,7 +1510,7 @@ export function LabDashboard({ lab, isOwner = false, roleName = "Lab Owner", can
                               </span>
                               <span className="flex items-center gap-1">
                                 <Calendar className="w-3 h-3" />
-                                {format(new Date(req.created_at), "dd MMM yyyy")}
+                                {format(new Date(req.created_at), "dd MMM yyyy · HH:mm")}
                               </span>
                             </div>
                             <div className="mt-1.5">

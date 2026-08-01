@@ -10,9 +10,9 @@ import {
   referralPatientNotice,
   referralStatusUpdate,
 } from "@/lib/email/templates";
-import { sendSms } from "@/lib/sms";
-import { logSmsSend } from "@/lib/sms/log-sms";
-import { isValidNigerianPhone, checkDailySmsCap } from "@/lib/sms-guard";
+import { notify } from "@/lib/notify";
+import { waTemplates } from "@/lib/whatsapp";
+import type { WhatsAppMessage } from "@/lib/whatsapp";
 
 export function appUrl(): string {
   return process.env.NEXT_PUBLIC_APP_URL || "https://poveon.com";
@@ -31,25 +31,24 @@ function sendEmail(to: string, subject: string, html: string, tag: string) {
     .catch((e) => console.error(`[referral-email] ${tag} error:`, e));
 }
 
-function sendPatientSms(phone: string | null | undefined, body: string, tag: string) {
+/**
+ * Reach the patient on WhatsApp, falling back to SMS.
+ * Fire-and-forget, mirroring how the emails above are dispatched.
+ */
+function notifyPatient(
+  phone: string | null | undefined,
+  whatsapp: WhatsAppMessage,
+  smsBody: string,
+  tag: string
+) {
   const phoneValue = phone?.trim();
-  if (!phoneValue || !isValidNigerianPhone(phoneValue)) {
-    console.warn(`[referral-sms] ${tag} skipped — non-Nigerian phone: ${phoneValue}`);
+  if (!phoneValue) {
+    console.warn(`[referral-notify] ${tag} skipped — no phone number`);
     return;
   }
-  checkDailySmsCap()
-    .then((daily) => {
-      if (!daily.allowed) {
-        console.error(`[referral-sms] ${tag} blocked — daily cap reached (${daily.count}/${daily.limit})`);
-        return;
-      }
-      sendSms(phoneValue!, body)
-        .then(({ messageId }) =>
-          logSmsSend({ provider: "termii", toPhone: phoneValue!, messageBody: body, messageId })
-        )
-        .catch((e) => console.error(`[referral-sms] ${tag} error:`, e instanceof Error ? e.message : String(e)));
-    })
-    .catch((e) => console.error(`[referral-sms] ${tag} cap check failed:`, e));
+  notify({ phone: phoneValue, whatsapp, sms: smsBody, tag: `referral-${tag}` }).catch((e) =>
+    console.error(`[referral-notify] ${tag} error:`, e instanceof Error ? e.message : String(e))
+  );
 }
 
 type ReferralLike = {
@@ -129,8 +128,16 @@ export function notifyReferralCreated(
     );
   }
 
-  sendPatientSms(
+  notifyPatient(
     referral.patient_phone,
+    waTemplates.referralCreatedPatient({
+      patientName: referral.patient_name,
+      doctorName: referral.doctor_name,
+      hospitalName: hospital.name,
+      specialty: referral.specialty,
+      code: referral.code,
+      trackUrl,
+    }),
     `${referral.doctor_name} has referred you to ${hospital.name} (${referral.specialty}). Your referral code is ${referral.code}. Track: ${trackUrl}`,
     "patient-created"
   );
@@ -192,5 +199,17 @@ export function notifyReferralStatus(
     redirected: `Update: your referral ${referral.code} was redirected to ${opts?.newHospitalName ?? "another hospital"}. Track: ${trackUrl}`,
   } as const;
 
-  sendPatientSms(referral.patient_phone, smsByStatus[status], `patient-${status}`);
+  notifyPatient(
+    referral.patient_phone,
+    waTemplates.referralStatusUpdate({
+      recipientName: referral.patient_name,
+      status,
+      code: referral.code,
+      hospitalName: hospital.name,
+      newHospitalName: opts?.newHospitalName,
+      trackUrl,
+    }),
+    smsByStatus[status],
+    `patient-${status}`
+  );
 }

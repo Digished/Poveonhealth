@@ -1,10 +1,10 @@
 /**
- * Optional SMS logging helper
- * Logs SMS sends to the database for tracking delivery status via webhooks
- * (fire-and-forget, never blocks request)
+ * SMS logging helper — thin wrapper over the shared message log.
+ * Kept as its own module so existing SMS call sites don't have to care about
+ * the channel discriminator introduced for WhatsApp.
  */
 
-import { prisma } from "@/lib/prisma";
+import { logMessageSend } from "@/lib/message-log";
 
 export async function logSmsSend(params: {
   provider: "termii";
@@ -13,19 +13,5 @@ export async function logSmsSend(params: {
   messageId?: string;
   requestId?: string;
 }): Promise<void> {
-  try {
-    await prisma.smsLog.create({
-      data: {
-        provider: params.provider,
-        to_phone: params.toPhone,
-        message_body: params.messageBody,
-        provider_msg_id: params.messageId || null,
-        request_id: params.requestId || null,
-        status: "sent", // Mark as sent once accepted by provider
-      },
-    });
-  } catch (error) {
-    // Never block on logging errors
-    console.error("[sms-log] Error logging SMS:", error);
-  }
+  return logMessageSend({ ...params, channel: "sms" });
 }

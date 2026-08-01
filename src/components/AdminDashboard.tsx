@@ -22,13 +22,14 @@ import { AdminBroadcastTab } from "@/components/admin/AdminBroadcastTab";
 import { AdminHmoTab } from "@/components/admin/AdminHmoTab";
 import { AdminClientsTab } from "@/components/admin/AdminClientsTab";
 import { AdminPerksTab } from "@/components/admin/AdminPerksTab";
+import { AdminMetricsTab } from "@/components/admin/AdminMetricsTab";
 import { AdminLabPartnersModal } from "@/components/admin/AdminLabPartnersModal";
 import { SpecialtyTreePicker } from "@/components/admin/SpecialtyTreePicker";
 import { HospitalDoctorsPanel } from "@/components/admin/HospitalDoctorsPanel";
 import { Button } from "@/components/ui/Button";
 import { Input, Textarea } from "@/components/ui/Input";
 import { StatusBadge, Badge } from "@/components/ui/Badge";
-import type { Lab, LabRequest, AdminMetrics, ApiLog, ApiLogSummary, LabApiKey, LabRole, LabMember } from "@/lib/types";
+import type { Lab, LabRequest, ApiLog, ApiLogSummary, LabApiKey, LabRole, LabMember } from "@/lib/types";
 import { parsePhones } from "@/lib/phones";
 import { format } from "date-fns";
 import { createClient } from "@/lib/supabase/client"; // still used for auth sign-out
@@ -69,6 +70,9 @@ function testStatsFor(requests: LabRequest[]): TestStat[] {
   return Array.from(m.values()).sort((a, b) => b.total - a.total);
 }
 
+/** Request/referral timestamps carry the time — "when today" matters for triage. */
+const REQ_DATE_TIME = "dd MMM yy · HH:mm";
+
 // Shared white input class for dark-background modals
 const whiteInput = "bg-white border-slate-400 text-slate-800 placeholder-slate-500";
 
@@ -85,13 +89,8 @@ export function AdminDashboard() {
   const [mobileTabOpen, setMobileTabOpen] = useState(false);
   const [labs, setLabs] = useState<Lab[]>([]);
   const [requests, setRequests] = useState<LabRequest[]>([]);
-  const [metrics, setMetrics] = useState<AdminMetrics | null>(null);
-  const [metricsFrom, setMetricsFrom] = useState<string>("");
-  const [metricsTo, setMetricsTo] = useState<string>("");
-  const [metricsRefreshing, setMetricsRefreshing] = useState(false);
   const [loading, setLoading] = useState(true);
   const [showCreateLab, setShowCreateLab] = useState(false);
-  const [byLabOpen, setByLabOpen] = useState(false);
   const [showCreateMarketer, setShowCreateMarketer] = useState(false);
   const [marketers, setMarketers] = useState<{ id: string; name: string; email: string; phone: string | null; code: string; suspended: boolean; created_at: string; doctor_count: number; referral_link: string }[]>([]);
   const [selectedMarketerId, setSelectedMarketerId] = useState<string | null>(null);
@@ -163,17 +162,6 @@ export function AdminDashboard() {
     else toast.error("Failed to remove");
   }
 
-  type RevenueData = {
-    total_poveon_earned: number;
-    total_lab_revenue: number;
-    total_received: number;
-    total_outstanding: number;
-    by_lab: { lab_id: string; lab_name: string; request_count: number; total_poveon_amount: number; total_lab_revenue: number; total_deposited: number; wallet_balance: number | null; owed: number }[];
-    recent_requests: { id: string; code: string; lab_id: string; lab_name: string; patient_name: string | null; tests: string; poveon_amount: number; lab_revenue_amount: number; is_paid_to_poveon: boolean; seen_at: string | null }[];
-    recent_dva_credits: { id: string; lab_id: string; lab_name: string; amount: number; reference: string; channel: string; sender_name: string | null; sender_bank: string | null; created_at: string }[];
-  };
-  const [revenueData, setRevenueData] = useState<RevenueData | null>(null);
-  const [revenueLoading, setRevenueLoading] = useState(false);
 
   // Per-lab analytics modal
   type LabAnalytics = {
@@ -278,16 +266,6 @@ export function AdminDashboard() {
     } catch { /* non-critical */ }
   }, []);
 
-  const fetchRevenue = useCallback(async () => {
-    setRevenueLoading(true);
-    try {
-      const res = await fetch("/api/admin/revenue");
-      const data = await res.json();
-      if (data.success) setRevenueData(data);
-    } catch { /* non-critical */ }
-    finally { setRevenueLoading(false); }
-  }, []);
-
   async function handleSaveSettings() {
     if (isNaN(parseFloat(defaultRequestPrice)) || parseFloat(defaultRequestPrice) < 0) {
       toast.error("Enter a valid default request price");
@@ -331,47 +309,20 @@ export function AdminDashboard() {
         fetchApiLogs(),
         fetchSettings(),
         fetchMarketers(),
-        fetchRevenue(),
       ]);
       const reqData = await reqRes.json();
       if (reqData.success) {
         setRequests(reqData.requests ?? []);
-        setMetrics(reqData.metrics ?? null);
       }
     } catch {
       toast.error("Failed to load data");
     } finally {
       setLoading(false);
     }
-  }, [fetchLabs, fetchMarketers, fetchRevenue]);
+  }, [fetchLabs, fetchMarketers]);
 
   useEffect(() => { fetchData(); }, [fetchData]);
   useEffect(() => { if (activeTab === "lab-marketers") fetchLabMarketers(); }, [activeTab, fetchLabMarketers]);
-
-  // Re-fetch just the status metrics when the date range changes. Only the
-  // metric counts are date-scoped — the request list itself is untouched.
-  const fetchMetrics = useCallback(async (from: string, to: string) => {
-    setMetricsRefreshing(true);
-    try {
-      const p = new URLSearchParams({ limit: "1" });
-      if (from) p.set("from", from);
-      if (to) p.set("to", to);
-      const res = await fetch(`/api/admin/requests?${p.toString()}`);
-      const data = await res.json();
-      if (data.success) setMetrics(data.metrics ?? null);
-    } catch {
-      toast.error("Failed to load metrics");
-    } finally {
-      setMetricsRefreshing(false);
-    }
-  }, []);
-
-  useEffect(() => {
-    if (activeTab !== "metrics") return;
-    if (!metricsFrom && !metricsTo) return; // initial (unfiltered) load handled by fetchData
-    const t = setTimeout(() => fetchMetrics(metricsFrom, metricsTo), 300);
-    return () => clearTimeout(t);
-  }, [activeTab, metricsFrom, metricsTo, fetchMetrics]);
 
   // Referral tracking aggregated over ALL requests (server-side) so counts are
   // accurate rather than limited to the latest page loaded on the dashboard.
@@ -752,235 +703,7 @@ export function AdminDashboard() {
         })()}
 
         {/* ── METRICS ── */}
-        {activeTab === "metrics" && (
-          <div className="animate-fade-in space-y-6">
-            {/* Date-range filter for the status metrics */}
-            <div className="flex flex-wrap items-end gap-3 rounded-2xl border border-white/8 bg-white/3 px-4 py-3">
-              <div className="flex flex-col gap-1">
-                <label className="text-[10px] font-semibold uppercase tracking-wider text-slate-500">From</label>
-                <input
-                  type="date"
-                  value={metricsFrom}
-                  max={metricsTo || undefined}
-                  onChange={(e) => setMetricsFrom(e.target.value)}
-                  className="rounded-lg border border-white/10 bg-white/8 px-2.5 py-1.5 text-xs text-slate-200 focus:outline-none focus:ring-1 focus:ring-medical-500"
-                />
-              </div>
-              <div className="flex flex-col gap-1">
-                <label className="text-[10px] font-semibold uppercase tracking-wider text-slate-500">To</label>
-                <input
-                  type="date"
-                  value={metricsTo}
-                  min={metricsFrom || undefined}
-                  onChange={(e) => setMetricsTo(e.target.value)}
-                  className="rounded-lg border border-white/10 bg-white/8 px-2.5 py-1.5 text-xs text-slate-200 focus:outline-none focus:ring-1 focus:ring-medical-500"
-                />
-              </div>
-              {(metricsFrom || metricsTo) && (
-                <button
-                  onClick={() => { setMetricsFrom(""); setMetricsTo(""); fetchMetrics("", ""); }}
-                  className="rounded-lg border border-white/10 px-3 py-1.5 text-xs text-slate-300 transition-colors hover:bg-white/5 hover:text-white"
-                >
-                  Clear
-                </button>
-              )}
-              <span className="ml-auto text-[11px] text-slate-500">
-                {metricsRefreshing ? "Updating…" : (metricsFrom || metricsTo) ? "Filtered by date" : "All time"}
-              </span>
-            </div>
-
-            {loading ? (
-              <div className="grid grid-cols-2 md:grid-cols-3 gap-4">
-                {[...Array(3)].map((_, i) => (
-                  <div key={i} className="bg-white/5 border border-white/10 rounded-2xl p-5 animate-pulse h-24" />
-                ))}
-              </div>
-            ) : metrics ? (
-              <>
-                <div className="grid grid-cols-2 md:grid-cols-3 gap-4">
-                  <button
-                    onClick={() => setByLabOpen(true)}
-                    className="bg-gradient-to-br from-blue-500/20 to-blue-600/10 border border-blue-500/30 rounded-2xl p-5 text-left hover:border-blue-400/50 hover:from-blue-500/25 transition-all group"
-                  >
-                    <p className="text-xs text-slate-400 font-medium uppercase tracking-wider mb-1">Total</p>
-                    <p className="text-4xl font-bold text-white">{metrics.total}</p>
-                    <p className="text-[10px] text-blue-400 mt-1 group-hover:text-blue-300 transition-colors">By lab →</p>
-                  </button>
-                  {[
-                    { label: "Incoming", value: metrics.incoming, color: "from-blue-400/20 to-blue-500/10 border-blue-400/30" },
-                    { label: "Arrived", value: metrics.seen, color: "from-emerald-400/20 to-emerald-500/10 border-emerald-400/30" },
-                  ].map((stat) => (
-                    <div key={stat.label} className={`bg-gradient-to-br ${stat.color} border rounded-2xl p-5`}>
-                      <p className="text-xs text-slate-400 font-medium uppercase tracking-wider mb-1">{stat.label}</p>
-                      <p className="text-4xl font-bold text-white">{stat.value}</p>
-                    </div>
-                  ))}
-                </div>
-
-                {/* By Lab modal */}
-                {byLabOpen && (
-                  <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm" onClick={() => setByLabOpen(false)}>
-                    <div className="bg-slate-900 border border-white/15 rounded-2xl w-full max-w-md shadow-2xl animate-slide-up overflow-hidden" onClick={(e) => e.stopPropagation()}>
-                      <div className="flex items-center justify-between px-5 py-4 border-b border-white/10">
-                        <h3 className="font-semibold text-white">Requests by Laboratory</h3>
-                        <button onClick={() => setByLabOpen(false)} className="p-1.5 rounded-lg hover:bg-white/10 text-slate-400 transition-colors"><X className="w-4 h-4" /></button>
-                      </div>
-                      <div className="p-5 space-y-3 max-h-[60vh] overflow-y-auto">
-                        {metrics.byLab.map((lab) => (
-                          <div key={lab.lab_id} className="flex items-center gap-3">
-                            <p className="text-sm text-white min-w-0 truncate" style={{ flex: "1 1 40%" }}>{lab.lab_name}</p>
-                            <div className="flex-1 bg-white/10 rounded-full h-2 overflow-hidden">
-                              <div className="h-full bg-medical-500 rounded-full" style={{ width: `${metrics.total ? (lab.total / metrics.total) * 100 : 0}%` }} />
-                            </div>
-                            <span className="text-sm text-slate-400 font-mono w-8 text-right shrink-0">{lab.total}</span>
-                          </div>
-                        ))}
-                        {metrics.byLab.length === 0 && <p className="text-sm text-slate-500 text-center py-4">No data yet</p>}
-                      </div>
-                    </div>
-                  </div>
-                )}
-
-                {/* ── Poveon Revenue ── */}
-                {revenueLoading ? (
-                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                    {[...Array(2)].map((_, i) => (
-                      <div key={i} className="bg-white/5 border border-white/10 rounded-2xl p-5 animate-pulse h-24" />
-                    ))}
-                  </div>
-                ) : revenueData && (
-                  <>
-                    {/* Revenue summary cards */}
-                    <div className="grid grid-cols-1 sm:grid-cols-4 gap-4">
-                      <div className="bg-gradient-to-br from-emerald-500/20 to-emerald-600/10 border border-emerald-500/30 rounded-2xl p-5">
-                        <p className="text-xs text-slate-400 font-medium uppercase tracking-wider mb-1">Total Commission Accrued</p>
-                        <p className="text-3xl font-bold text-white">₦{revenueData.total_poveon_earned.toLocaleString()}</p>
-                        <p className="text-xs text-slate-500 mt-1">from all seen/done requests</p>
-                      </div>
-                      <div className="bg-gradient-to-br from-sky-500/20 to-sky-600/10 border border-sky-500/30 rounded-2xl p-5">
-                        <p className="text-xs text-slate-400 font-medium uppercase tracking-wider mb-1">Total Lab Revenue</p>
-                        <p className="text-3xl font-bold text-white">₦{revenueData.total_lab_revenue.toLocaleString()}</p>
-                        <p className="text-xs text-slate-500 mt-1">labs' share of test fees</p>
-                      </div>
-                      <div className="bg-gradient-to-br from-violet-500/20 to-violet-600/10 border border-violet-500/30 rounded-2xl p-5">
-                        <p className="text-xs text-slate-400 font-medium uppercase tracking-wider mb-1">Total Received from Labs</p>
-                        <p className="text-3xl font-bold text-white">₦{revenueData.total_received.toLocaleString()}</p>
-                        <p className="text-xs text-slate-500 mt-1">cash deposited via DVA</p>
-                      </div>
-                      <div className={`bg-gradient-to-br rounded-2xl p-5 border ${revenueData.total_outstanding === 0 ? "from-emerald-500/20 to-emerald-600/10 border-emerald-500/30" : "from-amber-500/20 to-amber-600/10 border-amber-500/30"}`}>
-                        <p className="text-xs text-slate-400 font-medium uppercase tracking-wider mb-1">Net Outstanding</p>
-                        <p className={`text-3xl font-bold ${revenueData.total_outstanding === 0 ? "text-emerald-300" : "text-amber-300"}`}>
-                          ₦{revenueData.total_outstanding.toLocaleString()}
-                        </p>
-                        <p className="text-xs text-slate-500 mt-1">{revenueData.total_outstanding === 0 ? "fully settled" : "still owed to Poveon"}</p>
-                      </div>
-                    </div>
-
-                    {/* Per-lab breakdown — sorted by most indebted first */}
-                    {revenueData.by_lab.length > 0 && (
-                      <div className="bg-white/5 border border-white/10 rounded-2xl p-5">
-                        <div className="flex items-center justify-between mb-4">
-                          <h3 className="text-sm font-semibold text-slate-300">Lab Commission Breakdown</h3>
-                          <button onClick={fetchRevenue} className="flex items-center gap-1.5 text-xs text-slate-400 hover:text-white transition px-2 py-1 rounded-lg hover:bg-white/10">
-                            <RefreshCw className="w-3 h-3" />Refresh
-                          </button>
-                        </div>
-                        <div className="space-y-2 max-h-72 overflow-y-auto pr-1">
-                          {revenueData.by_lab.map((row) => (
-                            <div key={row.lab_id} className="flex items-center gap-3 py-2.5 border-b border-white/5 last:border-0">
-                              <div className="flex-1 min-w-0">
-                                <p className="text-sm text-white truncate">{row.lab_name}</p>
-                                <p className="text-xs text-slate-500">
-                                  {row.request_count} request{row.request_count !== 1 ? "s" : ""}
-                                  {row.wallet_balance === null && <span className="ml-1.5 text-amber-500">· no wallet</span>}
-                                </p>
-                              </div>
-                              <div className="flex items-center gap-4 text-xs shrink-0">
-                                <div className="text-right">
-                                  <p className="text-slate-400">Commission</p>
-                                  <p className="text-emerald-400 font-mono font-bold">₦{row.total_poveon_amount.toLocaleString()}</p>
-                                </div>
-                                <div className="text-right">
-                                  <p className="text-slate-400">Deposited</p>
-                                  <p className="text-violet-400 font-mono font-bold">₦{row.total_deposited.toLocaleString()}</p>
-                                </div>
-                                <div className="text-right min-w-[60px]">
-                                  <p className="text-slate-400">Owed</p>
-                                  <p className={`font-mono font-bold ${row.owed === 0 ? "text-emerald-400" : "text-amber-400"}`}>
-                                    {row.owed === 0 ? "Settled" : `₦${row.owed.toLocaleString()}`}
-                                  </p>
-                                </div>
-                              </div>
-                            </div>
-                          ))}
-                        </div>
-                      </div>
-                    )}
-
-                    {/* DVA deposit history — actual cash received from labs */}
-                    {revenueData.recent_dva_credits.length > 0 && (
-                      <div className="bg-white/5 border border-white/10 rounded-2xl p-5">
-                        <h3 className="text-sm font-semibold text-slate-300 mb-4">Recent DVA Deposits</h3>
-                        <div className="space-y-1 max-h-64 overflow-y-auto pr-1">
-                          {revenueData.recent_dva_credits.map((c) => (
-                            <div key={c.id} className="flex items-center gap-3 py-2.5 px-3 rounded-xl hover:bg-white/3 transition-colors">
-                              <div className="w-7 h-7 rounded-full bg-violet-500/15 flex items-center justify-center shrink-0">
-                                <ArrowDownToLine className="w-3.5 h-3.5 text-violet-400" />
-                              </div>
-                              <div className="flex-1 min-w-0">
-                                <div className="flex items-center gap-2">
-                                  <p className="text-xs text-white font-medium truncate">{c.lab_name}</p>
-                                  {c.channel === "manual" && <span className="text-[10px] text-slate-500 bg-white/5 px-1.5 py-0.5 rounded-full">manual</span>}
-                                </div>
-                                <p className="text-xs text-slate-500 truncate">
-                                  {c.sender_name ? `From ${c.sender_name}` : "Bank transfer"}
-                                  {c.sender_bank ? ` · ${c.sender_bank}` : ""}
-                                </p>
-                              </div>
-                              <div className="text-right shrink-0">
-                                <p className="text-sm font-bold font-mono text-violet-300">+₦{c.amount.toLocaleString()}</p>
-                                <p className="text-[10px] text-slate-500">{new Date(c.created_at).toLocaleDateString("en-GB", { day: "numeric", month: "short" })}</p>
-                              </div>
-                            </div>
-                          ))}
-                        </div>
-                      </div>
-                    )}
-
-                    {/* Recent commission activity — one row per request */}
-                    {revenueData.recent_requests.length > 0 && (
-                      <div className="bg-white/5 border border-white/10 rounded-2xl p-5">
-                        <h3 className="text-sm font-semibold text-slate-300 mb-4">Recent Commission Activity</h3>
-                        <div className="space-y-1 max-h-[32rem] overflow-y-auto pr-1">
-                          {revenueData.recent_requests.map((req) => (
-                            <div key={req.id} className="flex items-center gap-3 py-2.5 px-3 rounded-xl hover:bg-white/3 transition-colors">
-                              <div className="w-7 h-7 rounded-full bg-emerald-500/10 flex items-center justify-center shrink-0">
-                                <CreditCard className="w-3.5 h-3.5 text-emerald-400" />
-                              </div>
-                              <div className="flex-1 min-w-0">
-                                <div className="flex items-center gap-2">
-                                  <p className="text-xs text-white font-medium font-mono">{req.code}</p>
-                                  <p className="text-xs text-slate-500 truncate">{req.lab_name}</p>
-                                </div>
-                                <p className="text-xs text-slate-600 truncate">{req.patient_name ?? "Patient"} · {req.tests.slice(0, 60)}</p>
-                              </div>
-                              <div className="text-right shrink-0">
-                                <p className="text-sm font-bold font-mono text-emerald-400">₦{req.poveon_amount.toLocaleString()}</p>
-                                <p className="text-[10px] text-slate-500">{req.seen_at ? new Date(req.seen_at).toLocaleDateString("en-GB", { day: "numeric", month: "short" }) : ""}</p>
-                              </div>
-                            </div>
-                          ))}
-                        </div>
-                      </div>
-                    )}
-                  </>
-                )}
-              </>
-            ) : (
-              <p className="text-slate-500 text-center py-16">No data available</p>
-            )}
-          </div>
-        )}
+        {activeTab === "metrics" && <AdminMetricsTab />}
 
         {/* ── REQUESTS ── */}
         {activeTab === "requests" && (
@@ -1065,7 +788,7 @@ export function AdminDashboard() {
                       <div className="flex items-center justify-between mt-2">
                         <p className="text-xs text-slate-500 truncate flex-1">{(req.lab as { name: string } | null)?.name ?? "—"}</p>
                         <div className="flex items-center gap-2 shrink-0 ml-2">
-                          <p className="text-xs text-slate-600">{format(new Date(req.created_at), "dd MMM yy")}</p>
+                          <p className="text-xs text-slate-600">{format(new Date(req.created_at), REQ_DATE_TIME)}</p>
                         </div>
                       </div>
                     </div>
@@ -1117,7 +840,7 @@ export function AdminDashboard() {
                           <td className="py-3 px-3 max-w-[180px]"><p className="text-slate-400 truncate">{req.tests}</p></td>
                           <td className="py-3 px-3 text-slate-300">{(req.lab as { name: string } | null)?.name ?? "—"}</td>
                           <td className="py-3 px-3"><StatusBadge status={req.status} /></td>
-                          <td className="py-3 px-3 text-slate-400 whitespace-nowrap">{format(new Date(req.created_at), "dd MMM yy")}</td>
+                          <td className="py-3 px-3 text-slate-400 whitespace-nowrap">{format(new Date(req.created_at), REQ_DATE_TIME)}</td>
                           <td className="py-3 px-3">
                             <button
                               onClick={() => handleDeleteRequest(req)}
@@ -2452,7 +2175,7 @@ function ReferralDetailModal({ group, onClose }: { group: ReferralGroup; onClose
                 <p className="text-xs text-slate-500 truncate flex-1">{req.tests}</p>
                 <div className="flex items-center gap-2 shrink-0">
                   <span className="font-mono text-xs text-medical-400">{req.code}</span>
-                  <span className="text-xs text-slate-600">{format(new Date(req.created_at), "dd MMM")}</span>
+                  <span className="text-xs text-slate-600">{format(new Date(req.created_at), "dd MMM · HH:mm")}</span>
                 </div>
               </div>
             </div>
@@ -3716,7 +3439,7 @@ function MarketerDetailModal({
                                       <p className="text-xs text-slate-500 mt-0.5">Patient: <span className="text-slate-300 font-medium">{req.patient_name}</span></p>
                                       <p className="text-xs text-slate-600 mt-0.5 line-clamp-2 leading-relaxed">{req.tests}</p>
                                     </div>
-                                    <span className="text-xs text-slate-600 whitespace-nowrap shrink-0 mt-0.5">{format(new Date(req.created_at), "dd MMM yy")}</span>
+                                    <span className="text-xs text-slate-600 whitespace-nowrap shrink-0 mt-0.5">{format(new Date(req.created_at), REQ_DATE_TIME)}</span>
                                   </div>
                                 );
                               })
@@ -5136,7 +4859,7 @@ function AdminPatientReferralsView() {
                     {r.urgency}
                   </span>
                 )}
-                <span className="text-[10px] text-slate-500 ml-auto shrink-0">{format(new Date(r.created_at), "d MMM yyyy")}</span>
+                <span className="text-[10px] text-slate-500 ml-auto shrink-0">{format(new Date(r.created_at), "d MMM yyyy · HH:mm")}</span>
               </div>
               <p className="text-sm font-semibold text-white mt-1 truncate">
                 {r.patient_name}

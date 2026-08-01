@@ -7,9 +7,9 @@ import { doctorRequestConfirmation, patientRequestCode, labNewRequest, marketerN
 import { testsToCategories } from "@/lib/test-categories";
 import { resolveTests, totalFromBreakdown, type ResolvedTest } from "@/lib/resolve-tests";
 import { logApiCall } from "@/lib/api-logger";
-import { sendSms, buildPatientRequestSms } from "@/lib/sms";
-import { logSmsSend } from "@/lib/sms/log-sms";
-import { isValidNigerianPhone, checkPhoneSmsRateLimit, checkDailySmsCap } from "@/lib/sms-guard";
+import { buildPatientRequestSms } from "@/lib/sms";
+import { notify } from "@/lib/notify";
+import { waTemplates } from "@/lib/whatsapp";
 import { parseReferralText } from "@/lib/parse-referral";
 import { ensureProfessional } from "@/lib/lims";
 import { hasMinLetters, MIN_NAME_LETTERS } from "@/lib/name-validation";
@@ -453,27 +453,44 @@ export async function POST(request: NextRequest) {
 
       await Promise.all(sends).catch((e) => console.error("[email] send error:", e));
 
-      // Send SMS to patient if phone provided — guarded against pumping fraud
+      const requestUrl = appUrl ? `${appUrl}/r/${code}` : undefined;
+
+      // Patient: code + lab address on WhatsApp, falling back to SMS.
       if (data.patient_phone) {
-        const phone = data.patient_phone;
-        const smsBody = buildPatientRequestSms({ patientName: data.patient_name ?? "", labName: lab.name, code });
-        if (!isValidNigerianPhone(phone)) {
-          console.warn(`[api/requests/create] SMS skipped — non-Nigerian phone: ${phone}`);
-        } else {
-          const phoneLimit = await checkPhoneSmsRateLimit(phone);
-          if (!phoneLimit.allowed) {
-            console.warn(`[api/requests/create] SMS skipped — phone rate limit (${phoneLimit.count}/hr): ${phone}`);
-          } else {
-            const daily = await checkDailySmsCap();
-            if (!daily.allowed) {
-              console.error(`[api/requests/create] SMS blocked — daily cap reached (${daily.count}/${daily.limit})`);
-            } else {
-              sendSms(phone, smsBody)
-                .then(({ messageId }) => logSmsSend({ provider: "termii", toPhone: phone, messageBody: smsBody, messageId, requestId: newRequest.id }))
-                .catch((e) => console.error("[api/requests/create] SMS error:", e));
-            }
-          }
-        }
+        await notify({
+          phone: data.patient_phone,
+          whatsapp: waTemplates.patientRequestCode({
+            patientName: data.patient_name,
+            labName: lab.name,
+            labAddress,
+            labPhones,
+            code,
+            requestUrl,
+          }),
+          sms: buildPatientRequestSms({ patientName: data.patient_name ?? "", labName: lab.name, code }),
+          smsRateLimit: true,
+          requestId: newRequest.id,
+          tag: "request-code",
+        });
+      }
+
+      // Doctor: WhatsApp confirmation alongside the email above. No SMS fallback —
+      // doctors have always been reached by email, and this must not add SMS spend.
+      if (doctorPhone) {
+        await notify({
+          phone: doctorPhone,
+          whatsapp: waTemplates.doctorRequestConfirmation({
+            doctorName,
+            patientName: data.patient_name,
+            labName: lab.name,
+            labAddress,
+            labPhones,
+            code,
+            requestUrl,
+          }),
+          requestId: newRequest.id,
+          tag: "doctor-request",
+        });
       }
     };
 

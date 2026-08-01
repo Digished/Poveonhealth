@@ -857,13 +857,17 @@ model KbTest {
 // ── SMS Tracking ─────────────────────────────────────────────────────────────
 
 // Tracks SMS messages sent via Sendchamp/Termii for delivery status monitoring
+// Outbound message log — covers both SMS and WhatsApp (table name kept for
+// backward compatibility with existing rows and the Termii webhook).
 model SmsLog {
   id              String   @id @default(uuid())
-  provider        String   // "termii" | "sendchamp"
-  provider_msg_id String? // Message ID from SMS provider (for webhook lookup)
+  channel         String   @default("sms") // "sms" | "whatsapp"
+  provider        String   // "termii" | "sendchamp" | "twilio_whatsapp"
+  provider_msg_id String? // Message ID from the provider (for webhook lookup)
   to_phone        String   // Phone number sent to
   message_body    String
-  status          String   @default("pending") // "pending" | "sent" | "delivered" | "failed"
+  status          String   @default("pending") // "pending" | "sent" | "delivered" | "read" | "failed"
+  error_code      String? // Provider error code (e.g. Twilio 63016)
   error_message   String?
   request_id      String? // Link to Request if sent for a lab request
   created_at      DateTime @default(now())
@@ -873,6 +877,7 @@ model SmsLog {
   @@index([to_phone])
   @@index([request_id])
   @@index([created_at])
+  @@index([channel, created_at])
   @@map("sms_logs")
 }
 

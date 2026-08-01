@@ -25,22 +25,6 @@ export async function GET(request: NextRequest) {
     const limit = Math.min(200, parseInt(searchParams.get("limit") ?? "50"));
     const skip = (page - 1) * limit;
 
-    // Optional created_at range for the metric counts (YYYY-MM-DD). `to` is
-    // treated as inclusive of the whole day.
-    const fromParam = searchParams.get("from")?.trim();
-    const toParam = searchParams.get("to")?.trim();
-    const fromDate = fromParam ? new Date(`${fromParam}T00:00:00.000Z`) : null;
-    const toDate = toParam ? new Date(`${toParam}T23:59:59.999Z`) : null;
-    const dateFilter =
-      (fromDate && !isNaN(fromDate.getTime())) || (toDate && !isNaN(toDate.getTime()))
-        ? {
-            created_at: {
-              ...(fromDate && !isNaN(fromDate.getTime()) ? { gte: fromDate } : {}),
-              ...(toDate && !isNaN(toDate.getTime()) ? { lte: toDate } : {}),
-            },
-          }
-        : {};
-
     const where = {
       ...(labId ? { lab_id: labId } : {}),
       ...(status ? { status } : {}),
@@ -59,8 +43,10 @@ export async function GET(request: NextRequest) {
         : {}),
     };
 
-    // Paginated requests + efficient aggregate counts in parallel
-    const [requests, total, incomingCount, seenCount, doneCount, byLabCounts] = await Promise.all([
+    // Paginated requests + the total for the pager. Dashboard-wide status and
+    // per-lab aggregates live in /api/admin/metrics — computing them here too
+    // meant re-scanning the table on every page of the request list.
+    const [requests, total] = await Promise.all([
       prisma.request.findMany({
         where,
         include: { lab: { select: { name: true, address: true } } },
@@ -69,22 +55,7 @@ export async function GET(request: NextRequest) {
         take: limit,
       }),
       prisma.request.count({ where }),
-      prisma.request.count({ where: { status: "incoming", ...dateFilter } }),
-      prisma.request.count({ where: { status: "seen", ...dateFilter } }),
-      prisma.request.count({ where: { status: "done", ...dateFilter } }),
-      prisma.request.groupBy({ by: ["lab_id"], _count: { id: true }, where: dateFilter }),
     ]);
-
-    const labIds = byLabCounts.map((l) => l.lab_id);
-    const labs = await prisma.lab.findMany({
-      where: { id: { in: labIds } },
-      select: { id: true, name: true },
-    });
-    const labNameMap = Object.fromEntries(labs.map((l) => [l.id, l.name]));
-
-    const byLab = byLabCounts
-      .map((l) => ({ lab_id: l.lab_id, lab_name: labNameMap[l.lab_id] ?? l.lab_id, total: l._count.id }))
-      .sort((a, b) => b.total - a.total);
 
     // Enrich requests with live DoctorProfile data
     const doctorEmails = Array.from(new Set(requests.map((r) => r.doctor_email).filter((e): e is string => !!e)));
@@ -117,13 +88,6 @@ export async function GET(request: NextRequest) {
       requests: enrichedRequests,
       total,
       page,
-      metrics: {
-        total: incomingCount + seenCount + doneCount,
-        incoming: incomingCount,
-        seen: seenCount,
-        done: doneCount,
-        byLab,
-      },
     });
   } catch (error) {
     console.error("Admin requests error:", error);
