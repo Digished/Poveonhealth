@@ -7,6 +7,8 @@ import { labResultsDoctor, labResultsPatient } from "@/lib/email/templates";
 import { logApiCall } from "@/lib/api-logger";
 import { logLabActivity } from "@/lib/lab-activity";
 import { createServerClient, createAdminClient } from "@/lib/supabase/server";
+import { notify } from "@/lib/notify";
+import { waTemplates } from "@/lib/whatsapp";
 
 const RESULTS_BUCKET = "lab-results";
 
@@ -120,6 +122,49 @@ export async function POST(request: NextRequest) {
         ...(attachments.length > 0 ? { attachments } : {}),
       }).catch((e) => console.error("[email] results to patient:", e));
     }
+
+    // WhatsApp nudge that results are ready. Deliberately carries no clinical
+    // content and no attachment — only the code and the link — so a shared or
+    // stolen phone never exposes the results themselves. The report stays in
+    // email, behind the recipient's own inbox.
+    const resultsNotices: Promise<unknown>[] = [];
+
+    if (req.patient_phone) {
+      resultsNotices.push(
+        notify({
+          phone: req.patient_phone,
+          whatsapp: waTemplates.resultsReady({
+            recipientName: req.patient_name,
+            patientName: req.patient_name ?? "Patient",
+            labName: req.lab.name,
+            code: req.code,
+            resultLink,
+          }),
+          requestId: req.id,
+          tag: "results-patient",
+        })
+      );
+    }
+
+    if (req.doctor_phone) {
+      resultsNotices.push(
+        notify({
+          phone: req.doctor_phone,
+          whatsapp: waTemplates.resultsReady({
+            recipientName: req.doctor_name,
+            patientName: req.patient_name ?? "Patient",
+            labName: req.lab.name,
+            code: req.code,
+            resultLink,
+            isDoctor: true,
+          }),
+          requestId: req.id,
+          tag: "results-doctor",
+        })
+      );
+    }
+
+    await Promise.all(resultsNotices).catch((e) => console.error("[send-results] WhatsApp notice error:", e));
 
     try {
       const supabase = await createServerClient();

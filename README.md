@@ -145,7 +145,22 @@ FROM_NAME=Poveon Health
 
 # App URL (set after first Vercel deploy)
 NEXT_PUBLIC_APP_URL=https://your-app.vercel.app
+
+# SMS (Termii)
+TERMII_API_KEY=...
+
+# WhatsApp (Twilio) — optional; omit to keep SMS/email only
+TWILIO_ACCOUNT_SID=AC...
+TWILIO_AUTH_TOKEN=...
+TWILIO_WHATSAPP_FROM=+14155238886      # sandbox number, or your WhatsApp sender
 ```
+
+See `.env.local.example` for the full list, including the WhatsApp message
+template SIDs and per-channel send caps.
+
+Notifications (request code, lab address, results, referrals) go out on
+WhatsApp first and fall back to SMS — see
+[docs/WHATSAPP_SETUP.md](docs/WHATSAPP_SETUP.md).
 
 ---
 

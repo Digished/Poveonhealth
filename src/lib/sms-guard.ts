@@ -9,6 +9,7 @@
 
 import { prisma } from "@/lib/prisma";
 import { formatPhoneForTermii } from "@/lib/sms/termii";
+import { dailyWhatsAppCap } from "@/lib/whatsapp/config";
 
 // ── Nigerian prefix table (MTN / Airtel / Glo / 9mobile) ─────────────────────
 const NG_PREFIXES = [
@@ -75,7 +76,10 @@ export async function checkDailySmsCap(): Promise<{ allowed: boolean; count: num
   const limit = parseInt(process.env.DAILY_SMS_CAP ?? "500", 10);
   try {
     const count = await prisma.smsLog.count({
-      where: { created_at: { gt: new Date(Date.now() - 24 * 60 * 60 * 1000) } },
+      where: {
+        channel: "sms",
+        created_at: { gt: new Date(Date.now() - 24 * 60 * 60 * 1000) },
+      },
     });
     if (count >= Math.floor(limit * 0.8)) {
       console.warn(`[sms-guard] ⚠️  Daily SMS ${count}/${limit} (${Math.round((count / limit) * 100)}%)`);
@@ -84,6 +88,31 @@ export async function checkDailySmsCap(): Promise<{ allowed: boolean; count: num
   } catch (err) {
     // Table may not exist in this environment yet — fail open so SMS still sends
     console.warn("[sms-guard] checkDailySmsCap failed (table missing?), allowing send:", (err as Error).message);
+    return { allowed: true, count: 0, limit };
+  }
+}
+
+/**
+ * Global daily WhatsApp circuit breaker — the WhatsApp twin of checkDailySmsCap.
+ * Counted separately because WhatsApp conversations are priced differently from
+ * SMS, so one channel running hot must not silence the other.
+ * Configured via DAILY_WHATSAPP_CAP (default 1000). Fails open.
+ */
+export async function checkDailyWhatsAppCap(): Promise<{ allowed: boolean; count: number; limit: number }> {
+  const limit = dailyWhatsAppCap();
+  try {
+    const count = await prisma.smsLog.count({
+      where: {
+        channel: "whatsapp",
+        created_at: { gt: new Date(Date.now() - 24 * 60 * 60 * 1000) },
+      },
+    });
+    if (count >= Math.floor(limit * 0.8)) {
+      console.warn(`[sms-guard] ⚠️  Daily WhatsApp ${count}/${limit} (${Math.round((count / limit) * 100)}%)`);
+    }
+    return { allowed: count < limit, count, limit };
+  } catch (err) {
+    console.warn("[sms-guard] checkDailyWhatsAppCap failed (column missing?), allowing send:", (err as Error).message);
     return { allowed: true, count: 0, limit };
   }
 }

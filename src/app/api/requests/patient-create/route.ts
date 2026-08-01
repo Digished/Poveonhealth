@@ -14,9 +14,9 @@ import { labNewRequest, patientRequestCode } from "@/lib/email/templates";
 import { testsToCategories } from "@/lib/test-categories";
 import { resolveTests, totalFromBreakdown } from "@/lib/resolve-tests";
 import { logApiCall } from "@/lib/api-logger";
-import { sendSms, buildPatientRequestSms } from "@/lib/sms";
-import { logSmsSend } from "@/lib/sms/log-sms";
-import { isValidNigerianPhone, checkDailySmsCap } from "@/lib/sms-guard";
+import { buildPatientRequestSms } from "@/lib/sms";
+import { notify } from "@/lib/notify";
+import { waTemplates } from "@/lib/whatsapp";
 
 const SELF_SERVICE_NAME = "Self Service";
 
@@ -175,27 +175,26 @@ export async function POST(request: NextRequest) {
         .catch((e) => console.error("[email] lab self-service error:", e));
     }
 
-    // SMS the patient their code — guarded against pumping fraud
+    // Send the patient their code + the lab's address — WhatsApp first, SMS if
+    // that doesn't land. Both channels are guarded against pumping fraud.
     const phoneValue = data.patient_phone?.trim();
     const patientEmail = data.patient_email?.trim();
-    const smsBody = buildPatientRequestSms({ patientName: data.patient_name, labName: lab.name, code });
+    const appBaseUrl = (process.env.NEXT_PUBLIC_APP_URL || "https://poveon.com").replace(/\/$/, "");
 
-    if (!isValidNigerianPhone(phoneValue)) {
-      console.warn(`[patient-create] SMS skipped — non-Nigerian phone: ${phoneValue}`);
-    } else {
-      checkDailySmsCap().then((daily) => {
-        if (!daily.allowed) {
-          console.error(`[patient-create] SMS blocked — daily cap reached (${daily.count}/${daily.limit})`);
-          return;
-        }
-        sendSms(phoneValue, smsBody)
-          .then(({ messageId }) => {
-            console.log(`[patient-create] ✅ SMS sent to ${phoneValue}${messageId ? ` (${messageId})` : ""}`);
-            return logSmsSend({ provider: "termii", toPhone: phoneValue, messageBody: smsBody, messageId, requestId: newRequest.id });
-          })
-          .catch((e) => console.error(`[patient-create] SMS error:`, e instanceof Error ? e.message : String(e)));
-      }).catch((e) => console.error("[patient-create] circuit-breaker check failed:", e));
-    }
+    await notify({
+      phone: phoneValue,
+      whatsapp: waTemplates.patientRequestCode({
+        patientName: data.patient_name,
+        labName: lab.name,
+        labAddress,
+        labPhones,
+        code,
+        requestUrl: `${appBaseUrl}/r/${code}`,
+      }),
+      sms: buildPatientRequestSms({ patientName: data.patient_name, labName: lab.name, code }),
+      requestId: newRequest.id,
+      tag: "patient-create",
+    }).catch((e) => console.error("[patient-create] notify error:", e));
 
     // Send email to patient if provided — wait for confirmation
     if (patientEmail) {

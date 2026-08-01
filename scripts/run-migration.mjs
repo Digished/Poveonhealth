@@ -1722,6 +1722,18 @@ const migrations = [
     sql: `ALTER TABLE requests ADD COLUMN IF NOT EXISTS details_captured_by TEXT`,
     continueOnError: true,
   },
+  {
+    desc: "sms_logs channel & error_code columns (WhatsApp support)",
+    sql: `ALTER TABLE sms_logs
+      ADD COLUMN IF NOT EXISTS channel TEXT NOT NULL DEFAULT 'sms',
+      ADD COLUMN IF NOT EXISTS error_code TEXT`,
+    continueOnError: true,
+  },
+  {
+    desc: "sms_logs channel index (per-channel daily caps)",
+    sql: `CREATE INDEX IF NOT EXISTS sms_logs_channel_created_at_idx ON sms_logs (channel, created_at)`,
+    continueOnError: true,
+  },
 ];
 
 let failed = false;
