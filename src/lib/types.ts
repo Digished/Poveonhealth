@@ -236,14 +236,4 @@ export interface CreateLabPayload {
   tempPassword: string;
 }
 
-export interface AdminMetrics {
-  total: number;
-  incoming: number;
-  seen: number;
-  done: number;
-  byLab: {
-    lab_id: string;
-    lab_name: string;
-    total: number;
-  }[];
-}
+
