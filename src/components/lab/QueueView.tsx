@@ -631,6 +631,65 @@ function ActionMenu({ children }: { children: React.ReactNode }) {
   );
 }
 
+/**
+ * Copies one field on its own so the desk can paste it straight into the
+ * matching LIMS box. Text goes to the clipboard in block capitals — exactly as
+ * the popup shows it — and the icon flips to a tick for a moment as a receipt.
+ */
+function CopyValueButton({ text, label, className = "p-1.5" }: { text: string; label: string; className?: string }) {
+  const [copied, setCopied] = useState(false);
+
+  useEffect(() => {
+    if (!copied) return;
+    const t = setTimeout(() => setCopied(false), 1500);
+    return () => clearTimeout(t);
+  }, [copied]);
+
+  async function copy(e: React.MouseEvent) {
+    e.stopPropagation();
+    try {
+      await navigator.clipboard.writeText(text.trim().toUpperCase());
+      setCopied(true);
+    } catch {
+      toast.error("Couldn't copy — please try again");
+    }
+  }
+
+  return (
+    <button
+      type="button"
+      onClick={copy}
+      title={`Copy ${label.toLowerCase()}`}
+      aria-label={`Copy ${label.toLowerCase()}`}
+      className={`shrink-0 rounded-lg border transition ${className} ${copied ? "border-emerald-500/40 bg-emerald-500/10 text-emerald-300" : "border-white/10 text-slate-400 hover:bg-white/10 hover:text-white"}`}
+    >
+      {copied ? <Check className="h-3.5 w-3.5" /> : <Copy className="h-3.5 w-3.5" />}
+    </button>
+  );
+}
+
+/**
+ * One label/value line of the detail popup. Everything the client submitted
+ * reads in block capitals — the way the desk transcribes it onto request forms.
+ * `copy` is the plain text behind the value; give it to any field that gets
+ * re-keyed into the LIMS and the line grows its own copy button.
+ *
+ * Lives at module scope so the queue's background refresh can't remount the
+ * rows and wipe a copy button's "copied" tick mid-flash.
+ */
+function DetailRow({ label, value, copy }: { label: string; value: React.ReactNode; copy?: string | null }) {
+  if (!value) return null;
+  return (
+    <div className="flex flex-col gap-0.5 border-b border-white/5 py-2.5 last:border-0 sm:flex-row sm:items-start">
+      <p className="w-44 shrink-0 text-xs font-medium uppercase tracking-wide text-slate-500">{label}</p>
+      <div className="flex min-w-0 flex-1 items-start gap-2">
+        <div className="min-w-0 flex-1 text-sm uppercase text-slate-200">{value}</div>
+        {copy && copy.trim() !== "" && <CopyValueButton text={copy} label={label} />}
+      </div>
+    </div>
+  );
+}
+
 /** Fullscreen client detail popup — everything the client submitted, plus actions. */
 function QueueDetailModal({
   request: r,
@@ -672,17 +731,17 @@ function QueueDetailModal({
     }
   }
 
-  const Row = ({ label, value }: { label: string; value: React.ReactNode }) =>
-    value ? (
-      <div className="flex flex-col gap-0.5 border-b border-white/5 py-2.5 last:border-0 sm:flex-row sm:items-start">
-        <p className="w-44 shrink-0 text-xs font-medium uppercase tracking-wide text-slate-500">{label}</p>
-        <div className="text-sm text-slate-200">{value}</div>
-      </div>
-    ) : null;
+  // Pre-resolved so the label a staffer reads is exactly what the copy button
+  // puts on the clipboard.
+  const referralLabel = r.referral_type ? (REFERRAL_LABEL[r.referral_type] ?? r.referral_type) : null;
+  const doctorLabel = r.referral_type !== "self" ? r.doctor_name : null;
+  const paymentLabel = r.payment_mode ? (PAYMENT_LABEL[r.payment_mode] ?? r.payment_mode) : null;
+  const joinedLabel = fmtDateTime(r.queue_confirmed_at ?? r.created_at);
+  const attendedLabel = r.attended_at ? fmtDateTime(r.attended_at) : null;
 
   return (
     <FullViewModal
-      title={<span>{r.patient_name || "Unnamed"} {position != null && <span className="ml-1 rounded-full bg-medical-600/25 px-2 py-0.5 text-xs font-bold text-medical-200" title="Live queue position">#{position}</span>}</span>}
+      title={<span><span className="uppercase">{r.patient_name || "Unnamed"}</span> {position != null && <span className="ml-1 rounded-full bg-medical-600/25 px-2 py-0.5 text-xs font-bold text-medical-200" title="Live queue position">#{position}</span>}</span>}
       subtitle={`${r.code} · joined ${timeAgo(r.queue_confirmed_at ?? r.created_at)}`}
       maxWidth="max-w-3xl"
       onClose={onClose}
@@ -691,33 +750,37 @@ function QueueDetailModal({
         <QueueStages r={r} />
 
         <div className="rounded-2xl border border-white/10 bg-white/5 px-4">
-          <Row label="Source" value={<SourceBadge source={r.source} />} />
-          <Row label="Phone" value={r.patient_phone && (
+          <DetailRow label="Name" value={r.patient_name} copy={r.patient_name} />
+          <DetailRow label="Source" value={<SourceBadge source={r.source} />} />
+          <DetailRow label="Phone" value={r.patient_phone && (
             <span className="flex flex-wrap gap-x-3 gap-y-1">
               {r.patient_phone.split(",").map((p) => (
                 <a key={p} href={`tel:${p.trim()}`} className="inline-flex items-center gap-1 text-medical-300 hover:text-medical-200"><Phone className="h-3.5 w-3.5" /> {p.trim()}</a>
               ))}
             </span>
-          )} />
-          <Row label="WhatsApp" value={r.whatsapp_phone && (
+          )} copy={r.patient_phone} />
+          <DetailRow label="WhatsApp" value={r.whatsapp_phone && (
             <span className="flex flex-wrap gap-x-3 gap-y-1">
               {r.whatsapp_phone.split(",").map((p) => (
                 <span key={p} className="inline-flex items-center gap-1 text-emerald-300"><MessageCircle className="h-3.5 w-3.5" /> {p.trim()}</span>
               ))}
             </span>
-          )} />
-          <Row label="Email" value={r.patient_email && <span className="inline-flex items-center gap-1"><Mail className="h-3.5 w-3.5 text-slate-400" /> {r.patient_email}</span>} />
-          <Row label="Age / Sex" value={[r.patient_age != null ? `${r.patient_age} yrs` : null, r.sex].filter(Boolean).join(" · ") || null} />
-          <Row label="Date of birth" value={r.dob} />
-          <Row label="Address" value={r.address && <span className="inline-flex items-center gap-1"><MapPin className="h-3.5 w-3.5 text-slate-400" /> {r.address}</span>} />
-          <Row label="Referral" value={r.referral_type ? (REFERRAL_LABEL[r.referral_type] ?? r.referral_type) : null} />
-          <Row label="Referring doctor" value={r.referral_type !== "self" ? r.doctor_name : null} />
-          <Row label="Hospital / HMO" value={r.doctor_hospital} />
-          <Row label="Policy number" value={r.policy_number} />
-          <Row label="Payment mode" value={r.payment_mode ? (PAYMENT_LABEL[r.payment_mode] ?? r.payment_mode) : null} />
-          <Row label="Complaint" value={r.diagnosis} />
-          <Row label="Joined queue" value={fmtDateTime(r.queue_confirmed_at ?? r.created_at)} />
-          <Row label="Attended" value={r.attended_at ? fmtDateTime(r.attended_at) : null} />
+          )} copy={r.whatsapp_phone} />
+          <DetailRow label="Email" value={r.patient_email && <span className="inline-flex items-center gap-1"><Mail className="h-3.5 w-3.5 text-slate-400" /> {r.patient_email}</span>} copy={r.patient_email} />
+          {/* Age and sex get a row each so either can be pasted on its own. */}
+          <DetailRow label="Age" value={r.patient_age != null ? `${r.patient_age} yrs` : null} copy={r.patient_age != null ? `${r.patient_age}` : null} />
+          <DetailRow label="Sex" value={r.sex} copy={r.sex} />
+          <DetailRow label="Date of birth" value={r.dob} copy={r.dob} />
+          <DetailRow label="Address" value={r.address && <span className="inline-flex items-center gap-1"><MapPin className="h-3.5 w-3.5 text-slate-400" /> {r.address}</span>} copy={r.address} />
+          <DetailRow label="Referral" value={referralLabel} copy={referralLabel} />
+          <DetailRow label="Referring doctor" value={doctorLabel} copy={doctorLabel} />
+          <DetailRow label="Hospital / HMO" value={r.doctor_hospital} copy={r.doctor_hospital} />
+          <DetailRow label="Policy number" value={r.policy_number} copy={r.policy_number} />
+          <DetailRow label="Payment mode" value={paymentLabel} copy={paymentLabel} />
+          <DetailRow label="Complaint" value={r.diagnosis} copy={r.diagnosis} />
+          <DetailRow label="Poveon code" value={r.code} copy={r.code} />
+          <DetailRow label="Joined queue" value={joinedLabel} copy={joinedLabel} />
+          <DetailRow label="Attended" value={attendedLabel} copy={attendedLabel} />
         </div>
 
         {/* Tests + optional price estimate */}
@@ -736,9 +799,10 @@ function QueueDetailModal({
           ) : showEstimate && rows.length > 0 ? (
             <div className="mt-3 space-y-1 text-sm">
               {rows.map((x, i) => (
-                <div key={i} className="flex justify-between gap-3 text-slate-300">
-                  <span className="truncate">{x.name}</span>
-                  <span className="shrink-0 tabular-nums">{x.price != null ? fmtNaira(x.price) : "—"}</span>
+                <div key={i} className="flex items-center gap-2 text-slate-300">
+                  <span className="min-w-0 truncate uppercase">{x.name}</span>
+                  <CopyValueButton text={x.name} label="test name" className="p-1" />
+                  <span className="ml-auto shrink-0 tabular-nums">{x.price != null ? fmtNaira(x.price) : "—"}</span>
                 </div>
               ))}
               {total > 0 && (
@@ -750,7 +814,10 @@ function QueueDetailModal({
           ) : (
             <div className="mt-2 flex flex-wrap gap-1.5">
               {names.map((n, i) => (
-                <span key={i} className="rounded-lg border border-white/10 bg-white/5 px-2.5 py-1 text-xs text-slate-200">{n}</span>
+                <span key={i} className="inline-flex items-center gap-1.5 rounded-lg border border-white/10 bg-white/5 py-1 pl-2.5 pr-1 text-xs uppercase text-slate-200">
+                  {n}
+                  <CopyValueButton text={n} label="test name" className="p-1" />
+                </span>
               ))}
             </div>
           )}
