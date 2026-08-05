@@ -672,17 +672,19 @@ function QueueDetailModal({
     }
   }
 
+  // Everything the client submitted reads in block capitals here — the way the
+  // desk transcribes it onto request forms.
   const Row = ({ label, value }: { label: string; value: React.ReactNode }) =>
     value ? (
       <div className="flex flex-col gap-0.5 border-b border-white/5 py-2.5 last:border-0 sm:flex-row sm:items-start">
         <p className="w-44 shrink-0 text-xs font-medium uppercase tracking-wide text-slate-500">{label}</p>
-        <div className="text-sm text-slate-200">{value}</div>
+        <div className="text-sm uppercase text-slate-200">{value}</div>
       </div>
     ) : null;
 
   return (
     <FullViewModal
-      title={<span>{r.patient_name || "Unnamed"} {position != null && <span className="ml-1 rounded-full bg-medical-600/25 px-2 py-0.5 text-xs font-bold text-medical-200" title="Live queue position">#{position}</span>}</span>}
+      title={<span><span className="uppercase">{r.patient_name || "Unnamed"}</span> {position != null && <span className="ml-1 rounded-full bg-medical-600/25 px-2 py-0.5 text-xs font-bold text-medical-200" title="Live queue position">#{position}</span>}</span>}
       subtitle={`${r.code} · joined ${timeAgo(r.queue_confirmed_at ?? r.created_at)}`}
       maxWidth="max-w-3xl"
       onClose={onClose}
@@ -737,7 +739,7 @@ function QueueDetailModal({
             <div className="mt-3 space-y-1 text-sm">
               {rows.map((x, i) => (
                 <div key={i} className="flex justify-between gap-3 text-slate-300">
-                  <span className="truncate">{x.name}</span>
+                  <span className="truncate uppercase">{x.name}</span>
                   <span className="shrink-0 tabular-nums">{x.price != null ? fmtNaira(x.price) : "—"}</span>
                 </div>
               ))}
@@ -750,7 +752,7 @@ function QueueDetailModal({
           ) : (
             <div className="mt-2 flex flex-wrap gap-1.5">
               {names.map((n, i) => (
-                <span key={i} className="rounded-lg border border-white/10 bg-white/5 px-2.5 py-1 text-xs text-slate-200">{n}</span>
+                <span key={i} className="rounded-lg border border-white/10 bg-white/5 px-2.5 py-1 text-xs uppercase text-slate-200">{n}</span>
               ))}
             </div>
           )}
