@@ -621,3 +621,203 @@
 ::-webkit-scrollbar-thumb:hover {
   background: rgba(148, 163, 184, 0.7);
 }
+
+/* ═══════════════════════════════════════════════════════════════════════════
+   MARKETING SITE — nav, landing sections, page transitions
+   Used by the public landing page (src/app/page.tsx) and the site nav.
+   ═══════════════════════════════════════════════════════════════════════════ */
+
+/* Reveal-on-scroll. Elements start shifted + transparent and settle when the
+   IntersectionObserver in <Reveal> adds .is-revealed. */
+.reveal {
+  opacity: 0;
+  transform: translateY(22px);
+  transition: opacity 0.7s cubic-bezier(0.22, 1, 0.36, 1),
+              transform 0.7s cubic-bezier(0.22, 1, 0.36, 1);
+  will-change: opacity, transform;
+}
+.reveal.is-revealed {
+  opacity: 1;
+  transform: none;
+}
+
+/* Scripting disabled → never hide anything behind an animation that can't run. */
+@media (scripting: none) {
+  .reveal { opacity: 1; transform: none; }
+}
+
+/* Route change — the page body fades/lifts in on every navigation. */
+@keyframes page-enter {
+  from { opacity: 0; transform: translateY(8px); }
+  to   { opacity: 1; transform: none; }
+}
+.page-enter {
+  animation: page-enter 0.32s cubic-bezier(0.22, 1, 0.36, 1) both;
+}
+
+/* Thin top progress bar shown while a navigation is in flight. */
+@keyframes route-progress {
+  0%   { transform: scaleX(0); }
+  40%  { transform: scaleX(0.55); }
+  75%  { transform: scaleX(0.82); }
+  100% { transform: scaleX(0.94); }
+}
+.route-progress-bar {
+  transform-origin: 0 50%;
+  animation: route-progress 2.2s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+}
+
+/* Partner-lab marquee — the track holds two identical halves, so sliding it
+   by -50% loops seamlessly. Transform-only → GPU composited. */
+@keyframes marquee-slide {
+  from { transform: translate3d(0, 0, 0); }
+  to   { transform: translate3d(-50%, 0, 0); }
+}
+.marquee-track {
+  animation: marquee-slide var(--marquee-duration, 42s) linear infinite;
+}
+.marquee-mask {
+  -webkit-mask-image: linear-gradient(to right, transparent, #000 8%, #000 92%, transparent);
+  mask-image: linear-gradient(to right, transparent, #000 8%, #000 92%, transparent);
+}
+.marquee-pause:hover .marquee-track { animation-play-state: paused; }
+
+/* Slow aurora drift behind the hero. */
+@keyframes aurora-drift {
+  0%, 100% { transform: translate3d(0, 0, 0) scale(1); }
+  50%      { transform: translate3d(3%, -4%, 0) scale(1.12); }
+}
+.animate-aurora { animation: aurora-drift 18s ease-in-out infinite; }
+
+/* Hero mock — lines "write themselves" onto the request slip. */
+@keyframes slip-write {
+  0%       { transform: scaleX(0); opacity: 0.35; }
+  18%, 82% { transform: scaleX(1); opacity: 1; }
+  100%     { transform: scaleX(1); opacity: 1; }
+}
+.animate-slip-write {
+  transform-origin: 0 50%;
+  animation: slip-write 5.5s cubic-bezier(0.22, 1, 0.36, 1) infinite;
+}
+
+@keyframes chip-pop {
+  0%, 12%   { opacity: 0; transform: translateY(10px) scale(0.94); }
+  22%, 78%  { opacity: 1; transform: none; }
+  92%, 100% { opacity: 0; transform: translateY(-8px) scale(0.98); }
+}
+.animate-chip-pop { animation: chip-pop 5.5s ease-in-out infinite; }
+
+/* Nav — mobile sheet links stagger in. */
+@keyframes nav-item-in {
+  from { opacity: 0; transform: translateY(10px); }
+  to   { opacity: 1; transform: none; }
+}
+.animate-nav-item { animation: nav-item-in 0.42s cubic-bezier(0.22, 1, 0.36, 1) both; }
+
+/* Nav — dropdown panel drops with a slight scale. */
+@keyframes nav-panel-in {
+  from { opacity: 0; transform: translateY(-6px) scale(0.97); }
+  to   { opacity: 1; transform: none; }
+}
+.animate-nav-panel {
+  transform-origin: top center;
+  animation: nav-panel-in 0.18s cubic-bezier(0.22, 1, 0.36, 1) both;
+}
+
+/* ═══════════════════════════════════════════════════════════════════════════
+   PAPER REQUEST FORM — the lab-branded request modal
+   The modal chrome is a sheet of headed paper; .paper-form re-skins the
+   existing multi-step form inside it so fields read as boxes on a lab form.
+   ═══════════════════════════════════════════════════════════════════════════ */
+
+/* The sheet itself: warm off-white with faint ruling and a paper grain. */
+.paper-sheet {
+  background-color: #fdfbf5;
+  background-image:
+    repeating-linear-gradient(
+      to bottom,
+      rgba(15, 23, 42, 0) 0px,
+      rgba(15, 23, 42, 0) 31px,
+      rgba(30, 58, 90, 0.045) 31px,
+      rgba(30, 58, 90, 0.045) 32px
+    ),
+    radial-gradient(circle at 18% 12%, rgba(180, 160, 120, 0.06) 0%, transparent 45%),
+    radial-gradient(circle at 82% 78%, rgba(120, 150, 180, 0.05) 0%, transparent 45%);
+}
+
+/* Torn/perforated top edge of the sheet. */
+.paper-perforation {
+  background-image: radial-gradient(circle at 6px 0px, transparent 0 5px, #fdfbf5 5px);
+  background-size: 12px 8px;
+  background-repeat: repeat-x;
+}
+
+/* Sheet lifts in like a form being placed on a desk. */
+@keyframes sheet-drop {
+  from { opacity: 0; transform: translateY(26px) rotate(-0.6deg) scale(0.985); }
+  to   { opacity: 1; transform: none; }
+}
+.animate-sheet-drop { animation: sheet-drop 0.42s cubic-bezier(0.22, 1, 0.36, 1) both; }
+
+@keyframes stamp-in {
+  0%   { opacity: 0; transform: rotate(-18deg) scale(1.5); }
+  60%  { opacity: 0.9; transform: rotate(-9deg) scale(0.96); }
+  100% { opacity: 0.85; transform: rotate(-9deg) scale(1); }
+}
+.animate-stamp-in { animation: stamp-in 0.5s cubic-bezier(0.34, 1.56, 0.64, 1) 0.35s both; }
+
+/* ── Field re-skin, scoped to the paper sheet ───────────────────────────── */
+.paper-form label {
+  text-transform: uppercase;
+  letter-spacing: 0.09em;
+  font-size: 10.5px;
+  font-weight: 700;
+  color: #64748b;
+}
+.paper-form input:not([type="checkbox"]):not([type="radio"]),
+.paper-form textarea,
+.paper-form select {
+  background-color: rgba(255, 255, 255, 0.78);
+  border-color: rgba(30, 41, 59, 0.18);
+  border-radius: 7px;
+  box-shadow: inset 0 1px 2px rgba(15, 23, 42, 0.045);
+}
+.paper-form input:not([type="checkbox"]):not([type="radio"]):focus,
+.paper-form textarea:focus,
+.paper-form select:focus {
+  background-color: #ffffff;
+  border-color: rgb(var(--medical-400));
+}
+.paper-form input::placeholder,
+.paper-form textarea::placeholder {
+  color: #a8a29e;
+}
+/* Grouping cards inside the form shouldn't look like stickers on the paper. */
+.paper-form .glass-card {
+  background-color: rgba(255, 255, 255, 0.55);
+  border-color: rgba(30, 41, 59, 0.12);
+  box-shadow: none;
+}
+
+/* Section headings on a form are set in a serif, like printed stationery. */
+.paper-form h2,
+.paper-heading {
+  font-family: Georgia, "Times New Roman", ui-serif, serif;
+  letter-spacing: -0.01em;
+}
+/* Reference numbers / codes read as typed on a form. */
+.paper-mono {
+  font-family: ui-monospace, "SF Mono", "Roboto Mono", Menlo, Consolas, monospace;
+  letter-spacing: 0.08em;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .reveal { opacity: 1; transform: none; transition: none; }
+  .marquee-track,
+  .animate-aurora,
+  .animate-slip-write,
+  .animate-chip-pop,
+  .animate-sheet-drop,
+  .animate-stamp-in,
+  .page-enter { animation: none; }
+}

@@ -16,6 +16,8 @@ import type { Lab } from "@/lib/types";
 
 interface PatientRequestFormProps {
   initialLabs?: Lab[];
+  /** "modal" = rendered inside the lab-branded paper request sheet. */
+  chrome?: "page" | "modal";
   preselectedLabId?: string;
   preselectedLabName?: string;
   preselectedLabAddress?: string;
@@ -234,7 +236,12 @@ export function PatientRequestForm(props: PatientRequestFormProps) {
     preselectedLabLogoUrl,
     preselectedServiceCategories = [],
     locations = [],
+    chrome = "page",
   } = props;
+
+  // On the paper sheet the modal owns the 64px title bar, so the step rail
+  // sticks underneath it and picks up the paper tone instead of white.
+  const inModal = chrome === "modal";
 
   // ── Step & nav ──────────────────────────────────────────────────────────────
   const [step, setStep] = useState(1);
@@ -455,10 +462,12 @@ export function PatientRequestForm(props: PatientRequestFormProps) {
 
   // ── Main form ─────────────────────────────────────────────────────────────────
   return (
-    <div ref={formRef} className={`animate-fade-in transition-[padding] duration-300 ${(stepValid || step === 3) ? "pb-28" : "pb-6"}`}>
+    <div ref={formRef} className={`animate-fade-in transition-[padding] duration-300 ${inModal ? "px-4" : ""} ${(stepValid || step === 3) ? "pb-28" : "pb-6"}`}>
       {/* ── Sticky step header ── */}
-      <div className={`sticky top-0 z-10 -mx-4 px-4 pt-3 pb-3 transition-all duration-200 ${
-        scrolled
+      <div className={`sticky ${inModal ? "top-16" : "top-0"} z-10 -mx-4 px-4 pt-3 pb-3 transition-all duration-200 ${
+        inModal
+          ? `bg-[#fdfbf5]/92 backdrop-blur-sm border-b ${scrolled ? "border-stone-300/60 shadow-sm" : "border-stone-300/40"}`
+          : scrolled
           ? "bg-white/95 backdrop-blur-md border-b border-slate-200 shadow-sm"
           : "bg-white/80 backdrop-blur-sm border-b border-slate-100"
       }`}>
