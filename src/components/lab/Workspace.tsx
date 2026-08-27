@@ -15,6 +15,7 @@ import { useLabTour } from "@/components/lab/tour/TourProvider";
 import { ResultEntry } from "@/components/lab/ResultEntry";
 import { requestDepartments, breakdownItemDepartment, WORKFLOWS, stageLabel, stageColorClasses, stageDurations, formatDuration, awaitingPhrase, awaitingLabel, DEFAULT_DEPARTMENTS, type DepartmentConfig } from "@/lib/lims-shared";
 import { nextPendingAction, type PendingAction } from "@/lib/lab-pending";
+import { fetchJson } from "@/lib/poll";
 
 function fmtDateTime(iso: string | null | undefined): string {
   if (!iso) return "—";
@@ -215,8 +216,8 @@ export function Workspace({
   const load = useCallback(async (silent = false) => {
     if (!silent) setLoading(true);
     try {
-      const res = await fetch("/api/lab/journey", { cache: "no-store" });
-      const data = await res.json();
+      const data = await fetchJson<{ requests?: WReq[] }>("/api/lab/journey");
+      if (data === null) return; // 304 — nothing moved since the last poll
       setRequests(data.requests ?? []);
     } catch {
       if (!silent) toast.error("Failed to load workspace");
@@ -230,7 +231,7 @@ export function Workspace({
   // Light polling so new QR registrations surface without a manual refresh.
   useEffect(() => {
     if (!isOnboarding) return;
-    const id = setInterval(() => { if (!document.hidden) load(true); }, 20000);
+    const id = setInterval(() => { if (!document.hidden) load(true); }, 30000);
     return () => clearInterval(id);
   }, [isOnboarding, load]);
 

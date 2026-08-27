@@ -263,6 +263,14 @@ model Request {
   results        RequestResult[]
   receipts       RequestReceipt[]
 
+  // Every dashboard view filters by lab_id first; without these Postgres reads
+  // the whole table for each poll (Prisma does not index FKs on PostgreSQL).
+  @@index([lab_id, created_at])
+  @@index([lab_id, status])
+  @@index([lab_id, queue_confirmed_at])
+  @@index([lab_id, updated_at])
+  @@index([doctor_email])
+  @@index([patient_phone])
   @@map("requests")
 }
 

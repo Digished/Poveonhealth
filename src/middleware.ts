@@ -28,6 +28,21 @@ export async function middleware(request: NextRequest) {
       return NextResponse.next();
     }
 
+    // The lab's own public sections live at the root of its subdomain:
+    //   synlab.poveon.com/o          → /o/synlab           (self-registration)
+    //   synlab.poveon.com/o/q/ABC12  → /o/synlab/q/ABC12   (queue status)
+    //   synlab.poveon.com/f          → /f/synlab           (feedback)
+    // The path form still works too, so old links resolve unchanged.
+    const LAB_SECTIONS = ["o", "f"];
+    const segments = url.pathname.split("/").filter(Boolean);
+    if (segments.length > 0 && LAB_SECTIONS.includes(segments[0])) {
+      // Already namespaced by slug (a legacy link) — leave it alone.
+      if (segments[1] !== slug) {
+        url.pathname = `/${segments[0]}/${slug}${segments.length > 1 ? `/${segments.slice(1).join("/")}` : ""}`;
+      }
+      return NextResponse.rewrite(url);
+    }
+
     // Everything else (doc-login, dashboard, etc.) — redirect to main domain
     // so links like /doc-login work correctly
     const mainUrl = new URL(request.url);
@@ -35,8 +50,23 @@ export async function middleware(request: NextRequest) {
     return NextResponse.redirect(mainUrl, 302);
   }
 
+  const { pathname } = request.nextUrl;
+
   // ── Supabase session refresh (existing auth logic) ─────────────────────────
+  // Only the Supabase-authenticated areas need the user: resolving it calls the
+  // Supabase Auth API, and doing that on every asset, page and API request was
+  // thousands of pointless round trips a day. Cookie-token routes below are
+  // checked without it.
+  const needsSupabaseUser =
+    pathname.startsWith("/lab-dashboard") ||
+    pathname.startsWith("/admin") ||
+    pathname === "/lab-login";
+
   let response = NextResponse.next({ request });
+
+  if (!needsSupabaseUser) {
+    return cookieOnlyRoutes(request, response);
+  }
 
   const supabase = createServerClient(
     process.env.NEXT_PUBLIC_SUPABASE_URL!,
@@ -63,7 +93,6 @@ export async function middleware(request: NextRequest) {
     data: { user },
   } = await supabase.auth.getUser();
 
-  const { pathname } = request.nextUrl;
   const role = user?.user_metadata?.role;
 
   // ── Lab Dashboard ──────────────────────────────────────────────────────────
@@ -89,6 +118,16 @@ export async function middleware(request: NextRequest) {
   if (pathname === "/admin-login" && role === "admin") {
     return NextResponse.redirect(new URL("/admin", request.url));
   }
+
+  return cookieOnlyRoutes(request, response);
+}
+
+/**
+ * Guards for the portals that authenticate with their own signed cookie rather
+ * than Supabase — no Auth API call needed, just a cookie presence check.
+ */
+function cookieOnlyRoutes(request: NextRequest, response: NextResponse): NextResponse {
+  const { pathname } = request.nextUrl;
 
   // ── Scale (Marketer) Dashboard ─────────────────────────────────────────────
   if (pathname.startsWith("/scale/dashboard")) {

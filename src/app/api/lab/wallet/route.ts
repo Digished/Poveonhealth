@@ -3,6 +3,7 @@ export const dynamic = "force-dynamic";
 import { NextRequest, NextResponse } from "next/server";
 import { getLabAuth } from "@/lib/lab-auth";
 import { prisma } from "@/lib/prisma";
+import { jsonWithEtag, makeEtag, notModified } from "@/lib/http-cache";
 
 export async function GET(request: NextRequest) {
   const auth = await getLabAuth(request);
@@ -14,7 +15,12 @@ export async function GET(request: NextRequest) {
     include: { credits: { orderBy: { created_at: "desc" }, take: 50 } },
   });
 
-  return NextResponse.json({
+  // Polled every 30s from the dashboard — answer unchanged polls with a 304.
+  const etag = makeEtag(["lab-wallet", auth.lab_id, wallet?.balance?.toString(), wallet?.credits[0]?.id, wallet?.credits.length]);
+  const cached = notModified(request, etag);
+  if (cached) return cached;
+
+  return jsonWithEtag({
     success: true,
     balance: wallet ? Number(wallet.balance) : 0,
     dva: wallet?.dva_account_number ? {
@@ -32,5 +38,5 @@ export async function GET(request: NextRequest) {
       sender_bank:   c.sender_bank,
       created_at:    c.created_at,
     })),
-  });
+  }, etag);
 }

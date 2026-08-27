@@ -95,6 +95,10 @@ const STEPS = [
 
 const DOCTOR_STORAGE_KEY = "poveon_doctor_profile";
 
+// Fast Mode still works (and the composer is untouched) — only its entry point
+// is hidden for now, so every request goes through the full form.
+const FAST_MODE_ENTRY_ENABLED = false;
+
 function SummaryRow({ label, value, capitalize }: { label: string; value: string; capitalize?: boolean }) {
   return (
     <div className="flex justify-between text-xs gap-4">
@@ -702,12 +706,21 @@ export function DoctorRequestForm({
   preselectedLabName,
   locations = [],
   initialLabs,
+  chrome = "page",
 }: {
   preselectedLabId?: string;
   preselectedLabName?: string;
   locations?: Location[];
   initialLabs?: Lab[];
+  /** "modal" = rendered inside the lab-branded paper request sheet. */
+  chrome?: "page" | "modal";
 } = {}) {
+  // On the paper sheet the modal supplies the surface, the letterhead and the
+  // 64px title bar — the form drops its own white card and lab header.
+  const inModal = chrome === "modal";
+  // On the paper sheet, header-level controls (scan slip) are portalled into a
+  // slot the modal renders beside the lab's logo.
+  const [headerSlot, setHeaderSlot] = useState<HTMLElement | null>(null);
   // Seed module-level cache from SSR-provided data so first open is instant.
   // Always refresh cache on page load so admin changes appear immediately.
   if (initialLabs) { _labsCache = initialLabs; }
@@ -1074,6 +1087,11 @@ export function DoctorRequestForm({
       vv.removeEventListener("scroll", update);
     };
   }, []);
+
+  useEffect(() => {
+    if (!inModal) return;
+    setHeaderSlot(document.getElementById("paper-sheet-actions"));
+  }, [inModal]);
 
   // Scroll step content into view on user-driven step transitions (not on initial mount)
   const isFirstRender = useRef(true);
@@ -1541,17 +1559,177 @@ export function DoctorRequestForm({
     return true;
   })();
 
+  // The "scan slip" control. On the paper sheet it lives in the header beside
+  // the lab's logo (portalled into the slot the modal renders), so the clinical
+  // section stays uncluttered.
+  const scanSlipControl = (
+              <label className="cursor-pointer select-none" aria-label="Scan test request slip">
+                <div className={
+                  inModal
+                    ? `flex items-center gap-1.5 rounded-lg px-2 py-1.5 text-[11px] font-medium transition-colors active:scale-95 ${testImageUrl ? "text-emerald-700 hover:bg-emerald-50" : "text-stone-400 hover:bg-stone-100 hover:text-stone-700"}`
+                    : `flex items-center gap-1.5 py-1.5 px-3 rounded-xl text-xs font-semibold transition-colors active:scale-95 ${testImageUrl ? "bg-emerald-100 text-emerald-700" : "bg-slate-100 text-slate-500 hover:bg-medical-100 hover:text-medical-600"}`
+                }>
+                  <Camera className={inModal ? "h-3.5 w-3.5" : "w-3.5 h-3.5"} />
+                  {testImageUrl ? "Retake" : "Scan slip"}
+                </div>
+                <input
+                  type="file"
+                  accept="image/jpeg,image/png,image/webp,image/heic,.heic"
+                  className="sr-only"
+                  onChange={(e) => {
+                    const file = e.target.files?.[0];
+                    if (!file) return;
+                    const MAX_MB = 10;
+                    if (file.size > MAX_MB * 1024 * 1024) {
+                      setImageUploadError(`File is too large (${(file.size / 1024 / 1024).toFixed(1)} MB). Maximum is ${MAX_MB} MB.`);
+                      e.target.value = "";
+                      return;
+                    }
+                    const allowed = ["image/jpeg", "image/png", "image/webp", "image/heic"];
+                    if (!allowed.includes(file.type) && !file.name.toLowerCase().endsWith(".heic")) {
+                      setImageUploadError(`Unsupported format: ${file.type || file.name.split(".").pop()?.toUpperCase()}. Please use JPEG, PNG, WebP, or HEIC.`);
+                      e.target.value = "";
+                      return;
+                    }
+                    setImageUploading(true);
+                    setImageUploadProgress(0);
+                    setImageUploadError(null);
+                    setTestImageUrl(null);
+                    setExtractionResult(null);
+                    setExtractionDismissed(false);
+                    const fd = new FormData();
+                    fd.append("file", file);
+                    const xhr = new XMLHttpRequest();
+                    xhr.upload.onprogress = (ev) => {
+                      if (ev.lengthComputable) setImageUploadProgress(Math.round((ev.loaded / ev.total) * 100));
+                    };
+                    xhr.onload = () => {
+                      try {
+                        const data = JSON.parse(xhr.responseText);
+                        if (data.url) {
+                          setTestImageUrl(data.url);
+                          setImageUploadProgress(100);
+                          setImageExtracting(true);
+                          setExtractionProgress(0);
+                          fetch("/api/requests/extract-from-image", {
+                            method: "POST",
+                            headers: { "Content-Type": "application/json" },
+                            body: JSON.stringify({ imageUrl: data.url }),
+                          })
+                            .then((r) => r.json())
+                            .then((res) => {
+                              if (res.success && res.extracted) {
+                                setExtractionResult(res.extracted);
+                                if (Array.isArray(res.extracted.tests) && res.extracted.tests.length > 0) {
+                                  const lowConfSet = new Set<string>(
+                                    (res.extracted.low_confidence_items ?? []).map((s: string) => s.toLowerCase())
+                                  );
+                                  const expanded = res.extracted.tests.flatMap((n: string) => {
+                                    const isLow = lowConfSet.has(n.toLowerCase());
+                                    const parts = smartSplitTestNames(n);
+                                    const names = parts.length > 0 ? parts : [n];
+                                    return names.map((name: string) => ({ name, low_confidence: isLow }));
+                                  });
+                                  const initialTags: { name: string; catalog_test_id: string | null; low_confidence: boolean }[] = expanded.map(({ name, low_confidence }: { name: string; low_confidence: boolean }) => ({
+                                    name,
+                                    catalog_test_id: null as string | null,
+                                    low_confidence,
+                                  }));
+                                  setTestTags(initialTags);
+                                  const labId = form.lab_id;
+                                  Promise.allSettled(
+                                    initialTags.map((tag: { name: string; catalog_test_id: string | null; low_confidence: boolean }) =>
+                                      fetch(`/api/catalog/search?q=${encodeURIComponent(tag.name)}${labId ? `&lab_id=${encodeURIComponent(labId)}` : ""}&limit=1`)
+                                        .then((r) => r.json())
+                                        .then((d) => {
+                                          const match = d.results?.[0];
+                                          if (!match) return null;
+                                          const nameLC = tag.name.toLowerCase();
+                                          const canonLC = match.canonical_name.toLowerCase();
+                                          if (canonLC === nameLC || canonLC.includes(nameLC) || nameLC.includes(canonLC)) {
+                                            return { originalName: tag.name, match };
+                                          }
+                                          return null;
+                                        })
+                                        .catch(() => null)
+                                    )
+                                  ).then((results) => {
+                                    const upgrades = new Map<string, { id: string; name: string; price?: number; category?: string; is_rapid_test?: boolean }>();
+                                    results.forEach((r) => {
+                                      if (r.status === "fulfilled" && r.value) {
+                                        upgrades.set(r.value.originalName.toLowerCase(), {
+                                          id: r.value.match.id,
+                                          name: r.value.match.canonical_name,
+                                          price: r.value.match.effective_price,
+                                          category: r.value.match.category,
+                                          is_rapid_test: r.value.match.is_rapid_test,
+                                        });
+                                      }
+                                    });
+                                    if (upgrades.size > 0) {
+                                      setTestTags((prev) =>
+                                        prev.map((t) => {
+                                          const up = upgrades.get(t.name.toLowerCase());
+                                          if (!up) return t;
+                                          return { name: up.name, catalog_test_id: up.id, low_confidence: false, price: up.price, category: up.category, is_rapid_test: up.is_rapid_test };
+                                        })
+                                      );
+                                    }
+                                  });
+                                }
+                                setForm((prev) => ({
+                                  ...prev,
+                                  diagnosis: res.extracted.diagnosis || prev.diagnosis,
+                                  patient_name: prev.patient_name || res.extracted.patient_name,
+                                  patient_age: prev.patient_age || (res.extracted.patient_age != null ? String(res.extracted.patient_age) : ageFromIso(res.extracted.dob || "")),
+                                  sex: prev.sex || res.extracted.sex,
+                                  doctor_name: prev.doctor_name || res.extracted.doctor_name,
+                                  doctor_prefix: prev.doctor_prefix || res.extracted.doctor_prefix,
+                                }));
+
+                              }
+                            })
+                            .catch(() => { /* silent — user continues manually */ })
+                            .finally(() => {
+                              setExtractionProgress(100);
+                              setTimeout(() => setImageExtracting(false), 700);
+                            });
+                        } else {
+                          setImageUploadError(data.error ?? "Upload failed. Please try again.");
+                        }
+                      } catch {
+                        setImageUploadError("Upload failed. Please try again.");
+                      } finally {
+                        setImageUploading(false);
+                        e.target.value = "";
+                      }
+                    };
+                    xhr.onerror = () => {
+                      setImageUploadError("Network error. Check your connection and try again.");
+                      setImageUploading(false);
+                      e.target.value = "";
+                    };
+                    xhr.open("POST", "/api/requests/upload-image");
+                    xhr.send(fd);
+                  }}
+                />
+              </label>
+  );
+
   return (
-    <div className="animate-fade-in bg-white -mx-4">
+    <div className={`animate-fade-in ${inModal ? "" : "bg-white -mx-4"}`}>
       {/* Sticky header + step indicator
           On lab pages a fixed 64 px mini-header (from LabHeroSection) appears
           once the hero scrolls out of view. Offset by 64 px so they don't overlap. */}
       <div className={`sticky ${preselectedLabId ? "top-16" : "top-0"} z-10 px-4 transition-all duration-300 ${scrolled ? "pt-2 pb-2" : "pt-3 pb-3"}`}>
         {/* Full-width frosted background */}
-        <div className="absolute inset-0 left-1/2 -translate-x-1/2 w-screen bg-white/80 backdrop-blur-md border-b border-white/60 -z-10" />
+        <div className={`absolute inset-0 left-1/2 -translate-x-1/2 w-screen backdrop-blur-md border-b -z-10 ${
+          inModal ? "bg-white/95 border-stone-200" : "bg-white/80 border-white/60"
+        }`} />
 
-        {/* Lab info / branding — only on home page; on lab pages the sticky hero shows this */}
-        {!labPreselected && <div className="mb-3">
+        {/* Lab info / branding — only on home page; on lab pages the sticky hero
+            shows this, and in the modal the letterhead already does. */}
+        {!labPreselected && !inModal && <div className="mb-3">
             {displayLab ? (() => {
               const phones = parsePhones(displayLab.phones);
               const waNumbers: string[] = (displayLab.whatsapp
@@ -1638,9 +1816,9 @@ export function DoctorRequestForm({
             })() : null}
         </div>}
 
-        {/* Fast Mode entry — kept deliberately low-key: a small text link so the
-            full form stays the obvious path. Only appears once a lab is chosen. */}
-        {(labPreselected || !!form.lab_id) && (
+        {/* Fast Mode entry — hidden for now; the full form is the only path.
+            Flip FAST_MODE_ENTRY_ENABLED to bring the shortcut back. */}
+        {FAST_MODE_ENTRY_ENABLED && (labPreselected || !!form.lab_id) && (
           <div className="mb-2 flex justify-end">
             <button
               type="button"
@@ -1652,7 +1830,40 @@ export function DoctorRequestForm({
           </div>
         )}
 
-        {/* Step indicator */}
+        {/* Step indicator. On the sheet it is flat — labels over a rail whose
+            fill slides between steps; elsewhere the original numbered circles. */}
+        {inModal ? (
+          <div className="pt-0.5">
+            <div className="flex items-end justify-between gap-2">
+              {STEPS.map((st, i) => {
+                const num = i + 1;
+                const done = num < step;
+                const active = num === step;
+                const visited = num <= maxStep;
+                return (
+                  <button
+                    key={st.title}
+                    type="button"
+                    onClick={() => visited && handleJumpToStep(num)}
+                    disabled={!visited}
+                    className={`flex-1 text-left text-[11px] font-semibold uppercase tracking-[0.1em] transition-colors duration-300 ${
+                      active ? "text-slate-900" : done ? "text-stone-500 hover:text-slate-800" : "text-stone-300"
+                    } ${visited && !active ? "cursor-pointer" : "cursor-default"}`}
+                  >
+                    <span className="tabular-nums opacity-60">{String(num).padStart(2, "0")}</span>{" "}
+                    <span className={active ? "" : "hidden sm:inline"}>{st.title}</span>
+                  </button>
+                );
+              })}
+            </div>
+            <div className="relative mt-2 h-px w-full bg-stone-200">
+              <span
+                className="absolute inset-y-0 left-0 block bg-slate-900 transition-[width] duration-500 ease-out"
+                style={{ width: `${(step / STEPS.length) * 100}%` }}
+              />
+            </div>
+          </div>
+        ) : (
         <div className="flex items-center">
           {STEPS.map((s, i) => {
             const num = i + 1;
@@ -1697,6 +1908,7 @@ export function DoctorRequestForm({
             );
           })}
         </div>
+        )}
       </div>
 
       {/* Step content */}
@@ -2147,153 +2359,7 @@ export function DoctorRequestForm({
                     Clinical Details
                   </h2>
                   {/* Camera button */}
-              <label className="cursor-pointer select-none" aria-label="Scan test request slip">
-                <div className={`flex items-center gap-1.5 py-1.5 px-3 rounded-xl text-xs font-semibold transition-colors active:scale-95 ${testImageUrl ? "bg-emerald-100 text-emerald-700" : "bg-slate-100 text-slate-500 hover:bg-medical-100 hover:text-medical-600"}`}>
-                  <Camera className="w-3.5 h-3.5" />
-                  {testImageUrl ? "Retake" : "Scan slip"}
-                </div>
-                <input
-                  type="file"
-                  accept="image/jpeg,image/png,image/webp,image/heic,.heic"
-                  className="sr-only"
-                  onChange={(e) => {
-                    const file = e.target.files?.[0];
-                    if (!file) return;
-                    const MAX_MB = 10;
-                    if (file.size > MAX_MB * 1024 * 1024) {
-                      setImageUploadError(`File is too large (${(file.size / 1024 / 1024).toFixed(1)} MB). Maximum is ${MAX_MB} MB.`);
-                      e.target.value = "";
-                      return;
-                    }
-                    const allowed = ["image/jpeg", "image/png", "image/webp", "image/heic"];
-                    if (!allowed.includes(file.type) && !file.name.toLowerCase().endsWith(".heic")) {
-                      setImageUploadError(`Unsupported format: ${file.type || file.name.split(".").pop()?.toUpperCase()}. Please use JPEG, PNG, WebP, or HEIC.`);
-                      e.target.value = "";
-                      return;
-                    }
-                    setImageUploading(true);
-                    setImageUploadProgress(0);
-                    setImageUploadError(null);
-                    setTestImageUrl(null);
-                    setExtractionResult(null);
-                    setExtractionDismissed(false);
-                    const fd = new FormData();
-                    fd.append("file", file);
-                    const xhr = new XMLHttpRequest();
-                    xhr.upload.onprogress = (ev) => {
-                      if (ev.lengthComputable) setImageUploadProgress(Math.round((ev.loaded / ev.total) * 100));
-                    };
-                    xhr.onload = () => {
-                      try {
-                        const data = JSON.parse(xhr.responseText);
-                        if (data.url) {
-                          setTestImageUrl(data.url);
-                          setImageUploadProgress(100);
-                          setImageExtracting(true);
-                          setExtractionProgress(0);
-                          fetch("/api/requests/extract-from-image", {
-                            method: "POST",
-                            headers: { "Content-Type": "application/json" },
-                            body: JSON.stringify({ imageUrl: data.url }),
-                          })
-                            .then((r) => r.json())
-                            .then((res) => {
-                              if (res.success && res.extracted) {
-                                setExtractionResult(res.extracted);
-                                if (Array.isArray(res.extracted.tests) && res.extracted.tests.length > 0) {
-                                  const lowConfSet = new Set<string>(
-                                    (res.extracted.low_confidence_items ?? []).map((s: string) => s.toLowerCase())
-                                  );
-                                  const expanded = res.extracted.tests.flatMap((n: string) => {
-                                    const isLow = lowConfSet.has(n.toLowerCase());
-                                    const parts = smartSplitTestNames(n);
-                                    const names = parts.length > 0 ? parts : [n];
-                                    return names.map((name: string) => ({ name, low_confidence: isLow }));
-                                  });
-                                  const initialTags: { name: string; catalog_test_id: string | null; low_confidence: boolean }[] = expanded.map(({ name, low_confidence }: { name: string; low_confidence: boolean }) => ({
-                                    name,
-                                    catalog_test_id: null as string | null,
-                                    low_confidence,
-                                  }));
-                                  setTestTags(initialTags);
-                                  const labId = form.lab_id;
-                                  Promise.allSettled(
-                                    initialTags.map((tag: { name: string; catalog_test_id: string | null; low_confidence: boolean }) =>
-                                      fetch(`/api/catalog/search?q=${encodeURIComponent(tag.name)}${labId ? `&lab_id=${encodeURIComponent(labId)}` : ""}&limit=1`)
-                                        .then((r) => r.json())
-                                        .then((d) => {
-                                          const match = d.results?.[0];
-                                          if (!match) return null;
-                                          const nameLC = tag.name.toLowerCase();
-                                          const canonLC = match.canonical_name.toLowerCase();
-                                          if (canonLC === nameLC || canonLC.includes(nameLC) || nameLC.includes(canonLC)) {
-                                            return { originalName: tag.name, match };
-                                          }
-                                          return null;
-                                        })
-                                        .catch(() => null)
-                                    )
-                                  ).then((results) => {
-                                    const upgrades = new Map<string, { id: string; name: string; price?: number; category?: string; is_rapid_test?: boolean }>();
-                                    results.forEach((r) => {
-                                      if (r.status === "fulfilled" && r.value) {
-                                        upgrades.set(r.value.originalName.toLowerCase(), {
-                                          id: r.value.match.id,
-                                          name: r.value.match.canonical_name,
-                                          price: r.value.match.effective_price,
-                                          category: r.value.match.category,
-                                          is_rapid_test: r.value.match.is_rapid_test,
-                                        });
-                                      }
-                                    });
-                                    if (upgrades.size > 0) {
-                                      setTestTags((prev) =>
-                                        prev.map((t) => {
-                                          const up = upgrades.get(t.name.toLowerCase());
-                                          if (!up) return t;
-                                          return { name: up.name, catalog_test_id: up.id, low_confidence: false, price: up.price, category: up.category, is_rapid_test: up.is_rapid_test };
-                                        })
-                                      );
-                                    }
-                                  });
-                                }
-                                setForm((prev) => ({
-                                  ...prev,
-                                  diagnosis: res.extracted.diagnosis || prev.diagnosis,
-                                  patient_name: prev.patient_name || res.extracted.patient_name,
-                                  patient_age: prev.patient_age || (res.extracted.patient_age != null ? String(res.extracted.patient_age) : ageFromIso(res.extracted.dob || "")),
-                                  sex: prev.sex || res.extracted.sex,
-                                  doctor_name: prev.doctor_name || res.extracted.doctor_name,
-                                  doctor_prefix: prev.doctor_prefix || res.extracted.doctor_prefix,
-                                }));
-
-                              }
-                            })
-                            .catch(() => { /* silent — user continues manually */ })
-                            .finally(() => {
-                              setExtractionProgress(100);
-                              setTimeout(() => setImageExtracting(false), 700);
-                            });
-                        } else {
-                          setImageUploadError(data.error ?? "Upload failed. Please try again.");
-                        }
-                      } catch {
-                        setImageUploadError("Upload failed. Please try again.");
-                      } finally {
-                        setImageUploading(false);
-                        e.target.value = "";
-                      }
-                    };
-                    xhr.onerror = () => {
-                      setImageUploadError("Network error. Check your connection and try again.");
-                      setImageUploading(false);
-                      e.target.value = "";
-                    };
-                    xhr.open("POST", "/api/requests/upload-image");
-                    xhr.send(fd);
-                  }}
-                />
-              </label>
+                  {!inModal && scanSlipControl}
                 </div>
 
                 {/* Substep 1: Tests */}
@@ -2780,6 +2846,9 @@ export function DoctorRequestForm({
         {" "}and{" "}
         <a href="/privacy" className="underline hover:text-slate-600 transition-colors">Privacy Policy</a>.
       </p>
+
+      {/* Scan slip lives in the sheet header when the form is on paper */}
+      {inModal && headerSlot && step === 2 && createPortal(scanSlipControl, headerSlot)}
 
       {/* Lab details modal */}
       {labDetailsOpen && displayLab && (

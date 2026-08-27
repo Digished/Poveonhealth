@@ -5,6 +5,7 @@ import QRCode from "qrcode";
 import { Loader2, QrCode, UserPlus, Download, Copy, X, ExternalLink } from "lucide-react";
 import toast from "react-hot-toast";
 import { LabOnboardForm, OnboardTemplate } from "@/components/lab/LabOnboardForm";
+import { labUrl } from "@/lib/lab-urls";
 
 export function OnboardingPanel({
   labId,
@@ -22,7 +23,7 @@ export function OnboardingPanel({
 
   useEffect(() => {
     if (!slug || typeof window === "undefined") return;
-    const link = `${window.location.origin}/o/${slug}`;
+    const link = labUrl(slug, "/o", window.location.origin);
     setUrl(link);
     QRCode.toDataURL(link, { width: 480, margin: 1, color: { dark: "#0f172a", light: "#ffffff" } })
       .then(setQrDataUrl)

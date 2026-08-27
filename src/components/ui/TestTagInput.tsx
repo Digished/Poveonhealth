@@ -4,6 +4,7 @@ import { useState, useEffect, useRef } from "react";
 import { createPortal } from "react-dom";
 import { X, Plus, Search, FlaskConical } from "lucide-react";
 import { smartSplitTestNames } from "@/lib/smart-split";
+import { loadCatalog, searchCatalog, catalogReady } from "@/lib/catalog-index";
 
 // Module-level cache — persists for the session across modal opens
 const _resultCache = new Map<string, CatalogResult[]>();
@@ -145,7 +146,18 @@ function TestSearchModal({
     };
   }, []);
 
-  // Debounced catalog search — skipped for comma-separated input, cached for repeats
+  // Pull the lab's catalogue into memory as soon as the sheet opens, so typing
+  // is matched locally instead of round-tripping per keystroke.
+  const [indexReady, setIndexReady] = useState(() => catalogReady(labId));
+  useEffect(() => {
+    let alive = true;
+    loadCatalog(labId).then((idx) => { if (alive) setIndexReady(!!idx); });
+    return () => { alive = false; };
+  }, [labId]);
+
+  // Search. With the catalogue in memory this is synchronous — no debounce, no
+  // request, results land on the same frame as the keystroke. The network path
+  // below is the fallback for catalogues too large to ship (or a failed load).
   useEffect(() => {
     const q = query.trim();
 
@@ -158,6 +170,13 @@ function TestSearchModal({
 
     if (q.length < 2) {
       setResults([]);
+      setSearching(false);
+      return;
+    }
+
+    const local = searchCatalog(labId, q, 8);
+    if (local) {
+      setResults(local);
       setSearching(false);
       return;
     }
@@ -193,7 +212,7 @@ function TestSearchModal({
       }
     }, 100);
     return () => { clearTimeout(t); controller.abort(); };
-  }, [query, labId]);
+  }, [query, labId, indexReady]);
 
   // ── tag helpers ─────────────────────────────────────────────────────────────
   function addCatalogTag(r: CatalogResult) {

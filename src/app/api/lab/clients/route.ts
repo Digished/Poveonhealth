@@ -2,6 +2,24 @@ export const dynamic = "force-dynamic";
 import { NextRequest, NextResponse } from "next/server";
 import { getLabAuth } from "@/lib/lab-auth";
 import { prisma } from "@/lib/prisma";
+import { jsonWithEtag, makeEtag, notModified } from "@/lib/http-cache";
+
+// The clients tab groups requests per patient and shows a visit history of
+// date / status / tests / diagnosis / slip image — nothing else. Selecting just
+// those keeps a whole-history response from carrying every column of every row.
+const CLIENT_REQUEST_SELECT = {
+  id: true,
+  code: true,
+  status: true,
+  source: true,
+  tests: true,
+  diagnosis: true,
+  test_image_url: true,
+  patient_name: true,
+  patient_phone: true,
+  patient_email: true,
+  created_at: true,
+} as const;
 
 // Normalize to digits only for phone grouping (handles +234 vs 0234 vs 234 etc.)
 function normalizePhone(phone: string): string {
@@ -25,6 +43,17 @@ export async function GET(request: NextRequest) {
       ],
     };
 
+    // Version probe first — the tab is re-opened far more often than the
+    // underlying requests change.
+    const freshness = await prisma.request.aggregate({
+      where: { lab_id: auth.lab_id, ...arrivedClient },
+      _count: { _all: true },
+      _max: { updated_at: true },
+    });
+    const etag = makeEtag(["lab-clients", auth.lab_id, freshness._count._all, freshness._max.updated_at]);
+    const cached = notModified(request, etag);
+    if (cached) return cached;
+
     // Fetch all arrived clients with a phone on file.
     const requests = await prisma.request.findMany({
       where: {
@@ -33,6 +62,7 @@ export async function GET(request: NextRequest) {
         ...arrivedClient,
       },
       orderBy: { created_at: "desc" },
+      select: CLIENT_REQUEST_SELECT,
     });
 
     // Also include arrived clients without phone (grouped by email if available)
@@ -44,6 +74,7 @@ export async function GET(request: NextRequest) {
         ...arrivedClient,
       },
       orderBy: { created_at: "desc" },
+      select: CLIENT_REQUEST_SELECT,
     });
 
     // Group by normalized phone key — merges same patient across format variations
@@ -129,7 +160,7 @@ export async function GET(request: NextRequest) {
     clientMap.forEach((v) => clientList.push({ ...v, source: v.requests[0]?.source ?? "poveon" }));
     const clients = clientList.sort((a, b) => new Date(b.last_visit).getTime() - new Date(a.last_visit).getTime());
 
-    return NextResponse.json({ success: true, clients });
+    return jsonWithEtag({ success: true, clients }, etag);
   } catch (error) {
     console.error("Lab clients fetch error:", error);
     return NextResponse.json({ success: false, error: "Failed to load clients" }, { status: 500 });

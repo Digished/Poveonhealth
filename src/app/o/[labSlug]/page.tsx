@@ -1,4 +1,6 @@
-import { notFound } from "next/navigation";
+import { notFound, redirect } from "next/navigation";
+import { headers } from "next/headers";
+import { labUrl, shouldRedirectToLabHost } from "@/lib/lab-urls";
 import { prisma } from "@/lib/prisma";
 import { LabOnboardForm } from "@/components/lab/LabOnboardForm";
 
@@ -10,6 +12,12 @@ export async function generateMetadata({ params }: { params: { labSlug: string }
 }
 
 export default async function LabOnboardPage({ params, searchParams }: { params: { labSlug: string }; searchParams?: { code?: string } }) {
+  // Legacy path link (poveon.com/{section}) — send it to the lab's own
+  // subdomain so every lab URL settles on one canonical host.
+  if (shouldRedirectToLabHost(params.labSlug, headers().get("host"))) {
+    redirect(labUrl(params.labSlug, "/o"));
+  }
+
   const lab = await prisma.lab.findUnique({
     where: { slug: params.labSlug },
     select: { id: true, name: true, slug: true, logo_url: true, address: true },

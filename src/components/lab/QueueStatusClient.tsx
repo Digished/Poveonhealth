@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useState } from "react";
 import { Loader2, Check, MapPin, Phone, Copy, Hourglass, CreditCard, UserCheck } from "lucide-react";
+import { fetchJson } from "@/lib/poll";
 
 interface StatusData {
   code: string;
@@ -41,8 +42,8 @@ export function QueueStatusClient({ code }: { code: string }) {
 
   const load = useCallback(async () => {
     try {
-      const res = await fetch(`/api/onboard/queue-status?code=${encodeURIComponent(code)}`, { cache: "no-store" });
-      const d = await res.json();
+      const d = await fetchJson<StatusData & { success: boolean }>(`/api/onboard/queue-status?code=${encodeURIComponent(code)}`);
+      if (d === null) return; // 304 — position and stage unchanged
       if (d.success) { setData(d); setFailed(false); }
       else if (!data) setFailed(true);
     } catch {
@@ -53,7 +54,8 @@ export function QueueStatusClient({ code }: { code: string }) {
 
   useEffect(() => {
     load();
-    const id = setInterval(() => { if (!document.hidden) load(); }, 6000);
+    // 15s is well inside "live" for a waiting room, at 2.5× fewer requests.
+    const id = setInterval(() => { if (!document.hidden) load(); }, 15000);
     return () => clearInterval(id);
   }, [load]);
 

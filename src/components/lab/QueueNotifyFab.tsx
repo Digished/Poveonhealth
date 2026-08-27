@@ -2,13 +2,15 @@
 
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { Bell } from "lucide-react";
+import { fetchJson } from "@/lib/poll";
 
+// Mirrors QUEUE_LIGHT_SELECT in /api/lab/queue?waiting=1 — the server already
+// filters to unpaid, unattended entries, so this only carries what's rendered.
 interface FabEntry {
   id: string;
   code: string;
   patient_name: string | null;
-  is_paid: boolean;
-  attended_at: string | null;
+  queue_number: number | null;
   queue_confirmed_at: string | null;
   created_at: string;
 }
@@ -54,15 +56,15 @@ export function QueueNotifyFab({
 
   const load = useCallback(async () => {
     try {
-      const res = await fetch("/api/lab/queue", { cache: "no-store" });
-      const d = await res.json();
-      if (d.success) setWaiting(d.waiting ?? []);
+      // Light mode: only the waiting entries, and only the fields shown here.
+      const d = await fetchJson<{ success: boolean; waiting?: FabEntry[] }>("/api/lab/queue?waiting=1");
+      if (d?.success) setWaiting(d.waiting ?? []);
     } catch { /* non-critical */ }
   }, []);
 
   useEffect(() => {
     load();
-    const id = setInterval(() => { if (!document.hidden) load(); }, 20000);
+    const id = setInterval(() => { if (!document.hidden) load(); }, 30000);
     return () => clearInterval(id);
   }, [load]);
 
@@ -79,7 +81,7 @@ export function QueueNotifyFab({
   // Unaddressed = still waiting (not paid / attended) AND newer than the last
   // acknowledgement. Anything the lab acts on drops off automatically.
   const fresh = useMemo(
-    () => waiting.filter((r) => !r.is_paid && !r.attended_at && new Date(r.queue_confirmed_at ?? r.created_at).getTime() > lastSeen),
+    () => waiting.filter((r) => new Date(r.queue_confirmed_at ?? r.created_at).getTime() > lastSeen),
     [waiting, lastSeen]
   );
 

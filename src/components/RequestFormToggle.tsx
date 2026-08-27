@@ -1,7 +1,7 @@
 "use client";
 
 import { useState } from "react";
-import { Stethoscope, User, ChevronDown } from "lucide-react";
+import { Stethoscope, User, ChevronDown, Check } from "lucide-react";
 import { DoctorRequestForm } from "@/components/DoctorRequestForm";
 import { PatientRequestForm } from "@/components/PatientRequestForm";
 import type { Lab } from "@/lib/types";
@@ -9,8 +9,16 @@ import type { PhoneEntry } from "@/lib/phones";
 
 type Mode = "professional" | "patient";
 
+// Patient self-request is switched off for now: the request sheet always opens
+// on the clinician side. Flip this back to true to bring the choice back.
+const SELF_REQUEST_ENABLED = false;
+
 interface RequestFormToggleProps {
   initialLabs?: Lab[];
+  /** "modal" = rendered on the lab-branded paper request sheet. */
+  chrome?: "page" | "modal";
+  /** Which side of the form opens first. */
+  initialMode?: "professional" | "patient";
   preselectedLabId?: string;
   preselectedLabName?: string;
   preselectedLabAddress?: string;
@@ -39,8 +47,10 @@ export function RequestFormToggle({
   preselectedLabPhones,
   onModeChange,
   locations,
+  chrome = "page",
+  initialMode = "professional",
 }: RequestFormToggleProps) {
-  const [mode, setMode] = useState<Mode>("professional");
+  const [mode, setMode] = useState<Mode>(initialMode);
   const [dropdownOpen, setDropdownOpen] = useState(false);
 
   const handleModeChange = (next: Mode) => {
@@ -63,6 +73,84 @@ export function RequestFormToggle({
     professional: "Submit requests on behalf of patients",
     patient: "Submit your own health request",
   };
+
+  const forms =
+    mode === "professional" ? (
+      <DoctorRequestForm
+        chrome={chrome}
+        initialLabs={initialLabs}
+        preselectedLabId={preselectedLabId}
+        preselectedLabName={preselectedLabName}
+        locations={locations}
+      />
+    ) : (
+      <PatientRequestForm
+        chrome={chrome}
+        initialLabs={initialLabs}
+        preselectedLabId={preselectedLabId}
+        preselectedLabName={preselectedLabName}
+        preselectedLabAddress={preselectedLabAddress}
+        preselectedServiceCategories={preselectedServiceCategories}
+        preselectedLabPhones={preselectedLabPhones}
+        locations={locations}
+      />
+    );
+
+  // With self-request hidden there is nothing to choose — render the clinician
+  // form on its own, in either chrome.
+  if (!SELF_REQUEST_ENABLED) {
+    return chrome === "modal" ? <div>{forms}</div> : <div className="space-y-4">{forms}</div>;
+  }
+
+  // ── Paper sheet: the first field of the form, "tick one" ────────────────────
+  if (chrome === "modal") {
+    return (
+      <div>
+        <div className="px-4 pt-1">
+          <p className="text-[10.5px] font-bold uppercase tracking-[0.12em] text-stone-500">
+            Section A · Who is completing this form
+          </p>
+          <div className="mt-2 grid grid-cols-2 gap-2">
+            {(["professional", "patient"] as const).map((m) => {
+              const active = mode === m;
+              return (
+                <button
+                  key={m}
+                  type="button"
+                  onClick={() => handleModeChange(m)}
+                  aria-pressed={active}
+                  className={`flex items-start gap-2.5 rounded-lg border px-3 py-2.5 text-left transition-all ${
+                    active
+                      ? "border-medical-500/70 bg-white shadow-[0_1px_0_rgba(15,23,42,0.05)]"
+                      : "border-stone-300/70 bg-white/40 hover:border-stone-400/70 hover:bg-white/70"
+                  }`}
+                >
+                  <span
+                    className={`mt-[1px] flex h-4 w-4 shrink-0 items-center justify-center rounded-[4px] border transition-colors ${
+                      active ? "border-medical-600 bg-medical-600 text-white" : "border-stone-400/80 bg-white"
+                    }`}
+                  >
+                    {active && <Check className="h-3 w-3" strokeWidth={3} />}
+                  </span>
+                  <span className="min-w-0">
+                    <span className={`block text-[12.5px] font-semibold leading-tight ${active ? "text-slate-900" : "text-stone-600"}`}>
+                      {m === "professional" ? "Referring clinician" : "Patient (self-request)"}
+                    </span>
+                    <span className="mt-0.5 block text-[10.5px] leading-snug text-stone-400">
+                      {m === "professional" ? "Requesting for a patient" : "Booking my own tests"}
+                    </span>
+                  </span>
+                </button>
+              );
+            })}
+          </div>
+          <div className="mt-4 border-t border-dashed border-stone-300/80" />
+        </div>
+
+        {forms}
+      </div>
+    );
+  }
 
   return (
     <div className="space-y-4">
@@ -119,24 +207,7 @@ export function RequestFormToggle({
       </div>
 
       {/* Forms */}
-      {mode === "professional" ? (
-        <DoctorRequestForm
-          initialLabs={initialLabs}
-          preselectedLabId={preselectedLabId}
-          preselectedLabName={preselectedLabName}
-          locations={locations}
-        />
-      ) : (
-        <PatientRequestForm
-          initialLabs={initialLabs}
-          preselectedLabId={preselectedLabId}
-          preselectedLabName={preselectedLabName}
-          preselectedLabAddress={preselectedLabAddress}
-          preselectedServiceCategories={preselectedServiceCategories}
-          preselectedLabPhones={preselectedLabPhones}
-          locations={locations}
-        />
-      )}
+      {forms}
     </div>
   );
 }

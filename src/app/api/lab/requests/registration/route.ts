@@ -7,6 +7,7 @@ import { logLabActivity } from "@/lib/lab-activity";
 import { markSeenWithCommission } from "@/lib/lims";
 import { resend, labSender } from "@/lib/email/resend";
 import { patientArrivedSelfService } from "@/lib/email/templates";
+import { labUrl } from "@/lib/lab-urls";
 
 const Schema = z.object({
   requestId: z.string().uuid(),
@@ -81,7 +82,7 @@ export async function POST(request: NextRequest) {
   }
   if (send_registration_link && sendTo && req.lab.slug) {
     const appUrl = process.env.NEXT_PUBLIC_APP_URL || "https://poveon.com";
-    const selfServiceUrl = `${appUrl}/o/${req.lab.slug}?code=${encodeURIComponent(req.code)}`;
+    const selfServiceUrl = `${labUrl(req.lab.slug, "/o", appUrl)}?code=${encodeURIComponent(req.code)}`;
     resend.emails
       .send({
         from: labSender(req.lab),

@@ -8,6 +8,16 @@ import { FullViewModal } from "@/components/ui/FullViewModal";
 import { LabOnboardForm, OnboardTemplate } from "@/components/lab/LabOnboardForm";
 import { TestTagInput, TestTag } from "@/components/ui/TestTagInput";
 import { SourceBadge } from "@/components/lab/SourceBadge";
+import { fetchJson } from "@/lib/poll";
+
+type QueuePayload = {
+  success: boolean;
+  error?: string;
+  me?: string | null;
+  waiting?: QueueReq[];
+  paid?: QueueReq[];
+  attended?: QueueReq[];
+};
 
 const JourneyView = dynamic(() => import("@/components/lab/JourneyView").then((m) => ({ default: m.JourneyView })), { ssr: false });
 
@@ -210,8 +220,8 @@ export function QueueView({
     if (!silent) setLoading(true);
     else setRefreshing(true);
     try {
-      const res = await fetch("/api/lab/queue", { cache: "no-store" });
-      const data = await res.json();
+      const data = await fetchJson<QueuePayload>("/api/lab/queue");
+      if (data === null) return; // 304 — the queue hasn't moved
       if (!data.success) throw new Error(data.error || "Failed");
       setMe(data.me ?? null);
       setWaiting(data.waiting ?? []);
@@ -229,7 +239,7 @@ export function QueueView({
 
   // Poll so new registrations surface without a manual refresh.
   useEffect(() => {
-    const id = setInterval(() => { if (!document.hidden) load(true); }, 15000);
+    const id = setInterval(() => { if (!document.hidden) load(true); }, 20000);
     return () => clearInterval(id);
   }, [load]);
 

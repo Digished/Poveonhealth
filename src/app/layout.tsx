@@ -2,6 +2,7 @@ import type { Metadata } from "next";
 import { Suspense } from "react";
 import { Toaster } from "react-hot-toast";
 import { RefTracker } from "@/components/RefTracker";
+import { RouteTransition } from "@/components/site/RouteTransition";
 import "./globals.css";
 
 // Font variable object for CSS
@@ -36,7 +37,7 @@ export default function RootLayout({
         <Suspense fallback={null}>
           <RefTracker />
         </Suspense>
-        {children}
+        <RouteTransition>{children}</RouteTransition>
         <Toaster
           position="top-right"
           toastOptions={{

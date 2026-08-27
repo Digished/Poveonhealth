@@ -621,3 +621,208 @@
 ::-webkit-scrollbar-thumb:hover {
   background: rgba(148, 163, 184, 0.7);
 }
+
+/* ═══════════════════════════════════════════════════════════════════════════
+   MARKETING SITE — nav, landing sections, page transitions
+   Used by the public landing page (src/app/page.tsx) and the site nav.
+   ═══════════════════════════════════════════════════════════════════════════ */
+
+/* Reveal-on-scroll. Elements start shifted + transparent and settle when the
+   IntersectionObserver in <Reveal> adds .is-revealed. */
+.reveal {
+  opacity: 0;
+  transform: translateY(22px);
+  transition: opacity 0.7s cubic-bezier(0.22, 1, 0.36, 1),
+              transform 0.7s cubic-bezier(0.22, 1, 0.36, 1);
+  will-change: opacity, transform;
+}
+.reveal.is-revealed {
+  opacity: 1;
+  transform: none;
+}
+
+/* Scripting disabled → never hide anything behind an animation that can't run. */
+@media (scripting: none) {
+  .reveal { opacity: 1; transform: none; }
+}
+
+/* Route change — the page body fades/lifts in on every navigation. */
+@keyframes page-enter {
+  from { opacity: 0; transform: translateY(8px); }
+  to   { opacity: 1; transform: none; }
+}
+.page-enter {
+  animation: page-enter 0.32s cubic-bezier(0.22, 1, 0.36, 1) both;
+}
+
+/* Thin top progress bar shown while a navigation is in flight. */
+@keyframes route-progress {
+  0%   { transform: scaleX(0); }
+  40%  { transform: scaleX(0.55); }
+  75%  { transform: scaleX(0.82); }
+  100% { transform: scaleX(0.94); }
+}
+.route-progress-bar {
+  transform-origin: 0 50%;
+  animation: route-progress 2.2s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+}
+
+/* Partner-lab marquee — the track holds two identical halves, so sliding it
+   by -50% loops seamlessly. Transform-only → GPU composited. */
+@keyframes marquee-slide {
+  from { transform: translate3d(0, 0, 0); }
+  to   { transform: translate3d(-50%, 0, 0); }
+}
+.marquee-track {
+  animation: marquee-slide var(--marquee-duration, 42s) linear infinite;
+}
+.marquee-mask {
+  -webkit-mask-image: linear-gradient(to right, transparent, #000 8%, #000 92%, transparent);
+  mask-image: linear-gradient(to right, transparent, #000 8%, #000 92%, transparent);
+}
+.marquee-pause:hover .marquee-track { animation-play-state: paused; }
+
+/* Slow aurora drift behind the hero. */
+@keyframes aurora-drift {
+  0%, 100% { transform: translate3d(0, 0, 0) scale(1); }
+  50%      { transform: translate3d(3%, -4%, 0) scale(1.12); }
+}
+.animate-aurora { animation: aurora-drift 18s ease-in-out infinite; }
+
+/* Hero mock — lines "write themselves" onto the request slip. */
+@keyframes slip-write {
+  0%       { transform: scaleX(0); opacity: 0.35; }
+  18%, 82% { transform: scaleX(1); opacity: 1; }
+  100%     { transform: scaleX(1); opacity: 1; }
+}
+.animate-slip-write {
+  transform-origin: 0 50%;
+  animation: slip-write 5.5s cubic-bezier(0.22, 1, 0.36, 1) infinite;
+}
+
+@keyframes chip-pop {
+  0%, 12%   { opacity: 0; transform: translateY(10px) scale(0.94); }
+  22%, 78%  { opacity: 1; transform: none; }
+  92%, 100% { opacity: 0; transform: translateY(-8px) scale(0.98); }
+}
+.animate-chip-pop { animation: chip-pop 5.5s ease-in-out infinite; }
+
+/* Nav — mobile sheet links stagger in. */
+@keyframes nav-item-in {
+  from { opacity: 0; transform: translateY(10px); }
+  to   { opacity: 1; transform: none; }
+}
+.animate-nav-item { animation: nav-item-in 0.42s cubic-bezier(0.22, 1, 0.36, 1) both; }
+
+/* Nav — dropdown panel drops with a slight scale. */
+@keyframes nav-panel-in {
+  from { opacity: 0; transform: translateY(-6px) scale(0.97); }
+  to   { opacity: 1; transform: none; }
+}
+.animate-nav-panel {
+  transform-origin: top center;
+  animation: nav-panel-in 0.18s cubic-bezier(0.22, 1, 0.36, 1) both;
+}
+
+/* ═══════════════════════════════════════════════════════════════════════════
+   PAPER REQUEST FORM — the lab-branded request modal
+   The modal chrome is a sheet of headed paper; .paper-form re-skins the
+   existing multi-step form inside it so fields read as boxes on a lab form.
+   ═══════════════════════════════════════════════════════════════════════════ */
+
+/* The sheet is plain white — no tint, no ruling. The "form" reading comes from
+   the typography and the fields, not from a background texture. */
+.paper-sheet {
+  background-color: #ffffff;
+}
+
+/* The hero illustration is a paper slip, so it keeps a faint warm tint. */
+.slip-paper {
+  background-color: #fdfbf5;
+}
+
+/* Torn/perforated top edge of the sheet. */
+.paper-perforation {
+  background-image: radial-gradient(circle at 6px 0px, transparent 0 5px, #ffffff 5px);
+  background-size: 12px 8px;
+  background-repeat: repeat-x;
+}
+
+/* Sheet lifts in like a form being placed on a desk. */
+@keyframes sheet-drop {
+  from { opacity: 0; transform: translateY(26px) scale(0.99); }
+  to   { opacity: 1; transform: none; }
+}
+.animate-sheet-drop { animation: sheet-drop 0.36s cubic-bezier(0.22, 1, 0.36, 1) both; }
+
+/* ── Fields on the sheet ────────────────────────────────────────────────────
+   Empty or focused: a quiet ruled box, clearly waiting to be filled.
+   Filled and left behind: the box disappears and the value reads as writing on
+   the form. Same typeface as the rest of the UI throughout.               */
+.paper-form label {
+  text-transform: uppercase;
+  letter-spacing: 0.1em;
+  font-size: 10px;
+  font-weight: 700;
+  color: #a8a29e;
+}
+.paper-form input:not([type="checkbox"]):not([type="radio"]),
+.paper-form textarea,
+.paper-form select {
+  background-color: #ffffff;
+  border-color: #e2e0dc;
+  border-radius: 4px;
+  box-shadow: none;
+  transition: border-color 0.2s ease, background-color 0.2s ease, color 0.2s ease;
+}
+.paper-form input:not([type="checkbox"]):not([type="radio"]):hover,
+.paper-form textarea:hover,
+.paper-form select:hover {
+  border-color: #cfccc6;
+}
+.paper-form input:not([type="checkbox"]):not([type="radio"]):focus,
+.paper-form textarea:focus,
+.paper-form select:focus {
+  background-color: #ffffff;
+  border-color: rgb(var(--medical-500));
+  box-shadow: 0 0 0 3px rgb(var(--medical-500) / 0.1);
+}
+.paper-form input::placeholder,
+.paper-form textarea::placeholder {
+  color: #cbc9c4;
+}
+
+/* A completed field the user has moved on from: no box, just the answer.
+   Scoped to inputs that declare a placeholder, so :placeholder-shown is a
+   reliable "is this empty?" test. */
+.paper-form input[placeholder]:not([type="checkbox"]):not([type="radio"]):not(:placeholder-shown):not(:focus),
+.paper-form textarea[placeholder]:not(:placeholder-shown):not(:focus) {
+  background-color: transparent;
+  border-color: transparent;
+  box-shadow: none;
+  padding-left: 2px;
+  padding-right: 2px;
+  font-weight: 500;
+  color: #0f172a;
+}
+.paper-form input[placeholder]:not(:placeholder-shown):not(:focus):hover,
+.paper-form textarea[placeholder]:not(:placeholder-shown):not(:focus):hover {
+  border-bottom-color: #e2e0dc;
+}
+
+/* Grouping cards read as sections of the form, not as raised panels. */
+.paper-form .glass-card {
+  background-color: #ffffff;
+  border-color: #eceae6;
+  box-shadow: none;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .reveal { opacity: 1; transform: none; transition: none; }
+  .marquee-track,
+  .animate-aurora,
+  .animate-slip-write,
+  .animate-chip-pop,
+  .animate-sheet-drop,
+  .page-enter { animation: none; }
+}
