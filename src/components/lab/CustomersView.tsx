@@ -4,6 +4,7 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import { Loader2, Search, Download, RefreshCw, Users, Check, Clock, ExternalLink } from "lucide-react";
 import toast from "react-hot-toast";
 import { SourceBadge } from "@/components/lab/SourceBadge";
+import { fetchJson } from "@/lib/poll";
 
 interface CustomerRow {
   id: string;
@@ -86,6 +87,9 @@ export function CustomersView({ labName, live = false }: { labName: string; live
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [updatedAt, setUpdatedAt] = useState<Date | null>(null);
+  // How many customer rows exist in total — the table holds a recent window.
+  const [totalCount, setTotalCount] = useState<number | null>(null);
+  const [exporting, setExporting] = useState(false);
   const [sourceF, setSourceF] = useState<SourceTab>("app");
   const [arrivedF, setArrivedF] = useState<"" | "arrived" | "not_arrived">("");
   const [dateFrom, setDateFrom] = useState("");
@@ -97,10 +101,11 @@ export function CustomersView({ labName, live = false }: { labName: string; live
     if (silent) setRefreshing(true);
     else setLoading(true);
     try {
-      const res = await fetch("/api/lab/customers", { cache: "no-store" });
-      const data = await res.json();
+      const data = await fetchJson<{ success: boolean; error?: string; customers?: CustomerRow[]; truncated?: boolean; total?: number }>("/api/lab/customers");
+      if (data === null) { setUpdatedAt(new Date()); return; } // 304 — nothing new
       if (!data.success) throw new Error(data.error || "Failed");
       setRows(data.customers ?? []);
+      setTotalCount(data.total ?? null);
       setUpdatedAt(new Date());
     } catch {
       if (!silent) toast.error("Failed to load customers");
@@ -135,30 +140,30 @@ export function CustomersView({ labName, live = false }: { labName: string; live
     }
   }, []);
 
-  // Keep the table fresh — the live board refreshes every 10s, the normal
-  // dashboard tab every 30s.
+  // Keep the table fresh — the live board refreshes every 20s, the normal
+  // dashboard tab every minute. Unchanged polls come back as a 304.
   useEffect(() => {
-    const id = setInterval(() => { if (!document.hidden) load(true); }, live ? 10000 : 30000);
+    const id = setInterval(() => { if (!document.hidden) load(true); }, live ? 20000 : 60000);
     return () => clearInterval(id);
   }, [load, live]);
 
-  const filtered = useMemo(() => {
+  const matchesFilters = useCallback((r: CustomerRow) => {
     const q = query.trim().toLowerCase();
-    return rows.filter((r) => {
-      const src = r.source ?? "poveon";
-      if (sourceF === "app" && src !== "poveon") return false;
-      if (sourceF === "registered" && src === "poveon") return false;
-      if (arrivedF === "arrived" && !r.arrived) return false;
-      if (arrivedF === "not_arrived" && r.arrived) return false;
-      if (dateFrom && new Date(r.created_at).getTime() < new Date(dateFrom + "T00:00:00").getTime()) return false;
-      if (dateTo && new Date(r.created_at).getTime() > new Date(dateTo + "T23:59:59").getTime()) return false;
-      if (q) {
-        const hay = [r.patient_name, r.patient_phone, r.patient_email, r.code, r.doctor_name, r.tests].filter(Boolean).join(" ").toLowerCase();
-        if (!hay.includes(q)) return false;
-      }
-      return true;
-    });
-  }, [rows, sourceF, arrivedF, dateFrom, dateTo, query]);
+    const src = r.source ?? "poveon";
+    if (sourceF === "app" && src !== "poveon") return false;
+    if (sourceF === "registered" && src === "poveon") return false;
+    if (arrivedF === "arrived" && !r.arrived) return false;
+    if (arrivedF === "not_arrived" && r.arrived) return false;
+    if (dateFrom && new Date(r.created_at).getTime() < new Date(dateFrom + "T00:00:00").getTime()) return false;
+    if (dateTo && new Date(r.created_at).getTime() > new Date(dateTo + "T23:59:59").getTime()) return false;
+    if (q) {
+      const hay = [r.patient_name, r.patient_phone, r.patient_email, r.code, r.doctor_name, r.tests].filter(Boolean).join(" ").toLowerCase();
+      if (!hay.includes(q)) return false;
+    }
+    return true;
+  }, [sourceF, arrivedF, dateFrom, dateTo, query]);
+
+  const filtered = useMemo(() => rows.filter(matchesFilters), [rows, matchesFilters]);
 
   const stats = useMemo(() => ({
     total: filtered.length,
@@ -166,7 +171,22 @@ export function CustomersView({ labName, live = false }: { labName: string; live
     notArrived: filtered.filter((r) => !r.arrived).length,
   }), [filtered]);
 
-  function downloadCsv() {
+  async function downloadCsv() {
+    // The table only holds a recent window; the export is the whole history.
+    let exportRows = rows;
+    if (totalCount !== null && totalCount > rows.length) {
+      setExporting(true);
+      try {
+        const res = await fetch("/api/lab/customers?all=1", { cache: "no-store" });
+        const data = await res.json();
+        if (data?.success && Array.isArray(data.customers)) exportRows = data.customers as CustomerRow[];
+      } catch {
+        toast.error("Could not load the full history — exporting what's on screen");
+      } finally {
+        setExporting(false);
+      }
+    }
+    const filtered = exportRows.filter(matchesFilters);
     const headers = [
       "Name", "Phone", "WhatsApp", "Email", "Age", "Date of Birth", "Sex", "Address",
       "Source", "Referral Type", "Referring Doctor", "Doctor Email", "Doctor Phone", "Hospital / HMO", "Policy Number",
@@ -263,10 +283,12 @@ export function CustomersView({ labName, live = false }: { labName: string; live
           </button>
           <button
             onClick={downloadCsv}
-            disabled={filtered.length === 0}
+            disabled={filtered.length === 0 || exporting}
             className="inline-flex items-center gap-1.5 rounded-lg bg-emerald-600 px-3.5 py-2 text-xs font-semibold text-white hover:bg-emerald-700 disabled:opacity-50"
           >
-            <Download className="h-3.5 w-3.5" /> Download spreadsheet
+            {exporting
+              ? <><Loader2 className="h-3.5 w-3.5 animate-spin" /> Preparing…</>
+              : <><Download className="h-3.5 w-3.5" /> Download spreadsheet</>}
           </button>
         </div>
       </div>

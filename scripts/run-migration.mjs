@@ -1734,6 +1734,20 @@ const migrations = [
     sql: `CREATE INDEX IF NOT EXISTS sms_logs_channel_created_at_idx ON sms_logs (channel, created_at)`,
     continueOnError: true,
   },
+  {
+    // The requests table had no indexes at all, so every dashboard poll,
+    // queue refresh and code lookup was a sequential scan of the whole table.
+    desc: "requests indexes (lab dashboards, queue, doctor & patient lookups)",
+    sql: `
+      CREATE INDEX IF NOT EXISTS requests_lab_created_idx ON requests (lab_id, created_at);
+      CREATE INDEX IF NOT EXISTS requests_lab_status_idx ON requests (lab_id, status);
+      CREATE INDEX IF NOT EXISTS requests_lab_queue_confirmed_idx ON requests (lab_id, queue_confirmed_at);
+      CREATE INDEX IF NOT EXISTS requests_lab_updated_idx ON requests (lab_id, updated_at);
+      CREATE INDEX IF NOT EXISTS requests_doctor_email_idx ON requests (doctor_email);
+      CREATE INDEX IF NOT EXISTS requests_patient_phone_idx ON requests (patient_phone);
+    `,
+    continueOnError: true,
+  },
 ];
 
 let failed = false;

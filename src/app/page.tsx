@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
 import { LandingPage, type LandingStats } from "@/components/home/LandingPage";
 import type { LandingLab } from "@/components/home/LabPicker";
+import { unstable_cache } from "next/cache";
 import { STATE_NAMES } from "@/lib/nigeria-locations";
 import { prisma } from "@/lib/prisma";
 
@@ -26,7 +27,7 @@ export default async function HomePage() {
   let stats: LandingStats = { labs: 0, catalogTests: 0, states: 0, requests: 0 };
 
   try {
-    [labs, stats] = await Promise.all([fetchLabs(), fetchStats()]);
+    ({ labs, stats } = await getLandingData());
   } catch (err) {
     console.error("[home] failed to load landing data:", err instanceof Error ? err.message : err);
   }
@@ -34,50 +35,52 @@ export default async function HomePage() {
   return <LandingPage labs={labs} stats={stats} />;
 }
 
-async function fetchLabs(): Promise<LandingLab[]> {
-  const rows = await prisma.lab.findMany({
-    where: { hidden: false, search_hidden: false },
-    select: {
-      id: true, name: true, slug: true, address: true,
-      logo_url: true, phones: true, whatsapp: true, service_categories: true,
-    },
-    orderBy: { name: "asc" },
-  });
-
-  type Row = (typeof rows)[number];
-  return rows.map((l: Row) => ({
-    id: l.id,
-    name: l.name,
-    slug: l.slug,
-    address: l.address ?? "",
-    logo_url: l.logo_url ?? null,
-    phones: l.phones,
-    whatsapp: l.whatsapp ?? null,
-    service_categories: (l.service_categories as string[] | null) ?? [],
-  }));
-}
-
 /**
- * Live figures for the stats strip. Every number is counted from the database
- * on each request — nothing here is a marketing round-up.
+ * Labs + live figures for the landing page, cached for five minutes.
+ *
+ * The page is dynamic (it must not be prerendered at build time), but the data
+ * behind it changes rarely — without this cache every visit, crawl and refresh
+ * ran four queries against the database.
  */
-async function fetchStats(): Promise<LandingStats> {
-  const [labCount, catalogTests, requests, addresses] = await Promise.all([
-    prisma.lab.count({ where: { hidden: false } }),
-    prisma.labOfferedTest.count(),
-    prisma.request.count(),
-    prisma.lab.findMany({ where: { hidden: false }, select: { address: true } }),
-  ]);
+const getLandingData = unstable_cache(
+  async (): Promise<{ labs: LandingLab[]; stats: LandingStats }> => {
+    const [labRows, catalogTests, requests] = await Promise.all([
+      prisma.lab.findMany({
+        where: { hidden: false, search_hidden: false },
+        select: {
+          id: true, name: true, slug: true, address: true,
+          logo_url: true, phones: true, whatsapp: true, service_categories: true,
+        },
+        orderBy: { name: "asc" },
+      }),
+      prisma.labOfferedTest.count(),
+      prisma.request.count(),
+    ]);
 
-  // States covered = the distinct Nigerian states named in partner lab addresses.
-  const states = new Set<string>();
-  for (const { address } of addresses) {
-    if (!address) continue;
-    const haystack = address.toLowerCase();
-    for (const state of STATE_NAMES) {
-      if (haystack.includes(state.toLowerCase())) states.add(state);
+    type Row = (typeof labRows)[number];
+    const labs: LandingLab[] = labRows.map((l: Row) => ({
+      id: l.id,
+      name: l.name,
+      slug: l.slug,
+      address: l.address ?? "",
+      logo_url: l.logo_url ?? null,
+      phones: l.phones,
+      whatsapp: l.whatsapp ?? null,
+      service_categories: (l.service_categories as string[] | null) ?? [],
+    }));
+
+    // States covered = the distinct Nigerian states named in partner addresses.
+    const states = new Set<string>();
+    for (const lab of labs) {
+      if (!lab.address) continue;
+      const haystack = lab.address.toLowerCase();
+      for (const state of STATE_NAMES) {
+        if (haystack.includes(state.toLowerCase())) states.add(state);
+      }
     }
-  }
 
-  return { labs: labCount, catalogTests, requests, states: states.size };
-}
+    return { labs, stats: { labs: labs.length, catalogTests, requests, states: states.size } };
+  },
+  ["landing-page-data"],
+  { revalidate: 300, tags: ["landing-page-data"] }
+);

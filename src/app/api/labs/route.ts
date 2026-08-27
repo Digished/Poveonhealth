@@ -36,7 +36,10 @@ export async function GET() {
       {
         headers: {
           ...CORS_HEADERS,
-          "Cache-Control": "no-store",
+          // Public, slow-moving data: let the CDN serve it for a minute and
+          // keep serving the stale copy while it revalidates, so a burst of
+          // visitors costs one database read rather than hundreds.
+          "Cache-Control": "public, s-maxage=60, stale-while-revalidate=600",
         },
       }
     );

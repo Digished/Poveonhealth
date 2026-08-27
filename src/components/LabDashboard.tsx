@@ -39,6 +39,9 @@ import { Input } from "@/components/ui/Input";
 import { StatusBadge } from "@/components/ui/Badge";
 import { SourceBadge, SOURCE_OPTIONS } from "@/components/lab/SourceBadge";
 import type { LabRequest, RequestStatus, Sex } from "@/lib/types";
+import { fetchJson } from "@/lib/poll";
+
+type StatusCounts = { incoming: number; seen: number; done: number };
 import { parsePhones } from "@/lib/phones";
 import { SERVICE_CATEGORIES } from "@/lib/constants";
 import { format, differenceInYears } from "date-fns";
@@ -270,6 +273,9 @@ export function LabDashboard({ lab, isOwner = false, roleName = "Lab Owner", can
 
   const [activeTab, setActiveTab] = useState<RequestStatus>("seen");
   const [requests, setRequests] = useState<LabRequest[]>([]);
+  // Per-status totals counted in the database. The list itself is capped at the
+  // most recent few hundred requests, so these are the authoritative numbers.
+  const [statusCounts, setStatusCounts] = useState<StatusCounts | null>(null);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [codeInput, setCodeInput] = useState("");
@@ -329,10 +335,12 @@ export function LabDashboard({ lab, isOwner = false, roleName = "Lab Owner", can
     if (showRefresh) setRefreshing(true);
     else setLoading(true);
     try {
-      const res = await fetch("/api/lab/requests");
-      const data = await res.json();
+      // 304 (null) = nothing changed since the last poll; keep what we have.
+      const data = await fetchJson<{ success: boolean; error?: string; requests?: LabRequest[]; counts?: StatusCounts }>("/api/lab/requests");
+      if (data === null) return;
       if (!data.success) throw new Error(data.error);
       setRequests(data.requests ?? []);
+      if (data.counts) setStatusCounts(data.counts);
     } catch {
       toast.error("Failed to load requests");
     } finally {
@@ -352,9 +360,8 @@ export function LabDashboard({ lab, isOwner = false, roleName = "Lab Owner", can
   const fetchWallet = useCallback(async (isRefresh = false) => {
     if (isRefresh) setWalletRefreshing(true);
     try {
-      const res = await fetch("/api/lab/wallet");
-      const d = await res.json();
-      if (d.success) setWalletData(d);
+      const d = await fetchJson<{ success: boolean } & NonNullable<WalletData>>("/api/lab/wallet");
+      if (d?.success) setWalletData(d);
     } catch { /* non-critical */ } finally {
       setWalletRefreshing(false);
     }
@@ -363,9 +370,8 @@ export function LabDashboard({ lab, isOwner = false, roleName = "Lab Owner", can
   const fetchPoveon = useCallback(async (showLoading = false) => {
     if (showLoading) setPoveonLoading(true);
     try {
-      const res = await fetch("/api/lab/poveon");
-      const d = await res.json();
-      if (d.success) {
+      const d = await fetchJson<{ success: boolean } & NonNullable<PoveonViewData>>("/api/lab/poveon");
+      if (d?.success) {
         setPoveonData(d);
         setPoveonBalance(d.wallet_balance ?? null);
       }
@@ -655,7 +661,7 @@ export function LabDashboard({ lab, isOwner = false, roleName = "Lab Owner", can
     }
   }
 
-  const counts = {
+  const counts = statusCounts ?? {
     incoming: requests.filter((r) => r.status === "incoming").length,
     seen: requests.filter((r) => r.status === "seen").length,
     done: requests.filter((r) => r.status === "done").length,

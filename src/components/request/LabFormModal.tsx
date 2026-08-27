@@ -171,7 +171,7 @@ export function LabFormModal({ lab, open, onClose, locations: providedLocations,
           className="paper-sheet paper-form relative flex-1 overflow-y-auto overscroll-contain"
         >
           {/* Sticky title bar — 64px tall; the form's own step rail sticks below it */}
-          <div className="sticky top-0 z-20 h-16 border-b border-stone-300/60 bg-[#fdfbf5] shadow-[0_6px_14px_-12px_rgba(15,23,42,0.5)]">
+          <div className="sticky top-0 z-20 h-16 border-b border-stone-300/60 bg-white shadow-[0_6px_14px_-12px_rgba(15,23,42,0.5)]">
             <div className="flex h-full items-center gap-3 px-4 sm:px-6">
               <div
                 className={`flex min-w-0 flex-1 items-center gap-2.5 transition-all duration-300 ${
@@ -201,7 +201,7 @@ export function LabFormModal({ lab, open, onClose, locations: providedLocations,
               <button
                 type="button"
                 onClick={onClose}
-                className="shrink-0 rounded-full border border-stone-300/70 bg-white/70 p-2 text-stone-500 transition-colors hover:bg-white hover:text-stone-800"
+                className="shrink-0 rounded-full border border-stone-200 bg-white p-2 text-stone-500 transition-colors hover:bg-slate-50 hover:text-stone-800"
                 aria-label="Close form"
               >
                 <X className="h-4 w-4" />
@@ -263,7 +263,7 @@ export function LabFormModal({ lab, open, onClose, locations: providedLocations,
                 {categories.map((c) => (
                   <span
                     key={c}
-                    className="rounded-full border border-stone-300/70 bg-white/60 px-2.5 py-0.5 text-[10.5px] font-medium uppercase tracking-wide text-stone-500"
+                    className="rounded-full border border-stone-200 bg-slate-50 px-2.5 py-0.5 text-[10.5px] font-medium uppercase tracking-wide text-stone-500"
                   >
                     {c}
                   </span>
@@ -309,7 +309,7 @@ export function LabFormModal({ lab, open, onClose, locations: providedLocations,
           </div>
 
           {/* ── Footer strip — the bottom of a printed form ─────────────── */}
-          <div className="mt-2 border-t border-stone-300/60 bg-white/40 px-4 py-4 sm:px-6">
+          <div className="mt-2 border-t border-stone-200 bg-slate-50/70 px-4 py-4 sm:px-6">
             <div className="flex flex-wrap items-center justify-between gap-3">
               <p className="flex items-center gap-1.5 text-[10.5px] uppercase tracking-[0.12em] text-stone-400">
                 <ShieldCheck className="h-3.5 w-3.5 text-emerald-600" />

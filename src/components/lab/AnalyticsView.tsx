@@ -110,7 +110,9 @@ export function AnalyticsView({ labId, lite }: { labId: string; lite: boolean })
     if (silent) setRefreshing(true);
     else setLoading(true);
     try {
-      const res = await fetch("/api/lab/customers", { cache: "no-store" });
+      // Analytics covers all time, so it asks for the full history (the table's
+      // default is a recent window to keep the 10s poll small).
+      const res = await fetch("/api/lab/customers?all=1", { cache: "no-store" });
       const data = await res.json();
       if (!data.success) throw new Error(data.error || "Failed");
       setRows(data.customers ?? []);

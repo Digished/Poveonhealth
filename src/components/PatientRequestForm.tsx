@@ -466,7 +466,7 @@ export function PatientRequestForm(props: PatientRequestFormProps) {
       {/* ── Sticky step header ── */}
       <div className={`sticky ${inModal ? "top-16" : "top-0"} z-10 -mx-4 px-4 pt-3 pb-3 transition-all duration-200 ${
         inModal
-          ? `bg-[#fdfbf5]/92 backdrop-blur-sm border-b ${scrolled ? "border-stone-300/60 shadow-sm" : "border-stone-300/40"}`
+          ? `bg-white/95 backdrop-blur-sm border-b ${scrolled ? "border-stone-200 shadow-sm" : "border-stone-200/70"}`
           : scrolled
           ? "bg-white/95 backdrop-blur-md border-b border-slate-200 shadow-sm"
           : "bg-white/80 backdrop-blur-sm border-b border-slate-100"

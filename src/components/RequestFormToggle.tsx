@@ -9,6 +9,10 @@ import type { PhoneEntry } from "@/lib/phones";
 
 type Mode = "professional" | "patient";
 
+// Patient self-request is switched off for now: the request sheet always opens
+// on the clinician side. Flip this back to true to bring the choice back.
+const SELF_REQUEST_ENABLED = false;
+
 interface RequestFormToggleProps {
   initialLabs?: Lab[];
   /** "modal" = rendered on the lab-branded paper request sheet. */
@@ -91,6 +95,12 @@ export function RequestFormToggle({
         locations={locations}
       />
     );
+
+  // With self-request hidden there is nothing to choose — render the clinician
+  // form on its own, in either chrome.
+  if (!SELF_REQUEST_ENABLED) {
+    return chrome === "modal" ? <div>{forms}</div> : <div className="space-y-4">{forms}</div>;
+  }
 
   // ── Paper sheet: the first field of the form, "tick one" ────────────────────
   if (chrome === "modal") {

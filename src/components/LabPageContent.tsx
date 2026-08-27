@@ -1,7 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useState } from "react";
-import { ArrowRight, Stethoscope, User, ScrollText, ShieldCheck, Clock } from "lucide-react";
+import { ArrowRight, Stethoscope, ScrollText, ShieldCheck, Clock } from "lucide-react";
 import { LabHeroSection } from "@/components/LabHeroSection";
 import { LabFormModal, type FormLocation } from "@/components/request/LabFormModal";
 import type { PhoneEntry } from "@/lib/phones";
@@ -98,35 +98,20 @@ export function LabPageContent({
             </p>
           </div>
 
-          <div className="grid gap-2.5 p-4 sm:grid-cols-2">
+          <div className="p-4">
             <button
               type="button"
               onClick={() => start("professional")}
-              className="group flex items-center gap-3 rounded-2xl border border-stone-200 bg-white p-4 text-left transition-all hover:-translate-y-0.5 hover:border-medical-300 hover:shadow-[0_18px_36px_-24px_rgba(2,112,195,0.7)]"
+              className="group flex w-full items-center gap-3 rounded-2xl border border-stone-200 bg-white p-4 text-left transition-all hover:-translate-y-0.5 hover:border-medical-300 hover:shadow-[0_18px_36px_-24px_rgba(2,112,195,0.7)]"
             >
               <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-medical-50 text-medical-600 ring-1 ring-medical-100 transition-colors group-hover:bg-medical-600 group-hover:text-white">
                 <Stethoscope className="h-[18px] w-[18px]" />
               </span>
               <span className="min-w-0 flex-1">
-                <span className="block text-[14px] font-bold text-slate-900">I&apos;m a clinician</span>
-                <span className="block text-[11.5px] text-slate-400">Requesting for a patient</span>
+                <span className="block text-[14px] font-bold text-slate-900">Open the request form</span>
+                <span className="block text-[11.5px] text-slate-400">Patient details, tests and referring clinician</span>
               </span>
               <ArrowRight className="h-4 w-4 shrink-0 text-slate-300 transition-all group-hover:translate-x-0.5 group-hover:text-medical-600" />
-            </button>
-
-            <button
-              type="button"
-              onClick={() => start("patient")}
-              className="group flex items-center gap-3 rounded-2xl border border-stone-200 bg-white p-4 text-left transition-all hover:-translate-y-0.5 hover:border-emerald-300 hover:shadow-[0_18px_36px_-24px_rgba(5,150,105,0.6)]"
-            >
-              <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-emerald-50 text-emerald-600 ring-1 ring-emerald-100 transition-colors group-hover:bg-emerald-600 group-hover:text-white">
-                <User className="h-[18px] w-[18px]" />
-              </span>
-              <span className="min-w-0 flex-1">
-                <span className="block text-[14px] font-bold text-slate-900">I&apos;m the patient</span>
-                <span className="block text-[11.5px] text-slate-400">Booking my own tests</span>
-              </span>
-              <ArrowRight className="h-4 w-4 shrink-0 text-slate-300 transition-all group-hover:translate-x-0.5 group-hover:text-emerald-600" />
             </button>
           </div>
 

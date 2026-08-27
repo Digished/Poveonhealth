@@ -5,6 +5,7 @@ import { prisma } from "@/lib/prisma";
 import { getLabAuth } from "@/lib/lab-auth";
 import { logLabActivity } from "@/lib/lab-activity";
 import { markSeenWithCommission } from "@/lib/lims";
+import { jsonWithEtag, makeEtag, notModified } from "@/lib/http-cache";
 import type { Prisma } from "@prisma/client";
 
 const QUEUE_SELECT = {
@@ -42,6 +43,17 @@ const QUEUE_SELECT = {
   details_captured_by: true,
 } as const;
 
+// The waiting-clients FAB polls every 20s but only renders name + ticket, so it
+// asks for this instead of the full queue rows.
+const QUEUE_LIGHT_SELECT = {
+  id: true,
+  code: true,
+  patient_name: true,
+  queue_number: true,
+  queue_confirmed_at: true,
+  created_at: true,
+} as const;
+
 type QueueRow = Prisma.RequestGetPayload<{ select: typeof QUEUE_SELECT }>;
 
 function serialize(r: QueueRow) {
@@ -74,6 +86,28 @@ export async function GET(request: NextRequest) {
   // the client joined the queue (not when the referral was created).
   const base = { lab_id: auth.lab_id };
   const activeSince = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000);
+  const waitingOnly = new URL(request.url).searchParams.get("waiting") === "1";
+
+  // Version probe — an unchanged poll (the common case) stops here.
+  const freshness = await prisma.request.aggregate({
+    where: { ...base, queue_confirmed_at: { gt: activeSince } },
+    _count: { _all: true },
+    _max: { updated_at: true },
+  });
+  const etag = makeEtag(["lab-queue", auth.lab_id, waitingOnly, freshness._count._all, freshness._max.updated_at]);
+  const cached = notModified(request, etag);
+  if (cached) return cached;
+
+  // The FAB's light mode: just the waiting list, minimal columns.
+  if (waitingOnly) {
+    const waitingLight = await prisma.request.findMany({
+      where: { ...base, is_paid: false, attended_at: null, status: { not: "done" }, queue_confirmed_at: { gt: activeSince } },
+      orderBy: { queue_confirmed_at: "asc" },
+      select: QUEUE_LIGHT_SELECT,
+    });
+    return jsonWithEtag({ success: true, waiting: waitingLight }, etag);
+  }
+
   const [waiting, paid, attended] = await Promise.all([
     prisma.request.findMany({
       where: { ...base, is_paid: false, attended_at: null, status: { not: "done" }, queue_confirmed_at: { gt: activeSince } },
@@ -90,7 +124,7 @@ export async function GET(request: NextRequest) {
       // review any recent day (not just the last 24h).
       where: { ...base, queue_confirmed_at: { not: null }, attended_at: { gt: activeSince } },
       orderBy: { attended_at: "desc" },
-      take: 300,
+      take: 150,
       select: QUEUE_SELECT,
     }),
   ]);
@@ -110,7 +144,7 @@ export async function GET(request: NextRequest) {
     await prisma.request.update({ where: { id: r.id }, data: { queue_number: n } }).catch(() => {});
   }
 
-  return NextResponse.json({
+  return jsonWithEtag({
     success: true,
     // The current actor's email — lets the queue tell "you're attending" from
     // "a colleague is attending" and avoid prompting yourself.
@@ -118,7 +152,7 @@ export async function GET(request: NextRequest) {
     waiting: waiting.map(serialize),
     paid: paid.map(serialize),
     attended: attended.map(serialize),
-  });
+  }, etag);
 }
 
 const ActionSchema = z.object({

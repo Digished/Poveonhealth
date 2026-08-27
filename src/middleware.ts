@@ -35,8 +35,23 @@ export async function middleware(request: NextRequest) {
     return NextResponse.redirect(mainUrl, 302);
   }
 
+  const { pathname } = request.nextUrl;
+
   // ── Supabase session refresh (existing auth logic) ─────────────────────────
+  // Only the Supabase-authenticated areas need the user: resolving it calls the
+  // Supabase Auth API, and doing that on every asset, page and API request was
+  // thousands of pointless round trips a day. Cookie-token routes below are
+  // checked without it.
+  const needsSupabaseUser =
+    pathname.startsWith("/lab-dashboard") ||
+    pathname.startsWith("/admin") ||
+    pathname === "/lab-login";
+
   let response = NextResponse.next({ request });
+
+  if (!needsSupabaseUser) {
+    return cookieOnlyRoutes(request, response);
+  }
 
   const supabase = createServerClient(
     process.env.NEXT_PUBLIC_SUPABASE_URL!,
@@ -63,7 +78,6 @@ export async function middleware(request: NextRequest) {
     data: { user },
   } = await supabase.auth.getUser();
 
-  const { pathname } = request.nextUrl;
   const role = user?.user_metadata?.role;
 
   // ── Lab Dashboard ──────────────────────────────────────────────────────────
@@ -89,6 +103,16 @@ export async function middleware(request: NextRequest) {
   if (pathname === "/admin-login" && role === "admin") {
     return NextResponse.redirect(new URL("/admin", request.url));
   }
+
+  return cookieOnlyRoutes(request, response);
+}
+
+/**
+ * Guards for the portals that authenticate with their own signed cookie rather
+ * than Supabase — no Auth API call needed, just a cookie presence check.
+ */
+function cookieOnlyRoutes(request: NextRequest, response: NextResponse): NextResponse {
+  const { pathname } = request.nextUrl;
 
   // ── Scale (Marketer) Dashboard ─────────────────────────────────────────────
   if (pathname.startsWith("/scale/dashboard")) {

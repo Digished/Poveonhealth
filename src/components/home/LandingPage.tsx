@@ -36,7 +36,7 @@ const AUDIENCES = [
     points: [
       "No account required — your email is your identity",
       "Photograph a handwritten request slip and let Poveon read it back to you",
-      "Fast mode: type the tests in plain language and submit",
+      "Test names are matched against the lab's own catalogue as you type",
       "Track every referral, result and commission in your dashboard",
     ],
     accent: "from-medical-600 to-sky-500",
@@ -48,13 +48,13 @@ const AUDIENCES = [
     id: "for-patients",
     eyebrow: "For patients",
     icon: User,
-    title: "Book your own tests, then just show the code",
-    body: "Tell the lab what you need — or describe how you feel and the health assistant suggests tests from that lab's real catalogue. You get a request code by email and SMS.",
+    title: "Show the code, keep your place in the queue",
+    body: "Your clinician's request reaches the lab before you do. You get a request code by email and SMS, register yourself at the lab by scanning its QR code, and watch your position in the queue from your phone.",
     points: [
-      "Choose any partner lab and request tests yourself",
-      "Test suggestions come only from the lab's own catalogue",
-      "Show your code at reception — no printing, no forms to fill again",
-      "Results and updates arrive by email, SMS and WhatsApp",
+      "A request code that identifies you at reception — nothing to print",
+      "Self-registration by QR at the lab, with your own ticket number",
+      "Live queue position while you wait",
+      "Results and updates by email, SMS and WhatsApp",
     ],
     accent: "from-emerald-600 to-teal-500",
     chip: "text-emerald-700 bg-emerald-50 border-emerald-100",
@@ -105,13 +105,13 @@ const FEATURES = [
   },
   {
     icon: Zap,
-    title: "Fast mode",
-    body: "Type everything in one breath — “FBC, E/U/Cr for Mrs Ade, 54, malaria?” — and the request is sorted out server-side.",
+    title: "Queue that runs itself",
+    body: "Patients register at the lab by QR, take a ticket number and watch their position live while the front desk works the list.",
   },
   {
     icon: Sparkles,
-    title: "Health assistant",
-    body: "Patients describe symptoms; suggestions are drawn strictly from the chosen lab's own catalogue, never invented.",
+    title: "Catalogue-backed tests",
+    body: "Test names are resolved against the chosen lab's own catalogue and price list — never invented, and priced as the lab priced them.",
   },
   {
     icon: BellRing,
@@ -151,7 +151,7 @@ const STEPS = [
     n: "02",
     icon: ScrollText,
     title: "Fill the form on screen",
-    body: "Location, patient and tests, then who's referring. It moves in short steps with sub-steps, remembers your details, and checks phone numbers and emails as you type.",
+    body: "Location, patient and tests, then your referring details. It moves in short steps with sub-steps, remembers who you are, and checks phone numbers and emails as you type.",
   },
   {
     n: "03",
@@ -182,8 +182,8 @@ const FAQS = [
     a: "Nothing but show up. They receive the request code by email and SMS, present it at reception, and the lab pulls up everything you sent.",
   },
   {
-    q: "Can I request tests for myself?",
-    a: "Yes. Choose “Patient (self-request)” on the form. You'll be asked what you need — or you can describe your symptoms and pick from tests the lab actually offers.",
+    q: "What if I'm the patient, not a clinician?",
+    a: "Requests sent from this page come from a referring clinician. At a partner lab you can register yourself at the front desk by scanning the lab's QR code — that puts you in the queue with your own ticket number, which you can follow from your phone.",
   },
   {
     q: "How do labs join Poveon?",

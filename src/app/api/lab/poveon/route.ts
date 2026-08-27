@@ -2,6 +2,7 @@ export const dynamic = "force-dynamic";
 import { NextRequest, NextResponse } from "next/server";
 import { getLabAuth } from "@/lib/lab-auth";
 import { prisma } from "@/lib/prisma";
+import { jsonWithEtag, makeEtag, notModified } from "@/lib/http-cache";
 
 export async function GET(request: NextRequest) {
   const auth = await getLabAuth(request);
@@ -37,6 +38,15 @@ export async function GET(request: NextRequest) {
     }),
   ]);
 
+  const etag = makeEtag([
+    "lab-poveon", auth.lab_id,
+    totalsRaw[0]?.poveon_sum, totalsRaw[0]?.revenue_sum,
+    requestsRaw.length, requestsRaw[0]?.id, requestsRaw[0]?.seen_at,
+    wallet?.balance?.toString(), wallet?.credits.length,
+  ]);
+  const cached = notModified(request, etag);
+  if (cached) return cached;
+
   const totalOwed     = Number(totalsRaw[0]?.poveon_sum   ?? 0);
   const totalRevenue  = Number(totalsRaw[0]?.revenue_sum  ?? 0);
   const walletBalance = wallet ? Number(wallet.balance) : 0;
@@ -44,7 +54,7 @@ export async function GET(request: NextRequest) {
     ? wallet.credits.reduce((sum, c) => sum + Number(c.amount), 0)
     : 0;
 
-  return NextResponse.json({
+  return jsonWithEtag({
     success: true,
     total_owed:        totalOwed,       // cumulative Poveon commission accrued
     total_lab_revenue: totalRevenue,    // lab's cumulative revenue
@@ -62,5 +72,5 @@ export async function GET(request: NextRequest) {
       completed_at:      r.completed_at,
       test_breakdown:    Array.isArray(r.test_breakdown) ? r.test_breakdown : [],
     })),
-  });
+  }, etag);
 }

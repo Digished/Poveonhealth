@@ -2,6 +2,7 @@ export const dynamic = "force-dynamic";
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { parsePhones } from "@/lib/phones";
+import { makeEtag, notModified } from "@/lib/http-cache";
 
 const CORS_HEADERS = {
   "Access-Control-Allow-Origin": "*",
@@ -65,6 +66,12 @@ export async function GET(request: NextRequest) {
 
   const stage = req.attended_at || req.status === "done" ? "attended" : req.is_paid ? "paid" : "waiting";
 
+  // The client's status page polls this while they wait — answer 304 while
+  // their position and stage are unchanged.
+  const etag = makeEtag(["queue-status", req.id, stage, req.queue_number, ahead]);
+  const cached = notModified(request, etag);
+  if (cached) return cached;
+
   return NextResponse.json(
     {
       success: true,
@@ -82,6 +89,6 @@ export async function GET(request: NextRequest) {
         phones: parsePhones(req.lab.phones),
       },
     },
-    { headers: CORS_HEADERS }
+    { headers: { ...CORS_HEADERS, ETag: etag, "Cache-Control": "private, no-cache" } }
   );
 }

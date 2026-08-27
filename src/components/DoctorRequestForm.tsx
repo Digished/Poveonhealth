@@ -95,6 +95,10 @@ const STEPS = [
 
 const DOCTOR_STORAGE_KEY = "poveon_doctor_profile";
 
+// Fast Mode still works (and the composer is untouched) — only its entry point
+// is hidden for now, so every request goes through the full form.
+const FAST_MODE_ENTRY_ENABLED = false;
+
 function SummaryRow({ label, value, capitalize }: { label: string; value: string; capitalize?: boolean }) {
   return (
     <div className="flex justify-between text-xs gap-4">
@@ -1555,7 +1559,7 @@ export function DoctorRequestForm({
       <div className={`sticky ${preselectedLabId ? "top-16" : "top-0"} z-10 px-4 transition-all duration-300 ${scrolled ? "pt-2 pb-2" : "pt-3 pb-3"}`}>
         {/* Full-width frosted background */}
         <div className={`absolute inset-0 left-1/2 -translate-x-1/2 w-screen backdrop-blur-md border-b -z-10 ${
-          inModal ? "bg-[#fdfbf5]/92 border-stone-300/50" : "bg-white/80 border-white/60"
+          inModal ? "bg-white/95 border-stone-200" : "bg-white/80 border-white/60"
         }`} />
 
         {/* Lab info / branding — only on home page; on lab pages the sticky hero
@@ -1647,9 +1651,9 @@ export function DoctorRequestForm({
             })() : null}
         </div>}
 
-        {/* Fast Mode entry — kept deliberately low-key: a small text link so the
-            full form stays the obvious path. Only appears once a lab is chosen. */}
-        {(labPreselected || !!form.lab_id) && (
+        {/* Fast Mode entry — hidden for now; the full form is the only path.
+            Flip FAST_MODE_ENTRY_ENABLED to bring the shortcut back. */}
+        {FAST_MODE_ENTRY_ENABLED && (labPreselected || !!form.lab_id) && (
           <div className="mb-2 flex justify-end">
             <button
               type="button"

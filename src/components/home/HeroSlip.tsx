@@ -25,7 +25,7 @@ export function HeroSlip() {
       <div className="absolute inset-x-2 top-2 h-full rounded-2xl bg-white/80 shadow-[0_18px_40px_-26px_rgba(15,23,42,0.45)]" />
 
       {/* The slip */}
-      <div className="paper-sheet relative overflow-hidden rounded-2xl border border-stone-200/80 shadow-[0_30px_60px_-28px_rgba(15,23,42,0.55)]">
+      <div className="slip-paper relative overflow-hidden rounded-2xl border border-stone-200/80 shadow-[0_30px_60px_-28px_rgba(15,23,42,0.55)]">
         <div className="flex items-center gap-2.5 border-b border-stone-300/60 px-4 py-3">
           <span className="flex h-8 w-8 items-center justify-center rounded-lg bg-medical-600 text-white">
             <FlaskConical className="h-4 w-4" />

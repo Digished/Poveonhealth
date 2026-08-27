@@ -2,6 +2,7 @@ export const dynamic = "force-dynamic";
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { getLabAuth } from "@/lib/lab-auth";
+import { jsonWithEtag, makeEtag, notModified } from "@/lib/http-cache";
 
 /**
  * GET /api/lab/journey
@@ -17,6 +18,19 @@ export async function GET(request: NextRequest) {
   const stage = searchParams.get("stage");
   const source = searchParams.get("source");
   const limit = Math.min(Number(searchParams.get("limit") ?? 100), 300);
+
+  const where = {
+    lab_id: auth.lab_id,
+    ...(stage ? { current_stage: stage } : {}),
+    ...(source ? { source } : {}),
+  };
+
+  // The workspace polls this every 20s — skip the read entirely when nothing
+  // in this lab's requests has changed since the caller's last copy.
+  const freshness = await prisma.request.aggregate({ where, _count: { _all: true }, _max: { updated_at: true } });
+  const etag = makeEtag(["lab-journey", auth.lab_id, stage, source, limit, freshness._count._all, freshness._max.updated_at]);
+  const cached = notModified(request, etag);
+  if (cached) return cached;
 
   const requests = await prisma.request.findMany({
     where: {
@@ -63,5 +77,5 @@ export async function GET(request: NextRequest) {
     },
   });
 
-  return NextResponse.json({ requests });
+  return jsonWithEtag({ requests }, etag);
 }

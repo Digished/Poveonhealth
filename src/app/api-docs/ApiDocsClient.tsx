@@ -218,12 +218,12 @@ console.log(data.account_name); // e.g. "JOHN DOE ADEYEMI"`,
         path: "/api/lab/requests",
         summary: "List Lab's Requests",
         description:
-          "Returns all requests for the authenticated lab user's laboratory, ordered newest first. Requires an active lab session cookie (obtained by logging in via the lab dashboard).",
+          "Returns the authenticated laboratory's requests, newest first, along with per-status counts for the whole lab. Results are capped per page — use page/limit to walk further back. Supports an API key or an active lab session cookie. Sends an ETag; repeat the value in If-None-Match and an unchanged list answers 304.",
         auth: "lab",
         params: [
           { name: "status", type: '"incoming" | "seen" | "done"', required: false, description: "Filter by request status" },
           { name: "page", type: "number", required: false, description: "Page number for pagination (default: 1)" },
-          { name: "limit", type: "number", required: false, description: "Results per page (max 100, default: 50)" },
+          { name: "limit", type: "number", required: false, description: "Results per page (max 5000, default: 300)" },
         ],
         requestExample: `# curl — using API key (LIMS/server integration)
 curl -X GET "https://poveon.com/api/lab/requests?status=incoming&page=1&limit=20" \\

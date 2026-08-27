@@ -730,8 +730,15 @@
    existing multi-step form inside it so fields read as boxes on a lab form.
    ═══════════════════════════════════════════════════════════════════════════ */
 
-/* The sheet itself: warm off-white with faint ruling and a paper grain. */
+/* The sheet itself: plain white. The "paper" reads through the fields and the
+   printed typography, not through a tinted, ruled background. */
 .paper-sheet {
+  background-color: #ffffff;
+}
+
+/* The decorative hero slip keeps the tinted, ruled look — it is an
+   illustration of a paper form, not a surface anyone types on. */
+.slip-paper {
   background-color: #fdfbf5;
   background-image:
     repeating-linear-gradient(
@@ -747,7 +754,7 @@
 
 /* Torn/perforated top edge of the sheet. */
 .paper-perforation {
-  background-image: radial-gradient(circle at 6px 0px, transparent 0 5px, #fdfbf5 5px);
+  background-image: radial-gradient(circle at 6px 0px, transparent 0 5px, #ffffff 5px);
   background-size: 12px 8px;
   background-repeat: repeat-x;
 }
@@ -766,7 +773,9 @@
 }
 .animate-stamp-in { animation: stamp-in 0.5s cubic-bezier(0.34, 1.56, 0.64, 1) 0.35s both; }
 
-/* ── Field re-skin, scoped to the paper sheet ───────────────────────────── */
+/* ── Field re-skin, scoped to the sheet ─────────────────────────────────────
+   This is where the "filling in a lab form" feeling lives: small uppercase
+   captions over ruled boxes, tight corners, ink-coloured borders.           */
 .paper-form label {
   text-transform: uppercase;
   letter-spacing: 0.09em;
@@ -777,25 +786,43 @@
 .paper-form input:not([type="checkbox"]):not([type="radio"]),
 .paper-form textarea,
 .paper-form select {
-  background-color: rgba(255, 255, 255, 0.78);
-  border-color: rgba(30, 41, 59, 0.18);
-  border-radius: 7px;
-  box-shadow: inset 0 1px 2px rgba(15, 23, 42, 0.045);
+  background-color: #fcfcfb;
+  border-color: rgba(30, 41, 59, 0.28);
+  border-radius: 5px;
+  box-shadow: inset 0 1px 2px rgba(15, 23, 42, 0.05);
+}
+.paper-form input:not([type="checkbox"]):not([type="radio"]):hover,
+.paper-form textarea:hover,
+.paper-form select:hover {
+  border-color: rgba(30, 41, 59, 0.42);
 }
 .paper-form input:not([type="checkbox"]):not([type="radio"]):focus,
 .paper-form textarea:focus,
 .paper-form select:focus {
   background-color: #ffffff;
-  border-color: rgb(var(--medical-400));
+  border-color: rgb(var(--medical-500));
+  box-shadow: inset 0 1px 2px rgba(15, 23, 42, 0.04), 0 0 0 3px rgb(var(--medical-500) / 0.12);
 }
 .paper-form input::placeholder,
 .paper-form textarea::placeholder {
   color: #a8a29e;
 }
+/* Section headings on a form are set in a serif, like printed stationery. */
+.paper-form h2,
+.paper-heading {
+  font-family: Georgia, "Times New Roman", ui-serif, serif;
+  letter-spacing: -0.01em;
+}
+/* Reference numbers / codes read as typed on a form. */
+.paper-mono {
+  font-family: ui-monospace, "SF Mono", "Roboto Mono", Menlo, Consolas, monospace;
+  letter-spacing: 0.08em;
+}
+
 /* Grouping cards inside the form shouldn't look like stickers on the paper. */
 .paper-form .glass-card {
-  background-color: rgba(255, 255, 255, 0.55);
-  border-color: rgba(30, 41, 59, 0.12);
+  background-color: #ffffff;
+  border-color: rgba(30, 41, 59, 0.14);
   box-shadow: none;
 }
 
