@@ -4,6 +4,7 @@ import { useEffect, useState } from "react";
 import QRCode from "qrcode";
 import { Loader2, QrCode as QrIcon, Download, Copy, ExternalLink } from "lucide-react";
 import toast from "react-hot-toast";
+import { labUrl } from "@/lib/lab-urls";
 
 /**
  * The lab's public onboarding QR + link, for printing/physical display.
@@ -16,7 +17,7 @@ export function LabQrCard({ slug }: { slug: string | null }) {
 
   useEffect(() => {
     if (!slug || typeof window === "undefined") return;
-    const link = `${window.location.origin}/o/${slug}`;
+    const link = labUrl(slug, "/o", window.location.origin);
     setUrl(link);
     QRCode.toDataURL(link, { width: 480, margin: 1, color: { dark: "#0f172a", light: "#ffffff" } })
       .then(setQrDataUrl)

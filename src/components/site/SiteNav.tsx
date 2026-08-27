@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
+import { createPortal } from "react-dom";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import {
@@ -23,7 +24,7 @@ const AUDIENCES = [
     href: "/#for-patients",
     icon: User,
     title: "For patients",
-    blurb: "Book your own tests and track them with a request code.",
+    blurb: "Track your request, your queue place and your results.",
     tone: "text-emerald-600 bg-emerald-50 border-emerald-100",
   },
   {
@@ -67,9 +68,12 @@ export function SiteNav({ onStartRequest }: { onStartRequest?: () => void }) {
   const [scrolled, setScrolled] = useState(false);
   const [panel, setPanel] = useState<PanelId>(null);
   const [mobileOpen, setMobileOpen] = useState(false);
+  const [mounted, setMounted] = useState(false);
   const [session, setSession] = useState<{ email: string } | null | "loading">("loading");
   const navRef = useRef<HTMLDivElement>(null);
   const closeTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  useEffect(() => setMounted(true), []);
 
   useEffect(() => {
     function onScroll() { setScrolled(window.scrollY > 10); }
@@ -333,8 +337,8 @@ export function SiteNav({ onStartRequest }: { onStartRequest?: () => void }) {
         </div>
       </div>
 
-      {/* Mobile sheet */}
-      {mobileOpen && (
+      {/* Mobile sheet — portalled to <body> so no ancestor can clip it */}
+      {mounted && mobileOpen && createPortal(
         <div className="fixed inset-0 z-[130] lg:hidden">
           <div
             className="animate-backdrop-in absolute inset-0 bg-slate-900/40 backdrop-blur-sm"
@@ -372,49 +376,6 @@ export function SiteNav({ onStartRequest }: { onStartRequest?: () => void }) {
             </button>
 
             <p className="animate-nav-item mt-7 px-1 text-[11px] font-bold uppercase tracking-[0.14em] text-slate-400" style={{ animationDelay: "80ms" }}>
-              Platform
-            </p>
-            <div className="mt-2 space-y-1.5">
-              {AUDIENCES.map((a, i) => {
-                const Icon = a.icon;
-                return (
-                  <Link
-                    key={a.href}
-                    href={a.href}
-                    onClick={() => setMobileOpen(false)}
-                    className="animate-nav-item flex items-center gap-3 rounded-2xl border border-stone-200/70 bg-white px-4 py-3"
-                    style={{ animationDelay: `${100 + i * 45}ms` }}
-                  >
-                    <span className={`flex h-9 w-9 shrink-0 items-center justify-center rounded-xl border ${a.tone}`}>
-                      <Icon className="h-4 w-4" />
-                    </span>
-                    <span className="min-w-0">
-                      <span className="block text-sm font-semibold text-slate-900">{a.title}</span>
-                      <span className="block truncate text-xs text-slate-400">{a.blurb}</span>
-                    </span>
-                  </Link>
-                );
-              })}
-            </div>
-
-            <p className="animate-nav-item mt-7 px-1 text-[11px] font-bold uppercase tracking-[0.14em] text-slate-400" style={{ animationDelay: "290ms" }}>
-              Explore
-            </p>
-            <div className="mt-2 grid grid-cols-2 gap-1.5">
-              {LINKS.map((l, i) => (
-                <Link
-                  key={l.href}
-                  href={l.href}
-                  onClick={() => setMobileOpen(false)}
-                  className="animate-nav-item rounded-2xl border border-stone-200/70 bg-white px-4 py-3 text-sm font-semibold text-slate-700"
-                  style={{ animationDelay: `${310 + i * 40}ms` }}
-                >
-                  {l.label}
-                </Link>
-              ))}
-            </div>
-
-            <p className="animate-nav-item mt-7 px-1 text-[11px] font-bold uppercase tracking-[0.14em] text-slate-400" style={{ animationDelay: "470ms" }}>
               Log in
             </p>
             <div className="mt-2 space-y-1.5">
@@ -423,7 +384,7 @@ export function SiteNav({ onStartRequest }: { onStartRequest?: () => void }) {
                   href="/doc-login/dashboard"
                   onClick={() => setMobileOpen(false)}
                   className="animate-nav-item flex items-center gap-3 rounded-2xl border border-medical-100 bg-medical-50 px-4 py-3 text-sm font-semibold text-medical-700"
-                  style={{ animationDelay: "490ms" }}
+                  style={{ animationDelay: "100ms" }}
                 >
                   <LayoutDashboard className="h-4 w-4" /> My dashboard
                 </Link>
@@ -436,7 +397,7 @@ export function SiteNav({ onStartRequest }: { onStartRequest?: () => void }) {
                     href={p.href}
                     onClick={() => setMobileOpen(false)}
                     className="animate-nav-item flex items-center gap-3 rounded-2xl border border-stone-200/70 bg-white px-4 py-3"
-                    style={{ animationDelay: `${510 + i * 40}ms` }}
+                    style={{ animationDelay: `${120 + i * 40}ms` }}
                   >
                     <span className={`flex h-8 w-8 shrink-0 items-center justify-center rounded-xl border ${p.tone}`}>
                       <Icon className="h-4 w-4" />
@@ -450,11 +411,54 @@ export function SiteNav({ onStartRequest }: { onStartRequest?: () => void }) {
                   type="button"
                   onClick={handleLogout}
                   className="animate-nav-item flex w-full items-center gap-3 rounded-2xl border border-red-100 bg-red-50/60 px-4 py-3 text-sm font-semibold text-red-600"
-                  style={{ animationDelay: "690ms" }}
+                  style={{ animationDelay: "300ms" }}
                 >
                   <LogOut className="h-4 w-4" /> Sign out
                 </button>
               )}
+            </div>
+
+            <p className="animate-nav-item mt-7 px-1 text-[11px] font-bold uppercase tracking-[0.14em] text-slate-400" style={{ animationDelay: "330ms" }}>
+              Platform
+            </p>
+            <div className="mt-2 space-y-1.5">
+              {AUDIENCES.map((a, i) => {
+                const Icon = a.icon;
+                return (
+                  <Link
+                    key={a.href}
+                    href={a.href}
+                    onClick={() => setMobileOpen(false)}
+                    className="animate-nav-item flex items-center gap-3 rounded-2xl border border-stone-200/70 bg-white px-4 py-3"
+                    style={{ animationDelay: `${350 + i * 45}ms` }}
+                  >
+                    <span className={`flex h-9 w-9 shrink-0 items-center justify-center rounded-xl border ${a.tone}`}>
+                      <Icon className="h-4 w-4" />
+                    </span>
+                    <span className="min-w-0">
+                      <span className="block text-sm font-semibold text-slate-900">{a.title}</span>
+                      <span className="block truncate text-xs text-slate-400">{a.blurb}</span>
+                    </span>
+                  </Link>
+                );
+              })}
+            </div>
+
+            <p className="animate-nav-item mt-7 px-1 text-[11px] font-bold uppercase tracking-[0.14em] text-slate-400" style={{ animationDelay: "540ms" }}>
+              Explore
+            </p>
+            <div className="mt-2 grid grid-cols-2 gap-1.5">
+              {LINKS.map((l, i) => (
+                <Link
+                  key={l.href}
+                  href={l.href}
+                  onClick={() => setMobileOpen(false)}
+                  className="animate-nav-item rounded-2xl border border-stone-200/70 bg-white px-4 py-3 text-sm font-semibold text-slate-700"
+                  style={{ animationDelay: `${560 + i * 40}ms` }}
+                >
+                  {l.label}
+                </Link>
+              ))}
             </div>
 
             <div className="mt-8 flex flex-wrap items-center gap-x-4 gap-y-2 border-t border-stone-200/70 pt-5 text-xs text-slate-400">
@@ -464,7 +468,8 @@ export function SiteNav({ onStartRequest }: { onStartRequest?: () => void }) {
               <Link href="/contact" onClick={() => setMobileOpen(false)}>Contact</Link>
             </div>
           </div>
-        </div>
+        </div>,
+        document.body
       )}
     </>
   );

@@ -34,6 +34,7 @@ import { parsePhones } from "@/lib/phones";
 import { format } from "date-fns";
 import { createClient } from "@/lib/supabase/client"; // still used for auth sign-out
 import { useRouter } from "next/navigation";
+import { labUrl, labHost, LAB_SUBDOMAINS_ENABLED } from "@/lib/lab-urls";
 
 type AdminTab = "metrics" | "clients" | "requests" | "referrals" | "labs" | "analytics" | "marketers" | "lab-marketers" | "professionals" | "settings" | "transactions" | "knowledge-base" | "users" | "hospitals" | "agreements" | "skin" | "encounters" | "broadcast" | "hmo" | "perks";
 
@@ -1004,9 +1005,9 @@ export function AdminDashboard() {
                             {lab.hidden && <span className="text-[10px] text-slate-500 bg-white/5 px-1.5 py-0.5 rounded">hidden</span>}
                             {lab.free_trial && <span className="text-[10px] bg-emerald-900/30 text-emerald-400 border border-emerald-800/30 px-1.5 py-0.5 rounded-full" title="Free trial - no commission">FREE TRIAL</span>}
                             {lab.slug && (
-                              <a href={`/${lab.slug}`} target="_blank" rel="noopener noreferrer"
+                              <a href={labUrl(lab.slug, "/")} target="_blank" rel="noopener noreferrer"
                                 className="text-[10px] text-blue-400 hover:text-blue-300 font-mono bg-blue-500/8 border border-blue-500/20 px-1.5 py-0.5 rounded"
-                                title={`Direct URL: poveon.com/${lab.slug}`}>/{lab.slug}</a>
+                                title={`Direct URL: ${labHost(lab.slug)}`}>{LAB_SUBDOMAINS_ENABLED ? labHost(lab.slug) : `/${lab.slug}`}</a>
                             )}
                             {lab.whatsapp && (
                               <span className="text-[10px] bg-green-900/30 text-green-400 border border-green-800/30 px-1.5 py-0.5 rounded-full" title={`WhatsApp: ${lab.whatsapp}`}>WA</span>

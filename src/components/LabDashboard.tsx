@@ -47,6 +47,7 @@ import { SERVICE_CATEGORIES } from "@/lib/constants";
 import { format, differenceInYears } from "date-fns";
 import { createClient } from "@/lib/supabase/client";
 import { useRouter, useSearchParams } from "next/navigation";
+import { labUrl } from "@/lib/lab-urls";
 
 interface LabDashboardProps {
   lab: {
@@ -2561,7 +2562,7 @@ function LabFeedbackView({ labId, labSlug }: { labId: string; labSlug: string | 
 
   useEffect(() => {
     if (!labSlug || typeof window === "undefined") return;
-    const link = `${window.location.origin}/f/${labSlug}`;
+    const link = labUrl(labSlug, "/f", window.location.origin);
     setFbUrl(link);
     import("qrcode")
       .then((m) => (m.default ?? m).toDataURL(link, { width: 480, margin: 1, color: { dark: "#0f172a", light: "#ffffff" } }))

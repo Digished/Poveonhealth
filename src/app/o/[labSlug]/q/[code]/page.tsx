@@ -1,4 +1,6 @@
-import { notFound } from "next/navigation";
+import { notFound, redirect } from "next/navigation";
+import { headers } from "next/headers";
+import { labUrl, shouldRedirectToLabHost } from "@/lib/lab-urls";
 import { prisma } from "@/lib/prisma";
 import { QueueStatusClient } from "@/components/lab/QueueStatusClient";
 
@@ -16,6 +18,11 @@ export async function generateMetadata({ params }: { params: { labSlug: string }
  * the people ahead are attended to.
  */
 export default async function QueueStatusPage({ params }: { params: { labSlug: string; code: string } }) {
+  // Legacy path link — settle on the lab's own subdomain.
+  if (shouldRedirectToLabHost(params.labSlug, headers().get("host"))) {
+    redirect(labUrl(params.labSlug, `/o/q/${encodeURIComponent(params.code)}`));
+  }
+
   const lab = await prisma.lab.findUnique({
     where: { slug: params.labSlug },
     select: { id: true, name: true },

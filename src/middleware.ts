@@ -28,6 +28,21 @@ export async function middleware(request: NextRequest) {
       return NextResponse.next();
     }
 
+    // The lab's own public sections live at the root of its subdomain:
+    //   synlab.poveon.com/o          → /o/synlab           (self-registration)
+    //   synlab.poveon.com/o/q/ABC12  → /o/synlab/q/ABC12   (queue status)
+    //   synlab.poveon.com/f          → /f/synlab           (feedback)
+    // The path form still works too, so old links resolve unchanged.
+    const LAB_SECTIONS = ["o", "f"];
+    const segments = url.pathname.split("/").filter(Boolean);
+    if (segments.length > 0 && LAB_SECTIONS.includes(segments[0])) {
+      // Already namespaced by slug (a legacy link) — leave it alone.
+      if (segments[1] !== slug) {
+        url.pathname = `/${segments[0]}/${slug}${segments.length > 1 ? `/${segments.slice(1).join("/")}` : ""}`;
+      }
+      return NextResponse.rewrite(url);
+    }
+
     // Everything else (doc-login, dashboard, etc.) — redirect to main domain
     // so links like /doc-login work correctly
     const mainUrl = new URL(request.url);

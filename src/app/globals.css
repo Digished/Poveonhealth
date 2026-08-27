@@ -730,26 +730,15 @@
    existing multi-step form inside it so fields read as boxes on a lab form.
    ═══════════════════════════════════════════════════════════════════════════ */
 
-/* The sheet itself: plain white. The "paper" reads through the fields and the
-   printed typography, not through a tinted, ruled background. */
+/* The sheet is plain white — no tint, no ruling. The "form" reading comes from
+   the typography and the fields, not from a background texture. */
 .paper-sheet {
   background-color: #ffffff;
 }
 
-/* The decorative hero slip keeps the tinted, ruled look — it is an
-   illustration of a paper form, not a surface anyone types on. */
+/* The hero illustration is a paper slip, so it keeps a faint warm tint. */
 .slip-paper {
   background-color: #fdfbf5;
-  background-image:
-    repeating-linear-gradient(
-      to bottom,
-      rgba(15, 23, 42, 0) 0px,
-      rgba(15, 23, 42, 0) 31px,
-      rgba(30, 58, 90, 0.045) 31px,
-      rgba(30, 58, 90, 0.045) 32px
-    ),
-    radial-gradient(circle at 18% 12%, rgba(180, 160, 120, 0.06) 0%, transparent 45%),
-    radial-gradient(circle at 82% 78%, rgba(120, 150, 180, 0.05) 0%, transparent 45%);
 }
 
 /* Torn/perforated top edge of the sheet. */
@@ -761,81 +750,71 @@
 
 /* Sheet lifts in like a form being placed on a desk. */
 @keyframes sheet-drop {
-  from { opacity: 0; transform: translateY(26px) rotate(-0.6deg) scale(0.985); }
+  from { opacity: 0; transform: translateY(26px) scale(0.99); }
   to   { opacity: 1; transform: none; }
 }
-.animate-sheet-drop { animation: sheet-drop 0.42s cubic-bezier(0.22, 1, 0.36, 1) both; }
+.animate-sheet-drop { animation: sheet-drop 0.36s cubic-bezier(0.22, 1, 0.36, 1) both; }
 
-@keyframes stamp-in {
-  0%   { opacity: 0; transform: rotate(-18deg) scale(1.5); }
-  60%  { opacity: 0.9; transform: rotate(-9deg) scale(0.96); }
-  100% { opacity: 0.85; transform: rotate(-9deg) scale(1); }
-}
-.animate-stamp-in { animation: stamp-in 0.5s cubic-bezier(0.34, 1.56, 0.64, 1) 0.35s both; }
-
-/* ── Field re-skin, scoped to the sheet ─────────────────────────────────────
-   This is where the "filling in a lab form" feeling lives: small uppercase
-   captions over ruled boxes, tight corners, ink-coloured borders.           */
+/* ── Fields on the sheet ────────────────────────────────────────────────────
+   Empty or focused: a quiet ruled box, clearly waiting to be filled.
+   Filled and left behind: the box disappears and the value reads as writing on
+   the form. Same typeface as the rest of the UI throughout.               */
 .paper-form label {
   text-transform: uppercase;
-  letter-spacing: 0.09em;
-  font-size: 10.5px;
+  letter-spacing: 0.1em;
+  font-size: 10px;
   font-weight: 700;
-  color: #64748b;
+  color: #a8a29e;
 }
 .paper-form input:not([type="checkbox"]):not([type="radio"]),
 .paper-form textarea,
 .paper-form select {
-  background-color: #fcfcfb;
-  border-color: rgba(30, 41, 59, 0.28);
-  border-radius: 5px;
-  box-shadow: inset 0 1px 2px rgba(15, 23, 42, 0.05);
+  background-color: #ffffff;
+  border-color: #e2e0dc;
+  border-radius: 4px;
+  box-shadow: none;
+  transition: border-color 0.2s ease, background-color 0.2s ease, color 0.2s ease;
 }
 .paper-form input:not([type="checkbox"]):not([type="radio"]):hover,
 .paper-form textarea:hover,
 .paper-form select:hover {
-  border-color: rgba(30, 41, 59, 0.42);
+  border-color: #cfccc6;
 }
 .paper-form input:not([type="checkbox"]):not([type="radio"]):focus,
 .paper-form textarea:focus,
 .paper-form select:focus {
   background-color: #ffffff;
   border-color: rgb(var(--medical-500));
-  box-shadow: inset 0 1px 2px rgba(15, 23, 42, 0.04), 0 0 0 3px rgb(var(--medical-500) / 0.12);
+  box-shadow: 0 0 0 3px rgb(var(--medical-500) / 0.1);
 }
 .paper-form input::placeholder,
 .paper-form textarea::placeholder {
-  color: #a8a29e;
-}
-/* Section headings on a form are set in a serif, like printed stationery. */
-.paper-form h2,
-.paper-heading {
-  font-family: Georgia, "Times New Roman", ui-serif, serif;
-  letter-spacing: -0.01em;
-}
-/* Reference numbers / codes read as typed on a form. */
-.paper-mono {
-  font-family: ui-monospace, "SF Mono", "Roboto Mono", Menlo, Consolas, monospace;
-  letter-spacing: 0.08em;
+  color: #cbc9c4;
 }
 
-/* Grouping cards inside the form shouldn't look like stickers on the paper. */
+/* A completed field the user has moved on from: no box, just the answer.
+   Scoped to inputs that declare a placeholder, so :placeholder-shown is a
+   reliable "is this empty?" test. */
+.paper-form input[placeholder]:not([type="checkbox"]):not([type="radio"]):not(:placeholder-shown):not(:focus),
+.paper-form textarea[placeholder]:not(:placeholder-shown):not(:focus) {
+  background-color: transparent;
+  border-color: transparent;
+  box-shadow: none;
+  padding-left: 2px;
+  padding-right: 2px;
+  font-weight: 500;
+  color: #0f172a;
+}
+.paper-form input[placeholder]:not(:placeholder-shown):not(:focus):hover,
+.paper-form textarea[placeholder]:not(:placeholder-shown):not(:focus):hover {
+  border-bottom-color: #e2e0dc;
+}
+
+/* Grouping cards read as sections of the form, not as raised panels. */
 .paper-form .glass-card {
   background-color: #ffffff;
-  border-color: rgba(30, 41, 59, 0.14);
+  border-color: #eceae6;
   box-shadow: none;
-}
-
-/* Section headings on a form are set in a serif, like printed stationery. */
-.paper-form h2,
-.paper-heading {
-  font-family: Georgia, "Times New Roman", ui-serif, serif;
-  letter-spacing: -0.01em;
-}
-/* Reference numbers / codes read as typed on a form. */
-.paper-mono {
-  font-family: ui-monospace, "SF Mono", "Roboto Mono", Menlo, Consolas, monospace;
-  letter-spacing: 0.08em;
 }
 
 @media (prefers-reduced-motion: reduce) {
@@ -845,6 +824,5 @@
   .animate-slip-write,
   .animate-chip-pop,
   .animate-sheet-drop,
-  .animate-stamp-in,
   .page-enter { animation: none; }
 }

@@ -1,4 +1,6 @@
-import { notFound } from "next/navigation";
+import { notFound, redirect } from "next/navigation";
+import { headers } from "next/headers";
+import { labUrl, shouldRedirectToLabHost } from "@/lib/lab-urls";
 import { prisma } from "@/lib/prisma";
 import { TrustIndicators } from "@/components/TrustIndicators";
 import { PoveonLogo } from "@/components/PoveonLogo";
@@ -10,6 +12,12 @@ interface LabSlugPageProps {
 }
 
 export default async function LabSlugPage({ params }: LabSlugPageProps) {
+  // Legacy path link (poveon.com/{section}) — send it to the lab's own
+  // subdomain so every lab URL settles on one canonical host.
+  if (shouldRedirectToLabHost(params.labSlug, headers().get("host"))) {
+    redirect(labUrl(params.labSlug, "/"));
+  }
+
   const lab = await prisma.lab.findUnique({
     where: { slug: params.labSlug },
     select: {

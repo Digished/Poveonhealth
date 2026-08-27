@@ -19,6 +19,7 @@ import { seedDepartmentTracks } from "@/lib/lims";
 import { logApiCall } from "@/lib/api-logger";
 import { resend, FROM_ADDRESS, labSender, labRequestRecipients } from "@/lib/email/resend";
 import { labQueueRegistration, patientQueueJoined } from "@/lib/email/templates";
+import { labUrl } from "@/lib/lab-urls";
 
 const Schema = z.object({
   lab_slug: z.string().min(1).max(120).optional(),
@@ -224,7 +225,7 @@ export async function POST(request: NextRequest) {
     }
 
     const appUrl = process.env.NEXT_PUBLIC_APP_URL || "https://poveon.com";
-    const statusUrl = lab.slug ? `${appUrl}/o/${lab.slug}/q/${code}` : null;
+    const statusUrl = lab.slug ? labUrl(lab.slug, `/o/q/${code}`, appUrl) : null;
 
     // QR self-registration → notify the lab and the patient by email
     // (fire-and-forget; the dashboard queue polls for the on-screen alert).

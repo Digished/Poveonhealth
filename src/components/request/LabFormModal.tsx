@@ -2,9 +2,10 @@
 
 import { useEffect, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
-import { X, MapPin, Phone, MessageCircle, ShieldCheck, Loader2 } from "lucide-react";
+import { X, MapPin, Phone, MessageCircle, ShieldCheck, Loader2, ChevronRight, FlaskConical } from "lucide-react";
 import { parsePhones, type PhoneEntry } from "@/lib/phones";
 import { RequestFormToggle } from "@/components/RequestFormToggle";
+import { preloadCatalog } from "@/lib/catalog-index";
 import { PoveonLogo } from "@/components/PoveonLogo";
 
 export interface ModalLab {
@@ -60,7 +61,7 @@ export function LabFormModal({ lab, open, onClose, locations: providedLocations,
   const [mounted, setMounted] = useState(false);
   const [locations, setLocations] = useState<FormLocation[]>(providedLocations ?? []);
   const [loadingBranches, setLoadingBranches] = useState(false);
-  const [scrolled, setScrolled] = useState(false);
+  const [detailsOpen, setDetailsOpen] = useState(false);
   const bodyRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => setMounted(true), []);
@@ -76,6 +77,12 @@ export function LabFormModal({ lab, open, onClose, locations: providedLocations,
     () => new Date().toLocaleDateString("en-GB", { day: "2-digit", month: "short", year: "numeric" }),
     [open]
   );
+
+  // Pull the lab's catalogue into memory while the clinician is still reading
+  // the letterhead — by the time they reach the tests field, search is local.
+  useEffect(() => {
+    if (open && lab) preloadCatalog(lab.id);
+  }, [open, lab]);
 
   // Look up the lab's branches so the sheet can offer "which location?"
   useEffect(() => {
@@ -166,42 +173,41 @@ export function LabFormModal({ lab, open, onClose, locations: providedLocations,
         {/* Perforated tear-off edge */}
         <div className="paper-perforation h-2 w-full shrink-0 bg-transparent" aria-hidden="true" />
 
-        <div ref={bodyRef}
-          onScroll={(e) => setScrolled((e.target as HTMLDivElement).scrollTop > 24)}
-          className="paper-sheet paper-form relative flex-1 overflow-y-auto overscroll-contain"
-        >
-          {/* Sticky title bar — 64px tall; the form's own step rail sticks below it */}
-          <div className="sticky top-0 z-20 h-16 border-b border-stone-300/60 bg-white shadow-[0_6px_14px_-12px_rgba(15,23,42,0.5)]">
-            <div className="flex h-full items-center gap-3 px-4 sm:px-6">
-              <div
-                className={`flex min-w-0 flex-1 items-center gap-2.5 transition-all duration-300 ${
-                  scrolled ? "translate-y-0 opacity-100" : "-translate-y-1 opacity-0"
-                }`}
+        <div ref={bodyRef} className="paper-sheet paper-form relative flex-1 overflow-y-auto overscroll-contain">
+          {/* Sticky header — 64px tall, so the form's own step rail sticks
+              directly below it. Tapping the lab opens its full details. */}
+          <div className="sticky top-0 z-20 h-16 border-b border-stone-200 bg-white">
+            <div className="flex h-full items-center gap-2 px-4 sm:px-6">
+              <button
+                type="button"
+                onClick={() => setDetailsOpen(true)}
+                className="group -ml-1.5 flex min-w-0 flex-1 items-center gap-2.5 rounded-xl px-1.5 py-1.5 text-left transition-colors hover:bg-stone-50"
+                aria-label={`About ${lab.name}`}
               >
                 {lab.logo_url ? (
                   // eslint-disable-next-line @next/next/no-img-element
-                  <img src={lab.logo_url} alt="" className="h-8 w-8 shrink-0 rounded-lg object-cover ring-1 ring-stone-300/60" />
+                  <img src={lab.logo_url} alt="" className="h-9 w-9 shrink-0 rounded-lg bg-white object-contain ring-1 ring-stone-200" />
                 ) : (
-                  <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-slate-900 text-white">
+                  <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-slate-900 text-white">
                     <PoveonLogo className="h-4 w-4" />
                   </span>
                 )}
-                <span className="min-w-0">
-                  <span className="block truncate text-[13px] font-bold leading-tight text-slate-800">{lab.name}</span>
-                  <span className="paper-mono block text-[10px] uppercase text-stone-400">{formNo}</span>
+                <span className="min-w-0 flex-1">
+                  <span className="flex items-center gap-1">
+                    <span className="truncate text-[14px] font-semibold leading-tight text-slate-900">{lab.name}</span>
+                    <ChevronRight className="h-3.5 w-3.5 shrink-0 text-stone-300 transition-all group-hover:translate-x-0.5 group-hover:text-stone-500" />
+                  </span>
+                  <span className="block text-[11px] leading-tight text-stone-400">Lab details</span>
                 </span>
-              </div>
+              </button>
 
-              {!scrolled && (
-                <p className="paper-heading flex-1 text-[13px] font-semibold italic text-stone-400">
-                  Laboratory request form
-                </p>
-              )}
+              {/* Header actions — the form portals its "scan slip" control here */}
+              <div id="paper-sheet-actions" className="flex shrink-0 items-center" />
 
               <button
                 type="button"
                 onClick={onClose}
-                className="shrink-0 rounded-full border border-stone-200 bg-white p-2 text-stone-500 transition-colors hover:bg-slate-50 hover:text-stone-800"
+                className="shrink-0 rounded-lg p-2 text-stone-400 transition-colors hover:bg-stone-100 hover:text-stone-700"
                 aria-label="Close form"
               >
                 <X className="h-4 w-4" />
@@ -209,86 +215,19 @@ export function LabFormModal({ lab, open, onClose, locations: providedLocations,
             </div>
           </div>
 
-          {/* ── Letterhead ─────────────────────────────────────────────── */}
+          {/* Form title block — same typeface as the rest of the UI, just set
+              the way a printed form sets it. */}
           <div className="px-4 pt-5 sm:px-6">
-            <div className="flex items-start gap-3 sm:gap-4">
-              {lab.logo_url ? (
-                // eslint-disable-next-line @next/next/no-img-element
-                <img
-                  src={lab.logo_url}
-                  alt={lab.name}
-                  className="h-14 w-14 shrink-0 rounded-xl bg-white object-contain p-1 shadow-sm ring-1 ring-stone-300/60 sm:h-16 sm:w-16"
-                />
-              ) : (
-                <span className="flex h-14 w-14 shrink-0 items-center justify-center rounded-xl bg-slate-900 text-white shadow-sm sm:h-16 sm:w-16">
-                  <PoveonLogo className="h-7 w-7" />
-                </span>
-              )}
-
-              <div className="min-w-0 flex-1">
-                <h2 className="paper-heading text-[19px] font-bold leading-tight text-slate-900 sm:text-[22px]">
-                  {lab.name}
-                </h2>
-                {lab.address && (
-                  <p className="mt-1 flex items-start gap-1.5 text-[12px] leading-relaxed text-stone-500">
-                    <MapPin className="mt-[2px] h-3.5 w-3.5 shrink-0 text-stone-400" />
-                    <span>{lab.address}</span>
-                  </p>
-                )}
-                <div className="mt-1.5 flex flex-wrap items-center gap-x-3 gap-y-1 text-[11.5px] text-stone-500">
-                  {phones.slice(0, 2).map((p) => (
-                    <a key={p.number} href={`tel:${p.number}`} className="inline-flex items-center gap-1 hover:text-medical-700">
-                      <Phone className="h-3 w-3 text-stone-400" />
-                      {p.number}
-                    </a>
-                  ))}
-                  {waNumbers.slice(0, 1).map((w) => (
-                    <a
-                      key={w}
-                      href={`https://wa.me/${w.replace(/\D/g, "")}`}
-                      target="_blank"
-                      rel="noopener noreferrer"
-                      className="inline-flex items-center gap-1 text-emerald-700 hover:text-emerald-800"
-                    >
-                      <MessageCircle className="h-3 w-3" />
-                      WhatsApp
-                    </a>
-                  ))}
-                </div>
-              </div>
-            </div>
-
-            {categories.length > 0 && (
-              <div className="mt-3 flex flex-wrap gap-1.5">
-                {categories.map((c) => (
-                  <span
-                    key={c}
-                    className="rounded-full border border-stone-200 bg-slate-50 px-2.5 py-0.5 text-[10.5px] font-medium uppercase tracking-wide text-stone-500"
-                  >
-                    {c}
-                  </span>
-                ))}
-              </div>
-            )}
-
-            {/* Double rule — printed stationery divider */}
-            <div className="mt-4 border-t-2 border-stone-400/40" />
-            <div className="mt-[3px] border-t border-stone-300/50" />
-
-            {/* Form title strip */}
-            <div className="flex flex-wrap items-end justify-between gap-x-4 gap-y-1 py-3">
-              <h3 className="paper-heading text-[13px] font-bold uppercase tracking-[0.18em] text-slate-700">
-                Laboratory request form
-              </h3>
-              <div className="paper-mono flex items-center gap-4 text-[10.5px] text-stone-500">
-                <span>NO. {formNo}</span>
-                <span>DATE {today.toUpperCase()}</span>
-              </div>
-            </div>
-            <div className="border-t border-dashed border-stone-300/80" />
+            <h2 className="text-[12px] font-bold uppercase tracking-[0.16em] text-slate-800">
+              Laboratory request form
+            </h2>
+            <p className="mt-1 text-[11px] tabular-nums tracking-[0.06em] text-stone-400">
+              NO. {formNo} · {today.toUpperCase()}
+            </p>
+            <div className="mt-4 border-t border-stone-200" />
 
             {loadingBranches && (
-              <p className="flex items-center gap-2 py-2 text-[11px] text-stone-400">
+              <p className="flex items-center gap-2 pt-2 text-[11px] text-stone-400">
                 <Loader2 className="h-3 w-3 animate-spin" /> Checking this lab&apos;s locations…
               </p>
             )}
@@ -309,21 +248,118 @@ export function LabFormModal({ lab, open, onClose, locations: providedLocations,
           </div>
 
           {/* ── Footer strip — the bottom of a printed form ─────────────── */}
-          <div className="mt-2 border-t border-stone-200 bg-slate-50/70 px-4 py-4 sm:px-6">
-            <div className="flex flex-wrap items-center justify-between gap-3">
-              <p className="flex items-center gap-1.5 text-[10.5px] uppercase tracking-[0.12em] text-stone-400">
+          <div className="mt-2 border-t border-stone-200 px-4 py-4 sm:px-6">
+            <div className="flex flex-wrap items-center justify-between gap-2">
+              <p className="flex items-center gap-1.5 text-[10.5px] text-stone-400">
                 <ShieldCheck className="h-3.5 w-3.5 text-emerald-600" />
-                Encrypted in transit · Sent only to {lab.name}
+                Encrypted · sent only to {lab.name}
               </p>
-              <p className="flex items-center gap-1.5 text-[10.5px] uppercase tracking-[0.12em] text-stone-400">
-                Processed on
-                <PoveonLogo className="h-3.5 w-3.5 opacity-60" />
-                <span className="font-semibold text-stone-500">Poveon</span>
+              <p className="flex items-center gap-1.5 text-[10.5px] text-stone-400">
+                <PoveonLogo className="h-3 w-3 opacity-50" />
+                Poveon
               </p>
             </div>
           </div>
         </div>
       </div>
+      {/* Lab details — opened from the header */}
+      {detailsOpen && (
+        <div className="absolute inset-0 z-30 flex items-end justify-center sm:items-center" role="dialog" aria-modal="true" aria-label={`${lab.name} details`}>
+          <div className="animate-backdrop-in absolute inset-0 bg-slate-900/30" onClick={() => setDetailsOpen(false)} />
+          <div className="animate-sheet-up relative max-h-[85%] w-full overflow-y-auto rounded-t-2xl bg-white shadow-[0_-10px_40px_-20px_rgba(15,23,42,0.5)] sm:animate-scale-in sm:max-w-md sm:rounded-2xl">
+            <div className="flex items-start gap-3 border-b border-stone-200 px-5 py-4">
+              {lab.logo_url ? (
+                // eslint-disable-next-line @next/next/no-img-element
+                <img src={lab.logo_url} alt="" className="h-12 w-12 shrink-0 rounded-xl bg-white object-contain ring-1 ring-stone-200" />
+              ) : (
+                <span className="flex h-12 w-12 shrink-0 items-center justify-center rounded-xl bg-slate-900 text-white">
+                  <PoveonLogo className="h-6 w-6" />
+                </span>
+              )}
+              <div className="min-w-0 flex-1">
+                <h3 className="text-[15px] font-semibold leading-tight text-slate-900">{lab.name}</h3>
+                {lab.address && (
+                  <p className="mt-1 flex items-start gap-1.5 text-[12px] leading-relaxed text-stone-500">
+                    <MapPin className="mt-[2px] h-3.5 w-3.5 shrink-0 text-stone-400" />
+                    <span>{lab.address}</span>
+                  </p>
+                )}
+              </div>
+              <button
+                type="button"
+                onClick={() => setDetailsOpen(false)}
+                className="shrink-0 rounded-lg p-1.5 text-stone-400 transition-colors hover:bg-stone-100 hover:text-stone-700"
+                aria-label="Close details"
+              >
+                <X className="h-4 w-4" />
+              </button>
+            </div>
+
+            {categories.length > 0 && (
+              <div className="border-b border-stone-100 px-5 py-4">
+                <p className="text-[10.5px] font-bold uppercase tracking-[0.14em] text-stone-400">Services</p>
+                <div className="mt-2.5 flex flex-wrap gap-1.5">
+                  {categories.map((c) => (
+                    <span key={c} className="inline-flex items-center gap-1.5 rounded-full border border-stone-200 px-2.5 py-1 text-[11.5px] text-stone-600">
+                      <FlaskConical className="h-3 w-3 text-stone-400" />
+                      {c}
+                    </span>
+                  ))}
+                </div>
+              </div>
+            )}
+
+            {(phones.length > 0 || waNumbers.length > 0) && (
+              <div className="px-5 py-4">
+                <p className="text-[10.5px] font-bold uppercase tracking-[0.14em] text-stone-400">Contact</p>
+                <div className="mt-2.5 space-y-1.5">
+                  {waNumbers.map((w) => (
+                    <a
+                      key={w}
+                      href={`https://wa.me/${w.replace(/\D/g, "")}`}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="flex items-center gap-2.5 rounded-xl border border-emerald-100 bg-emerald-50/60 px-3.5 py-2.5 text-[13px] font-medium text-emerald-800 transition-colors hover:bg-emerald-50"
+                    >
+                      <MessageCircle className="h-4 w-4 shrink-0 text-emerald-600" />
+                      {w}
+                      <span className="ml-auto text-[11px] text-emerald-600">WhatsApp</span>
+                    </a>
+                  ))}
+                  {phones.map((ph) => (
+                    <a
+                      key={ph.number}
+                      href={`tel:${ph.number}`}
+                      className="flex items-center gap-2.5 rounded-xl border border-stone-200 px-3.5 py-2.5 text-[13px] font-medium text-slate-700 transition-colors hover:bg-stone-50"
+                    >
+                      <Phone className="h-4 w-4 shrink-0 text-stone-400" />
+                      {ph.number}
+                      {ph.label && <span className="ml-auto text-[11px] text-stone-400">{ph.label}</span>}
+                    </a>
+                  ))}
+                </div>
+              </div>
+            )}
+
+            {locations.length > 1 && (
+              <div className="border-t border-stone-100 px-5 py-4">
+                <p className="text-[10.5px] font-bold uppercase tracking-[0.14em] text-stone-400">
+                  {locations.length} locations
+                </p>
+                <ul className="mt-2.5 space-y-1.5">
+                  {locations.map((l) => (
+                    <li key={`${l.lab_id}-${l.lab_branch_id ?? "main"}`} className="text-[12.5px] leading-snug text-stone-600">
+                      <span className="font-medium text-slate-800">{l.name}</span>
+                      {l.address && <span className="block text-[11.5px] text-stone-400">{l.address}</span>}
+                    </li>
+                  ))}
+                </ul>
+                <p className="mt-2.5 text-[11px] text-stone-400">Pick the one you want on the form&apos;s first step.</p>
+              </div>
+            )}
+          </div>
+        </div>
+      )}
     </div>,
     document.body
   );
