@@ -1748,6 +1748,13 @@ const migrations = [
     `,
     continueOnError: true,
   },
+  {
+    // The doctor portal reads a doctor's requests newest-first; the plain
+    // doctor_email index still left Postgres sorting the whole slice.
+    desc: "requests index (doctor_email, created_at) — doctor portal list",
+    sql: `CREATE INDEX IF NOT EXISTS requests_doctor_email_created_idx ON requests (doctor_email, created_at)`,
+    continueOnError: true,
+  },
 ];
 
 let failed = false;

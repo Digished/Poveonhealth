@@ -36,7 +36,7 @@
   - Health assistant works per-lab catalog
 
 ### 4. Public Pages
-- `/home` - Beautiful landing page
+- `/` - Landing page (the old `/home` route now redirects here)
 - `/about` - Company mission and values
 - `/contact` - Contact form and info
 - `/security` - Security and privacy info
@@ -198,7 +198,7 @@
 
 Key files:
 - `/src/app/page.tsx` - Index page (form creation)
-- `/src/app/home/page.tsx` - Landing page
+- `/src/components/home/LandingPage.tsx` - Landing page
 - `/src/app/[labSlug]/page.tsx` - Dynamic lab pages
 - `/src/components/PatientRequestForm.tsx` - Main form component
 - `/src/components/RequestFormToggle.tsx` - Mode switcher

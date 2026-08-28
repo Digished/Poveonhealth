@@ -11,6 +11,8 @@ import { Input } from "@/components/ui/Input";
 import { BankAccountInput } from "@/components/BankAccountInput";
 import { NIGERIAN_BANKS } from "@/lib/nigerian-banks";
 import { ENCOUNTER_THEMES, DEFAULT_THEME_ID } from "@/lib/encounter-themes";
+import { getJson, invalidateJson } from "@/lib/client-cache";
+import type { EarnView } from "@/components/doctor/earn-views";
 
 const naira = (n: number) => `₦${Math.round(n).toLocaleString("en-NG")}`;
 
@@ -77,8 +79,30 @@ type Revenue = {
 
 const PLAN_LABEL: Record<string, string> = { single: "Single", monthly: "Monthly", yearly: "Yearly" };
 
-export function DoctorEncounterSection({ onReadyChange, onThemeChange }: { onReadyChange?: (ready: boolean) => void; onThemeChange?: (theme: string | null) => void }) {
-  const [view, setView] = useState<"overview" | "encounters" | "patients" | "payouts" | "coupons" | "pricing">("overview");
+export function DoctorEncounterSection({
+  onReadyChange,
+  onThemeChange,
+  view: viewProp,
+  onViewChange,
+  hideSubNav = false,
+}: {
+  onReadyChange?: (ready: boolean) => void;
+  onThemeChange?: (theme: string | null) => void;
+  /** Controlled sub-view — the dashboard drives this from its sub-menu strip. */
+  view?: EarnView;
+  onViewChange?: (view: EarnView) => void;
+  hideSubNav?: boolean;
+}) {
+  const [internalView, setInternalView] = useState<EarnView>("overview");
+  const view = viewProp ?? internalView;
+  // Through a ref so `setView` stays stable — the loaders below capture it and
+  // must not be rebuilt (and re-run) every time the parent re-renders.
+  const onViewChangeRef = useRef(onViewChange);
+  onViewChangeRef.current = onViewChange;
+  const setView = useCallback((v: EarnView) => {
+    setInternalView(v);
+    onViewChangeRef.current?.(v);
+  }, []);
   const [pricing, setPricing] = useState<Pricing | null>(null);
   const [encounters, setEncounters] = useState<EncounterItem[]>([]);
   const [patients, setPatients] = useState<PatientItem[]>([]);
@@ -88,11 +112,12 @@ export function DoctorEncounterSection({ onReadyChange, onThemeChange }: { onRea
   const [pricingLoading, setPricingLoading] = useState(true);
   const [dataLoading, setDataLoading] = useState(true);
 
-  const loadPricing = useCallback(async () => {
+  const loadPricing = useCallback(async (force = false) => {
     setPricingLoading(true);
     try {
-      const r = await fetch("/api/doc-login/pricing");
-      const d = await r.json();
+      // Shared with the dashboard shell, which needs the same readiness flag —
+      // the cache collapses both callers onto one request.
+      const d = await getJson<{ success: boolean; pricing: Pricing | null }>("/api/doc-login/pricing", { force });
       if (d.success) {
         setPricing(d.pricing);
         onReadyChange?.(!!d.pricing?.ready);
@@ -104,11 +129,12 @@ export function DoctorEncounterSection({ onReadyChange, onThemeChange }: { onRea
     }
   }, [onReadyChange, onThemeChange]);
 
-  const loadData = useCallback(async () => {
+  const loadData = useCallback(async (force = false) => {
     setDataLoading(true);
     try {
-      const r = await fetch("/api/doc-login/encounters");
-      const d = await r.json();
+      const d = await getJson<{ success: boolean; encounters: EncounterItem[]; patients: PatientItem[]; revenue: Revenue }>(
+        "/api/doc-login/encounters", { force }
+      );
       if (d.success) {
         setEncounters(d.encounters);
         setPatients(d.patients);
@@ -119,7 +145,17 @@ export function DoctorEncounterSection({ onReadyChange, onThemeChange }: { onRea
     }
   }, []);
 
-  const reloadAll = useCallback(() => { loadPricing(); loadData(); }, [loadPricing, loadData]);
+  // After a save the cached copies are stale — force a fresh read.
+  const reloadAll = useCallback(() => {
+    invalidateJson("/api/doc-login/");
+    loadPricing(true);
+    loadData(true);
+  }, [loadPricing, loadData]);
+
+  const reloadEncounters = useCallback(() => {
+    invalidateJson("/api/doc-login/encounters");
+    loadData(true);
+  }, [loadData]);
 
   useEffect(() => { loadPricing(); loadData(); }, [loadPricing, loadData]);
 
@@ -137,31 +173,34 @@ export function DoctorEncounterSection({ onReadyChange, onThemeChange }: { onRea
         </button>
       )}
 
-      {/* Sub-nav — scrollable pills */}
-      <div className="-mx-1 px-1 overflow-x-auto no-scrollbar">
-        <div className="flex gap-2 min-w-max pb-0.5">
-          {([
-            ["overview", "Revenue", TrendingUp],
-            ["encounters", "Encounters", Stethoscope],
-            ["patients", "Patients", Users],
-            ["payouts", "Payouts", Banknote],
-            ["coupons", "Coupons", Tag],
-            ["pricing", "Pricing", CreditCard],
-          ] as const).map(([key, label, Icon]) => (
-            <button key={key} onClick={() => setView(key)}
-              className={`flex items-center gap-1.5 px-4 py-2.5 rounded-xl text-xs font-semibold whitespace-nowrap transition-all ${
-                view === key
-                  ? "bg-gradient-to-br from-medical-600 to-medical-700 text-white shadow-md shadow-medical-600/25"
-                  : "bg-white text-slate-600 border border-slate-200 hover:border-medical-200 hover:text-slate-800"
-              }`}>
-              <Icon className="w-3.5 h-3.5" /> {label}
-            </button>
-          ))}
+      {/* Sub-nav — scrollable pills. Hidden when the dashboard shell renders
+          its own sub-menu strip for these same views. */}
+      {!hideSubNav && (
+        <div className="-mx-1 px-1 overflow-x-auto no-scrollbar">
+          <div className="flex gap-2 min-w-max pb-0.5">
+            {([
+              ["overview", "Revenue", TrendingUp],
+              ["encounters", "Encounters", Stethoscope],
+              ["patients", "Patients", Users],
+              ["payouts", "Payouts", Banknote],
+              ["coupons", "Coupons", Tag],
+              ["pricing", "Pricing", CreditCard],
+            ] as const).map(([key, label, Icon]) => (
+              <button key={key} onClick={() => setView(key)}
+                className={`flex items-center gap-1.5 px-4 py-2.5 rounded-xl text-xs font-semibold whitespace-nowrap transition-all ${
+                  view === key
+                    ? "bg-gradient-to-br from-medical-600 to-medical-700 text-white shadow-md shadow-medical-600/25"
+                    : "bg-white text-slate-600 border border-slate-200 hover:border-medical-200 hover:text-slate-800"
+                }`}>
+                <Icon className="w-3.5 h-3.5" /> {label}
+              </button>
+            ))}
+          </div>
         </div>
-      </div>
+      )}
 
       {view === "overview" && <OverviewView pricing={pricing} revenue={revenue} loading={dataLoading} pricingLoading={pricingLoading} onSetup={() => setView("pricing")} />}
-      {view === "encounters" && (dataLoading ? <CardSkeleton /> : <EncountersView encounters={encounters} onChanged={loadData} />)}
+      {view === "encounters" && (dataLoading ? <CardSkeleton /> : <EncountersView encounters={encounters} onChanged={reloadEncounters} />)}
       {view === "patients" && (dataLoading ? <CardSkeleton /> : <PatientsView patients={patients} />)}
       {view === "payouts" && <PayoutsView />}
       {view === "coupons" && <CouponsView />}
@@ -224,7 +263,7 @@ function OverviewView({ pricing, revenue, loading, pricingLoading, onSetup }: { 
       )}
 
       {/* Revenue cards */}
-      <div className="grid grid-cols-2 gap-3">
+      <div className="grid grid-cols-2 xl:grid-cols-4 gap-3">
         <Stat label="Total earned (80%)" value={loading ? "…" : naira(revenue?.total ?? 0)} icon={Wallet} accent="emerald" />
         <Stat label="This month" value={loading ? "…" : naira(revenue?.this_month ?? 0)} icon={TrendingUp} accent="medical" />
         <Stat label="Encounters" value={loading ? "…" : String(revenue?.encounter_count ?? 0)} icon={Stethoscope} accent="slate" />
@@ -456,7 +495,7 @@ function PayoutsView() {
   return (
     <div className="space-y-4">
       {/* Summary */}
-      <div className="grid grid-cols-2 gap-3">
+      <div className="grid grid-cols-2 gap-3 xl:max-w-2xl">
         <Stat label="Total paid out" value={naira(data.summary?.total_settled ?? 0)} icon={Banknote} accent="emerald" />
         <Stat label="Pending" value={naira(data.summary?.pending_amount ?? 0)} icon={Clock} accent="medical" />
       </div>

@@ -270,6 +270,9 @@ model Request {
   @@index([lab_id, queue_confirmed_at])
   @@index([lab_id, updated_at])
   @@index([doctor_email])
+  // The doctor portal lists a doctor's requests newest-first — without the
+  // created_at leg Postgres sorts the whole doctor_email slice on every load.
+  @@index([doctor_email, created_at])
   @@index([patient_phone])
   @@map("requests")
 }

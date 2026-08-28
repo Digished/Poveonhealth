@@ -13,7 +13,7 @@ export default function AboutPage() {
       {/* Navigation */}
       <nav className="sticky top-0 z-40 bg-white/80 backdrop-blur-md border-b border-slate-100">
         <div className="max-w-6xl mx-auto px-4 py-4 flex items-center gap-4">
-          <Link href="/home" className="flex items-center gap-2 text-slate-600 hover:text-slate-900">
+          <Link href="/" className="flex items-center gap-2 text-slate-600 hover:text-slate-900">
             <ArrowLeft className="w-5 h-5" />
             <span className="text-sm font-medium">Back</span>
           </Link>
@@ -128,7 +128,7 @@ export default function AboutPage() {
             <div>
               <h4 className="font-semibold text-white mb-4">Product</h4>
               <ul className="space-y-2 text-sm">
-                <li><Link href="/home" className="hover:text-white transition">Home</Link></li>
+                <li><Link href="/" className="hover:text-white transition">Home</Link></li>
                 <li><Link href="/about" className="hover:text-white transition">About</Link></li>
                 <li><Link href="/contact" className="hover:text-white transition">Contact</Link></li>
               </ul>

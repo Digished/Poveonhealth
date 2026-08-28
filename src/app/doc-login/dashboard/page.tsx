@@ -1,17 +1,33 @@
 "use client";
 
 import { useState, useEffect, useCallback, useRef, Suspense } from "react";
-import { useRouter } from "next/navigation";
+import { useRouter, useSearchParams } from "next/navigation";
+import dynamic from "next/dynamic";
 import {
   FlaskConical, LogOut, Building2, User,
   CalendarDays, TestTube2, ChevronDown, ChevronUp,
-  Clock, CheckCircle, Eye, MapPin, Phone, X, Shield, EyeOff, RefreshCw, MessageCircle, Star, MessageSquare, ExternalLink,
+  Clock, CheckCircle, Eye, MapPin, Phone, X, Menu, Shield, EyeOff, RefreshCw, MessageCircle, Star, MessageSquare, ExternalLink,
   Stethoscope, Pencil, Check, CreditCard, ChevronRight, Info, Send, HeartPulse,
 } from "lucide-react";
-import { DoctorReferralsSection } from "@/components/referral/DoctorReferralsSection";
-import { DoctorEncounterSection } from "@/components/doctor/DoctorEncounterSection";
-import { DoctorMonitoringSection } from "@/components/doctor/DoctorMonitoringSection";
+import { DoctorNav, DoctorSubNav, type DoctorNavSection } from "@/components/doctor/DoctorNav";
+import { EARN_VIEWS, type EarnView } from "@/components/doctor/earn-views";
+import { getJson } from "@/lib/client-cache";
 import { themeClass } from "@/lib/encounter-themes";
+
+// The three big panels are code-split: each is only fetched when its tab is
+// opened, so signing in no longer downloads the whole portal up front.
+const DoctorEncounterSection = dynamic(
+  () => import("@/components/doctor/DoctorEncounterSection").then((m) => m.DoctorEncounterSection),
+  { loading: () => <SectionLoader label="Loading your earnings…" /> }
+);
+const DoctorMonitoringSection = dynamic(
+  () => import("@/components/doctor/DoctorMonitoringSection").then((m) => m.DoctorMonitoringSection),
+  { loading: () => <SectionLoader label="Loading monitoring…" /> }
+);
+const DoctorReferralsSection = dynamic(
+  () => import("@/components/referral/DoctorReferralsSection").then((m) => m.DoctorReferralsSection),
+  { loading: () => <SectionLoader label="Loading referrals…" /> }
+);
 import { SupportFab } from "@/components/SupportFab";
 import { SectionLoader } from "@/components/PageLoader";
 import { PoveonLogo } from "@/components/PoveonLogo";
@@ -40,15 +56,7 @@ interface Request {
   address: string | null;
   patient_email: string | null;
   patient_phone: string | null;
-  doctor_prefix: string | null;
-  doctor_name: string;
-  doctor_phone: string | null;
-  doctor_hospital: string | null;
-  doctor_bank_name: string | null;
-  doctor_account_number: string | null;
-  doctor_account_name: string | null;
   tests: string;
-  test_image_url: string | null;
   diagnosis: string | null;
   schedule: string | null;
   status: string;
@@ -518,8 +526,40 @@ interface DoctorProfileData {
   account_name: string | null;
 }
 
+/** Leaf panels the portal can show. */
+type View = "charging" | "monitoring" | "requests" | "results" | "referrals" | "profile" | "security";
+
+const VALID_VIEWS: View[] = ["charging", "monitoring", "requests", "results", "referrals", "profile", "security"];
+
+/** Grouped entries land on their parent in the sidebar and expose a sub-menu. */
+const PARENT_OF: Record<View, View> = {
+  charging: "charging",
+  monitoring: "monitoring",
+  requests: "requests",
+  results: "requests",
+  referrals: "referrals",
+  profile: "profile",
+  security: "profile",
+};
+
+const SUB_MENUS: Partial<Record<View, { key: View; label: string }[]>> = {
+  requests: [
+    { key: "requests", label: "Lab Requests" },
+    { key: "results", label: "Results" },
+  ],
+  profile: [
+    { key: "profile", label: "Profile" },
+    { key: "security", label: "Security" },
+  ],
+};
+
+/** How many request cards to render before "Show more" — a doctor with
+ *  hundreds of referrals used to mount every card on first paint. */
+const REQUEST_PAGE_SIZE = 25;
+
 function DocDashboardInner() {
   const router = useRouter();
+  const searchParams = useSearchParams();
 
   const [doctorEmail, setDoctorEmail] = useState("");
   const [requests, setRequests] = useState<Request[]>([]);
@@ -527,43 +567,54 @@ function DocDashboardInner() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
   const [filter, setFilter] = useState<"all" | "incoming" | "seen" | "done">("all");
+  const [visibleCount, setVisibleCount] = useState(REQUEST_PAGE_SIZE);
+  const [resultsVisible, setResultsVisible] = useState(REQUEST_PAGE_SIZE);
   const [loggingOut, setLoggingOut] = useState(false);
-  const [activeTab, setActiveTab] = useState<"charging" | "requests" | "referrals" | "results" | "profile" | "security" | "monitoring">("charging");
   const [monitoringCount, setMonitoringCount] = useState<number | null>(null);
   const [chargingReady, setChargingReady] = useState<boolean | null>(null);
   const [showEarnModal, setShowEarnModal] = useState(false);
   const [docTheme, setDocTheme] = useState<string | null>(null);
+  const [navOpen, setNavOpen] = useState(false);
+  const [accountMenuOpen, setAccountMenuOpen] = useState(false);
+
+  // Active panel lives in the URL so a tab survives a refresh and can be linked.
+  const tabParam = searchParams.get("tab") as View | null;
+  const view: View = tabParam && VALID_VIEWS.includes(tabParam) ? tabParam : "charging";
+  const earnParam = searchParams.get("sub") as EarnView | null;
+  const earnView: EarnView = earnParam && EARN_VIEWS.some((v) => v.key === earnParam) ? earnParam : "overview";
+
+  // Kept in a ref so the navigation callbacks stay referentially stable — they
+  // are passed into the code-split panels, which would otherwise see a new
+  // prop identity (and re-run their effects) on every URL change.
+  const searchRef = useRef(searchParams.toString());
+  searchRef.current = searchParams.toString();
+
+  const navigate = useCallback((next: View, sub?: EarnView) => {
+    const params = new URLSearchParams(searchRef.current);
+    params.set("tab", next);
+    if (sub) params.set("sub", sub);
+    else params.delete("sub");
+    router.replace(`/doc-login/dashboard?${params.toString()}`, { scroll: false });
+  }, [router]);
+
+  const setEarnView = useCallback((sub: EarnView) => {
+    const params = new URLSearchParams(searchRef.current);
+    params.set("tab", "charging");
+    params.set("sub", sub);
+    router.replace(`/doc-login/dashboard?${params.toString()}`, { scroll: false });
+  }, [router]);
 
   const load = useCallback(async () => {
     setLoading(true);
     setError("");
     try {
-      const res = await fetch("/api/doc-login/me");
+      const res = await fetch("/api/doc-login/me", { cache: "no-store" });
       if (res.status === 401) { router.replace("/doc-login"); return; }
       const data = await res.json();
       if (!data.success) { setError(data.error ?? "Failed to load."); return; }
       setDoctorEmail(data.doctor_email);
       setRequests(data.requests);
       setProfile(data.profile ?? null);
-      // HMO monitoring assignments decide whether the Monitoring tab shows (non-blocking)
-      fetch("/api/doc-login/monitoring/patients")
-        .then((r) => r.json())
-        .then((m) => {
-          if (m.success) setMonitoringCount((m.patients ?? []).length);
-        })
-        .catch(() => {});
-      // Surface the earning-setup prompt right away (non-blocking)
-      fetch("/api/doc-login/pricing")
-        .then((r) => r.json())
-        .then((p) => {
-          if (p.success) {
-            const ready = !!p.pricing?.ready;
-            setChargingReady(ready);
-            setDocTheme(p.pricing?.theme ?? null);
-            if (!ready) setShowEarnModal(true); // prompt on every login until set up
-          }
-        })
-        .catch(() => {});
     } catch {
       setError("Network error. Please try again.");
     } finally {
@@ -573,13 +624,30 @@ function DocDashboardInner() {
 
   useEffect(() => { load(); }, [load]);
 
+  // Side loads that only decide chrome — deliberately outside `load` so they
+  // never hold up the dashboard, and cheap enough not to cost a slow first paint.
+  useEffect(() => {
+    // `count=1` skips building the whole monitoring panel just to show the tab.
+    getJson<{ success: boolean; count?: number }>("/api/doc-login/monitoring/patients?count=1")
+      .then((m) => { if (m.success) setMonitoringCount(m.count ?? 0); })
+      .catch(() => {});
+
+    getJson<{ success: boolean; pricing: { ready?: boolean; theme?: string | null } | null }>("/api/doc-login/pricing")
+      .then((p) => {
+        if (!p.success) return;
+        const ready = !!p.pricing?.ready;
+        setChargingReady(ready);
+        setDocTheme(p.pricing?.theme ?? null);
+        if (!ready) setShowEarnModal(true); // prompt on every login until set up
+      })
+      .catch(() => {});
+  }, []);
+
   async function handleLogout() {
     setLoggingOut(true);
     await fetch("/api/doc-login/logout", { method: "POST" });
     router.replace("/doc-login");
   }
-
-  const filtered = filter === "all" ? requests : requests.filter((r) => r.status === filter);
 
   const counts = {
     all: requests.length,
@@ -587,298 +655,369 @@ function DocDashboardInner() {
     seen: requests.filter((r) => r.status === "seen").length,
     done: requests.filter((r) => r.status === "done").length,
   };
+  const filtered = filter === "all" ? requests : requests.filter((r) => r.status === filter);
+  const completed = requests.filter((r) => r.status === "done");
+
+  // Reset the "show more" window whenever the visible set changes.
+  useEffect(() => { setVisibleCount(REQUEST_PAGE_SIZE); }, [filter]);
+
+  const navSections: DoctorNavSection[] = [
+    {
+      label: "Practice",
+      items: [
+        { key: "charging", label: "Earn", icon: CreditCard, alert: chargingReady === false },
+        // Only doctors with HMO monitoring assignments get this entry — but
+        // keep it if a deep link put us on that panel, so the sidebar still
+        // shows where we are.
+        ...(monitoringCount || view === "monitoring"
+          ? [{ key: "monitoring", label: "Monitoring", icon: HeartPulse, badge: monitoringCount ?? 0 }]
+          : []),
+      ],
+    },
+    {
+      label: "Patients",
+      items: [
+        { key: "requests", label: "Lab Requests", icon: FlaskConical, badge: counts.all },
+        { key: "referrals", label: "Referrals", icon: Send },
+      ],
+    },
+    {
+      label: "Account",
+      items: [
+        { key: "profile", label: "Profile", icon: User, alert: !loading && !profile?.full_name },
+      ],
+    },
+  ];
+
+  const parent = PARENT_OF[view];
+  const subMenu = view === "charging" ? EARN_VIEWS.map((v) => ({ key: v.key, label: v.label })) : SUB_MENUS[parent] ?? [];
+  const subActive = view === "charging" ? earnView : view;
 
   return (
     <div className={`min-h-dvh bg-gradient-to-br from-sky-50 via-blue-50 to-indigo-50 ${themeClass(docTheme)}`}>
       {/* Header */}
-      <header className="sticky top-0 z-10 bg-white/80 backdrop-blur-md border-b border-white/60">
-        <div className="max-w-2xl mx-auto px-4 py-3 flex items-center gap-3">
-          <div className="w-8 h-8 rounded-xl bg-gradient-to-br from-slate-900 via-slate-800 to-indigo-900 flex items-center justify-center shadow-sm shrink-0">
-            <FlaskConical className="w-4 h-4 text-sky-300" />
+      <header className="sticky top-0 z-30 border-b border-white/60 bg-white/85 backdrop-blur-md">
+        <div className="mx-auto flex max-w-[1600px] items-center gap-3 px-4 py-3 lg:px-6">
+          <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-gradient-to-br from-slate-900 via-slate-800 to-indigo-900 shadow-sm">
+            <FlaskConical className="h-4 w-4 text-sky-300" />
           </div>
-          <div className="flex-1 min-w-0">
-            <p className="text-sm font-bold text-slate-800 leading-tight">Doctor Portal</p>
-            {doctorEmail && <p className="text-xs text-slate-400 truncate">{doctorEmail}</p>}
+          <div className="min-w-0 flex-1">
+            <p className="text-sm font-bold leading-tight text-slate-800">Doctor Portal</p>
+            <p className="truncate text-xs text-slate-400">
+              {profile?.full_name
+                ? `${profile.prefix ? `${profile.prefix} ` : ""}${profile.full_name}`
+                : doctorEmail || " "}
+            </p>
           </div>
-          <button
-            type="button"
-            onClick={handleLogout}
-            disabled={loggingOut}
-            className="flex items-center gap-1.5 text-xs font-semibold text-slate-500 hover:text-red-600 disabled:opacity-50 transition px-3 py-1.5 rounded-lg hover:bg-red-50 shrink-0"
-          >
-            <LogOut className="w-3.5 h-3.5" />
-            <span className="hidden sm:inline">{loggingOut ? "Signing out…" : "Sign out"}</span>
-          </button>
+
+          {/* Desktop actions */}
+          <div className="hidden items-center gap-2 sm:flex">
+            <button
+              type="button"
+              onClick={() => router.push("/")}
+              className="inline-flex items-center gap-1.5 rounded-xl bg-medical-600 px-3.5 py-2 text-xs font-semibold text-white shadow-sm shadow-medical-600/25 transition hover:bg-medical-700"
+            >
+              <FlaskConical className="h-3.5 w-3.5" />
+              New lab request
+            </button>
+            <button
+              type="button"
+              onClick={handleLogout}
+              disabled={loggingOut}
+              className="inline-flex items-center gap-1.5 rounded-xl px-3 py-2 text-xs font-semibold text-slate-500 transition hover:bg-red-50 hover:text-red-600 disabled:opacity-50"
+            >
+              <LogOut className="h-3.5 w-3.5" />
+              {loggingOut ? "Signing out…" : "Sign out"}
+            </button>
+          </div>
+
+          {/* Mobile actions */}
+          <div className="relative sm:hidden">
+            <button
+              type="button"
+              onClick={() => setAccountMenuOpen((v) => !v)}
+              aria-label="Account menu"
+              className="rounded-lg p-2 text-slate-500 transition hover:bg-slate-100"
+            >
+              {accountMenuOpen ? <X className="h-5 w-5" /> : <Menu className="h-5 w-5" />}
+            </button>
+            {accountMenuOpen && (
+              <>
+                <div className="fixed inset-0 z-10" onClick={() => setAccountMenuOpen(false)} />
+                <div className="absolute right-0 top-full z-20 mt-2 w-60 overflow-hidden rounded-xl border border-slate-200 bg-white shadow-2xl">
+                  {doctorEmail && (
+                    <p className="truncate border-b border-slate-100 bg-slate-50 px-4 py-2.5 text-xs text-slate-500">
+                      {doctorEmail}
+                    </p>
+                  )}
+                  <button
+                    type="button"
+                    onClick={() => { setAccountMenuOpen(false); router.push("/"); }}
+                    className="flex w-full items-center gap-3 border-b border-slate-100 px-4 py-3 text-sm font-medium text-slate-700 active:bg-slate-50"
+                  >
+                    <FlaskConical className="h-4 w-4 text-medical-500" />
+                    New lab request
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => { setAccountMenuOpen(false); navigate("profile"); }}
+                    className="flex w-full items-center gap-3 border-b border-slate-100 px-4 py-3 text-sm font-medium text-slate-700 active:bg-slate-50"
+                  >
+                    <User className="h-4 w-4 text-slate-400" />
+                    Profile
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => { setAccountMenuOpen(false); handleLogout(); }}
+                    className="flex w-full items-center gap-3 px-4 py-3 text-sm font-medium text-red-600 active:bg-red-50"
+                  >
+                    <LogOut className="h-4 w-4" />
+                    Sign out
+                  </button>
+                </div>
+              </>
+            )}
+          </div>
         </div>
       </header>
 
-      <main className="max-w-2xl mx-auto px-4 py-5 space-y-4">
-        {loading && <SectionLoader label="Loading your dashboard…" />}
-        {/* Tab Navigation — scrollable pills, Earn first */}
-        {!loading && (
-          <div className="-mx-4 px-4 overflow-x-auto no-scrollbar">
-            <div className="flex gap-2 min-w-max pb-0.5">
-              {([
-                { key: "charging", label: "Earn", Icon: CreditCard },
-                // Only doctors with HMO monitoring assignments see this tab
-                ...(monitoringCount ? [{ key: "monitoring", label: "Monitoring", Icon: HeartPulse }] : []),
-                { key: "requests", label: "Lab Requests", Icon: FlaskConical },
-                { key: "referrals", label: "Referrals", Icon: Send },
-                { key: "results", label: "Results", Icon: CheckCircle },
-                { key: "profile", label: "Profile", Icon: User },
-                { key: "security", label: "Security", Icon: Shield },
-              ] as { key: typeof activeTab; label: string; Icon: typeof CreditCard }[]).map(({ key, label, Icon }) => {
-                const resultCount = requests.filter((r) => r.status === "done").length;
-                const tabCount =
-                  key === "requests" ? requests.length :
-                  key === "results" ? resultCount :
-                  key === "monitoring" ? (monitoringCount ?? 0) : 0;
-                const profileIncomplete = key === "profile" && !profile?.full_name;
-                const chargingIncomplete = key === "charging" && chargingReady === false;
-                const active = activeTab === key;
-                return (
-                  <button key={key} onClick={() => setActiveTab(key)}
-                    className={`relative flex items-center gap-1.5 px-4 py-2.5 rounded-xl text-xs font-semibold whitespace-nowrap transition-all ${
-                      active
-                        ? "bg-gradient-to-br from-medical-600 to-medical-700 text-white shadow-md shadow-medical-600/25"
-                        : "bg-white text-slate-600 border border-slate-200 hover:border-medical-200 hover:text-slate-800"
-                    }`}>
-                    <Icon className="w-3.5 h-3.5" />
-                    {label}
-                    {tabCount > 0 && (
-                      <span className={`text-[10px] px-1.5 py-0.5 rounded-full font-bold ${active ? "bg-white/20 text-white" : "bg-slate-100 text-slate-500"}`}>{tabCount}</span>
-                    )}
-                    {(profileIncomplete || chargingIncomplete) && (
-                      <span className="absolute -top-0.5 -right-0.5 w-2 h-2 bg-amber-400 rounded-full border border-white" />
-                    )}
-                  </button>
-                );
-              })}
-            </div>
-          </div>
-        )}
+      <div className="mx-auto max-w-[1600px] px-4 py-5 lg:flex lg:gap-6 lg:px-6 lg:py-6">
+        <DoctorNav
+          sections={navSections}
+          activeKey={parent}
+          onSelect={(key) => navigate(key as View)}
+          open={navOpen}
+          onOpenChange={setNavOpen}
+        />
 
-        {/* Per-encounter Charging Tab */}
-        {!loading && activeTab === "charging" && (
-          <DoctorEncounterSection onReadyChange={setChargingReady} onThemeChange={setDocTheme} />
-        )}
-
-        {/* HMO Vitals Monitoring Tab */}
-        {!loading && activeTab === "monitoring" && <DoctorMonitoringSection />}
-
-        {/* Patient Referrals Tab */}
-        {!loading && activeTab === "referrals" && <DoctorReferralsSection />}
-
-        {/* Security Tab */}
-        {!loading && activeTab === "security" && doctorEmail && (
-          <DocSecuritySection email={doctorEmail} />
-        )}
-
-        {/* Profile Tab */}
-        {!loading && activeTab === "profile" && doctorEmail && (
-          <DocProfileSection
-            email={doctorEmail}
-            initialProfile={profile}
-            onProfileUpdate={(updated) => setProfile(updated)}
+        <main className="min-w-0 flex-1">
+          <DoctorSubNav
+            items={subMenu}
+            activeKey={subActive}
+            onSelect={(key) => (view === "charging" ? setEarnView(key as EarnView) : navigate(key as View))}
           />
-        )}
 
-        {/* Results Tab */}
-        {!loading && activeTab === "results" && (
-          <div className="space-y-4">
-            {requests.filter((r) => r.status === "done").length === 0 ? (
-              <div className="bg-white rounded-2xl border border-slate-100 p-8 text-center">
-                <CheckCircle className="w-10 h-10 text-slate-200 mx-auto mb-3" />
-                <p className="text-sm font-semibold text-slate-600">No completed tests yet</p>
-                <p className="text-xs text-slate-400 mt-1">Tests marked as done by the lab will appear here.</p>
-              </div>
+          {error && (
+            <div className="mb-4 rounded-xl border border-red-100 bg-red-50 px-4 py-3 text-sm text-red-600">{error}</div>
+          )}
+
+          {/* Earn — the panel loads its own data, so it renders without waiting on /me */}
+          {view === "charging" && (
+            // Forms read badly stretched across a wide screen; lists and cards
+            // are happy to fill it.
+            <div className={earnView === "pricing" ? "xl:max-w-4xl" : undefined}>
+              <DoctorEncounterSection
+                view={earnView}
+                onViewChange={setEarnView}
+                hideSubNav
+                onReadyChange={setChargingReady}
+                onThemeChange={setDocTheme}
+              />
+            </div>
+          )}
+
+          {view === "monitoring" && <DoctorMonitoringSection />}
+
+          {view === "referrals" && <DoctorReferralsSection />}
+
+          {view === "security" && (
+            <div className="xl:max-w-3xl">
+              {doctorEmail ? <DocSecuritySection email={doctorEmail} /> : <SectionLoader />}
+            </div>
+          )}
+
+          {view === "profile" && (
+            <div className="xl:max-w-3xl">
+              {doctorEmail ? (
+                <DocProfileSection
+                  email={doctorEmail}
+                  initialProfile={profile}
+                  onProfileUpdate={(updated) => setProfile(updated)}
+                />
+              ) : <SectionLoader />}
+            </div>
+          )}
+
+          {view === "results" && (
+            loading ? <RequestListSkeleton /> : completed.length === 0 ? (
+              <EmptyPanel
+                icon={<CheckCircle className="mx-auto mb-3 h-10 w-10 text-slate-200" />}
+                title="No completed tests yet"
+                hint="Tests marked as done by the lab will appear here."
+              />
             ) : (
-              requests.filter((r) => r.status === "done").map((req) => (
-                <div key={req.id} className="bg-white rounded-2xl border border-emerald-100 shadow-sm p-4 space-y-2">
-                  <div className="flex items-center gap-2">
-                    {req.lab.logo_url ? (
-                      <img src={req.lab.logo_url} alt={req.lab.name} className="w-8 h-8 rounded-lg object-cover ring-1 ring-slate-100" />
+              <>
+              <div className="grid gap-4 xl:grid-cols-2">
+                {completed.slice(0, resultsVisible).map((req) => (
+                  <div key={req.id} className="space-y-2 rounded-2xl border border-emerald-100 bg-white p-4 shadow-sm">
+                    <div className="flex items-center gap-2">
+                      {req.lab.logo_url ? (
+                        // eslint-disable-next-line @next/next/no-img-element
+                        <img src={req.lab.logo_url} alt={req.lab.name} className="h-8 w-8 rounded-lg object-cover ring-1 ring-slate-100" />
+                      ) : (
+                        <div className="flex h-8 w-8 items-center justify-center rounded-lg border border-medical-100 bg-medical-50">
+                          <Building2 className="h-4 w-4 text-medical-500" />
+                        </div>
+                      )}
+                      <div>
+                        <p className="text-sm font-bold text-slate-800">{req.lab.name}</p>
+                        <p className="font-mono text-xs text-slate-400">{req.code}</p>
+                      </div>
+                    </div>
+                    <p className="text-xs text-slate-500">Patient: <span className="font-medium text-slate-700">{req.patient_name ?? "—"}</span></p>
+                    {(req.result_link || req.result_note || req.result_file_urls?.length > 0) ? (
+                      <div className="space-y-2 rounded-xl border border-emerald-200 bg-emerald-50 p-3">
+                        <p className="flex items-center gap-1.5 text-xs font-semibold text-emerald-700">
+                          <CheckCircle className="h-3.5 w-3.5" />Results Available
+                        </p>
+                        {req.result_note && <p className="text-sm text-emerald-800">{req.result_note}</p>}
+                        {req.result_link && (
+                          <a href={req.result_link} target="_blank" rel="noopener noreferrer"
+                            className="inline-flex items-center gap-1.5 rounded-lg bg-emerald-600 px-3 py-1.5 text-xs font-semibold text-white transition hover:bg-emerald-700">
+                            View Results Online
+                          </a>
+                        )}
+                        {req.result_file_urls?.map((url, i) => (
+                          <a key={i} href={url} target="_blank" rel="noopener noreferrer"
+                            className="flex w-fit items-center gap-1.5 rounded-lg bg-emerald-100 px-3 py-1.5 text-xs font-semibold text-emerald-700 transition hover:bg-emerald-200 hover:text-emerald-900">
+                            <ExternalLink className="h-3 w-3 shrink-0" />
+                            {req.result_file_urls.length > 1 ? `Result File ${i + 1}` : "Download Result File"}
+                          </a>
+                        ))}
+                      </div>
                     ) : (
-                      <div className="w-8 h-8 rounded-lg bg-medical-50 border border-medical-100 flex items-center justify-center">
-                        <Building2 className="w-4 h-4 text-medical-500" />
+                      <div className="rounded-xl border border-slate-200 bg-slate-50 px-3 py-2">
+                        <p className="text-xs italic text-slate-500">Awaiting digital results from the lab</p>
                       </div>
                     )}
-                    <div>
-                      <p className="text-sm font-bold text-slate-800">{req.lab.name}</p>
-                      <p className="text-xs text-slate-400 font-mono">{req.code}</p>
-                    </div>
+                    <DocFeedbackWidget labId={req.lab.id} labName={req.lab.name} />
                   </div>
-                  <p className="text-xs text-slate-500">Patient: <span className="font-medium text-slate-700">{req.patient_name ?? "—"}</span></p>
-                  {(req.result_link || req.result_note || req.result_file_urls?.length > 0) ? (
-                    <div className="bg-emerald-50 border border-emerald-200 rounded-xl p-3 space-y-2">
-                      <p className="text-xs font-semibold text-emerald-700 flex items-center gap-1.5">
-                        <CheckCircle className="w-3.5 h-3.5" />Results Available
-                      </p>
-                      {req.result_note && <p className="text-sm text-emerald-800">{req.result_note}</p>}
-                      {req.result_link && (
-                        <a href={req.result_link} target="_blank" rel="noopener noreferrer"
-                          className="inline-flex items-center gap-1.5 text-xs font-semibold bg-emerald-600 hover:bg-emerald-700 text-white px-3 py-1.5 rounded-lg transition">
-                          View Results Online
-                        </a>
-                      )}
-                      {req.result_file_urls?.map((url, i) => (
-                        <a key={i} href={url} target="_blank" rel="noopener noreferrer"
-                          className="flex items-center gap-1.5 text-xs font-semibold text-emerald-700 hover:text-emerald-900 bg-emerald-100 hover:bg-emerald-200 px-3 py-1.5 rounded-lg transition w-fit">
-                          <ExternalLink className="w-3 h-3 shrink-0" />
-                          {req.result_file_urls.length > 1 ? `Result File ${i + 1}` : "Download Result File"}
-                        </a>
-                      ))}
-                    </div>
-                  ) : (
-                    <div className="bg-slate-50 border border-slate-200 rounded-xl px-3 py-2">
-                      <p className="text-xs text-slate-500 italic">Awaiting digital results from the lab</p>
-                    </div>
-                  )}
-                  <DocFeedbackWidget labId={req.lab.id} labName={req.lab.name} />
-                </div>
-              ))
-            )}
-          </div>
-        )}
+                ))}
+              </div>
+              {completed.length > resultsVisible && (
+                <button
+                  type="button"
+                  onClick={() => setResultsVisible((v) => v + REQUEST_PAGE_SIZE)}
+                  className="mt-4 w-full rounded-xl border border-slate-200 bg-white py-3 text-sm font-semibold text-slate-600 transition hover:border-medical-200 hover:text-slate-900"
+                >
+                  Show more
+                  <span className="ml-1 text-slate-400">({completed.length - resultsVisible} left)</span>
+                </button>
+              )}
+              </>
+            )
+          )}
 
-        {/* Requests Tab — summary chips + list */}
-        {activeTab === "requests" && (
-          <>
-        {/* Summary chips */}
-        <div className="flex gap-2 flex-wrap">
-          {(["all", "incoming", "seen", "done"] as const).map((s) => {
-            const labels = { all: "All", incoming: "Pending", seen: "Arrived", done: "Completed" };
-            const colors = {
-              all: filter === "all" ? "bg-slate-800 text-white" : "bg-white text-slate-600 border border-slate-200",
-              incoming: filter === "incoming" ? "bg-amber-500 text-white" : "bg-white text-amber-700 border border-amber-200",
-              seen: filter === "seen" ? "bg-blue-500 text-white" : "bg-white text-blue-700 border border-blue-200",
-              done: filter === "done" ? "bg-emerald-500 text-white" : "bg-white text-emerald-700 border border-emerald-200",
-            };
-            return (
+          {view === "requests" && (
+            <div className="space-y-4">
+              {/* Status filter chips */}
+              <div className="flex flex-wrap gap-2">
+                {(["all", "incoming", "seen", "done"] as const).map((s) => {
+                  const labels = { all: "All", incoming: "Pending", seen: "Arrived", done: "Completed" };
+                  const colors = {
+                    all: filter === "all" ? "bg-slate-800 text-white" : "bg-white text-slate-600 border border-slate-200",
+                    incoming: filter === "incoming" ? "bg-amber-500 text-white" : "bg-white text-amber-700 border border-amber-200",
+                    seen: filter === "seen" ? "bg-blue-500 text-white" : "bg-white text-blue-700 border border-blue-200",
+                    done: filter === "done" ? "bg-emerald-500 text-white" : "bg-white text-emerald-700 border border-emerald-200",
+                  };
+                  return (
+                    <button
+                      key={s}
+                      type="button"
+                      onClick={() => setFilter(s)}
+                      className={`flex items-center gap-1.5 rounded-full px-3 py-1.5 text-xs font-semibold shadow-sm transition ${colors[s]}`}
+                    >
+                      {labels[s]}
+                      <span className={`rounded-full px-1.5 py-0.5 text-xs font-bold ${filter === s ? "bg-white/20" : "bg-slate-100 text-slate-500"}`}>
+                        {counts[s]}
+                      </span>
+                    </button>
+                  );
+                })}
+              </div>
+
               <button
-                key={s}
-                onClick={() => setFilter(s)}
-                className={`flex items-center gap-1.5 text-xs font-semibold px-3 py-1.5 rounded-full transition shadow-sm ${colors[s]}`}
+                type="button"
+                onClick={() => router.push("/")}
+                className="flex w-full items-center justify-center gap-2 rounded-xl bg-gradient-to-r from-emerald-500 to-green-500 px-4 py-3 text-sm font-semibold text-white shadow-md transition-all hover:from-emerald-600 hover:to-green-600 hover:shadow-lg sm:hidden"
               >
-                {labels[s]}
-                <span className={`text-xs font-bold px-1.5 py-0.5 rounded-full ${filter === s ? "bg-white/20" : "bg-slate-100 text-slate-500"}`}>
-                  {counts[s]}
-                </span>
+                <FlaskConical className="h-4 w-4" />
+                Submit New Lab Request
               </button>
-            );
-          })}
-        </div>
 
-        {/* Submit New Request Button */}
-        <button
-          onClick={() => router.push("/")}
-          className="w-full flex items-center justify-center gap-2 py-3 px-4 rounded-xl bg-gradient-to-r from-emerald-500 to-green-500 text-white font-semibold text-sm hover:from-emerald-600 hover:to-green-600 transition-all shadow-md hover:shadow-lg"
-        >
-          <FlaskConical className="w-4 h-4" />
-          Submit New Lab Request
-        </button>
-
-        {/* Error */}
-        {error && (
-          <div className="bg-red-50 border border-red-100 rounded-xl px-4 py-3 text-sm text-red-600">{error}</div>
-        )}
-
-        {/* Loading skeleton */}
-        {loading && !requests.length && (
-          <div className="space-y-3">
-            {[1, 2, 3].map((i) => (
-              <div key={i} className="bg-white rounded-2xl border border-slate-100 p-4 animate-pulse">
-                <div className="flex gap-3">
-                  <div className="w-10 h-10 rounded-xl bg-slate-100" />
-                  <div className="flex-1 space-y-2">
-                    <div className="h-3 bg-slate-100 rounded w-1/3" />
-                    <div className="h-4 bg-slate-100 rounded w-2/3" />
-                    <div className="h-3 bg-slate-100 rounded w-1/2" />
+              {loading ? (
+                <RequestListSkeleton />
+              ) : filtered.length === 0 ? (
+                <EmptyPanel
+                  icon={<TestTube2 className="mx-auto mb-3 h-10 w-10 text-slate-200" />}
+                  title={filter === "all" ? "No referrals yet" : `No ${filter} requests`}
+                  hint={filter === "all" ? "Requests you submit will appear here." : "Try switching to a different filter."}
+                />
+              ) : (
+                <>
+                  {/* Two columns of cards once there is room — a single narrow
+                      column wasted most of a desktop screen. */}
+                  <div className="grid items-start gap-3 xl:grid-cols-2">
+                    {filtered.slice(0, visibleCount).map((req) => <RequestCard key={req.id} req={req} />)}
                   </div>
-                </div>
-              </div>
-            ))}
-          </div>
-        )}
-
-        {/* Empty state */}
-        {!loading && !error && filtered.length === 0 && (
-          <div className="bg-white rounded-2xl border border-slate-100 p-8 text-center">
-            <TestTube2 className="w-10 h-10 text-slate-200 mx-auto mb-3" />
-            <p className="text-sm font-semibold text-slate-600">
-              {filter === "all" ? "No requests found" : `No ${filter} requests`}
-            </p>
-            <p className="text-xs text-slate-400 mt-1">
-              {filter === "all"
-                ? "Requests you submit will appear here."
-                : "Try switching to a different filter above."}
-            </p>
-          </div>
-        )}
-
-        {/* Request list */}
-        {loading ? (
-          <div className="space-y-3">
-            {[1, 2, 3].map((i) => (
-              <div key={i} className="bg-white rounded-2xl border border-slate-100 p-4 animate-pulse">
-                <div className="flex gap-3"><div className="w-10 h-10 rounded-xl bg-slate-100" /><div className="flex-1 space-y-2"><div className="h-3 bg-slate-100 rounded w-1/3" /><div className="h-4 bg-slate-100 rounded w-2/3" /></div></div>
-              </div>
-            ))}
-          </div>
-        ) : filtered.length === 0 ? (
-          <div className="bg-white rounded-2xl border border-slate-100 p-8 text-center">
-            <TestTube2 className="w-10 h-10 text-slate-200 mx-auto mb-3" />
-            <p className="text-sm font-semibold text-slate-600">{filter === "all" ? "No referrals yet" : `No ${filter} requests`}</p>
-            <p className="text-xs text-slate-400 mt-1">{filter === "all" ? "Requests you submit will appear here." : "Try switching to a different filter."}</p>
-          </div>
-        ) : (
-          filtered.map((req) => <RequestCard key={req.id} req={req} />)
-        )}
-          </>
-        )}
-      </main>
+                  {filtered.length > visibleCount && (
+                    <button
+                      type="button"
+                      onClick={() => setVisibleCount((v) => v + REQUEST_PAGE_SIZE)}
+                      className="w-full rounded-xl border border-slate-200 bg-white py-3 text-sm font-semibold text-slate-600 transition hover:border-medical-200 hover:text-slate-900"
+                    >
+                      Show {Math.min(REQUEST_PAGE_SIZE, filtered.length - visibleCount)} more
+                      <span className="ml-1 text-slate-400">({filtered.length - visibleCount} left)</span>
+                    </button>
+                  )}
+                </>
+              )}
+            </div>
+          )}
+        </main>
+      </div>
 
       {/* Footer */}
-      <div className="max-w-2xl mx-auto px-4 py-4 flex items-center justify-center gap-2 text-xs text-slate-400">
-        <PoveonLogo className="w-4 h-4 opacity-40" />
+      <div className="mx-auto flex max-w-[1600px] items-center justify-center gap-2 px-4 py-6 text-xs text-slate-400">
+        <PoveonLogo className="h-4 w-4 opacity-40" />
         <span>© {new Date().getFullYear()} Poveon. All rights reserved.</span>
       </div>
 
       {/* Earn-setup prompt — shown each login until pricing is configured */}
       {showEarnModal && (
-        <div className="fixed inset-0 z-[300] flex items-end sm:items-center justify-center p-4 bg-slate-900/50 backdrop-blur-sm animate-fade-in"
+        <div className="animate-fade-in fixed inset-0 z-[300] flex items-end justify-center bg-slate-900/50 p-4 backdrop-blur-sm sm:items-center"
           onClick={(e) => { if (e.target === e.currentTarget) setShowEarnModal(false); }}>
-          <div className="w-full sm:max-w-md bg-white rounded-3xl shadow-2xl overflow-hidden animate-slide-up">
-            <div className="bg-gradient-to-br from-medical-600 to-medical-800 px-6 pt-7 pb-8 text-white text-center relative">
-              <button onClick={() => setShowEarnModal(false)} className="absolute top-3 right-3 w-8 h-8 rounded-full bg-white/15 hover:bg-white/25 flex items-center justify-center transition" aria-label="Close">
-                <X className="w-4 h-4" />
+          <div className="animate-slide-up w-full overflow-hidden rounded-3xl bg-white shadow-2xl sm:max-w-md">
+            <div className="relative bg-gradient-to-br from-medical-600 to-medical-800 px-6 pb-8 pt-7 text-center text-white">
+              <button onClick={() => setShowEarnModal(false)} className="absolute right-3 top-3 flex h-8 w-8 items-center justify-center rounded-full bg-white/15 transition hover:bg-white/25" aria-label="Close">
+                <X className="h-4 w-4" />
               </button>
-              <div className="w-14 h-14 rounded-2xl bg-white/15 flex items-center justify-center mx-auto mb-3">
-                <CreditCard className="w-7 h-7" />
+              <div className="mx-auto mb-3 flex h-14 w-14 items-center justify-center rounded-2xl bg-white/15">
+                <CreditCard className="h-7 w-7" />
               </div>
               <h3 className="text-lg font-bold">Start earning per encounter</h3>
-              <p className="text-sm text-white/80 mt-1.5 leading-relaxed">
+              <p className="mt-1.5 text-sm leading-relaxed text-white/80">
                 Set your consultation fee and payout bank to get a shareable link. Patients are screened by AI and pay you directly — you keep <strong>80%</strong>.
               </p>
             </div>
-            <div className="p-5 space-y-3">
+            <div className="space-y-3 p-5">
               <div className="flex items-center gap-3 text-sm text-slate-600">
-                <span className="w-6 h-6 rounded-full bg-medical-50 text-medical-600 flex items-center justify-center text-xs font-bold shrink-0">1</span>
+                <span className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-medical-50 text-xs font-bold text-medical-600">1</span>
                 Set your prices &amp; payout bank
               </div>
               <div className="flex items-center gap-3 text-sm text-slate-600">
-                <span className="w-6 h-6 rounded-full bg-medical-50 text-medical-600 flex items-center justify-center text-xs font-bold shrink-0">2</span>
+                <span className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-medical-50 text-xs font-bold text-medical-600">2</span>
                 Share your link with patients
               </div>
               <div className="flex items-center gap-3 text-sm text-slate-600">
-                <span className="w-6 h-6 rounded-full bg-medical-50 text-medical-600 flex items-center justify-center text-xs font-bold shrink-0">3</span>
+                <span className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-medical-50 text-xs font-bold text-medical-600">3</span>
                 Get paid automatically
               </div>
-              <button onClick={() => { setActiveTab("charging"); setShowEarnModal(false); }}
-                className="w-full mt-2 flex items-center justify-center gap-2 py-3.5 rounded-2xl bg-medical-600 hover:bg-medical-700 active:scale-[0.98] text-white font-bold text-sm shadow-lg shadow-medical-600/30 transition-all">
-                Set up earning <ChevronRight className="w-4 h-4" />
+              <button onClick={() => { setShowEarnModal(false); setEarnView("pricing"); }}
+                className="mt-2 flex w-full items-center justify-center gap-2 rounded-2xl bg-medical-600 py-3.5 text-sm font-bold text-white shadow-lg shadow-medical-600/30 transition-all hover:bg-medical-700 active:scale-[0.98]">
+                Set up earning <ChevronRight className="h-4 w-4" />
               </button>
-              <button onClick={() => setShowEarnModal(false)} className="w-full py-2 text-xs font-semibold text-slate-400 hover:text-slate-600 transition">
+              <button onClick={() => setShowEarnModal(false)} className="w-full py-2 text-xs font-semibold text-slate-400 transition hover:text-slate-600">
                 Maybe later
               </button>
             </div>
@@ -890,6 +1029,36 @@ function DocDashboardInner() {
     </div>
   );
 }
+
+function EmptyPanel({ icon, title, hint }: { icon: React.ReactNode; title: string; hint: string }) {
+  return (
+    <div className="rounded-2xl border border-slate-100 bg-white p-8 text-center">
+      {icon}
+      <p className="text-sm font-semibold text-slate-600">{title}</p>
+      <p className="mt-1 text-xs text-slate-400">{hint}</p>
+    </div>
+  );
+}
+
+function RequestListSkeleton() {
+  return (
+    <div className="grid items-start gap-3 xl:grid-cols-2">
+      {[1, 2, 3, 4].map((i) => (
+        <div key={i} className="animate-pulse rounded-2xl border border-slate-100 bg-white p-4">
+          <div className="flex gap-3">
+            <div className="h-10 w-10 rounded-xl bg-slate-100" />
+            <div className="flex-1 space-y-2">
+              <div className="h-3 w-1/3 rounded bg-slate-100" />
+              <div className="h-4 w-2/3 rounded bg-slate-100" />
+              <div className="h-3 w-1/2 rounded bg-slate-100" />
+            </div>
+          </div>
+        </div>
+      ))}
+    </div>
+  );
+}
+
 
 function DocSecuritySection({ email }: { email: string }) {
   const [hasPin, setHasPin] = useState<boolean | null>(null);
