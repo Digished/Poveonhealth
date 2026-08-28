@@ -1,0 +1,551 @@
+"use client";
+
+import { useCallback, useEffect, useState } from "react";
+import { useRouter } from "next/navigation";
+import Link from "next/link";
+import {
+  BadgeCheck, Check, Loader2, LogOut, Pill, Plus, Search, ShieldAlert,
+  TicketPercent, Users, Wallet, X,
+} from "lucide-react";
+import { PoveonLogo } from "@/components/PoveonLogo";
+import { SectionLoader } from "@/components/PageLoader";
+
+type Pharmacy = {
+  id: string; name: string; code: string; email: string; phone: string | null;
+  address: string | null; city: string | null; state: string | null; discount_percent: number;
+};
+type Stats = {
+  customers: number; care_plan_customers: number; redemptions_this_month: number;
+  gross_this_month: number; discount_this_month: number;
+};
+type Customer = {
+  id: string; full_name: string; phone: string | null; code: string | null;
+  on_care_plan: boolean; visits: number; total_spend: number; last_visit_at: string | null;
+  notes: string | null;
+};
+
+const naira = (n: number) => `₦${Math.round(n).toLocaleString("en-NG")}`;
+
+function formatDate(iso: string | null) {
+  if (!iso) return "—";
+  return new Date(iso).toLocaleDateString("en-GB", { day: "numeric", month: "short", year: "numeric" });
+}
+
+export default function PharmacyDashboard() {
+  const router = useRouter();
+  const [pharmacy, setPharmacy] = useState<Pharmacy | null>(null);
+  const [stats, setStats] = useState<Stats | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [tab, setTab] = useState<"serve" | "customers">("serve");
+
+  const load = useCallback(async () => {
+    try {
+      const res = await fetch("/api/pharmacy/me", { cache: "no-store" });
+      if (res.status === 401) { router.replace("/pharmacy-login"); return; }
+      const data = await res.json();
+      if (!data.success) return;
+      setPharmacy(data.pharmacy);
+      setStats(data.stats);
+    } finally {
+      setLoading(false);
+    }
+  }, [router]);
+
+  useEffect(() => { load(); }, [load]);
+
+  async function signOut() {
+    await fetch("/api/pharmacy/logout", { method: "POST" });
+    router.replace("/pharmacy-login");
+  }
+
+  return (
+    <div className="min-h-dvh bg-gradient-to-br from-emerald-50 via-white to-sky-50">
+      <header className="sticky top-0 z-30 border-b border-white/60 bg-white/85 backdrop-blur-md">
+        <div className="mx-auto flex max-w-6xl items-center gap-3 px-4 py-3">
+          <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-emerald-600">
+            <Pill className="h-4 w-4 text-white" />
+          </div>
+          <div className="min-w-0 flex-1">
+            <p className="truncate text-sm font-bold text-slate-800">{pharmacy?.name ?? "Pharmacy"}</p>
+            <p className="truncate text-xs text-slate-400">
+              {pharmacy ? `Code ${pharmacy.code} · ${pharmacy.discount_percent}% member discount` : " "}
+            </p>
+          </div>
+          <button
+            onClick={signOut}
+            className="inline-flex items-center gap-1.5 rounded-lg px-2.5 py-1.5 text-xs font-semibold text-slate-500 transition hover:bg-red-50 hover:text-red-600"
+          >
+            <LogOut className="h-3.5 w-3.5" />
+            <span className="hidden sm:inline">Sign out</span>
+          </button>
+        </div>
+      </header>
+
+      <main className="mx-auto max-w-6xl space-y-5 px-4 py-6">
+        {loading && <SectionLoader label="Loading your pharmacy…" />}
+
+        {!loading && pharmacy && (
+          <>
+            <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
+              <Stat icon={<Users className="h-4 w-4" />} label="Customers tracked" value={String(stats?.customers ?? 0)} />
+              <Stat icon={<BadgeCheck className="h-4 w-4" />} label="On the care plan" value={String(stats?.care_plan_customers ?? 0)} accent="emerald" />
+              <Stat icon={<TicketPercent className="h-4 w-4" />} label="Discounts this month" value={String(stats?.redemptions_this_month ?? 0)} />
+              <Stat icon={<Wallet className="h-4 w-4" />} label="Sales this month" value={naira(stats?.gross_this_month ?? 0)} accent="emerald" />
+            </div>
+
+            <div className="flex gap-1 border-b border-slate-200 pb-2">
+              {([
+                ["serve", "Serve a member"],
+                ["customers", "My customers"],
+              ] as const).map(([key, label]) => (
+                <button
+                  key={key}
+                  onClick={() => setTab(key)}
+                  className={`rounded-lg px-3.5 py-2 text-sm font-semibold transition ${
+                    tab === key
+                      ? "bg-emerald-50 text-emerald-800 ring-1 ring-inset ring-emerald-200"
+                      : "text-slate-500 hover:bg-white hover:text-slate-800"
+                  }`}
+                >
+                  {label}
+                </button>
+              ))}
+            </div>
+
+            {tab === "serve" && <ServePanel onRecorded={load} />}
+            {tab === "customers" && <CustomersPanel onChanged={load} />}
+          </>
+        )}
+      </main>
+
+      <footer className="mx-auto max-w-6xl px-4 py-8 text-center text-xs text-slate-400">
+        <Link href="/consults" className="inline-flex items-center gap-1.5 hover:text-slate-600">
+          <PoveonLogo className="h-4 w-4 opacity-50" />
+          About the Poveon Care Plan
+        </Link>
+      </footer>
+    </div>
+  );
+}
+
+function Stat({
+  icon, label, value, accent = "slate",
+}: {
+  icon: React.ReactNode; label: string; value: string; accent?: "slate" | "emerald";
+}) {
+  return (
+    <div className="rounded-2xl border border-slate-100 bg-white p-4 shadow-sm">
+      <div
+        className={`flex h-8 w-8 items-center justify-center rounded-lg ${
+          accent === "emerald" ? "bg-emerald-50 text-emerald-600" : "bg-slate-100 text-slate-500"
+        }`}
+      >
+        {icon}
+      </div>
+      <p className="mt-2.5 text-xl font-extrabold text-slate-900">{value}</p>
+      <p className="text-xs text-slate-400">{label}</p>
+    </div>
+  );
+}
+
+/** Look a care code up, then record the discounted sale against it. */
+function ServePanel({ onRecorded }: { onRecorded: () => void }) {
+  const [code, setCode] = useState("");
+  const [checking, setChecking] = useState(false);
+  const [lookup, setLookup] = useState<
+    | { state: "idle" }
+    | { state: "invalid"; reason: string; name?: string }
+    | { state: "valid"; name: string; discount: number; expires_at: string | null }
+  >({ state: "idle" });
+  const [gross, setGross] = useState("");
+  const [description, setDescription] = useState("");
+  const [saving, setSaving] = useState(false);
+  const [receipt, setReceipt] = useState<{ name: string; gross: number; discount: number; payable: number } | null>(null);
+
+  async function check() {
+    if (checking || code.trim().length < 4) return;
+    setChecking(true);
+    setReceipt(null);
+    try {
+      const res = await fetch("/api/pharmacy/lookup", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ code: code.trim() }),
+      });
+      const data = await res.json();
+      if (!data.success) { setLookup({ state: "invalid", reason: data.error ?? "Could not check that code." }); return; }
+      if (!data.found || !data.valid) {
+        setLookup({ state: "invalid", reason: data.reason ?? "That code is not valid.", name: data.member?.full_name });
+        return;
+      }
+      setLookup({
+        state: "valid",
+        name: data.member.full_name,
+        discount: data.discount_percent,
+        expires_at: data.member.expires_at,
+      });
+    } catch {
+      setLookup({ state: "invalid", reason: "Network error. Please try again." });
+    } finally {
+      setChecking(false);
+    }
+  }
+
+  async function record() {
+    if (saving || lookup.state !== "valid" || !gross) return;
+    setSaving(true);
+    try {
+      const res = await fetch("/api/pharmacy/redeem", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ code: code.trim(), gross_naira: Number(gross), description: description || null }),
+      });
+      const data = await res.json();
+      if (!res.ok || !data.success) return;
+      setReceipt({
+        name: data.member.full_name,
+        gross: data.gross_naira,
+        discount: data.discount_naira,
+        payable: data.payable_naira,
+      });
+      setCode(""); setGross(""); setDescription(""); setLookup({ state: "idle" });
+      onRecorded();
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  return (
+    <div className="grid gap-5 lg:grid-cols-2">
+      <div className="rounded-2xl border border-slate-100 bg-white p-5 shadow-sm">
+        <h2 className="text-sm font-bold text-slate-800">Check a care code</h2>
+        <p className="mt-1 text-xs text-slate-500">
+          Ask for the member&apos;s code, confirm it&apos;s live, then record the sale so their savings and your
+          customer book stay up to date.
+        </p>
+
+        <div className="mt-4 flex gap-2">
+          <input
+            value={code}
+            onChange={(e) => { setCode(e.target.value.toUpperCase()); setLookup({ state: "idle" }); }}
+            onKeyDown={(e) => { if (e.key === "Enter") check(); }}
+            placeholder="PVC-XXXXXXX"
+            className="flex-1 rounded-xl border border-slate-200 px-4 py-2.5 font-mono text-sm font-bold uppercase tracking-wider text-slate-800 placeholder-slate-300 focus:border-emerald-400 focus:outline-none focus:ring-2 focus:ring-emerald-400/40"
+          />
+          <button
+            onClick={check}
+            disabled={checking || code.trim().length < 4}
+            className="inline-flex items-center gap-1.5 rounded-xl bg-emerald-600 px-4 py-2.5 text-sm font-bold text-white transition hover:bg-emerald-700 disabled:opacity-50"
+          >
+            {checking ? <Loader2 className="h-4 w-4 animate-spin" /> : <Search className="h-4 w-4" />}
+            Check
+          </button>
+        </div>
+
+        {lookup.state === "invalid" && (
+          <div className="mt-4 flex items-start gap-2.5 rounded-xl border border-amber-200 bg-amber-50 px-4 py-3">
+            <ShieldAlert className="mt-0.5 h-4 w-4 shrink-0 text-amber-500" />
+            <div>
+              <p className="text-sm font-semibold text-amber-800">{lookup.reason}</p>
+              {lookup.name && <p className="text-xs text-amber-700">Code belongs to {lookup.name}.</p>}
+            </div>
+          </div>
+        )}
+
+        {lookup.state === "valid" && (
+          <div className="mt-4 space-y-3 rounded-xl border border-emerald-200 bg-emerald-50 p-4">
+            <div className="flex items-start gap-2.5">
+              <BadgeCheck className="mt-0.5 h-5 w-5 shrink-0 text-emerald-600" />
+              <div>
+                <p className="text-sm font-bold text-emerald-900">{lookup.name} is covered</p>
+                <p className="text-xs text-emerald-700">
+                  {lookup.discount}% off · valid to {formatDate(lookup.expires_at)}
+                </p>
+              </div>
+            </div>
+
+            <input
+              inputMode="numeric"
+              value={gross}
+              onChange={(e) => setGross(e.target.value.replace(/[^\d]/g, ""))}
+              placeholder="Total before discount (₦)"
+              className="w-full rounded-xl border border-emerald-200 bg-white px-3.5 py-2.5 text-sm text-slate-800 focus:outline-none focus:ring-2 focus:ring-emerald-400/40"
+            />
+            <input
+              value={description}
+              maxLength={300}
+              onChange={(e) => setDescription(e.target.value)}
+              placeholder="What did they buy? (optional)"
+              className="w-full rounded-xl border border-emerald-200 bg-white px-3.5 py-2.5 text-sm text-slate-800 focus:outline-none focus:ring-2 focus:ring-emerald-400/40"
+            />
+            {gross && (
+              <p className="text-xs text-emerald-800">
+                They pay{" "}
+                <strong>{naira(Number(gross) - Math.round((Number(gross) * lookup.discount) / 100))}</strong>{" "}
+                (saving {naira(Math.round((Number(gross) * lookup.discount) / 100))})
+              </p>
+            )}
+            <button
+              onClick={record}
+              disabled={saving || !gross}
+              className="flex w-full items-center justify-center gap-2 rounded-xl bg-emerald-600 py-2.5 text-sm font-bold text-white transition hover:bg-emerald-700 disabled:opacity-50"
+            >
+              {saving ? <Loader2 className="h-4 w-4 animate-spin" /> : <Check className="h-4 w-4" />}
+              Record this sale
+            </button>
+          </div>
+        )}
+
+        {receipt && (
+          <div className="mt-4 rounded-xl border border-slate-200 bg-slate-50 p-4">
+            <p className="text-sm font-bold text-slate-800">Recorded for {receipt.name}</p>
+            <dl className="mt-2 space-y-1 text-xs text-slate-600">
+              <div className="flex justify-between"><dt>Before discount</dt><dd>{naira(receipt.gross)}</dd></div>
+              <div className="flex justify-between text-emerald-700"><dt>Member saved</dt><dd>−{naira(receipt.discount)}</dd></div>
+              <div className="flex justify-between border-t border-slate-200 pt-1 font-bold text-slate-800">
+                <dt>They pay</dt><dd>{naira(receipt.payable)}</dd>
+              </div>
+            </dl>
+          </div>
+        )}
+      </div>
+
+      <div className="rounded-2xl border border-slate-100 bg-white p-5 shadow-sm">
+        <h2 className="text-sm font-bold text-slate-800">How the care plan works for you</h2>
+        <ul className="mt-3 space-y-3 text-sm text-slate-600">
+          <li className="flex gap-2.5">
+            <span className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-emerald-50 text-xs font-bold text-emerald-700">1</span>
+            A member shows their care code at your counter.
+          </li>
+          <li className="flex gap-2.5">
+            <span className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-emerald-50 text-xs font-bold text-emerald-700">2</span>
+            You check it here — it tells you instantly whether their plan is live.
+          </li>
+          <li className="flex gap-2.5">
+            <span className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-emerald-50 text-xs font-bold text-emerald-700">3</span>
+            You apply the discount and record the sale. They come back to you, because that&apos;s where their code works.
+          </li>
+        </ul>
+        <p className="mt-4 rounded-xl bg-slate-50 px-4 py-3 text-xs leading-relaxed text-slate-500">
+          Members on the plan are managing hypertension or diabetes — they refill month after month. Every
+          sale you record builds the customer list on the next tab.
+        </p>
+      </div>
+    </div>
+  );
+}
+
+function CustomersPanel({ onChanged }: { onChanged: () => void }) {
+  const [customers, setCustomers] = useState<Customer[]>([]);
+  const [total, setTotal] = useState(0);
+  const [page, setPage] = useState(1);
+  const [hasMore, setHasMore] = useState(false);
+  const [q, setQ] = useState("");
+  const [carePlanOnly, setCarePlanOnly] = useState(false);
+  const [loading, setLoading] = useState(true);
+  const [adding, setAdding] = useState(false);
+
+  const load = useCallback(async (nextPage = 1, append = false) => {
+    setLoading(true);
+    try {
+      const params = new URLSearchParams({ page: String(nextPage) });
+      if (q.trim()) params.set("q", q.trim());
+      if (carePlanOnly) params.set("care_plan", "1");
+      const res = await fetch(`/api/pharmacy/customers?${params}`, { cache: "no-store" });
+      const data = await res.json();
+      if (!data.success) return;
+      setCustomers((prev) => (append ? [...prev, ...data.customers] : data.customers));
+      setTotal(data.total);
+      setHasMore(data.has_more);
+      setPage(nextPage);
+    } finally {
+      setLoading(false);
+    }
+  }, [q, carePlanOnly]);
+
+  useEffect(() => {
+    const t = setTimeout(() => load(1, false), q ? 300 : 0);
+    return () => clearTimeout(t);
+  }, [load, q]);
+
+  return (
+    <div className="space-y-4">
+      <div className="flex flex-wrap items-center gap-2">
+        <div className="relative min-w-[220px] flex-1">
+          <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-300" />
+          <input
+            value={q}
+            onChange={(e) => setQ(e.target.value)}
+            placeholder="Search name, phone or care code…"
+            className="w-full rounded-xl border border-slate-200 bg-white py-2.5 pl-9 pr-3 text-sm text-slate-700 placeholder-slate-400 focus:border-emerald-400 focus:outline-none focus:ring-2 focus:ring-emerald-400/40"
+          />
+        </div>
+        <button
+          onClick={() => setCarePlanOnly((v) => !v)}
+          className={`rounded-xl border px-3.5 py-2.5 text-xs font-semibold transition ${
+            carePlanOnly
+              ? "border-emerald-300 bg-emerald-50 text-emerald-800"
+              : "border-slate-200 bg-white text-slate-600 hover:border-slate-300"
+          }`}
+        >
+          Care plan only
+        </button>
+        <button
+          onClick={() => setAdding(true)}
+          className="inline-flex items-center gap-1.5 rounded-xl bg-slate-800 px-3.5 py-2.5 text-xs font-semibold text-white transition hover:bg-slate-900"
+        >
+          <Plus className="h-3.5 w-3.5" />
+          Add walk-in
+        </button>
+      </div>
+
+      {adding && (
+        <AddCustomerForm
+          onClose={() => setAdding(false)}
+          onAdded={() => { setAdding(false); load(1, false); onChanged(); }}
+        />
+      )}
+
+      <div className="overflow-hidden rounded-2xl border border-slate-100 bg-white shadow-sm">
+        {loading && customers.length === 0 ? (
+          <SectionLoader />
+        ) : customers.length === 0 ? (
+          <div className="p-10 text-center">
+            <Users className="mx-auto mb-3 h-10 w-10 text-slate-200" />
+            <p className="text-sm font-semibold text-slate-600">No customers yet</p>
+            <p className="mt-1 text-xs text-slate-400">
+              Record a sale against a care code, or add a walk-in, and they&apos;ll show up here.
+            </p>
+          </div>
+        ) : (
+          <>
+            <div className="overflow-x-auto">
+              <table className="w-full min-w-[600px] text-sm">
+                <thead>
+                  <tr className="border-b border-slate-100 text-left text-xs text-slate-400">
+                    <th className="px-4 py-2.5 font-semibold">Customer</th>
+                    <th className="px-4 py-2.5 font-semibold">Visits</th>
+                    <th className="px-4 py-2.5 font-semibold">Spend</th>
+                    <th className="px-4 py-2.5 font-semibold">Last visit</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-slate-50">
+                  {customers.map((c) => (
+                    <tr key={c.id} className="transition hover:bg-slate-50/60">
+                      <td className="px-4 py-3">
+                        <div className="flex items-center gap-2">
+                          <span className="font-semibold text-slate-700">{c.full_name}</span>
+                          {c.on_care_plan && (
+                            <span className="inline-flex items-center gap-1 rounded-full bg-emerald-50 px-2 py-0.5 text-[10px] font-bold text-emerald-700">
+                              <BadgeCheck className="h-3 w-3" />
+                              Care plan
+                            </span>
+                          )}
+                        </div>
+                        <p className="text-xs text-slate-400">
+                          {c.phone || "No phone"}
+                          {c.code && <span className="ml-2 font-mono">{c.code}</span>}
+                        </p>
+                      </td>
+                      <td className="px-4 py-3 text-slate-600">{c.visits}</td>
+                      <td className="px-4 py-3 font-semibold text-slate-700">{naira(c.total_spend)}</td>
+                      <td className="px-4 py-3 text-slate-500">{formatDate(c.last_visit_at)}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+            <div className="flex items-center justify-between border-t border-slate-100 px-4 py-3">
+              <p className="text-xs text-slate-400">
+                Showing {customers.length} of {total}
+              </p>
+              {hasMore && (
+                <button
+                  onClick={() => load(page + 1, true)}
+                  disabled={loading}
+                  className="rounded-lg border border-slate-200 px-3 py-1.5 text-xs font-semibold text-slate-600 transition hover:border-slate-300 disabled:opacity-50"
+                >
+                  {loading ? "Loading…" : "Show more"}
+                </button>
+              )}
+            </div>
+          </>
+        )}
+      </div>
+    </div>
+  );
+}
+
+function AddCustomerForm({ onClose, onAdded }: { onClose: () => void; onAdded: () => void }) {
+  const [fullName, setFullName] = useState("");
+  const [phone, setPhone] = useState("");
+  const [spend, setSpend] = useState("");
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState("");
+
+  async function save() {
+    if (saving || fullName.trim().length < 2) return;
+    setSaving(true);
+    setError("");
+    try {
+      const res = await fetch("/api/pharmacy/customers", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          full_name: fullName.trim(),
+          phone: phone.trim() || null,
+          spend_naira: spend ? Number(spend) : 0,
+        }),
+      });
+      const data = await res.json();
+      if (!res.ok || !data.success) { setError(data.error ?? "Could not add that customer."); return; }
+      onAdded();
+    } catch {
+      setError("Network error. Please try again.");
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  return (
+    <div className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
+      <div className="flex items-center justify-between">
+        <h3 className="text-sm font-bold text-slate-800">Add a walk-in customer</h3>
+        <button onClick={onClose} className="rounded-lg p-1 text-slate-400 transition hover:bg-slate-100" aria-label="Close">
+          <X className="h-4 w-4" />
+        </button>
+      </div>
+      <div className="mt-3 grid gap-2 sm:grid-cols-3">
+        <input
+          autoFocus
+          value={fullName}
+          onChange={(e) => setFullName(e.target.value)}
+          placeholder="Full name"
+          className="rounded-xl border border-slate-200 px-3.5 py-2.5 text-sm focus:border-emerald-400 focus:outline-none focus:ring-2 focus:ring-emerald-400/40"
+        />
+        <input
+          value={phone}
+          onChange={(e) => setPhone(e.target.value)}
+          placeholder="Phone (optional)"
+          className="rounded-xl border border-slate-200 px-3.5 py-2.5 text-sm focus:border-emerald-400 focus:outline-none focus:ring-2 focus:ring-emerald-400/40"
+        />
+        <input
+          inputMode="numeric"
+          value={spend}
+          onChange={(e) => setSpend(e.target.value.replace(/[^\d]/g, ""))}
+          placeholder="Spend today (₦)"
+          className="rounded-xl border border-slate-200 px-3.5 py-2.5 text-sm focus:border-emerald-400 focus:outline-none focus:ring-2 focus:ring-emerald-400/40"
+        />
+      </div>
+      {error && <p className="mt-2 text-xs text-red-600">{error}</p>}
+      <button
+        onClick={save}
+        disabled={saving || fullName.trim().length < 2}
+        className="mt-3 inline-flex items-center gap-2 rounded-xl bg-emerald-600 px-4 py-2.5 text-sm font-bold text-white transition hover:bg-emerald-700 disabled:opacity-50"
+      >
+        {saving ? <Loader2 className="h-4 w-4 animate-spin" /> : <Plus className="h-4 w-4" />}
+        Add customer
+      </button>
+    </div>
+  );
+}

@@ -7,10 +7,11 @@ import {
   FlaskConical, LogOut, Building2, User,
   CalendarDays, TestTube2, ChevronDown, ChevronUp,
   Clock, CheckCircle, Eye, MapPin, Phone, X, Menu, Shield, EyeOff, RefreshCw, MessageCircle, Star, MessageSquare, ExternalLink,
-  Stethoscope, Pencil, Check, CreditCard, ChevronRight, Info, Send, HeartPulse,
+  Stethoscope, Pencil, Check, CreditCard, ChevronRight, Info, Send, HeartPulse, Activity,
 } from "lucide-react";
 import { DoctorNav, DoctorSubNav, type DoctorNavSection } from "@/components/doctor/DoctorNav";
 import { EARN_VIEWS, type EarnView } from "@/components/doctor/earn-views";
+import { CONSULT_VIEWS, type ConsultView } from "@/components/doctor/consult-views";
 import { getJson } from "@/lib/client-cache";
 import { themeClass } from "@/lib/encounter-themes";
 
@@ -24,9 +25,9 @@ const DoctorMonitoringSection = dynamic(
   () => import("@/components/doctor/DoctorMonitoringSection").then((m) => m.DoctorMonitoringSection),
   { loading: () => <SectionLoader label="Loading monitoring…" /> }
 );
-const DoctorReferralsSection = dynamic(
-  () => import("@/components/referral/DoctorReferralsSection").then((m) => m.DoctorReferralsSection),
-  { loading: () => <SectionLoader label="Loading referrals…" /> }
+const DoctorConsultsSection = dynamic(
+  () => import("@/components/doctor/DoctorConsultsSection").then((m) => m.DoctorConsultsSection),
+  { loading: () => <SectionLoader label="Loading your care plan…" /> }
 );
 import { SupportFab } from "@/components/SupportFab";
 import { SectionLoader } from "@/components/PageLoader";
@@ -527,17 +528,20 @@ interface DoctorProfileData {
 }
 
 /** Leaf panels the portal can show. */
-type View = "charging" | "monitoring" | "requests" | "results" | "referrals" | "profile" | "security";
+type View = "consults" | "charging" | "monitoring" | "requests" | "results" | "profile" | "security";
 
-const VALID_VIEWS: View[] = ["charging", "monitoring", "requests", "results", "referrals", "profile", "security"];
+const VALID_VIEWS: View[] = ["consults", "charging", "monitoring", "requests", "results", "profile", "security"];
+
+/** The care plan is the portal's home — it's the work a doctor comes back for. */
+const DEFAULT_VIEW: View = "consults";
 
 /** Grouped entries land on their parent in the sidebar and expose a sub-menu. */
 const PARENT_OF: Record<View, View> = {
+  consults: "consults",
   charging: "charging",
   monitoring: "monitoring",
   requests: "requests",
   results: "requests",
-  referrals: "referrals",
   profile: "profile",
   security: "profile",
 };
@@ -572,6 +576,9 @@ function DocDashboardInner() {
   const [loggingOut, setLoggingOut] = useState(false);
   const [monitoringCount, setMonitoringCount] = useState<number | null>(null);
   const [chargingReady, setChargingReady] = useState<boolean | null>(null);
+  // Care-plan members waiting on a first assessment or a reply — the badge on
+  // the portal's home entry.
+  const [consultAlerts, setConsultAlerts] = useState(0);
   const [showEarnModal, setShowEarnModal] = useState(false);
   const [docTheme, setDocTheme] = useState<string | null>(null);
   const [navOpen, setNavOpen] = useState(false);
@@ -579,9 +586,12 @@ function DocDashboardInner() {
 
   // Active panel lives in the URL so a tab survives a refresh and can be linked.
   const tabParam = searchParams.get("tab") as View | null;
-  const view: View = tabParam && VALID_VIEWS.includes(tabParam) ? tabParam : "charging";
-  const earnParam = searchParams.get("sub") as EarnView | null;
-  const earnView: EarnView = earnParam && EARN_VIEWS.some((v) => v.key === earnParam) ? earnParam : "overview";
+  const view: View = tabParam && VALID_VIEWS.includes(tabParam) ? tabParam : DEFAULT_VIEW;
+  const subParam = searchParams.get("sub");
+  const earnView: EarnView =
+    subParam && EARN_VIEWS.some((v) => v.key === subParam) ? (subParam as EarnView) : "overview";
+  const consultView: ConsultView =
+    subParam && CONSULT_VIEWS.some((v) => v.key === subParam) ? (subParam as ConsultView) : "overview";
 
   // Kept in a ref so the navigation callbacks stay referentially stable — they
   // are passed into the code-split panels, which would otherwise see a new
@@ -597,12 +607,16 @@ function DocDashboardInner() {
     router.replace(`/doc-login/dashboard?${params.toString()}`, { scroll: false });
   }, [router]);
 
-  const setEarnView = useCallback((sub: EarnView) => {
+  /** Move to a sub-view of a specific panel (the URL carries both). */
+  const setSubView = useCallback((tab: View, sub: string) => {
     const params = new URLSearchParams(searchRef.current);
-    params.set("tab", "charging");
+    params.set("tab", tab);
     params.set("sub", sub);
     router.replace(`/doc-login/dashboard?${params.toString()}`, { scroll: false });
   }, [router]);
+
+  const setEarnView = useCallback((sub: EarnView) => setSubView("charging", sub), [setSubView]);
+  const setConsultView = useCallback((sub: ConsultView) => setSubView("consults", sub), [setSubView]);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -630,6 +644,13 @@ function DocDashboardInner() {
     // `count=1` skips building the whole monitoring panel just to show the tab.
     getJson<{ success: boolean; count?: number }>("/api/doc-login/monitoring/patients?count=1")
       .then((m) => { if (m.success) setMonitoringCount(m.count ?? 0); })
+      .catch(() => {});
+
+    // Shared with the Care Plan panel through the client cache — one request.
+    getJson<{ success: boolean; unread_messages?: number; awaiting_assessment?: number }>("/api/doc-login/consults")
+      .then((c) => {
+        if (c.success) setConsultAlerts((c.unread_messages ?? 0) + (c.awaiting_assessment ?? 0));
+      })
       .catch(() => {});
 
     getJson<{ success: boolean; pricing: { ready?: boolean; theme?: string | null } | null }>("/api/doc-login/pricing")
@@ -665,12 +686,13 @@ function DocDashboardInner() {
     {
       label: "Practice",
       items: [
+        { key: "consults", label: "Care Plan", icon: HeartPulse, badge: consultAlerts },
         { key: "charging", label: "Earn", icon: CreditCard, alert: chargingReady === false },
         // Only doctors with HMO monitoring assignments get this entry — but
         // keep it if a deep link put us on that panel, so the sidebar still
         // shows where we are.
         ...(monitoringCount || view === "monitoring"
-          ? [{ key: "monitoring", label: "Monitoring", icon: HeartPulse, badge: monitoringCount ?? 0 }]
+          ? [{ key: "monitoring", label: "Monitoring", icon: Activity, badge: monitoringCount ?? 0 }]
           : []),
       ],
     },
@@ -678,7 +700,6 @@ function DocDashboardInner() {
       label: "Patients",
       items: [
         { key: "requests", label: "Lab Requests", icon: FlaskConical, badge: counts.all },
-        { key: "referrals", label: "Referrals", icon: Send },
       ],
     },
     {
@@ -690,8 +711,18 @@ function DocDashboardInner() {
   ];
 
   const parent = PARENT_OF[view];
-  const subMenu = view === "charging" ? EARN_VIEWS.map((v) => ({ key: v.key, label: v.label })) : SUB_MENUS[parent] ?? [];
-  const subActive = view === "charging" ? earnView : view;
+  const subMenu: { key: string; label: string }[] =
+    view === "consults" ? CONSULT_VIEWS.map((v) => ({ key: v.key, label: v.label }))
+    : view === "charging" ? EARN_VIEWS.map((v) => ({ key: v.key, label: v.label }))
+    : SUB_MENUS[parent] ?? [];
+  const subActive =
+    view === "consults" ? consultView : view === "charging" ? earnView : view;
+
+  const onSubSelect = (key: string) => {
+    if (view === "consults") setConsultView(key as ConsultView);
+    else if (view === "charging") setEarnView(key as EarnView);
+    else navigate(key as View);
+  };
 
   return (
     <div className={`min-h-dvh bg-gradient-to-br from-sky-50 via-blue-50 to-indigo-50 ${themeClass(docTheme)}`}>
@@ -791,11 +822,7 @@ function DocDashboardInner() {
         />
 
         <main className="min-w-0 flex-1">
-          <DoctorSubNav
-            items={subMenu}
-            activeKey={subActive}
-            onSelect={(key) => (view === "charging" ? setEarnView(key as EarnView) : navigate(key as View))}
-          />
+          <DoctorSubNav items={subMenu} activeKey={subActive} onSelect={onSubSelect} />
 
           {error && (
             <div className="mb-4 rounded-xl border border-red-100 bg-red-50 px-4 py-3 text-sm text-red-600">{error}</div>
@@ -816,9 +843,11 @@ function DocDashboardInner() {
             </div>
           )}
 
-          {view === "monitoring" && <DoctorMonitoringSection />}
+          {view === "consults" && (
+            <DoctorConsultsSection view={consultView} onViewChange={setConsultView} />
+          )}
 
-          {view === "referrals" && <DoctorReferralsSection />}
+          {view === "monitoring" && <DoctorMonitoringSection />}
 
           {view === "security" && (
             <div className="xl:max-w-3xl">

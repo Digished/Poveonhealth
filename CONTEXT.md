@@ -35,6 +35,26 @@
   - Request form pre-filled with lab ID
   - Health assistant works per-lab catalog
 
+### 3b. Care Plan (`/consults`)
+An annual subscription for people living with **hypertension** or **diabetes**.
+- One yearly payment (price set by admin, default ₦10,000) via Paystack
+- Member gets a care code (discounts at partner labs and pharmacies) plus an
+  allowance of asynchronous messages to a doctor (default 10 per year)
+- Sign-up is a multistep form that asks for the member's goal for the year
+- The platform assigns each new member to the accepting doctor carrying the
+  fewest members and still under their own yearly cap
+- The doctor's share (default ₦6,000 per member-year) is held as a pending
+  entitlement and released into their wallet in monthly instalments
+  (pool ÷ release months); a member who leaves stops accruing
+- Admin controls price, doctor share, allowance, caps and discounts, and runs
+  the monthly release
+- Partner **pharmacies** are created by an admin, sign in with an emailed code
+  at `/pharmacy-login`, verify care codes and track their own regulars
+
+Routes: `/consults`, `/consults/login`, `/consults/dashboard`, `/consults/paid`,
+`/pharmacy-login`, `/pharmacy-dashboard`. Doctor side lives in the Care Plan tab
+of `/doc-login/dashboard`; admin side in the Care Plan and Pharmacies tabs.
+
 ### 4. Public Pages
 - `/` - Landing page (the old `/home` route now redirects here)
 - `/about` - Company mission and values

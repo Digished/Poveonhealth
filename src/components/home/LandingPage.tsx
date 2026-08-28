@@ -771,6 +771,7 @@ export function LandingPage({ labs, stats }: { labs: LandingLab[]; stats: Landin
                 { href: "/#features", label: "Features" },
                 { href: "/#choose-lab", label: "Find a lab" },
                 { href: "/refer", label: "Refer a patient" },
+                { href: "/consults", label: "Care plan" },
               ]}
             />
             <FooterCol
@@ -780,6 +781,7 @@ export function LandingPage({ labs, stats }: { labs: LandingLab[]; stats: Landin
                 { href: "/doc-login", label: "Medical professional" },
                 { href: "/login", label: "Patient" },
                 { href: "/hospital-login", label: "Hospital" },
+                { href: "/pharmacy-login", label: "Pharmacy" },
               ]}
             />
             <FooterCol

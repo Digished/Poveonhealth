@@ -6,7 +6,7 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import {
   ArrowRight, ChevronDown, FlaskConical, Stethoscope, User, Building2,
-  LayoutDashboard, LogOut, Menu, X, ShieldCheck, Code2, Truck, TrendingUp, Sparkles,
+  LayoutDashboard, LogOut, Menu, X, ShieldCheck, Code2, Truck, TrendingUp, Sparkles, HeartPulse, Pill,
 } from "lucide-react";
 import { PoveonLogo } from "@/components/PoveonLogo";
 
@@ -51,6 +51,8 @@ const PORTALS = [
 ];
 
 const MORE_PORTALS = [
+  { href: "/consults", icon: HeartPulse, label: "Care plan" },
+  { href: "/pharmacy-login", icon: Pill, label: "Pharmacy" },
   { href: "/scale", icon: TrendingUp, label: "Marketer" },
   { href: "/logistics", icon: Truck, label: "Logistics" },
   { href: "/rider", icon: Truck, label: "Rider" },

@@ -8,7 +8,7 @@ import {
   Phone, Upload, Check, MapPin, Users, ChevronRight, ChevronDown, ChevronUp,
   Code2, Key, Copy, TrendingUp, Link, Sun, Moon, Star, GitBranch,
   ArrowUpRight, ArrowDownRight, ArrowDownToLine, Settings, CreditCard, MessageCircle,
-  BookOpen, Database, Sparkles, Search, Layers, UserCircle, Wallet, FileText, AlertCircle, Filter, Download, Stethoscope, Mail, Zap, HeartPulse, Gift, HeartHandshake,
+  BookOpen, Database, Sparkles, Search, Layers, UserCircle, Wallet, FileText, AlertCircle, Filter, Download, Stethoscope, Mail, Zap, HeartPulse, Gift, HeartHandshake, Pill, ShieldPlus,
 } from "lucide-react";
 import { useDashTheme } from "@/hooks/useDashTheme";
 import { renderLabSla, EMPTY_LAB_SLA, type LabSlaData } from "@/lib/labSlaTemplate";
@@ -22,6 +22,8 @@ import { AdminBroadcastTab } from "@/components/admin/AdminBroadcastTab";
 import { AdminHmoTab } from "@/components/admin/AdminHmoTab";
 import { AdminClientsTab } from "@/components/admin/AdminClientsTab";
 import { AdminPerksTab } from "@/components/admin/AdminPerksTab";
+import { AdminCarePlanTab } from "@/components/admin/AdminCarePlanTab";
+import { AdminPharmaciesTab } from "@/components/admin/AdminPharmaciesTab";
 import { AdminMetricsTab } from "@/components/admin/AdminMetricsTab";
 import { AdminLabPartnersModal } from "@/components/admin/AdminLabPartnersModal";
 import { SpecialtyTreePicker } from "@/components/admin/SpecialtyTreePicker";
@@ -36,7 +38,7 @@ import { createClient } from "@/lib/supabase/client"; // still used for auth sig
 import { useRouter } from "next/navigation";
 import { labUrl, labHost, LAB_SUBDOMAINS_ENABLED } from "@/lib/lab-urls";
 
-type AdminTab = "metrics" | "clients" | "requests" | "referrals" | "labs" | "analytics" | "marketers" | "lab-marketers" | "professionals" | "settings" | "transactions" | "knowledge-base" | "users" | "hospitals" | "agreements" | "skin" | "encounters" | "broadcast" | "hmo" | "perks";
+type AdminTab = "metrics" | "clients" | "requests" | "referrals" | "labs" | "analytics" | "marketers" | "lab-marketers" | "professionals" | "settings" | "transactions" | "knowledge-base" | "users" | "hospitals" | "agreements" | "skin" | "encounters" | "broadcast" | "hmo" | "perks" | "care-plan" | "pharmacies";
 
 interface ReferralGroup {
   key: string; // doctor_email
@@ -640,6 +642,8 @@ export function AdminDashboard() {
             { key: "broadcast" as AdminTab, label: "Bulk Email", icon: <Mail className="w-4 h-4" /> },
             { key: "hmo" as AdminTab, label: "HMOs", icon: <HeartPulse className="w-4 h-4" /> },
             { key: "perks" as AdminTab, label: "Perks & Rides", icon: <Gift className="w-4 h-4" /> },
+            { key: "care-plan" as AdminTab, label: "Care Plan", icon: <ShieldPlus className="w-4 h-4" /> },
+            { key: "pharmacies" as AdminTab, label: "Pharmacies", icon: <Pill className="w-4 h-4" /> },
           ];
           const current = tabs.find((t) => t.key === activeTab) ?? tabs[0];
           return (
@@ -1664,6 +1668,10 @@ export function AdminDashboard() {
         {activeTab === "hmo" && <AdminHmoTab />}
 
         {activeTab === "perks" && <AdminPerksTab />}
+
+        {activeTab === "care-plan" && <AdminCarePlanTab />}
+
+        {activeTab === "pharmacies" && <AdminPharmaciesTab />}
 
         {/* ── AGREEMENTS ── */}
         {activeTab === "agreements" && (
