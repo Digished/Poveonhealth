@@ -66,9 +66,26 @@ Routes: `/consults` (account creation), `/dashboard?tab=care` (the plan itself),
 Doctor side lives in the Care Plan tab of `/doc-login/dashboard`; admin side in
 the Care Plan and Pharmacies tabs.
 
+**Doctor credentialling:** a doctor cannot be assigned care-plan members until
+an admin approves them. They file MDCN number, annual practising licence (with
+a scan), qualifications and optional ID/CV under Care Plan → Credentials; an
+admin reviews it in Care Plan → Doctor approvals and approves, rejects with a
+reason, or revokes. `pickDoctorForMember` only ever considers
+`consult_approved` doctors. Credential documents live in a **private** Supabase
+bucket and are opened through short-lived signed URLs.
+
+**Test & medication plans:** an approved doctor schedules tests
+(`consult_test_orders`, with a recurrence that re-schedules itself when marked
+done) and records medication (`consult_prescriptions`) per member. Both show on
+the member's own dashboard alongside the reminder that their care code
+discounts them.
+
 **Installable (PWA):** `public/manifest.webmanifest` + `public/sw.js`, registered
 by `components/pwa/InstallPrompt.tsx`, which also offers "add to home screen"
-(the real prompt on Android, manual instructions on iOS). The service worker
+(the real prompt on Android, manual instructions on iOS). The app opens on
+`/signin`, which forwards a returning user to whichever portal they last used
+(patient or medical professional) and otherwise offers the choice; both login
+pages carry a `PortalSwitch` to cross over. The service worker
 caches build assets and an `/offline` fallback only — never `/api`, and never
 page HTML, so nothing personal is replayable from a shared phone.
 

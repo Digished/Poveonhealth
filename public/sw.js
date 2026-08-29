@@ -10,6 +10,7 @@
 const VERSION = "poveon-v1";
 const OFFLINE_URL = "/offline";
 const SHELL = [OFFLINE_URL, "/icon-192.png", "/icon-512.png", "/manifest.webmanifest"];
+// Bump VERSION whenever SHELL changes so old caches are dropped on activate.
 
 self.addEventListener("install", (event) => {
   event.waitUntil(

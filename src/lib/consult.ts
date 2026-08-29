@@ -150,19 +150,27 @@ export type AssignmentCandidate = {
 /**
  * Pick the doctor a new member should be assigned to.
  *
- * "Fairly" means: among doctors who are accepting members and are still below
- * their own yearly cap, take the one carrying the fewest active members. Ties
- * break towards whoever was assigned longest ago, so a burst of sign-ups
- * spreads out instead of piling onto whichever row the database returned first.
+ * "Fairly" means: among doctors an admin has approved for the care plan, who
+ * are accepting members and are still below their own yearly cap, take the one
+ * carrying the fewest active members. Ties break towards whoever was assigned
+ * longest ago, so a burst of sign-ups spreads out instead of piling onto
+ * whichever row the database returned first.
  *
- * Returns null when every doctor is full — the member still subscribes, and an
+ * Returns null when nobody is available — the member still subscribes, and an
  * admin can assign them by hand.
  */
 export async function pickDoctorForMember(): Promise<string | null> {
   const settings = await getConsultSettings();
 
+  // Only doctors an admin has cleared. Credentials are checked by hand — see
+  // DoctorCredential — so an unapproved doctor never receives a member.
   const profiles = await prisma.doctorProfile.findMany({
-    where: { claimed: true, consult_accepting: true, full_name: { not: null } },
+    where: {
+      claimed: true,
+      consult_accepting: true,
+      consult_approved: true,
+      full_name: { not: null },
+    },
     select: { email: true, consult_patient_cap: true },
   });
   if (profiles.length === 0) return null;

@@ -17,7 +17,7 @@ export async function GET(req: NextRequest, { params }: { params: { id: string }
       return NextResponse.json({ error: "Member not found." }, { status: 404 });
     }
 
-    const [messages, earning, redemptions] = await Promise.all([
+    const [messages, earning, redemptions, prescriptions, testOrders] = await Promise.all([
       prisma.consultMessage.findMany({
         where: { patient_id: patient.id },
         orderBy: { created_at: "asc" },
@@ -34,6 +34,16 @@ export async function GET(req: NextRequest, { params }: { params: { id: string }
         orderBy: { created_at: "desc" },
         take: 10,
         include: { pharmacy: { select: { name: true } } },
+      }),
+      prisma.consultPrescription.findMany({
+        where: { patient_id: patient.id },
+        orderBy: [{ status: "asc" }, { created_at: "desc" }],
+        take: 60,
+      }),
+      prisma.consultTestOrder.findMany({
+        where: { patient_id: patient.id },
+        orderBy: [{ status: "asc" }, { due_date: "asc" }],
+        take: 60,
       }),
     ]);
 
@@ -88,6 +98,8 @@ export async function GET(req: NextRequest, { params }: { params: { id: string }
         discount_naira: Number(r.discount_naira),
         created_at: r.created_at,
       })),
+      prescriptions,
+      test_orders: testOrders,
     });
   } catch (err) {
     console.error("[doc-login/consults/patients/[id]]", err);

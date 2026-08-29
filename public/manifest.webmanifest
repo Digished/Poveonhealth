@@ -1,22 +1,68 @@
 {
   "name": "Poveon Health",
   "short_name": "Poveon",
-  "description": "Your lab results, care plan and doctor — in one place.",
-  "id": "/dashboard",
-  "start_url": "/dashboard",
+  "description": "Your lab results, care plan, prescriptions and doctor \u2014 in one place.",
+  "id": "/signin",
+  "start_url": "/signin",
   "scope": "/",
   "display": "standalone",
   "orientation": "portrait",
   "background_color": "#f0f7ff",
   "theme_color": "#0270c3",
-  "categories": ["health", "medical"],
+  "categories": [
+    "health",
+    "medical"
+  ],
   "icons": [
-    { "src": "/icon-192.png", "sizes": "192x192", "type": "image/png", "purpose": "any" },
-    { "src": "/icon-512.png", "sizes": "512x512", "type": "image/png", "purpose": "any" },
-    { "src": "/icon-maskable-512.png", "sizes": "512x512", "type": "image/png", "purpose": "maskable" }
+    {
+      "src": "/icon-192.png",
+      "sizes": "192x192",
+      "type": "image/png",
+      "purpose": "any"
+    },
+    {
+      "src": "/icon-512.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "any"
+    },
+    {
+      "src": "/icon-maskable-512.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "maskable"
+    }
   ],
   "shortcuts": [
-    { "name": "My care plan", "url": "/dashboard?tab=care", "icons": [{ "src": "/icon-192.png", "sizes": "192x192" }] },
-    { "name": "My lab tests", "url": "/dashboard?tab=tests", "icons": [{ "src": "/icon-192.png", "sizes": "192x192" }] }
+    {
+      "name": "My care plan",
+      "url": "/dashboard?tab=care",
+      "icons": [
+        {
+          "src": "/icon-192.png",
+          "sizes": "192x192"
+        }
+      ]
+    },
+    {
+      "name": "My lab tests",
+      "url": "/dashboard?tab=tests",
+      "icons": [
+        {
+          "src": "/icon-192.png",
+          "sizes": "192x192"
+        }
+      ]
+    },
+    {
+      "name": "Doctor portal",
+      "url": "/doc-login/dashboard",
+      "icons": [
+        {
+          "src": "/icon-192.png",
+          "sizes": "192x192"
+        }
+      ]
+    }
   ]
 }

@@ -2114,6 +2114,104 @@ const migrations = [
     sql: `CREATE INDEX IF NOT EXISTS pharmacies_state_active_idx ON pharmacies (state, active)`,
     continueOnError: true,
   },
+
+  // ── Care-plan credentialling & orders ───────────────────────────────────
+  {
+    desc: "doctor_profiles.consult_approved (admin clears a doctor for the care plan)",
+    sql: `ALTER TABLE doctor_profiles ADD COLUMN IF NOT EXISTS consult_approved BOOLEAN NOT NULL DEFAULT false`,
+    continueOnError: true,
+  },
+  {
+    desc: "doctor_credentials table (licence, MDCN number, review status)",
+    sql: `CREATE TABLE IF NOT EXISTS doctor_credentials (
+      email TEXT PRIMARY KEY,
+      mdcn_number TEXT,
+      license_expires_at DATE,
+      license_doc_url TEXT,
+      id_doc_url TEXT,
+      cv_url TEXT,
+      qualifications TEXT,
+      specialty TEXT,
+      years_experience INTEGER,
+      note TEXT,
+      status TEXT NOT NULL DEFAULT 'unsubmitted',
+      submitted_at TIMESTAMP(3),
+      reviewed_at TIMESTAMP(3),
+      reviewed_by TEXT,
+      review_note TEXT,
+      created_at TIMESTAMP(3) NOT NULL DEFAULT now(),
+      updated_at TIMESTAMP(3) NOT NULL DEFAULT now()
+    )`,
+    continueOnError: true,
+  },
+  {
+    desc: "doctor_credentials review-queue index",
+    sql: `CREATE INDEX IF NOT EXISTS doctor_credentials_status_idx ON doctor_credentials (status, submitted_at)`,
+    continueOnError: true,
+  },
+  {
+    desc: "consult_prescriptions table (medication plan)",
+    sql: `CREATE TABLE IF NOT EXISTS consult_prescriptions (
+      id TEXT PRIMARY KEY,
+      patient_id TEXT NOT NULL,
+      doctor_email TEXT NOT NULL,
+      medication TEXT NOT NULL,
+      dosage TEXT,
+      frequency TEXT,
+      duration_days INTEGER,
+      instructions TEXT,
+      start_date DATE,
+      end_date DATE,
+      status TEXT NOT NULL DEFAULT 'active',
+      stopped_note TEXT,
+      created_at TIMESTAMP(3) NOT NULL DEFAULT now(),
+      updated_at TIMESTAMP(3) NOT NULL DEFAULT now()
+    )`,
+    continueOnError: true,
+  },
+  {
+    desc: "consult_prescriptions patient index",
+    sql: `CREATE INDEX IF NOT EXISTS consult_prescriptions_patient_created_idx ON consult_prescriptions (patient_id, created_at)`,
+    continueOnError: true,
+  },
+  {
+    desc: "consult_prescriptions doctor index",
+    sql: `CREATE INDEX IF NOT EXISTS consult_prescriptions_doctor_status_idx ON consult_prescriptions (doctor_email, status)`,
+    continueOnError: true,
+  },
+  {
+    desc: "consult_test_orders table (monitoring schedule)",
+    sql: `CREATE TABLE IF NOT EXISTS consult_test_orders (
+      id TEXT PRIMARY KEY,
+      patient_id TEXT NOT NULL,
+      doctor_email TEXT NOT NULL,
+      tests TEXT NOT NULL,
+      reason TEXT,
+      due_date DATE,
+      recurrence TEXT NOT NULL DEFAULT 'once',
+      status TEXT NOT NULL DEFAULT 'scheduled',
+      completed_at TIMESTAMP(3),
+      result_note TEXT,
+      created_at TIMESTAMP(3) NOT NULL DEFAULT now(),
+      updated_at TIMESTAMP(3) NOT NULL DEFAULT now()
+    )`,
+    continueOnError: true,
+  },
+  {
+    desc: "consult_test_orders patient index",
+    sql: `CREATE INDEX IF NOT EXISTS consult_test_orders_patient_created_idx ON consult_test_orders (patient_id, created_at)`,
+    continueOnError: true,
+  },
+  {
+    desc: "consult_test_orders doctor index",
+    sql: `CREATE INDEX IF NOT EXISTS consult_test_orders_doctor_status_idx ON consult_test_orders (doctor_email, status)`,
+    continueOnError: true,
+  },
+  {
+    desc: "consult_test_orders due-date index (what's overdue)",
+    sql: `CREATE INDEX IF NOT EXISTS consult_test_orders_status_due_idx ON consult_test_orders (status, due_date)`,
+    continueOnError: true,
+  },
 ];
 
 let failed = false;

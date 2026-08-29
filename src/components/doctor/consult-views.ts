@@ -9,6 +9,7 @@ export const CONSULT_VIEWS = [
   { key: "members", label: "My members" },
   { key: "earnings", label: "Earnings" },
   { key: "intake", label: "Intake" },
+  { key: "credentials", label: "Credentials" },
 ] as const;
 
 export type ConsultView = (typeof CONSULT_VIEWS)[number]["key"];

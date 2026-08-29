@@ -331,6 +331,9 @@ model DoctorProfile {
   // ── Care plan (/consults) ────────────────────────────────────────────────
   consult_accepting    Boolean @default(true) // taking new care-plan members
   consult_patient_cap  Int? // members this doctor will take per year (null = platform default)
+  // Set by an admin after reviewing the doctor's credentials. Nobody manages
+  // care-plan members without it — see DoctorCredential.
+  consult_approved     Boolean @default(false)
 
   updated_at     DateTime @updatedAt
 
@@ -1909,6 +1912,8 @@ model ConsultPatient {
   earnings           ConsultEarning[]
   redemptions        ConsultRedemption[]
   pharmacy_customers PharmacyCustomer[]
+  prescriptions      ConsultPrescription[]
+  test_orders        ConsultTestOrder[]
 
   @@index([doctor_email, status])
   @@index([status, expires_at])
@@ -2065,4 +2070,84 @@ model ConsultRedemption {
   @@index([patient_id, created_at])
   @@index([pharmacy_id, created_at])
   @@map("consult_redemptions")
+}
+
+
+// Practising credentials a doctor submits to be cleared for the care plan, and
+// the admin's decision on them. One row per doctor, keyed by their email like
+// DoctorProfile.
+model DoctorCredential {
+  email              String    @id
+  mdcn_number        String? // MDCN folio / registration number
+  license_expires_at DateTime? @db.Date // annual practising licence expiry
+  license_doc_url    String? // scan of the current practising licence
+  id_doc_url         String? // government ID
+  cv_url             String?
+  qualifications     String? // e.g. "MBBS (Ibadan), FWACP"
+  specialty          String?
+  years_experience   Int?
+  note               String? // anything the doctor wants the reviewer to know
+
+  status       String    @default("unsubmitted") // unsubmitted | pending | approved | rejected
+  submitted_at DateTime?
+  reviewed_at  DateTime?
+  reviewed_by  String?
+  review_note  String? // why it was rejected, or any condition attached
+
+  created_at DateTime @default(now())
+  updated_at DateTime @updatedAt
+
+  @@index([status, submitted_at])
+  @@map("doctor_credentials")
+}
+
+// A medication a care-plan doctor has put their member on. Not a dispensing
+// record — it is the plan the member and their pharmacy work from.
+model ConsultPrescription {
+  id            String    @id @default(uuid())
+  patient_id    String
+  doctor_email  String
+  medication    String // e.g. "Amlodipine 5mg"
+  dosage        String? // e.g. "1 tablet"
+  frequency     String? // e.g. "Once daily, morning"
+  duration_days Int?
+  instructions  String?
+  start_date    DateTime? @db.Date
+  end_date      DateTime? @db.Date // derived from duration when not given
+  status        String    @default("active") // active | completed | stopped
+  stopped_note  String?
+  created_at    DateTime  @default(now())
+  updated_at    DateTime  @updatedAt
+
+  patient ConsultPatient @relation(fields: [patient_id], references: [id], onDelete: Cascade)
+
+  @@index([patient_id, created_at])
+  @@index([doctor_email, status])
+  @@map("consult_prescriptions")
+}
+
+// A test the doctor wants done by a date — the monitoring schedule that makes
+// the plan more than a discount card.
+model ConsultTestOrder {
+  id           String    @id @default(uuid())
+  patient_id   String
+  doctor_email String
+  tests        String // free text, comma separated — matches how requests are written
+  reason       String?
+  due_date     DateTime? @db.Date
+  // once | monthly | quarterly | biannual | annual — when done, a recurring
+  // order schedules the next one.
+  recurrence   String    @default("once")
+  status       String    @default("scheduled") // scheduled | done | cancelled
+  completed_at DateTime?
+  result_note  String?
+  created_at   DateTime  @default(now())
+  updated_at   DateTime  @updatedAt
+
+  patient ConsultPatient @relation(fields: [patient_id], references: [id], onDelete: Cascade)
+
+  @@index([patient_id, created_at])
+  @@index([doctor_email, status])
+  @@index([status, due_date])
+  @@map("consult_test_orders")
 }

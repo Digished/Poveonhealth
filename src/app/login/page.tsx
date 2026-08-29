@@ -4,6 +4,8 @@ import { useState, useRef, useEffect, Suspense } from "react";
 import { Mail, KeyRound, ArrowRight, RefreshCw, ChevronLeft, Lock, ShieldCheck } from "lucide-react";
 import { PoveonLogo } from "@/components/PoveonLogo";
 import { useRouter } from "next/navigation";
+import { PortalSwitch } from "@/components/ui/PortalSwitch";
+import { rememberPortal } from "@/lib/portal-preference";
 
 type Stage = "email" | "pin" | "otp" | "create-pin";
 
@@ -150,6 +152,7 @@ function PatientLoginInner() {
     if (code.length !== 4) { setError("Please enter all 4 digits."); return; }
     setLoading(true);
     try {
+      rememberPortal("patient");
       const res = await fetch("/api/patient/verify-pin", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -241,6 +244,8 @@ function PatientLoginInner() {
           <h1 className="text-xl font-bold text-slate-800">Patient Portal</h1>
           <p className="text-sm text-slate-500 mt-1">View your lab test requests and results</p>
         </div>
+
+        <PortalSwitch active="patient" />
 
         <div className="bg-white/80 backdrop-blur-sm border border-white/60 rounded-3xl shadow-xl p-6">
 

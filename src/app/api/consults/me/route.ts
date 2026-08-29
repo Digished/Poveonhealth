@@ -59,7 +59,7 @@ export async function GET(req: NextRequest) {
       });
     }
 
-    const [doctor, messages, redemptions] = await Promise.all([
+    const [doctor, messages, redemptions, prescriptions, testOrders] = await Promise.all([
       member.doctor_email
         ? prisma.doctorProfile.findUnique({
             where: { email: member.doctor_email },
@@ -76,6 +76,16 @@ export async function GET(req: NextRequest) {
         orderBy: { created_at: "desc" },
         take: 20,
         include: { pharmacy: { select: { name: true } } },
+      }),
+      prisma.consultPrescription.findMany({
+        where: { patient_id: member.id },
+        orderBy: [{ status: "asc" }, { created_at: "desc" }],
+        take: 60,
+      }),
+      prisma.consultTestOrder.findMany({
+        where: { patient_id: member.id },
+        orderBy: [{ status: "asc" }, { due_date: "asc" }],
+        take: 60,
       }),
     ]);
 
@@ -130,6 +140,8 @@ export async function GET(req: NextRequest) {
         discount_naira: Number(r.discount_naira),
         created_at: r.created_at,
       })),
+      prescriptions,
+      test_orders: testOrders,
     });
   } catch (err) {
     console.error("[consults/me]", err);

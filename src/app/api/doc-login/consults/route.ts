@@ -28,7 +28,10 @@ export async function GET(req: NextRequest) {
       getDoctorConsultWallet(email),
       prisma.doctorProfile.findUnique({
         where: { email },
-        select: { consult_accepting: true, consult_patient_cap: true, full_name: true },
+        select: {
+          consult_accepting: true, consult_patient_cap: true, full_name: true,
+          consult_approved: true,
+        },
       }),
       // Members waiting on a reply.
       prisma.consultMessage.count({
@@ -56,6 +59,8 @@ export async function GET(req: NextRequest) {
 
     return NextResponse.json({
       success: true,
+      // Cleared by an admin to manage care-plan members — see DoctorCredential.
+      approved: !!profile?.consult_approved,
       wallet,
       unread_messages: unread,
       awaiting_assessment: awaitingAssessment,

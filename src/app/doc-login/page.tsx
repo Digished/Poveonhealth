@@ -11,6 +11,8 @@ import { PrefixSelect } from "@/components/PrefixSelect";
 import { BankAccountInput } from "@/components/BankAccountInput";
 import { PhoneInput } from "@/components/PhoneInput";
 import { useRouter, useSearchParams } from "next/navigation";
+import { PortalSwitch } from "@/components/ui/PortalSwitch";
+import { rememberPortal } from "@/lib/portal-preference";
 
 type Stage = "email" | "pin" | "otp" | "claim" | "onboarding" | "create-pin";
 
@@ -292,6 +294,7 @@ function DocLoginInner() {
     if (code.length !== 4) { setError("Please enter all 4 digits."); return; }
     setLoading(true);
     try {
+      rememberPortal("doctor");
       const res = await fetch("/api/doc-login/verify-pin", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -475,6 +478,8 @@ function DocLoginInner() {
           <h1 className="text-xl font-bold text-slate-800">Doctor Portal</h1>
           <p className="text-sm text-slate-500 mt-1">Charge per consultation, send referrals, and track your lab requests &amp; results</p>
         </div>
+
+        <PortalSwitch active="doctor" />
 
         <div className="bg-white/80 backdrop-blur-sm border border-white/60 rounded-3xl shadow-xl p-6">
 

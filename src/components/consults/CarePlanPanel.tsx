@@ -3,7 +3,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import {
   Check, Copy, FlaskConical, HeartPulse, Loader2, MessageSquareText, Pill,
-  Send, Stethoscope, CalendarDays, ArrowRight, RefreshCw,
+  Send, Stethoscope, CalendarDays, ArrowRight, RefreshCw, CalendarClock, RotateCw,
 } from "lucide-react";
 import { SectionLoader } from "@/components/PageLoader";
 import { getJson, invalidateJson } from "@/lib/client-cache";
@@ -24,6 +24,14 @@ type Message = { id: string; sender: string; body: string; created_at: string };
 type Redemption = {
   id: string; kind: string; description: string | null; pharmacy_name: string | null;
   gross_naira: number; discount_naira: number; created_at: string;
+};
+type Prescription = {
+  id: string; medication: string; dosage: string | null; frequency: string | null;
+  instructions: string | null; start_date: string | null; end_date: string | null; status: string;
+};
+type TestOrder = {
+  id: string; tests: string; reason: string | null; due_date: string | null;
+  recurrence: string; status: string;
 };
 
 const naira = (n: number) => `₦${Math.round(n).toLocaleString("en-NG")}`;
@@ -54,6 +62,8 @@ export function CarePlanPanel({
   const [doctor, setDoctor] = useState<Doctor | null>(null);
   const [messages, setMessages] = useState<Message[]>([]);
   const [redemptions, setRedemptions] = useState<Redemption[]>([]);
+  const [prescriptions, setPrescriptions] = useState<Prescription[]>([]);
+  const [testOrders, setTestOrders] = useState<TestOrder[]>([]);
   // Seeded rather than null, so a failed call still shows the invitation
   // instead of an empty tab.
   const [benefits, setBenefits] = useState<CarePlanBenefits>({
@@ -80,6 +90,8 @@ export function CarePlanPanel({
       setDoctor(data.doctor ?? null);
       setMessages(data.messages ?? []);
       setRedemptions(data.redemptions ?? []);
+      setPrescriptions(data.prescriptions ?? []);
+      setTestOrders(data.test_orders ?? []);
       if (data.benefits) setBenefits(data.benefits);
       setPrefill(data.prefill ?? {});
     } finally {
@@ -168,6 +180,8 @@ export function CarePlanPanel({
                 />
               </div>
             </div>
+
+            <CareSchedule prescriptions={prescriptions} testOrders={testOrders} />
 
             {redemptions.length > 0 && (
               <div className="rounded-2xl border border-slate-100 bg-white p-4 shadow-sm">
@@ -286,6 +300,113 @@ function Benefit({ icon, value, label }: { icon: React.ReactNode; value: string;
       <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-medical-50 text-medical-600">{icon}</div>
       <p className="mt-2.5 text-base font-extrabold text-slate-900">{value}</p>
       <p className="mt-0.5 text-xs leading-relaxed text-slate-500">{label}</p>
+    </div>
+  );
+}
+
+const RECURRENCE_LABEL: Record<string, string> = {
+  once: "One-off",
+  monthly: "Every month",
+  quarterly: "Every 3 months",
+  biannual: "Every 6 months",
+  annual: "Every year",
+};
+
+/** Days until a date; negative means it has passed. */
+function daysUntil(iso: string | null): number | null {
+  if (!iso) return null;
+  const due = new Date(iso);
+  if (Number.isNaN(due.getTime())) return null;
+  const today = new Date();
+  today.setHours(0, 0, 0, 0);
+  due.setHours(0, 0, 0, 0);
+  return Math.round((due.getTime() - today.getTime()) / 86_400_000);
+}
+
+/** What the member's doctor has put them on, and what they owe the lab. */
+function CareSchedule({
+  prescriptions, testOrders,
+}: {
+  prescriptions: Prescription[]; testOrders: TestOrder[];
+}) {
+  const meds = prescriptions.filter((p) => p.status === "active");
+  const due = testOrders.filter((t) => t.status === "scheduled");
+  if (meds.length === 0 && due.length === 0) return null;
+
+  return (
+    <div className="space-y-4">
+      {due.length > 0 && (
+        <div className="rounded-2xl border border-slate-100 bg-white p-4 shadow-sm">
+          <h3 className="flex items-center gap-1.5 text-xs font-bold uppercase tracking-wider text-slate-400">
+            <FlaskConical className="h-3.5 w-3.5" />
+            Tests your doctor wants
+          </h3>
+          <ul className="mt-3 space-y-2">
+            {due.map((t) => {
+              const days = daysUntil(t.due_date);
+              const overdue = days != null && days < 0;
+              return (
+                <li
+                  key={t.id}
+                  className={`rounded-xl border px-3 py-2.5 ${
+                    overdue ? "border-amber-200 bg-amber-50" : "border-slate-100 bg-slate-50/70"
+                  }`}
+                >
+                  <p className="text-sm font-semibold text-slate-800">{t.tests}</p>
+                  {t.reason && <p className="mt-0.5 text-xs text-slate-500">{t.reason}</p>}
+                  <p className="mt-1 flex flex-wrap items-center gap-x-2 text-[11px]">
+                    <span className={overdue ? "font-bold text-amber-700" : "text-slate-500"}>
+                      <CalendarClock className="mr-1 inline h-3 w-3" />
+                      {t.due_date
+                        ? overdue
+                          ? "Overdue"
+                          : days === 0
+                          ? "Due today"
+                          : `Due ${formatDate(t.due_date)}`
+                        : "No date set"}
+                    </span>
+                    {t.recurrence !== "once" && (
+                      <span className="inline-flex items-center gap-0.5 text-slate-400">
+                        <RotateCw className="h-3 w-3" />
+                        {RECURRENCE_LABEL[t.recurrence] ?? t.recurrence}
+                      </span>
+                    )}
+                  </p>
+                </li>
+              );
+            })}
+          </ul>
+          <p className="mt-2.5 text-[11px] text-slate-400">
+            Your care code takes money off these at any partner lab.
+          </p>
+        </div>
+      )}
+
+      {meds.length > 0 && (
+        <div className="rounded-2xl border border-slate-100 bg-white p-4 shadow-sm">
+          <h3 className="flex items-center gap-1.5 text-xs font-bold uppercase tracking-wider text-slate-400">
+            <Pill className="h-3.5 w-3.5" />
+            Your medication
+          </h3>
+          <ul className="mt-3 space-y-2">
+            {meds.map((m) => (
+              <li key={m.id} className="rounded-xl border border-slate-100 bg-slate-50/70 px-3 py-2.5">
+                <p className="text-sm font-semibold text-slate-800">{m.medication}</p>
+                <p className="mt-0.5 text-xs text-slate-500">
+                  {[m.dosage, m.frequency].filter(Boolean).join(" · ") || "As directed"}
+                </p>
+                {m.instructions && <p className="mt-1 text-xs text-slate-500">{m.instructions}</p>}
+                <p className="mt-1 text-[11px] text-slate-400">
+                  {m.end_date ? `Until ${formatDate(m.end_date)}` : "Ongoing"}
+                </p>
+              </li>
+            ))}
+          </ul>
+          <p className="mt-2.5 text-[11px] text-slate-400">
+            Show your care code at a partner pharmacy for money off these.
+          </p>
+        </div>
+      )}
     </div>
   );
 }

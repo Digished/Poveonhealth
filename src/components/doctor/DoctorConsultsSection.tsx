@@ -7,6 +7,12 @@ import {
 } from "lucide-react";
 import { getJson, invalidateJson } from "@/lib/client-cache";
 import type { ConsultView } from "@/components/doctor/consult-views";
+import { DoctorCredentialsPanel } from "@/components/doctor/DoctorCredentialsPanel";
+import {
+  CarePlanOrders,
+  type Prescription,
+  type TestOrder,
+} from "@/components/doctor/CarePlanOrders";
 
 const naira = (n: number) => `₦${Math.round(n).toLocaleString("en-NG")}`;
 const CONDITION_LABEL: Record<string, string> = { hypertension: "Hypertension", diabetes: "Diabetes" };
@@ -24,6 +30,7 @@ type Overview = {
   awaiting_assessment: number;
   preferences: Preferences;
   payouts: Payout[];
+  approved: boolean;
 };
 
 type MemberRow = {
@@ -47,6 +54,8 @@ type MemberDetailData = {
   };
   earning: { total: number; released: number; pending: number; status: string } | null;
   messages: Message[];
+  prescriptions: Prescription[];
+  test_orders: TestOrder[];
 };
 
 function formatDate(iso: string | null) {
@@ -104,6 +113,7 @@ export function DoctorConsultsSection({
     return (
       <MemberDetail
         id={openMemberId}
+        canPrescribe={!!overview?.approved}
         onBack={() => { setOpenMemberId(null); invalidateJson("/api/doc-login/consults"); load(true); }}
       />
     );
@@ -125,6 +135,11 @@ export function DoctorConsultsSection({
           preferences={overview?.preferences ?? null}
           activePatients={overview?.wallet.active_patients ?? 0}
           onSaved={(prefs) => setOverview((o) => (o ? { ...o, preferences: prefs } : o))}
+        />
+      )}
+      {view === "credentials" && (
+        <DoctorCredentialsPanel
+          onApproved={(approved) => setOverview((o) => (o ? { ...o, approved } : o))}
         />
       )}
     </div>
@@ -446,13 +461,23 @@ function ListSkeleton() {
 
 // ── One member ──────────────────────────────────────────────────────────────
 
-function MemberDetail({ id, onBack }: { id: string; onBack: () => void }) {
+function MemberDetail({
+  id, canPrescribe, onBack,
+}: {
+  id: string; canPrescribe: boolean; onBack: () => void;
+}) {
   const [data, setData] = useState<MemberDetailData | null>(null);
   const [loading, setLoading] = useState(true);
   const [body, setBody] = useState("");
   const [sending, setSending] = useState(false);
   const [error, setError] = useState("");
   const endRef = useRef<HTMLDivElement | null>(null);
+
+  const reload = useCallback(async () => {
+    const res = await fetch(`/api/doc-login/consults/patients/${id}`, { cache: "no-store" });
+    const d = await res.json();
+    if (d.success) setData(d);
+  }, [id]);
 
   useEffect(() => {
     let cancelled = false;
@@ -540,6 +565,14 @@ function MemberDetail({ id, onBack }: { id: string; onBack: () => void }) {
               <DetailRow label="Messages" value={`${p.messages_used} of ${p.message_allowance} used`} />
             </dl>
           </div>
+
+          <CarePlanOrders
+            patientId={p.id}
+            prescriptions={data.prescriptions ?? []}
+            testOrders={data.test_orders ?? []}
+            canPrescribe={canPrescribe}
+            onChanged={reload}
+          />
 
           {data.earning && (
             <div className="rounded-2xl border border-slate-100 bg-white p-4 shadow-sm">

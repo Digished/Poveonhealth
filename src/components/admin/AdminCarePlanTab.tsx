@@ -3,8 +3,8 @@
 import { useCallback, useEffect, useState } from "react";
 import { toast } from "react-hot-toast";
 import {
-  Banknote, Check, HeartPulse, Loader2, Play, RefreshCw, Save, Search,
-  Settings2, TrendingUp, Users, UserCog,
+  BadgeCheck, Banknote, Check, ExternalLink, FileText, HeartPulse, Loader2, Play,
+  RefreshCw, Save, Search, Settings2, ShieldCheck, TrendingUp, Users, UserCog, X,
 } from "lucide-react";
 
 type Settings = {
@@ -49,7 +49,7 @@ const STATUS_STYLES: Record<string, string> = {
   cancelled: "bg-red-100 text-red-600",
 };
 
-type SubTab = "members" | "pricing" | "payouts";
+type SubTab = "members" | "doctors" | "pricing" | "payouts";
 
 export function AdminCarePlanTab() {
   const [subTab, setSubTab] = useState<SubTab>("members");
@@ -70,6 +70,7 @@ export function AdminCarePlanTab() {
       <div className="flex gap-1 rounded-xl bg-white/5 p-1">
         {([
           ["members", "Members", Users],
+          ["doctors", "Doctor approvals", ShieldCheck],
           ["pricing", "Pricing", Settings2],
           ["payouts", "Doctor payouts", Banknote],
         ] as const).map(([key, label, Icon]) => (
@@ -87,6 +88,7 @@ export function AdminCarePlanTab() {
       </div>
 
       {subTab === "members" && <MembersPanel />}
+      {subTab === "doctors" && <DoctorApprovalsPanel />}
       {subTab === "pricing" && <PricingPanel />}
       {subTab === "payouts" && <PayoutsPanel />}
     </div>
@@ -280,6 +282,255 @@ function AdminStat({
       <div className={`flex h-8 w-8 items-center justify-center rounded-lg ${tones[tone]}`}>{icon}</div>
       <p className="mt-2.5 truncate text-xl font-extrabold text-white">{value}</p>
       <p className="text-xs text-slate-400">{label}</p>
+    </div>
+  );
+}
+
+// ── Doctor approvals ────────────────────────────────────────────────────────
+
+type CredentialRow = {
+  email: string;
+  doctor_name: string | null;
+  phone: string | null;
+  hospitals: string[];
+  mdcn_number: string | null;
+  license_expires_at: string | null;
+  license_doc_url: string | null;
+  id_doc_url: string | null;
+  cv_url: string | null;
+  qualifications: string | null;
+  specialty: string | null;
+  years_experience: number | null;
+  note: string | null;
+  status: string;
+  submitted_at: string | null;
+  reviewed_at: string | null;
+  review_note: string | null;
+  approved: boolean;
+  active_members: number;
+};
+
+const CRED_STATUS: Record<string, string> = {
+  pending: "bg-amber-100 text-amber-700",
+  approved: "bg-emerald-100 text-emerald-700",
+  rejected: "bg-red-100 text-red-600",
+  unsubmitted: "bg-slate-100 text-slate-500",
+};
+
+/**
+ * Every doctor who has filed credentials, pending first.
+ *
+ * Approving is what lets a doctor be assigned care-plan members at all, so the
+ * documents are here to be opened, not just ticked off.
+ */
+function DoctorApprovalsPanel() {
+  const [rows, setRows] = useState<CredentialRow[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [busy, setBusy] = useState<string | null>(null);
+  const [filter, setFilter] = useState("");
+
+  const load = useCallback(async () => {
+    setLoading(true);
+    try {
+      const params = new URLSearchParams();
+      if (filter) params.set("status", filter);
+      const res = await fetch(`/api/admin/doctor-credentials?${params}`, { cache: "no-store" });
+      const d = await res.json();
+      if (d.success) setRows(d.credentials);
+    } catch {
+      toast.error("Failed to load applications.");
+    } finally {
+      setLoading(false);
+    }
+  }, [filter]);
+
+  useEffect(() => { load(); }, [load]);
+
+  async function decide(email: string, decision: "approve" | "reject" | "revoke") {
+    let note: string | null = null;
+    if (decision === "reject") {
+      note = window.prompt("What does this doctor need to fix? (emailed to them)");
+      if (note === null) return;
+    } else if (decision === "revoke") {
+      if (!window.confirm("Stop assigning new members to this doctor? Members they already carry stay with them.")) return;
+    }
+    setBusy(email);
+    try {
+      const res = await fetch("/api/admin/doctor-credentials", {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ email, decision, note }),
+      });
+      const d = await res.json();
+      if (!res.ok || !d.success) { toast.error(d.error ?? "That didn't work."); return; }
+      toast.success(
+        decision === "approve" ? "Approved — the doctor has been emailed"
+        : decision === "reject" ? "Rejected — the doctor has been emailed"
+        : "Approval revoked"
+      );
+      load();
+    } finally {
+      setBusy(null);
+    }
+  }
+
+  async function openDocument(email: string, slot: string) {
+    const res = await fetch(
+      `/api/admin/doctor-credentials/document?email=${encodeURIComponent(email)}&slot=${slot}`
+    );
+    const d = await res.json();
+    if (!res.ok || !d.success) { toast.error(d.error ?? "Could not open that document."); return; }
+    window.open(d.url, "_blank", "noopener,noreferrer");
+  }
+
+  const pending = rows.filter((r) => r.status === "pending").length;
+
+  return (
+    <div className="space-y-4">
+      <div className="flex flex-wrap items-center gap-2">
+        <p className="text-sm text-slate-400">
+          {pending > 0
+            ? `${pending} application${pending === 1 ? "" : "s"} waiting on you.`
+            : "Nothing waiting on you."}
+        </p>
+        <select
+          value={filter}
+          onChange={(e) => setFilter(e.target.value)}
+          className="ml-auto rounded-lg border border-white/10 bg-slate-800 px-3 py-2 text-sm text-white focus:outline-none"
+        >
+          <option value="">All applications</option>
+          <option value="pending">Pending</option>
+          <option value="approved">Approved</option>
+          <option value="rejected">Rejected</option>
+        </select>
+        <button
+          onClick={load}
+          className="flex items-center gap-1.5 rounded-lg bg-white/10 px-3 py-2 text-xs text-slate-300 hover:text-white"
+        >
+          <RefreshCw className={`h-4 w-4 ${loading ? "animate-spin" : ""}`} /> Refresh
+        </button>
+      </div>
+
+      {rows.length === 0 && !loading ? (
+        <div className="rounded-xl border border-white/10 bg-white/5 p-10 text-center">
+          <ShieldCheck className="mx-auto mb-3 h-10 w-10 text-slate-600" />
+          <p className="text-sm font-semibold text-slate-300">No applications yet</p>
+          <p className="mt-1 text-xs text-slate-500">
+            Doctors file their credentials from the Care Plan tab of their dashboard.
+          </p>
+        </div>
+      ) : (
+        <div className="space-y-3">
+          {rows.map((r) => (
+            <div key={r.email} className="rounded-xl border border-white/10 bg-white/5 p-5">
+              <div className="flex flex-wrap items-start justify-between gap-3">
+                <div className="min-w-0">
+                  <div className="flex flex-wrap items-center gap-2">
+                    <p className="font-semibold text-white">{r.doctor_name ?? r.email}</p>
+                    <span className={`rounded-full px-2 py-0.5 text-[11px] font-semibold ${CRED_STATUS[r.status] ?? CRED_STATUS.unsubmitted}`}>
+                      {r.status}
+                    </span>
+                    {r.approved && (
+                      <span className="inline-flex items-center gap-1 rounded-full bg-emerald-500/20 px-2 py-0.5 text-[11px] font-bold text-emerald-300">
+                        <BadgeCheck className="h-3 w-3" /> Taking members
+                      </span>
+                    )}
+                  </div>
+                  <p className="mt-0.5 text-xs text-slate-400">{r.email}{r.phone ? ` · ${r.phone}` : ""}</p>
+                  {r.hospitals.length > 0 && (
+                    <p className="text-xs text-slate-500">{r.hospitals.join(", ")}</p>
+                  )}
+                </div>
+                <div className="text-right text-xs text-slate-400">
+                  <p>{r.active_members} active member{r.active_members === 1 ? "" : "s"}</p>
+                  {r.submitted_at && <p className="text-slate-500">Filed {formatDate(r.submitted_at)}</p>}
+                </div>
+              </div>
+
+              <dl className="mt-4 grid gap-x-6 gap-y-2 sm:grid-cols-2 lg:grid-cols-3">
+                <CredField label="MDCN number" value={r.mdcn_number} />
+                <CredField label="Licence expires" value={r.license_expires_at ? formatDate(r.license_expires_at) : null} />
+                <CredField label="Qualifications" value={r.qualifications} />
+                <CredField label="Specialty" value={r.specialty} />
+                <CredField label="Years in practice" value={r.years_experience != null ? String(r.years_experience) : null} />
+              </dl>
+
+              {r.note && (
+                <p className="mt-3 rounded-lg bg-white/5 px-3 py-2 text-xs leading-relaxed text-slate-300">
+                  {r.note}
+                </p>
+              )}
+
+              <div className="mt-4 flex flex-wrap gap-2">
+                {([
+                  ["license", "Practising licence", r.license_doc_url],
+                  ["id", "Government ID", r.id_doc_url],
+                  ["cv", "CV", r.cv_url],
+                ] as const).map(([slot, label, present]) => (
+                  <button
+                    key={slot}
+                    onClick={() => openDocument(r.email, slot)}
+                    disabled={!present}
+                    className="inline-flex items-center gap-1.5 rounded-lg border border-white/10 bg-white/5 px-3 py-1.5 text-xs font-semibold text-slate-200 transition hover:bg-white/10 disabled:opacity-30"
+                  >
+                    <FileText className="h-3.5 w-3.5" />
+                    {label}
+                    {present ? <ExternalLink className="h-3 w-3 text-slate-400" /> : <span className="text-slate-500">— none</span>}
+                  </button>
+                ))}
+              </div>
+
+              {r.review_note && r.status === "rejected" && (
+                <p className="mt-3 rounded-lg border border-red-500/20 bg-red-500/10 px-3 py-2 text-xs text-red-300">
+                  Told them: {r.review_note}
+                </p>
+              )}
+
+              <div className="mt-4 flex flex-wrap gap-2 border-t border-white/10 pt-4">
+                {!r.approved && (
+                  <button
+                    onClick={() => decide(r.email, "approve")}
+                    disabled={busy === r.email || !r.license_doc_url}
+                    title={r.license_doc_url ? undefined : "No practising licence on file"}
+                    className="inline-flex items-center gap-1.5 rounded-lg bg-emerald-600 px-4 py-2 text-xs font-bold text-white transition hover:bg-emerald-700 disabled:opacity-40"
+                  >
+                    {busy === r.email ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Check className="h-3.5 w-3.5" />}
+                    Approve
+                  </button>
+                )}
+                {r.status !== "rejected" && (
+                  <button
+                    onClick={() => decide(r.email, "reject")}
+                    disabled={busy === r.email}
+                    className="inline-flex items-center gap-1.5 rounded-lg border border-white/10 px-4 py-2 text-xs font-semibold text-slate-300 transition hover:bg-white/10 disabled:opacity-40"
+                  >
+                    <X className="h-3.5 w-3.5" />
+                    Reject with a reason
+                  </button>
+                )}
+                {r.approved && (
+                  <button
+                    onClick={() => decide(r.email, "revoke")}
+                    disabled={busy === r.email}
+                    className="inline-flex items-center gap-1.5 rounded-lg border border-red-500/30 px-4 py-2 text-xs font-semibold text-red-300 transition hover:bg-red-500/10 disabled:opacity-40"
+                  >
+                    Stop new assignments
+                  </button>
+                )}
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
+function CredField({ label, value }: { label: string; value: string | null }) {
+  return (
+    <div>
+      <dt className="text-[11px] font-semibold uppercase tracking-wide text-slate-500">{label}</dt>
+      <dd className="mt-0.5 text-sm text-slate-200">{value || <span className="text-slate-600">—</span>}</dd>
     </div>
   );
 }

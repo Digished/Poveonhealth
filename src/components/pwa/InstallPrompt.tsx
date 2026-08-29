@@ -85,7 +85,7 @@ export function InstallPrompt() {
           <p className="text-sm font-bold text-slate-800">Install Poveon</p>
           {deferred ? (
             <p className="mt-0.5 text-xs leading-relaxed text-slate-500">
-              Add it to your home screen for one-tap access to your care code and results.
+              Add it to your home screen — patients and medical professionals both sign in from it.
             </p>
           ) : (
             <p className="mt-0.5 flex flex-wrap items-center gap-1 text-xs leading-relaxed text-slate-500">
