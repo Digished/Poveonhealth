@@ -4,10 +4,13 @@ import { useCallback, useEffect, useState } from "react";
 import { toast } from "react-hot-toast";
 import { Check, FlaskConical, MapPin, Phone, Search, Star, TicketPercent } from "lucide-react";
 import { SectionLoader } from "@/components/PageLoader";
+import { parsePhones } from "@/lib/phones";
 
 type Lab = {
   id: string; name: string; logo_url: string | null;
-  address: string | null; city: string | null; state: string | null; phones: string[];
+  address: string | null; city: string | null; state: string | null;
+  /** A JSON column: older rows hold plain strings, newer ones {number,label}. */
+  phones: unknown;
 };
 
 /**
@@ -166,9 +169,9 @@ export function LabDirectory({
                       <TicketPercent className="h-3 w-3" /> Up to {discount}% off
                     </span>
                   )}
-                  {l.phones?.[0] && (
+                  {parsePhones(l.phones)[0] && (
                     <a
-                      href={`tel:${l.phones[0]}`}
+                      href={`tel:${parsePhones(l.phones)[0].number}`}
                       className="inline-flex items-center gap-1 rounded-full bg-slate-100 px-2.5 py-1 text-[11px] font-semibold text-slate-600 transition hover:bg-slate-200"
                     >
                       <Phone className="h-3 w-3" /> Call

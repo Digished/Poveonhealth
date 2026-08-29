@@ -4,6 +4,7 @@ import { createServerClient } from "@/lib/supabase/server";
 import { prisma } from "@/lib/prisma";
 import { getConsultSettings } from "@/lib/consult";
 import { partnerJoinUrl, partnerQrPng } from "@/lib/partner-qr";
+import { parsePhones } from "@/lib/phones";
 import { ensureCarePlanSchema } from "@/lib/startup/ensure-care-plan-schema";
 
 async function requireAdmin() {
@@ -60,7 +61,7 @@ export async function GET(req: NextRequest) {
       code = l.slug;
       name = l.name;
       addressLine = [l.address, l.city, l.state].filter(Boolean).join(", ") || null;
-      phone = l.phones?.[0] ?? null;
+      phone = parsePhones(l.phones)[0]?.number ?? null;
     }
 
     if (!code) return NextResponse.json({ error: "That partner has no scannable code." }, { status: 400 });
