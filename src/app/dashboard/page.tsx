@@ -7,6 +7,7 @@ import { SupportFab } from "@/components/SupportFab";
 import { PageLoader, SectionLoader } from "@/components/PageLoader";
 import { CarePlanPanel } from "@/components/consults/CarePlanPanel";
 import { CarePlanPromptCard, CarePlanPromptModal, useCarePlan } from "@/components/consults/CarePlanPrompt";
+import { PharmacyDirectory } from "@/components/consults/PharmacyDirectory";
 import { PortalNav, PortalSubNav, type PortalNavSection } from "@/components/ui/PortalNav";
 import { parsePhones } from "@/lib/phones";
 import { PhoneInput } from "@/components/PhoneInput";
@@ -14,7 +15,7 @@ import {
   LogOut, Phone, MapPin, Calendar, Stethoscope, FlaskConical,
   ClipboardList, User, ChevronDown, ChevronUp, FileImage, ExternalLink,
   Pencil, Check, X, RefreshCw, MessageCircle, Filter, Search, UserCircle,
-  BadgeCheck, Shield, EyeOff, Eye, Star, MessageSquare, HeartPulse, Menu,
+  BadgeCheck, Shield, EyeOff, Eye, Star, MessageSquare, HeartPulse, Menu, Pill,
 } from "lucide-react";
 
 interface Lab {
@@ -1050,9 +1051,9 @@ function VisitStat({
 }
 
 /** Panels the patient portal can show. */
-type View = "care" | "visits" | "tests" | "results" | "profile" | "security";
+type View = "care" | "pharmacies" | "visits" | "tests" | "results" | "profile" | "security";
 
-const VALID_VIEWS: View[] = ["care", "visits", "tests", "results", "profile", "security"];
+const VALID_VIEWS: View[] = ["care", "pharmacies", "visits", "tests", "results", "profile", "security"];
 
 /** The care plan is the portal's home — it's what a patient comes back for. */
 const DEFAULT_VIEW: View = "care";
@@ -1060,6 +1061,7 @@ const DEFAULT_VIEW: View = "care";
 /** Grouped entries land on their parent in the sidebar and expose a sub-menu. */
 const PARENT_OF: Record<View, View> = {
   care: "care",
+  pharmacies: "pharmacies",
   visits: "visits",
   tests: "tests",
   results: "tests",
@@ -1200,6 +1202,7 @@ function DashboardInner() {
       label: "My care",
       items: [
         { key: "care", label: "Care Plan", icon: HeartPulse, alert: !careLoading && !care.active },
+        { key: "pharmacies", label: "Pharmacies", icon: Pill },
         { key: "visits", label: "Doctor Visits", icon: Stethoscope, badge: encounters.length },
       ],
     },
@@ -1230,14 +1233,6 @@ function DashboardInner() {
           <div className="hidden items-center gap-2 sm:flex">
             <button
               type="button"
-              onClick={() => router.push("/")}
-              className="inline-flex items-center gap-1.5 rounded-xl bg-sky-600 px-3.5 py-2 text-xs font-semibold text-white shadow-sm shadow-sky-600/25 transition hover:bg-sky-700"
-            >
-              <FlaskConical className="h-3.5 w-3.5" />
-              New lab request
-            </button>
-            <button
-              type="button"
               onClick={handleLogout}
               disabled={loggingOut}
               className="inline-flex items-center gap-1.5 rounded-xl px-3 py-2 text-xs font-semibold text-slate-500 transition hover:bg-red-50 hover:text-red-600 disabled:opacity-50"
@@ -1266,14 +1261,6 @@ function DashboardInner() {
                       {patientEmail}
                     </p>
                   )}
-                  <button
-                    type="button"
-                    onClick={() => { setAccountMenuOpen(false); router.push("/"); }}
-                    className="flex w-full items-center gap-3 border-b border-slate-100 px-4 py-3 text-sm font-medium text-slate-700 active:bg-slate-50"
-                  >
-                    <FlaskConical className="h-4 w-4 text-sky-500" />
-                    New lab request
-                  </button>
                   <button
                     type="button"
                     onClick={() => { setAccountMenuOpen(false); navigate("profile"); }}
@@ -1325,6 +1312,9 @@ function DashboardInner() {
           {!loading && patientEmail && view === "care" && (
             <CarePlanPanel autoOpenEnroll={wantsCarePlan} onChanged={care.refresh} />
           )}
+
+          {/* Partner pharmacies */}
+          {!loading && patientEmail && view === "pharmacies" && <PharmacyDirectory />}
 
           {/* Doctor visits */}
           {!loading && patientEmail && view === "visits" && (
@@ -1412,14 +1402,6 @@ function DashboardInner() {
           {/* Lab tests */}
           {view === "tests" && (
             <>
-              <button
-                onClick={() => router.push("/")}
-                className="flex w-full items-center justify-center gap-2 rounded-xl bg-gradient-to-r from-emerald-500 to-green-500 px-4 py-3 text-sm font-semibold text-white shadow-md transition-all hover:from-emerald-600 hover:to-green-600 hover:shadow-lg sm:hidden"
-              >
-                <FlaskConical className="h-4 w-4" />
-                Submit New Lab Request
-              </button>
-
               <div>
                 <div className="mb-3 flex items-center justify-between gap-3">
                   <div className="flex items-center gap-2">

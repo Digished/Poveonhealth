@@ -66,6 +66,12 @@ Routes: `/consults` (account creation), `/dashboard?tab=care` (the plan itself),
 Doctor side lives in the Care Plan tab of `/doc-login/dashboard`; admin side in
 the Care Plan and Pharmacies tabs.
 
+**Installable (PWA):** `public/manifest.webmanifest` + `public/sw.js`, registered
+by `components/pwa/InstallPrompt.tsx`, which also offers "add to home screen"
+(the real prompt on Android, manual instructions on iOS). The service worker
+caches build assets and an `/offline` fallback only — never `/api`, and never
+page HTML, so nothing personal is replayable from a shared phone.
+
 **Schema safety net:** `scripts/run-migration.mjs` runs at build time and every
 step is `continueOnError`, so a failed statement is logged as "already applied"
 and the table silently never appears (this is how `pharmacy_otps` went missing

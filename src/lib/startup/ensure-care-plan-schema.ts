@@ -140,8 +140,10 @@ async function runEnsure(): Promise<void> {
         address TEXT,
         city TEXT,
         state TEXT,
+        logo_url TEXT,
         discount_percent INTEGER NOT NULL DEFAULT 10,
         active BOOLEAN NOT NULL DEFAULT true,
+        pin_hash TEXT,
         onboarded_at TIMESTAMP(3),
         created_at TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
         updated_at TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP
@@ -206,6 +208,24 @@ async function runEnsure(): Promise<void> {
     `);
     await exec(`CREATE INDEX IF NOT EXISTS consult_redemptions_patient_created_idx ON consult_redemptions(patient_id, created_at);`);
     await exec(`CREATE INDEX IF NOT EXISTS consult_redemptions_pharmacy_created_idx ON consult_redemptions(pharmacy_id, created_at);`);
+
+    await exec(`ALTER TABLE pharmacies ADD COLUMN IF NOT EXISTS logo_url TEXT;`);
+    await exec(`ALTER TABLE pharmacies ADD COLUMN IF NOT EXISTS pin_hash TEXT;`);
+    await exec(`CREATE INDEX IF NOT EXISTS pharmacies_state_active_idx ON pharmacies(state, active);`);
+
+    // The column default only applies to new rows; the live settings row and
+    // everyone enrolled under it were created at 10. One-shot by construction —
+    // the CTE only yields a row while settings is still 10, so an admin who
+    // later chooses 10 on purpose isn't overridden on the next request.
+    await exec(`
+      WITH bumped AS (
+        UPDATE consult_settings SET message_allowance = 40
+        WHERE id = 'default' AND message_allowance = 10
+        RETURNING 1
+      )
+      UPDATE consult_patients SET message_allowance = 40
+      WHERE message_allowance = 10 AND EXISTS (SELECT 1 FROM bumped);
+    `);
 
     await exec(`ALTER TABLE doctor_profiles ADD COLUMN IF NOT EXISTS consult_accepting BOOLEAN NOT NULL DEFAULT true;`);
     await exec(`ALTER TABLE doctor_profiles ADD COLUMN IF NOT EXISTS consult_patient_cap INTEGER;`);

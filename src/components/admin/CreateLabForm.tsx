@@ -8,6 +8,8 @@ import {
   Building2, Phone, Image as ImageIcon, Bell, Copy,
 } from "lucide-react";
 import type { PhoneEntry } from "@/lib/types";
+import { STATE_NAMES, lgasForState } from "@/lib/nigeria-locations";
+import { FuzzyCombo } from "@/components/ui/FuzzyCombo";
 
 // ── Shared constants ──────────────────────────────────────────────────────────
 
@@ -215,6 +217,8 @@ export function CreateLabForm({
   const [name, setName] = useState("");
   const [email, setEmail] = useState("");
   const [address, setAddress] = useState("");
+  const [stateName, setStateName] = useState("");
+  const [city, setCity] = useState("");
   const [description, setDescription] = useState("");
 
   // Step 2
@@ -241,7 +245,7 @@ export function CreateLabForm({
   const [createdPassword, setCreatedPassword] = useState("");
 
   const stepValid = (() => {
-    if (step === 1) return !!name.trim() && !!email.trim() && !!address.trim();
+    if (step === 1) return !!name.trim() && !!email.trim() && !!address.trim() && !!stateName;
     if (step === 3 && slug.trim()) return /^[a-z0-9-]+$/.test(slug.trim());
     return true;
   })();
@@ -276,6 +280,8 @@ export function CreateLabForm({
           name: name.trim(),
           email: email.trim(),
           address: address.trim(),
+          state: stateName || null,
+          city: city || null,
           description: description.trim() || undefined,
           phones: phoneList,
           notification_email: notificationEmail.trim() || undefined,
@@ -477,10 +483,34 @@ export function CreateLabForm({
                   <p className={HINT}>This becomes the lab's login credential to the dashboard.</p>
                 </div>
                 <div>
-                  <label className={LABEL}>Lab Address <span className="text-red-400">*</span></label>
+                  <label className={LABEL}>Location <span className="text-red-400">*</span></label>
+                  <div className="grid grid-cols-2 gap-3">
+                    <div className="admin-combo">
+                      <FuzzyCombo
+                        value={stateName}
+                        onChange={(v) => { setStateName(v); setCity(""); }}
+                        options={STATE_NAMES}
+                        placeholder="State *"
+                      />
+                    </div>
+                    <div className="admin-combo">
+                      <FuzzyCombo
+                        value={city}
+                        onChange={setCity}
+                        options={lgasForState(stateName)}
+                        placeholder={stateName ? "Local government" : "Pick a state first"}
+                        disabled={!stateName}
+                        allowCustom
+                      />
+                    </div>
+                  </div>
+                  <p className={HINT}>Patients filter partner labs and pharmacies by state.</p>
+                </div>
+                <div>
+                  <label className={LABEL}>Street Address <span className="text-red-400">*</span></label>
                   <input
                     className={INPUT}
-                    placeholder="12 Victoria Island, Lagos"
+                    placeholder="12 Adeola Odeku Street, Victoria Island"
                     value={address}
                     onChange={(e) => setAddress(e.target.value)}
                   />

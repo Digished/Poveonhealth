@@ -48,7 +48,9 @@ export async function POST(req: NextRequest) {
       data: { pharmacy_id: pharmacy.id, expires_at: expiresAt },
     });
 
-    const res = NextResponse.json({ success: true });
+    // A pharmacy without a PIN is prompted to set one, so this is the last
+    // emailed code they need.
+    const res = NextResponse.json({ success: true, should_create_pin: !pharmacy.pin_hash });
     res.cookies.set(PHARMACY_COOKIE, session.id, {
       httpOnly: true,
       secure: process.env.NODE_ENV === "production",

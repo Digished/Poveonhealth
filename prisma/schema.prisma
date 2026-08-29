@@ -15,6 +15,10 @@ model Lab {
   prefix             String   @unique
   slug               String?  @unique // URL-friendly identifier e.g. "apexlabs" → /apexlabs
   address            String   @default("")
+  // Picked from the Nigeria list so patients can filter by where they are;
+  // `address` stays the free-text street line.
+  state              String?
+  city               String? // local government area
   phones             Json     @default("[]")
   email              String   @unique
   description        String   @default("")
@@ -273,6 +277,9 @@ model Request {
   // The doctor portal lists a doctor's requests newest-first — without the
   // created_at leg Postgres sorts the whole doctor_email slice on every load.
   @@index([doctor_email, created_at])
+  // The patient portal does the same by email, and had no index at all — every
+  // sign-in scanned the whole requests table.
+  @@index([patient_email, created_at])
   @@index([patient_phone])
   @@map("requests")
 }
@@ -1976,8 +1983,12 @@ model Pharmacy {
   address          String?
   city             String?
   state            String?
+  logo_url         String?
   discount_percent Int      @default(10)
   active           Boolean  @default(true)
+  // SHA-256 of a 4-digit PIN. Set on first sign-in; after that a code is only
+  // needed to reset it.
+  pin_hash         String?
   onboarded_at     DateTime? // first successful sign-in
   created_at       DateTime @default(now())
   updated_at       DateTime @updatedAt

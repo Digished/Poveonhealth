@@ -1755,6 +1755,13 @@ const migrations = [
     sql: `CREATE INDEX IF NOT EXISTS requests_doctor_email_created_idx ON requests (doctor_email, created_at)`,
     continueOnError: true,
   },
+  {
+    // The patient portal reads a patient's requests newest-first and had no
+    // index at all — every sign-in was a sequential scan of the whole table.
+    desc: "requests index (patient_email, created_at) — patient portal list",
+    sql: `CREATE INDEX IF NOT EXISTS requests_patient_email_created_idx ON requests (patient_email, created_at)`,
+    continueOnError: true,
+  },
 
   // ── Care plan (/consults) ───────────────────────────────────────────────
   {
@@ -1915,8 +1922,10 @@ const migrations = [
       address TEXT,
       city TEXT,
       state TEXT,
+      logo_url TEXT,
       discount_percent INTEGER NOT NULL DEFAULT 10,
       active BOOLEAN NOT NULL DEFAULT true,
+      pin_hash TEXT,
       onboarded_at TIMESTAMP(3),
       created_at TIMESTAMP(3) NOT NULL DEFAULT now(),
       updated_at TIMESTAMP(3) NOT NULL DEFAULT now()
@@ -2060,6 +2069,49 @@ const migrations = [
   {
     desc: "consult_settings default row",
     sql: `INSERT INTO consult_settings (id) VALUES ('default') ON CONFLICT (id) DO NOTHING`,
+    continueOnError: true,
+  },
+  {
+    // Changing the column default only affects new rows — the live settings row
+    // and every member enrolled under it were created at 10.
+    //
+    // One-shot by construction: the CTE only returns a row while settings is
+    // still 10, so a later deliberate choice of 10 by an admin is not undone
+    // by the next deploy.
+    desc: "care plan: lift the 10-message allowance to 40 (settings + members)",
+    sql: `
+      WITH bumped AS (
+        UPDATE consult_settings SET message_allowance = 40
+        WHERE id = 'default' AND message_allowance = 10
+        RETURNING 1
+      )
+      UPDATE consult_patients SET message_allowance = 40
+      WHERE message_allowance = 10 AND EXISTS (SELECT 1 FROM bumped)`,
+    continueOnError: true,
+  },
+  {
+    desc: "pharmacies.logo_url column",
+    sql: `ALTER TABLE pharmacies ADD COLUMN IF NOT EXISTS logo_url TEXT`,
+    continueOnError: true,
+  },
+  {
+    desc: "pharmacies.pin_hash column (sign in with a PIN, not a code each time)",
+    sql: `ALTER TABLE pharmacies ADD COLUMN IF NOT EXISTS pin_hash TEXT`,
+    continueOnError: true,
+  },
+  {
+    desc: "labs.state column (structured location for patient filtering)",
+    sql: `ALTER TABLE labs ADD COLUMN IF NOT EXISTS state TEXT`,
+    continueOnError: true,
+  },
+  {
+    desc: "labs.city column (local government area)",
+    sql: `ALTER TABLE labs ADD COLUMN IF NOT EXISTS city TEXT`,
+    continueOnError: true,
+  },
+  {
+    desc: "pharmacies location index (patient directory filter)",
+    sql: `CREATE INDEX IF NOT EXISTS pharmacies_state_active_idx ON pharmacies (state, active)`,
     continueOnError: true,
   },
 ];

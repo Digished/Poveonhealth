@@ -52,6 +52,7 @@ const PORTALS = [
 
 const MORE_PORTALS = [
   { href: "/consults", icon: HeartPulse, label: "Care plan" },
+  { href: "/pharmacies", icon: Pill, label: "Find a pharmacy" },
   { href: "/pharmacy-login", icon: Pill, label: "Pharmacy" },
   { href: "/scale", icon: TrendingUp, label: "Marketer" },
   { href: "/logistics", icon: Truck, label: "Logistics" },

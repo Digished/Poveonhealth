@@ -107,6 +107,22 @@
 
   /* Sleek, minimal scrollbar for in-panel scroll areas (e.g. the desktop nav).
      Thumb only appears on hover so the rail doesn't feel heavy/archaic. */
+  /* FuzzyCombo is a light-theme control; this makes its trigger fit the dark
+     admin dashboard without forking the component. The popup it opens is
+     portalled to <body> and stays light, which is what we want. */
+  .admin-combo > button {
+    background-color: rgb(255 255 255 / 0.05);
+    border-color: rgb(255 255 255 / 0.1);
+    color: rgb(226 232 240);
+  }
+  .admin-combo > button > span {
+    color: rgb(226 232 240);
+  }
+  .admin-combo > button:disabled {
+    background-color: rgb(255 255 255 / 0.03);
+    color: rgb(100 116 139);
+  }
+
   .slim-scroll {
     scrollbar-width: thin;
     scrollbar-color: transparent transparent;

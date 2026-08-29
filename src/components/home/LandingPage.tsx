@@ -5,7 +5,7 @@ import Link from "next/link";
 import {
   ArrowRight, Stethoscope, User, FlaskConical, Building2, Camera, Zap, Sparkles,
   BellRing, KeyRound, FileText, Network, Truck, Code2, ShieldCheck, ScrollText,
-  Users, ChevronDown, Check, Clock, MapPin, HeartPulse,
+  Users, ChevronDown, Check, Clock, MapPin, HeartPulse, Pill, MessageSquareText,
 } from "lucide-react";
 
 import { SiteNav } from "@/components/site/SiteNav";
@@ -643,6 +643,97 @@ export function LandingPage({ labs, stats }: { labs: LandingLab[]; stats: Landin
         </div>
       </section>
 
+      {/* ── Care plan ──────────────────────────────────────────────────── */}
+      <section id="care-plan" className="scroll-mt-28 px-4 py-16 sm:py-24">
+        <Reveal className="mx-auto max-w-6xl">
+          <div className="overflow-hidden rounded-[28px] border border-stone-200/70 bg-gradient-to-br from-medical-50/70 via-white to-emerald-50/50">
+            <div className="grid gap-10 p-6 sm:p-10 lg:grid-cols-[1.05fr_0.95fr] lg:gap-14">
+              <div>
+                <span className="inline-flex items-center gap-2 rounded-full border border-medical-100 bg-white px-3 py-1 text-[11px] font-bold uppercase tracking-[0.14em] text-medical-600">
+                  <HeartPulse className="h-3.5 w-3.5" />
+                  Care plan
+                </span>
+                <h2 className="mt-4 text-[28px] font-black leading-tight tracking-[-0.02em] text-slate-900 sm:text-[38px]">
+                  Hypertension and diabetes cost less to manage here
+                </h2>
+                <p className="mt-4 max-w-xl text-[15px] leading-relaxed text-slate-600">
+                  One yearly payment covers the two things that never stop: the tests and the
+                  medication. Your care code takes money off both at partner labs and pharmacies —
+                  and comes with a doctor you can write to, without booking anything.
+                </p>
+
+                <ul className="mt-7 space-y-3.5">
+                  <CareLine icon={FlaskConical} title="Cheaper monitoring">
+                    BP checks, HbA1c, fasting glucose, kidney and lipid panels — discounted every
+                    time, at any partner laboratory.
+                  </CareLine>
+                  <CareLine icon={Pill} title="Cheaper medication">
+                    The discount applies to the prescriptions that keep you steady — amlodipine,
+                    lisinopril, metformin, insulin, test strips — at every partner pharmacy.
+                  </CareLine>
+                  <CareLine icon={MessageSquareText} title="A doctor, in writing">
+                    Assigned to you for the year. Send a reading or a question and get a considered
+                    reply — no appointment, no waiting room.
+                  </CareLine>
+                </ul>
+
+                <div className="mt-8 flex flex-col gap-3 sm:flex-row">
+                  <Link
+                    href="/consults"
+                    className="group inline-flex items-center justify-center gap-2 rounded-2xl bg-medical-600 px-6 py-3.5 text-[15px] font-bold text-white transition-all hover:bg-medical-700 active:scale-[0.98]"
+                  >
+                    See the care plan
+                    <ArrowRight className="h-4 w-4 transition-transform group-hover:translate-x-1" />
+                  </Link>
+                  <Link
+                    href="/pharmacies"
+                    className="inline-flex items-center justify-center gap-2 rounded-2xl border border-stone-200 bg-white px-6 py-3.5 text-[15px] font-semibold text-slate-700 transition-colors hover:border-stone-300"
+                  >
+                    <Pill className="h-4 w-4 text-emerald-600" />
+                    Find a partner pharmacy
+                  </Link>
+                </div>
+              </div>
+
+              {/* The card, roughly as a member sees it */}
+              <div className="flex items-center justify-center">
+                <div className="w-full max-w-sm space-y-3">
+                  <div className="rounded-3xl bg-gradient-to-br from-medical-600 to-medical-800 p-5 text-white shadow-[0_30px_60px_-35px_rgba(2,112,195,0.9)]">
+                    <div className="flex items-start justify-between">
+                      <div>
+                        <p className="text-[10px] font-bold uppercase tracking-[0.18em] text-white/60">
+                          Poveon Care Plan
+                        </p>
+                        <p className="mt-1 text-base font-bold">Your care code</p>
+                      </div>
+                      <PoveonLogo className="h-5 w-5 opacity-60" />
+                    </div>
+                    <p className="mt-5 font-mono text-2xl font-extrabold tracking-[0.2em]">PVC-••••••</p>
+                    <p className="mt-4 text-[11px] text-white/70">
+                      Show it at the counter. That&apos;s the whole process.
+                    </p>
+                  </div>
+
+                  <div className="grid grid-cols-2 gap-3">
+                    <MiniStat label="Off lab tests" value="15%" />
+                    <MiniStat label="Off prescriptions" value="10%" />
+                  </div>
+                  <div className="rounded-2xl border border-stone-200/80 bg-white/80 p-4">
+                    <p className="text-[13px] leading-relaxed text-slate-600">
+                      <span className="font-bold text-slate-800">Are you a pharmacy?</span> Join the
+                      network, honour the code, and keep the customers who refill every month.{" "}
+                      <Link href="/pharmacy-login" className="font-semibold text-medical-600 hover:underline">
+                        Pharmacy portal →
+                      </Link>
+                    </p>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+        </Reveal>
+      </section>
+
       {/* ── Security ───────────────────────────────────────────────────── */}
       <section className="px-4 py-16 sm:py-20">
         <Reveal className="mx-auto max-w-6xl">
@@ -772,6 +863,7 @@ export function LandingPage({ labs, stats }: { labs: LandingLab[]; stats: Landin
                 { href: "/#choose-lab", label: "Find a lab" },
                 { href: "/refer", label: "Refer a patient" },
                 { href: "/consults", label: "Care plan" },
+                { href: "/pharmacies", label: "Partner pharmacies" },
               ]}
             />
             <FooterCol
@@ -810,6 +902,33 @@ export function LandingPage({ labs, stats }: { labs: LandingLab[]; stats: Landin
 
       {/* The lab's request form, on its own headed paper */}
       <LabFormModal lab={activeLab} open={modalOpen} onClose={() => setModalOpen(false)} />
+    </div>
+  );
+}
+
+function CareLine({
+  icon: Icon, title, children,
+}: {
+  icon: typeof HeartPulse; title: string; children: React.ReactNode;
+}) {
+  return (
+    <li className="flex gap-3.5">
+      <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-white text-medical-600 ring-1 ring-medical-100">
+        <Icon className="h-[18px] w-[18px]" />
+      </span>
+      <div className="min-w-0">
+        <p className="text-[15px] font-bold tracking-tight text-slate-900">{title}</p>
+        <p className="mt-1 text-[13px] leading-relaxed text-slate-500">{children}</p>
+      </div>
+    </li>
+  );
+}
+
+function MiniStat({ label, value }: { label: string; value: string }) {
+  return (
+    <div className="rounded-2xl border border-stone-200/80 bg-white/80 p-4 text-center">
+      <p className="text-xl font-black text-slate-900">{value}</p>
+      <p className="mt-0.5 text-[11px] text-slate-500">{label}</p>
     </div>
   );
 }

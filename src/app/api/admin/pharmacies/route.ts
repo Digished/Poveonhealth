@@ -57,6 +57,7 @@ export async function GET() {
       slug: p.slug,
       code: p.code,
       email: p.email,
+      logo_url: p.logo_url,
       phone: p.phone,
       address: p.address,
       city: p.city,

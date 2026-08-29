@@ -158,8 +158,8 @@ export function CarePlanPanel({
                 />
                 <BenefitRow
                   icon={<Pill className="h-4 w-4" />}
-                  label={`${benefits.pharmacy_discount_percent}% off prescriptions`}
-                  hint="Show your code at any partner pharmacy"
+                  label={`${benefits.pharmacy_discount_percent}% off medication`}
+                  hint="BP and diabetes prescriptions at partner pharmacies"
                 />
                 <BenefitRow
                   icon={<MessageSquareText className="h-4 w-4" />}

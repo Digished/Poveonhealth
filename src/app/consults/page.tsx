@@ -59,8 +59,8 @@ export default async function ConsultsPage() {
               </h1>
               <p className="max-w-xl text-base leading-relaxed text-slate-600">
                 Living with high blood pressure or diabetes shouldn&apos;t mean guessing between
-                appointments. One yearly payment gets you cheaper tests, cheaper prescriptions, and a
-                doctor who knows your name.
+                appointments. One yearly payment covers the two costs that never stop — the tests and
+                the medication — and comes with a doctor who knows your name.
               </p>
             </div>
 
@@ -73,7 +73,7 @@ export default async function ConsultsPage() {
               <Benefit
                 icon={<Pill className="h-5 w-5" />}
                 value={`${settings.pharmacy_discount_percent}% off`}
-                label="Prescriptions at partner pharmacies"
+                label="BP and diabetes medication at partner pharmacies"
               />
               <Benefit
                 icon={<MessageSquareText className="h-5 w-5" />}
@@ -119,9 +119,9 @@ export default async function ConsultsPage() {
               icon={<HeartPulse className="h-6 w-6" />}
               title="Hypertension"
               points={[
-                "Cheaper BP checks and kidney panels",
-                "Your readings reviewed by the same doctor",
-                "Medication questions answered in writing",
+                "Cheaper BP checks, kidney and lipid panels",
+                "Money off amlodipine, lisinopril, losartan and the rest of your regimen",
+                "Your readings reviewed by the same doctor, in writing",
               ]}
             />
             <ConditionPanel
@@ -129,10 +129,37 @@ export default async function ConsultsPage() {
               title="Diabetes"
               points={[
                 "Cheaper HbA1c and fasting glucose tests",
-                "Discounted prescriptions and test strips",
+                "Money off metformin, insulin, test strips and lancets",
                 "A doctor tracking your numbers month to month",
               ]}
             />
+          </div>
+
+          {/* The medication discount is the part people underestimate, so it
+              gets said plainly rather than buried in a bullet. */}
+          <div className="mx-auto mt-8 max-w-3xl rounded-2xl border border-emerald-100 bg-emerald-50/70 p-5">
+            <div className="flex items-start gap-3">
+              <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-white text-emerald-600">
+                <Pill className="h-5 w-5" />
+              </div>
+              <div className="min-w-0">
+                <p className="text-sm font-bold text-emerald-900">
+                  The discount covers the medication, not just the tests
+                </p>
+                <p className="mt-1 text-sm leading-relaxed text-emerald-800/90">
+                  Your care code takes {settings.pharmacy_discount_percent}% off the prescriptions you
+                  refill every month at any partner pharmacy — blood-pressure tablets, diabetes
+                  medication, insulin, test strips and monitoring supplies.
+                </p>
+                <Link
+                  href="/pharmacies"
+                  className="mt-2.5 inline-flex items-center gap-1.5 text-sm font-bold text-emerald-700 hover:underline"
+                >
+                  See partner pharmacies near you
+                  <ArrowRight className="h-3.5 w-3.5" />
+                </Link>
+              </div>
+            </div>
           </div>
 
           <div className="mt-10 text-center">
@@ -160,6 +187,7 @@ export default async function ConsultsPage() {
           <div className="flex flex-wrap justify-center gap-4 text-xs text-slate-500">
             <Link href="/" className="hover:text-slate-800">Home</Link>
             <Link href="/dashboard" className="hover:text-slate-800">My dashboard</Link>
+            <Link href="/pharmacies" className="hover:text-slate-800">Partner pharmacies</Link>
             <Link href="/pharmacy-login" className="hover:text-slate-800">Pharmacy portal</Link>
             <Link href="/privacy" className="hover:text-slate-800">Privacy</Link>
           </div>

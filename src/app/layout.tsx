@@ -1,8 +1,9 @@
-import type { Metadata } from "next";
+import type { Metadata, Viewport } from "next";
 import { Suspense } from "react";
 import { Toaster } from "react-hot-toast";
 import { RefTracker } from "@/components/RefTracker";
 import { RouteTransition } from "@/components/site/RouteTransition";
+import { InstallPrompt } from "@/components/pwa/InstallPrompt";
 import "./globals.css";
 
 // Font variable object for CSS
@@ -16,14 +17,27 @@ export const metadata: Metadata = {
   description:
     "A secure platform for doctors to send laboratory test requests to labs without requiring login.",
   keywords: ["laboratory", "lab request", "medical", "health", "doctor"],
+  // Installable on a phone's home screen — see public/manifest.webmanifest.
+  manifest: "/manifest.webmanifest",
+  applicationName: "Poveon",
+  appleWebApp: { capable: true, title: "Poveon", statusBarStyle: "default" },
   icons: {
     icon: [{ url: logoUrl, type: isSvg ? "image/svg+xml" : "image/png" }],
+    apple: [{ url: "/apple-touch-icon.png", sizes: "180x180", type: "image/png" }],
   },
   openGraph: {
     title: "Poveon",
     description: "Seamless lab test requests for healthcare professionals",
     type: "website",
   },
+};
+
+export const viewport: Viewport = {
+  themeColor: "#0270c3",
+  width: "device-width",
+  initialScale: 1,
+  // Let the installed app sit under the notch rather than beside it.
+  viewportFit: "cover",
 };
 
 export default function RootLayout({
@@ -38,6 +52,7 @@ export default function RootLayout({
           <RefTracker />
         </Suspense>
         <RouteTransition>{children}</RouteTransition>
+        <InstallPrompt />
         <Toaster
           position="top-right"
           toastOptions={{

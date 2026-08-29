@@ -1,14 +1,16 @@
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { toast } from "react-hot-toast";
 import {
-  BadgeCheck, Loader2, Mail, Pill, Plus, Power, RefreshCw, Save, TicketPercent,
-  Trash2, Users, X,
+  BadgeCheck, ImagePlus, Loader2, Mail, MapPin, Pill, Plus, Power, RefreshCw,
+  Save, TicketPercent, Trash2, Users, X,
 } from "lucide-react";
+import { STATE_NAMES, lgasForState } from "@/lib/nigeria-locations";
+import { FuzzyCombo } from "@/components/ui/FuzzyCombo";
 
 type Pharmacy = {
-  id: string; name: string; slug: string; code: string; email: string;
+  id: string; name: string; slug: string; code: string; email: string; logo_url: string | null;
   phone: string | null; address: string | null; city: string | null; state: string | null;
   discount_percent: number; active: boolean; onboarded_at: string | null; created_at: string;
   customers: number; redemptions: number; discount_given: number;
@@ -143,11 +145,23 @@ export function AdminPharmaciesTab() {
               {pharmacies.map((p) => (
                 <tr key={p.id} className={`transition hover:bg-white/5 ${p.active ? "" : "opacity-50"}`}>
                   <td className="px-4 py-3">
-                    <p className="font-semibold text-white">{p.name}</p>
-                    <p className="text-xs text-slate-400">{p.email}</p>
-                    <p className="text-xs text-slate-500">
-                      {[p.city, p.state].filter(Boolean).join(", ") || "No address yet"}
-                    </p>
+                    <div className="flex items-center gap-2.5">
+                      {p.logo_url ? (
+                        // eslint-disable-next-line @next/next/no-img-element
+                        <img src={p.logo_url} alt={p.name} className="h-9 w-9 shrink-0 rounded-lg object-cover ring-1 ring-white/10" />
+                      ) : (
+                        <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-white/10">
+                          <Pill className="h-4 w-4 text-slate-400" />
+                        </div>
+                      )}
+                      <div className="min-w-0">
+                        <p className="font-semibold text-white">{p.name}</p>
+                        <p className="text-xs text-slate-400">{p.email}</p>
+                        <p className="text-xs text-slate-500">
+                          {[p.city, p.state].filter(Boolean).join(", ") || "No location set"}
+                        </p>
+                      </div>
+                    </div>
                   </td>
                   <td className="px-4 py-3 font-mono text-xs text-slate-300">{p.code}</td>
                   <td className="px-4 py-3">
@@ -233,10 +247,19 @@ function AddPharmacyForm({ onClose, onAdded }: { onClose: () => void; onAdded: (
   const [form, setForm] = useState({
     name: "", email: "", phone: "", address: "", city: "", state: "", discount_percent: "",
   });
+  const [logo, setLogo] = useState<File | null>(null);
+  const [logoPreview, setLogoPreview] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
+  const fileRef = useRef<HTMLInputElement>(null);
+
+  function pickLogo(file: File) {
+    setLogo(file);
+    setLogoPreview(URL.createObjectURL(file));
+  }
 
   async function save() {
-    if (saving || form.name.trim().length < 2 || !form.email.includes("@")) return;
+    // State is required — the patient directory filters on it.
+    if (saving || form.name.trim().length < 2 || !form.email.includes("@") || !form.state) return;
     setSaving(true);
     try {
       const res = await fetch("/api/admin/pharmacies", {
@@ -249,6 +272,15 @@ function AddPharmacyForm({ onClose, onAdded }: { onClose: () => void; onAdded: (
       });
       const d = await res.json();
       if (!res.ok || !d.success) { toast.error(d.error ?? "Could not add that pharmacy."); return; }
+
+      // The logo needs the new pharmacy's id, so it goes up straight after.
+      if (logo) {
+        const fd = new FormData();
+        fd.append("logo", logo);
+        const up = await fetch(`/api/admin/pharmacies/${d.pharmacy.id}/logo`, { method: "POST", body: fd });
+        if (!up.ok) toast.error("Pharmacy added, but the logo didn't upload — add it from the list.");
+      }
+
       toast.success(`Added — code ${d.pharmacy.code}. Invite emailed.`);
       onAdded();
     } finally {
@@ -275,25 +307,94 @@ function AddPharmacyForm({ onClose, onAdded }: { onClose: () => void; onAdded: (
         </button>
       </div>
       <p className="mt-1 text-xs text-slate-400">
-        They&apos;ll get an email with their pharmacy code and a link to sign in — no password needed.
+        They&apos;ll get an email with their pharmacy code and a link to sign in. Their logo and location
+        are what members see in the pharmacy directory.
       </p>
+
+      {/* Logo */}
+      <div className="mt-4 flex items-center gap-4">
+        <input
+          ref={fileRef}
+          type="file"
+          accept="image/jpeg,image/png,image/webp,image/gif"
+          className="hidden"
+          onChange={(e) => { const f = e.target.files?.[0]; if (f) pickLogo(f); }}
+        />
+        <button
+          type="button"
+          onClick={() => fileRef.current?.click()}
+          className="flex h-16 w-16 shrink-0 items-center justify-center overflow-hidden rounded-2xl border border-white/10 bg-white/5 transition hover:border-medical-500"
+        >
+          {logoPreview ? (
+            // eslint-disable-next-line @next/next/no-img-element
+            <img src={logoPreview} alt="Logo preview" className="h-full w-full object-cover" />
+          ) : (
+            <ImagePlus className="h-6 w-6 text-slate-500" />
+          )}
+        </button>
+        <div className="min-w-0">
+          <p className="text-sm font-semibold text-slate-200">Pharmacy logo</p>
+          <p className="text-xs text-slate-400">JPEG, PNG, WebP or GIF, under 5MB. Optional.</p>
+          {logo && (
+            <button
+              onClick={() => { setLogo(null); setLogoPreview(null); }}
+              className="mt-1 text-xs font-semibold text-slate-400 hover:text-white"
+            >
+              Remove
+            </button>
+          )}
+        </div>
+      </div>
+
       <div className="mt-4 grid gap-2 sm:grid-cols-2 lg:grid-cols-3">
         {field("name", "Pharmacy name")}
         {field("email", "Email address", "email")}
         {field("phone", "Phone (optional)")}
-        {field("address", "Address (optional)")}
-        {field("city", "City (optional)")}
-        {field("state", "State (optional)")}
+      </div>
+
+      {/* Location — picked from the list, so the patient filter can rely on it */}
+      <div className="mt-3">
+        <p className="mb-1.5 flex items-center gap-1.5 text-xs font-medium text-slate-300">
+          <MapPin className="h-3.5 w-3.5 text-slate-500" /> Location *
+        </p>
+        <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-3">
+          <div className="admin-combo">
+            <FuzzyCombo
+              value={form.state}
+              onChange={(v) => setForm({ ...form, state: v, city: "" })}
+              options={STATE_NAMES}
+              placeholder="State *"
+            />
+          </div>
+          <div className="admin-combo">
+            <FuzzyCombo
+              value={form.city}
+              onChange={(v) => setForm({ ...form, city: v })}
+              options={lgasForState(form.state)}
+              placeholder={form.state ? "Local government" : "Pick a state first"}
+              disabled={!form.state}
+              allowCustom
+            />
+          </div>
+          {field("address", "Street address (optional)")}
+        </div>
+      </div>
+
+      <div className="mt-3 grid gap-2 sm:grid-cols-3">
         {field("discount_percent", "Discount % (default applies)")}
       </div>
+
       <button
         onClick={save}
-        disabled={saving || form.name.trim().length < 2 || !form.email.includes("@")}
+        disabled={saving || form.name.trim().length < 2 || !form.email.includes("@") || !form.state}
         className="mt-4 flex items-center gap-2 rounded-lg bg-medical-600 px-4 py-2.5 text-sm font-bold text-white transition hover:bg-medical-700 disabled:opacity-50"
       >
         {saving ? <Loader2 className="h-4 w-4 animate-spin" /> : <Save className="h-4 w-4" />}
         {saving ? "Adding…" : "Add & invite"}
       </button>
+      {!form.state && (
+        <p className="mt-2 text-xs text-amber-400">Pick a state — members filter the directory by it.</p>
+      )}
     </div>
   );
 }
