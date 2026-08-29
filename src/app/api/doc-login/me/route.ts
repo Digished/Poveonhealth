@@ -40,6 +40,7 @@ export async function GET(req: NextRequest) {
         select: {
           prefix: true, full_name: true, phone: true, hospitals: true,
           bank_name: true, account_number: true, account_name: true,
+          avatar_url: true,
         },
       }),
     ]);

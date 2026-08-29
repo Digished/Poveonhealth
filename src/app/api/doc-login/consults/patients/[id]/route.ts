@@ -133,6 +133,8 @@ export async function GET(req: NextRequest, { params }: { params: { id: string }
         risk_level: patient.risk_level,
         risk_reason: patient.risk_reason,
         risk_rated_at: patient.risk_rated_at,
+        risk_manual: patient.risk_manual,
+        risk_note: patient.risk_note,
         // Only the age matters clinically, and it is what the doctor asks for.
         age: ageFrom(patient.date_of_birth),
       },

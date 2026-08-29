@@ -6,6 +6,7 @@ import { resend, FROM_ADDRESS } from "@/lib/email/resend";
 import { carePlanScheduleEmail } from "@/lib/email/templates";
 import { appUrl, getDoctorEmailFromConsultRequest } from "@/lib/consult";
 import { describePrescription } from "@/lib/prescription-parse";
+import { medLiveWhere } from "@/lib/medication-status";
 import { CADENCE_LABEL } from "@/lib/treatment-plan";
 import { ensureCarePlanSchema } from "@/lib/startup/ensure-care-plan-schema";
 
@@ -47,7 +48,7 @@ export async function POST(req: NextRequest, { params }: { params: { id: string 
         take: 20,
       }),
       prisma.consultPrescription.findMany({
-        where: { patient_id: patient.id, status: { in: ["scheduled", "active"] } },
+        where: { patient_id: patient.id, ...medLiveWhere },
         orderBy: { created_at: "desc" },
         take: 20,
       }),

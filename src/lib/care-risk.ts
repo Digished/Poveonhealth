@@ -92,3 +92,55 @@ export function rateReading(r: Reading): { level: RiskLevel; reason: string | nu
     .map((x) => x.reason);
   return { level, reason: reasons.join(" · ") || null };
 }
+
+/**
+ * The level to act on: a doctor's own call, or the automatic one.
+ *
+ * A threshold sees one number. A doctor sees the person, so when they have
+ * made a judgement it stands until they change it — including marking someone
+ * low risk whose numbers look alarming for reasons the doctor understands.
+ */
+export function effectiveRisk(member: {
+  risk_level?: string | null;
+  risk_manual?: string | null;
+}): { level: RiskLevel; manual: boolean } {
+  const manual = member.risk_manual;
+  if (manual && manual in RISK_ORDER) return { level: manual as RiskLevel, manual: true };
+  const auto = member.risk_level ?? "none";
+  return { level: (auto in RISK_ORDER ? auto : "none") as RiskLevel, manual: false };
+}
+
+/**
+ * Rate what a member told us when they joined.
+ *
+ * The baseline is the first thing we know about them, and until they log
+ * something it is the only thing — so someone who enrols with a reading in
+ * crisis range should be flagged from the moment they pay, not from their
+ * first tick weeks later.
+ */
+export function rateBaseline(b: {
+  baseline_bp_systolic?: number | null;
+  baseline_bp_diastolic?: number | null;
+  baseline_glucose_mg_dl?: number | null | { toString(): string };
+  baseline_glucose_context?: string | null;
+  medication_adherence?: string | null;
+}): { level: RiskLevel; reason: string | null } {
+  const glucose =
+    b.baseline_glucose_mg_dl == null ? null : Number(b.baseline_glucose_mg_dl.toString());
+
+  const rated = rateReading({
+    systolic: b.baseline_bp_systolic,
+    diastolic: b.baseline_bp_diastolic,
+    glucose_mg_dl: glucose,
+    glucose_context: b.baseline_glucose_context,
+  });
+
+  // Someone who barely takes their medication is worth a look even when the
+  // numbers they gave us look fine — often because they are guessing.
+  if (b.medication_adherence === "rarely" || b.medication_adherence === "few_weekly") {
+    const level = worse(rated.level, "watch");
+    const note = "Reported missing doses often";
+    return { level, reason: rated.reason ? `${rated.reason} · ${note}` : note };
+  }
+  return rated;
+}

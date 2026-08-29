@@ -8,6 +8,7 @@ import {
   getPatientEmailFromRequest,
   initConsultPayment,
 } from "@/lib/consult";
+import { rateBaseline } from "@/lib/care-risk";
 import { ensureCarePlanSchema } from "@/lib/startup/ensure-care-plan-schema";
 
 const BodySchema = z.object({
@@ -100,6 +101,18 @@ export async function POST(req: NextRequest) {
       baseline_last_visit: d.baseline_last_visit || null,
       baseline_self_care: d.baseline_self_care || null,
       baseline_captured_at: new Date(),
+      ...(() => {
+        const rated = rateBaseline({
+          baseline_bp_systolic: d.baseline_bp_systolic ?? null,
+          baseline_bp_diastolic: d.baseline_bp_diastolic ?? null,
+          baseline_glucose_mg_dl: d.baseline_glucose_mg_dl ?? null,
+          baseline_glucose_context: d.baseline_glucose_context ?? null,
+          medication_adherence: d.medication_adherence ?? null,
+        });
+        return rated.level === "none"
+          ? {}
+          : { risk_level: rated.level, risk_reason: rated.reason, risk_rated_at: new Date() };
+      })(),
 
       consent_at: new Date(),
       message_allowance: settings.message_allowance,

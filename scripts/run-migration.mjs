@@ -2460,6 +2460,14 @@ const migrations = [
     sql: `CREATE INDEX IF NOT EXISTS consult_patients_pref_lab_idx ON consult_patients (preferred_lab_id)`,
     continueOnError: true,
   },
+  {
+    desc: "consult_patients manual risk columns (a doctor's own judgement)",
+    sql: `ALTER TABLE consult_patients
+      ADD COLUMN IF NOT EXISTS risk_manual TEXT,
+      ADD COLUMN IF NOT EXISTS risk_note TEXT,
+      ADD COLUMN IF NOT EXISTS risk_set_by TEXT`,
+    continueOnError: true,
+  },
 ];
 
 let failed = false;

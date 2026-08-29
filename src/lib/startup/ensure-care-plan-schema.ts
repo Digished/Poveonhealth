@@ -68,6 +68,7 @@ const SENTINEL_COLUMNS = [
   "consult_test_orders.code",
   "consult_treatment_items.measure",
   "consult_patients.risk_level",
+  "consult_patients.risk_manual",
   "doctor_profiles.consult_approved",
 ];
 
@@ -506,6 +507,10 @@ async function runEnsure(): Promise<void> {
     await exec(`CREATE INDEX IF NOT EXISTS consult_patients_risk_idx ON consult_patients(doctor_email, risk_level);`);
     await exec(`CREATE INDEX IF NOT EXISTS consult_patients_pref_pharmacy_idx ON consult_patients(preferred_pharmacy_id);`);
     await exec(`CREATE INDEX IF NOT EXISTS consult_patients_pref_lab_idx ON consult_patients(preferred_lab_id);`);
+    await exec(`ALTER TABLE consult_patients
+      ADD COLUMN IF NOT EXISTS risk_manual TEXT,
+      ADD COLUMN IF NOT EXISTS risk_note TEXT,
+      ADD COLUMN IF NOT EXISTS risk_set_by TEXT;`);
   } catch (err) {
     // Never block a request on this — the caller's own query will surface a
     // real problem, and the next call retries.

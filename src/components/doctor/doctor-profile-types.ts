@@ -7,6 +7,8 @@ export interface DoctorProfileData {
   bank_name: string | null;
   account_number: string | null;
   account_name: string | null;
+  /** Shown to members alongside the doctor's name. */
+  avatar_url?: string | null;
 }
 
 /** The three steps of first-time profile set-up. */

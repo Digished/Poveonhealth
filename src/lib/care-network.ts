@@ -1,5 +1,6 @@
 import { prisma } from "@/lib/prisma";
 import { activeMemberWhere } from "@/lib/consult";
+import { medLiveWhere } from "@/lib/medication-status";
 
 /**
  * What a partner pharmacy or lab is allowed to see about the members who chose
@@ -45,7 +46,7 @@ export async function pharmacyRoster(pharmacyId: string) {
       id: true, code: true, full_name: true, conditions: true,
       subscribed_at: true, expires_at: true,
       prescriptions: {
-        where: { status: { in: ["scheduled", "active"] } },
+        where: medLiveWhere,
         orderBy: [{ start_date: "desc" }],
         take: 20,
         select: {

@@ -7,6 +7,7 @@ import {
   Sparkles, Trash2, X,
 } from "lucide-react";
 import { DateInput } from "@/components/ui/DateInput";
+import { isMedicationLive } from "@/lib/medication-status";
 import { ConfirmDialog, Modal } from "@/components/ui/Overlay";
 import {
   describePrescription,
@@ -104,8 +105,6 @@ function FulfilmentNote({ fulfilments, verb }: { fulfilments?: Fulfilment[]; ver
   );
 }
 
-const MED_LIVE = ["scheduled", "active"];
-
 function formatDate(iso: string | null) {
   if (!iso) return "—";
   return new Date(iso).toLocaleDateString("en-GB", { day: "numeric", month: "short", year: "numeric" });
@@ -147,8 +146,8 @@ export function CarePlanOrders({
   const [busyId, setBusyId] = useState<string | null>(null);
   const [cancelling, setCancelling] = useState<{ kind: "prescription" | "test"; id: string; name: string } | null>(null);
 
-  const activeMeds = prescriptions.filter((p) => MED_LIVE.includes(p.status));
-  const pastMeds = prescriptions.filter((p) => !MED_LIVE.includes(p.status));
+  const activeMeds = prescriptions.filter((p) => isMedicationLive(p.status));
+  const pastMeds = prescriptions.filter((p) => !isMedicationLive(p.status));
   const dueTests = testOrders.filter((t) => t.status === "scheduled");
   const doneTests = testOrders.filter((t) => t.status !== "scheduled");
 

@@ -10,6 +10,7 @@ import {
 import { SectionLoader } from "@/components/PageLoader";
 import { getJson, invalidateJson } from "@/lib/client-cache";
 import { CADENCE_LABEL } from "@/lib/treatment-plan";
+import { isMedicationLive, MED_STATUS_LABEL } from "@/lib/medication-status";
 import { Modal } from "@/components/ui/Overlay";
 import { ProviderRow } from "@/components/consults/ProviderRow";
 import type { Provider } from "@/components/consults/ProviderPicker";
@@ -44,7 +45,7 @@ type Redemption = {
   gross_naira: number; discount_naira: number; created_at: string;
 };
 type Prescription = {
-  id: string; medication: string; dosage: string | null; frequency: string | null;
+  id: string; medication: string; form: string | null; dosage: string | null; frequency: string | null;
   instructions: string | null; start_date: string | null; end_date: string | null; status: string;
 };
 type TestOrder = {
@@ -478,9 +479,20 @@ function CareSchedule({
 }: {
   prescriptions: Prescription[]; testOrders: TestOrder[];
 }) {
-  const meds = prescriptions.filter((p) => p.status === "active");
+  const meds = prescriptions.filter((p) => isMedicationLive(p.status));
   const due = testOrders.filter((t) => t.status === "scheduled");
-  if (meds.length === 0 && due.length === 0) return null;
+  if (meds.length === 0 && due.length === 0) {
+    return (
+      <div className="rounded-2xl border border-dashed border-slate-200 bg-white p-5 text-center">
+        <Pill className="mx-auto mb-2 h-7 w-7 text-slate-200" />
+        <p className="text-sm font-semibold text-slate-600">Nothing scheduled yet</p>
+        <p className="mt-1 text-xs text-slate-400">
+          When your doctor adds medication or books a test, it appears here and you can take your
+          care code to a partner pharmacy or lab.
+        </p>
+      </div>
+    );
+  }
 
   return (
     <div className="space-y-4">
@@ -540,7 +552,17 @@ function CareSchedule({
           <ul className="mt-3 space-y-2">
             {meds.map((m) => (
               <li key={m.id} className="rounded-xl border border-slate-100 bg-slate-50/70 px-3 py-2.5">
-                <p className="text-sm font-semibold text-slate-800">{m.medication}</p>
+                <div className="flex items-start justify-between gap-2">
+                  <p className="text-sm font-semibold text-slate-800">
+                    {m.form ? `${m.form.charAt(0).toUpperCase()}${m.form.slice(1)} · ` : ""}
+                    {m.medication}
+                  </p>
+                  {m.status === "scheduled" && (
+                    <span className="shrink-0 rounded-full bg-medical-50 px-2 py-0.5 text-[10px] font-bold text-medical-700">
+                      {MED_STATUS_LABEL.scheduled}
+                    </span>
+                  )}
+                </div>
                 <p className="mt-0.5 text-xs text-slate-500">
                   {[m.dosage, m.frequency].filter(Boolean).join(" · ") || "As directed"}
                 </p>

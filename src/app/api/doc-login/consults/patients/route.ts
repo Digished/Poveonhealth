@@ -3,7 +3,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { Prisma } from "@prisma/client";
 import { prisma } from "@/lib/prisma";
 import { getDoctorEmailFromConsultRequest } from "@/lib/consult";
-import { RISK_ORDER, type RiskLevel } from "@/lib/care-risk";
+import { RISK_ORDER, effectiveRisk, type RiskLevel } from "@/lib/care-risk";
 import { ensureCarePlanSchema } from "@/lib/startup/ensure-care-plan-schema";
 
 const PAGE_SIZE = 25;
@@ -47,6 +47,16 @@ export async function GET(req: NextRequest) {
     } else if (filter === "new") {
       // Nobody has written to them yet — these are the first assessments due.
       where.messages = { none: { sender: "doctor" } };
+    } else if (filter === "flagged" || filter === "critical" || filter === "high" || filter === "watch") {
+      // A doctor's own call wins, so the filter has to look at both columns:
+      // someone the thresholds flagged but the doctor cleared is not flagged,
+      // and someone the doctor raised is — whatever the numbers say.
+      const wanted =
+        filter === "flagged" ? ["watch", "high", "critical"] : [filter];
+      where.OR = [
+        { risk_manual: { in: wanted } },
+        { AND: [{ risk_manual: null }, { risk_level: { in: wanted } }] },
+      ];
     }
 
     if (q) {
@@ -74,6 +84,7 @@ export async function GET(req: NextRequest) {
           conditions: true, status: true, assigned_at: true,
           expires_at: true, messages_used: true, message_allowance: true,
           risk_level: true, risk_reason: true,
+          risk_manual: true, risk_note: true,
         },
       }),
     ]);
@@ -118,8 +129,13 @@ export async function GET(req: NextRequest) {
       patients: patients
         .map((p) => {
           const last = lastBy.get(p.id);
+          const risk = effectiveRisk(p);
           return {
             ...p,
+            // What the doctor should act on: their own call if they made one.
+            risk: risk.level,
+            risk_manual: risk.manual,
+            risk_detail: risk.manual ? p.risk_note : p.risk_reason,
             messages_left: Math.max(0, p.message_allowance - p.messages_used),
             unread: unreadBy.get(p.id) ?? 0,
             last_message: last
@@ -134,8 +150,8 @@ export async function GET(req: NextRequest) {
         // ORDER BY would sort it alphabetically: "none" ahead of "watch".
         .sort((a, b) => {
           const rank =
-            (RISK_ORDER[(b.risk_level ?? "none") as RiskLevel] ?? 0) -
-            (RISK_ORDER[(a.risk_level ?? "none") as RiskLevel] ?? 0);
+            (RISK_ORDER[(b.risk ?? "none") as RiskLevel] ?? 0) -
+            (RISK_ORDER[(a.risk ?? "none") as RiskLevel] ?? 0);
           if (rank !== 0) return rank;
           if (a.unread !== b.unread) return b.unread - a.unread;
           return 0;

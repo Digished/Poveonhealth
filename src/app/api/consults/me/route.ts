@@ -163,6 +163,10 @@ export async function GET(req: NextRequest) {
               label: i.label,
               detail: i.detail,
               cadence: i.cadence,
+              // Without these the client cannot know an item wants a reading,
+              // so it silently ticked instead of asking.
+              measure: i.measure,
+              measure_label: i.measure_label,
               done_count: i.done_count,
               ...itemState(i),
             })),

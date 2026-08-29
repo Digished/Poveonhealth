@@ -1933,6 +1933,11 @@ model ConsultPatient {
   risk_level     String   @default("none")
   risk_reason    String?
   risk_rated_at  DateTime?
+  // A doctor's own judgement, which always wins over the automatic rating —
+  // they can see things a threshold cannot.
+  risk_manual    String?
+  risk_note      String?
+  risk_set_by    String?
 
   doctor_email String? // assigned at activation, by fair round-robin
   assigned_at  DateTime?

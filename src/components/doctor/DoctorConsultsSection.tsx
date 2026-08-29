@@ -3,9 +3,23 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { toast } from "react-hot-toast";
 import {
-  AlertCircle, ArrowLeft, ArrowRight, BadgeCheck, Banknote, CalendarDays, Check,
-  ChevronDown, HeartPulse, Info, Loader2, MessageSquareText, Plus, Search, Send,
-  ShieldCheck, TrendingUp, Users, Wallet, X,
+  AlertCircle,
+  ArrowLeft,
+  ArrowRight,
+  Banknote,
+  Check,
+  ChevronDown,
+  HeartPulse,
+  Info,
+  Loader2,
+  MessageSquareText,
+  Plus,
+  Search,
+  Send,
+  ShieldCheck,
+  TrendingUp,
+  Users,
+  Wallet,
 } from "lucide-react";
 import { getJson, invalidateJson } from "@/lib/client-cache";
 import type { ConsultView } from "@/components/doctor/consult-views";
@@ -22,7 +36,7 @@ import { ADHERENCE_LABEL, bpBand, durationLabel } from "@/components/consults/ba
 import { CONDITIONS as CONDITION_OPTIONS, CONDITION_LABEL } from "@/lib/consult-conditions";
 import { Modal } from "@/components/ui/Overlay";
 import { describeLog } from "@/lib/treatment-plan";
-import { RISK_LABEL } from "@/lib/care-risk";
+import { RISK_LABEL, effectiveRisk } from "@/lib/care-risk";
 
 const naira = (n: number) => `₦${Math.round(n).toLocaleString("en-NG")}`;
 type Redemption = {
@@ -55,7 +69,8 @@ type MemberRow = {
   conditions: string[]; status: string; assigned_at: string | null;
   expires_at: string | null; messages_used: number; message_allowance: number;
   messages_left: number; unread: number; assessed: boolean;
-  risk_level?: string; risk_reason?: string | null;
+  /** The level to act on — the doctor's own call when they made one. */
+  risk?: string; risk_manual?: boolean; risk_detail?: string | null;
   last_message: { sender: string; preview: string; created_at: string } | null;
 };
 
@@ -96,6 +111,8 @@ type MemberDetailData = {
     risk_level: string;
     risk_reason: string | null;
     risk_rated_at: string | null;
+    risk_manual: string | null;
+    risk_note: string | null;
   };
   baseline: Baseline | null;
   earning: { total: number; released: number; pending: number; status: string } | null;
@@ -411,6 +428,9 @@ function ActionCard({
 
 const FILTERS = [
   { key: "all", label: "All" },
+  // Triage first: in a list of hundreds this is the one you reach for.
+  { key: "critical", label: "Needs attention now" },
+  { key: "flagged", label: "All flagged" },
   { key: "new", label: "Needs first assessment" },
   { key: "needs_reply", label: "Waiting on you" },
   { key: "inactive", label: "Lapsed" },
@@ -547,15 +567,17 @@ function MemberCard({ member, onClick }: { member: MemberRow; onClick: () => voi
           <p className="mt-0.5 font-mono text-[11px] text-slate-400">{member.code}</p>
           <div className="mt-1.5 flex flex-wrap gap-1.5">
             {/* Triage first: in a list of hundreds this is what you scan for. */}
-            {member.risk_level && member.risk_level !== "none" && (
+            {member.risk && member.risk !== "none" && (
               <span
-                title={member.risk_reason ?? undefined}
+                title={member.risk_detail ?? undefined}
                 className={`inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[10px] font-bold ${
-                  RISK_CHIP[member.risk_level] ?? "bg-slate-100 text-slate-600"
+                  RISK_CHIP[member.risk] ?? "bg-slate-100 text-slate-600"
                 }`}
               >
-                {member.risk_level === "critical" && <AlertCircle className="h-3 w-3" />}
-                {RISK_LABEL[member.risk_level] ?? member.risk_level}
+                {member.risk === "critical" && <AlertCircle className="h-3 w-3" />}
+                {RISK_LABEL[member.risk] ?? member.risk}
+                {/* A dot means a person decided this, not a threshold. */}
+                {member.risk_manual && <span className="opacity-60">·</span>}
               </span>
             )}
             {member.conditions.map((c) => (
@@ -737,28 +759,7 @@ function MemberDetail({
     <div className="animate-fade-in space-y-4">
       <BackButton onBack={onBack} />
 
-      {(p.risk_level === "critical" || p.risk_level === "high") && (
-        <div
-          className={`flex items-start gap-2.5 rounded-2xl border px-4 py-3 ${
-            p.risk_level === "critical"
-              ? "border-red-200 bg-red-50"
-              : "border-amber-200 bg-amber-50"
-          }`}
-        >
-          <AlertCircle
-            className={`mt-0.5 h-4 w-4 shrink-0 ${p.risk_level === "critical" ? "text-red-500" : "text-amber-500"}`}
-          />
-          <div className="min-w-0">
-            <p className={`text-sm font-bold ${p.risk_level === "critical" ? "text-red-800" : "text-amber-800"}`}>
-              {RISK_LABEL[p.risk_level] ?? p.risk_level}
-            </p>
-            <p className={`text-xs ${p.risk_level === "critical" ? "text-red-700" : "text-amber-700"}`}>
-              {p.risk_reason ?? "A recent reading was outside the usual range."}
-              {p.risk_rated_at ? ` · ${formatDate(p.risk_rated_at)}` : ""}
-            </p>
-          </div>
-        </div>
-      )}
+      <RiskBanner patient={p} onChanged={reload} />
 
       {/* Who they are, in a line. Everything else is a tap away rather than
           three cards of scrolling before the clinical picture. */}
@@ -940,6 +941,127 @@ function DailyLog({ logs }: { logs: PlanLog[] }) {
   );
 }
 
+/**
+ * Where this member stands, and the doctor's chance to disagree.
+ *
+ * The automatic rating is a prompt to look, never a verdict — so the doctor
+ * can set their own level in either direction, or clear it and hand the member
+ * back to the thresholds.
+ */
+function RiskBanner({
+  patient, onChanged,
+}: {
+  patient: MemberDetailData["patient"];
+  onChanged: () => void;
+}) {
+  const [open, setOpen] = useState(false);
+  const [saving, setSaving] = useState(false);
+  const [note, setNote] = useState(patient.risk_note ?? "");
+
+  const { level, manual } = effectiveRisk({
+    risk_level: patient.risk_level,
+    risk_manual: patient.risk_manual,
+  });
+  const detail = manual
+    ? patient.risk_note || "Set by you"
+    : patient.risk_reason ?? "A recent reading was outside the usual range.";
+
+  async function save(next: string | null) {
+    setSaving(true);
+    try {
+      const res = await fetch(`/api/doc-login/consults/patients/${patient.id}/risk`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ level: next, note: note.trim() || null }),
+      });
+      const d = await res.json().catch(() => null);
+      if (!res.ok || !d?.success) { toast.error(d?.error ?? "Could not save that."); return; }
+      toast.success(next ? `Marked ${RISK_LABEL[next]?.toLowerCase() ?? next}` : "Back to automatic");
+      setOpen(false);
+      onChanged();
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  const tone =
+    level === "critical" ? { box: "border-red-200 bg-red-50", icon: "text-red-500", head: "text-red-800", body: "text-red-700" }
+    : level === "high" ? { box: "border-amber-200 bg-amber-50", icon: "text-amber-500", head: "text-amber-800", body: "text-amber-700" }
+    : level === "watch" ? { box: "border-sky-200 bg-sky-50", icon: "text-sky-500", head: "text-sky-800", body: "text-sky-700" }
+    : { box: "border-slate-200 bg-white", icon: "text-slate-400", head: "text-slate-700", body: "text-slate-500" };
+
+  return (
+    <>
+      <div className={`flex items-start gap-2.5 rounded-2xl border px-4 py-3 ${tone.box}`}>
+        <AlertCircle className={`mt-0.5 h-4 w-4 shrink-0 ${tone.icon}`} />
+        <div className="min-w-0 flex-1">
+          <p className={`text-sm font-bold ${tone.head}`}>
+            {RISK_LABEL[level] ?? level}
+            {manual && <span className="ml-1.5 text-[11px] font-normal opacity-70">· your call</span>}
+          </p>
+          <p className={`text-xs ${tone.body}`}>
+            {detail}
+            {!manual && patient.risk_rated_at ? ` · ${formatDate(patient.risk_rated_at)}` : ""}
+          </p>
+        </div>
+        <button
+          onClick={() => setOpen(true)}
+          className="shrink-0 rounded-lg bg-white/70 px-2.5 py-1 text-[11px] font-bold text-slate-600 ring-1 ring-inset ring-slate-200 transition hover:bg-white"
+        >
+          Change
+        </button>
+      </div>
+
+      <Modal
+        open={open}
+        onClose={() => setOpen(false)}
+        title="How is this member doing?"
+        subtitle="Your judgement overrides the automatic rating, in either direction."
+        footer={
+          <button
+            onClick={() => save(null)}
+            disabled={saving || !patient.risk_manual}
+            className="w-full rounded-xl px-4 py-2.5 text-xs font-semibold text-slate-500 transition hover:text-slate-700 disabled:opacity-40"
+          >
+            Clear my rating and go back to automatic
+          </button>
+        }
+      >
+        <div className="space-y-1.5">
+          {(["critical", "high", "watch", "none"] as const).map((k) => (
+            <button
+              key={k}
+              onClick={() => save(k)}
+              disabled={saving}
+              className={`flex w-full items-center justify-between rounded-xl border px-3.5 py-2.5 text-left transition disabled:opacity-50 ${
+                patient.risk_manual === k
+                  ? "border-medical-500 bg-medical-50"
+                  : "border-slate-200 hover:border-slate-300"
+              }`}
+            >
+              <span className="text-sm font-semibold text-slate-800">{RISK_LABEL[k]}</span>
+              {patient.risk_manual === k && <Check className="h-4 w-4 text-medical-600" />}
+            </button>
+          ))}
+        </div>
+
+        <textarea
+          rows={2}
+          value={note}
+          onChange={(e) => setNote(e.target.value)}
+          placeholder="Why? (optional — you'll see this on their record)"
+          className="mt-3 w-full resize-none rounded-xl border border-slate-200 px-3 py-2 text-sm outline-none focus:border-medical-400"
+        />
+        <p className="mt-2 text-[11px] text-slate-400">
+          The automatic rating currently says{" "}
+          <strong>{(RISK_LABEL[patient.risk_level] ?? patient.risk_level).toLowerCase()}</strong>
+          {patient.risk_reason ? ` — ${patient.risk_reason}` : ""}.
+        </p>
+      </Modal>
+    </>
+  );
+}
+
 /** Everything about the person, for when the doctor actually wants it. */
 function ProfileCard({ patient }: { patient: MemberDetailData["patient"] }) {
   return (
@@ -950,7 +1072,7 @@ function ProfileCard({ patient }: { patient: MemberDetailData["patient"] }) {
         <DetailRow label="Code" value={patient.code ?? "—"} />
         <DetailRow label="Email" value={patient.email} />
         {patient.phone && <DetailRow label="Phone" value={patient.phone} />}
-        {patient.sex && <DetailRow label="Sex" value={patient.sex} />}
+        {patient.sex && <DetailRow label="Sex" value={patient.sex} caps />}
         {patient.age != null && <DetailRow label="Age" value={`${patient.age} years`} />}
         {(patient.city || patient.state) && (
           <DetailRow label="Location" value={[patient.city, patient.state].filter(Boolean).join(", ")} />
@@ -977,7 +1099,7 @@ function ProfileModal({
       <dl className="space-y-1.5 text-sm">
           <DetailRow label="Email" value={patient.email} />
           {patient.phone && <DetailRow label="Phone" value={patient.phone} />}
-          {patient.sex && <DetailRow label="Sex" value={patient.sex} />}
+          {patient.sex && <DetailRow label="Sex" value={patient.sex} caps />}
           {patient.age != null && <DetailRow label="Age" value={`${patient.age} years`} />}
           {(patient.city || patient.state) && (
             <DetailRow label="Location" value={[patient.city, patient.state].filter(Boolean).join(", ")} />
@@ -1253,11 +1375,22 @@ function BackButton({ onBack }: { onBack: () => void }) {
   );
 }
 
-function DetailRow({ label, value }: { label: string; value: string }) {
+/**
+ * @param caps title-case the value. Off by default: it was on for every row,
+ *   which rendered `jackofot@gmail.com` as `Jackofot@Gmail.Com`. Only fields
+ *   that are genuinely lower-case data — sex, a city — want it.
+ */
+function DetailRow({
+  label, value, caps = false,
+}: {
+  label: string; value: string; caps?: boolean;
+}) {
   return (
     <div className="flex gap-2">
       <dt className="w-20 shrink-0 text-xs text-slate-400">{label}</dt>
-      <dd className="min-w-0 flex-1 break-words text-sm font-medium capitalize text-slate-700">{value}</dd>
+      <dd className={`min-w-0 flex-1 break-words text-sm font-medium text-slate-700 ${caps ? "capitalize" : ""}`}>
+        {value}
+      </dd>
     </div>
   );
 }

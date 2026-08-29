@@ -8,10 +8,11 @@
  * everyone who opens the dashboard to look at their care-plan members.
  */
 
-import { useEffect, useRef, useState } from "react";
+import { useRef, useState } from "react";
 import { toast } from "react-hot-toast";
 import {
-  Building2, Check, CheckCircle, ChevronRight, CreditCard, Info, Pencil, RefreshCw, User, X,
+  Building2, Camera, Check, CheckCircle, ChevronRight, CreditCard, Info, Pencil, RefreshCw,
+  User, X,
 } from "lucide-react";
 import { PhoneInput } from "@/components/PhoneInput";
 import { BankAccountInput } from "@/components/BankAccountInput";
@@ -29,7 +30,10 @@ export function DocProfileSection({
   onProfileUpdate: (p: DoctorProfileData) => void;
 }) {
   const [profile, setProfile] = useState<DoctorProfileData>(
-    initialProfile ?? { prefix: null, full_name: null, phone: null, hospitals: [], bank_name: null, account_number: null, account_name: null }
+    initialProfile ?? {
+      prefix: null, full_name: null, phone: null, hospitals: [],
+      bank_name: null, account_number: null, account_name: null, avatar_url: null,
+    }
   );
   const [onboardStep, setOnboardStep] = useState<OnboardStep>(1);
   const [saving, setSaving] = useState(false);
@@ -154,6 +158,16 @@ export function DocProfileSection({
 
           {(onboardStep === 1 || editingPersonal) && (
             <div className="px-4 pb-4 pt-1 space-y-3 border-t border-slate-100">
+              {/* Photo — members see this beside their doctor's name, and a
+                  face makes the person on the other end of the thread real. */}
+              <AvatarPicker
+                url={profile.avatar_url ?? null}
+                name={profile.full_name ?? localName}
+                onUploaded={(url) => {
+                  setProfile((prev) => ({ ...prev, avatar_url: url }));
+                  onProfileUpdate({ ...profile, avatar_url: url });
+                }}
+              />
               {/* Prefix */}
               <PrefixSelect value={localPrefix} onChange={setLocalPrefix} />
               {/* Full Name */}
@@ -432,6 +446,103 @@ export function DocProfileSection({
           </div>
         )}
       </div>
+    </div>
+  );
+}
+
+
+/**
+ * The doctor's photo.
+ *
+ * The upload endpoint already existed for the encounter page; it just had no
+ * way in from the portal. Replacing a photo simply uploads a new one — the old
+ * file stays in the bucket rather than risking a delete that leaves a member's
+ * cached page pointing at nothing.
+ */
+function AvatarPicker({
+  url, name, onUploaded,
+}: {
+  url: string | null;
+  name: string;
+  onUploaded: (url: string) => void;
+}) {
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState("");
+  const fileRef = useRef<HTMLInputElement | null>(null);
+
+  async function pick(file: File | null) {
+    if (!file) return;
+    setError("");
+    if (!["image/jpeg", "image/png", "image/webp"].includes(file.type)) {
+      setError("Use a JPEG, PNG or WebP image.");
+      return;
+    }
+    if (file.size > 5 * 1024 * 1024) {
+      setError("That image is over 5MB — try a smaller one.");
+      return;
+    }
+    setBusy(true);
+    try {
+      const form = new FormData();
+      form.append("file", file);
+      const res = await fetch("/api/doc-login/avatar", { method: "POST", body: form });
+      const d = await res.json().catch(() => null);
+      if (!res.ok || !d?.success) {
+        setError(d?.error ?? "Could not upload that photo.");
+        return;
+      }
+      onUploaded(d.url);
+      toast.success("Photo updated");
+    } catch {
+      setError("Network error. Please try again.");
+    } finally {
+      setBusy(false);
+      if (fileRef.current) fileRef.current.value = "";
+    }
+  }
+
+  const initial = (name || "?").trim().slice(0, 1).toUpperCase();
+
+  return (
+    <div>
+      <label className="mb-1 block text-xs font-semibold text-slate-500">Your photo</label>
+      <div className="flex items-center gap-3">
+        {url ? (
+          // eslint-disable-next-line @next/next/no-img-element
+          <img
+            src={url}
+            alt=""
+            className="h-16 w-16 shrink-0 rounded-2xl object-cover ring-1 ring-slate-200"
+          />
+        ) : (
+          <div className="flex h-16 w-16 shrink-0 items-center justify-center rounded-2xl bg-medical-50 text-xl font-bold text-medical-600 ring-1 ring-slate-200">
+            {initial}
+          </div>
+        )}
+
+        <div className="min-w-0">
+          <input
+            ref={fileRef}
+            type="file"
+            accept="image/jpeg,image/png,image/webp"
+            hidden
+            onChange={(e) => pick(e.target.files?.[0] ?? null)}
+          />
+          <button
+            type="button"
+            onClick={() => fileRef.current?.click()}
+            disabled={busy}
+            className="inline-flex items-center gap-1.5 rounded-xl bg-slate-100 px-3 py-2 text-xs font-bold text-slate-700 transition hover:bg-slate-200 disabled:opacity-50"
+          >
+            {busy ? <RefreshCw className="h-3.5 w-3.5 animate-spin" /> : <Camera className="h-3.5 w-3.5" />}
+            {busy ? "Uploading…" : url ? "Change photo" : "Add a photo"}
+          </button>
+          <p className="mt-1 text-[11px] text-slate-400">
+            JPEG, PNG or WebP, up to 5MB. Your members see this beside your name.
+          </p>
+        </div>
+      </div>
+      {error && <p className="mt-1.5 text-xs text-red-600">{error}</p>}
     </div>
   );
 }

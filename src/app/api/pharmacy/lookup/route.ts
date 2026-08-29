@@ -3,6 +3,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { z } from "zod";
 import { prisma } from "@/lib/prisma";
 import { getConsultSettings, getPharmacyFromRequest } from "@/lib/consult";
+import { medLiveWhere } from "@/lib/medication-status";
 import { ensureCarePlanSchema } from "@/lib/startup/ensure-care-plan-schema";
 
 const BodySchema = z.object({ code: z.string().trim().min(4).max(32) });
@@ -47,7 +48,7 @@ export async function POST(req: NextRequest) {
     // What their doctor has them on, and what this pharmacy has already handed
     // over — so the counter works from the schedule rather than from memory.
     const prescriptions = await prisma.consultPrescription.findMany({
-      where: { patient_id: member.id, status: { in: ["scheduled", "active"] } },
+      where: { patient_id: member.id, ...medLiveWhere },
       orderBy: [{ start_date: "desc" }],
       take: 30,
       select: {

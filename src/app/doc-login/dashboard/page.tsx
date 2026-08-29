@@ -41,7 +41,6 @@ import {
   type ConsultView,
 } from "@/components/doctor/consult-views";
 import { getJson } from "@/lib/client-cache";
-import { themeClass } from "@/lib/encounter-themes";
 
 // The three big panels are code-split: each is only fetched when its tab is
 // opened, so signing in no longer downloads the whole portal up front.
@@ -606,14 +605,12 @@ function DocDashboardInner() {
   const [resultsVisible, setResultsVisible] = useState(REQUEST_PAGE_SIZE);
   const [loggingOut, setLoggingOut] = useState(false);
   const [monitoringCount, setMonitoringCount] = useState<number | null>(null);
-  const [chargingReady, setChargingReady] = useState<boolean | null>(null);
   // Care-plan members waiting on a first assessment or a reply — the badge on
   // the portal's home entry.
   const [consultAlerts, setConsultAlerts] = useState(0);
   // Not cleared for the care plan yet — the nav carries a dot until they apply.
   const [consultApproved, setConsultApproved] = useState<boolean | null>(null);
   const [showEarnModal, setShowEarnModal] = useState(false);
-  const [docTheme, setDocTheme] = useState<string | null>(null);
   const [navOpen, setNavOpen] = useState(false);
   // Which member's record is open, and which one the chat button asked for.
   const [openMemberId, setOpenMemberId] = useState<string | null>(null);
@@ -690,15 +687,6 @@ function DocDashboardInner() {
         setConsultApproved(!!c.approved);
       })
       .catch(() => {});
-
-    // Only for the page theme now — the Earn panel is hidden, so no set-up nag.
-    getJson<{ success: boolean; pricing: { ready?: boolean; theme?: string | null } | null }>("/api/doc-login/pricing")
-      .then((p) => {
-        if (!p.success) return;
-        setChargingReady(!!p.pricing?.ready);
-        setDocTheme(p.pricing?.theme ?? null);
-      })
-      .catch(() => {});
   }, []);
 
   async function handleLogout() {
@@ -771,7 +759,7 @@ function DocDashboardInner() {
   };
 
   return (
-    <div className={`min-h-dvh bg-gradient-to-br from-sky-50 via-blue-50 to-indigo-50 ${themeClass(docTheme)}`}>
+    <div className="min-h-dvh bg-gradient-to-br from-sky-50 via-blue-50 to-indigo-50">
       {/* Header */}
       <header className="sticky top-0 z-30 border-b border-white/60 bg-white/85 backdrop-blur-md">
         <div className="mx-auto flex max-w-[1600px] items-center gap-3 px-4 py-3 lg:px-6">
@@ -892,8 +880,6 @@ function DocDashboardInner() {
                 view={earnView}
                 onViewChange={setEarnView}
                 hideSubNav
-                onReadyChange={setChargingReady}
-                onThemeChange={setDocTheme}
               />
             </div>
           )}
