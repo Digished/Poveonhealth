@@ -5,7 +5,7 @@ import { toast } from "react-hot-toast";
 import {
   BadgeCheck, Check, Clock, FileText, Loader2, Save, ShieldAlert, ShieldCheck, Upload,
 } from "lucide-react";
-import { DobInput } from "@/components/DobInput";
+import { DateInput } from "@/components/ui/DateInput";
 
 type Credential = {
   mdcn_number: string | null;
@@ -143,10 +143,10 @@ export function DoctorCredentialsPanel({ onApproved }: { onApproved?: (approved:
           </Field>
 
           <Field label="Practising licence expires" required>
-            <DobInput
+            <DateInput
               value={form.license_expires_at}
               onChange={(iso) => setForm({ ...form, license_expires_at: iso })}
-              noLabel
+              futureOnly
             />
             <p className="mt-1 text-xs text-slate-400">
               The expiry on your current annual licence, as dd/mm/yyyy.
@@ -332,12 +332,21 @@ function DocumentRow({
       fd.append("slot", slot);
       fd.append("file", file);
       const res = await fetch("/api/doc-login/credentials/document", { method: "POST", body: fd });
-      const d = await res.json();
-      if (!res.ok || !d.success) { toast.error(d.error ?? "Upload failed."); return; }
+      // A rejected upload can come back as HTML (a platform size limit, say),
+      // so don't assume JSON — that used to surface as a silent failure.
+      const d = await res.json().catch(() => null);
+      if (!res.ok || !d?.success) {
+        toast.error(d?.error ?? `Upload failed (${res.status}). Try a smaller file.`);
+        return;
+      }
       toast.success(`${label} uploaded`);
       onUploaded();
+    } catch {
+      toast.error("Network error while uploading.");
     } finally {
       setBusy(false);
+      // Let the same file be re-picked after a failure.
+      if (fileRef.current) fileRef.current.value = "";
     }
   }
 

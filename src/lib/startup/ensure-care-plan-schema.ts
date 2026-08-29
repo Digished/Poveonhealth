@@ -15,6 +15,9 @@ let ensured: Promise<void> | null = null;
  * routes call ensureEncounterSchema. Memoised per process, so repeated calls
  * are free after the first, and every statement is IF NOT EXISTS.
  *
+ * On a healthy database the only thing that runs is a single probe query — see
+ * `alreadyCurrent`. The DDL is a repair path, not a per-request cost.
+ *
  * @param force re-run even if already ensured this process
  */
 export async function ensureCarePlanSchema(force = false): Promise<void> {
@@ -23,8 +26,69 @@ export async function ensureCarePlanSchema(force = false): Promise<void> {
   return ensured;
 }
 
+/**
+ * Everything the current code needs that a partly-migrated database might not
+ * have. Checked in one query before doing any work — see `alreadyCurrent`.
+ */
+const SENTINEL_TABLES = [
+  "consult_settings",
+  "consult_patients",
+  "consult_messages",
+  "consult_earnings",
+  "consult_earning_releases",
+  "consult_redemptions",
+  "consult_prescriptions",
+  "consult_test_orders",
+  "doctor_credentials",
+  "pharmacies",
+  "pharmacy_otps",
+  "pharmacy_sessions",
+  "pharmacy_customers",
+];
+
+/** "table.column", so one text array can check them all. */
+const SENTINEL_COLUMNS = [
+  "pharmacies.pin_hash",
+  "pharmacies.logo_url",
+  "consult_patients.consent_at",
+  "consult_patients.preferred_pharmacy_id",
+  "consult_patients.preferred_lab_id",
+  "doctor_profiles.consult_approved",
+];
+
+/**
+ * Is the schema already up to date?
+ *
+ * The DDL below is ~55 sequential round-trips. Running it on every cold start
+ * made the first care-plan request on each serverless instance take seconds —
+ * the credentials page in particular. This is one query, and on a healthy
+ * database it is the only thing that runs.
+ */
+async function alreadyCurrent(): Promise<boolean> {
+  try {
+    const [row] = await prisma.$queryRaw<{ tables: bigint; columns: bigint }[]>`
+      SELECT
+        (SELECT count(*) FROM information_schema.tables
+          WHERE table_schema = 'public'
+            AND table_name = ANY(${SENTINEL_TABLES}::text[])) AS tables,
+        (SELECT count(*) FROM information_schema.columns
+          WHERE table_schema = 'public'
+            AND table_name || '.' || column_name = ANY(${SENTINEL_COLUMNS}::text[])) AS columns
+    `;
+    return (
+      Number(row?.tables ?? 0) === SENTINEL_TABLES.length &&
+      Number(row?.columns ?? 0) === SENTINEL_COLUMNS.length
+    );
+  } catch {
+    // Can't tell — fall through and run the DDL, which is all IF NOT EXISTS.
+    return false;
+  }
+}
+
 async function runEnsure(): Promise<void> {
   try {
+    if (await alreadyCurrent()) return;
+
     // One statement per call — a combined block fails as a unit, which is the
     // trap the build-time migration fell into.
     const exec = (sql: string) => prisma.$executeRawUnsafe(sql);

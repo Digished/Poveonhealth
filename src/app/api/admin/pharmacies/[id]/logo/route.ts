@@ -46,18 +46,35 @@ export async function POST(request: NextRequest, { params }: { params: { id: str
       return NextResponse.json({ success: false, error: "Image must be under 5MB" }, { status: 400 });
     }
 
-    const supabaseAdmin = createAdminClient();
-    const { data: buckets } = await supabaseAdmin.storage.listBuckets();
-    if (!buckets?.find((b) => b.name === BUCKET)) {
-      await supabaseAdmin.storage.createBucket(BUCKET, { public: true });
+    if (!process.env.SUPABASE_SERVICE_ROLE_KEY || !process.env.NEXT_PUBLIC_SUPABASE_URL) {
+      console.error("[admin/pharmacies/logo] storage is not configured");
+      return NextResponse.json(
+        { success: false, error: "Image storage isn't configured on the server." },
+        { status: 503 }
+      );
     }
 
+    const supabaseAdmin = createAdminClient();
     const ext = file.name.split(".").pop() ?? "jpg";
     const path = `${params.id}/logo.${ext}`;
-    const { error: uploadError } = await supabaseAdmin.storage
-      .from(BUCKET)
-      .upload(path, await file.arrayBuffer(), { upsert: true, contentType: file.type });
+    const bytes = await file.arrayBuffer();
+
+    const put = () =>
+      supabaseAdmin.storage.from(BUCKET).upload(path, bytes, { upsert: true, contentType: file.type });
+
+    let { error: uploadError } = await put();
+
+    // The bucket won't exist on the first upload after deploy; create it and retry.
+    if (uploadError && /bucket.*not.*found|does not exist/i.test(uploadError.message)) {
+      const { error: bucketError } = await supabaseAdmin.storage.createBucket(BUCKET, { public: true });
+      if (bucketError && !/already exists/i.test(bucketError.message)) {
+        console.error("[admin/pharmacies/logo] could not create bucket:", bucketError.message);
+        return NextResponse.json({ success: false, error: bucketError.message }, { status: 500 });
+      }
+      ({ error: uploadError } = await put());
+    }
     if (uploadError) {
+      console.error("[admin/pharmacies/logo] upload failed:", uploadError.message);
       return NextResponse.json({ success: false, error: uploadError.message }, { status: 500 });
     }
 

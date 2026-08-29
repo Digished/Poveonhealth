@@ -25,14 +25,13 @@ async function requireAdmin() {
 }
 
 const BodySchema = z.object({
-  // Either an existing enrolment, or enough to create one from scratch.
-  patient_id: z.string().min(1).optional(),
-  email: z.string().trim().email().optional(),
-  full_name: z.string().trim().min(2).max(120).optional(),
+  // The email is the identity. Everything else is optional — we fill the gaps
+  // from whatever we already hold for that address.
+  email: z.string().trim().email("Enter a valid email address"),
+  full_name: z.string().trim().max(120).optional().nullable(),
   phone: z.string().trim().max(20).optional().nullable(),
   conditions: z.array(z.string()).optional(),
   amount_naira: z.coerce.number().min(0).max(10_000_000).optional(),
-  note: z.string().trim().max(200).optional().nullable(),
 });
 
 /**
@@ -55,44 +54,67 @@ export async function POST(req: NextRequest) {
     }
     const d = parsed.data;
     const settings = await getConsultSettings();
+    const email = d.email.toLowerCase();
 
-    let patientId = d.patient_id ?? null;
+    const [existing, profile, lastRequest] = await Promise.all([
+      prisma.consultPatient.findUnique({ where: { email } }),
+      prisma.patientProfile.findUnique({
+        where: { email },
+        select: { name: true, phone: true, dob: true, sex: true },
+      }),
+      // Anyone who reached us through a lab request already has a name on file.
+      prisma.request.findFirst({
+        where: { patient_email: email },
+        orderBy: { created_at: "desc" },
+        select: { patient_name: true, patient_phone: true, dob: true, sex: true },
+      }),
+    ]);
 
-    if (!patientId) {
-      if (!d.email || !d.full_name) {
-        return NextResponse.json(
-          { error: "Give an existing member, or an email and name to create one." },
-          { status: 400 }
-        );
-      }
-      const email = d.email.toLowerCase();
-      const existing = await prisma.consultPatient.findUnique({ where: { email } });
-      if (existing) {
-        patientId = existing.id;
-      } else {
-        const created = await prisma.consultPatient.create({
-          data: {
-            email,
-            full_name: d.full_name,
-            phone: d.phone || null,
-            conditions: d.conditions?.length ? d.conditions : ["hypertension"],
-            status: "pending_payment",
-            // Activating by hand is itself the record of consent being taken
-            // offline; the admin is asserting it.
-            consent_at: new Date(),
-            message_allowance: settings.message_allowance,
-          },
-        });
-        patientId = created.id;
-        // Keep the portal profile in step so they can sign in and see it.
-        await prisma.patientProfile
-          .upsert({
-            where: { email },
-            create: { email, name: d.full_name, phone: d.phone || null },
-            update: { name: d.full_name, ...(d.phone ? { phone: d.phone } : {}) },
-          })
-          .catch(() => {});
-      }
+    // Fall back through everything we know before asking anyone to type it.
+    const fullName =
+      d.full_name?.trim() ||
+      existing?.full_name ||
+      profile?.name ||
+      lastRequest?.patient_name ||
+      email.split("@")[0];
+    const phone = d.phone || existing?.phone || profile?.phone || lastRequest?.patient_phone || null;
+
+    let patientId: string;
+    if (existing) {
+      patientId = existing.id;
+      // Top up anything still blank, without overwriting what they entered.
+      await prisma.consultPatient.update({
+        where: { id: existing.id },
+        data: {
+          ...(existing.full_name ? {} : { full_name: fullName }),
+          ...(existing.phone ? {} : { phone }),
+          ...(existing.conditions.length ? {} : { conditions: d.conditions?.length ? d.conditions : ["hypertension"] }),
+        },
+      });
+    } else {
+      const created = await prisma.consultPatient.create({
+        data: {
+          email,
+          full_name: fullName,
+          phone,
+          sex: profile?.sex ?? lastRequest?.sex ?? null,
+          conditions: d.conditions?.length ? d.conditions : ["hypertension"],
+          status: "pending_payment",
+          // Activating by hand is itself the record of consent taken offline;
+          // the admin is asserting it.
+          consent_at: new Date(),
+          message_allowance: settings.message_allowance,
+        },
+      });
+      patientId = created.id;
+      // Keep the portal profile in step so they can sign in and see it.
+      await prisma.patientProfile
+        .upsert({
+          where: { email },
+          create: { email, name: fullName, phone },
+          update: { ...(profile?.name ? {} : { name: fullName }), ...(profile?.phone || !phone ? {} : { phone }) },
+        })
+        .catch(() => {});
     }
 
     const patient = await prisma.consultPatient.findUnique({ where: { id: patientId } });

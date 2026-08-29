@@ -99,27 +99,17 @@ export function AdminCarePlanTab() {
 
 /** Switch a member on by hand — for anyone who paid outside Paystack. */
 function ActivateForm({ onClose, onDone }: { onClose: () => void; onDone: () => void }) {
-  const [form, setForm] = useState({ email: "", full_name: "", phone: "", amount_naira: "" });
-  const [conditions, setConditions] = useState<string[]>(["hypertension"]);
+  const [email, setEmail] = useState("");
   const [saving, setSaving] = useState(false);
 
-  const toggle = (c: string) =>
-    setConditions((prev) => (prev.includes(c) ? prev.filter((x) => x !== c) : [...prev, c]));
-
   async function save() {
-    if (saving || !form.email.includes("@") || form.full_name.trim().length < 2) return;
+    if (saving || !email.includes("@")) return;
     setSaving(true);
     try {
       const res = await fetch("/api/admin/consults/activate", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          email: form.email.trim().toLowerCase(),
-          full_name: form.full_name.trim(),
-          phone: form.phone || null,
-          conditions,
-          amount_naira: form.amount_naira ? Number(form.amount_naira) : undefined,
-        }),
+        body: JSON.stringify({ email: email.trim().toLowerCase() }),
       });
       const d = await res.json();
       if (!res.ok || !d.success) { toast.error(d.error ?? "Could not activate."); return; }
@@ -128,21 +118,12 @@ function ActivateForm({ onClose, onDone }: { onClose: () => void; onDone: () => 
           ? `Active — code ${d.member.code}, assigned to ${d.member.doctor_email}`
           : `Active — code ${d.member.code}. No approved doctor was free, so assign one below.`
       );
+      setEmail("");
       onDone();
     } finally {
       setSaving(false);
     }
   }
-
-  const field = (key: keyof typeof form, placeholder: string, type = "text") => (
-    <input
-      type={type}
-      value={form[key]}
-      onChange={(e) => setForm({ ...form, [key]: e.target.value })}
-      placeholder={placeholder}
-      className="rounded-lg border border-white/10 bg-white/5 px-3.5 py-2.5 text-sm text-white placeholder-slate-500 focus:border-medical-500 focus:outline-none"
-    />
-  );
 
   return (
     <div className="rounded-xl border border-white/10 bg-white/5 p-5">
@@ -153,42 +134,33 @@ function ActivateForm({ onClose, onDone }: { onClose: () => void; onDone: () => 
         </button>
       </div>
       <p className="mt-1 text-xs text-slate-400">
-        For someone who paid by transfer, cash, or as part of a group. It runs the same activation as
-        a card payment: they get a real care code, a doctor is assigned by the usual rotation, and
-        that doctor&apos;s pool picks them up. Existing members are matched on email.
+        For someone who paid by transfer, cash, or as part of a group. Just the email — we fill in
+        their name and phone from whatever we already hold (their portal profile, or their last lab
+        request), and they can correct it themselves. It runs the same activation as a card payment:
+        a real care code, a doctor assigned by the usual rotation, and that doctor&apos;s pool picks
+        them up.
       </p>
 
-      <div className="mt-4 grid gap-2 sm:grid-cols-2 lg:grid-cols-4">
-        {field("email", "Email address", "email")}
-        {field("full_name", "Full name")}
-        {field("phone", "Phone (optional)")}
-        {field("amount_naira", "Amount paid (default: plan price)")}
+      <div className="mt-4 flex flex-wrap gap-2">
+        <input
+          autoFocus
+          type="email"
+          inputMode="email"
+          value={email}
+          onChange={(e) => setEmail(e.target.value)}
+          onKeyDown={(e) => { if (e.key === "Enter") save(); }}
+          placeholder="member@example.com"
+          className="min-w-[240px] flex-1 rounded-lg border border-white/10 bg-white/5 px-3.5 py-2.5 text-sm text-white placeholder-slate-500 focus:border-medical-500 focus:outline-none"
+        />
+        <button
+          onClick={save}
+          disabled={saving || !email.includes("@")}
+          className="flex items-center gap-2 rounded-lg bg-emerald-600 px-5 py-2.5 text-sm font-bold text-white transition hover:bg-emerald-700 disabled:opacity-50"
+        >
+          {saving ? <Loader2 className="h-4 w-4 animate-spin" /> : <Check className="h-4 w-4" />}
+          {saving ? "Activating…" : "Activate"}
+        </button>
       </div>
-
-      <div className="mt-3 flex flex-wrap gap-2">
-        {(["hypertension", "diabetes"] as const).map((c) => (
-          <button
-            key={c}
-            onClick={() => toggle(c)}
-            className={`rounded-full border px-3 py-1.5 text-xs font-semibold capitalize transition ${
-              conditions.includes(c)
-                ? "border-medical-500 bg-medical-600/20 text-white"
-                : "border-white/10 bg-white/5 text-slate-400 hover:text-white"
-            }`}
-          >
-            {c}
-          </button>
-        ))}
-      </div>
-
-      <button
-        onClick={save}
-        disabled={saving || !form.email.includes("@") || form.full_name.trim().length < 2}
-        className="mt-4 flex items-center gap-2 rounded-lg bg-emerald-600 px-4 py-2.5 text-sm font-bold text-white transition hover:bg-emerald-700 disabled:opacity-50"
-      >
-        {saving ? <Loader2 className="h-4 w-4 animate-spin" /> : <Check className="h-4 w-4" />}
-        {saving ? "Activating…" : "Activate"}
-      </button>
     </div>
   );
 }

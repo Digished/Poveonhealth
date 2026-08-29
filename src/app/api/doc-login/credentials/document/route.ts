@@ -1,5 +1,6 @@
 export const dynamic = "force-dynamic";
 import { NextRequest, NextResponse } from "next/server";
+import { createHash } from "crypto";
 import { createAdminClient } from "@/lib/supabase/server";
 import { prisma } from "@/lib/prisma";
 import { getDoctorEmailFromConsultRequest } from "@/lib/consult";
@@ -23,14 +24,26 @@ export async function POST(req: NextRequest) {
     const email = await getDoctorEmailFromConsultRequest(req);
     if (!email) return NextResponse.json({ error: "Not authenticated." }, { status: 401 });
 
+    // Without the service-role key there is no way to write to storage at all,
+    // and the failure is otherwise a confusing 500 deep inside the SDK.
+    if (!process.env.SUPABASE_SERVICE_ROLE_KEY || !process.env.NEXT_PUBLIC_SUPABASE_URL) {
+      console.error("[credentials/document] storage is not configured (missing Supabase env vars)");
+      return NextResponse.json(
+        { error: "Document storage isn't configured on the server. Please contact support." },
+        { status: 503 }
+      );
+    }
+
     const form = await req.formData();
     const slot = String(form.get("slot") ?? "") as Slot;
     if (!(slot in SLOTS)) {
       return NextResponse.json({ error: "Unknown document type." }, { status: 400 });
     }
 
-    const file = form.get("file") as File | null;
-    if (!file) return NextResponse.json({ error: "No file provided." }, { status: 400 });
+    const file = form.get("file");
+    if (!file || typeof file === "string") {
+      return NextResponse.json({ error: "No file provided." }, { status: 400 });
+    }
 
     const allowed = ["image/jpeg", "image/png", "image/webp", "application/pdf"];
     if (!allowed.includes(file.type)) {
@@ -41,22 +54,48 @@ export async function POST(req: NextRequest) {
     }
 
     const supabaseAdmin = createAdminClient();
-    const { data: buckets } = await supabaseAdmin.storage.listBuckets();
-    if (!buckets?.find((b) => b.name === BUCKET)) {
-      await supabaseAdmin.storage.createBucket(BUCKET, { public: false });
-    }
 
     // The email is the key, so hash it rather than putting an address in a path.
-    const { createHash } = await import("crypto");
     const dir = createHash("sha256").update(email).digest("hex").slice(0, 32);
     const ext = file.type === "application/pdf" ? "pdf" : (file.name.split(".").pop() ?? "jpg");
     const path = `${dir}/${slot}.${ext}`;
+    const bytes = await file.arrayBuffer();
 
-    const { error: uploadError } = await supabaseAdmin.storage
-      .from(BUCKET)
-      .upload(path, await file.arrayBuffer(), { upsert: true, contentType: file.type });
+    const put = () =>
+      supabaseAdmin.storage
+        .from(BUCKET)
+        .upload(path, bytes, { upsert: true, contentType: file.type });
+
+    let { error: uploadError } = await put();
+
+    // First upload for this deployment: the bucket won't exist yet. Create it
+    // (private — these are identity documents) and try once more.
     if (uploadError) {
-      return NextResponse.json({ error: uploadError.message }, { status: 500 });
+      const missing = /bucket.*not.*found|does not exist/i.test(uploadError.message);
+      if (!missing) {
+        console.error("[credentials/document] upload failed:", uploadError.message);
+        return NextResponse.json({ error: `Upload failed: ${uploadError.message}` }, { status: 500 });
+      }
+
+      const { error: bucketError } = await supabaseAdmin.storage.createBucket(BUCKET, {
+        public: false,
+        fileSizeLimit: 8 * 1024 * 1024,
+        allowedMimeTypes: allowed,
+      });
+      // "already exists" is fine — another request may have won the race.
+      if (bucketError && !/already exists/i.test(bucketError.message)) {
+        console.error("[credentials/document] could not create bucket:", bucketError.message);
+        return NextResponse.json(
+          { error: `Could not prepare document storage: ${bucketError.message}` },
+          { status: 500 }
+        );
+      }
+
+      ({ error: uploadError } = await put());
+      if (uploadError) {
+        console.error("[credentials/document] upload failed after bucket create:", uploadError.message);
+        return NextResponse.json({ error: `Upload failed: ${uploadError.message}` }, { status: 500 });
+      }
     }
 
     // Store the storage path, not a public URL — the bucket is private.
@@ -68,7 +107,8 @@ export async function POST(req: NextRequest) {
 
     return NextResponse.json({ success: true, slot, stored: true });
   } catch (err) {
-    console.error("[doc-login/credentials/document]", err);
-    return NextResponse.json({ error: "Upload failed." }, { status: 500 });
+    const message = err instanceof Error ? err.message : "Upload failed.";
+    console.error("[credentials/document]", err);
+    return NextResponse.json({ error: message }, { status: 500 });
   }
 }
