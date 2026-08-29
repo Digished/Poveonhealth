@@ -11,7 +11,12 @@ import {
 } from "lucide-react";
 import { PortalNav, PortalSubNav, type PortalNavSection } from "@/components/ui/PortalNav";
 import { EARN_VIEWS, type EarnView } from "@/components/doctor/earn-views";
-import { CONSULT_VIEWS, type ConsultView } from "@/components/doctor/consult-views";
+import {
+  CONSULT_MORE_VIEWS,
+  CONSULT_PRIMARY_VIEWS,
+  CONSULT_VIEWS,
+  type ConsultView,
+} from "@/components/doctor/consult-views";
 import { getJson } from "@/lib/client-cache";
 import { themeClass } from "@/lib/encounter-themes";
 
@@ -29,6 +34,7 @@ const DoctorConsultsSection = dynamic(
   () => import("@/components/doctor/DoctorConsultsSection").then((m) => m.DoctorConsultsSection),
   { loading: () => <SectionLoader label="Loading your care plan…" /> }
 );
+import { CarePlanChatFab } from "@/components/consults/CarePlanChatFab";
 import { SupportFab } from "@/components/SupportFab";
 import { SectionLoader } from "@/components/PageLoader";
 import { PoveonLogo } from "@/components/PoveonLogo";
@@ -584,6 +590,9 @@ function DocDashboardInner() {
   const [showEarnModal, setShowEarnModal] = useState(false);
   const [docTheme, setDocTheme] = useState<string | null>(null);
   const [navOpen, setNavOpen] = useState(false);
+  // Which member's record is open, and which one the chat button asked for.
+  const [openMemberId, setOpenMemberId] = useState<string | null>(null);
+  const [focusMemberId, setFocusMemberId] = useState<string | null>(null);
   const [accountMenuOpen, setAccountMenuOpen] = useState(false);
 
   // Active panel lives in the URL so a tab survives a refresh and can be linked.
@@ -721,9 +730,12 @@ function DocDashboardInner() {
 
   const parent = PARENT_OF[view];
   const subMenu: { key: string; label: string }[] =
-    view === "consults" ? CONSULT_VIEWS.map((v) => ({ key: v.key, label: v.label }))
+    view === "consults" ? CONSULT_PRIMARY_VIEWS.map((v) => ({ key: v.key, label: v.label }))
     : view === "charging" ? EARN_VIEWS.map((v) => ({ key: v.key, label: v.label }))
     : SUB_MENUS[parent] ?? [];
+  // Earnings, intake and credentials are occasional — they live under "More".
+  const subMenuMore: { key: string; label: string }[] =
+    view === "consults" ? CONSULT_MORE_VIEWS.map((v) => ({ key: v.key, label: v.label })) : [];
   const subActive =
     view === "consults" ? consultView : view === "charging" ? earnView : view;
 
@@ -831,7 +843,16 @@ function DocDashboardInner() {
         />
 
         <main className="min-w-0 flex-1">
-          <PortalSubNav items={subMenu} activeKey={subActive} onSelect={onSubSelect} />
+          {/* A member's record is its own place — the sub-menu above it only
+              navigated away from what you had just opened. */}
+          {!openMemberId && (
+            <PortalSubNav
+              items={subMenu}
+              moreItems={subMenuMore}
+              activeKey={subActive}
+              onSelect={onSubSelect}
+            />
+          )}
 
           {error && (
             <div className="mb-4 rounded-xl border border-red-100 bg-red-50 px-4 py-3 text-sm text-red-600">{error}</div>
@@ -853,14 +874,22 @@ function DocDashboardInner() {
           )}
 
           {view === "consults" && (
-            <DoctorConsultsSection view={consultView} onViewChange={setConsultView} />
+            <DoctorConsultsSection
+              view={consultView}
+              onViewChange={setConsultView}
+              focusMemberId={focusMemberId}
+              onFocusHandled={() => setFocusMemberId(null)}
+              onMemberOpenChange={setOpenMemberId}
+            />
           )}
 
           {view === "monitoring" && <DoctorMonitoringSection />}
 
           {view === "security" && (
-            <div className="xl:max-w-3xl">
+            <div className="xl:max-w-3xl space-y-4">
               {doctorEmail ? <DocSecuritySection email={doctorEmail} /> : <SectionLoader />}
+              {/* The corner of the screen belongs to care-plan chat now. */}
+              <SupportFab variant="inline" />
             </div>
           )}
 
@@ -1063,7 +1092,16 @@ function DocDashboardInner() {
         </div>
       )}
 
-      <SupportFab />
+      {/* Care-plan conversations live here, and only here — a doctor with many
+          members wants one list, not a thread buried in each record. */}
+      <CarePlanChatFab
+        role="doctor"
+        onOpenMember={(id) => {
+          navigate("consults");
+          setConsultView("members");
+          setFocusMemberId(id);
+        }}
+      />
     </div>
   );
 }

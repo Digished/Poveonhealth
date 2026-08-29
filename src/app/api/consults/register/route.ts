@@ -35,6 +35,11 @@ const BodySchema = z.object({
   baseline_glucose_mg_dl: z.coerce.number().min(10).max(900).optional().nullable(),
   baseline_glucose_context: z.enum(["fasting", "random"]).optional().nullable(),
   baseline_notes: z.string().trim().max(1000).optional().nullable(),
+  baseline_last_visit: z
+    .enum(["under_3m", "3_6m", "6_12m", "over_12m", "never"])
+    .optional()
+    .nullable(),
+  baseline_self_care: z.string().trim().max(1000).optional().nullable(),
   consent: z.literal(true, { errorMap: () => ({ message: "Please agree to the terms to continue" }) }),
 });
 
@@ -92,6 +97,8 @@ export async function POST(req: NextRequest) {
       baseline_glucose_context: d.baseline_glucose_context || null,
       baseline_glucose_taken_on: d.baseline_glucose_mg_dl != null ? new Date() : null,
       baseline_notes: d.baseline_notes || null,
+      baseline_last_visit: d.baseline_last_visit || null,
+      baseline_self_care: d.baseline_self_care || null,
       baseline_captured_at: new Date(),
 
       consent_at: new Date(),

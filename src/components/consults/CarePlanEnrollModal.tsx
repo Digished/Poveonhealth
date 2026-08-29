@@ -14,6 +14,7 @@ import {
   ADHERENCE_OPTIONS,
   DURATION_OPTIONS,
   GLUCOSE_CONTEXTS,
+  LAST_VISIT_OPTIONS,
   type Adherence,
 } from "@/components/consults/baseline";
 
@@ -102,6 +103,8 @@ export function CarePlanEnrollModal({
     baseline_glucose_mg_dl: "",
     baseline_glucose_context: "",
     baseline_notes: "",
+    baseline_last_visit: "",
+    baseline_self_care: "",
   });
 
   const set = <K extends keyof Form>(key: K, value: Form[K]) =>
@@ -161,6 +164,8 @@ export function CarePlanEnrollModal({
           baseline_glucose_mg_dl: baseline.baseline_glucose_mg_dl ? Number(baseline.baseline_glucose_mg_dl) : null,
           baseline_glucose_context: baseline.baseline_glucose_context || null,
           baseline_notes: baseline.baseline_notes || null,
+          baseline_last_visit: baseline.baseline_last_visit || null,
+          baseline_self_care: baseline.baseline_self_care || null,
 
           consent: true,
         }),
@@ -245,11 +250,6 @@ export function CarePlanEnrollModal({
               </Field>
               <Field label="Date of birth" optional>
                 <DobInput value={form.date_of_birth} onChange={(iso) => set("date_of_birth", iso)} noLabel />
-                {age && (
-                  <p className="mt-1 text-xs font-medium text-medical-700">
-                    That makes you {age} year{age === "1" ? "" : "s"} old.
-                  </p>
-                )}
               </Field>
               <Field label="Sex" optional>
                 <div className="flex gap-2">
@@ -478,6 +478,48 @@ export function CarePlanEnrollModal({
                   </div>
                 </Field>
               )}
+
+              <Field label="When were you last seen by a doctor for this?" optional>
+                <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
+                  {LAST_VISIT_OPTIONS.map((o) => {
+                    const on = baseline.baseline_last_visit === o.value;
+                    return (
+                      <button
+                        key={o.value}
+                        type="button"
+                        onClick={() =>
+                          setBaseline((b) => ({
+                            ...b,
+                            baseline_last_visit: b.baseline_last_visit === o.value ? "" : o.value,
+                          }))
+                        }
+                        aria-pressed={on}
+                        className={`rounded-xl border px-3 py-2.5 text-left text-xs font-semibold transition ${
+                          on
+                            ? "border-medical-500 bg-medical-50 text-medical-800"
+                            : "border-slate-200 bg-white text-slate-600 hover:border-slate-300"
+                        }`}
+                      >
+                        {o.label}
+                      </button>
+                    );
+                  })}
+                </div>
+              </Field>
+
+              <Field label="What are you already doing to look after yourself?" optional>
+                <textarea
+                  rows={3}
+                  maxLength={1000}
+                  value={baseline.baseline_self_care}
+                  onChange={(e) => setBaseline((b) => ({ ...b, baseline_self_care: e.target.value }))}
+                  placeholder="e.g. I walk most evenings, I've cut down on salt, I check my BP at the chemist"
+                  className={`${inputClass} resize-none`}
+                />
+                <p className="mt-1 text-[11px] text-slate-400">
+                  Your doctor builds on what you already do rather than starting from scratch.
+                </p>
+              </Field>
 
               <Field label="Anything else your doctor should know?" optional>
                 <textarea

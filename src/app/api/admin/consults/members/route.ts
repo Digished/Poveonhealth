@@ -120,9 +120,20 @@ export async function PATCH(req: NextRequest) {
 
   const settings = await getConsultSettings();
 
+  // Keep the trail of who has looked after them. The thread and the schedule
+  // stay on the member, so the new doctor picks up the whole history — unless
+  // the member has asked us not to share it (see `share_history`).
+  const previous = Array.from(
+    new Set([...(patient.previous_doctors ?? []), patient.doctor_email].filter(Boolean) as string[])
+  ).filter((e) => e !== doctor_email);
+
   await prisma.consultPatient.update({
     where: { id: patient_id },
-    data: { doctor_email, assigned_at: doctor_email ? new Date() : null },
+    data: {
+      doctor_email,
+      assigned_at: doctor_email ? new Date() : null,
+      previous_doctors: previous,
+    },
   });
 
   if (doctor_email && patient.status === "active") {

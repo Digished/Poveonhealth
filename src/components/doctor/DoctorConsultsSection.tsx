@@ -1,23 +1,52 @@
 "use client";
 
 import { useCallback, useEffect, useRef, useState } from "react";
+import { toast } from "react-hot-toast";
 import {
   AlertCircle, ArrowLeft, ArrowRight, BadgeCheck, Banknote, CalendarDays, Check,
-  ChevronDown, HeartPulse, Info, Loader2, MessageSquareText, Search, Send,
-  ShieldCheck, TrendingUp, Users, Wallet,
+  ChevronDown, HeartPulse, Info, Loader2, MessageSquareText, Plus, Search, Send,
+  ShieldCheck, TrendingUp, Users, Wallet, X,
 } from "lucide-react";
 import { getJson, invalidateJson } from "@/lib/client-cache";
 import type { ConsultView } from "@/components/doctor/consult-views";
 import { DoctorCredentialsPanel } from "@/components/doctor/DoctorCredentialsPanel";
 import {
+  CANCEL_REASON_LABEL,
   CarePlanOrders,
   type Prescription,
   type TestOrder,
 } from "@/components/doctor/CarePlanOrders";
+import { CarePlanTreatment, type TreatmentPlan } from "@/components/doctor/CarePlanTreatment";
 import { ADHERENCE_LABEL, bpBand, durationLabel } from "@/components/consults/baseline";
 
 const naira = (n: number) => `₦${Math.round(n).toLocaleString("en-NG")}`;
-const CONDITION_LABEL: Record<string, string> = { hypertension: "Hypertension", diabetes: "Diabetes" };
+/** What a care plan can cover — mirrors the API's own list. */
+const CONDITION_OPTIONS = [
+  "hypertension", "diabetes", "high_cholesterol", "obesity", "asthma",
+  "ckd", "heart_failure", "stroke", "sickle_cell", "thyroid",
+] as const;
+
+const CONDITION_LABEL: Record<string, string> = {
+  hypertension: "Hypertension",
+  diabetes: "Diabetes",
+  high_cholesterol: "High cholesterol",
+  obesity: "Obesity",
+  asthma: "Asthma",
+  ckd: "Kidney disease",
+  heart_failure: "Heart failure",
+  stroke: "Stroke",
+  sickle_cell: "Sickle cell",
+  thyroid: "Thyroid",
+};
+
+type Redemption = {
+  id: string;
+  kind: string;
+  description: string | null;
+  pharmacy_name: string | null;
+  discount_naira: number;
+  created_at: string;
+};
 
 type Wallet = {
   active_patients: number; pool_total: number; released: number; pending: number;
@@ -43,8 +72,6 @@ type MemberRow = {
   last_message: { sender: string; preview: string; created_at: string } | null;
 };
 
-type Message = { id: string; sender: string; body: string; created_at: string };
-
 /** What the member told us about themselves before they paid. */
 type Baseline = {
   medications: string | null;
@@ -64,25 +91,28 @@ type Baseline = {
 /** The detail endpoint returns the member's full record, not the list summary. */
 type MemberDetailData = {
   patient: {
-    id: string; code: string; full_name: string; email: string; phone: string | null;
+    id: string; code: string | null; full_name: string; email: string; phone: string | null;
     sex: string | null; date_of_birth: string | null; state: string | null; city: string | null;
     conditions: string[]; status: string;
     assigned_at: string | null; subscribed_at: string | null; expires_at: string | null;
     messages_used: number; message_allowance: number; messages_left: number;
+    // Only the age is clinically useful, and it is what the doctor asks for.
+    age: number | null;
+    share_history: boolean;
+    previous_doctors: string[];
   };
   baseline: Baseline | null;
   earning: { total: number; released: number; pending: number; status: string } | null;
-  messages: Message[];
   prescriptions: Prescription[];
   test_orders: TestOrder[];
+  redemptions: Redemption[];
+  plan: TreatmentPlan | null;
+  history_withheld: boolean;
 };
 
 function formatDate(iso: string | null) {
   if (!iso) return "—";
   return new Date(iso).toLocaleDateString("en-GB", { day: "numeric", month: "short", year: "numeric" });
-}
-function formatWhen(iso: string) {
-  return new Date(iso).toLocaleString("en-GB", { day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" });
 }
 function formatPeriod(period: string) {
   const [y, m] = period.split("-").map(Number);
@@ -97,9 +127,17 @@ function formatPeriod(period: string) {
 export function DoctorConsultsSection({
   view: viewProp,
   onViewChange,
+  focusMemberId,
+  onFocusHandled,
+  onMemberOpenChange,
 }: {
   view?: ConsultView;
   onViewChange?: (view: ConsultView) => void;
+  /** A member the chat button asked us to open. */
+  focusMemberId?: string | null;
+  onFocusHandled?: () => void;
+  /** Lets the shell hide its sub-menu while a record is open. */
+  onMemberOpenChange?: (id: string | null) => void;
 }) {
   const [internalView, setInternalView] = useState<ConsultView>("overview");
   const view = viewProp ?? internalView;
@@ -127,6 +165,21 @@ export function DoctorConsultsSection({
   }, []);
 
   useEffect(() => { load(); }, [load]);
+
+  // Tell the shell what is open, so it can drop the sub-menu strip.
+  const openChangeRef = useRef(onMemberOpenChange);
+  openChangeRef.current = onMemberOpenChange;
+  useEffect(() => { openChangeRef.current?.(openMemberId); }, [openMemberId]);
+  useEffect(() => () => { openChangeRef.current?.(null); }, []);
+
+  // Arriving from the chat button: open that member's record.
+  const focusHandledRef = useRef(onFocusHandled);
+  focusHandledRef.current = onFocusHandled;
+  useEffect(() => {
+    if (!focusMemberId) return;
+    setOpenMemberId(focusMemberId);
+    focusHandledRef.current?.();
+  }, [focusMemberId]);
 
   if (openMemberId) {
     return (
@@ -617,10 +670,9 @@ function MemberDetail({
 }) {
   const [data, setData] = useState<MemberDetailData | null>(null);
   const [loading, setLoading] = useState(true);
-  const [body, setBody] = useState("");
-  const [sending, setSending] = useState(false);
-  const [error, setError] = useState("");
-  const endRef = useRef<HTMLDivElement | null>(null);
+  const [tab, setTab] = useState<"care" | "record">("care");
+  const [showProfile, setShowProfile] = useState(false);
+  const [editingConditions, setEditingConditions] = useState(false);
 
   const reload = useCallback(async () => {
     const res = await fetch(`/api/doc-login/consults/patients/${id}`, { cache: "no-store" });
@@ -643,29 +695,6 @@ function MemberDetail({
     return () => { cancelled = true; };
   }, [id]);
 
-  useEffect(() => { endRef.current?.scrollIntoView({ behavior: "smooth" }); }, [data?.messages.length]);
-
-  async function reply() {
-    if (sending || body.trim().length < 2) return;
-    setSending(true);
-    setError("");
-    try {
-      const res = await fetch(`/api/doc-login/consults/patients/${id}/messages`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ body: body.trim() }),
-      });
-      const d = await res.json();
-      if (!res.ok || !d.success) { setError(d.error ?? "Could not send that reply."); return; }
-      setData((prev) => (prev ? { ...prev, messages: [...prev.messages, d.message] } : prev));
-      setBody("");
-    } catch {
-      setError("Network error. Please try again.");
-    } finally {
-      setSending(false);
-    }
-  }
-
   if (loading || !data) {
     return (
       <div className="space-y-4">
@@ -681,132 +710,378 @@ function MemberDetail({
     <div className="animate-fade-in space-y-4">
       <BackButton onBack={onBack} />
 
-      <div className="grid gap-4 xl:grid-cols-[minmax(0,340px)_1fr]">
-        {/* Who they are */}
-        <div className="space-y-4">
-          <div className="rounded-2xl border border-slate-100 bg-white p-5 shadow-sm">
-            <div className="flex items-center gap-3">
-              <div className="flex h-12 w-12 items-center justify-center rounded-2xl bg-medical-50 text-lg font-bold text-medical-600">
-                {p.full_name.slice(0, 1).toUpperCase()}
-              </div>
-              <div className="min-w-0">
-                <p className="truncate text-base font-bold text-slate-900">{p.full_name}</p>
-                <p className="font-mono text-xs text-slate-400">{p.code}</p>
-              </div>
-            </div>
+      {/* Who they are, in a line. Everything else is a tap away rather than
+          three cards of scrolling before the clinical picture. */}
+      <button
+        onClick={() => setShowProfile(true)}
+        className="flex w-full items-center gap-3 rounded-2xl border border-slate-100 bg-white p-4 text-left shadow-sm transition hover:border-medical-200"
+      >
+        <span className="flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl bg-medical-50 text-base font-bold text-medical-600">
+          {p.full_name.slice(0, 1).toUpperCase()}
+        </span>
+        <span className="min-w-0 flex-1">
+          <span className="block truncate text-base font-bold text-slate-900">{p.full_name}</span>
+          <span className="block truncate text-xs text-slate-500">
+            {[p.age != null ? `${p.age} years` : null, p.sex, p.code].filter(Boolean).join(" · ")}
+          </span>
+        </span>
+        <ChevronDown className="h-4 w-4 shrink-0 -rotate-90 text-slate-300" />
+      </button>
 
-            <div className="mt-3 flex flex-wrap gap-1.5">
-              {p.conditions.map((c) => (
-                <span key={c} className="rounded-full bg-medical-50 px-2.5 py-0.5 text-[11px] font-semibold text-medical-700">
-                  {CONDITION_LABEL[c] ?? c}
-                </span>
-              ))}
-            </div>
+      <div className="flex flex-wrap items-center gap-1.5">
+        {p.conditions.map((c) => (
+          <span key={c} className="rounded-full bg-medical-50 px-2.5 py-0.5 text-[11px] font-semibold text-medical-700">
+            {CONDITION_LABEL[c] ?? c}
+          </span>
+        ))}
+        {canPrescribe && (
+          <button
+            onClick={() => setEditingConditions(true)}
+            className="inline-flex items-center gap-1 rounded-full border border-dashed border-slate-300 px-2.5 py-0.5 text-[11px] font-semibold text-slate-500 transition hover:border-medical-300 hover:text-medical-700"
+          >
+            <Plus className="h-3 w-3" /> Condition
+          </button>
+        )}
+      </div>
 
-            <dl className="mt-4 space-y-1.5 text-sm">
-              <DetailRow label="Email" value={p.email} />
-              {p.phone && <DetailRow label="Phone" value={p.phone} />}
-              {p.sex && <DetailRow label="Sex" value={p.sex} />}
-              {p.date_of_birth && <DetailRow label="Born" value={formatDate(p.date_of_birth)} />}
-              {(p.city || p.state) && <DetailRow label="Location" value={[p.city, p.state].filter(Boolean).join(", ")} />}
-              <DetailRow label="Joined" value={formatDate(p.subscribed_at)} />
-              <DetailRow label="Renews" value={formatDate(p.expires_at)} />
-              <DetailRow label="Messages" value={`${p.messages_used} of ${p.message_allowance} used`} />
-            </dl>
+      {/* Two places to be: today's care, and the record behind it. */}
+      <div className="flex gap-1 rounded-xl bg-slate-100 p-1">
+        {([["care", "Care"], ["record", "Pay & record"]] as const).map(([key, label]) => (
+          <button
+            key={key}
+            onClick={() => setTab(key)}
+            className={`flex-1 rounded-lg px-3 py-1.5 text-sm font-semibold transition ${
+              tab === key ? "bg-white text-slate-800 shadow-sm" : "text-slate-500 hover:text-slate-700"
+            }`}
+          >
+            {label}
+          </button>
+        ))}
+      </div>
+
+      {tab === "care" ? (
+        <div className="grid gap-4 xl:grid-cols-2">
+          <div className="space-y-4">
+            <BaselineCard baseline={data.baseline} conditions={p.conditions} />
+            <CarePlanTreatment
+              patientId={p.id}
+              plan={data.plan}
+              canEdit={canPrescribe}
+              onChanged={reload}
+            />
           </div>
-
-          <BaselineCard baseline={data.baseline} conditions={p.conditions} />
-
-          <CarePlanOrders
-            patientId={p.id}
-            prescriptions={data.prescriptions ?? []}
-            testOrders={data.test_orders ?? []}
-            canPrescribe={canPrescribe}
-            onChanged={reload}
-          />
-
-          {data.earning && (
-            <div className="rounded-2xl border border-slate-100 bg-white p-4 shadow-sm">
-              <h3 className="text-xs font-bold uppercase tracking-wider text-slate-400">Your pay for this member</h3>
-              <div className="mt-2 grid grid-cols-2 gap-3">
-                <div>
-                  <p className="text-lg font-extrabold text-emerald-600">{naira(data.earning.released)}</p>
-                  <p className="text-[11px] text-slate-400">Released</p>
-                </div>
-                <div>
-                  <p className="text-lg font-extrabold text-amber-600">{naira(data.earning.pending)}</p>
-                  <p className="text-[11px] text-slate-400">Pending</p>
-                </div>
-              </div>
-            </div>
-          )}
+          <div className="space-y-4">
+            <CarePlanOrders
+              patientId={p.id}
+              prescriptions={data.prescriptions ?? []}
+              testOrders={data.test_orders ?? []}
+              canPrescribe={canPrescribe}
+              onChanged={reload}
+            />
+            {canPrescribe && <NotifyCard patientId={p.id} plan={data.plan} />}
+          </div>
         </div>
-
-        {/* Thread */}
-        <div className="flex min-h-[480px] flex-col overflow-hidden rounded-2xl border border-slate-100 bg-white shadow-sm">
-          <div className="flex items-center gap-2 border-b border-slate-100 px-4 py-3">
-            <MessageSquareText className="h-4 w-4 text-medical-500" />
-            <h3 className="text-sm font-bold text-slate-800">Conversation</h3>
-            <span className="ml-auto text-xs text-slate-400">
-              {data.messages.length} message{data.messages.length === 1 ? "" : "s"}
-            </span>
+      ) : (
+        <div className="grid gap-4 xl:grid-cols-2">
+          <div className="space-y-4">
+            <ProfileCard patient={p} />
+            {data.history_withheld && (
+              <p className="rounded-xl border border-amber-100 bg-amber-50 px-4 py-3 text-xs text-amber-800">
+                This member asked us not to pass on their earlier history, so you are seeing their
+                record from the day they were assigned to you.
+              </p>
+            )}
           </div>
-
-          <div className="flex-1 space-y-3 overflow-y-auto bg-slate-50/60 p-4">
-            {data.messages.length === 0 ? (
-              <div className="flex h-full flex-col items-center justify-center gap-2 py-12 text-center">
-                <BadgeCheck className="h-10 w-10 text-slate-200" />
-                <p className="text-sm font-semibold text-slate-500">No messages yet</p>
-                <p className="max-w-xs text-xs text-slate-400">
-                  Send a first assessment — it&apos;s what they joined for.
-                </p>
-              </div>
-            ) : (
-              data.messages.map((m) => (
-                <div key={m.id} className={`flex ${m.sender === "doctor" ? "justify-end" : "justify-start"}`}>
-                  <div
-                    className={`max-w-[85%] rounded-2xl px-4 py-2.5 ${
-                      m.sender === "doctor"
-                        ? "rounded-br-md bg-medical-600 text-white"
-                        : "rounded-bl-md border border-slate-100 bg-white text-slate-700"
-                    }`}
-                  >
-                    <p className="whitespace-pre-wrap text-sm leading-relaxed">{m.body}</p>
-                    <p className={`mt-1 text-[10px] ${m.sender === "doctor" ? "text-white/60" : "text-slate-400"}`}>
-                      <CalendarDays className="mr-1 inline h-3 w-3" />
-                      {formatWhen(m.created_at)}
-                    </p>
+          <div className="space-y-4">
+            {data.earning && (
+              <div className="rounded-2xl border border-slate-100 bg-white p-4 shadow-sm">
+                <h3 className="text-xs font-bold uppercase tracking-wider text-slate-400">
+                  Your pay for this member
+                </h3>
+                <div className="mt-2 grid grid-cols-2 gap-3">
+                  <div>
+                    <p className="text-lg font-extrabold text-emerald-600">{naira(data.earning.released)}</p>
+                    <p className="text-[11px] text-slate-400">Released</p>
+                  </div>
+                  <div>
+                    <p className="text-lg font-extrabold text-amber-600">{naira(data.earning.pending)}</p>
+                    <p className="text-[11px] text-slate-400">Pending</p>
                   </div>
                 </div>
-              ))
+              </div>
             )}
-            <div ref={endRef} />
+            <CareHistory
+              prescriptions={data.prescriptions ?? []}
+              testOrders={data.test_orders ?? []}
+              redemptions={data.redemptions ?? []}
+            />
           </div>
+        </div>
+      )}
 
-          <div className="border-t border-slate-100 p-3">
-            <div className="flex items-end gap-2">
-              <textarea
-                rows={3}
-                maxLength={6000}
-                value={body}
-                onChange={(e) => setBody(e.target.value)}
-                placeholder="Write your assessment or reply…"
-                className="flex-1 resize-none rounded-xl border border-slate-200 px-3.5 py-2.5 text-sm text-slate-800 placeholder-slate-400 focus:border-medical-400 focus:outline-none focus:ring-2 focus:ring-medical-400/40"
-              />
-              <button
-                onClick={reply}
-                disabled={sending || body.trim().length < 2}
-                className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl bg-medical-600 text-white transition hover:bg-medical-700 disabled:opacity-40"
-                aria-label="Send reply"
-              >
-                {sending ? <Loader2 className="h-4 w-4 animate-spin" /> : <Send className="h-4 w-4" />}
-              </button>
-            </div>
-            <p className="mt-1.5 text-[11px] text-slate-400">
-              Your replies don&apos;t use the member&apos;s allowance — write as often as the case needs.
-            </p>
-            {error && <p className="mt-2 text-xs text-red-600">{error}</p>}
+      {showProfile && <ProfileModal patient={p} onClose={() => setShowProfile(false)} />}
+
+      {editingConditions && (
+        <ConditionsDialog
+          patientId={p.id}
+          current={p.conditions}
+          onClose={() => setEditingConditions(false)}
+          onSaved={() => { setEditingConditions(false); reload(); }}
+        />
+      )}
+    </div>
+  );
+}
+
+/** Everything about the person, for when the doctor actually wants it. */
+function ProfileCard({ patient }: { patient: MemberDetailData["patient"] }) {
+  return (
+    <div className="rounded-2xl border border-slate-100 bg-white p-5 shadow-sm">
+      <h3 className="text-xs font-bold uppercase tracking-wider text-slate-400">Full profile</h3>
+      <dl className="mt-3 space-y-1.5 text-sm">
+        <DetailRow label="Name" value={patient.full_name} />
+        <DetailRow label="Code" value={patient.code ?? "—"} />
+        <DetailRow label="Email" value={patient.email} />
+        {patient.phone && <DetailRow label="Phone" value={patient.phone} />}
+        {patient.sex && <DetailRow label="Sex" value={patient.sex} />}
+        {patient.age != null && <DetailRow label="Age" value={`${patient.age} years`} />}
+        {(patient.city || patient.state) && (
+          <DetailRow label="Location" value={[patient.city, patient.state].filter(Boolean).join(", ")} />
+        )}
+        <DetailRow label="Joined" value={formatDate(patient.subscribed_at)} />
+        <DetailRow label="Renews" value={formatDate(patient.expires_at)} />
+        <DetailRow label="Messages" value={`${patient.messages_used} of ${patient.message_allowance} used`} />
+        {patient.previous_doctors.length > 0 && (
+          <DetailRow label="Previously" value={patient.previous_doctors.join(", ")} />
+        )}
+      </dl>
+    </div>
+  );
+}
+
+function ProfileModal({
+  patient, onClose,
+}: {
+  patient: MemberDetailData["patient"];
+  onClose: () => void;
+}) {
+  return (
+    <div className="fixed inset-0 z-[200] flex items-end justify-center bg-slate-900/40 p-4 sm:items-center">
+      <div className="w-full max-w-sm rounded-2xl bg-white p-5 shadow-2xl">
+        <div className="flex items-start justify-between gap-2">
+          <div className="min-w-0">
+            <p className="truncate text-base font-bold text-slate-900">{patient.full_name}</p>
+            <p className="font-mono text-xs text-slate-400">{patient.code ?? "No code yet"}</p>
           </div>
+          <button onClick={onClose} className="rounded-lg p-1 text-slate-400 transition hover:bg-slate-100" aria-label="Close">
+            <X className="h-4 w-4" />
+          </button>
+        </div>
+        <dl className="mt-4 space-y-1.5 text-sm">
+          <DetailRow label="Email" value={patient.email} />
+          {patient.phone && <DetailRow label="Phone" value={patient.phone} />}
+          {patient.sex && <DetailRow label="Sex" value={patient.sex} />}
+          {patient.age != null && <DetailRow label="Age" value={`${patient.age} years`} />}
+          {(patient.city || patient.state) && (
+            <DetailRow label="Location" value={[patient.city, patient.state].filter(Boolean).join(", ")} />
+          )}
+          <DetailRow label="Joined" value={formatDate(patient.subscribed_at)} />
+          <DetailRow label="Renews" value={formatDate(patient.expires_at)} />
+          <DetailRow label="Messages" value={`${patient.messages_used} of ${patient.message_allowance} used`} />
+        </dl>
+      </div>
+    </div>
+  );
+}
+
+/** What has actually happened for this member, oldest concerns last. */
+function CareHistory({
+  prescriptions, testOrders, redemptions,
+}: {
+  prescriptions: Prescription[];
+  testOrders: TestOrder[];
+  redemptions: Redemption[];
+}) {
+  const entries = [
+    ...testOrders.map((t) => ({
+      when: t.completed_at ?? t.due_date ?? null,
+      title: t.tests,
+      detail: t.status === "done" ? "Test done" : t.status === "cancelled" ? "Test cancelled" : "Test scheduled",
+    })),
+    ...prescriptions.map((m) => ({
+      when: m.start_date,
+      title: m.medication,
+      detail:
+        m.status === "cancelled"
+          ? `Stopped — ${CANCEL_REASON_LABEL[m.cancel_reason ?? ""] ?? "no reason given"}`
+          : m.status === "completed"
+            ? "Course completed"
+            : "Medication scheduled",
+    })),
+    ...redemptions.map((r) => ({
+      when: r.created_at,
+      title: r.description ?? (r.kind === "pharmacy" ? "Pharmacy visit" : "Lab visit"),
+      detail: `${naira(r.discount_naira)} off${r.pharmacy_name ? ` at ${r.pharmacy_name}` : ""}`,
+    })),
+  ]
+    .filter((e) => e.when)
+    .sort((a, b) => new Date(b.when!).getTime() - new Date(a.when!).getTime())
+    .slice(0, 40);
+
+  return (
+    <div className="rounded-2xl border border-slate-100 bg-white p-4 shadow-sm">
+      <h3 className="text-xs font-bold uppercase tracking-wider text-slate-400">History of care</h3>
+      {entries.length === 0 ? (
+        <p className="py-4 text-center text-xs text-slate-400">Nothing has happened yet.</p>
+      ) : (
+        <ul className="mt-3 space-y-2.5">
+          {entries.map((e, i) => (
+            <li key={`${e.title}-${i}`} className="flex gap-3">
+              <span className="mt-1.5 h-1.5 w-1.5 shrink-0 rounded-full bg-medical-300" />
+              <div className="min-w-0 flex-1">
+                <p className="truncate text-sm font-medium text-slate-700">{e.title}</p>
+                <p className="text-[11px] text-slate-400">
+                  {e.detail} · {formatDate(e.when)}
+                </p>
+              </div>
+            </li>
+          ))}
+        </ul>
+      )}
+    </div>
+  );
+}
+
+/** One message when the schedule is set, instead of an email per entry. */
+function NotifyCard({ patientId, plan }: { patientId: string; plan: TreatmentPlan | null }) {
+  const [note, setNote] = useState("");
+  const [sending, setSending] = useState(false);
+  const [sentAt, setSentAt] = useState<string | null>(plan?.notified_at ?? null);
+
+  async function send() {
+    if (sending) return;
+    setSending(true);
+    try {
+      const res = await fetch(`/api/doc-login/consults/patients/${patientId}/notify`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ message: note.trim() || null }),
+      });
+      const d = await res.json().catch(() => null);
+      if (!res.ok || !d?.success) { toast.error(d?.error ?? "Could not send that."); return; }
+      toast.success("The member has been told");
+      setNote("");
+      setSentAt(new Date().toISOString());
+    } finally {
+      setSending(false);
+    }
+  }
+
+  return (
+    <section className="rounded-2xl border border-slate-100 bg-white p-4 shadow-sm">
+      <h3 className="flex items-center gap-1.5 text-sm font-bold text-slate-800">
+        <Send className="h-4 w-4 text-medical-500" /> Tell them what&apos;s next
+      </h3>
+      <p className="mt-1 text-xs text-slate-500">
+        Scheduling sends nothing on its own. Finish setting things up, then send one message covering
+        all of it.
+      </p>
+      <textarea
+        rows={2}
+        value={note}
+        onChange={(e) => setNote(e.target.value)}
+        placeholder="Add a note in your own words (optional)"
+        className="mt-2.5 w-full resize-none rounded-xl border border-slate-200 px-3 py-2 text-sm outline-none focus:border-medical-400"
+      />
+      <button
+        onClick={send}
+        disabled={sending}
+        className="mt-2 flex w-full items-center justify-center gap-1.5 rounded-xl bg-medical-600 py-2.5 text-xs font-bold text-white transition hover:bg-medical-700 disabled:opacity-50"
+      >
+        {sending ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Send className="h-3.5 w-3.5" />}
+        Send the update
+      </button>
+      {sentAt && (
+        <p className="mt-1.5 text-center text-[11px] text-slate-400">Last sent {formatDate(sentAt)}</p>
+      )}
+    </section>
+  );
+}
+
+/** A member who develops something new stays one member. */
+function ConditionsDialog({
+  patientId, current, onClose, onSaved,
+}: {
+  patientId: string;
+  current: string[];
+  onClose: () => void;
+  onSaved: () => void;
+}) {
+  const [picked, setPicked] = useState<string[]>(current);
+  const [saving, setSaving] = useState(false);
+
+  async function save() {
+    if (saving || picked.length === 0) return;
+    setSaving(true);
+    try {
+      const res = await fetch(`/api/doc-login/consults/patients/${patientId}/conditions`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ conditions: picked }),
+      });
+      const d = await res.json().catch(() => null);
+      if (!res.ok || !d?.success) { toast.error(d?.error ?? "Could not save that."); return; }
+      toast.success("Conditions updated");
+      onSaved();
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  return (
+    <div className="fixed inset-0 z-[200] flex items-end justify-center bg-slate-900/40 p-4 sm:items-center">
+      <div className="w-full max-w-sm rounded-2xl bg-white p-5 shadow-2xl">
+        <div className="flex items-start justify-between gap-2">
+          <div>
+            <h4 className="text-sm font-bold text-slate-900">What the plan covers</h4>
+            <p className="mt-0.5 text-xs text-slate-500">
+              Add anything that has developed since they joined.
+            </p>
+          </div>
+          <button onClick={onClose} className="rounded-lg p-1 text-slate-400 transition hover:bg-slate-100" aria-label="Close">
+            <X className="h-4 w-4" />
+          </button>
+        </div>
+
+        <div className="mt-3 flex flex-wrap gap-1.5">
+          {CONDITION_OPTIONS.map((c) => {
+            const on = picked.includes(c);
+            return (
+              <button
+                key={c}
+                onClick={() => setPicked((prev) => (on ? prev.filter((x) => x !== c) : [...prev, c]))}
+                className={`rounded-full px-3 py-1.5 text-xs font-semibold transition ${
+                  on ? "bg-medical-600 text-white" : "bg-slate-100 text-slate-600 hover:bg-slate-200"
+                }`}
+              >
+                {CONDITION_LABEL[c] ?? c}
+              </button>
+            );
+          })}
+        </div>
+
+        <div className="mt-4 flex gap-2">
+          <button
+            onClick={save}
+            disabled={saving || picked.length === 0}
+            className="flex flex-1 items-center justify-center gap-1.5 rounded-xl bg-medical-600 py-2.5 text-xs font-bold text-white transition hover:bg-medical-700 disabled:opacity-40"
+          >
+            {saving ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Check className="h-3.5 w-3.5" />}
+            Save
+          </button>
+          <button onClick={onClose} className="rounded-xl px-4 py-2.5 text-xs font-semibold text-slate-500 hover:text-slate-700">
+            Cancel
+          </button>
         </div>
       </div>
     </div>

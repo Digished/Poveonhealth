@@ -1,12 +1,14 @@
 "use client";
 
 import { useCallback, useEffect, useRef, useState } from "react";
+import { toast } from "react-hot-toast";
 import {
-  Check, Copy, FlaskConical, HeartPulse, Loader2, MessageSquareText, Pill,
+  Check, ClipboardList, Copy, FlaskConical, HeartPulse, Loader2, MessageSquareText, Pill,
   Send, Stethoscope, CalendarDays, ArrowRight, RefreshCw, CalendarClock, RotateCw,
 } from "lucide-react";
 import { SectionLoader } from "@/components/PageLoader";
 import { getJson, invalidateJson } from "@/lib/client-cache";
+import { CADENCE_LABEL } from "@/lib/treatment-plan";
 import { ProviderPicker, ProviderRow, type Provider } from "@/components/consults/ProviderPicker";
 import {
   CarePlanEnrollModal,
@@ -17,6 +19,7 @@ import {
 type Member = {
   id: string; code: string | null; full_name: string; email: string; phone: string | null;
   sex: string | null; date_of_birth: string | null; conditions: string[]; status: string;
+  share_history?: boolean;
   subscribed_at: string | null; expires_at: string | null;
   messages_used: number; message_allowance: number; messages_left: number;
 };
@@ -53,9 +56,16 @@ function formatWhen(iso: string) {
  */
 export function CarePlanPanel({
   autoOpenEnroll = false,
+  section = "plan",
   onChanged,
 }: {
   autoOpenEnroll?: boolean;
+  /**
+   * Which part of the plan to show. The card, benefits and providers are the
+   * plan itself; the schedule and the thread each get their own sub-tab so
+   * neither is buried under the other.
+   */
+  section?: "plan" | "schedule" | "messages";
   /** Lets the dashboard shell refresh its own care-plan prompt. */
   onChanged?: () => void;
 }) {
@@ -67,6 +77,7 @@ export function CarePlanPanel({
   const [testOrders, setTestOrders] = useState<TestOrder[]>([]);
   const [pharmacy, setPharmacy] = useState<Provider | null>(null);
   const [lab, setLab] = useState<Provider | null>(null);
+  const [plan, setPlan] = useState<MemberPlan | null>(null);
   const [picking, setPicking] = useState<"pharmacy" | "lab" | null>(null);
   // Seeded rather than null, so a failed call still shows the invitation
   // instead of an empty tab.
@@ -98,6 +109,7 @@ export function CarePlanPanel({
       setTestOrders(data.test_orders ?? []);
       setPharmacy(data.preferred_pharmacy ?? null);
       setLab(data.preferred_lab ?? null);
+      setPlan(data.plan ?? null);
       if (data.benefits) setBenefits(data.benefits);
       setPrefill(data.prefill ?? {});
     } finally {
@@ -137,6 +149,27 @@ export function CarePlanPanel({
     }
   }, []);
 
+  /** Whether a new doctor inherits the thread and the notes. */
+  const saveHistorySharing = useCallback(async (share: boolean) => {
+    setMember((prev) => (prev ? { ...prev, share_history: share } : prev));
+    try {
+      const res = await fetch("/api/consults/preferences", {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ share_history: share }),
+      });
+      const d = await res.json().catch(() => null);
+      if (!res.ok || !d?.success) {
+        toast.error(d?.error ?? "Could not save that.");
+        setMember((prev) => (prev ? { ...prev, share_history: !share } : prev));
+        return;
+      }
+      invalidateJson("/api/consults/me");
+    } catch {
+      setMember((prev) => (prev ? { ...prev, share_history: !share } : prev));
+    }
+  }, []);
+
   function copyCode() {
     if (!member?.code) return;
     navigator.clipboard.writeText(member.code).then(() => {
@@ -156,7 +189,28 @@ export function CarePlanPanel({
     <div className="space-y-4">
       {!active && <JoinInvite benefits={benefits} lapsed={lapsed} onJoin={() => setEnrolling(true)} />}
 
-      {active && member && (
+      {active && member && section === "schedule" && (
+        <>
+          <CareSchedule prescriptions={prescriptions} testOrders={testOrders} />
+          <CarePlanChecklist plan={plan} onTicked={setPlan} />
+        </>
+      )}
+
+      {active && member && section === "messages" && (
+        <MessageThread
+          doctor={doctor}
+          member={member}
+          messages={messages}
+          onSent={(m, left) => {
+            setMessages((prev) => [...prev, m]);
+            setMember((prev) =>
+              prev ? { ...prev, messages_left: left, messages_used: prev.messages_used + 1 } : prev
+            );
+          }}
+        />
+      )}
+
+      {active && member && section === "plan" && (
         <div className="grid gap-4 lg:grid-cols-[minmax(0,320px)_1fr]">
           <div className="space-y-4">
             {/* Care card */}
@@ -229,11 +283,34 @@ export function CarePlanPanel({
                 />
               </div>
               <p className="mt-2.5 text-[11px] text-slate-400">
-                Change these any time — your care code works at every partner either way.
+                Change these any time — your care code works at every partner either way. Whoever
+                you pick can see what your doctor has scheduled, so they can have it ready.
               </p>
             </div>
 
-            <CareSchedule prescriptions={prescriptions} testOrders={testOrders} />
+            {/* If they ever move doctors, this decides what travels with them. */}
+            <div className="rounded-2xl border border-slate-100 bg-white p-4 shadow-sm">
+              <h3 className="text-xs font-bold uppercase tracking-wider text-slate-400">
+                If your doctor changes
+              </h3>
+              <label className="mt-3 flex items-start gap-2.5">
+                <input
+                  type="checkbox"
+                  checked={member.share_history !== false}
+                  onChange={(e) => saveHistorySharing(e.target.checked)}
+                  className="mt-0.5 h-4 w-4 shrink-0 rounded border-slate-300 text-medical-600"
+                />
+                <span className="min-w-0">
+                  <span className="block text-sm font-medium text-slate-700">
+                    Share my history with a new doctor
+                  </span>
+                  <span className="block text-xs text-slate-500">
+                    Your messages, medication and notes go with you, so you don&apos;t start over.
+                    Turn this off and a new doctor sees only what happens from the day they take over.
+                  </span>
+                </span>
+              </label>
+            </div>
 
             {redemptions.length > 0 && (
               <div className="rounded-2xl border border-slate-100 bg-white p-4 shadow-sm">
@@ -256,17 +333,10 @@ export function CarePlanPanel({
             )}
           </div>
 
-          <MessageThread
-            doctor={doctor}
-            member={member}
-            messages={messages}
-            onSent={(m, left) => {
-              setMessages((prev) => [...prev, m]);
-              setMember((prev) =>
-                prev ? { ...prev, messages_left: left, messages_used: prev.messages_used + 1 } : prev
-              );
-            }}
-          />
+          <div className="space-y-4">
+            <CarePlanChecklist plan={plan} onTicked={setPlan} />
+            <CareSchedule prescriptions={prescriptions} testOrders={testOrders} />
+          </div>
         </div>
       )}
 
@@ -611,6 +681,137 @@ function MessageThread({
         )}
         {error && <p className="mt-2 text-xs text-red-600">{error}</p>}
       </div>
+    </div>
+  );
+}
+
+
+// ── The plan the member works from ──────────────────────────────────────────
+
+export type MemberPlanItem = {
+  id: string;
+  label: string;
+  detail: string | null;
+  cadence: string;
+  done_count: number;
+  due: boolean;
+  days_until: number | null;
+  last_done_at: string | null;
+};
+
+export type MemberPlan = {
+  id: string;
+  title: string;
+  note: string | null;
+  updated_at: string;
+  items: MemberPlanItem[];
+};
+
+/**
+ * The doctor's checklist, with what is outstanding right now.
+ *
+ * Ticking records when, not that: the next time an item comes due is worked
+ * out from its cadence, so missing a week leaves one thing to do rather than
+ * seven.
+ */
+function CarePlanChecklist({
+  plan,
+  onTicked,
+}: {
+  plan: MemberPlan | null;
+  onTicked: (plan: MemberPlan) => void;
+}) {
+  const [busy, setBusy] = useState<string | null>(null);
+
+  if (!plan || plan.items.length === 0) {
+    return (
+      <div className="rounded-2xl border border-slate-100 bg-white p-4 shadow-sm">
+        <h3 className="flex items-center gap-1.5 text-xs font-bold uppercase tracking-wider text-slate-400">
+          <ClipboardList className="h-3.5 w-3.5" /> Your plan
+        </h3>
+        <p className="py-4 text-center text-xs text-slate-400">
+          Your doctor hasn&apos;t written one yet. Ask them what you should be doing between
+          check-ins.
+        </p>
+      </div>
+    );
+  }
+
+  const due = plan.items.filter((i) => i.due);
+
+  async function tick(item: MemberPlanItem) {
+    setBusy(item.id);
+    try {
+      const res = await fetch("/api/consults/plan", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ item_id: item.id, done: item.due }),
+      });
+      const d = await res.json().catch(() => null);
+      if (!res.ok || !d?.success) { toast.error(d?.error ?? "Could not save that."); return; }
+      onTicked({
+        ...plan!,
+        items: plan!.items.map((i) => (i.id === item.id ? { ...i, ...d.item } : i)),
+      });
+    } finally {
+      setBusy(null);
+    }
+  }
+
+  return (
+    <div className="rounded-2xl border border-slate-100 bg-white p-4 shadow-sm">
+      <div className="flex items-baseline justify-between gap-2">
+        <h3 className="flex items-center gap-1.5 text-xs font-bold uppercase tracking-wider text-slate-400">
+          <ClipboardList className="h-3.5 w-3.5" /> {plan.title}
+        </h3>
+        <span className="text-[11px] font-semibold text-slate-400">
+          {due.length ? `${due.length} to do` : "All caught up"}
+        </span>
+      </div>
+
+      <ul className="mt-3 space-y-2">
+        {plan.items.map((item) => (
+          <li
+            key={item.id}
+            className={`flex items-start gap-3 rounded-xl border px-3.5 py-2.5 transition ${
+              item.due ? "border-medical-200 bg-medical-50/40" : "border-slate-200 bg-white"
+            }`}
+          >
+            <button
+              onClick={() => tick(item)}
+              disabled={busy === item.id}
+              aria-label={item.due ? `Mark "${item.label}" done` : `Undo "${item.label}"`}
+              className={`mt-0.5 flex h-5 w-5 shrink-0 items-center justify-center rounded-full border-2 transition disabled:opacity-40 ${
+                item.due
+                  ? "border-medical-400 hover:bg-medical-100"
+                  : "border-emerald-500 bg-emerald-500 text-white"
+              }`}
+            >
+              {busy === item.id ? (
+                <Loader2 className="h-3 w-3 animate-spin" />
+              ) : !item.due ? (
+                <Check className="h-3 w-3" />
+              ) : null}
+            </button>
+            <div className="min-w-0 flex-1">
+              <p className={`text-sm font-semibold ${item.due ? "text-slate-800" : "text-slate-400 line-through"}`}>
+                {item.label}
+              </p>
+              {item.detail && <p className="mt-0.5 text-xs text-slate-500">{item.detail}</p>}
+              <p className="mt-0.5 text-[11px] text-slate-400">
+                {CADENCE_LABEL[item.cadence] ?? item.cadence}
+                {!item.due && item.days_until != null
+                  ? ` · again in ${item.days_until} day${item.days_until === 1 ? "" : "s"}`
+                  : ""}
+              </p>
+            </div>
+          </li>
+        ))}
+      </ul>
+
+      {plan.note && (
+        <p className="mt-3 whitespace-pre-wrap rounded-xl bg-slate-50 p-3 text-xs text-slate-600">{plan.note}</p>
+      )}
     </div>
   );
 }

@@ -2,6 +2,7 @@ export const dynamic = "force-dynamic";
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { getConsultSettings, getMemberByEmail, getPatientEmailFromRequest } from "@/lib/consult";
+import { itemState } from "@/lib/treatment-plan";
 import { ensureCarePlanSchema } from "@/lib/startup/ensure-care-plan-schema";
 
 /**
@@ -59,7 +60,7 @@ export async function GET(req: NextRequest) {
       });
     }
 
-    const [doctor, messages, redemptions, prescriptions, testOrders, preferredPharmacy, preferredLab] =
+    const [doctor, messages, redemptions, prescriptions, testOrders, preferredPharmacy, preferredLab, plan] =
       await Promise.all([
       member.doctor_email
         ? prisma.doctorProfile.findUnique({
@@ -100,6 +101,11 @@ export async function GET(req: NextRequest) {
             select: { id: true, name: true, logo_url: true, address: true, city: true, state: true },
           })
         : Promise.resolve(null),
+      prisma.consultTreatmentPlan.findFirst({
+        where: { patient_id: member.id, status: "active" },
+        orderBy: { created_at: "desc" },
+        include: { items: { orderBy: { position: "asc" } } },
+      }),
     ]);
 
     // Mark the doctor's replies as read now that the member is looking at them.
@@ -130,6 +136,7 @@ export async function GET(req: NextRequest) {
         messages_used: member.messages_used,
         message_allowance: member.message_allowance,
         messages_left: Math.max(0, member.message_allowance - member.messages_used),
+        share_history: member.share_history,
       },
       doctor: doctor
         ? {
@@ -142,8 +149,25 @@ export async function GET(req: NextRequest) {
         id: m.id,
         sender: m.sender,
         body: m.body,
+        has_image: !!m.image_url,
         created_at: m.created_at,
       })),
+      plan: plan
+        ? {
+            id: plan.id,
+            title: plan.title,
+            note: plan.note,
+            updated_at: plan.updated_at,
+            items: plan.items.map((i) => ({
+              id: i.id,
+              label: i.label,
+              detail: i.detail,
+              cadence: i.cadence,
+              done_count: i.done_count,
+              ...itemState(i),
+            })),
+          }
+        : null,
       redemptions: redemptions.map((r) => ({
         id: r.id,
         kind: r.kind,

@@ -36,7 +36,7 @@ export default function PharmacyDashboard() {
   const [pharmacy, setPharmacy] = useState<Pharmacy | null>(null);
   const [stats, setStats] = useState<Stats | null>(null);
   const [loading, setLoading] = useState(true);
-  const [tab, setTab] = useState<"serve" | "customers">("serve");
+  const [tab, setTab] = useState<"serve" | "customers" | "care">("serve");
 
   const load = useCallback(async () => {
     try {
@@ -96,6 +96,7 @@ export default function PharmacyDashboard() {
             <div className="flex gap-1 border-b border-slate-200 pb-2">
               {([
                 ["serve", "Serve a member"],
+                ["care", "Coming to you"],
                 ["customers", "My customers"],
               ] as const).map(([key, label]) => (
                 <button
@@ -113,6 +114,7 @@ export default function PharmacyDashboard() {
             </div>
 
             {tab === "serve" && <ServePanel onRecorded={load} />}
+            {tab === "care" && <CareMembersPanel />}
             {tab === "customers" && <CustomersPanel onChanged={load} />}
           </>
         )}
@@ -546,6 +548,133 @@ function AddCustomerForm({ onClose, onAdded }: { onClose: () => void; onAdded: (
         {saving ? <Loader2 className="h-4 w-4 animate-spin" /> : <Plus className="h-4 w-4" />}
         Add customer
       </button>
+    </div>
+  );
+}
+
+
+// ── Members who chose this pharmacy ─────────────────────────────────────────
+
+type CareMember = {
+  id: string;
+  code: string | null;
+  name: string;
+  name_revealed: boolean;
+  conditions: string[];
+  expires_at: string | null;
+  prescriptions: {
+    id: string; medication: string; form: string | null; dosage: string | null;
+    frequency: string | null; duration_days: number | null;
+    start_date: string | null; end_date: string | null; status: string;
+  }[];
+};
+
+/**
+ * The care-plan members who named this pharmacy, and what their doctors have
+ * scheduled for them.
+ *
+ * Names are shortened until someone has actually been served here — naming a
+ * preferred pharmacy is a heads-up, not an introduction. The code is what
+ * matters at the counter, and it is shown in full.
+ */
+function CareMembersPanel() {
+  const [members, setMembers] = useState<CareMember[]>([]);
+  const [summary, setSummary] = useState<{ members: number; pending_prescriptions: number } | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState("");
+
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      try {
+        const res = await fetch("/api/pharmacy/care-members", { cache: "no-store" });
+        const d = await res.json();
+        if (cancelled) return;
+        if (!res.ok || !d.success) setError(d.error ?? "Could not load your members.");
+        else { setMembers(d.members); setSummary(d.summary); }
+      } catch {
+        if (!cancelled) setError("Network error.");
+      } finally {
+        if (!cancelled) setLoading(false);
+      }
+    })();
+    return () => { cancelled = true; };
+  }, []);
+
+  if (loading) return <div className="h-48 animate-pulse rounded-2xl border border-slate-100 bg-white" />;
+  if (error) {
+    return <p className="rounded-2xl border border-red-100 bg-red-50 p-6 text-sm text-red-600">{error}</p>;
+  }
+  if (members.length === 0) {
+    return (
+      <div className="rounded-2xl border border-slate-100 bg-white p-10 text-center">
+        <Users className="mx-auto mb-3 h-10 w-10 text-slate-200" />
+        <p className="text-sm font-semibold text-slate-600">Nobody has picked you yet</p>
+        <p className="mt-1 text-xs text-slate-400">
+          Care-plan members choose a pharmacy when they join. When they pick you, what their doctor
+          has scheduled shows up here so you can stock ahead.
+        </p>
+      </div>
+    );
+  }
+
+  return (
+    <div className="space-y-3">
+      <p className="text-xs text-slate-500">
+        {summary?.members} member{summary?.members === 1 ? "" : "s"} chose you ·{" "}
+        {summary?.pending_prescriptions} medication{summary?.pending_prescriptions === 1 ? "" : "s"} scheduled.
+        Names are shortened until someone has been served here.
+      </p>
+
+      {members.map((m) => (
+        <div key={m.id} className="rounded-2xl border border-slate-100 bg-white p-4 shadow-sm">
+          <div className="flex flex-wrap items-start justify-between gap-2">
+            <div className="min-w-0">
+              <p className="text-sm font-bold text-slate-800">
+                {m.name}
+                {!m.name_revealed && <span className="ml-1.5 text-[11px] font-normal text-slate-400">(not yet served here)</span>}
+              </p>
+              <p className="mt-0.5 flex flex-wrap items-center gap-1.5">
+                <span className="rounded-full bg-slate-900 px-2 py-0.5 font-mono text-[11px] font-bold text-white">
+                  {m.code ?? "—"}
+                </span>
+                {m.conditions.map((c) => (
+                  <span key={c} className="rounded-full bg-emerald-50 px-2 py-0.5 text-[11px] font-semibold text-emerald-700">
+                    {c === "hypertension" ? "Hypertension" : c === "diabetes" ? "Diabetes" : c}
+                  </span>
+                ))}
+              </p>
+            </div>
+            {m.expires_at && (
+              <span className="text-[11px] text-slate-400">
+                Plan to {new Date(m.expires_at).toLocaleDateString("en-GB", { day: "numeric", month: "short", year: "numeric" })}
+              </span>
+            )}
+          </div>
+
+          {m.prescriptions.length === 0 ? (
+            <p className="mt-3 text-xs text-slate-400">Nothing scheduled right now.</p>
+          ) : (
+            <ul className="mt-3 space-y-1.5">
+              {m.prescriptions.map((rx) => (
+                <li key={rx.id} className="rounded-xl bg-slate-50 px-3 py-2">
+                  <p className="text-sm font-semibold text-slate-700">
+                    {rx.form ? `${rx.form.charAt(0).toUpperCase()}${rx.form.slice(1)} · ` : ""}
+                    {rx.medication}
+                  </p>
+                  <p className="text-[11px] text-slate-500">
+                    {[rx.dosage, rx.frequency].filter(Boolean).join(" · ") || "No dose recorded"}
+                    {rx.duration_days ? ` · ${rx.duration_days} days` : " · ongoing"}
+                    {rx.start_date
+                      ? ` · from ${new Date(rx.start_date).toLocaleDateString("en-GB", { day: "numeric", month: "short" })}`
+                      : ""}
+                  </p>
+                </li>
+              ))}
+            </ul>
+          )}
+        </div>
+      ))}
     </div>
   );
 }

@@ -1917,7 +1917,15 @@ model ConsultPatient {
   baseline_glucose_context String? // fasting | random
   baseline_glucose_taken_on DateTime? @db.Date
   baseline_notes        String?
+  // under_3m | 3_6m | 6_12m | over_12m | never
+  baseline_last_visit   String?
+  baseline_self_care    String? // what they already do for themselves
   baseline_captured_at  DateTime?
+
+  // When a member moves to another doctor their thread and notes move with
+  // them, unless they ask us not to share.
+  share_history    Boolean  @default(true)
+  previous_doctors String[] @default([])
 
   doctor_email String? // assigned at activation, by fair round-robin
   assigned_at  DateTime?
@@ -1940,6 +1948,7 @@ model ConsultPatient {
   pharmacy_customers PharmacyCustomer[]
   prescriptions      ConsultPrescription[]
   test_orders        ConsultTestOrder[]
+  treatment_plans    ConsultTreatmentPlan[]
 
   @@index([doctor_email, status])
   @@index([status, expires_at])
@@ -1954,6 +1963,7 @@ model ConsultMessage {
   patient_id String
   sender     String // "patient" | "doctor"
   body       String
+  image_url  String? // signed-path of an attached photo, if any
   read_at    DateTime?
   counted    Boolean   @default(false) // consumed one of the member's allowance
   created_at DateTime  @default(now())
@@ -2134,13 +2144,20 @@ model ConsultPrescription {
   patient_id    String
   doctor_email  String
   medication    String // e.g. "Amlodipine 5mg"
+  form          String? // tablet | capsule | syrup | injection | ...
   dosage        String? // e.g. "1 tablet"
   frequency     String? // e.g. "Once daily, morning"
   duration_days Int?
   instructions  String?
+  // Exactly what the doctor typed, e.g. "tabs amlodipine 10mg daily x 1/12".
+  // Kept so the parse can be re-read, corrected or audited against the source.
+  raw_text      String?
   start_date    DateTime? @db.Date
   end_date      DateTime? @db.Date // derived from duration when not given
-  status        String    @default("active") // active | completed | stopped
+  status        String    @default("scheduled") // scheduled | active | completed | cancelled
+  // Why it was stopped: not_effective | side_effects | cost | not_convenient |
+  // condition_resolved | switched | other
+  cancel_reason String?
   stopped_note  String?
   created_at    DateTime  @default(now())
   updated_at    DateTime  @updatedAt
@@ -2176,4 +2193,63 @@ model ConsultTestOrder {
   @@index([doctor_email, status])
   @@index([status, due_date])
   @@map("consult_test_orders")
+}
+
+// The care plan proper: a short checklist the member works from between
+// messages — "check your BP every Monday", "cut back on salt". The doctor
+// writes it once; the member ticks items off and we work out what is due.
+model ConsultTreatmentPlan {
+  id           String   @id @default(uuid())
+  patient_id   String
+  doctor_email String
+  title        String   @default("Treatment plan")
+  note         String? // anything that does not belong on a single item
+  status       String   @default("active") // active | archived
+  notified_at  DateTime? // last time the member was told about it
+  created_at   DateTime @default(now())
+  updated_at   DateTime @updatedAt
+
+  patient ConsultPatient         @relation(fields: [patient_id], references: [id], onDelete: Cascade)
+  items   ConsultTreatmentItem[]
+
+  @@index([patient_id, status])
+  @@index([doctor_email, status])
+  @@map("consult_treatment_plans")
+}
+
+// One thing to do, and how often. `last_done_at` plus `cadence` is what makes
+// an item due — nothing is scheduled ahead, so a missed week never piles up.
+model ConsultTreatmentItem {
+  id           String    @id @default(uuid())
+  plan_id      String
+  label        String // "Check your blood pressure"
+  detail       String? // "Sit quietly for five minutes first"
+  cadence      String    @default("weekly") // daily | weekly | biweekly | monthly | once
+  remind       Boolean   @default(true)
+  position     Int       @default(0)
+  last_done_at DateTime?
+  done_count   Int       @default(0)
+  created_at   DateTime  @default(now())
+  updated_at   DateTime  @updatedAt
+
+  plan ConsultTreatmentPlan @relation(fields: [plan_id], references: [id], onDelete: Cascade)
+
+  @@index([plan_id, position])
+  @@map("consult_treatment_items")
+}
+
+// A doctor's saved starting points — a plan they write for most new members, a
+// panel of tests they always order together, a medication they reach for.
+model ConsultTemplate {
+  id           String   @id @default(uuid())
+  doctor_email String
+  kind         String // treatment_plan | test_panel | medication
+  name         String
+  payload      Json // shape depends on kind; see lib/consult-templates.ts
+  uses         Int      @default(0)
+  created_at   DateTime @default(now())
+  updated_at   DateTime @updatedAt
+
+  @@index([doctor_email, kind])
+  @@map("consult_templates")
 }

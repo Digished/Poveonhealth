@@ -2,7 +2,20 @@ export const dynamic = "force-dynamic";
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { getDoctorEmailFromConsultRequest } from "@/lib/consult";
+import { itemState } from "@/lib/treatment-plan";
 import { ensureCarePlanSchema } from "@/lib/startup/ensure-care-plan-schema";
+
+/** Whole years since a date of birth, or null when we were never told. */
+function ageFrom(dob: Date | null): number | null {
+  if (!dob) return null;
+  const now = new Date();
+  let age = now.getFullYear() - dob.getFullYear();
+  const beforeBirthday =
+    now.getMonth() < dob.getMonth() ||
+    (now.getMonth() === dob.getMonth() && now.getDate() < dob.getDate());
+  if (beforeBirthday) age -= 1;
+  return age >= 0 && age < 130 ? age : null;
+}
 
 /** GET /api/doc-login/consults/patients/[id] — one member and their thread. */
 export async function GET(req: NextRequest, { params }: { params: { id: string } }) {
@@ -17,9 +30,20 @@ export async function GET(req: NextRequest, { params }: { params: { id: string }
       return NextResponse.json({ error: "Member not found." }, { status: 404 });
     }
 
-    const [messages, earning, redemptions, prescriptions, testOrders] = await Promise.all([
+    // A member who asked us not to share their history takes it with them: a
+    // new doctor sees the conversation from the day they were assigned, not
+    // everything the last one was told.
+    const historyFrom =
+      patient.share_history === false && patient.previous_doctors.length > 0
+        ? patient.assigned_at
+        : null;
+
+    const [messages, earning, redemptions, prescriptions, testOrders, plan] = await Promise.all([
       prisma.consultMessage.findMany({
-        where: { patient_id: patient.id },
+        where: {
+          patient_id: patient.id,
+          ...(historyFrom ? { created_at: { gte: historyFrom } } : {}),
+        },
         orderBy: { created_at: "asc" },
         take: 200,
       }),
@@ -44,6 +68,11 @@ export async function GET(req: NextRequest, { params }: { params: { id: string }
         where: { patient_id: patient.id },
         orderBy: [{ status: "asc" }, { due_date: "asc" }],
         take: 60,
+      }),
+      prisma.consultTreatmentPlan.findFirst({
+        where: { patient_id: patient.id, status: "active" },
+        orderBy: { created_at: "desc" },
+        include: { items: { orderBy: { position: "asc" } } },
       }),
     ]);
 
@@ -75,7 +104,12 @@ export async function GET(req: NextRequest, { params }: { params: { id: string }
         messages_used: patient.messages_used,
         message_allowance: patient.message_allowance,
         messages_left: Math.max(0, patient.message_allowance - patient.messages_used),
+        share_history: patient.share_history,
+        previous_doctors: patient.previous_doctors,
+        // Only the age matters clinically, and it is what the doctor asks for.
+        age: ageFrom(patient.date_of_birth),
       },
+      history_withheld: !!historyFrom,
       baseline: patient.baseline_captured_at
         ? {
             medications: patient.baseline_medications,
@@ -107,8 +141,27 @@ export async function GET(req: NextRequest, { params }: { params: { id: string }
         id: m.id,
         sender: m.sender,
         body: m.body,
+        has_image: !!m.image_url,
         created_at: m.created_at,
       })),
+      plan: plan
+        ? {
+            id: plan.id,
+            title: plan.title,
+            note: plan.note,
+            notified_at: plan.notified_at,
+            updated_at: plan.updated_at,
+            items: plan.items.map((i) => ({
+              id: i.id,
+              label: i.label,
+              detail: i.detail,
+              cadence: i.cadence,
+              remind: i.remind,
+              done_count: i.done_count,
+              ...itemState(i),
+            })),
+          }
+        : null,
       redemptions: redemptions.map((r) => ({
         id: r.id,
         kind: r.kind,

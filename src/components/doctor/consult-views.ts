@@ -13,3 +13,16 @@ export const CONSULT_VIEWS = [
 ] as const;
 
 export type ConsultView = (typeof CONSULT_VIEWS)[number]["key"];
+
+/**
+ * The strip only carries the two views a doctor lives in. Earnings, intake and
+ * credentials are things you set up once and revisit occasionally, so they sit
+ * behind a "More" menu rather than competing for the same row.
+ */
+export const CONSULT_PRIMARY_VIEWS = CONSULT_VIEWS.filter(
+  (v) => v.key === "overview" || v.key === "members"
+);
+
+export const CONSULT_MORE_VIEWS = CONSULT_VIEWS.filter(
+  (v) => v.key === "earnings" || v.key === "intake" || v.key === "credentials"
+);

@@ -8,6 +8,8 @@ import { ensureCarePlanSchema } from "@/lib/startup/ensure-care-plan-schema";
 const BodySchema = z.object({
   preferred_pharmacy_id: z.string().min(1).nullable().optional(),
   preferred_lab_id: z.string().min(1).nullable().optional(),
+  /** Whether a new doctor inherits the conversation and notes. */
+  share_history: z.boolean().optional(),
 });
 
 /**
@@ -48,6 +50,7 @@ export async function PATCH(req: NextRequest) {
       data: {
         ...(d.preferred_pharmacy_id !== undefined ? { preferred_pharmacy_id: d.preferred_pharmacy_id } : {}),
         ...(d.preferred_lab_id !== undefined ? { preferred_lab_id: d.preferred_lab_id } : {}),
+        ...(d.share_history !== undefined ? { share_history: d.share_history } : {}),
       },
     });
 

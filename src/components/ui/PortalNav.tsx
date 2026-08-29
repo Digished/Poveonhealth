@@ -1,5 +1,6 @@
 "use client";
 
+import { useEffect, useRef, useState } from "react";
 import { ChevronDown, ChevronRight, type LucideIcon } from "lucide-react";
 
 export type PortalNavItem = {
@@ -152,34 +153,91 @@ function ItemMeta({ item, active }: { item: PortalNavItem; active: boolean }) {
  */
 export function PortalSubNav({
   items,
+  moreItems = [],
+  moreLabel = "More",
   activeKey,
   onSelect,
 }: {
   items: { key: string; label: string }[];
+  /** Occasional views, folded into a dropdown so the strip stays short. */
+  moreItems?: { key: string; label: string }[];
+  moreLabel?: string;
   activeKey: string;
   onSelect: (key: string) => void;
 }) {
-  if (items.length < 2) return null;
+  const [moreOpen, setMoreOpen] = useState(false);
+  const moreRef = useRef<HTMLDivElement | null>(null);
+
+  // A menu that stays open after you have clicked elsewhere is a menu in the way.
+  useEffect(() => {
+    if (!moreOpen) return;
+    const close = (e: MouseEvent) => {
+      if (moreRef.current && !moreRef.current.contains(e.target as Node)) setMoreOpen(false);
+    };
+    document.addEventListener("mousedown", close);
+    return () => document.removeEventListener("mousedown", close);
+  }, [moreOpen]);
+
+  if (items.length + moreItems.length < 2) return null;
+
+  const activeMore = moreItems.find((i) => i.key === activeKey);
+
+  const tabClass = (active: boolean) =>
+    `rounded-lg px-3 py-1.5 text-sm font-medium whitespace-nowrap transition ${
+      active
+        ? "bg-medical-50 text-medical-800 ring-1 ring-inset ring-medical-200"
+        : "text-slate-500 hover:bg-white hover:text-slate-800"
+    }`;
+
   return (
     <div className="mb-4 -mx-4 overflow-x-auto no-scrollbar px-4 sm:mx-0 sm:px-0">
-      <div className="flex min-w-max gap-1 border-b border-slate-200/80 pb-2">
-        {items.map((item) => {
-          const active = item.key === activeKey;
-          return (
+      <div className="flex min-w-max items-center gap-1 border-b border-slate-200/80 pb-2">
+        {items.map((item) => (
+          <button
+            key={item.key}
+            type="button"
+            onClick={() => onSelect(item.key)}
+            className={tabClass(item.key === activeKey)}
+          >
+            {item.label}
+          </button>
+        ))}
+
+        {moreItems.length > 0 && (
+          <div ref={moreRef} className="relative">
             <button
-              key={item.key}
               type="button"
-              onClick={() => onSelect(item.key)}
-              className={`rounded-lg px-3 py-1.5 text-sm font-medium whitespace-nowrap transition ${
-                active
-                  ? "bg-medical-50 text-medical-800 ring-1 ring-inset ring-medical-200"
-                  : "text-slate-500 hover:bg-white hover:text-slate-800"
-              }`}
+              onClick={() => setMoreOpen((o) => !o)}
+              aria-expanded={moreOpen}
+              className={`${tabClass(!!activeMore)} inline-flex items-center gap-1`}
             >
-              {item.label}
+              {activeMore ? activeMore.label : moreLabel}
+              <ChevronDown className={`h-3.5 w-3.5 transition-transform ${moreOpen ? "rotate-180" : ""}`} />
             </button>
-          );
-        })}
+
+            {moreOpen && (
+              <div className="absolute left-0 top-full z-40 mt-1 min-w-44 overflow-hidden rounded-xl border border-slate-100 bg-white py-1 shadow-lg">
+                {moreItems.map((item) => (
+                  <button
+                    key={item.key}
+                    type="button"
+                    onClick={() => {
+                      onSelect(item.key);
+                      setMoreOpen(false);
+                    }}
+                    className={`block w-full px-3.5 py-2 text-left text-sm transition ${
+                      item.key === activeKey
+                        ? "bg-medical-50 font-semibold text-medical-800"
+                        : "text-slate-600 hover:bg-slate-50"
+                    }`}
+                  >
+                    {item.label}
+                  </button>
+                ))}
+              </div>
+            )}
+          </div>
+        )}
       </div>
     </div>
   );

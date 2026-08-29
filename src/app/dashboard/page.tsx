@@ -8,6 +8,8 @@ import { PageLoader, SectionLoader } from "@/components/PageLoader";
 import { CarePlanPanel } from "@/components/consults/CarePlanPanel";
 import { CarePlanPromptCard, CarePlanPromptModal, useCarePlan } from "@/components/consults/CarePlanPrompt";
 import { PharmacyDirectory } from "@/components/consults/PharmacyDirectory";
+import { LabDirectory } from "@/components/consults/LabDirectory";
+import { CarePlanChatFab } from "@/components/consults/CarePlanChatFab";
 import { PortalNav, PortalSubNav, type PortalNavSection } from "@/components/ui/PortalNav";
 import { parsePhones } from "@/lib/phones";
 import { PhoneInput } from "@/components/PhoneInput";
@@ -1051,9 +1053,18 @@ function VisitStat({
 }
 
 /** Panels the patient portal can show. */
-type View = "care" | "pharmacies" | "visits" | "tests" | "results" | "profile" | "security";
+type View =
+  | "care" | "care-schedule" | "care-messages"
+  | "pharmacies" | "labs" | "visits"
+  | "tests" | "results"
+  | "profile" | "security";
 
-const VALID_VIEWS: View[] = ["care", "pharmacies", "visits", "tests", "results", "profile", "security"];
+const VALID_VIEWS: View[] = [
+  "care", "care-schedule", "care-messages",
+  "pharmacies", "labs", "visits",
+  "tests", "results",
+  "profile", "security",
+];
 
 /** The care plan is the portal's home — it's what a patient comes back for. */
 const DEFAULT_VIEW: View = "care";
@@ -1061,7 +1072,10 @@ const DEFAULT_VIEW: View = "care";
 /** Grouped entries land on their parent in the sidebar and expose a sub-menu. */
 const PARENT_OF: Record<View, View> = {
   care: "care",
+  "care-schedule": "care",
+  "care-messages": "care",
   pharmacies: "pharmacies",
+  labs: "labs",
   visits: "visits",
   tests: "tests",
   results: "tests",
@@ -1070,6 +1084,13 @@ const PARENT_OF: Record<View, View> = {
 };
 
 const SUB_MENUS: Partial<Record<View, { key: View; label: string }[]>> = {
+  // The plan, what to do about it, and the conversation — three things that
+  // each deserve the whole panel rather than a third of it.
+  care: [
+    { key: "care", label: "My plan" },
+    { key: "care-schedule", label: "Tests & medication" },
+    { key: "care-messages", label: "Messages" },
+  ],
   tests: [
     { key: "tests", label: "All tests" },
     { key: "results", label: "Results" },
@@ -1210,6 +1231,7 @@ function DashboardInner() {
       items: [
         { key: "care", label: "Care Plan", icon: HeartPulse, alert: !careLoading && !care.active },
         { key: "pharmacies", label: "Pharmacies", icon: Pill },
+        { key: "labs", label: "Labs", icon: FlaskConical },
         // Doctor Visits (per-encounter consults) is hidden while the care plan
         // is the focus. The panel stays, so a deep link still reaches it.
         ...(view === "visits"
@@ -1320,12 +1342,23 @@ function DashboardInner() {
           {loading && <SectionLoader label="Loading your dashboard…" />}
 
           {/* Care Plan */}
-          {!loading && patientEmail && view === "care" && (
-            <CarePlanPanel autoOpenEnroll={wantsCarePlan} onChanged={care.refresh} />
+          {!loading && patientEmail && parent === "care" && (
+            <CarePlanPanel
+              autoOpenEnroll={wantsCarePlan}
+              section={
+                view === "care-schedule" ? "schedule" : view === "care-messages" ? "messages" : "plan"
+              }
+              onChanged={care.refresh}
+            />
           )}
 
           {/* Partner pharmacies */}
           {!loading && patientEmail && view === "pharmacies" && <PharmacyDirectory />}
+
+          {/* Partner labs, with the member's own one marked */}
+          {!loading && patientEmail && view === "labs" && (
+            <LabDirectory canChoose={care.active} />
+          )}
 
           {/* Doctor visits */}
           {!loading && patientEmail && view === "visits" && (
@@ -1390,8 +1423,9 @@ function DashboardInner() {
 
           {/* Security */}
           {!loading && patientEmail && view === "security" && (
-            <div className="xl:max-w-3xl">
+            <div className="xl:max-w-3xl space-y-4">
               <PatientSecuritySection email={patientEmail} />
+              <SupportFab variant="inline" />
             </div>
           )}
 
@@ -1533,7 +1567,8 @@ function DashboardInner() {
         />
       )}
 
-      <SupportFab />
+      {/* The corner of the screen is the doctor's line, not support's. */}
+      <CarePlanChatFab role="patient" enabled={care.active} />
     </div>
   );
 }

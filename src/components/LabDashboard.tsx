@@ -118,8 +118,8 @@ export function LabDashboard({ lab, isOwner = false, roleName = "Lab Owner", can
   const router = useRouter();
   const searchParams = useSearchParams();
   const { isLight, toggle, themeClass } = useDashTheme("lab_dash_theme");
-  type MainView = "workspace" | "requests" | "journey" | "onboarding" | "queue" | "departments" | "results" | "past" | "templates" | "sops" | "network" | "referrals" | "professionals" | "clients" | "customers" | "analytics" | "activity" | "feedback" | "poveon" | "price-list" | "marketers" | "team" | "partners" | "rides";
-  const VALID_TABS: MainView[] = ["onboarding", "queue", "workspace", "requests", "journey", "departments", "results", "past", "templates", "sops", "network", "referrals", "professionals", "clients", "customers", "analytics", "activity", "feedback", "poveon", "price-list", "marketers", "team", "partners", "rides"];
+  type MainView = "workspace" | "requests" | "journey" | "onboarding" | "queue" | "departments" | "results" | "past" | "templates" | "sops" | "network" | "referrals" | "professionals" | "clients" | "customers" | "care-plan" | "analytics" | "activity" | "feedback" | "poveon" | "price-list" | "marketers" | "team" | "partners" | "rides";
+  const VALID_TABS: MainView[] = ["onboarding", "queue", "workspace", "requests", "journey", "departments", "results", "past", "templates", "sops", "network", "referrals", "professionals", "clients", "customers", "care-plan", "analytics", "activity", "feedback", "poveon", "price-list", "marketers", "team", "partners", "rides"];
   // Legacy tabs now fold into the unified Workspace.
   const LEGACY_TO_WORKSPACE = new Set(["requests", "journey"]);
   // Which permission gates each tab (used by the sidebar and the initial landing).
@@ -139,6 +139,8 @@ export function LabDashboard({ lab, isOwner = false, roleName = "Lab Owner", can
     referrals: isOwner || canViewReferrals,
     professionals: isOwner || canManageProfessionals,
     clients: isOwner || canViewClients,
+    // Care-plan members who picked this lab — the same audience as Clients.
+    "care-plan": isOwner || canViewClients,
     analytics: isOwner || canViewAnalytics,
     activity: isOwner || canViewActivity,
     feedback: isOwner || canViewFeedback,
@@ -168,9 +170,9 @@ export function LabDashboard({ lab, isOwner = false, roleName = "Lab Owner", can
   }, [lab.id]);
   // Micro: the smallest footprint — front desk + referrals + pricing only.
   const MICRO_SIDEBAR = new Set<MainView>(["onboarding", "customers", "network", "price-list"]);
-  const MICRO_ALLOWED = new Set<MainView>(["onboarding", "customers", "clients", "network", "referrals", "professionals", "price-list"]);
+  const MICRO_ALLOWED = new Set<MainView>(["onboarding", "customers", "clients", "care-plan", "network", "referrals", "professionals", "price-list"]);
   const LITE_SIDEBAR = new Set<MainView>(["onboarding", "queue", "rides", "customers", "analytics", "feedback", "network", "partners", "team", "price-list"]);
-  const LITE_ALLOWED = new Set<MainView>(["onboarding", "queue", "rides", "customers", "analytics", "feedback", "network", "referrals", "professionals", "partners", "team", "price-list"]);
+  const LITE_ALLOWED = new Set<MainView>(["onboarding", "queue", "rides", "customers", "care-plan", "analytics", "feedback", "network", "referrals", "professionals", "partners", "team", "price-list"]);
   const modeSidebar = labMode === "micro" ? MICRO_SIDEBAR : labMode === "lite" ? LITE_SIDEBAR : null;
   const tabVisibleEff: Record<MainView, boolean> = modeSidebar
     ? (Object.fromEntries((Object.keys(tabVisible) as MainView[]).map((k) => [k, tabVisible[k] && modeSidebar.has(k)])) as Record<MainView, boolean>)
@@ -208,6 +210,7 @@ export function LabDashboard({ lab, isOwner = false, roleName = "Lab Owner", can
     { key: "customers", children: [
       { key: "customers", label: "Customers" },
       { key: "clients", label: "Clients" },
+      { key: "care-plan", label: "Care plan" },
     ] },
     { key: "departments", children: [
       { key: "departments", label: "Departments" },
@@ -940,6 +943,9 @@ export function LabDashboard({ lab, isOwner = false, roleName = "Lab Owner", can
         {(mainView === "network" || mainView === "referrals" || mainView === "professionals") && (
           <ReferralsView canManage={isOwner || canManageProfessionals} />
         )}
+
+        {/* Care-plan members who chose this lab */}
+        {mainView === "care-plan" && <LabCareMembers />}
 
         {/* Clients view */}
         {mainView === "clients" && (
@@ -3442,3 +3448,135 @@ function ChangePasswordModal({ onClose }: { onClose: () => void }) {
   );
 }
 
+
+
+// ── Care-plan members who chose this lab ────────────────────────────────────
+
+type LabCareMember = {
+  id: string;
+  code: string | null;
+  name: string;
+  name_revealed: boolean;
+  conditions: string[];
+  expires_at: string | null;
+  test_orders: {
+    id: string; tests: string; reason: string | null; due_date: string | null; recurrence: string;
+  }[];
+};
+
+/**
+ * The care-plan members who named this lab, and the tests their doctors have
+ * scheduled — so the bench can be planned rather than reacted to.
+ *
+ * Names are shortened until the lab has actually run something for them:
+ * naming a preferred lab is a heads-up, not an introduction. The care code is
+ * what identifies them at the desk, so that is shown in full.
+ */
+function LabCareMembers() {
+  const [members, setMembers] = useState<LabCareMember[]>([]);
+  const [summary, setSummary] = useState<{ members: number; pending_tests: number } | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState("");
+
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      try {
+        const res = await fetch("/api/lab/care-members", { cache: "no-store" });
+        const d = await res.json();
+        if (cancelled) return;
+        if (!res.ok || !d.success) setError(d.error ?? "Could not load care-plan members.");
+        else { setMembers(d.members); setSummary(d.summary); }
+      } catch {
+        if (!cancelled) setError("Network error.");
+      } finally {
+        if (!cancelled) setLoading(false);
+      }
+    })();
+    return () => { cancelled = true; };
+  }, []);
+
+  if (loading) {
+    return (
+      <div className="flex items-center justify-center py-20">
+        <RefreshCw className="w-6 h-6 text-slate-400 animate-spin" />
+      </div>
+    );
+  }
+  if (error) {
+    return <p className="rounded-2xl border border-red-500/20 bg-red-500/10 p-6 text-sm text-red-300">{error}</p>;
+  }
+  if (members.length === 0) {
+    return (
+      <div className="text-center py-16">
+        <div className="w-16 h-16 rounded-2xl bg-white/5 flex items-center justify-center mx-auto mb-4">
+          <UserCircle className="w-8 h-8 text-slate-500" />
+        </div>
+        <p className="text-slate-300 font-semibold">Nobody has picked you yet</p>
+        <p className="text-slate-500 text-sm mt-1">
+          Care-plan members choose a lab when they join. When they pick you, the tests their doctor
+          schedules appear here.
+        </p>
+      </div>
+    );
+  }
+
+  return (
+    <div className="space-y-3">
+      <p className="text-xs text-slate-400">
+        {summary?.members} member{summary?.members === 1 ? "" : "s"} chose you ·{" "}
+        {summary?.pending_tests} test{summary?.pending_tests === 1 ? "" : "s"} scheduled. Names are
+        shortened until you have run something for them.
+      </p>
+
+      {members.map((m) => (
+        <div key={m.id} className="rounded-2xl border border-white/10 bg-white/5 p-4">
+          <div className="flex flex-wrap items-start justify-between gap-2">
+            <div className="min-w-0">
+              <p className="text-sm font-bold text-white">
+                {m.name}
+                {!m.name_revealed && (
+                  <span className="ml-1.5 text-[11px] font-normal text-slate-500">(new to you)</span>
+                )}
+              </p>
+              <p className="mt-1 flex flex-wrap items-center gap-1.5">
+                <span className="rounded-full bg-white/15 px-2 py-0.5 font-mono text-[11px] font-bold text-white">
+                  {m.code ?? "—"}
+                </span>
+                {m.conditions.map((c) => (
+                  <span key={c} className="rounded-full bg-sky-500/20 px-2 py-0.5 text-[11px] font-semibold text-sky-300">
+                    {c === "hypertension" ? "Hypertension" : c === "diabetes" ? "Diabetes" : c}
+                  </span>
+                ))}
+              </p>
+            </div>
+            {m.expires_at && (
+              <span className="text-[11px] text-slate-500">
+                Plan to {new Date(m.expires_at).toLocaleDateString("en-GB", { day: "numeric", month: "short", year: "numeric" })}
+              </span>
+            )}
+          </div>
+
+          {m.test_orders.length === 0 ? (
+            <p className="mt-3 text-xs text-slate-500">Nothing scheduled right now.</p>
+          ) : (
+            <ul className="mt-3 space-y-1.5">
+              {m.test_orders.map((t) => (
+                <li key={t.id} className="rounded-xl bg-white/5 px-3 py-2">
+                  <p className="text-sm font-semibold text-slate-200">{t.tests}</p>
+                  <p className="text-[11px] text-slate-500">
+                    {t.due_date
+                      ? `Due ${new Date(t.due_date).toLocaleDateString("en-GB", { day: "numeric", month: "short", year: "numeric" })}`
+                      : "No date set"}
+                    {t.recurrence !== "once" ? ` · repeats ${t.recurrence}` : ""}
+                    {t.reason ? ` · ${t.reason}` : ""}
+                  </p>
+                </li>
+              ))}
+            </ul>
+          )}
+        </div>
+      ))}
+    </div>
+  );
+}

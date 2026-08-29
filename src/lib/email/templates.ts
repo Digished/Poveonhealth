@@ -2586,3 +2586,74 @@ export function carePlanOrderEmail({
     </div>
   `);
 }
+
+/**
+ * One message covering everything a doctor set up in a sitting — the tests, the
+ * medication and the plan — instead of an email per item as they type.
+ */
+export function carePlanScheduleEmail({
+  memberName,
+  doctorName,
+  tests,
+  medications,
+  planItems,
+  planNote,
+  message,
+  dashboardUrl,
+}: {
+  memberName: string;
+  doctorName: string;
+  tests: { summary: string; due: string | null }[];
+  medications: string[];
+  planItems: string[];
+  planNote: string | null;
+  message: string | null;
+  dashboardUrl: string;
+}) {
+  const section = (title: string, rows: string[]) =>
+    rows.length
+      ? `
+    <p style="margin:0 0 8px;color:#1e3a5f;font-size:14px;font-weight:700;">${escapeHtml(title)}</p>
+    <ul style="margin:0 0 20px;padding-left:20px;color:#4b5563;font-size:14px;line-height:1.7;">
+      ${rows.map((r) => `<li>${r}</li>`).join("")}
+    </ul>`
+      : "";
+
+  return base(`
+    <h2 style="margin:0 0 8px;color:#0259a0;font-size:20px;font-weight:700;">Your doctor updated your care plan</h2>
+    <p style="margin:0 0 20px;color:#4b5563;font-size:15px;">
+      Hello ${escapeHtml(memberName)}, ${escapeHtml(doctorName)} has set out what happens next.
+    </p>
+
+    ${
+      message
+        ? `<div style="background:#f0f7ff;border-left:4px solid #0270c3;border-radius:6px;padding:16px 18px;margin:0 0 20px;">
+             <p style="margin:0;color:#1e3a5f;font-size:15px;line-height:1.6;white-space:pre-wrap;">${escapeHtml(message)}</p>
+           </div>`
+        : ""
+    }
+
+    ${section(
+      "Tests to book",
+      tests.map(
+        (t) => `${escapeHtml(t.summary)}${t.due ? ` <span style="color:#6b7280;">— ${escapeHtml(t.due)}</span>` : ""}`
+      )
+    )}
+    ${section("Medication", medications.map(escapeHtml))}
+    ${section("Your plan", planItems.map(escapeHtml))}
+
+    ${
+      planNote
+        ? `<p style="margin:0 0 20px;color:#4b5563;font-size:14px;line-height:1.6;white-space:pre-wrap;">${escapeHtml(planNote)}</p>`
+        : ""
+    }
+
+    <p style="margin:0 0 20px;color:#4b5563;font-size:14px;">
+      Your care code gets you money off at partner labs and pharmacies — show it when you go.
+    </p>
+
+    <div style="text-align:center;margin:28px 0 0;">
+      <a href="${dashboardUrl}" style="display:inline-block;background:#0270c3;color:#ffffff;text-decoration:none;font-size:15px;font-weight:600;padding:14px 28px;border-radius:8px;">Open my care plan</a>
+    </div>
+  `);
+}

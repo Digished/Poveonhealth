@@ -2250,6 +2250,103 @@ const migrations = [
     sql: `CREATE INDEX IF NOT EXISTS consult_patients_adherence_idx ON consult_patients (medication_adherence)`,
     continueOnError: true,
   },
+  {
+    desc: "consult_patients screening answers",
+    sql: `ALTER TABLE consult_patients
+      ADD COLUMN IF NOT EXISTS baseline_last_visit TEXT,
+      ADD COLUMN IF NOT EXISTS baseline_self_care TEXT`,
+    continueOnError: true,
+  },
+  {
+    // A member who moves doctors takes their thread and notes with them,
+    // unless they opt out.
+    desc: "consult_patients history handover",
+    sql: `ALTER TABLE consult_patients
+      ADD COLUMN IF NOT EXISTS share_history BOOLEAN NOT NULL DEFAULT true,
+      ADD COLUMN IF NOT EXISTS previous_doctors TEXT[] NOT NULL DEFAULT ARRAY[]::TEXT[]`,
+    continueOnError: true,
+  },
+  {
+    desc: "consult_messages image attachments",
+    sql: `ALTER TABLE consult_messages ADD COLUMN IF NOT EXISTS image_url TEXT`,
+    continueOnError: true,
+  },
+  {
+    // Written in natural language, parsed into fields; the raw line is kept so
+    // the parse can always be checked against what the doctor actually typed.
+    desc: "consult_prescriptions natural-language entry",
+    sql: `ALTER TABLE consult_prescriptions
+      ADD COLUMN IF NOT EXISTS form TEXT,
+      ADD COLUMN IF NOT EXISTS raw_text TEXT,
+      ADD COLUMN IF NOT EXISTS cancel_reason TEXT`,
+    continueOnError: true,
+  },
+  {
+    desc: "consult_treatment_plans table",
+    sql: `CREATE TABLE IF NOT EXISTS consult_treatment_plans (
+      id TEXT PRIMARY KEY,
+      patient_id TEXT NOT NULL,
+      doctor_email TEXT NOT NULL,
+      title TEXT NOT NULL DEFAULT 'Treatment plan',
+      note TEXT,
+      status TEXT NOT NULL DEFAULT 'active',
+      notified_at TIMESTAMP(3),
+      created_at TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+      updated_at TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP
+    )`,
+    continueOnError: true,
+  },
+  {
+    desc: "consult_treatment_plans patient index",
+    sql: `CREATE INDEX IF NOT EXISTS consult_treatment_plans_patient_idx ON consult_treatment_plans (patient_id, status)`,
+    continueOnError: true,
+  },
+  {
+    desc: "consult_treatment_plans doctor index",
+    sql: `CREATE INDEX IF NOT EXISTS consult_treatment_plans_doctor_idx ON consult_treatment_plans (doctor_email, status)`,
+    continueOnError: true,
+  },
+  {
+    desc: "consult_treatment_items table",
+    sql: `CREATE TABLE IF NOT EXISTS consult_treatment_items (
+      id TEXT PRIMARY KEY,
+      plan_id TEXT NOT NULL,
+      label TEXT NOT NULL,
+      detail TEXT,
+      cadence TEXT NOT NULL DEFAULT 'weekly',
+      remind BOOLEAN NOT NULL DEFAULT true,
+      position INTEGER NOT NULL DEFAULT 0,
+      last_done_at TIMESTAMP(3),
+      done_count INTEGER NOT NULL DEFAULT 0,
+      created_at TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+      updated_at TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP
+    )`,
+    continueOnError: true,
+  },
+  {
+    desc: "consult_treatment_items plan index",
+    sql: `CREATE INDEX IF NOT EXISTS consult_treatment_items_plan_idx ON consult_treatment_items (plan_id, position)`,
+    continueOnError: true,
+  },
+  {
+    desc: "consult_templates table",
+    sql: `CREATE TABLE IF NOT EXISTS consult_templates (
+      id TEXT PRIMARY KEY,
+      doctor_email TEXT NOT NULL,
+      kind TEXT NOT NULL,
+      name TEXT NOT NULL,
+      payload JSONB NOT NULL,
+      uses INTEGER NOT NULL DEFAULT 0,
+      created_at TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+      updated_at TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP
+    )`,
+    continueOnError: true,
+  },
+  {
+    desc: "consult_templates doctor index",
+    sql: `CREATE INDEX IF NOT EXISTS consult_templates_doctor_kind_idx ON consult_templates (doctor_email, kind)`,
+    continueOnError: true,
+  },
 ];
 
 let failed = false;

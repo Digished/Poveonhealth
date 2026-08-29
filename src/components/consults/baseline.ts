@@ -55,3 +55,17 @@ export function bpBand(systolic: number | null, diastolic: number | null): {
   if (systolic >= 130 || diastolic >= 80) return { label: "Raised", tone: "amber" };
   return { label: "At target", tone: "emerald" };
 }
+
+
+/** When they were last seen about the condition — a proxy for how held they are. */
+export const LAST_VISIT_OPTIONS = [
+  { value: "under_3m", label: "In the last 3 months" },
+  { value: "3_6m", label: "3 to 6 months ago" },
+  { value: "6_12m", label: "6 to 12 months ago" },
+  { value: "over_12m", label: "Over a year ago" },
+  { value: "never", label: "Never been seen for it" },
+] as const;
+
+export const LAST_VISIT_LABEL: Record<string, string> = Object.fromEntries(
+  LAST_VISIT_OPTIONS.map((o) => [o.value, o.label])
+);
