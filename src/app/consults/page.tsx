@@ -67,12 +67,12 @@ export default async function ConsultsPage() {
             <div className="grid gap-4 sm:grid-cols-3">
               <Benefit
                 icon={<FlaskConical className="h-5 w-5" />}
-                value={`${settings.lab_discount_percent}% off`}
+                value={`Up to ${settings.lab_discount_percent}%`}
                 label="Lab tests at partner labs"
               />
               <Benefit
                 icon={<Pill className="h-5 w-5" />}
-                value={`${settings.pharmacy_discount_percent}% off`}
+                value={`Up to ${settings.pharmacy_discount_percent}%`}
                 label="BP and diabetes medication at partner pharmacies"
               />
               <Benefit
@@ -147,7 +147,7 @@ export default async function ConsultsPage() {
                   The discount covers the medication, not just the tests
                 </p>
                 <p className="mt-1 text-sm leading-relaxed text-emerald-800/90">
-                  Your care code takes {settings.pharmacy_discount_percent}% off the prescriptions you
+                  Your care code takes up to {settings.pharmacy_discount_percent}% off the medication you
                   refill every month at any partner pharmacy — blood-pressure tablets, diabetes
                   medication, insulin, test strips and monitoring supplies.
                 </p>

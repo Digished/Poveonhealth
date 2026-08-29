@@ -715,8 +715,8 @@ export function LandingPage({ labs, stats }: { labs: LandingLab[]; stats: Landin
                   </div>
 
                   <div className="grid grid-cols-2 gap-3">
-                    <MiniStat label="Off lab tests" value="15%" />
-                    <MiniStat label="Off prescriptions" value="10%" />
+                    <MiniStat label="Off lab tests" value="Up to 15%" />
+                    <MiniStat label="Off medication" value="Up to 10%" />
                   </div>
                   <div className="rounded-2xl border border-stone-200/80 bg-white/80 p-4">
                     <p className="text-[13px] leading-relaxed text-slate-600">

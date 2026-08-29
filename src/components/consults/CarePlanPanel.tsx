@@ -7,6 +7,7 @@ import {
 } from "lucide-react";
 import { SectionLoader } from "@/components/PageLoader";
 import { getJson, invalidateJson } from "@/lib/client-cache";
+import { ProviderPicker, ProviderRow, type Provider } from "@/components/consults/ProviderPicker";
 import {
   CarePlanEnrollModal,
   type CarePlanBenefits,
@@ -64,6 +65,9 @@ export function CarePlanPanel({
   const [redemptions, setRedemptions] = useState<Redemption[]>([]);
   const [prescriptions, setPrescriptions] = useState<Prescription[]>([]);
   const [testOrders, setTestOrders] = useState<TestOrder[]>([]);
+  const [pharmacy, setPharmacy] = useState<Provider | null>(null);
+  const [lab, setLab] = useState<Provider | null>(null);
+  const [picking, setPicking] = useState<"pharmacy" | "lab" | null>(null);
   // Seeded rather than null, so a failed call still shows the invitation
   // instead of an empty tab.
   const [benefits, setBenefits] = useState<CarePlanBenefits>({
@@ -92,6 +96,8 @@ export function CarePlanPanel({
       setRedemptions(data.redemptions ?? []);
       setPrescriptions(data.prescriptions ?? []);
       setTestOrders(data.test_orders ?? []);
+      setPharmacy(data.preferred_pharmacy ?? null);
+      setLab(data.preferred_lab ?? null);
       if (data.benefits) setBenefits(data.benefits);
       setPrefill(data.prefill ?? {});
     } finally {
@@ -111,6 +117,26 @@ export function CarePlanPanel({
     }
   }, [autoOpenEnroll, loading, member]);
 
+  /** Persist a provider choice; the row updates as soon as it saves. */
+  const savePreference = useCallback(async (kind: "pharmacy" | "lab", provider: Provider | null) => {
+    if (kind === "pharmacy") setPharmacy(provider);
+    else setLab(provider);
+    try {
+      await fetch("/api/consults/preferences", {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(
+          kind === "pharmacy"
+            ? { preferred_pharmacy_id: provider?.id ?? null }
+            : { preferred_lab_id: provider?.id ?? null }
+        ),
+      });
+      invalidateJson("/api/consults/me");
+    } catch {
+      /* the next load reconciles it */
+    }
+  }, []);
+
   function copyCode() {
     if (!member?.code) return;
     navigator.clipboard.writeText(member.code).then(() => {
@@ -122,7 +148,9 @@ export function CarePlanPanel({
   if (loading) return <SectionLoader label="Loading your care plan…" />;
 
   const active = member?.status === "active";
-  const lapsed = !!member && !active;
+  // An unpaid, abandoned sign-up has never had a plan — inviting them to
+  // "renew" would be wrong.
+  const lapsed = member?.status === "expired" || member?.status === "cancelled";
 
   return (
     <div className="space-y-4">
@@ -165,12 +193,12 @@ export function CarePlanPanel({
               <div className="mt-3 space-y-2.5">
                 <BenefitRow
                   icon={<FlaskConical className="h-4 w-4" />}
-                  label={`${benefits.lab_discount_percent}% off lab tests`}
+                  label={`Up to ${benefits.lab_discount_percent}% off lab tests`}
                   hint="Show your code at any partner lab"
                 />
                 <BenefitRow
                   icon={<Pill className="h-4 w-4" />}
-                  label={`${benefits.pharmacy_discount_percent}% off medication`}
+                  label={`Up to ${benefits.pharmacy_discount_percent}% off medication`}
                   hint="BP and diabetes prescriptions at partner pharmacies"
                 />
                 <BenefitRow
@@ -179,6 +207,30 @@ export function CarePlanPanel({
                   hint="Your doctor's replies are unlimited"
                 />
               </div>
+            </div>
+
+            {/* Where they'd rather be sent — switchable whenever they like. */}
+            <div className="rounded-2xl border border-slate-100 bg-white p-4 shadow-sm">
+              <h3 className="text-xs font-bold uppercase tracking-wider text-slate-400">
+                Where you like to go
+              </h3>
+              <div className="mt-3 space-y-2">
+                <ProviderRow
+                  kind="pharmacy"
+                  provider={pharmacy}
+                  onOpen={() => setPicking("pharmacy")}
+                  onClear={() => savePreference("pharmacy", null)}
+                />
+                <ProviderRow
+                  kind="lab"
+                  provider={lab}
+                  onOpen={() => setPicking("lab")}
+                  onClear={() => savePreference("lab", null)}
+                />
+              </div>
+              <p className="mt-2.5 text-[11px] text-slate-400">
+                Change these any time — your care code works at every partner either way.
+              </p>
             </div>
 
             <CareSchedule prescriptions={prescriptions} testOrders={testOrders} />
@@ -216,6 +268,15 @@ export function CarePlanPanel({
             }}
           />
         </div>
+      )}
+
+      {picking && (
+        <ProviderPicker
+          kind={picking}
+          value={(picking === "pharmacy" ? pharmacy : lab)?.id ?? null}
+          onChange={(p) => savePreference(picking, p)}
+          onClose={() => setPicking(null)}
+        />
       )}
 
       {enrolling && (
@@ -263,12 +324,12 @@ function JoinInvite({
         <div className="grid gap-3 sm:grid-cols-3">
           <Benefit
             icon={<FlaskConical className="h-5 w-5" />}
-            value={`${benefits.lab_discount_percent}% off`}
+            value={`Up to ${benefits.lab_discount_percent}%`}
             label="Lab tests at partner labs"
           />
           <Benefit
             icon={<Pill className="h-5 w-5" />}
-            value={`${benefits.pharmacy_discount_percent}% off`}
+            value={`Up to ${benefits.pharmacy_discount_percent}%`}
             label="Prescriptions at partner pharmacies"
           />
           <Benefit

@@ -58,6 +58,8 @@ async function runEnsure(): Promise<void> {
         city TEXT,
         conditions TEXT[] NOT NULL DEFAULT ARRAY[]::TEXT[],
         consent_at TIMESTAMP(3),
+        preferred_pharmacy_id TEXT,
+        preferred_lab_id TEXT,
         doctor_email TEXT,
         assigned_at TIMESTAMP(3),
         status TEXT NOT NULL DEFAULT 'pending_payment',
@@ -81,6 +83,10 @@ async function runEnsure(): Promise<void> {
     await exec(`CREATE INDEX IF NOT EXISTS consult_patients_doctor_status_idx ON consult_patients(doctor_email, status);`);
     await exec(`CREATE INDEX IF NOT EXISTS consult_patients_status_expires_idx ON consult_patients(status, expires_at);`);
     await exec(`CREATE INDEX IF NOT EXISTS consult_patients_email_idx ON consult_patients(email);`);
+
+    await exec(`ALTER TABLE consult_patients ADD COLUMN IF NOT EXISTS preferred_pharmacy_id TEXT;`);
+    await exec(`ALTER TABLE consult_patients ADD COLUMN IF NOT EXISTS preferred_lab_id TEXT;`);
+    await exec(`CREATE INDEX IF NOT EXISTS doctor_patients_patient_email_idx ON doctor_patients(patient_email);`);
 
     await exec(`DROP TABLE IF EXISTS consult_patient_sessions;`);
 

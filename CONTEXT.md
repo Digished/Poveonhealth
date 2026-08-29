@@ -74,11 +74,27 @@ reason, or revokes. `pickDoctorForMember` only ever considers
 `consult_approved` doctors. Credential documents live in a **private** Supabase
 bucket and are opened through short-lived signed URLs.
 
+**Manual activation:** admins can switch a member on by hand (Care Plan →
+Members → Activate a member) for anyone who paid outside Paystack. It runs the
+same `activateMembership` as a card payment, so the member gets a real care
+code, a doctor is assigned by the usual fair rotation, and that doctor's
+entitlement opens identically.
+
+**Preferred providers:** members pick a preferred pharmacy and laboratory during
+enrolment and can change either at any time from their care plan. It's a
+preference, not a restriction — the care code works at every partner.
+
 **Test & medication plans:** an approved doctor schedules tests
 (`consult_test_orders`, with a recurrence that re-schedules itself when marked
 done) and records medication (`consult_prescriptions`) per member. Both show on
 the member's own dashboard alongside the reminder that their care code
 discounts them.
+
+**Currently hidden:** the doctor portal's Earn (per-encounter charging) and
+Monitoring entries, and the patient portal's Doctor Visits, are hidden from
+navigation while the care plan is the focus. All three panels and their APIs are
+untouched and still reachable by deep link (`?tab=charging`, `?tab=monitoring`,
+`?tab=visits`); restoring each nav entry is a one-line change.
 
 **Installable (PWA):** `public/manifest.webmanifest` + `public/sw.js`, registered
 by `components/pwa/InstallPrompt.tsx`, which also offers "add to home screen"

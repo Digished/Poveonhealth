@@ -59,7 +59,8 @@ export async function GET(req: NextRequest) {
       });
     }
 
-    const [doctor, messages, redemptions, prescriptions, testOrders] = await Promise.all([
+    const [doctor, messages, redemptions, prescriptions, testOrders, preferredPharmacy, preferredLab] =
+      await Promise.all([
       member.doctor_email
         ? prisma.doctorProfile.findUnique({
             where: { email: member.doctor_email },
@@ -87,6 +88,18 @@ export async function GET(req: NextRequest) {
         orderBy: [{ status: "asc" }, { due_date: "asc" }],
         take: 60,
       }),
+      member.preferred_pharmacy_id
+        ? prisma.pharmacy.findUnique({
+            where: { id: member.preferred_pharmacy_id },
+            select: { id: true, name: true, logo_url: true, phone: true, address: true, city: true, state: true, discount_percent: true },
+          })
+        : Promise.resolve(null),
+      member.preferred_lab_id
+        ? prisma.lab.findUnique({
+            where: { id: member.preferred_lab_id },
+            select: { id: true, name: true, logo_url: true, address: true, city: true, state: true },
+          })
+        : Promise.resolve(null),
     ]);
 
     // Mark the doctor's replies as read now that the member is looking at them.
@@ -142,6 +155,8 @@ export async function GET(req: NextRequest) {
       })),
       prescriptions,
       test_orders: testOrders,
+      preferred_pharmacy: preferredPharmacy,
+      preferred_lab: preferredLab,
     });
   } catch (err) {
     console.error("[consults/me]", err);

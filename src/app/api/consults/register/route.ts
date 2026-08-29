@@ -18,6 +18,9 @@ const BodySchema = z.object({
   state: z.string().trim().max(80).optional().nullable(),
   city: z.string().trim().max(80).optional().nullable(),
   conditions: z.array(z.enum(CONSULT_CONDITIONS)).min(1, "Select at least one condition"),
+  // Where they'd rather be sent — a preference, changeable at any time.
+  preferred_pharmacy_id: z.string().min(1).optional().nullable(),
+  preferred_lab_id: z.string().min(1).optional().nullable(),
   consent: z.literal(true, { errorMap: () => ({ message: "Please agree to the terms to continue" }) }),
 });
 
@@ -60,6 +63,8 @@ export async function POST(req: NextRequest) {
       state: d.state || null,
       city: d.city || null,
       conditions: d.conditions,
+      preferred_pharmacy_id: d.preferred_pharmacy_id || null,
+      preferred_lab_id: d.preferred_lab_id || null,
       consent_at: new Date(),
       message_allowance: settings.message_allowance,
     };

@@ -579,6 +579,8 @@ function DocDashboardInner() {
   // Care-plan members waiting on a first assessment or a reply — the badge on
   // the portal's home entry.
   const [consultAlerts, setConsultAlerts] = useState(0);
+  // Not cleared for the care plan yet — the nav carries a dot until they apply.
+  const [consultApproved, setConsultApproved] = useState<boolean | null>(null);
   const [showEarnModal, setShowEarnModal] = useState(false);
   const [docTheme, setDocTheme] = useState<string | null>(null);
   const [navOpen, setNavOpen] = useState(false);
@@ -641,25 +643,26 @@ function DocDashboardInner() {
   // Side loads that only decide chrome — deliberately outside `load` so they
   // never hold up the dashboard, and cheap enough not to cost a slow first paint.
   useEffect(() => {
-    // `count=1` skips building the whole monitoring panel just to show the tab.
-    getJson<{ success: boolean; count?: number }>("/api/doc-login/monitoring/patients?count=1")
-      .then((m) => { if (m.success) setMonitoringCount(m.count ?? 0); })
-      .catch(() => {});
-
     // Shared with the Care Plan panel through the client cache — one request.
-    getJson<{ success: boolean; unread_messages?: number; awaiting_assessment?: number }>("/api/doc-login/consults")
+    getJson<{
+      success: boolean;
+      unread_messages?: number;
+      awaiting_assessment?: number;
+      approved?: boolean;
+    }>("/api/doc-login/consults")
       .then((c) => {
-        if (c.success) setConsultAlerts((c.unread_messages ?? 0) + (c.awaiting_assessment ?? 0));
+        if (!c.success) return;
+        setConsultAlerts((c.unread_messages ?? 0) + (c.awaiting_assessment ?? 0));
+        setConsultApproved(!!c.approved);
       })
       .catch(() => {});
 
+    // Only for the page theme now — the Earn panel is hidden, so no set-up nag.
     getJson<{ success: boolean; pricing: { ready?: boolean; theme?: string | null } | null }>("/api/doc-login/pricing")
       .then((p) => {
         if (!p.success) return;
-        const ready = !!p.pricing?.ready;
-        setChargingReady(ready);
+        setChargingReady(!!p.pricing?.ready);
         setDocTheme(p.pricing?.theme ?? null);
-        if (!ready) setShowEarnModal(true); // prompt on every login until set up
       })
       .catch(() => {});
   }, []);
@@ -686,12 +689,18 @@ function DocDashboardInner() {
     {
       label: "Practice",
       items: [
-        { key: "consults", label: "Care Plan", icon: HeartPulse, badge: consultAlerts },
-        { key: "charging", label: "Earn", icon: CreditCard, alert: chargingReady === false },
-        // Only doctors with HMO monitoring assignments get this entry — but
-        // keep it if a deep link put us on that panel, so the sidebar still
-        // shows where we are.
-        ...(monitoringCount || view === "monitoring"
+        {
+          key: "consults",
+          label: "Care Plan",
+          icon: HeartPulse,
+          badge: consultAlerts,
+          alert: consultApproved === false,
+        },
+        // Earn (per-encounter charging) and HMO Monitoring are hidden while the
+        // care plan is the focus. Both panels and their APIs are untouched —
+        // deep links still reach them, and restoring the entries is one line.
+        ...(view === "charging" ? [{ key: "charging", label: "Earn", icon: CreditCard }] : []),
+        ...(view === "monitoring"
           ? [{ key: "monitoring", label: "Monitoring", icon: Activity, badge: monitoringCount ?? 0 }]
           : []),
       ],

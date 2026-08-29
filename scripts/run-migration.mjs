@@ -2212,6 +2212,20 @@ const migrations = [
     sql: `CREATE INDEX IF NOT EXISTS consult_test_orders_status_due_idx ON consult_test_orders (status, due_date)`,
     continueOnError: true,
   },
+  {
+    // The patient portal reads its own retainerships by email; the composite
+    // unique starts with doctor_email so it couldn't serve that lookup.
+    desc: "doctor_patients index (patient_email) — patient portal",
+    sql: `CREATE INDEX IF NOT EXISTS doctor_patients_patient_email_idx ON doctor_patients (patient_email)`,
+    continueOnError: true,
+  },
+  {
+    desc: "consult_patients preferred pharmacy & lab",
+    sql: `ALTER TABLE consult_patients
+      ADD COLUMN IF NOT EXISTS preferred_pharmacy_id TEXT,
+      ADD COLUMN IF NOT EXISTS preferred_lab_id TEXT`,
+    continueOnError: true,
+  },
 ];
 
 let failed = false;

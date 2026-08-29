@@ -9,6 +9,7 @@ import { STATE_NAMES, lgasForState } from "@/lib/nigeria-locations";
 import { FuzzyCombo } from "@/components/ui/FuzzyCombo";
 import { PhoneInput } from "@/components/PhoneInput";
 import { DobInput } from "@/components/DobInput";
+import { ProviderPicker, ProviderRow, type Provider } from "@/components/consults/ProviderPicker";
 
 export type CarePlanBenefits = {
   price_naira: number;
@@ -80,6 +81,9 @@ export function CarePlanEnrollModal({
   });
   const [error, setError] = useState("");
   const [submitting, setSubmitting] = useState(false);
+  const [pharmacy, setPharmacy] = useState<Provider | null>(null);
+  const [lab, setLab] = useState<Provider | null>(null);
+  const [picking, setPicking] = useState<"pharmacy" | "lab" | null>(null);
 
   const set = <K extends keyof Form>(key: K, value: Form[K]) =>
     setForm((f) => ({ ...f, [key]: value }));
@@ -124,6 +128,8 @@ export function CarePlanEnrollModal({
           state: form.state || null,
           city: form.city || null,
           conditions: form.conditions,
+          preferred_pharmacy_id: pharmacy?.id ?? null,
+          preferred_lab_id: lab?.id ?? null,
           consent: true,
         }),
       });
@@ -278,6 +284,24 @@ export function CarePlanEnrollModal({
                   Helps us point you at partner labs and pharmacies near you.
                 </p>
               </Field>
+
+              <Field label="Preferred pharmacy" optional>
+                <ProviderRow
+                  kind="pharmacy"
+                  provider={pharmacy}
+                  onOpen={() => setPicking("pharmacy")}
+                  onClear={() => setPharmacy(null)}
+                />
+              </Field>
+
+              <Field label="Preferred laboratory" optional>
+                <ProviderRow
+                  kind="lab"
+                  provider={lab}
+                  onOpen={() => setPicking("lab")}
+                  onClear={() => setLab(null)}
+                />
+              </Field>
             </Section>
           )}
 
@@ -294,8 +318,8 @@ export function CarePlanEnrollModal({
                 </div>
                 <p className="mt-1 text-xs text-medical-700/80">Billed once, covers you for 12 months.</p>
                 <ul className="mt-3 space-y-1.5 text-sm text-slate-700">
-                  <IncludedLine>{benefits.lab_discount_percent}% off lab tests at partner labs</IncludedLine>
-                  <IncludedLine>{benefits.pharmacy_discount_percent}% off prescriptions at partner pharmacies</IncludedLine>
+                  <IncludedLine>Up to {benefits.lab_discount_percent}% off lab tests at partner labs</IncludedLine>
+                  <IncludedLine>Up to {benefits.pharmacy_discount_percent}% off medication at partner pharmacies</IncludedLine>
                   <IncludedLine>{benefits.message_allowance} messages to your own doctor</IncludedLine>
                 </ul>
               </div>
@@ -311,6 +335,8 @@ export function CarePlanEnrollModal({
                 {(form.state || form.city) && (
                   <Row label="Location" value={[form.city, form.state].filter(Boolean).join(", ")} />
                 )}
+                {pharmacy && <Row label="Pharmacy" value={pharmacy.name} />}
+                {lab && <Row label="Laboratory" value={lab.name} />}
               </dl>
 
               {/* Consent — the last thing before payment */}
@@ -344,6 +370,15 @@ export function CarePlanEnrollModal({
             <p className="rounded-xl border border-red-100 bg-red-50 px-4 py-3 text-sm text-red-600">{error}</p>
           )}
         </div>
+
+        {picking && (
+          <ProviderPicker
+            kind={picking}
+            value={(picking === "pharmacy" ? pharmacy : lab)?.id ?? null}
+            onChange={(p) => (picking === "pharmacy" ? setPharmacy(p) : setLab(p))}
+            onClose={() => setPicking(null)}
+          />
+        )}
 
         {/* Actions */}
         <div

@@ -399,6 +399,9 @@ model DoctorPatient {
 
   @@unique([doctor_email, patient_email])
   @@index([doctor_email])
+  // The patient portal reads its own retainerships by email — the composite
+  // unique above starts with doctor_email, so it can't serve this lookup.
+  @@index([patient_email])
   @@map("doctor_patients")
 }
 
@@ -1892,6 +1895,11 @@ model ConsultPatient {
   // Consent to share the enrolment with the assigned doctor and partners,
   // captured on the last step of the form.
   consent_at DateTime?
+
+  // Where the member prefers to be sent. Both are switchable at any time and
+  // are a preference, not a restriction — the code works anywhere.
+  preferred_pharmacy_id String?
+  preferred_lab_id      String?
 
   doctor_email String? // assigned at activation, by fair round-robin
   assigned_at  DateTime?

@@ -120,7 +120,7 @@ export function PharmacyDirectory({ compact = false }: { compact?: boolean }) {
               <div className="mt-3 flex items-center gap-2">
                 <span className="inline-flex items-center gap-1 rounded-full bg-emerald-50 px-2.5 py-1 text-[11px] font-bold text-emerald-700">
                   <TicketPercent className="h-3 w-3" />
-                  {p.discount_percent}% off
+                  Up to {p.discount_percent}% off
                 </span>
                 {p.phone && (
                   <a

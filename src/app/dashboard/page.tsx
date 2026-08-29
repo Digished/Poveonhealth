@@ -1147,18 +1147,25 @@ function DashboardInner() {
       .then((data) => { if (data?.success) setProfile(data.profile); })
       .catch(() => null);
 
-    fetch("/api/patient/encounters")
-      .then((res) => res.ok ? res.json() : null)
-      .then((data) => {
-        if (data?.success) {
-          setEncounters(data.encounters ?? []);
-          setSubscriptions(data.subscriptions ?? []);
-        }
-      })
-      .catch(() => null);
   }, [router]);
 
   useEffect(() => { load(); }, [load]);
+
+  // Doctor Visits is hidden for now, so its data is fetched only when someone
+  // deep-links into that panel — one fewer request on every dashboard load.
+  useEffect(() => {
+    if (view !== "visits") return;
+    let cancelled = false;
+    fetch("/api/patient/encounters")
+      .then((res) => (res.ok ? res.json() : null))
+      .then((data) => {
+        if (cancelled || !data?.success) return;
+        setEncounters(data.encounters ?? []);
+        setSubscriptions(data.subscriptions ?? []);
+      })
+      .catch(() => null);
+    return () => { cancelled = true; };
+  }, [view]);
 
   // Prompt on every sign-in until they're on a live plan — but only once per
   // session, so moving around the dashboard doesn't keep reopening it.
@@ -1203,7 +1210,11 @@ function DashboardInner() {
       items: [
         { key: "care", label: "Care Plan", icon: HeartPulse, alert: !careLoading && !care.active },
         { key: "pharmacies", label: "Pharmacies", icon: Pill },
-        { key: "visits", label: "Doctor Visits", icon: Stethoscope, badge: encounters.length },
+        // Doctor Visits (per-encounter consults) is hidden while the care plan
+        // is the focus. The panel stays, so a deep link still reaches it.
+        ...(view === "visits"
+          ? [{ key: "visits", label: "Doctor Visits", icon: Stethoscope, badge: encounters.length }]
+          : []),
       ],
     },
     {
@@ -1301,7 +1312,7 @@ function DashboardInner() {
           {!loading && !careLoading && !care.active && view !== "care" && (
             <CarePlanPromptCard
               benefits={care.benefits}
-              lapsed={care.enrolled}
+              lapsed={care.lapsed}
               onJoin={() => navigate("care")}
             />
           )}
@@ -1516,7 +1527,7 @@ function DashboardInner() {
       {showCarePrompt && (
         <CarePlanPromptModal
           benefits={care.benefits}
-          lapsed={care.enrolled}
+          lapsed={care.lapsed}
           onJoin={() => { setShowCarePrompt(false); navigate("care", { enroll: true }); }}
           onClose={() => setShowCarePrompt(false)}
         />

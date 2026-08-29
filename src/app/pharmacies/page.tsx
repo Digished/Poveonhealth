@@ -45,7 +45,7 @@ export default async function PharmaciesPage() {
             Where your care code saves you money
           </h1>
           <p className="mt-3 text-base leading-relaxed text-slate-600">
-            Care-plan members get <strong>{settings.pharmacy_discount_percent}% off</strong> their
+            Care-plan members get <strong>up to {settings.pharmacy_discount_percent}% off</strong> their
             prescriptions at every pharmacy below — the blood-pressure and diabetes medication you
             refill month after month, plus test strips and monitoring supplies. Show your code at
             the counter; there&apos;s nothing else to do.

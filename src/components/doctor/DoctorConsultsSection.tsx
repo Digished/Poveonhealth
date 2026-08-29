@@ -2,8 +2,9 @@
 
 import { useCallback, useEffect, useRef, useState } from "react";
 import {
-  AlertCircle, ArrowLeft, BadgeCheck, Banknote, CalendarDays, Check, HeartPulse,
-  Loader2, MessageSquareText, Search, Send, TrendingUp, Users, Wallet,
+  AlertCircle, ArrowLeft, ArrowRight, BadgeCheck, Banknote, CalendarDays, Check,
+  ChevronDown, HeartPulse, Info, Loader2, MessageSquareText, Search, Send,
+  ShieldCheck, TrendingUp, Users, Wallet,
 } from "lucide-react";
 import { getJson, invalidateJson } from "@/lib/client-cache";
 import type { ConsultView } from "@/components/doctor/consult-views";
@@ -126,6 +127,7 @@ export function DoctorConsultsSection({
           overview={overview}
           loading={loading}
           onGoToMembers={() => setView("members")}
+          onGoToCredentials={() => setView("credentials")}
         />
       )}
       {view === "members" && <MembersPanel onOpen={setOpenMemberId} />}
@@ -149,14 +151,44 @@ export function DoctorConsultsSection({
 // ── Overview ────────────────────────────────────────────────────────────────
 
 function OverviewPanel({
-  overview, loading, onGoToMembers,
+  overview, loading, onGoToMembers, onGoToCredentials,
 }: {
-  overview: Overview | null; loading: boolean; onGoToMembers: () => void;
+  overview: Overview | null;
+  loading: boolean;
+  onGoToMembers: () => void;
+  onGoToCredentials: () => void;
 }) {
   const w = overview?.wallet;
+  const notApproved = !loading && overview != null && !overview.approved;
 
   return (
     <div className="space-y-4">
+      {/* Nothing else on this panel means anything until they're cleared, so
+          the invitation comes first. */}
+      {notApproved && (
+        <button
+          type="button"
+          onClick={onGoToCredentials}
+          className="group flex w-full items-center gap-4 rounded-2xl bg-gradient-to-br from-medical-600 to-medical-800 p-4 text-left text-white shadow-lg shadow-medical-600/20 transition hover:shadow-xl sm:p-5"
+        >
+          <span className="flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl bg-white/15">
+            <ShieldCheck className="h-5 w-5" />
+          </span>
+          <span className="min-w-0 flex-1">
+            <span className="block text-sm font-bold sm:text-base">Join the care-plan network</span>
+            <span className="mt-0.5 block text-xs leading-relaxed text-white/80 sm:text-sm">
+              Members are only assigned to doctors we&apos;ve verified. Send us your MDCN number and
+              practising licence — it takes a couple of minutes.
+            </span>
+          </span>
+          <span className="hidden shrink-0 items-center gap-1.5 rounded-xl bg-white px-4 py-2.5 text-sm font-bold text-medical-700 transition group-hover:bg-medical-50 sm:inline-flex">
+            Apply
+            <ArrowRight className="h-4 w-4" />
+          </span>
+          <ArrowRight className="h-5 w-5 shrink-0 text-white/70 sm:hidden" />
+        </button>
+      )}
+
       <div className="grid grid-cols-2 gap-3 xl:grid-cols-4">
         <Stat
           icon={Users}
@@ -204,27 +236,38 @@ function OverviewPanel({
         />
       </div>
 
-      <div className="rounded-2xl border border-slate-100 bg-white p-5">
-        <h3 className="text-sm font-bold text-slate-800">How your care-plan pay works</h3>
-        <ol className="mt-3 space-y-2.5 text-sm text-slate-600">
-          <li className="flex gap-2.5">
-            <span className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-medical-50 text-xs font-bold text-medical-700">1</span>
-            Every member assigned to you adds{" "}
+      {/* A collapsible note rather than three stacked paragraphs — on a phone
+          the open version filled most of the screen for something you read
+          once. */}
+      <details className="group rounded-2xl border border-slate-100 bg-white">
+        <summary className="flex cursor-pointer list-none items-center gap-2 p-4 text-sm font-bold text-slate-800">
+          <Info className="h-4 w-4 shrink-0 text-medical-500" />
+          How your care-plan pay works
+          <ChevronDown className="ml-auto h-4 w-4 shrink-0 text-slate-400 transition-transform group-open:rotate-180" />
+        </summary>
+        <dl className="space-y-3 border-t border-slate-100 px-4 pb-4 pt-3">
+          <PayNote term="Per member">
+            Each member assigned to you adds{" "}
             <strong className="text-slate-800">{naira(w?.per_patient ?? 6000)}</strong> to your pool.
-          </li>
-          <li className="flex gap-2.5">
-            <span className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-medical-50 text-xs font-bold text-medical-700">2</span>
-            The pool is released monthly, a{" "}
-            <strong className="text-slate-800">{w?.release_months ?? 12}th</strong> at a time — that&apos;s the
-            &ldquo;next month&rdquo; figure above.
-          </li>
-          <li className="flex gap-2.5">
-            <span className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-medical-50 text-xs font-bold text-medical-700">3</span>
-            If a member leaves, their remaining share leaves the pool with them, and your monthly figure
-            adjusts.
-          </li>
-        </ol>
-      </div>
+          </PayNote>
+          <PayNote term="Paid monthly">
+            A {w?.release_months ?? 12}th of the pool is released each month — the &ldquo;next
+            month&rdquo; figure above.
+          </PayNote>
+          <PayNote term="If someone leaves">
+            Their unreleased share leaves with them and your monthly figure adjusts.
+          </PayNote>
+        </dl>
+      </details>
+    </div>
+  );
+}
+
+function PayNote({ term, children }: { term: string; children: React.ReactNode }) {
+  return (
+    <div>
+      <dt className="text-[11px] font-bold uppercase tracking-wider text-slate-400">{term}</dt>
+      <dd className="mt-0.5 text-sm leading-relaxed text-slate-600">{children}</dd>
     </div>
   );
 }

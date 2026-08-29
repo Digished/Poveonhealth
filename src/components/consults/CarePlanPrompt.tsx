@@ -17,8 +17,12 @@ export type CarePlanState = {
   loading: boolean;
   /** True only while a paid year is running. */
   active: boolean;
-  /** They enrolled at some point — used to say "renew" rather than "join". */
-  enrolled: boolean;
+  /**
+   * They had a plan that has since run out or been cancelled — so we say
+   * "renew". An abandoned sign-up that never got paid for is NOT this: those
+   * people have never had a plan and should be invited to start one.
+   */
+  lapsed: boolean;
   benefits: CarePlanBenefits;
   prefill: CarePlanPrefill;
   refresh: () => void;
@@ -34,7 +38,7 @@ export type CarePlanState = {
 export function useCarePlan(): CarePlanState {
   const [loading, setLoading] = useState(true);
   const [active, setActive] = useState(false);
-  const [enrolled, setEnrolled] = useState(false);
+  const [lapsed, setLapsed] = useState(false);
   const [benefits, setBenefits] = useState<CarePlanBenefits>(FALLBACK_BENEFITS);
   const [prefill, setPrefill] = useState<CarePlanPrefill>({});
 
@@ -49,7 +53,8 @@ export function useCarePlan(): CarePlanState {
       }>("/api/consults/me", { force });
       if (!d?.success) return;
       setActive(d.member?.status === "active");
-      setEnrolled(!!d.member);
+      // pending_payment means they started and never paid — never "ended".
+      setLapsed(d.member?.status === "expired" || d.member?.status === "cancelled");
       if (d.benefits) setBenefits(d.benefits);
       if (d.prefill) setPrefill(d.prefill);
     } catch {
@@ -66,7 +71,7 @@ export function useCarePlan(): CarePlanState {
     load(true);
   }, [load]);
 
-  return { loading, active, enrolled, benefits, prefill, refresh };
+  return { loading, active, lapsed, benefits, prefill, refresh };
 }
 
 const naira = (n: number) => `₦${Math.round(n).toLocaleString("en-NG")}`;
@@ -96,7 +101,7 @@ export function CarePlanPromptCard({
         <p className="mt-0.5 text-xs leading-relaxed text-white/80 sm:text-sm">
           {lapsed
             ? "Renew to get your care code working again and pick up with a doctor."
-            : `${naira(benefits.price_naira)} a year: ${benefits.lab_discount_percent}% off tests, ${benefits.pharmacy_discount_percent}% off prescriptions, and ${benefits.message_allowance} messages to your own doctor.`}
+            : `${naira(benefits.price_naira)} a year: up to ${benefits.lab_discount_percent}% off tests, up to ${benefits.pharmacy_discount_percent}% off medication, and ${benefits.message_allowance} messages to your own doctor.`}
         </p>
       </div>
       <span className="hidden shrink-0 items-center gap-1.5 rounded-xl bg-white px-4 py-2.5 text-sm font-bold text-medical-700 transition group-hover:bg-medical-50 sm:inline-flex">
@@ -149,10 +154,10 @@ export function CarePlanPromptModal({
 
         <div className="space-y-3 p-5">
           <Line icon={<FlaskConical className="h-4 w-4" />}>
-            {benefits.lab_discount_percent}% off lab tests at partner labs
+            Up to {benefits.lab_discount_percent}% off lab tests at partner labs
           </Line>
           <Line icon={<Pill className="h-4 w-4" />}>
-            {benefits.pharmacy_discount_percent}% off prescriptions at partner pharmacies
+            Up to {benefits.pharmacy_discount_percent}% off medication at partner pharmacies
           </Line>
           <Line icon={<MessageSquareText className="h-4 w-4" />}>
             {benefits.message_allowance} messages to your own doctor, all year

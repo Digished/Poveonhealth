@@ -51,6 +51,11 @@ export function DoctorCredentialsPanel({ onApproved }: { onApproved?: (approved:
     note: "",
   });
 
+  // Through a ref: the parent passes an inline arrow, so depending on it
+  // directly rebuilt `load` on every render and the effect re-fetched forever.
+  const onApprovedRef = useRef(onApproved);
+  onApprovedRef.current = onApproved;
+
   const load = useCallback(async () => {
     setLoading(true);
     try {
@@ -59,7 +64,7 @@ export function DoctorCredentialsPanel({ onApproved }: { onApproved?: (approved:
       if (!d.success) return;
       setCredential(d.credential);
       setApproved(d.approved);
-      onApproved?.(d.approved);
+      onApprovedRef.current?.(d.approved);
       setForm({
         mdcn_number: d.credential.mdcn_number ?? "",
         license_expires_at: d.credential.license_expires_at
@@ -73,7 +78,7 @@ export function DoctorCredentialsPanel({ onApproved }: { onApproved?: (approved:
     } finally {
       setLoading(false);
     }
-  }, [onApproved]);
+  }, []);
 
   useEffect(() => { load(); }, [load]);
 

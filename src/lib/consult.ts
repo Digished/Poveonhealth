@@ -435,11 +435,18 @@ export async function verifyConsultPayment(reference: string): Promise<{
  * Turn a paid sign-up into a live membership: assign a doctor, open their
  * entitlement, and set the year running. Safe to call twice for the same
  * reference — a member who is already active is returned untouched.
+ *
+ * An admin can also call this by hand (`activatedBy`) for someone who paid
+ * outside Paystack; everything downstream — doctor assignment, the doctor's
+ * entitlement, the welcome email — behaves exactly as it does for a card
+ * payment, which is the point.
  */
 export async function activateMembership(params: {
   patientId: string;
   amountNaira: number;
   reference: string;
+  /** Who activated it by hand, when it wasn't a Paystack payment. */
+  activatedBy?: string;
 }): Promise<{ ok: boolean; alreadyActive: boolean; doctorEmail: string | null }> {
   const patient = await prisma.consultPatient.findUnique({ where: { id: params.patientId } });
   if (!patient) return { ok: false, alreadyActive: false, doctorEmail: null };
