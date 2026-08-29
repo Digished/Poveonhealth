@@ -1,6 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useRef, useState } from "react";
+import dynamic from "next/dynamic";
 import { toast } from "react-hot-toast";
 import {
   Check, ClipboardList, Copy, FlaskConical, HeartPulse, Loader2, MessageSquareText, Pill,
@@ -10,12 +11,24 @@ import { SectionLoader } from "@/components/PageLoader";
 import { getJson, invalidateJson } from "@/lib/client-cache";
 import { CADENCE_LABEL } from "@/lib/treatment-plan";
 import { Modal } from "@/components/ui/Overlay";
-import { ProviderPicker, ProviderRow, type Provider } from "@/components/consults/ProviderPicker";
-import {
-  CarePlanEnrollModal,
-  type CarePlanBenefits,
-  type CarePlanPrefill,
-} from "@/components/consults/CarePlanEnrollModal";
+import { ProviderRow } from "@/components/consults/ProviderRow";
+import type { Provider } from "@/components/consults/ProviderPicker";
+
+const ProviderPicker = dynamic(
+  () => import("@/components/consults/ProviderPicker").then((m) => m.ProviderPicker),
+  { ssr: false }
+);
+import type { CarePlanBenefits, CarePlanPrefill } from "@/components/consults/CarePlanEnrollModal";
+
+/**
+ * The enrolment form and everything it needs — the state/LGA data, the fuzzy
+ * combo, the phone and date inputs, the provider picker — is about a third of
+ * this dashboard's JavaScript, and most visits never open it. Loaded on demand.
+ */
+const CarePlanEnrollModal = dynamic(
+  () => import("@/components/consults/CarePlanEnrollModal").then((m) => m.CarePlanEnrollModal),
+  { ssr: false }
+);
 
 type Member = {
   id: string; code: string | null; full_name: string; email: string; phone: string | null;

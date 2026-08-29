@@ -9,7 +9,9 @@ import { STATE_NAMES, lgasForState } from "@/lib/nigeria-locations";
 import { FuzzyCombo } from "@/components/ui/FuzzyCombo";
 import { PhoneInput } from "@/components/PhoneInput";
 import { DobInput } from "@/components/DobInput";
-import { ProviderPicker, ProviderRow, type Provider } from "@/components/consults/ProviderPicker";
+import { ProviderPicker } from "@/components/consults/ProviderPicker";
+import { ProviderRow } from "@/components/consults/ProviderRow";
+import type { Provider } from "@/components/consults/ProviderPicker";
 import {
   ADHERENCE_OPTIONS,
   DURATION_OPTIONS,

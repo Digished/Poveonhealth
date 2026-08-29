@@ -2,19 +2,42 @@
 
 import { useEffect, useState, useCallback, useRef, Suspense } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
+import dynamic from "next/dynamic";
 import { PoveonLogo } from "@/components/PoveonLogo";
-import { SupportFab } from "@/components/SupportFab";
 import { PageLoader, SectionLoader } from "@/components/PageLoader";
-import { CarePlanPanel } from "@/components/consults/CarePlanPanel";
+/**
+ * Panels the first screen never shows.
+ *
+ * This dashboard shipped every tab's code in one bundle, so a patient checking
+ * a result waited on the pharmacy directory, the lab directory and the whole
+ * enrolment form before the page became interactive. Each is now its own chunk,
+ * fetched when its tab is opened.
+ */
+const CarePlanPanel = dynamic(
+  () => import("@/components/consults/CarePlanPanel").then((m) => m.CarePlanPanel),
+  { ssr: false, loading: () => <SectionLoader label="Loading your care plan…" /> }
+);
+const PharmacyDirectory = dynamic(
+  () => import("@/components/consults/PharmacyDirectory").then((m) => m.PharmacyDirectory),
+  { ssr: false, loading: () => <SectionLoader label="Loading pharmacies…" /> }
+);
+const LabDirectory = dynamic(
+  () => import("@/components/consults/LabDirectory").then((m) => m.LabDirectory),
+  { ssr: false, loading: () => <SectionLoader label="Loading laboratories…" /> }
+);
+const SupportFab = dynamic(() => import("@/components/SupportFab").then((m) => m.SupportFab), {
+  ssr: false,
+});
+const CarePlanChatFab = dynamic(
+  () => import("@/components/consults/CarePlanChatFab").then((m) => m.CarePlanChatFab),
+  { ssr: false }
+);
 import {
   CarePlanPromptCard,
   CarePlanPromptModal,
   useCarePlan,
   type CarePlanSeed,
 } from "@/components/consults/CarePlanPrompt";
-import { PharmacyDirectory } from "@/components/consults/PharmacyDirectory";
-import { LabDirectory } from "@/components/consults/LabDirectory";
-import { CarePlanChatFab } from "@/components/consults/CarePlanChatFab";
 import { PortalNav, PortalSubNav, type PortalNavSection } from "@/components/ui/PortalNav";
 import { parsePhones } from "@/lib/phones";
 import { PhoneInput } from "@/components/PhoneInput";
