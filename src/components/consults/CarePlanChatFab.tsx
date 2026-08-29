@@ -5,6 +5,7 @@ import Image from "next/image";
 import {
   ArrowLeft, ImagePlus, Loader2, MessageSquareText, Send, UserRound, X,
 } from "lucide-react";
+import { Portal, useViewport } from "@/components/ui/Overlay";
 
 /**
  * The care-plan conversation, wherever you are in the dashboard.
@@ -46,11 +47,19 @@ function formatWhen(iso: string) {
 export function CarePlanChatFab({
   role,
   enabled = true,
+  memberId,
+  memberName,
   onOpenMember,
 }: {
   role: "patient" | "doctor";
   /** Patients who haven't joined yet have nothing to chat about. */
   enabled?: boolean;
+  /**
+   * The member whose record is open. While one is, the button belongs to them:
+   * it opens straight into their thread, with a way back to everyone else.
+   */
+  memberId?: string | null;
+  memberName?: string | null;
   /** Doctors jump from a conversation to that member's record. */
   onOpenMember?: (id: string) => void;
 }) {
@@ -68,6 +77,7 @@ export function CarePlanChatFab({
   const [file, setFile] = useState<File | null>(null);
   const fileRef = useRef<HTMLInputElement | null>(null);
   const endRef = useRef<HTMLDivElement | null>(null);
+  const vp = useViewport(true);
 
   // ── Badge: how much is waiting, whether or not the panel is open ──────────
   const refreshBadge = useCallback(async () => {
@@ -127,6 +137,12 @@ export function CarePlanChatFab({
     if (role === "patient") {
       setActiveId("me");
       void loadThread(null);
+    } else if (memberId) {
+      // Opened from inside someone's record: that is who you meant to write to.
+      setActiveId(memberId);
+      setActiveName(memberName ?? "");
+      void loadThread(memberId);
+      void refreshBadge();
     } else {
       void refreshBadge();
     }
@@ -190,10 +206,30 @@ export function CarePlanChatFab({
 
   const showList = role === "doctor" && !activeId;
 
+  // Pinned to the *visual* viewport: `position: fixed` alone strands the button
+  // when the page is wider than the screen or an ancestor has a transform, and
+  // leaves the panel behind the keyboard once an input is focused.
+  const anchored = vp.height > 0;
+  const gutter = 16;
+  const panelWidth = Math.min(384, vp.width ? vp.width - gutter * 2 : 384);
+  const panelHeight = Math.min(560, vp.height ? vp.height - 96 : 560);
+
   return (
-    <>
+    <Portal>
       {open && (
-        <div className="fixed bottom-24 right-4 z-[160] flex h-[min(78vh,560px)] w-[calc(100vw-2rem)] flex-col overflow-hidden rounded-3xl border border-slate-100 bg-white shadow-2xl animate-slide-up sm:right-6 sm:w-96">
+        <div
+          className="fixed z-[300] flex flex-col overflow-hidden rounded-3xl border border-slate-100 bg-white shadow-2xl animate-slide-up"
+          style={
+            anchored
+              ? {
+                  width: panelWidth,
+                  height: panelHeight,
+                  left: vp.left + vp.width - panelWidth - gutter,
+                  top: vp.top + vp.height - panelHeight - 84,
+                }
+              : { right: gutter, bottom: 96, width: 384, height: 560 }
+          }
+        >
           {/* Header */}
           <div className="flex items-center gap-2 bg-gradient-to-br from-medical-600 to-medical-800 px-4 py-3 text-white">
             {role === "doctor" && activeId && (
@@ -402,10 +438,15 @@ export function CarePlanChatFab({
         </div>
       )}
 
-      {/* The button itself — sticky bottom-right on every screen size. */}
+      {/* The button itself — always on screen, whatever the page is doing. */}
       <button
         onClick={() => (open ? closePanel() : openPanel())}
-        className="fixed bottom-6 right-4 z-[160] flex h-14 w-14 items-center justify-center rounded-full bg-gradient-to-br from-medical-600 to-medical-800 text-white shadow-xl transition hover:scale-105 active:scale-95 sm:right-6"
+        className="fixed z-[300] flex h-14 w-14 items-center justify-center rounded-full bg-gradient-to-br from-medical-600 to-medical-800 text-white shadow-xl transition hover:scale-105 active:scale-95"
+        style={
+          anchored
+            ? { left: vp.left + vp.width - 56 - gutter, top: vp.top + vp.height - 56 - gutter }
+            : { right: gutter, bottom: gutter }
+        }
         aria-label={open ? "Close messages" : "Open messages"}
       >
         {open ? <X className="h-6 w-6" /> : <MessageSquareText className="h-6 w-6" />}
@@ -415,6 +456,6 @@ export function CarePlanChatFab({
           </span>
         )}
       </button>
-    </>
+    </Portal>
   );
 }

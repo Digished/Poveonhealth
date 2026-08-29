@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useState } from "react";
 import { Check, FlaskConical, Loader2, MapPin, Pill, Search, X } from "lucide-react";
+import { useViewport } from "@/components/ui/Overlay";
 
 export type Provider = {
   id: string;
@@ -29,6 +30,7 @@ export function ProviderPicker({
   /** Given when the picker is a sheet rather than an inline field. */
   onClose?: () => void;
 }) {
+  const vp = useViewport(true);
   const [providers, setProviders] = useState<Provider[]>([]);
   const [states, setStates] = useState<string[]>([]);
   const [state, setState] = useState("");
@@ -146,7 +148,11 @@ export function ProviderPicker({
 
   return (
     <div
-      className="animate-fade-in fixed inset-0 z-[310] flex items-end justify-center bg-slate-900/50 p-0 backdrop-blur-sm sm:items-center sm:p-4"
+      className="animate-fade-in fixed z-[310] flex items-end justify-center bg-slate-900/50 p-0 backdrop-blur-sm sm:items-center sm:p-4"
+      // Anchored to the visual viewport, not the layout one: when the mobile
+      // keyboard opens the two stop agreeing, and a dialog sized to the layout
+      // viewport puts its own inputs behind the keys.
+      style={vp.height ? { top: vp.top, left: vp.left, width: vp.width, height: vp.height } : { inset: 0 }}
       onClick={(e) => { if (e.target === e.currentTarget) onClose(); }}
       role="dialog"
       aria-modal="true"

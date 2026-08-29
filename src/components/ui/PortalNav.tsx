@@ -1,7 +1,8 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { useRef, useState } from "react";
 import { ChevronDown, ChevronRight, type LucideIcon } from "lucide-react";
+import { AnchoredMenu } from "@/components/ui/Overlay";
 
 export type PortalNavItem = {
   key: string;
@@ -166,17 +167,7 @@ export function PortalSubNav({
   onSelect: (key: string) => void;
 }) {
   const [moreOpen, setMoreOpen] = useState(false);
-  const moreRef = useRef<HTMLDivElement | null>(null);
-
-  // A menu that stays open after you have clicked elsewhere is a menu in the way.
-  useEffect(() => {
-    if (!moreOpen) return;
-    const close = (e: MouseEvent) => {
-      if (moreRef.current && !moreRef.current.contains(e.target as Node)) setMoreOpen(false);
-    };
-    document.addEventListener("mousedown", close);
-    return () => document.removeEventListener("mousedown", close);
-  }, [moreOpen]);
+  const moreRef = useRef<HTMLButtonElement | null>(null);
 
   if (items.length + moreItems.length < 2) return null;
 
@@ -204,39 +195,43 @@ export function PortalSubNav({
         ))}
 
         {moreItems.length > 0 && (
-          <div ref={moreRef} className="relative">
+          <>
             <button
+              ref={moreRef}
               type="button"
               onClick={() => setMoreOpen((o) => !o)}
               aria-expanded={moreOpen}
+              aria-haspopup="menu"
               className={`${tabClass(!!activeMore)} inline-flex items-center gap-1`}
             >
               {activeMore ? activeMore.label : moreLabel}
               <ChevronDown className={`h-3.5 w-3.5 transition-transform ${moreOpen ? "rotate-180" : ""}`} />
             </button>
 
-            {moreOpen && (
-              <div className="absolute left-0 top-full z-40 mt-1 min-w-44 overflow-hidden rounded-xl border border-slate-100 bg-white py-1 shadow-lg">
-                {moreItems.map((item) => (
-                  <button
-                    key={item.key}
-                    type="button"
-                    onClick={() => {
-                      onSelect(item.key);
-                      setMoreOpen(false);
-                    }}
-                    className={`block w-full px-3.5 py-2 text-left text-sm transition ${
-                      item.key === activeKey
-                        ? "bg-medical-50 font-semibold text-medical-800"
-                        : "text-slate-600 hover:bg-slate-50"
-                    }`}
-                  >
-                    {item.label}
-                  </button>
-                ))}
-              </div>
-            )}
-          </div>
+            {/* Rendered at the body: this strip scrolls sideways, and an
+                absolutely positioned menu inside it gets clipped by its own
+                scroll container however high its z-index goes. */}
+            <AnchoredMenu open={moreOpen} anchorRef={moreRef} onClose={() => setMoreOpen(false)} width={192}>
+              {moreItems.map((item) => (
+                <button
+                  key={item.key}
+                  type="button"
+                  role="menuitem"
+                  onClick={() => {
+                    onSelect(item.key);
+                    setMoreOpen(false);
+                  }}
+                  className={`block w-full px-3.5 py-2 text-left text-sm transition ${
+                    item.key === activeKey
+                      ? "bg-medical-50 font-semibold text-medical-800"
+                      : "text-slate-600 hover:bg-slate-50"
+                  }`}
+                >
+                  {item.label}
+                </button>
+              ))}
+            </AnchoredMenu>
+          </>
         )}
       </div>
     </div>

@@ -19,6 +19,7 @@ import {
 import { CarePlanTreatment, type TreatmentPlan } from "@/components/doctor/CarePlanTreatment";
 import { ADHERENCE_LABEL, bpBand, durationLabel } from "@/components/consults/baseline";
 import { CONDITIONS as CONDITION_OPTIONS, CONDITION_LABEL } from "@/lib/consult-conditions";
+import { Modal } from "@/components/ui/Overlay";
 
 const naira = (n: number) => `₦${Math.round(n).toLocaleString("en-NG")}`;
 type Redemption = {
@@ -796,6 +797,7 @@ function MemberDetail({
               prescriptions={data.prescriptions ?? []}
               testOrders={data.test_orders ?? []}
               redemptions={data.redemptions ?? []}
+              plan={data.plan}
             />
           </div>
         </div>
@@ -848,18 +850,8 @@ function ProfileModal({
   onClose: () => void;
 }) {
   return (
-    <div className="fixed inset-0 z-[200] flex items-end justify-center bg-slate-900/40 p-4 sm:items-center">
-      <div className="w-full max-w-sm rounded-2xl bg-white p-5 shadow-2xl">
-        <div className="flex items-start justify-between gap-2">
-          <div className="min-w-0">
-            <p className="truncate text-base font-bold text-slate-900">{patient.full_name}</p>
-            <p className="font-mono text-xs text-slate-400">{patient.code ?? "No code yet"}</p>
-          </div>
-          <button onClick={onClose} className="rounded-lg p-1 text-slate-400 transition hover:bg-slate-100" aria-label="Close">
-            <X className="h-4 w-4" />
-          </button>
-        </div>
-        <dl className="mt-4 space-y-1.5 text-sm">
+    <Modal open onClose={onClose} title={patient.full_name} subtitle={patient.code ?? "No code yet"}>
+      <dl className="space-y-1.5 text-sm">
           <DetailRow label="Email" value={patient.email} />
           {patient.phone && <DetailRow label="Phone" value={patient.phone} />}
           {patient.sex && <DetailRow label="Sex" value={patient.sex} />}
@@ -869,20 +861,20 @@ function ProfileModal({
           )}
           <DetailRow label="Joined" value={formatDate(patient.subscribed_at)} />
           <DetailRow label="Renews" value={formatDate(patient.expires_at)} />
-          <DetailRow label="Messages" value={`${patient.messages_used} of ${patient.message_allowance} used`} />
-        </dl>
-      </div>
-    </div>
+        <DetailRow label="Messages" value={`${patient.messages_used} of ${patient.message_allowance} used`} />
+      </dl>
+    </Modal>
   );
 }
 
 /** What has actually happened for this member, oldest concerns last. */
 function CareHistory({
-  prescriptions, testOrders, redemptions,
+  prescriptions, testOrders, redemptions, plan,
 }: {
   prescriptions: Prescription[];
   testOrders: TestOrder[];
   redemptions: Redemption[];
+  plan: TreatmentPlan | null;
 }) {
   const entries = [
     ...testOrders.map((t) => ({
@@ -905,6 +897,24 @@ function CareHistory({
       title: r.description ?? (r.kind === "pharmacy" ? "Pharmacy visit" : "Lab visit"),
       detail: `${naira(r.discount_naira)} off${r.pharmacy_name ? ` at ${r.pharmacy_name}` : ""}`,
     })),
+    // The plan belongs in the record too: what they were asked to do, and how
+    // much of it they have actually been doing.
+    ...(plan
+      ? [
+          {
+            when: plan.updated_at,
+            title: plan.title,
+            detail: `Plan set — ${plan.items.length} item${plan.items.length === 1 ? "" : "s"}`,
+          },
+          ...plan.items
+            .filter((i) => i.last_done_at)
+            .map((i) => ({
+              when: i.last_done_at ?? null,
+              title: i.label,
+              detail: `Last done · ticked ${i.done_count ?? 0} time${(i.done_count ?? 0) === 1 ? "" : "s"}`,
+            })),
+        ]
+      : []),
   ]
     .filter((e) => e.when)
     .sort((a, b) => new Date(b.when!).getTime() - new Date(a.when!).getTime())
@@ -1021,38 +1031,13 @@ function ConditionsDialog({
   }
 
   return (
-    <div className="fixed inset-0 z-[200] flex items-end justify-center bg-slate-900/40 p-4 sm:items-center">
-      <div className="w-full max-w-sm rounded-2xl bg-white p-5 shadow-2xl">
-        <div className="flex items-start justify-between gap-2">
-          <div>
-            <h4 className="text-sm font-bold text-slate-900">What the plan covers</h4>
-            <p className="mt-0.5 text-xs text-slate-500">
-              Add anything that has developed since they joined.
-            </p>
-          </div>
-          <button onClick={onClose} className="rounded-lg p-1 text-slate-400 transition hover:bg-slate-100" aria-label="Close">
-            <X className="h-4 w-4" />
-          </button>
-        </div>
-
-        <div className="mt-3 flex flex-wrap gap-1.5">
-          {CONDITION_OPTIONS.map((c) => {
-            const on = picked.includes(c);
-            return (
-              <button
-                key={c}
-                onClick={() => setPicked((prev) => (on ? prev.filter((x) => x !== c) : [...prev, c]))}
-                className={`rounded-full px-3 py-1.5 text-xs font-semibold transition ${
-                  on ? "bg-medical-600 text-white" : "bg-slate-100 text-slate-600 hover:bg-slate-200"
-                }`}
-              >
-                {CONDITION_LABEL[c] ?? c}
-              </button>
-            );
-          })}
-        </div>
-
-        <div className="mt-4 flex gap-2">
+    <Modal
+      open
+      onClose={onClose}
+      title="What the plan covers"
+      subtitle="Add anything that has developed since they joined."
+      footer={
+        <div className="flex gap-2">
           <button
             onClick={save}
             disabled={saving || picked.length === 0}
@@ -1065,8 +1050,25 @@ function ConditionsDialog({
             Cancel
           </button>
         </div>
+      }
+    >
+      <div className="flex flex-wrap gap-1.5">
+          {CONDITION_OPTIONS.map((c) => {
+            const on = picked.includes(c);
+            return (
+              <button
+                key={c}
+                onClick={() => setPicked((prev) => (on ? prev.filter((x) => x !== c) : [...prev, c]))}
+                className={`rounded-full px-3 py-1.5 text-xs font-semibold transition ${
+                  on ? "bg-medical-600 text-white" : "bg-slate-100 text-slate-600 hover:bg-slate-200"
+                }`}
+              >
+            {CONDITION_LABEL[c] ?? c}
+          </button>
+        );
+      })}
       </div>
-    </div>
+    </Modal>
   );
 }
 

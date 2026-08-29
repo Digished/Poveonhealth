@@ -192,12 +192,17 @@ const CANCEL_REASONS = [
   "other",
 ] as const;
 
+/** A field left blank in a form arrives as "", which is a no-answer, not a value. */
+const emptyToNull = (v: unknown) => (typeof v === "string" && v.trim() === "" ? null : v);
+
 const PatchSchema = z.object({
   kind: z.enum(["prescription", "test"]),
   id: z.string().min(1),
   status: z.enum(["scheduled", "active", "completed", "cancelled", "done"]),
-  reason: z.enum(CANCEL_REASONS).optional().nullable(),
-  note: z.string().trim().max(600).optional().nullable(),
+  // Cancelling a test asks for no reason, so this arrives empty — which used
+  // to fail the enum and come back as "Invalid change".
+  reason: z.preprocess(emptyToNull, z.enum(CANCEL_REASONS).nullish()),
+  note: z.preprocess(emptyToNull, z.string().trim().max(600).nullish()),
 });
 
 /**
@@ -214,7 +219,13 @@ export async function PATCH(req: NextRequest, { params }: { params: { id: string
     const { email, patient } = ctx;
 
     const parsed = PatchSchema.safeParse(await req.json());
-    if (!parsed.success) return NextResponse.json({ error: "Invalid change." }, { status: 400 });
+    if (!parsed.success) {
+      const issue = parsed.error.issues[0];
+      return NextResponse.json(
+        { error: `Could not apply that change: ${issue?.path.join(".") || "request"} — ${issue?.message ?? "invalid"}` },
+        { status: 400 }
+      );
+    }
     const d = parsed.data;
 
     if (d.kind === "prescription") {

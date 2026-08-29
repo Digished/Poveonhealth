@@ -1096,6 +1096,7 @@ function DocDashboardInner() {
           members wants one list, not a thread buried in each record. */}
       <CarePlanChatFab
         role="doctor"
+        memberId={openMemberId}
         onOpenMember={(id) => {
           navigate("consults");
           setConsultView("members");

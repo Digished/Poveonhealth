@@ -6,6 +6,8 @@ import {
   BookmarkPlus, CalendarClock, Check, FlaskConical, Loader2, Pill, Plus, RotateCw,
   Sparkles, Trash2, X,
 } from "lucide-react";
+import { DateInput } from "@/components/ui/DateInput";
+import { ConfirmDialog, Modal } from "@/components/ui/Overlay";
 import {
   describePrescription,
   estimateQuantity,
@@ -109,7 +111,13 @@ export function CarePlanOrders({
       const res = await fetch(`/api/doc-login/consults/patients/${patientId}/orders`, {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ kind, id, status, reason: extra?.reason ?? null, note: extra?.note ?? null }),
+        body: JSON.stringify({
+          kind,
+          id,
+          status,
+          reason: extra?.reason || null,
+          note: extra?.note || null,
+        }),
       });
       const d = await res.json().catch(() => null);
       if (!res.ok || !d?.success) { toast.error(d?.error ?? "Could not update that."); return; }
@@ -384,15 +392,34 @@ function CancelDialog({
   const needsReason = target.kind === "prescription";
 
   return (
-    <div className="fixed inset-0 z-[200] flex items-end justify-center bg-slate-900/40 p-4 sm:items-center">
-      <div className="w-full max-w-sm rounded-2xl bg-white p-5 shadow-2xl">
-        <h4 className="text-sm font-bold text-slate-900">
-          Stop {target.kind === "prescription" ? "this medication" : "this test"}?
-        </h4>
-        <p className="mt-0.5 truncate text-xs text-slate-500">{target.name}</p>
-
+    <Modal
+      open
+      onClose={onClose}
+      title={`Stop ${target.kind === "prescription" ? "this medication" : "this test"}?`}
+      subtitle={target.name}
+      footer={
+        <div className="flex gap-2">
+          <button
+            onClick={async () => {
+              if (needsReason && !reason) return;
+              setSaving(true);
+              try { await onConfirm(reason, note); } finally { setSaving(false); }
+            }}
+            disabled={saving || (needsReason && !reason)}
+            className="flex flex-1 items-center justify-center gap-1.5 rounded-xl bg-red-600 py-2.5 text-xs font-bold text-white transition hover:bg-red-700 disabled:opacity-40"
+          >
+            {saving ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <X className="h-3.5 w-3.5" />}
+            Stop it
+          </button>
+          <button onClick={onClose} className="rounded-xl px-4 py-2.5 text-xs font-semibold text-slate-500 hover:text-slate-700">
+            Keep it
+          </button>
+        </div>
+      }
+    >
+      <>
         {needsReason && (
-          <div className="mt-3 space-y-1.5">
+          <div className="space-y-1.5">
             {CANCEL_REASONS.map((r) => (
               <button
                 key={r.value}
@@ -423,26 +450,8 @@ function CancelDialog({
           placeholder="Anything to add? (optional)"
           className={`${inputClass} mt-3 resize-none`}
         />
-
-        <div className="mt-4 flex gap-2">
-          <button
-            onClick={async () => {
-              if (needsReason && !reason) return;
-              setSaving(true);
-              try { await onConfirm(reason, note); } finally { setSaving(false); }
-            }}
-            disabled={saving || (needsReason && !reason)}
-            className="flex flex-1 items-center justify-center gap-1.5 rounded-xl bg-red-600 py-2.5 text-xs font-bold text-white transition hover:bg-red-700 disabled:opacity-40"
-          >
-            {saving ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <X className="h-3.5 w-3.5" />}
-            Stop it
-          </button>
-          <button onClick={onClose} className="rounded-xl px-4 py-2.5 text-xs font-semibold text-slate-500 hover:text-slate-700">
-            Keep it
-          </button>
-        </div>
-      </div>
-    </div>
+      </>
+    </Modal>
   );
 }
 
@@ -505,20 +514,23 @@ function TemplateStrip({
   onUse: (t: Template) => void;
   onRemove: (id: string) => void;
 }) {
+  // A template can be weeks of refinement; a stray tap should not end it.
+  const [confirming, setConfirming] = useState<Template | null>(null);
+
   if (templates.length === 0) return null;
   return (
     <div className="flex flex-wrap gap-1.5">
       {templates.map((t) => (
         <span
           key={t.id}
-          className="group inline-flex items-center gap-1 rounded-full border border-slate-200 bg-white pl-2.5 pr-1 py-1 text-[11px] font-semibold text-slate-600"
+          className="group inline-flex items-center gap-1 rounded-full border border-slate-200 bg-white py-1 pl-2.5 pr-1 text-[11px] font-semibold text-slate-600"
         >
           <button onClick={() => onUse(t)} className="inline-flex items-center gap-1 transition hover:text-medical-700">
             <Sparkles className="h-3 w-3 text-medical-400" />
             {t.name}
           </button>
           <button
-            onClick={() => onRemove(t.id)}
+            onClick={() => setConfirming(t)}
             aria-label={`Delete ${t.name}`}
             className="rounded-full p-0.5 text-slate-300 transition hover:bg-slate-100 hover:text-red-500"
           >
@@ -526,6 +538,15 @@ function TemplateStrip({
           </button>
         </span>
       ))}
+
+      <ConfirmDialog
+        open={!!confirming}
+        title={`Delete "${confirming?.name ?? ""}"?`}
+        body="This only removes the template. Anything you already scheduled from it stays exactly as it is."
+        confirmLabel="Delete template"
+        onConfirm={() => { if (confirming) onRemove(confirming.id); }}
+        onClose={() => setConfirming(null)}
+      />
     </div>
   );
 }
@@ -632,13 +653,19 @@ function TestForm({
         placeholder="Why? (optional — the member sees this)"
         className={inputClass}
       />
-      <div className="grid grid-cols-2 gap-2">
-        <input type="date" value={dueDate} onChange={(e) => setDueDate(e.target.value)} className={inputClass} />
-        <select value={recurrence} onChange={(e) => setRecurrence(e.target.value)} className={inputClass}>
-          {Object.entries(RECURRENCE_LABEL).map(([k, v]) => (
-            <option key={k} value={k}>{v}</option>
-          ))}
-        </select>
+      <div className="grid gap-2 sm:grid-cols-2">
+        <div>
+          <label className="mb-1 block text-[11px] font-semibold text-slate-500">Due date</label>
+          <DateInput value={dueDate} onChange={setDueDate} futureOnly placeholder="DD / MM / YYYY" />
+        </div>
+        <div>
+          <label className="mb-1 block text-[11px] font-semibold text-slate-500">Repeat</label>
+          <select value={recurrence} onChange={(e) => setRecurrence(e.target.value)} className={inputClass}>
+            {Object.entries(RECURRENCE_LABEL).map(([k, v]) => (
+              <option key={k} value={k}>{v}</option>
+            ))}
+          </select>
+        </div>
       </div>
       <p className="text-[11px] text-slate-500">
         A repeating test schedules the next one automatically when you mark it done. The member is
@@ -753,13 +780,12 @@ function PrescriptionForm({
         </p>
       )}
 
-      <input
-        type="date"
-        value={startDate}
-        onChange={(e) => setStartDate(e.target.value)}
-        className={inputClass}
-        aria-label="Start date"
-      />
+      <div>
+        <label className="mb-1 block text-[11px] font-semibold text-slate-500">
+          Start date <span className="font-normal text-slate-400">(today if left blank)</span>
+        </label>
+        <DateInput value={startDate} onChange={setStartDate} placeholder="DD / MM / YYYY" />
+      </div>
 
       <div className="flex flex-wrap items-center gap-2">
         <button

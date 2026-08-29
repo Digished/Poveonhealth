@@ -4,6 +4,7 @@ import { useCallback, useEffect, useState } from "react";
 import { ArrowRight, FlaskConical, HeartPulse, MessageSquareText, Pill, RefreshCw, X } from "lucide-react";
 import { getJson, invalidateJson } from "@/lib/client-cache";
 import type { CarePlanBenefits, CarePlanPrefill } from "@/components/consults/CarePlanEnrollModal";
+import { useViewport } from "@/components/ui/Overlay";
 
 /** Sensible copy to show if the care-plan endpoint is briefly unavailable. */
 const FALLBACK_BENEFITS: CarePlanBenefits = {
@@ -122,9 +123,14 @@ export function CarePlanPromptModal({
 }: {
   benefits: CarePlanBenefits; lapsed: boolean; onJoin: () => void; onClose: () => void;
 }) {
+  const vp = useViewport(true);
   return (
     <div
-      className="animate-fade-in fixed inset-0 z-[290] flex items-end justify-center bg-slate-900/50 p-4 backdrop-blur-sm sm:items-center"
+      className="animate-fade-in fixed z-[290] flex items-end justify-center bg-slate-900/50 p-4 backdrop-blur-sm sm:items-center"
+      // Anchored to the visual viewport, not the layout one: when the mobile
+      // keyboard opens the two stop agreeing, and a dialog sized to the layout
+      // viewport puts its own inputs behind the keys.
+      style={vp.height ? { top: vp.top, left: vp.left, width: vp.width, height: vp.height } : { inset: 0 }}
       onClick={(e) => { if (e.target === e.currentTarget) onClose(); }}
       role="dialog"
       aria-modal="true"

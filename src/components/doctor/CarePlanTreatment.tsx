@@ -6,6 +6,7 @@ import {
   BookmarkPlus, Check, ClipboardList, GripVertical, Loader2, Plus, Sparkles, Trash2, X,
 } from "lucide-react";
 import { CADENCES, CADENCE_LABEL } from "@/lib/treatment-plan";
+import { ConfirmDialog } from "@/components/ui/Overlay";
 
 export type PlanItem = {
   id?: string;
@@ -145,6 +146,8 @@ function PlanEditor({
   );
   const [saving, setSaving] = useState(false);
   const [templates, setTemplates] = useState<Template[]>([]);
+  // A saved plan is worth a second look before it goes.
+  const [confirmingDelete, setConfirmingDelete] = useState<Template | null>(null);
 
   const loadTemplates = useCallback(async () => {
     try {
@@ -267,10 +270,7 @@ function PlanEditor({
                 <Sparkles className="h-3 w-3 text-medical-400" /> {t.name}
               </button>
               <button
-                onClick={async () => {
-                  await fetch(`/api/doc-login/consults/templates?id=${t.id}`, { method: "DELETE" });
-                  void loadTemplates();
-                }}
+                onClick={() => setConfirmingDelete(t)}
                 aria-label={`Delete ${t.name}`}
                 className="rounded-full p-0.5 text-slate-300 transition hover:bg-slate-100 hover:text-red-500"
               >
@@ -396,6 +396,19 @@ function PlanEditor({
         </button>
         <TemplateSaver disabled={ready.length === 0} onSave={saveTemplate} />
       </div>
+
+      <ConfirmDialog
+        open={!!confirmingDelete}
+        title={`Delete "${confirmingDelete?.name ?? ""}"?`}
+        body="This only removes the template. Plans you already wrote from it are untouched."
+        confirmLabel="Delete template"
+        onConfirm={async () => {
+          if (!confirmingDelete) return;
+          await fetch(`/api/doc-login/consults/templates?id=${confirmingDelete.id}`, { method: "DELETE" });
+          void loadTemplates();
+        }}
+        onClose={() => setConfirmingDelete(null)}
+      />
     </section>
   );
 }

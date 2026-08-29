@@ -17,6 +17,7 @@ import {
   LAST_VISIT_OPTIONS,
   type Adherence,
 } from "@/components/consults/baseline";
+import { useViewport } from "@/components/ui/Overlay";
 
 export type CarePlanBenefits = {
   price_naira: number;
@@ -93,6 +94,7 @@ export function CarePlanEnrollModal({
   const [picking, setPicking] = useState<"pharmacy" | "lab" | null>(null);
   // Baseline — everything but adherence is optional, and a blank answer is
   // better than a guessed one.
+  const vp = useViewport(true);
   const [baseline, setBaseline] = useState({
     medication_adherence: "" as Adherence | "",
     baseline_medications: "",
@@ -184,13 +186,18 @@ export function CarePlanEnrollModal({
 
   return (
     <div
-      className="animate-fade-in fixed inset-0 z-[300] flex items-end justify-center bg-slate-900/50 p-0 backdrop-blur-sm sm:items-center sm:p-4"
+      className="animate-fade-in fixed z-[300] flex items-end justify-center bg-slate-900/50 p-0 backdrop-blur-sm sm:items-center sm:p-4"
+      // Anchored to the visual viewport, not the layout one: when the mobile
+      // keyboard opens the two stop agreeing, and a dialog sized to the layout
+      // viewport puts its own inputs behind the keys.
+      style={vp.height ? { top: vp.top, left: vp.left, width: vp.width, height: vp.height } : { inset: 0 }}
       onClick={(e) => { if (e.target === e.currentTarget) onClose(); }}
       role="dialog"
       aria-modal="true"
       aria-label="Join the Poveon Care Plan"
     >
-      <div className="animate-slide-up flex max-h-[92dvh] w-full flex-col overflow-hidden rounded-t-3xl bg-white shadow-2xl sm:max-w-lg sm:rounded-3xl">
+      <div className="animate-slide-up flex w-full flex-col overflow-hidden rounded-t-3xl bg-white shadow-2xl sm:max-w-lg sm:rounded-3xl"
+        style={{ maxHeight: vp.height ? vp.height - 8 : "92dvh" }}>
         {/* Header */}
         <div className="relative shrink-0 bg-gradient-to-br from-medical-600 to-medical-800 px-5 pb-5 pt-5 text-white sm:px-6">
           <button
