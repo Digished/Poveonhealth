@@ -2,10 +2,8 @@
 
 import { useCallback, useEffect, useRef, useState } from "react";
 import { toast } from "react-hot-toast";
-import {
-  BadgeCheck, ImagePlus, Loader2, Mail, MapPin, Pill, Plus, Power, RefreshCw,
-  Save, TicketPercent, Trash2, Users, X,
-} from "lucide-react";
+import { BadgeCheck, Download, ImagePlus, Loader2, Mail, MapPin, Pill, Plus, Power, QrCode, RefreshCw, Save, TicketPercent, Trash2, Users, X } from "lucide-react";
+import { Modal } from "@/components/ui/Overlay";
 import { STATE_NAMES, lgasForState } from "@/lib/nigeria-locations";
 import { FuzzyCombo } from "@/components/ui/FuzzyCombo";
 
@@ -25,6 +23,7 @@ function formatDate(iso: string | null) {
 
 export function AdminPharmaciesTab() {
   const [pharmacies, setPharmacies] = useState<Pharmacy[]>([]);
+  const [qrFor, setQrFor] = useState<Pharmacy | null>(null);
   const [loading, setLoading] = useState(true);
   const [adding, setAdding] = useState(false);
   const [busyId, setBusyId] = useState<string | null>(null);
@@ -120,6 +119,34 @@ export function AdminPharmaciesTab() {
 
       {adding && <AddPharmacyForm onClose={() => setAdding(false)} onAdded={() => { setAdding(false); load(); }} />}
 
+      <Modal
+        open={!!qrFor}
+        onClose={() => setQrFor(null)}
+        title="Sign-up QR code"
+        subtitle={qrFor?.name}
+      >
+        {qrFor && (
+          <div className="flex flex-col items-center gap-3">
+            {/* eslint-disable-next-line @next/next/no-img-element */}
+            <img
+              src={`/api/admin/partner-qr?kind=pharmacy&id=${qrFor.id}`}
+              alt={`Sign-up QR code for ${qrFor.name}`}
+              className="h-56 w-56 rounded-xl ring-1 ring-slate-100"
+            />
+            <p className="text-center text-xs text-slate-500">
+              Anyone who scans this starts their care plan with {qrFor.name} already set as their
+              pharmacy. Print it for their counter.
+            </p>
+            <a
+              href={`/api/admin/partner-qr?kind=pharmacy&id=${qrFor.id}`}
+              className="inline-flex items-center gap-1.5 rounded-xl bg-medical-600 px-4 py-2.5 text-xs font-bold text-white transition hover:bg-medical-700"
+            >
+              <Download className="h-3.5 w-3.5" /> Download the PNG
+            </a>
+          </div>
+        )}
+      </Modal>
+
       <div className="overflow-hidden rounded-xl border border-white/10 bg-white/5">
         <div className="overflow-x-auto">
           <table className="w-full min-w-[900px] text-sm">
@@ -182,6 +209,12 @@ export function AdminPharmaciesTab() {
                   </td>
                   <td className="px-4 py-3">
                     <div className="flex items-center justify-end gap-1.5">
+                      <IconAction
+                        title="Sign-up QR code — scanning it makes this their pharmacy"
+                        busy={false}
+                        onClick={() => setQrFor(p)}
+                        icon={<QrCode className="h-3.5 w-3.5" />}
+                      />
                       <IconAction
                         title="Re-send the invite email"
                         busy={busyId === p.id}

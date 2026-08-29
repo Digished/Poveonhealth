@@ -23,9 +23,20 @@ export const metadata: Metadata = {
 
 const naira = (n: number) => `₦${Math.round(n).toLocaleString("en-NG")}`;
 
-export default async function ConsultsPage() {
+export default async function ConsultsPage({
+  searchParams,
+}: {
+  searchParams?: { pharmacy?: string; lab?: string };
+}) {
   const settings = await getConsultSettings();
   const price = naira(settings.price_naira);
+  // Arrived by scanning a partner's QR poster: carry them through sign-up so
+  // the pharmacy or lab that brought them in is already chosen.
+  const partner = searchParams?.pharmacy
+    ? { kind: "pharmacy" as const, code: searchParams.pharmacy }
+    : searchParams?.lab
+      ? { kind: "lab" as const, code: searchParams.lab }
+      : null;
 
   return (
     <div className="min-h-dvh bg-gradient-to-br from-sky-50 via-white to-emerald-50/60">
@@ -102,7 +113,7 @@ export default async function ConsultsPage() {
 
           {/* Sticky on desktop so the form is in reach however far you scroll */}
           <div className="lg:sticky lg:top-24">
-            <CarePlanAccountForm priceLabel={price} />
+            <CarePlanAccountForm priceLabel={price} partner={partner} />
           </div>
         </div>
       </section>

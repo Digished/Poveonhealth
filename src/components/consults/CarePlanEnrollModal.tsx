@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import {
   Activity, ArrowLeft, ArrowRight, Check, Droplet, HeartPulse, Loader2, MapPin,
   ShieldCheck, User, X,
@@ -70,10 +70,13 @@ function ageFromIso(iso: string): string {
 export function CarePlanEnrollModal({
   benefits,
   prefill,
+  partnerCode = null,
   onClose,
 }: {
   benefits: CarePlanBenefits;
   prefill: CarePlanPrefill;
+  /** A pharmacy or lab whose QR poster brought them here. */
+  partnerCode?: { kind: "pharmacy" | "lab"; code: string } | null;
   onClose: () => void;
 }) {
   const [step, setStep] = useState(0);
@@ -95,6 +98,29 @@ export function CarePlanEnrollModal({
   // Baseline — everything but adherence is optional, and a blank answer is
   // better than a guessed one.
   const vp = useViewport(true);
+
+  // Scanned a partner's QR poster: resolve their code and start with that
+  // pharmacy or lab already chosen, so nobody has to find it in a list.
+  useEffect(() => {
+    if (!partnerCode) return;
+    let cancelled = false;
+    (async () => {
+      try {
+        const res = await fetch(
+          `/api/consults/partner?kind=${partnerCode.kind}&code=${encodeURIComponent(partnerCode.code)}`,
+          { cache: "no-store" }
+        );
+        const d = await res.json();
+        if (cancelled || !d?.success || !d.provider) return;
+        if (partnerCode.kind === "pharmacy") setPharmacy(d.provider);
+        else setLab(d.provider);
+      } catch {
+        /* they can still pick one by hand */
+      }
+    })();
+    return () => { cancelled = true; };
+  }, [partnerCode]);
+
   const [baseline, setBaseline] = useState({
     medication_adherence: "" as Adherence | "",
     baseline_medications: "",

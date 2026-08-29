@@ -9,6 +9,9 @@ import {
 } from "lucide-react";
 import { PoveonLogo } from "@/components/PoveonLogo";
 import { SectionLoader } from "@/components/PageLoader";
+import { toast } from "react-hot-toast";
+import { Download } from "lucide-react";
+import { Modal } from "@/components/ui/Overlay";
 import { conditionLabel } from "@/lib/consult-conditions";
 
 type Pharmacy = {
@@ -158,8 +161,16 @@ function ServePanel({ onRecorded }: { onRecorded: () => void }) {
   const [lookup, setLookup] = useState<
     | { state: "idle" }
     | { state: "invalid"; reason: string; name?: string }
-    | { state: "valid"; name: string; discount: number; expires_at: string | null }
+    | {
+        state: "valid";
+        name: string;
+        discount: number;
+        expires_at: string | null;
+        prescriptions: ScheduledMed[];
+      }
   >({ state: "idle" });
+  // What the counter ticks off: one outcome per scheduled medication.
+  const [outcomes, setOutcomes] = useState<Record<string, MedOutcome>>({});
   const [gross, setGross] = useState("");
   const [description, setDescription] = useState("");
   const [saving, setSaving] = useState(false);
@@ -181,12 +192,16 @@ function ServePanel({ onRecorded }: { onRecorded: () => void }) {
         setLookup({ state: "invalid", reason: data.reason ?? "That code is not valid.", name: data.member?.full_name });
         return;
       }
+      const prescriptions: ScheduledMed[] = data.prescriptions ?? [];
       setLookup({
         state: "valid",
         name: data.member.full_name,
         discount: data.discount_percent,
         expires_at: data.member.expires_at,
+        prescriptions,
       });
+      // Default to "collected": the common case is that they take everything.
+      setOutcomes(Object.fromEntries(prescriptions.map((p) => [p.id, "collected" as MedOutcome])));
     } catch {
       setLookup({ state: "invalid", reason: "Network error. Please try again." });
     } finally {
@@ -198,20 +213,38 @@ function ServePanel({ onRecorded }: { onRecorded: () => void }) {
     if (saving || lookup.state !== "valid" || !gross) return;
     setSaving(true);
     try {
-      const res = await fetch("/api/pharmacy/redeem", {
+      const scheduled = lookup.state === "valid" ? lookup.prescriptions : [];
+      const memberName = lookup.state === "valid" ? lookup.name : "";
+
+      // With a schedule on file, say what happened to each line — that is what
+      // tells the doctor whether their patient actually got their tablets.
+      const endpoint = scheduled.length ? "/api/pharmacy/dispense" : "/api/pharmacy/redeem";
+      const body = scheduled.length
+        ? {
+            code: code.trim(),
+            gross_naira: Number(gross),
+            items: scheduled.map((p) => ({
+              prescription_id: p.id,
+              status: outcomes[p.id] ?? "collected",
+            })),
+          }
+        : { code: code.trim(), gross_naira: Number(gross), description: description || null };
+
+      const res = await fetch(endpoint, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ code: code.trim(), gross_naira: Number(gross), description: description || null }),
+        body: JSON.stringify(body),
       });
       const data = await res.json();
-      if (!res.ok || !data.success) return;
+      if (!res.ok || !data.success) { toast.error(data.error ?? "Could not record that."); return; }
+
       setReceipt({
-        name: data.member.full_name,
-        gross: data.gross_naira,
+        name: data.member?.full_name ?? memberName,
+        gross: Number(gross),
         discount: data.discount_naira,
         payable: data.payable_naira,
       });
-      setCode(""); setGross(""); setDescription(""); setLookup({ state: "idle" });
+      setCode(""); setGross(""); setDescription(""); setOutcomes({}); setLookup({ state: "idle" });
       onRecorded();
     } finally {
       setSaving(false);
@@ -267,6 +300,54 @@ function ServePanel({ onRecorded }: { onRecorded: () => void }) {
               </div>
             </div>
 
+            {lookup.prescriptions.length > 0 && (
+              <div className="rounded-xl border border-emerald-200 bg-white p-3">
+                <p className="text-[11px] font-bold uppercase tracking-wide text-emerald-700">
+                  Their doctor has them on
+                </p>
+                <p className="mt-0.5 text-[11px] text-slate-500">
+                  Mark what they actually left with — their doctor sees this.
+                </p>
+                <ul className="mt-2.5 space-y-2">
+                  {lookup.prescriptions.map((p) => (
+                    <li key={p.id} className="rounded-lg bg-slate-50 p-2.5">
+                      <p className="text-sm font-semibold text-slate-800">
+                        {p.form ? `${p.form.charAt(0).toUpperCase()}${p.form.slice(1)} · ` : ""}
+                        {p.medication}
+                      </p>
+                      <p className="text-[11px] text-slate-500">
+                        {[p.dosage, p.frequency].filter(Boolean).join(" · ") || "No dose recorded"}
+                        {p.duration_days ? ` · ${p.duration_days} days` : " · ongoing"}
+                      </p>
+                      {p.last_fulfilment && (
+                        <p className="mt-0.5 text-[11px] text-slate-400">
+                          Last {MED_OUTCOME_LABEL[p.last_fulfilment.status] ?? p.last_fulfilment.status}
+                          {p.last_fulfilment.here ? " here" : " elsewhere"} on{" "}
+                          {formatDate(p.last_fulfilment.at)}
+                        </p>
+                      )}
+                      <div className="mt-1.5 flex flex-wrap gap-1">
+                        {MED_OUTCOMES.map((o) => {
+                          const on = (outcomes[p.id] ?? "collected") === o.value;
+                          return (
+                            <button
+                              key={o.value}
+                              onClick={() => setOutcomes((prev) => ({ ...prev, [p.id]: o.value }))}
+                              className={`rounded-full px-2.5 py-1 text-[11px] font-semibold transition ${
+                                on ? "bg-emerald-600 text-white" : "bg-white text-slate-500 ring-1 ring-slate-200 hover:ring-slate-300"
+                              }`}
+                            >
+                              {o.label}
+                            </button>
+                          );
+                        })}
+                      </div>
+                    </li>
+                  ))}
+                </ul>
+              </div>
+            )}
+
             <input
               inputMode="numeric"
               value={gross}
@@ -274,13 +355,15 @@ function ServePanel({ onRecorded }: { onRecorded: () => void }) {
               placeholder="Total before discount (₦)"
               className="w-full rounded-xl border border-emerald-200 bg-white px-3.5 py-2.5 text-sm text-slate-800 focus:outline-none focus:ring-2 focus:ring-emerald-400/40"
             />
-            <input
-              value={description}
-              maxLength={300}
-              onChange={(e) => setDescription(e.target.value)}
-              placeholder="What did they buy? (optional)"
-              className="w-full rounded-xl border border-emerald-200 bg-white px-3.5 py-2.5 text-sm text-slate-800 focus:outline-none focus:ring-2 focus:ring-emerald-400/40"
-            />
+            {lookup.prescriptions.length === 0 && (
+              <input
+                value={description}
+                maxLength={300}
+                onChange={(e) => setDescription(e.target.value)}
+                placeholder="What did they buy? (optional)"
+                className="w-full rounded-xl border border-emerald-200 bg-white px-3.5 py-2.5 text-sm text-slate-800 focus:outline-none focus:ring-2 focus:ring-emerald-400/40"
+              />
+            )}
             {gross && (
               <p className="text-xs text-emerald-800">
                 They pay{" "}
@@ -294,7 +377,7 @@ function ServePanel({ onRecorded }: { onRecorded: () => void }) {
               className="flex w-full items-center justify-center gap-2 rounded-xl bg-emerald-600 py-2.5 text-sm font-bold text-white transition hover:bg-emerald-700 disabled:opacity-50"
             >
               {saving ? <Loader2 className="h-4 w-4 animate-spin" /> : <Check className="h-4 w-4" />}
-              Record this sale
+              {lookup.prescriptions.length ? "Record what they collected" : "Record this sale"}
             </button>
           </div>
         )}
@@ -568,6 +651,7 @@ type CareMember = {
     frequency: string | null; duration_days: number | null;
     start_date: string | null; end_date: string | null; status: string;
   }[];
+
 };
 
 /**
@@ -621,6 +705,8 @@ function CareMembersPanel() {
 
   return (
     <div className="space-y-3">
+      <PharmacyQrCard />
+
       <p className="text-xs text-slate-500">
         {summary?.members} member{summary?.members === 1 ? "" : "s"} chose you ·{" "}
         {summary?.pending_prescriptions} medication{summary?.pending_prescriptions === 1 ? "" : "s"} scheduled.
@@ -666,16 +752,143 @@ function CareMembersPanel() {
                   <p className="text-[11px] text-slate-500">
                     {[rx.dosage, rx.frequency].filter(Boolean).join(" · ") || "No dose recorded"}
                     {rx.duration_days ? ` · ${rx.duration_days} days` : " · ongoing"}
-                    {rx.start_date
-                      ? ` · from ${new Date(rx.start_date).toLocaleDateString("en-GB", { day: "numeric", month: "short" })}`
-                      : ""}
                   </p>
+                  <p className="mt-0.5 text-[11px] font-semibold text-emerald-700">{dueLine(rx)}</p>
                 </li>
               ))}
             </ul>
           )}
         </div>
       ))}
+    </div>
+  );
+}
+
+
+// ── What the counter records ────────────────────────────────────────────────
+
+type ScheduledMed = {
+  id: string;
+  medication: string;
+  form: string | null;
+  dosage: string | null;
+  frequency: string | null;
+  duration_days: number | null;
+  instructions: string | null;
+  start_date: string | null;
+  end_date: string | null;
+  last_fulfilment: { status: string; at: string; here: boolean } | null;
+};
+
+type MedOutcome = "collected" | "partial" | "out_of_stock" | "declined";
+
+/** "We didn't have it" is the outcome worth recording, so it is one tap away. */
+const MED_OUTCOMES: { value: MedOutcome; label: string }[] = [
+  { value: "collected", label: "Collected" },
+  { value: "partial", label: "Part of it" },
+  { value: "out_of_stock", label: "Out of stock" },
+  { value: "declined", label: "Didn't take" },
+];
+
+const MED_OUTCOME_LABEL: Record<string, string> = Object.fromEntries(
+  MED_OUTCOMES.map((o) => [o.value, o.label.toLowerCase()])
+);
+
+
+/**
+ * When this member is next expected — the whole point of seeing the schedule
+ * ahead of time. A course that ends is a refill due; an open-ended maintenance
+ * drug is a monthly repeat.
+ */
+function dueLine(rx: { start_date: string | null; end_date: string | null; duration_days: number | null }): string {
+  const now = new Date();
+  const monthDay = (d: Date) =>
+    d.toLocaleDateString("en-GB", { day: "numeric", month: "long", year: d.getFullYear() === now.getFullYear() ? undefined : "numeric" });
+
+  const end = rx.end_date ? new Date(rx.end_date) : null;
+  if (end && !Number.isNaN(end.getTime())) {
+    const days = Math.round((end.getTime() - now.getTime()) / 86_400_000);
+    if (days < 0) return `Refill was due ${monthDay(end)}`;
+    if (days === 0) return "Refill due today";
+    if (days <= 31) return `Refill due ${monthDay(end)} — about ${days} day${days === 1 ? "" : "s"} away`;
+    return `Refill due ${monthDay(end)}`;
+  }
+
+  // No end date means an ongoing prescription: they come back about monthly.
+  const start = rx.start_date ? new Date(rx.start_date) : null;
+  if (start && !Number.isNaN(start.getTime())) {
+    const next = new Date(start);
+    while (next < now) next.setMonth(next.getMonth() + 1);
+    return `Ongoing — next repeat around ${monthDay(next)}`;
+  }
+  return "Ongoing — no dates set";
+}
+
+/**
+ * The pharmacy's own QR poster.
+ *
+ * Someone who scans it starts their care plan with this pharmacy already
+ * chosen, which is what turns a walk-in into one of the members above.
+ */
+function PharmacyQrCard() {
+  const [info, setInfo] = useState<{ url: string; code: string; name: string } | null>(null);
+  const [open, setOpen] = useState(false);
+
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      try {
+        const res = await fetch("/api/pharmacy/qr?format=json", { cache: "no-store" });
+        const d = await res.json();
+        if (!cancelled && d.success) setInfo(d);
+      } catch {
+        /* the card just stays closed */
+      }
+    })();
+    return () => { cancelled = true; };
+  }, []);
+
+  if (!info) return null;
+
+  return (
+    <div className="rounded-2xl border border-emerald-100 bg-emerald-50/60 p-4">
+      <div className="flex flex-wrap items-start justify-between gap-3">
+        <div className="min-w-0">
+          <p className="text-sm font-bold text-emerald-900">Your sign-up QR code</p>
+          <p className="mt-0.5 text-xs text-emerald-800">
+            Print it for the counter. Anyone who scans it joins the care plan with{" "}
+            {info.name} already set as their pharmacy.
+          </p>
+        </div>
+        <div className="flex shrink-0 gap-2">
+          <button
+            onClick={() => setOpen(true)}
+            className="rounded-xl bg-white px-3 py-2 text-xs font-bold text-emerald-700 ring-1 ring-emerald-200 transition hover:ring-emerald-300"
+          >
+            Show
+          </button>
+          <a
+            href="/api/pharmacy/qr"
+            className="inline-flex items-center gap-1.5 rounded-xl bg-emerald-600 px-3 py-2 text-xs font-bold text-white transition hover:bg-emerald-700"
+          >
+            <Download className="h-3.5 w-3.5" /> Download
+          </a>
+        </div>
+      </div>
+
+      <Modal open={open} onClose={() => setOpen(false)} title="Your sign-up QR code" subtitle={info.name}>
+        <div className="flex flex-col items-center gap-3">
+          {/* eslint-disable-next-line @next/next/no-img-element */}
+          <img src="/api/pharmacy/qr" alt="Sign-up QR code" className="h-56 w-56 rounded-xl ring-1 ring-slate-100" />
+          <p className="break-all text-center text-[11px] text-slate-400">{info.url}</p>
+          <a
+            href="/api/pharmacy/qr"
+            className="inline-flex items-center gap-1.5 rounded-xl bg-emerald-600 px-4 py-2.5 text-xs font-bold text-white transition hover:bg-emerald-700"
+          >
+            <Download className="h-3.5 w-3.5" /> Download the PNG
+          </a>
+        </div>
+      </Modal>
     </div>
   );
 }

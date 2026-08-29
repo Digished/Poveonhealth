@@ -1121,6 +1121,12 @@ function DashboardInner() {
   // Two deep links land on the care plan: `?care=1` from /consults opens the
   // enrolment form as well, `?tab=care` (the payment return) just shows it.
   const wantsCarePlan = searchParams.get("care") === "1";
+  // Scanned a partner's QR poster on the way in — they start already chosen.
+  const partnerFromQr = searchParams.get("pharmacy")
+    ? { kind: "pharmacy" as const, code: searchParams.get("pharmacy")! }
+    : searchParams.get("lab")
+      ? { kind: "lab" as const, code: searchParams.get("lab")! }
+      : null;
   const tabParam = searchParams.get("tab") as View | null;
   const view: View =
     wantsCarePlan ? "care"
@@ -1345,6 +1351,7 @@ function DashboardInner() {
           {!loading && patientEmail && parent === "care" && (
             <CarePlanPanel
               autoOpenEnroll={wantsCarePlan}
+              partnerCode={partnerFromQr}
               section={
                 view === "care-schedule" ? "schedule" : view === "care-messages" ? "messages" : "plan"
               }

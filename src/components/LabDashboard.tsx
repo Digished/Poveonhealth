@@ -946,7 +946,12 @@ export function LabDashboard({ lab, isOwner = false, roleName = "Lab Owner", can
         )}
 
         {/* Care-plan members who chose this lab */}
-        {mainView === "care-plan" && <LabCareMembers />}
+        {mainView === "care-plan" && (
+          <div className="space-y-5">
+            <LabCareCode />
+            <LabCareMembers />
+          </div>
+        )}
 
         {/* Clients view */}
         {mainView === "clients" && (
@@ -3578,6 +3583,227 @@ function LabCareMembers() {
           )}
         </div>
       ))}
+    </div>
+  );
+}
+
+
+// ── A care code at the front desk ───────────────────────────────────────────
+
+type CareLookup = {
+  member: {
+    id: string; name: string; name_revealed: boolean; phone: string | null;
+    sex: string | null; conditions: string[]; expires_at: string | null;
+    prefers_this_lab: boolean;
+  };
+  discount_percent: number;
+  referral: { source: string; label: string };
+  test_orders: {
+    id: string; tests: string; reason: string | null; due_date: string | null;
+    recurrence: string; last_fulfilment: { status: string; at: string; here: boolean } | null;
+  }[];
+};
+
+/**
+ * The care code, run at the desk.
+ *
+ * The code works at every lab in the Poveon network, not only the one the
+ * member named — a preference decides who sees the schedule coming, never who
+ * is allowed to serve them. The referral on the resulting work is Poveon, not
+ * the doctor: the programme is what sent them.
+ */
+function LabCareCode() {
+  const [code, setCode] = useState("");
+  const [checking, setChecking] = useState(false);
+  const [result, setResult] = useState<CareLookup | null>(null);
+  const [problem, setProblem] = useState("");
+  const [picked, setPicked] = useState<Record<string, boolean>>({});
+  const [gross, setGross] = useState("");
+  const [saving, setSaving] = useState(false);
+  const [receipt, setReceipt] = useState<{ done: number; discount: number; payable: number } | null>(null);
+
+  async function check() {
+    if (checking || code.trim().length < 4) return;
+    setChecking(true);
+    setProblem("");
+    setResult(null);
+    setReceipt(null);
+    try {
+      const res = await fetch("/api/lab/care-lookup", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ code: code.trim() }),
+      });
+      const d = await res.json();
+      if (!res.ok || !d.success) { setProblem(d.error ?? "Could not check that code."); return; }
+      if (!d.found || !d.valid) { setProblem(d.reason ?? "That code is not valid."); return; }
+      setResult(d);
+      // Everything the doctor scheduled is presumed to be why they came.
+      setPicked(Object.fromEntries((d.test_orders ?? []).map((t: { id: string }) => [t.id, true])));
+    } catch {
+      setProblem("Network error. Please try again.");
+    } finally {
+      setChecking(false);
+    }
+  }
+
+  async function record() {
+    if (saving || !result) return;
+    const items = result.test_orders
+      .filter((t) => picked[t.id])
+      .map((t) => ({ test_order_id: t.id, status: "done" as const }));
+    if (items.length === 0) { toast.error("Tick what you ran."); return; }
+
+    setSaving(true);
+    try {
+      const res = await fetch("/api/lab/care-fulfil", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ code: code.trim(), items, gross_naira: gross ? Number(gross) : 0 }),
+      });
+      const d = await res.json();
+      if (!res.ok || !d.success) { toast.error(d.error ?? "Could not record that."); return; }
+      setReceipt({ done: d.done, discount: d.discount_naira, payable: d.payable_naira });
+      toast.success(`${d.done} test${d.done === 1 ? "" : "s"} recorded — the doctor has been updated`);
+      setResult(null);
+      setCode("");
+      setGross("");
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  const discount = result && gross ? Math.round((Number(gross) * result.discount_percent) / 100) : 0;
+
+  return (
+    <div className="rounded-2xl border border-white/10 bg-white/5 p-5">
+      <h3 className="text-sm font-bold text-white">Care code</h3>
+      <p className="mt-1 text-xs text-slate-400">
+        Works for any Poveon care-plan member, whichever lab they named. Enter it to see what their
+        doctor scheduled and apply their discount.
+      </p>
+
+      <div className="mt-4 flex gap-2">
+        <input
+          value={code}
+          onChange={(e) => { setCode(e.target.value.toUpperCase()); setResult(null); setProblem(""); }}
+          onKeyDown={(e) => { if (e.key === "Enter") check(); }}
+          placeholder="PVC-XXXXXXX"
+          className="flex-1 rounded-xl border border-white/10 bg-white/5 px-4 py-2.5 font-mono text-sm font-bold uppercase tracking-wider text-white placeholder-slate-500 focus:border-sky-400 focus:outline-none"
+        />
+        <button
+          onClick={check}
+          disabled={checking || code.trim().length < 4}
+          className="inline-flex items-center gap-1.5 rounded-xl bg-sky-600 px-4 py-2.5 text-sm font-bold text-white transition hover:bg-sky-500 disabled:opacity-50"
+        >
+          {checking ? <RefreshCw className="h-4 w-4 animate-spin" /> : <Search className="h-4 w-4" />}
+          Check
+        </button>
+      </div>
+
+      {problem && (
+        <p className="mt-3 rounded-xl border border-amber-500/20 bg-amber-500/10 px-4 py-3 text-sm text-amber-300">
+          {problem}
+        </p>
+      )}
+
+      {receipt && (
+        <div className="mt-3 rounded-xl border border-emerald-500/20 bg-emerald-500/10 px-4 py-3 text-sm text-emerald-300">
+          {receipt.done} test{receipt.done === 1 ? "" : "s"} recorded.
+          {receipt.discount > 0 && (
+            <> Discount ₦{receipt.discount.toLocaleString("en-NG")} · they pay ₦{receipt.payable.toLocaleString("en-NG")}.</>
+          )}
+        </div>
+      )}
+
+      {result && (
+        <div className="mt-4 space-y-3 rounded-xl border border-sky-500/20 bg-sky-500/10 p-4">
+          <div>
+            <p className="text-sm font-bold text-white">
+              {result.member.name} is covered
+              {!result.member.name_revealed && (
+                <span className="ml-1.5 text-[11px] font-normal text-slate-400">(new to you)</span>
+              )}
+            </p>
+            <p className="mt-0.5 flex flex-wrap items-center gap-1.5 text-[11px]">
+              <span className="rounded-full bg-white/15 px-2 py-0.5 font-semibold text-white">
+                Referred by {result.referral.label}
+              </span>
+              <span className="rounded-full bg-emerald-500/20 px-2 py-0.5 font-semibold text-emerald-300">
+                Up to {result.discount_percent}% off
+              </span>
+              {result.member.conditions.map((c) => (
+                <span key={c} className="rounded-full bg-white/10 px-2 py-0.5 font-semibold text-slate-300">
+                  {conditionLabel(c)}
+                </span>
+              ))}
+            </p>
+          </div>
+
+          {result.test_orders.length === 0 ? (
+            <p className="text-xs text-slate-400">
+              Their doctor has nothing scheduled right now. The discount still applies to whatever
+              they came for — record it in the usual way.
+            </p>
+          ) : (
+            <>
+              <p className="text-[11px] font-bold uppercase tracking-wide text-sky-300">
+                Scheduled by their doctor
+              </p>
+              <ul className="space-y-1.5">
+                {result.test_orders.map((t) => (
+                  <li key={t.id}>
+                    <label className="flex cursor-pointer items-start gap-2.5 rounded-lg bg-white/5 p-2.5">
+                      <input
+                        type="checkbox"
+                        checked={!!picked[t.id]}
+                        onChange={(e) => setPicked((prev) => ({ ...prev, [t.id]: e.target.checked }))}
+                        className="mt-0.5 h-4 w-4 shrink-0 rounded border-white/20 bg-transparent text-sky-500"
+                      />
+                      <span className="min-w-0">
+                        <span className="block text-sm font-semibold text-slate-100">{t.tests}</span>
+                        <span className="block text-[11px] text-slate-400">
+                          {t.due_date
+                            ? `Due ${new Date(t.due_date).toLocaleDateString("en-GB", { day: "numeric", month: "short", year: "numeric" })}`
+                            : "No date set"}
+                          {t.reason ? ` · ${t.reason}` : ""}
+                        </span>
+                      </span>
+                    </label>
+                  </li>
+                ))}
+              </ul>
+
+              <input
+                inputMode="numeric"
+                value={gross}
+                onChange={(e) => setGross(e.target.value.replace(/[^\d]/g, ""))}
+                placeholder="Total before discount (₦)"
+                className="w-full rounded-xl border border-white/10 bg-white/5 px-3.5 py-2.5 text-sm text-white placeholder-slate-500 focus:border-sky-400 focus:outline-none"
+              />
+              {gross && (
+                <p className="text-xs text-emerald-300">
+                  They pay <strong>₦{(Number(gross) - discount).toLocaleString("en-NG")}</strong>{" "}
+                  (saving ₦{discount.toLocaleString("en-NG")})
+                </p>
+              )}
+
+              <button
+                onClick={record}
+                disabled={saving}
+                className="flex w-full items-center justify-center gap-2 rounded-xl bg-sky-600 py-2.5 text-sm font-bold text-white transition hover:bg-sky-500 disabled:opacity-50"
+              >
+                {saving ? <RefreshCw className="h-4 w-4 animate-spin" /> : <Check className="h-4 w-4" />}
+                Record what you ran
+              </button>
+              <p className="text-[11px] text-slate-400">
+                Recording a test marks their doctor&apos;s order done, and books the next one if it
+                repeats.
+              </p>
+            </>
+          )}
+        </div>
+      )}
     </div>
   );
 }

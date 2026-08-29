@@ -57,9 +57,12 @@ function formatWhen(iso: string) {
 export function CarePlanPanel({
   autoOpenEnroll = false,
   section = "plan",
+  partnerCode = null,
   onChanged,
 }: {
   autoOpenEnroll?: boolean;
+  /** A partner whose QR code brought them here, pre-chosen on the form. */
+  partnerCode?: { kind: "pharmacy" | "lab"; code: string } | null;
   /**
    * Which part of the plan to show. The card, benefits and providers are the
    * plan itself; the schedule and the thread each get their own sub-tab so
@@ -352,6 +355,7 @@ export function CarePlanPanel({
       {enrolling && (
         <CarePlanEnrollModal
           benefits={benefits}
+          partnerCode={partnerCode}
           onClose={() => { setEnrolling(false); onChanged?.(); }}
           prefill={
             member

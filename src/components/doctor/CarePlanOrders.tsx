@@ -15,16 +15,26 @@ import {
   type ParsedPrescription,
 } from "@/lib/prescription-parse";
 
+/** What a pharmacy or lab reported back about one scheduled item. */
+export type Fulfilment = {
+  status: string;
+  created_at: string;
+  recorded_by: string | null;
+  note: string | null;
+};
+
 export type Prescription = {
   id: string; medication: string; form: string | null; dosage: string | null; frequency: string | null;
   duration_days: number | null; instructions: string | null; raw_text: string | null;
   start_date: string | null; end_date: string | null; status: string;
   cancel_reason: string | null; stopped_note: string | null;
+  fulfilments?: Fulfilment[];
 };
 
 export type TestOrder = {
   id: string; tests: string; reason: string | null; due_date: string | null;
   recurrence: string; status: string; completed_at: string | null; result_note: string | null;
+  fulfilments?: Fulfilment[];
 };
 
 type Template = { id: string; kind: string; name: string; payload: Record<string, unknown>; uses: number };
@@ -51,6 +61,48 @@ export const CANCEL_REASONS = [
 export const CANCEL_REASON_LABEL: Record<string, string> = Object.fromEntries(
   CANCEL_REASONS.map((r) => [r.value, r.label])
 );
+
+/** How a partner's report reads back to the doctor. */
+export const FULFILMENT_LABEL: Record<string, string> = {
+  collected: "Collected",
+  partial: "Partly collected",
+  out_of_stock: "Not in stock",
+  declined: "Not taken",
+  done: "Done",
+};
+
+const FULFILMENT_TONE: Record<string, string> = {
+  collected: "bg-emerald-50 text-emerald-700",
+  done: "bg-emerald-50 text-emerald-700",
+  partial: "bg-amber-50 text-amber-700",
+  out_of_stock: "bg-red-50 text-red-700",
+  declined: "bg-red-50 text-red-700",
+};
+
+/**
+ * What the pharmacy or lab reported. Its absence is information too: nobody has
+ * recorded anything, so as far as we know it has not happened.
+ */
+function FulfilmentNote({ fulfilments, verb }: { fulfilments?: Fulfilment[]; verb: string }) {
+  const f = fulfilments?.[0];
+  if (!f) {
+    return (
+      <p className="mt-1 text-[11px] text-slate-400">
+        No partner has recorded {verb} yet.
+      </p>
+    );
+  }
+  return (
+    <p className="mt-1 flex flex-wrap items-center gap-1.5 text-[11px] text-slate-400">
+      <span className={`rounded-full px-2 py-0.5 font-semibold ${FULFILMENT_TONE[f.status] ?? "bg-slate-100 text-slate-600"}`}>
+        {FULFILMENT_LABEL[f.status] ?? f.status}
+      </span>
+      {f.recorded_by ? `at ${f.recorded_by}` : null}
+      {formatDate(f.created_at)}
+      {f.note ? `· ${f.note}` : null}
+    </p>
+  );
+}
 
 const MED_LIVE = ["scheduled", "active"];
 
@@ -191,6 +243,7 @@ export function CarePlanOrders({
                         </span>
                       )}
                     </p>
+                    <FulfilmentNote fulfilments={t.fulfilments} verb="this test" />
                   </div>
                   {canPrescribe && (
                     <div className="flex shrink-0 gap-1">
@@ -287,6 +340,7 @@ export function CarePlanOrders({
                   {m.raw_text && (
                     <p className="mt-1 font-mono text-[10px] text-slate-300">{m.raw_text}</p>
                   )}
+                  <FulfilmentNote fulfilments={m.fulfilments} verb="a collection" />
                 </div>
                 {canPrescribe && (
                   <div className="flex shrink-0 gap-1">

@@ -15,7 +15,14 @@ type Stage = "email" | "pin" | "otp" | "create-pin";
  * for — from a lab request or a referral — signs straight in and keeps their
  * history.
  */
-export function CarePlanAccountForm({ priceLabel }: { priceLabel: string }) {
+export function CarePlanAccountForm({
+  priceLabel,
+  partner,
+}: {
+  priceLabel: string;
+  /** The pharmacy or lab whose QR code brought them here, if any. */
+  partner?: { kind: "pharmacy" | "lab"; code: string } | null;
+}) {
   const router = useRouter();
   const [stage, setStage] = useState<Stage>("email");
   const [email, setEmail] = useState("");
@@ -37,7 +44,11 @@ export function CarePlanAccountForm({ priceLabel }: { priceLabel: string }) {
     return () => clearTimeout(t);
   }, [countdown]);
 
-  const done = () => router.replace("/dashboard?care=1");
+  const done = () => {
+    const params = new URLSearchParams({ care: "1" });
+    if (partner) params.set(partner.kind, partner.code);
+    router.replace(`/dashboard?${params}`);
+  };
 
   /** Existing account with a PIN goes to the PIN box; anyone else gets a code. */
   async function startWithEmail() {

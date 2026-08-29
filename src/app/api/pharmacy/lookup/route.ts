@@ -43,6 +43,25 @@ export async function POST(req: NextRequest) {
     }
 
     const settings = await getConsultSettings();
+
+    // What their doctor has them on, and what this pharmacy has already handed
+    // over — so the counter works from the schedule rather than from memory.
+    const prescriptions = await prisma.consultPrescription.findMany({
+      where: { patient_id: member.id, status: { in: ["scheduled", "active"] } },
+      orderBy: [{ start_date: "desc" }],
+      take: 30,
+      select: {
+        id: true, medication: true, form: true, dosage: true, frequency: true,
+        duration_days: true, instructions: true, start_date: true, end_date: true,
+        fulfilments: {
+          where: { kind: "medication" },
+          orderBy: { created_at: "desc" },
+          take: 1,
+          select: { status: true, created_at: true, pharmacy_id: true },
+        },
+      },
+    });
+
     return NextResponse.json({
       success: true,
       found: true,
@@ -53,6 +72,24 @@ export async function POST(req: NextRequest) {
         full_name: member.full_name,
         expires_at: member.expires_at,
       },
+      prescriptions: prescriptions.map((p) => ({
+        id: p.id,
+        medication: p.medication,
+        form: p.form,
+        dosage: p.dosage,
+        frequency: p.frequency,
+        duration_days: p.duration_days,
+        instructions: p.instructions,
+        start_date: p.start_date,
+        end_date: p.end_date,
+        last_fulfilment: p.fulfilments[0]
+          ? {
+              status: p.fulfilments[0].status,
+              at: p.fulfilments[0].created_at,
+              here: p.fulfilments[0].pharmacy_id === pharmacy.id,
+            }
+          : null,
+      })),
     });
   } catch (err) {
     console.error("[pharmacy/lookup]", err);

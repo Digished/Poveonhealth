@@ -63,11 +63,27 @@ export async function GET(req: NextRequest, { params }: { params: { id: string }
         where: { patient_id: patient.id },
         orderBy: [{ status: "asc" }, { created_at: "desc" }],
         take: 60,
+        include: {
+          // Whether the tablets were ever actually collected — the thing a
+          // schedule on its own cannot tell you.
+          fulfilments: {
+            orderBy: { created_at: "desc" },
+            take: 1,
+            select: { status: true, created_at: true, recorded_by: true, note: true },
+          },
+        },
       }),
       prisma.consultTestOrder.findMany({
         where: { patient_id: patient.id },
         orderBy: [{ status: "asc" }, { due_date: "asc" }],
         take: 60,
+        include: {
+          fulfilments: {
+            orderBy: { created_at: "desc" },
+            take: 1,
+            select: { status: true, created_at: true, recorded_by: true, note: true },
+          },
+        },
       }),
       prisma.consultTreatmentPlan.findFirst({
         where: { patient_id: patient.id, status: "active" },

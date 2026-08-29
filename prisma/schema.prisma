@@ -1949,6 +1949,7 @@ model ConsultPatient {
   prescriptions      ConsultPrescription[]
   test_orders        ConsultTestOrder[]
   treatment_plans    ConsultTreatmentPlan[]
+  fulfilments        ConsultFulfilment[]
 
   @@index([doctor_email, status])
   @@index([status, expires_at])
@@ -2034,9 +2035,10 @@ model Pharmacy {
   created_at       DateTime @default(now())
   updated_at       DateTime @updatedAt
 
-  customers   PharmacyCustomer[]
-  sessions    PharmacySession[]
-  redemptions ConsultRedemption[]
+  customers    PharmacyCustomer[]
+  sessions     PharmacySession[]
+  redemptions  ConsultRedemption[]
+  fulfilments  ConsultFulfilment[]
 
   @@map("pharmacies")
 }
@@ -2162,7 +2164,8 @@ model ConsultPrescription {
   created_at    DateTime  @default(now())
   updated_at    DateTime  @updatedAt
 
-  patient ConsultPatient @relation(fields: [patient_id], references: [id], onDelete: Cascade)
+  patient     ConsultPatient      @relation(fields: [patient_id], references: [id], onDelete: Cascade)
+  fulfilments ConsultFulfilment[]
 
   @@index([patient_id, created_at])
   @@index([doctor_email, status])
@@ -2187,7 +2190,8 @@ model ConsultTestOrder {
   created_at   DateTime  @default(now())
   updated_at   DateTime  @updatedAt
 
-  patient ConsultPatient @relation(fields: [patient_id], references: [id], onDelete: Cascade)
+  patient     ConsultPatient      @relation(fields: [patient_id], references: [id], onDelete: Cascade)
+  fulfilments ConsultFulfilment[]
 
   @@index([patient_id, created_at])
   @@index([doctor_email, status])
@@ -2236,6 +2240,44 @@ model ConsultTreatmentItem {
 
   @@index([plan_id, position])
   @@map("consult_treatment_items")
+}
+
+// What a partner actually did about something a doctor scheduled.
+//
+// This is the loop closing: the doctor schedules a medication or a test, the
+// member takes their code to a pharmacy or a lab, and the partner records what
+// was handed over or run. Without it a schedule is a wish — the doctor has no
+// way of knowing whether the tablets were ever collected.
+model ConsultFulfilment {
+  id              String  @id @default(uuid())
+  patient_id      String
+  kind            String // medication | test
+  prescription_id String?
+  test_order_id   String?
+  pharmacy_id     String?
+  lab_id          String?
+  // medication: collected | partial | out_of_stock | declined
+  // test:       done | declined
+  status          String
+  quantity        Int?
+  note            String?
+  // What the member saved on this, when a discount was applied.
+  gross_naira     Decimal? @db.Decimal(12, 2)
+  discount_naira  Decimal? @db.Decimal(12, 2)
+  recorded_by     String? // the partner's own name, for the doctor's benefit
+  created_at      DateTime @default(now())
+
+  patient      ConsultPatient       @relation(fields: [patient_id], references: [id], onDelete: Cascade)
+  prescription ConsultPrescription? @relation(fields: [prescription_id], references: [id], onDelete: SetNull)
+  test_order   ConsultTestOrder?    @relation(fields: [test_order_id], references: [id], onDelete: SetNull)
+  pharmacy     Pharmacy?            @relation(fields: [pharmacy_id], references: [id])
+
+  @@index([patient_id, created_at])
+  @@index([prescription_id])
+  @@index([test_order_id])
+  @@index([pharmacy_id, created_at])
+  @@index([lab_id, created_at])
+  @@map("consult_fulfilments")
 }
 
 // A doctor's saved starting points — a plan they write for most new members, a

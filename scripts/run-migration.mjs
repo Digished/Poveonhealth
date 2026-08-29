@@ -2347,6 +2347,51 @@ const migrations = [
     sql: `CREATE INDEX IF NOT EXISTS consult_templates_doctor_kind_idx ON consult_templates (doctor_email, kind)`,
     continueOnError: true,
   },
+  {
+    desc: "consult_fulfilments table (what a partner actually dispensed or ran)",
+    sql: `    CREATE TABLE IF NOT EXISTS consult_fulfilments (
+      id TEXT PRIMARY KEY,
+      patient_id TEXT NOT NULL,
+      kind TEXT NOT NULL,
+      prescription_id TEXT,
+      test_order_id TEXT,
+      pharmacy_id TEXT,
+      lab_id TEXT,
+      status TEXT NOT NULL,
+      quantity INTEGER,
+      note TEXT,
+      gross_naira DECIMAL(12,2),
+      discount_naira DECIMAL(12,2),
+      recorded_by TEXT,
+      created_at TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP
+    )`,
+    continueOnError: true,
+  },
+  {
+    desc: "consult_fulfilments patient index",
+    sql: `CREATE INDEX IF NOT EXISTS consult_fulfilments_patient_idx ON consult_fulfilments (patient_id, created_at)`,
+    continueOnError: true,
+  },
+  {
+    desc: "consult_fulfilments prescription index",
+    sql: `CREATE INDEX IF NOT EXISTS consult_fulfilments_prescription_idx ON consult_fulfilments (prescription_id)`,
+    continueOnError: true,
+  },
+  {
+    desc: "consult_fulfilments test order index",
+    sql: `CREATE INDEX IF NOT EXISTS consult_fulfilments_test_order_idx ON consult_fulfilments (test_order_id)`,
+    continueOnError: true,
+  },
+  {
+    desc: "consult_fulfilments pharmacy index",
+    sql: `CREATE INDEX IF NOT EXISTS consult_fulfilments_pharmacy_idx ON consult_fulfilments (pharmacy_id, created_at)`,
+    continueOnError: true,
+  },
+  {
+    desc: "consult_fulfilments lab index",
+    sql: `CREATE INDEX IF NOT EXISTS consult_fulfilments_lab_idx ON consult_fulfilments (lab_id, created_at)`,
+    continueOnError: true,
+  },
 ];
 
 let failed = false;

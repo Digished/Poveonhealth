@@ -31,15 +31,76 @@ export async function GET(req: NextRequest) {
       ];
     }
 
-    const [total, customers] = await Promise.all([
+    // Members who chose this pharmacy but have not been in yet are customers
+    // too — they are the whole point of being chosen. They are not written into
+    // the book, so switching pharmacy removes them from this list at once.
+    const chosen = await prisma.consultPatient.findMany({
+      where: {
+        preferred_pharmacy_id: pharmacy.id,
+        status: "active",
+        expires_at: { gt: new Date() },
+        ...(q
+          ? {
+              OR: [
+                { full_name: { contains: q, mode: "insensitive" as const } },
+                { phone: { contains: q } },
+                { code: { contains: q, mode: "insensitive" as const } },
+              ],
+            }
+          : {}),
+      },
+      orderBy: { full_name: "asc" },
+      take: 200,
+      select: { id: true, full_name: true, phone: true, code: true, subscribed_at: true },
+    });
+
+    const known = chosen.length
+      ? await prisma.pharmacyCustomer.findMany({
+          where: { pharmacy_id: pharmacy.id, patient_id: { in: chosen.map((c) => c.id) } },
+          select: { patient_id: true },
+        })
+      : [];
+    const knownIds = new Set(known.map((k) => k.patient_id).filter(Boolean) as string[]);
+    const waiting = chosen.filter((c) => !knownIds.has(c.id));
+
+    const [bookTotal, bookRows] = await Promise.all([
       prisma.pharmacyCustomer.count({ where }),
-      prisma.pharmacyCustomer.findMany({
-        where,
-        orderBy: [{ last_visit_at: "desc" }, { created_at: "desc" }],
-        skip: (page - 1) * PAGE_SIZE,
-        take: PAGE_SIZE,
-      }),
+      // The two lists are paginated as one: everyone waiting comes first, since
+      // by definition they have no last visit to sort by.
+      (async () => {
+        const offset = (page - 1) * PAGE_SIZE;
+        const fromWaiting = Math.min(Math.max(0, waiting.length - offset), PAGE_SIZE);
+        const remaining = PAGE_SIZE - fromWaiting;
+        if (remaining <= 0) return [];
+        return prisma.pharmacyCustomer.findMany({
+          where,
+          orderBy: [{ last_visit_at: "desc" }, { created_at: "desc" }],
+          skip: Math.max(0, offset - waiting.length),
+          take: remaining,
+        });
+      })(),
     ]);
+
+    const offset = (page - 1) * PAGE_SIZE;
+    const waitingPage = waiting.slice(offset, offset + PAGE_SIZE).map((c) => ({
+      id: `pref-${c.id}`,
+      pharmacy_id: pharmacy.id,
+      patient_id: c.id,
+      full_name: c.full_name,
+      phone: c.phone,
+      code: c.code,
+      visits: 0,
+      total_spend: 0,
+      last_visit_at: null,
+      notes: null,
+      created_at: c.subscribed_at,
+      updated_at: c.subscribed_at,
+      /** Chose this pharmacy on their care plan; not been in yet. */
+      chose_you: true,
+    }));
+
+    const total = bookTotal + waiting.length;
+    const customers = [...waitingPage, ...bookRows];
 
     return NextResponse.json({
       success: true,
@@ -52,6 +113,7 @@ export async function GET(req: NextRequest) {
         phone: c.phone,
         code: c.code,
         on_care_plan: !!c.patient_id,
+        chose_you: "chose_you" in c ? !!c.chose_you : false,
         visits: c.visits,
         total_spend: Number(c.total_spend),
         last_visit_at: c.last_visit_at,
