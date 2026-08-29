@@ -1088,7 +1088,7 @@ const SUB_MENUS: Partial<Record<View, { key: View; label: string }[]>> = {
   // each deserve the whole panel rather than a third of it.
   care: [
     { key: "care", label: "My plan" },
-    { key: "care-schedule", label: "Tests & medication" },
+    { key: "care-schedule", label: "Care" },
     { key: "care-messages", label: "Messages" },
   ],
   tests: [

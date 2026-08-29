@@ -2,7 +2,7 @@ export const dynamic = "force-dynamic";
 import { NextRequest, NextResponse } from "next/server";
 import { z } from "zod";
 import { prisma } from "@/lib/prisma";
-import { getConsultSettings } from "@/lib/consult";
+import { generateTestOrderCode, getConsultSettings } from "@/lib/consult";
 import { getLabAuth } from "@/lib/lab-auth";
 import { ensureCarePlanSchema } from "@/lib/startup/ensure-care-plan-schema";
 
@@ -93,6 +93,7 @@ export async function POST(req: NextRequest) {
             data: {
               patient_id: member.id,
               doctor_email: order.doctor_email,
+              code: await generateTestOrderCode(),
               tests: order.tests,
               reason: order.reason,
               due_date: next,

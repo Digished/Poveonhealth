@@ -48,6 +48,7 @@ const SENTINEL_TABLES = [
   "consult_treatment_items",
   "consult_templates",
   "consult_fulfilments",
+  "consult_plan_logs",
 ];
 
 /** "table.column", so one text array can check them all. */
@@ -64,6 +65,9 @@ const SENTINEL_COLUMNS = [
   "consult_messages.image_url",
   "consult_prescriptions.raw_text",
   "consult_prescriptions.cancel_reason",
+  "consult_test_orders.code",
+  "consult_treatment_items.measure",
+  "consult_patients.risk_level",
   "doctor_profiles.consult_approved",
 ];
 
@@ -471,6 +475,35 @@ async function runEnsure(): Promise<void> {
     await exec(`CREATE INDEX IF NOT EXISTS consult_fulfilments_test_order_idx ON consult_fulfilments(test_order_id);`);
     await exec(`CREATE INDEX IF NOT EXISTS consult_fulfilments_pharmacy_idx ON consult_fulfilments(pharmacy_id, created_at);`);
     await exec(`CREATE INDEX IF NOT EXISTS consult_fulfilments_lab_idx ON consult_fulfilments(lab_id, created_at);`);
+
+    await exec(`
+      CREATE TABLE IF NOT EXISTS consult_plan_logs (
+        id TEXT PRIMARY KEY,
+        item_id TEXT NOT NULL,
+        patient_id TEXT NOT NULL,
+        note TEXT,
+        systolic INTEGER,
+        diastolic INTEGER,
+        glucose_mg_dl DECIMAL(6,1),
+        weight_kg DECIMAL(5,1),
+        value_number DECIMAL(10,2),
+        value_text TEXT,
+        logged_for DATE NOT NULL,
+        created_at TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP
+      );
+    `);
+    await exec(`CREATE INDEX IF NOT EXISTS consult_plan_logs_patient_idx ON consult_plan_logs(patient_id, created_at);`);
+    await exec(`CREATE INDEX IF NOT EXISTS consult_plan_logs_item_idx ON consult_plan_logs(item_id, logged_for);`);
+    await exec(`ALTER TABLE consult_treatment_items
+      ADD COLUMN IF NOT EXISTS measure TEXT NOT NULL DEFAULT 'none',
+      ADD COLUMN IF NOT EXISTS measure_label TEXT;`);
+    await exec(`ALTER TABLE consult_test_orders ADD COLUMN IF NOT EXISTS code TEXT;`);
+    await exec(`CREATE UNIQUE INDEX IF NOT EXISTS consult_test_orders_code_key ON consult_test_orders(code);`);
+    await exec(`ALTER TABLE consult_patients
+      ADD COLUMN IF NOT EXISTS risk_level TEXT NOT NULL DEFAULT 'none',
+      ADD COLUMN IF NOT EXISTS risk_reason TEXT,
+      ADD COLUMN IF NOT EXISTS risk_rated_at TIMESTAMP(3);`);
+    await exec(`CREATE INDEX IF NOT EXISTS consult_patients_risk_idx ON consult_patients(doctor_email, risk_level);`);
   } catch (err) {
     // Never block a request on this — the caller's own query will surface a
     // real problem, and the next call retries.

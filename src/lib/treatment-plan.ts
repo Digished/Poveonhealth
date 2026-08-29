@@ -58,3 +58,46 @@ export function dueCount(
 ): number {
   return items.filter((i) => itemState(i, now).due).length;
 }
+
+
+/**
+ * What to ask the member for when they tick an item.
+ *
+ * A tick alone says someone pressed a button. A reading says how they are
+ * doing — and it is what re-rates them for their doctor's list.
+ */
+export const MEASURES = [
+  { value: "none", label: "Just tick it", hint: "No number to record" },
+  { value: "bp", label: "Blood pressure", hint: "Systolic and diastolic" },
+  { value: "glucose", label: "Blood sugar", hint: "mg/dL" },
+  { value: "weight", label: "Weight", hint: "kg" },
+  { value: "number", label: "A number", hint: "Whatever you name below" },
+  { value: "text", label: "A few words", hint: "How it went" },
+] as const;
+
+export type Measure = (typeof MEASURES)[number]["value"];
+
+export const MEASURE_LABEL: Record<string, string> = Object.fromEntries(
+  MEASURES.map((m) => [m.value, m.label])
+);
+
+/** One log entry as a single line, for the doctor's history. */
+export function describeLog(log: {
+  systolic?: number | null;
+  diastolic?: number | null;
+  glucose_mg_dl?: number | null;
+  weight_kg?: number | null;
+  value_number?: number | null;
+  value_text?: string | null;
+  measure_label?: string | null;
+  note?: string | null;
+}): string {
+  const bits: string[] = [];
+  if (log.systolic != null && log.diastolic != null) bits.push(`${log.systolic}/${log.diastolic} mmHg`);
+  if (log.glucose_mg_dl != null) bits.push(`${log.glucose_mg_dl} mg/dL`);
+  if (log.weight_kg != null) bits.push(`${log.weight_kg} kg`);
+  if (log.value_number != null) bits.push(`${log.value_number}${log.measure_label ? ` ${log.measure_label}` : ""}`);
+  if (log.value_text) bits.push(log.value_text);
+  if (log.note) bits.push(log.note);
+  return bits.join(" · ") || "Done";
+}

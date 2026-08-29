@@ -2392,6 +2392,64 @@ const migrations = [
     sql: `CREATE INDEX IF NOT EXISTS consult_fulfilments_lab_idx ON consult_fulfilments (lab_id, created_at)`,
     continueOnError: true,
   },
+  {
+    desc: "consult_plan_logs table (a member's daily log against their plan)",
+    sql: `    CREATE TABLE IF NOT EXISTS consult_plan_logs (
+      id TEXT PRIMARY KEY,
+      item_id TEXT NOT NULL,
+      patient_id TEXT NOT NULL,
+      note TEXT,
+      systolic INTEGER,
+      diastolic INTEGER,
+      glucose_mg_dl DECIMAL(6,1),
+      weight_kg DECIMAL(5,1),
+      value_number DECIMAL(10,2),
+      value_text TEXT,
+      logged_for DATE NOT NULL,
+      created_at TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP
+    )`,
+    continueOnError: true,
+  },
+  {
+    desc: "consult_plan_logs patient index",
+    sql: `CREATE INDEX IF NOT EXISTS consult_plan_logs_patient_idx ON consult_plan_logs (patient_id, created_at)`,
+    continueOnError: true,
+  },
+  {
+    desc: "consult_plan_logs item index",
+    sql: `CREATE INDEX IF NOT EXISTS consult_plan_logs_item_idx ON consult_plan_logs (item_id, logged_for)`,
+    continueOnError: true,
+  },
+  {
+    desc: "consult_treatment_items measure columns",
+    sql: `ALTER TABLE consult_treatment_items
+      ADD COLUMN IF NOT EXISTS measure TEXT NOT NULL DEFAULT 'none',
+      ADD COLUMN IF NOT EXISTS measure_label TEXT`,
+    continueOnError: true,
+  },
+  {
+    desc: "consult_test_orders.code (a reference any Poveon lab can look up)",
+    sql: `ALTER TABLE consult_test_orders ADD COLUMN IF NOT EXISTS code TEXT`,
+    continueOnError: true,
+  },
+  {
+    desc: "consult_test_orders unique code",
+    sql: `CREATE UNIQUE INDEX IF NOT EXISTS consult_test_orders_code_key ON consult_test_orders (code)`,
+    continueOnError: true,
+  },
+  {
+    desc: "consult_patients risk columns (triage for the doctor's list)",
+    sql: `ALTER TABLE consult_patients
+      ADD COLUMN IF NOT EXISTS risk_level TEXT NOT NULL DEFAULT 'none',
+      ADD COLUMN IF NOT EXISTS risk_reason TEXT,
+      ADD COLUMN IF NOT EXISTS risk_rated_at TIMESTAMP(3)`,
+    continueOnError: true,
+  },
+  {
+    desc: "consult_patients risk index",
+    sql: `CREATE INDEX IF NOT EXISTS consult_patients_risk_idx ON consult_patients (doctor_email, risk_level)`,
+    continueOnError: true,
+  },
 ];
 
 let failed = false;

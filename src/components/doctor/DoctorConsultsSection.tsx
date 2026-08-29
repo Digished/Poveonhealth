@@ -12,6 +12,7 @@ import type { ConsultView } from "@/components/doctor/consult-views";
 import { DoctorCredentialsPanel } from "@/components/doctor/DoctorCredentialsPanel";
 import {
   CANCEL_REASON_LABEL,
+  FULFILMENT_LABEL,
   CarePlanOrders,
   type Prescription,
   type TestOrder,
@@ -20,6 +21,8 @@ import { CarePlanTreatment, type TreatmentPlan } from "@/components/doctor/CareP
 import { ADHERENCE_LABEL, bpBand, durationLabel } from "@/components/consults/baseline";
 import { CONDITIONS as CONDITION_OPTIONS, CONDITION_LABEL } from "@/lib/consult-conditions";
 import { Modal } from "@/components/ui/Overlay";
+import { describeLog } from "@/lib/treatment-plan";
+import { RISK_LABEL } from "@/lib/care-risk";
 
 const naira = (n: number) => `₦${Math.round(n).toLocaleString("en-NG")}`;
 type Redemption = {
@@ -52,7 +55,14 @@ type MemberRow = {
   conditions: string[]; status: string; assigned_at: string | null;
   expires_at: string | null; messages_used: number; message_allowance: number;
   messages_left: number; unread: number; assessed: boolean;
+  risk_level?: string; risk_reason?: string | null;
   last_message: { sender: string; preview: string; created_at: string } | null;
+};
+
+const RISK_CHIP: Record<string, string> = {
+  critical: "bg-red-100 text-red-700",
+  high: "bg-amber-100 text-amber-700",
+  watch: "bg-sky-100 text-sky-700",
 };
 
 /** What the member told us about themselves before they paid. */
@@ -83,6 +93,9 @@ type MemberDetailData = {
     age: number | null;
     share_history: boolean;
     previous_doctors: string[];
+    risk_level: string;
+    risk_reason: string | null;
+    risk_rated_at: string | null;
   };
   baseline: Baseline | null;
   earning: { total: number; released: number; pending: number; status: string } | null;
@@ -90,7 +103,26 @@ type MemberDetailData = {
   test_orders: TestOrder[];
   redemptions: Redemption[];
   plan: TreatmentPlan | null;
+  plan_logs: PlanLog[];
   history_withheld: boolean;
+};
+
+/** One thing the member recorded against their plan. */
+type PlanLog = {
+  id: string;
+  item_id: string;
+  item_label: string;
+  measure: string;
+  measure_label: string | null;
+  note: string | null;
+  systolic: number | null;
+  diastolic: number | null;
+  glucose_mg_dl: number | null;
+  weight_kg: number | null;
+  value_number: number | null;
+  value_text: string | null;
+  logged_for: string;
+  created_at: string;
 };
 
 function formatDate(iso: string | null) {
@@ -514,6 +546,18 @@ function MemberCard({ member, onClick }: { member: MemberRow; onClick: () => voi
           </div>
           <p className="mt-0.5 font-mono text-[11px] text-slate-400">{member.code}</p>
           <div className="mt-1.5 flex flex-wrap gap-1.5">
+            {/* Triage first: in a list of hundreds this is what you scan for. */}
+            {member.risk_level && member.risk_level !== "none" && (
+              <span
+                title={member.risk_reason ?? undefined}
+                className={`inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[10px] font-bold ${
+                  RISK_CHIP[member.risk_level] ?? "bg-slate-100 text-slate-600"
+                }`}
+              >
+                {member.risk_level === "critical" && <AlertCircle className="h-3 w-3" />}
+                {RISK_LABEL[member.risk_level] ?? member.risk_level}
+              </span>
+            )}
             {member.conditions.map((c) => (
               <span key={c} className="rounded-full bg-slate-100 px-2 py-0.5 text-[10px] font-semibold text-slate-600">
                 {CONDITION_LABEL[c] ?? c}
@@ -693,6 +737,29 @@ function MemberDetail({
     <div className="animate-fade-in space-y-4">
       <BackButton onBack={onBack} />
 
+      {(p.risk_level === "critical" || p.risk_level === "high") && (
+        <div
+          className={`flex items-start gap-2.5 rounded-2xl border px-4 py-3 ${
+            p.risk_level === "critical"
+              ? "border-red-200 bg-red-50"
+              : "border-amber-200 bg-amber-50"
+          }`}
+        >
+          <AlertCircle
+            className={`mt-0.5 h-4 w-4 shrink-0 ${p.risk_level === "critical" ? "text-red-500" : "text-amber-500"}`}
+          />
+          <div className="min-w-0">
+            <p className={`text-sm font-bold ${p.risk_level === "critical" ? "text-red-800" : "text-amber-800"}`}>
+              {RISK_LABEL[p.risk_level] ?? p.risk_level}
+            </p>
+            <p className={`text-xs ${p.risk_level === "critical" ? "text-red-700" : "text-amber-700"}`}>
+              {p.risk_reason ?? "A recent reading was outside the usual range."}
+              {p.risk_rated_at ? ` · ${formatDate(p.risk_rated_at)}` : ""}
+            </p>
+          </div>
+        </div>
+      )}
+
       {/* Who they are, in a line. Everything else is a tap away rather than
           three cards of scrolling before the clinical picture. */}
       <button
@@ -746,6 +813,7 @@ function MemberDetail({
         <div className="grid gap-4 xl:grid-cols-2">
           <div className="space-y-4">
             <BaselineCard baseline={data.baseline} conditions={p.conditions} />
+            <DailyLog logs={data.plan_logs ?? []} />
             <CarePlanTreatment
               patientId={p.id}
               plan={data.plan}
@@ -798,6 +866,7 @@ function MemberDetail({
               testOrders={data.test_orders ?? []}
               redemptions={data.redemptions ?? []}
               plan={data.plan}
+              planLogs={data.plan_logs ?? []}
             />
           </div>
         </div>
@@ -813,6 +882,60 @@ function MemberDetail({
           onSaved={() => { setEditingConditions(false); reload(); }}
         />
       )}
+    </div>
+  );
+}
+
+/**
+ * The member's own log, newest first.
+ *
+ * Grouped by day rather than listed flat: what a doctor scans for is "what did
+ * this week look like", not a stream of individual entries.
+ */
+function DailyLog({ logs }: { logs: PlanLog[] }) {
+  if (logs.length === 0) {
+    return (
+      <div className="rounded-2xl border border-dashed border-slate-200 bg-white p-4">
+        <h3 className="text-xs font-bold uppercase tracking-wider text-slate-400">Daily log</h3>
+        <p className="mt-2 text-sm text-slate-500">
+          Nothing logged yet. Items on their plan that ask for a reading — blood pressure, sugar,
+          weight — show up here as they record them.
+        </p>
+      </div>
+    );
+  }
+
+  const byDay = new Map<string, PlanLog[]>();
+  for (const l of logs) {
+    const key = new Date(l.logged_for).toDateString();
+    if (!byDay.has(key)) byDay.set(key, []);
+    byDay.get(key)!.push(l);
+  }
+
+  return (
+    <div className="rounded-2xl border border-slate-100 bg-white p-4 shadow-sm">
+      <div className="flex items-baseline justify-between gap-2">
+        <h3 className="text-xs font-bold uppercase tracking-wider text-slate-400">Daily log</h3>
+        <span className="text-[11px] text-slate-400">{logs.length} entries</span>
+      </div>
+
+      <div className="mt-3 max-h-80 space-y-3 overflow-y-auto pr-1">
+        {Array.from(byDay.entries()).slice(0, 30).map(([day, entries]) => (
+          <div key={day}>
+            <p className="text-[11px] font-bold uppercase tracking-wide text-slate-400">
+              {new Date(day).toLocaleDateString("en-GB", { weekday: "short", day: "numeric", month: "short" })}
+            </p>
+            <ul className="mt-1 space-y-1">
+              {entries.map((l) => (
+                <li key={l.id} className="rounded-lg bg-slate-50 px-3 py-2">
+                  <p className="text-xs font-semibold text-slate-700">{l.item_label}</p>
+                  <p className="text-[11px] text-slate-500">{describeLog(l)}</p>
+                </li>
+              ))}
+            </ul>
+          </div>
+        ))}
+      </div>
     </div>
   );
 }
@@ -868,20 +991,53 @@ function ProfileModal({
 }
 
 /** What has actually happened for this member, oldest concerns last. */
+type HistoryEntry = {
+  when: string | null;
+  title: string;
+  detail: string;
+  tone: "good" | "bad" | "reading" | "plain";
+};
+
+const HISTORY_DOT: Record<HistoryEntry["tone"], string> = {
+  good: "bg-emerald-500",
+  bad: "bg-red-400",
+  reading: "bg-sky-400",
+  plain: "bg-slate-300",
+};
+
+const HISTORY_TEXT: Record<HistoryEntry["tone"], string> = {
+  good: "text-emerald-700",
+  bad: "text-red-600",
+  reading: "text-sky-700",
+  plain: "text-slate-400",
+};
+
 function CareHistory({
-  prescriptions, testOrders, redemptions, plan,
+  prescriptions, testOrders, redemptions, plan, planLogs,
 }: {
   prescriptions: Prescription[];
   testOrders: TestOrder[];
   redemptions: Redemption[];
   plan: TreatmentPlan | null;
+  planLogs: PlanLog[];
 }) {
-  const entries = [
+  const entries: HistoryEntry[] = [
     ...testOrders.map((t) => ({
       when: t.completed_at ?? t.due_date ?? null,
       title: t.tests,
       detail: t.status === "done" ? "Test done" : t.status === "cancelled" ? "Test cancelled" : "Test scheduled",
+      tone: t.status === "done" ? ("good" as const) : ("plain" as const),
     })),
+    // What a partner reported is the part that says it actually happened, so
+    // it gets its own entry rather than a footnote on the order.
+    ...testOrders.flatMap((t) =>
+      (t.fulfilments ?? []).map((f) => ({
+        when: f.created_at,
+        title: t.tests,
+        detail: `${FULFILMENT_LABEL[f.status] ?? f.status}${f.recorded_by ? ` at ${f.recorded_by}` : ""}`,
+        tone: f.status === "done" ? ("good" as const) : ("bad" as const),
+      }))
+    ),
     ...prescriptions.map((m) => ({
       when: m.start_date,
       title: m.medication,
@@ -891,11 +1047,29 @@ function CareHistory({
           : m.status === "completed"
             ? "Course completed"
             : "Medication scheduled",
+      tone: "plain" as const,
+    })),
+    ...prescriptions.flatMap((m) =>
+      (m.fulfilments ?? []).map((f) => ({
+        when: f.created_at,
+        title: m.medication,
+        detail: `${FULFILMENT_LABEL[f.status] ?? f.status}${f.recorded_by ? ` at ${f.recorded_by}` : ""}`,
+        tone:
+          f.status === "collected" || f.status === "done" ? ("good" as const) : ("bad" as const),
+      }))
+    ),
+    // Every reading the member logged against their plan.
+    ...planLogs.map((l) => ({
+      when: l.logged_for,
+      title: l.item_label,
+      detail: describeLog(l),
+      tone: "reading" as const,
     })),
     ...redemptions.map((r) => ({
       when: r.created_at,
       title: r.description ?? (r.kind === "pharmacy" ? "Pharmacy visit" : "Lab visit"),
       detail: `${naira(r.discount_naira)} off${r.pharmacy_name ? ` at ${r.pharmacy_name}` : ""}`,
+      tone: "plain" as const,
     })),
     // The plan belongs in the record too: what they were asked to do, and how
     // much of it they have actually been doing.
@@ -905,14 +1079,8 @@ function CareHistory({
             when: plan.updated_at,
             title: plan.title,
             detail: `Plan set — ${plan.items.length} item${plan.items.length === 1 ? "" : "s"}`,
+            tone: "plain" as const,
           },
-          ...plan.items
-            .filter((i) => i.last_done_at)
-            .map((i) => ({
-              when: i.last_done_at ?? null,
-              title: i.label,
-              detail: `Last done · ticked ${i.done_count ?? 0} time${(i.done_count ?? 0) === 1 ? "" : "s"}`,
-            })),
         ]
       : []),
   ]
@@ -929,11 +1097,12 @@ function CareHistory({
         <ul className="mt-3 space-y-2.5">
           {entries.map((e, i) => (
             <li key={`${e.title}-${i}`} className="flex gap-3">
-              <span className="mt-1.5 h-1.5 w-1.5 shrink-0 rounded-full bg-medical-300" />
+              <span className={`mt-1.5 h-1.5 w-1.5 shrink-0 rounded-full ${HISTORY_DOT[e.tone]}`} />
               <div className="min-w-0 flex-1">
                 <p className="truncate text-sm font-medium text-slate-700">{e.title}</p>
-                <p className="text-[11px] text-slate-400">
-                  {e.detail} · {formatDate(e.when)}
+                <p className="text-[11px]">
+                  <span className={HISTORY_TEXT[e.tone]}>{e.detail}</span>
+                  <span className="text-slate-400"> · {formatDate(e.when)}</span>
                 </p>
               </div>
             </li>

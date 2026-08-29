@@ -2,7 +2,7 @@ export const dynamic = "force-dynamic";
 import { NextRequest, NextResponse } from "next/server";
 import { z } from "zod";
 import { prisma } from "@/lib/prisma";
-import { getDoctorEmailFromConsultRequest } from "@/lib/consult";
+import { generateTestOrderCode, getDoctorEmailFromConsultRequest } from "@/lib/consult";
 import { parsePrescriptionBlock } from "@/lib/prescription-parse";
 import { ensureCarePlanSchema } from "@/lib/startup/ensure-care-plan-schema";
 
@@ -166,6 +166,8 @@ export async function POST(req: NextRequest, { params }: { params: { id: string 
       data: {
         patient_id: patient.id,
         doctor_email: email,
+        // The reference the member shows at any Poveon lab.
+        code: await generateTestOrderCode(),
         tests: d.tests,
         reason: d.reason || null,
         due_date: due,
@@ -173,7 +175,7 @@ export async function POST(req: NextRequest, { params }: { params: { id: string 
       },
     });
 
-    return NextResponse.json({ success: true, id: created.id });
+    return NextResponse.json({ success: true, id: created.id, code: created.code });
   } catch (err) {
     console.error("[doc-login/consults/orders POST]", err);
     return NextResponse.json({ error: "Could not save that." }, { status: 500 });
@@ -274,6 +276,7 @@ export async function PATCH(req: NextRequest, { params }: { params: { id: string
           data: {
             patient_id: patient.id,
             doctor_email: email,
+            code: await generateTestOrderCode(),
             tests: order.tests,
             reason: order.reason,
             due_date: next,

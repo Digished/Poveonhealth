@@ -43,9 +43,12 @@ export async function GET(req: NextRequest) {
       })
       .catch(() => {});
 
+    const unread = messages.filter((m) => m.sender === "doctor" && !m.read_at).length;
+
     return NextResponse.json({
       success: true,
       status: member.status,
+      unread,
       messages_left: Math.max(0, member.message_allowance - member.messages_used),
       doctor: doctor
         ? {

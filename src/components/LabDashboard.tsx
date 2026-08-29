@@ -170,9 +170,9 @@ export function LabDashboard({ lab, isOwner = false, roleName = "Lab Owner", can
     try { localStorage.setItem(`lab_dash_mode_${lab.id}`, m); } catch { /* ignore */ }
   }, [lab.id]);
   // Micro: the smallest footprint — front desk + referrals + pricing only.
-  const MICRO_SIDEBAR = new Set<MainView>(["onboarding", "customers", "network", "price-list"]);
+  const MICRO_SIDEBAR = new Set<MainView>(["onboarding", "customers", "care-plan", "network", "price-list"]);
   const MICRO_ALLOWED = new Set<MainView>(["onboarding", "customers", "clients", "care-plan", "network", "referrals", "professionals", "price-list"]);
-  const LITE_SIDEBAR = new Set<MainView>(["onboarding", "queue", "rides", "customers", "analytics", "feedback", "network", "partners", "team", "price-list"]);
+  const LITE_SIDEBAR = new Set<MainView>(["onboarding", "queue", "rides", "customers", "care-plan", "analytics", "feedback", "network", "partners", "team", "price-list"]);
   const LITE_ALLOWED = new Set<MainView>(["onboarding", "queue", "rides", "customers", "care-plan", "analytics", "feedback", "network", "referrals", "professionals", "partners", "team", "price-list"]);
   const modeSidebar = labMode === "micro" ? MICRO_SIDEBAR : labMode === "lite" ? LITE_SIDEBAR : null;
   const tabVisibleEff: Record<MainView, boolean> = modeSidebar

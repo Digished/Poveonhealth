@@ -5,7 +5,7 @@ import { toast } from "react-hot-toast";
 import {
   BookmarkPlus, Check, ClipboardList, GripVertical, Loader2, Plus, Sparkles, Trash2, X,
 } from "lucide-react";
-import { CADENCES, CADENCE_LABEL } from "@/lib/treatment-plan";
+import { CADENCES, CADENCE_LABEL, MEASURES, MEASURE_LABEL } from "@/lib/treatment-plan";
 import { ConfirmDialog } from "@/components/ui/Overlay";
 
 export type PlanItem = {
@@ -14,6 +14,9 @@ export type PlanItem = {
   detail: string | null;
   cadence: string;
   remind: boolean;
+  /** What the member is asked to record when they tick it. */
+  measure?: string;
+  measure_label?: string | null;
   done_count?: number;
   due?: boolean;
   days_until?: number | null;
@@ -32,13 +35,13 @@ export type TreatmentPlan = {
 type Template = { id: string; name: string; payload: Record<string, unknown>; uses: number };
 
 /** Enough of a starting point that a doctor edits rather than types from blank. */
-const SUGGESTIONS: { label: string; detail: string; cadence: string }[] = [
-  { label: "Check your blood pressure", detail: "Sit quietly for five minutes first", cadence: "weekly" },
-  { label: "Check your blood sugar", detail: "Fasting, before breakfast", cadence: "weekly" },
-  { label: "Take a 30-minute walk", detail: "Any pace you can hold a conversation at", cadence: "daily" },
-  { label: "Cut back on salt", detail: "No added salt at the table; go easy on seasoning cubes", cadence: "daily" },
-  { label: "Weigh yourself", detail: "Same time of day, same scale", cadence: "weekly" },
-  { label: "Refill your medication", detail: "Before you run out, not after", cadence: "monthly" },
+const SUGGESTIONS: { label: string; detail: string; cadence: string; measure: string }[] = [
+  { label: "Check your blood pressure", detail: "Sit quietly for five minutes first", cadence: "weekly", measure: "bp" },
+  { label: "Check your blood sugar", detail: "Fasting, before breakfast", cadence: "weekly", measure: "glucose" },
+  { label: "Take a 30-minute walk", detail: "Any pace you can hold a conversation at", cadence: "daily", measure: "none" },
+  { label: "Cut back on salt", detail: "No added salt at the table; go easy on seasoning cubes", cadence: "daily", measure: "none" },
+  { label: "Weigh yourself", detail: "Same time of day, same scale", cadence: "weekly", measure: "weight" },
+  { label: "Refill your medication", detail: "Before you run out, not after", cadence: "monthly", measure: "none" },
 ];
 
 const inputClass =
@@ -109,9 +112,18 @@ export function CarePlanTreatment({
                     <p className="text-sm font-semibold text-slate-800">{item.label}</p>
                     {item.detail && <p className="mt-0.5 text-xs text-slate-500">{item.detail}</p>}
                   </div>
-                  <span className="shrink-0 rounded-full bg-slate-100 px-2 py-0.5 text-[10px] font-bold uppercase tracking-wide text-slate-500">
-                    {CADENCE_LABEL[item.cadence] ?? item.cadence}
-                  </span>
+                  <div className="flex shrink-0 flex-col items-end gap-1">
+                    <span className="rounded-full bg-slate-100 px-2 py-0.5 text-[10px] font-bold uppercase tracking-wide text-slate-500">
+                      {CADENCE_LABEL[item.cadence] ?? item.cadence}
+                    </span>
+                    {item.measure && item.measure !== "none" && (
+                      <span className="rounded-full bg-medical-50 px-2 py-0.5 text-[10px] font-bold text-medical-700">
+                        {item.measure === "number" && item.measure_label
+                          ? item.measure_label
+                          : MEASURE_LABEL[item.measure] ?? item.measure}
+                      </span>
+                    )}
+                  </div>
                 </div>
                 <p className="mt-1 text-[11px] text-slate-400">
                   {item.done_count ? `Ticked ${item.done_count} time${item.done_count === 1 ? "" : "s"}` : "Not started"}
@@ -142,6 +154,7 @@ function PlanEditor({
   const [items, setItems] = useState<PlanItem[]>(
     plan?.items.map((i) => ({
       id: i.id, label: i.label, detail: i.detail, cadence: i.cadence, remind: i.remind,
+      measure: i.measure ?? "none", measure_label: i.measure_label ?? null,
     })) ?? []
   );
   const [saving, setSaving] = useState(false);
@@ -163,7 +176,14 @@ function PlanEditor({
   const addItem = (item: Partial<PlanItem>) =>
     setItems((prev) => [
       ...prev,
-      { label: item.label ?? "", detail: item.detail ?? null, cadence: item.cadence ?? "weekly", remind: true },
+      {
+        label: item.label ?? "",
+        detail: item.detail ?? null,
+        cadence: item.cadence ?? "weekly",
+        remind: true,
+        measure: item.measure ?? "none",
+        measure_label: item.measure_label ?? null,
+      },
     ]);
 
   const patch = (index: number, changes: Partial<PlanItem>) =>
@@ -196,6 +216,8 @@ function PlanEditor({
             detail: i.detail?.trim() || null,
             cadence: i.cadence,
             remind: i.remind,
+            measure: i.measure ?? "none",
+            measure_label: i.measure_label?.trim() || null,
           })),
         }),
       });
@@ -223,6 +245,8 @@ function PlanEditor({
             detail: i.detail?.trim() || null,
             cadence: i.cadence,
             remind: i.remind,
+            measure: i.measure ?? "none",
+            measure_label: i.measure_label?.trim() || null,
           })),
         },
       }),
@@ -339,6 +363,34 @@ function PlanEditor({
                     Remind
                   </label>
                 </div>
+
+                {/* What to ask for when they tick it — the reading is what you
+                    actually read back, not the count of ticks. */}
+                <div className="flex flex-wrap items-center gap-1.5">
+                  <span className="text-[11px] font-semibold text-slate-400">Ask for</span>
+                  {MEASURES.map((m) => (
+                    <button
+                      key={m.value}
+                      onClick={() => patch(index, { measure: m.value })}
+                      title={m.hint}
+                      className={`rounded-full px-2.5 py-1 text-[11px] font-semibold transition ${
+                        (item.measure ?? "none") === m.value
+                          ? "bg-slate-800 text-white"
+                          : "bg-slate-100 text-slate-500 hover:bg-slate-200"
+                      }`}
+                    >
+                      {m.label}
+                    </button>
+                  ))}
+                </div>
+                {item.measure === "number" && (
+                  <input
+                    value={item.measure_label ?? ""}
+                    onChange={(e) => patch(index, { measure_label: e.target.value })}
+                    placeholder="What is the number? e.g. minutes walked"
+                    className={`${inputClass} text-xs`}
+                  />
+                )}
               </div>
               <button
                 onClick={() => setItems((prev) => prev.filter((_, i) => i !== index))}

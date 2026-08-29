@@ -12,6 +12,9 @@ const ItemSchema = z.object({
   detail: z.string().trim().max(400).optional().nullable(),
   cadence: z.enum(["daily", "weekly", "biweekly", "monthly", "once"]).default("weekly"),
   remind: z.boolean().default(true),
+  /** What to ask the member to record when they tick it. */
+  measure: z.enum(["none", "bp", "glucose", "weight", "number", "text"]).default("none"),
+  measure_label: z.string().trim().max(60).optional().nullable(),
 });
 
 const PlanSchema = z.object({
@@ -104,6 +107,8 @@ export async function PUT(req: NextRequest, { params }: { params: { id: string }
                   detail: item.detail || null,
                   cadence: item.cadence,
                   remind: item.remind,
+                  measure: item.measure,
+                  measure_label: item.measure_label || null,
                   position,
                 },
               });
@@ -115,6 +120,8 @@ export async function PUT(req: NextRequest, { params }: { params: { id: string }
                   detail: item.detail || null,
                   cadence: item.cadence,
                   remind: item.remind,
+                  measure: item.measure,
+                  measure_label: item.measure_label || null,
                   position,
                 },
               });
@@ -137,6 +144,8 @@ export async function PUT(req: NextRequest, { params }: { params: { id: string }
                 detail: item.detail || null,
                 cadence: item.cadence,
                 remind: item.remind,
+                measure: item.measure,
+                measure_label: item.measure_label || null,
                 position,
               })),
             },
@@ -163,6 +172,8 @@ type PlanRow = {
     detail: string | null;
     cadence: string;
     remind: boolean;
+    measure: string;
+    measure_label: string | null;
     position: number;
     last_done_at: Date | null;
     done_count: number;
@@ -182,6 +193,8 @@ function serialisePlan(plan: PlanRow) {
       detail: i.detail,
       cadence: i.cadence,
       remind: i.remind,
+      measure: i.measure,
+      measure_label: i.measure_label,
       done_count: i.done_count,
       ...itemState(i),
     })),

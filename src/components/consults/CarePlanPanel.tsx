@@ -9,6 +9,7 @@ import {
 import { SectionLoader } from "@/components/PageLoader";
 import { getJson, invalidateJson } from "@/lib/client-cache";
 import { CADENCE_LABEL } from "@/lib/treatment-plan";
+import { Modal } from "@/components/ui/Overlay";
 import { ProviderPicker, ProviderRow, type Provider } from "@/components/consults/ProviderPicker";
 import {
   CarePlanEnrollModal,
@@ -697,6 +698,8 @@ export type MemberPlanItem = {
   label: string;
   detail: string | null;
   cadence: string;
+  measure?: string;
+  measure_label?: string | null;
   done_count: number;
   due: boolean;
   days_until: number | null;
@@ -726,6 +729,7 @@ function CarePlanChecklist({
   onTicked: (plan: MemberPlan) => void;
 }) {
   const [busy, setBusy] = useState<string | null>(null);
+  const [logging, setLogging] = useState<MemberPlanItem | null>(null);
 
   if (!plan || plan.items.length === 0) {
     return (
@@ -743,13 +747,13 @@ function CarePlanChecklist({
 
   const due = plan.items.filter((i) => i.due);
 
-  async function tick(item: MemberPlanItem) {
+  async function tick(item: MemberPlanItem, reading?: Record<string, unknown>) {
     setBusy(item.id);
     try {
       const res = await fetch("/api/consults/plan", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ item_id: item.id, done: item.due }),
+        body: JSON.stringify({ item_id: item.id, done: item.due, ...(reading ?? {}) }),
       });
       const d = await res.json().catch(() => null);
       if (!res.ok || !d?.success) { toast.error(d?.error ?? "Could not save that."); return; }
@@ -757,9 +761,27 @@ function CarePlanChecklist({
         ...plan!,
         items: plan!.items.map((i) => (i.id === item.id ? { ...i, ...d.item } : i)),
       });
+      // Their doctor sees a reading that needs attention straight away, so say
+      // so here rather than letting it pass silently.
+      if (d.risk?.level === "critical" || d.risk?.level === "high") {
+        toast(
+          d.risk.level === "critical"
+            ? "That reading is high — your doctor has been alerted. If you feel unwell, seek care now."
+            : "That reading is on the high side. Your doctor can see it.",
+          { icon: "⚠️", duration: 7000 }
+        );
+      } else {
+        toast.success("Logged");
+      }
     } finally {
       setBusy(null);
     }
+  }
+
+  /** An item that asks for a number opens the log sheet instead of just ticking. */
+  function start(item: MemberPlanItem) {
+    if (item.due && item.measure && item.measure !== "none") setLogging(item);
+    else void tick(item);
   }
 
   return (
@@ -782,7 +804,7 @@ function CarePlanChecklist({
             }`}
           >
             <button
-              onClick={() => tick(item)}
+              onClick={() => start(item)}
               disabled={busy === item.id}
               aria-label={item.due ? `Mark "${item.label}" done` : `Undo "${item.label}"`}
               className={`mt-0.5 flex h-5 w-5 shrink-0 items-center justify-center rounded-full border-2 transition disabled:opacity-40 ${
@@ -804,6 +826,7 @@ function CarePlanChecklist({
               {item.detail && <p className="mt-0.5 text-xs text-slate-500">{item.detail}</p>}
               <p className="mt-0.5 text-[11px] text-slate-400">
                 {CADENCE_LABEL[item.cadence] ?? item.cadence}
+                {item.measure && item.measure !== "none" ? " · records a reading" : ""}
                 {!item.due && item.days_until != null
                   ? ` · again in ${item.days_until} day${item.days_until === 1 ? "" : "s"}`
                   : ""}
@@ -816,6 +839,194 @@ function CarePlanChecklist({
       {plan.note && (
         <p className="mt-3 whitespace-pre-wrap rounded-xl bg-slate-50 p-3 text-xs text-slate-600">{plan.note}</p>
       )}
+
+      {logging && (
+        <LogSheet
+          item={logging}
+          saving={busy === logging.id}
+          onClose={() => setLogging(null)}
+          onSave={async (reading) => {
+            await tick(logging, reading);
+            setLogging(null);
+          }}
+        />
+      )}
     </div>
+  );
+}
+
+const logInput =
+  "w-full rounded-xl border border-slate-200 bg-white px-3 py-2.5 text-sm text-slate-800 placeholder-slate-400 focus:border-medical-400 focus:outline-none focus:ring-2 focus:ring-medical-400/40";
+
+/**
+ * What they measured, when they tick something that asks for it.
+ *
+ * Deliberately one screen with the keyboard in mind: the number first, a note
+ * second, and nothing else to read.
+ */
+function LogSheet({
+  item, saving, onClose, onSave,
+}: {
+  item: MemberPlanItem;
+  saving: boolean;
+  onClose: () => void;
+  onSave: (reading: Record<string, unknown>) => void;
+}) {
+  const [systolic, setSystolic] = useState("");
+  const [diastolic, setDiastolic] = useState("");
+  const [glucose, setGlucose] = useState("");
+  const [weight, setWeight] = useState("");
+  const [value, setValue] = useState("");
+  const [text, setText] = useState("");
+  const [note, setNote] = useState("");
+
+  const ready =
+    item.measure === "bp" ? !!systolic && !!diastolic
+    : item.measure === "glucose" ? !!glucose
+    : item.measure === "weight" ? !!weight
+    : item.measure === "number" ? !!value
+    : item.measure === "text" ? text.trim().length > 0
+    : true;
+
+  const reading = () => ({
+    systolic: systolic ? Number(systolic) : null,
+    diastolic: diastolic ? Number(diastolic) : null,
+    glucose_mg_dl: glucose ? Number(glucose) : null,
+    weight_kg: weight ? Number(weight) : null,
+    value_number: value ? Number(value) : null,
+    value_text: text.trim() || null,
+    note: note.trim() || null,
+  });
+
+  return (
+    <Modal
+      open
+      onClose={onClose}
+      title={item.label}
+      subtitle={item.detail ?? "Record what you got"}
+      footer={
+        <div className="flex gap-2">
+          <button
+            onClick={() => onSave(reading())}
+            disabled={saving || !ready}
+            className="flex flex-1 items-center justify-center gap-1.5 rounded-xl bg-medical-600 py-2.5 text-sm font-bold text-white transition hover:bg-medical-700 disabled:opacity-40"
+          >
+            {saving ? <Loader2 className="h-4 w-4 animate-spin" /> : <Check className="h-4 w-4" />}
+            Save it
+          </button>
+          <button onClick={onClose} className="rounded-xl px-4 py-2.5 text-xs font-semibold text-slate-500 hover:text-slate-700">
+            Cancel
+          </button>
+        </div>
+      }
+    >
+      <div className="space-y-3">
+        {item.measure === "bp" && (
+          <div>
+            <label className="mb-1 block text-xs font-semibold text-slate-600">Your reading</label>
+            <div className="flex items-center gap-2">
+              <input
+                autoFocus
+                inputMode="numeric"
+                maxLength={3}
+                value={systolic}
+                onChange={(e) => setSystolic(e.target.value.replace(/\D/g, ""))}
+                placeholder="120"
+                className={`${logInput} text-center text-lg font-bold`}
+              />
+              <span className="text-lg font-bold text-slate-300">/</span>
+              <input
+                inputMode="numeric"
+                maxLength={3}
+                value={diastolic}
+                onChange={(e) => setDiastolic(e.target.value.replace(/\D/g, ""))}
+                placeholder="80"
+                className={`${logInput} text-center text-lg font-bold`}
+              />
+              <span className="shrink-0 text-xs text-slate-400">mmHg</span>
+            </div>
+          </div>
+        )}
+
+        {item.measure === "glucose" && (
+          <div>
+            <label className="mb-1 block text-xs font-semibold text-slate-600">Your reading</label>
+            <div className="flex items-center gap-2">
+              <input
+                autoFocus
+                inputMode="decimal"
+                value={glucose}
+                onChange={(e) => setGlucose(e.target.value.replace(/[^\d.]/g, ""))}
+                placeholder="95"
+                className={`${logInput} text-center text-lg font-bold`}
+              />
+              <span className="shrink-0 text-xs text-slate-400">mg/dL</span>
+            </div>
+          </div>
+        )}
+
+        {item.measure === "weight" && (
+          <div>
+            <label className="mb-1 block text-xs font-semibold text-slate-600">Your weight</label>
+            <div className="flex items-center gap-2">
+              <input
+                autoFocus
+                inputMode="decimal"
+                value={weight}
+                onChange={(e) => setWeight(e.target.value.replace(/[^\d.]/g, ""))}
+                placeholder="72"
+                className={`${logInput} text-center text-lg font-bold`}
+              />
+              <span className="shrink-0 text-xs text-slate-400">kg</span>
+            </div>
+          </div>
+        )}
+
+        {item.measure === "number" && (
+          <div>
+            <label className="mb-1 block text-xs font-semibold text-slate-600">
+              {item.measure_label || "The number"}
+            </label>
+            <input
+              autoFocus
+              inputMode="decimal"
+              value={value}
+              onChange={(e) => setValue(e.target.value.replace(/[^\d.]/g, ""))}
+              className={`${logInput} text-center text-lg font-bold`}
+            />
+          </div>
+        )}
+
+        {item.measure === "text" && (
+          <div>
+            <label className="mb-1 block text-xs font-semibold text-slate-600">How did it go?</label>
+            <textarea
+              autoFocus
+              rows={3}
+              value={text}
+              onChange={(e) => setText(e.target.value)}
+              className={`${logInput} resize-none`}
+            />
+          </div>
+        )}
+
+        <div>
+          <label className="mb-1 block text-xs font-semibold text-slate-600">
+            Anything to add? <span className="font-normal text-slate-400">(optional)</span>
+          </label>
+          <textarea
+            rows={2}
+            value={note}
+            onChange={(e) => setNote(e.target.value)}
+            placeholder="How you felt, anything unusual…"
+            className={`${logInput} resize-none`}
+          />
+        </div>
+
+        <p className="text-[11px] text-slate-400">
+          Your doctor sees this as part of your daily log.
+        </p>
+      </div>
+    </Modal>
   );
 }

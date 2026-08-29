@@ -90,6 +90,11 @@ export function CarePlanChatFab({
           setThreads(d.threads);
           setUnread(d.unread_total);
         }
+      } else {
+        // One count rather than the whole care plan, so this can poll cheaply.
+        const res = await fetch("/api/consults/unread", { cache: "no-store" });
+        const d = await res.json();
+        if (d.success) setUnread(d.unread ?? 0);
       }
     } catch {
       /* a badge is not worth an error message */
@@ -120,6 +125,8 @@ export function CarePlanChatFab({
         if (role === "patient") {
           setMessagesLeft(d.messages_left ?? null);
           setActiveName(d.doctor?.name || "Your doctor");
+          // The GET marks the doctor's replies read, so the badge clears too.
+          setUnread(0);
         } else {
           setActiveName(d.patient?.full_name ?? "");
         }

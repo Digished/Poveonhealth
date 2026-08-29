@@ -1927,6 +1927,13 @@ model ConsultPatient {
   share_history    Boolean  @default(true)
   previous_doctors String[] @default([])
 
+  // Triage, recomputed whenever a new reading lands: none | watch | high |
+  // critical. Stored rather than derived on read so a doctor's list can be
+  // sorted and filtered by it without loading every log.
+  risk_level     String   @default("none")
+  risk_reason    String?
+  risk_rated_at  DateTime?
+
   doctor_email String? // assigned at activation, by fair round-robin
   assigned_at  DateTime?
 
@@ -1950,6 +1957,7 @@ model ConsultPatient {
   test_orders        ConsultTestOrder[]
   treatment_plans    ConsultTreatmentPlan[]
   fulfilments        ConsultFulfilment[]
+  plan_logs          ConsultPlanLog[]
 
   @@index([doctor_email, status])
   @@index([status, expires_at])
@@ -2176,6 +2184,10 @@ model ConsultPrescription {
 // the plan more than a discount card.
 model ConsultTestOrder {
   id           String    @id @default(uuid())
+  // The reference a member shows at any Poveon lab, e.g. "PVT-8H3K2". The
+  // member's care code identifies the person; this identifies the order, so a
+  // lab can pull up exactly what was asked for without reading a whole record.
+  code         String?   @unique
   patient_id   String
   doctor_email String
   tests        String // free text, comma separated — matches how requests are written
@@ -2233,10 +2245,15 @@ model ConsultTreatmentItem {
   position     Int       @default(0)
   last_done_at DateTime?
   done_count   Int       @default(0)
+  // What to ask for when they tick it: none | bp | glucose | weight | number | text
+  measure      String    @default("none")
+  // The label for a free "number" measure, e.g. "minutes walked".
+  measure_label String?
   created_at   DateTime  @default(now())
   updated_at   DateTime  @updatedAt
 
   plan ConsultTreatmentPlan @relation(fields: [plan_id], references: [id], onDelete: Cascade)
+  logs ConsultPlanLog[]
 
   @@index([plan_id, position])
   @@map("consult_treatment_items")
@@ -2278,6 +2295,36 @@ model ConsultFulfilment {
   @@index([pharmacy_id, created_at])
   @@index([lab_id, created_at])
   @@map("consult_fulfilments")
+}
+
+// One entry in a member's daily log.
+//
+// Ticking "check your blood pressure" is worth little on its own; the reading
+// is the point. So a tick can carry a value, and the doctor reads the series
+// rather than a count of ticks.
+model ConsultPlanLog {
+  id      String @id @default(uuid())
+  item_id String
+  patient_id String
+  // Free text is always allowed; the numbers are what plot.
+  note    String?
+  // A blood-pressure pair, a sugar reading, a weight — whichever the item asks
+  // for. Kept as separate columns rather than JSON so they can be averaged.
+  systolic     Int?
+  diastolic    Int?
+  glucose_mg_dl Decimal? @db.Decimal(6, 1)
+  weight_kg    Decimal? @db.Decimal(5, 1)
+  value_number Decimal? @db.Decimal(10, 2) // anything else the item measures
+  value_text   String?
+  logged_for   DateTime @db.Date // the day it is about, not the day it was typed
+  created_at   DateTime @default(now())
+
+  item    ConsultTreatmentItem @relation(fields: [item_id], references: [id], onDelete: Cascade)
+  patient ConsultPatient       @relation(fields: [patient_id], references: [id], onDelete: Cascade)
+
+  @@index([patient_id, created_at])
+  @@index([item_id, logged_for])
+  @@map("consult_plan_logs")
 }
 
 // A doctor's saved starting points — a plan they write for most new members, a

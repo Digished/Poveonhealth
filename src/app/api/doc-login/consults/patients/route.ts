@@ -3,6 +3,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { Prisma } from "@prisma/client";
 import { prisma } from "@/lib/prisma";
 import { getDoctorEmailFromConsultRequest } from "@/lib/consult";
+import { RISK_ORDER, type RiskLevel } from "@/lib/care-risk";
 import { ensureCarePlanSchema } from "@/lib/startup/ensure-care-plan-schema";
 
 const PAGE_SIZE = 25;
@@ -72,6 +73,7 @@ export async function GET(req: NextRequest) {
           id: true, code: true, full_name: true, email: true, phone: true,
           conditions: true, status: true, assigned_at: true,
           expires_at: true, messages_used: true, message_allowance: true,
+          risk_level: true, risk_reason: true,
         },
       }),
     ]);
@@ -113,18 +115,31 @@ export async function GET(req: NextRequest) {
       page,
       page_size: PAGE_SIZE,
       has_more: page * PAGE_SIZE < total,
-      patients: patients.map((p) => {
-        const last = lastBy.get(p.id);
-        return {
-          ...p,
-          messages_left: Math.max(0, p.message_allowance - p.messages_used),
-          unread: unreadBy.get(p.id) ?? 0,
-          last_message: last
-            ? { sender: last.sender, preview: last.body.slice(0, 160), created_at: last.created_at }
-            : null,
-          assessed: assessed.has(p.id),
-        };
-      }),
+      patients: patients
+        .map((p) => {
+          const last = lastBy.get(p.id);
+          return {
+            ...p,
+            messages_left: Math.max(0, p.message_allowance - p.messages_used),
+            unread: unreadBy.get(p.id) ?? 0,
+            last_message: last
+              ? { sender: last.sender, preview: last.body.slice(0, 160), created_at: last.created_at }
+              : null,
+            assessed: assessed.has(p.id),
+          };
+        })
+        // Anyone whose last reading needs attention comes first — being buried
+        // under whoever joined most recently is exactly the wrong outcome.
+        // Sorted here rather than in SQL because the column is a string, so
+        // ORDER BY would sort it alphabetically: "none" ahead of "watch".
+        .sort((a, b) => {
+          const rank =
+            (RISK_ORDER[(b.risk_level ?? "none") as RiskLevel] ?? 0) -
+            (RISK_ORDER[(a.risk_level ?? "none") as RiskLevel] ?? 0);
+          if (rank !== 0) return rank;
+          if (a.unread !== b.unread) return b.unread - a.unread;
+          return 0;
+        }),
     });
   } catch (err) {
     console.error("[doc-login/consults/patients]", err);

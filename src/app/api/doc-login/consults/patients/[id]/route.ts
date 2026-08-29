@@ -38,7 +38,7 @@ export async function GET(req: NextRequest, { params }: { params: { id: string }
         ? patient.assigned_at
         : null;
 
-    const [messages, earning, redemptions, prescriptions, testOrders, plan] = await Promise.all([
+    const [messages, earning, redemptions, prescriptions, testOrders, plan, planLogs] = await Promise.all([
       prisma.consultMessage.findMany({
         where: {
           patient_id: patient.id,
@@ -90,6 +90,14 @@ export async function GET(req: NextRequest, { params }: { params: { id: string }
         orderBy: { created_at: "desc" },
         include: { items: { orderBy: { position: "asc" } } },
       }),
+      // The daily log: what the member actually recorded, which is the part
+      // worth reading. A count of ticks says someone pressed a button.
+      prisma.consultPlanLog.findMany({
+        where: { patient_id: patient.id },
+        orderBy: [{ logged_for: "desc" }, { created_at: "desc" }],
+        take: 120,
+        include: { item: { select: { label: true, measure: true, measure_label: true } } },
+      }),
     ]);
 
     // Opening the member clears their unread flag for the doctor.
@@ -122,6 +130,9 @@ export async function GET(req: NextRequest, { params }: { params: { id: string }
         messages_left: Math.max(0, patient.message_allowance - patient.messages_used),
         share_history: patient.share_history,
         previous_doctors: patient.previous_doctors,
+        risk_level: patient.risk_level,
+        risk_reason: patient.risk_reason,
+        risk_rated_at: patient.risk_rated_at,
         // Only the age matters clinically, and it is what the doctor asks for.
         age: ageFrom(patient.date_of_birth),
       },
@@ -173,11 +184,29 @@ export async function GET(req: NextRequest, { params }: { params: { id: string }
               detail: i.detail,
               cadence: i.cadence,
               remind: i.remind,
+              measure: i.measure,
+              measure_label: i.measure_label,
               done_count: i.done_count,
               ...itemState(i),
             })),
           }
         : null,
+      plan_logs: planLogs.map((l) => ({
+        id: l.id,
+        item_id: l.item_id,
+        item_label: l.item.label,
+        measure: l.item.measure,
+        measure_label: l.item.measure_label,
+        note: l.note,
+        systolic: l.systolic,
+        diastolic: l.diastolic,
+        glucose_mg_dl: l.glucose_mg_dl == null ? null : Number(l.glucose_mg_dl),
+        weight_kg: l.weight_kg == null ? null : Number(l.weight_kg),
+        value_number: l.value_number == null ? null : Number(l.value_number),
+        value_text: l.value_text,
+        logged_for: l.logged_for,
+        created_at: l.created_at,
+      })),
       redemptions: redemptions.map((r) => ({
         id: r.id,
         kind: r.kind,

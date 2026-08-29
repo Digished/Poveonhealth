@@ -114,6 +114,22 @@ export async function generateMemberCode(): Promise<string> {
   return `PVC-${Date.now().toString(36).toUpperCase()}`;
 }
 
+/**
+ * A reference for one scheduled test, e.g. "PVT-8H3K2".
+ *
+ * The member's care code says who they are; this says what was asked for. A
+ * lab desk can take either — the code on the slip pulls up that one order, the
+ * care code pulls up everything outstanding.
+ */
+export async function generateTestOrderCode(): Promise<string> {
+  for (let i = 0; i < 12; i++) {
+    const code = `PVT-${randomSegment(5)}`;
+    const clash = await prisma.consultTestOrder.findUnique({ where: { code }, select: { id: true } });
+    if (!clash) return code;
+  }
+  return `PVT-${Date.now().toString(36).toUpperCase()}`;
+}
+
 /** A pharmacy's code, e.g. "PH-4K29Q". */
 export async function generatePharmacyCode(): Promise<string> {
   for (let i = 0; i < 12; i++) {

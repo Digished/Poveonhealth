@@ -30,7 +30,29 @@ export async function POST(req: NextRequest) {
     if (!parsed.success) return NextResponse.json({ error: "Enter a care code." }, { status: 400 });
 
     const code = parsed.data.code.toUpperCase().replace(/\s+/g, "");
-    const member = await prisma.consultPatient.findUnique({
+
+    // Either code works at the desk. A member's care code (PVC-…) pulls up
+    // everything outstanding; the reference on one test slip (PVT-…) pulls up
+    // that order and the person it belongs to.
+    const byOrder = code.startsWith("PVT-")
+      ? await prisma.consultTestOrder.findUnique({
+          where: { code },
+          select: { id: true, patient_id: true },
+        })
+      : null;
+    if (code.startsWith("PVT-") && !byOrder) {
+      return NextResponse.json({ success: true, found: false, reason: "That test reference is not recognised." });
+    }
+
+    const member = byOrder
+      ? await prisma.consultPatient.findUnique({
+          where: { id: byOrder.patient_id },
+          select: {
+            id: true, full_name: true, phone: true, sex: true, date_of_birth: true,
+            conditions: true, status: true, expires_at: true, preferred_lab_id: true,
+          },
+        })
+      : await prisma.consultPatient.findUnique({
       where: { code },
       select: {
         id: true, full_name: true, phone: true, sex: true, date_of_birth: true,
@@ -54,11 +76,15 @@ export async function POST(req: NextRequest) {
     const [settings, orders] = await Promise.all([
       getConsultSettings(),
       prisma.consultTestOrder.findMany({
-        where: { patient_id: member.id, status: "scheduled" },
+        // A test reference narrows it to that one order; a care code shows
+        // everything the doctor still wants done.
+        where: byOrder
+          ? { id: byOrder.id }
+          : { patient_id: member.id, status: "scheduled" },
         orderBy: [{ due_date: "asc" }],
         take: 30,
         select: {
-          id: true, tests: true, reason: true, due_date: true, recurrence: true,
+          id: true, code: true, tests: true, reason: true, due_date: true, recurrence: true,
           fulfilments: {
             orderBy: { created_at: "desc" },
             take: 1,
@@ -90,8 +116,10 @@ export async function POST(req: NextRequest) {
         expires_at: member.expires_at,
         prefers_this_lab: mine,
       },
+      matched_by: byOrder ? "test" : "member",
       test_orders: orders.map((o) => ({
         id: o.id,
+        code: o.code,
         tests: o.tests,
         reason: o.reason,
         due_date: o.due_date,
