@@ -18,27 +18,9 @@ import {
 } from "@/components/doctor/CarePlanOrders";
 import { CarePlanTreatment, type TreatmentPlan } from "@/components/doctor/CarePlanTreatment";
 import { ADHERENCE_LABEL, bpBand, durationLabel } from "@/components/consults/baseline";
+import { CONDITIONS as CONDITION_OPTIONS, CONDITION_LABEL } from "@/lib/consult-conditions";
 
 const naira = (n: number) => `₦${Math.round(n).toLocaleString("en-NG")}`;
-/** What a care plan can cover — mirrors the API's own list. */
-const CONDITION_OPTIONS = [
-  "hypertension", "diabetes", "high_cholesterol", "obesity", "asthma",
-  "ckd", "heart_failure", "stroke", "sickle_cell", "thyroid",
-] as const;
-
-const CONDITION_LABEL: Record<string, string> = {
-  hypertension: "Hypertension",
-  diabetes: "Diabetes",
-  high_cholesterol: "High cholesterol",
-  obesity: "Obesity",
-  asthma: "Asthma",
-  ckd: "Kidney disease",
-  heart_failure: "Heart failure",
-  stroke: "Stroke",
-  sickle_cell: "Sickle cell",
-  thyroid: "Thyroid",
-};
-
 type Redemption = {
   id: string;
   kind: string;

@@ -9,6 +9,7 @@ import {
 } from "lucide-react";
 import { PoveonLogo } from "@/components/PoveonLogo";
 import { SectionLoader } from "@/components/PageLoader";
+import { conditionLabel } from "@/lib/consult-conditions";
 
 type Pharmacy = {
   id: string; name: string; code: string; email: string; phone: string | null;
@@ -640,7 +641,7 @@ function CareMembersPanel() {
                 </span>
                 {m.conditions.map((c) => (
                   <span key={c} className="rounded-full bg-emerald-50 px-2 py-0.5 text-[11px] font-semibold text-emerald-700">
-                    {c === "hypertension" ? "Hypertension" : c === "diabetes" ? "Diabetes" : c}
+                    {conditionLabel(c)}
                   </span>
                 ))}
               </p>

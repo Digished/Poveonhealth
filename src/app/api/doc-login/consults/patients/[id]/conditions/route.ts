@@ -3,22 +3,8 @@ import { NextRequest, NextResponse } from "next/server";
 import { z } from "zod";
 import { prisma } from "@/lib/prisma";
 import { getDoctorEmailFromConsultRequest } from "@/lib/consult";
+import { CONDITIONS } from "@/lib/consult-conditions";
 import { ensureCarePlanSchema } from "@/lib/startup/ensure-care-plan-schema";
-
-/** What a care plan can cover. The two it was built for, plus what turns up
- *  alongside them often enough that a doctor will want to record it. */
-export const CONDITIONS = [
-  "hypertension",
-  "diabetes",
-  "high_cholesterol",
-  "obesity",
-  "asthma",
-  "ckd",
-  "heart_failure",
-  "stroke",
-  "sickle_cell",
-  "thyroid",
-] as const;
 
 const BodySchema = z.object({
   conditions: z.array(z.enum(CONDITIONS)).min(1, "A member needs at least one condition").max(10),

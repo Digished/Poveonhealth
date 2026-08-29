@@ -48,6 +48,7 @@ import { format, differenceInYears } from "date-fns";
 import { createClient } from "@/lib/supabase/client";
 import { useRouter, useSearchParams } from "next/navigation";
 import { labUrl } from "@/lib/lab-urls";
+import { conditionLabel } from "@/lib/consult-conditions";
 
 interface LabDashboardProps {
   lab: {
@@ -3545,7 +3546,7 @@ function LabCareMembers() {
                 </span>
                 {m.conditions.map((c) => (
                   <span key={c} className="rounded-full bg-sky-500/20 px-2 py-0.5 text-[11px] font-semibold text-sky-300">
-                    {c === "hypertension" ? "Hypertension" : c === "diabetes" ? "Diabetes" : c}
+                    {conditionLabel(c)}
                   </span>
                 ))}
               </p>
