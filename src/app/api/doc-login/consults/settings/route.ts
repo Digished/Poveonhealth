@@ -3,6 +3,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { z } from "zod";
 import { prisma } from "@/lib/prisma";
 import { getConsultSettings, getDoctorEmailFromConsultRequest } from "@/lib/consult";
+import { ensureCarePlanSchema } from "@/lib/startup/ensure-care-plan-schema";
 
 const BodySchema = z.object({
   accepting: z.boolean().optional(),
@@ -12,6 +13,8 @@ const BodySchema = z.object({
 
 /** PATCH /api/doc-login/consults/settings — the doctor's intake preferences. */
 export async function PATCH(req: NextRequest) {
+  // The build-time migration is best-effort; make sure the tables are there.
+  await ensureCarePlanSchema().catch(() => {});
   try {
     const email = await getDoctorEmailFromConsultRequest(req);
     if (!email) return NextResponse.json({ error: "Not authenticated." }, { status: 401 });

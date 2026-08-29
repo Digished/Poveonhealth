@@ -8,6 +8,7 @@ import {
   getPatientEmailFromRequest,
   initConsultPayment,
 } from "@/lib/consult";
+import { ensureCarePlanSchema } from "@/lib/startup/ensure-care-plan-schema";
 
 const BodySchema = z.object({
   full_name: z.string().trim().min(2, "Please enter your full name").max(120),
@@ -27,6 +28,8 @@ const BodySchema = z.object({
  * Nothing is activated and no care code is issued until the payment is verified.
  */
 export async function POST(req: NextRequest) {
+  // The build-time migration is best-effort; make sure the tables are there.
+  await ensureCarePlanSchema().catch(() => {});
   try {
     const email = await getPatientEmailFromRequest(req);
     if (!email) {

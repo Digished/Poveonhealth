@@ -3,6 +3,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { Prisma } from "@prisma/client";
 import { prisma } from "@/lib/prisma";
 import { getDoctorEmailFromConsultRequest } from "@/lib/consult";
+import { ensureCarePlanSchema } from "@/lib/startup/ensure-care-plan-schema";
 
 const PAGE_SIZE = 25;
 
@@ -18,6 +19,8 @@ type LastMessage = { patient_id: string; sender: string; body: string; created_a
  * Query params: `q`, `filter` (all|needs_reply|new|inactive), `page`.
  */
 export async function GET(req: NextRequest) {
+  // The build-time migration is best-effort; make sure the tables are there.
+  await ensureCarePlanSchema().catch(() => {});
   try {
     const email = await getDoctorEmailFromConsultRequest(req);
     if (!email) return NextResponse.json({ error: "Not authenticated." }, { status: 401 });

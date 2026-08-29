@@ -2,9 +2,12 @@ export const dynamic = "force-dynamic";
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { getDoctorEmailFromConsultRequest } from "@/lib/consult";
+import { ensureCarePlanSchema } from "@/lib/startup/ensure-care-plan-schema";
 
 /** GET /api/doc-login/consults/patients/[id] — one member and their thread. */
 export async function GET(req: NextRequest, { params }: { params: { id: string } }) {
+  // The build-time migration is best-effort; make sure the tables are there.
+  await ensureCarePlanSchema().catch(() => {});
   try {
     const email = await getDoctorEmailFromConsultRequest(req);
     if (!email) return NextResponse.json({ error: "Not authenticated." }, { status: 401 });

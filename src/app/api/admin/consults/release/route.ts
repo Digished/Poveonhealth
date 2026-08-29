@@ -3,6 +3,7 @@ import { NextResponse } from "next/server";
 import { createServerClient } from "@/lib/supabase/server";
 import { prisma } from "@/lib/prisma";
 import { periodKey, runMonthlyRelease } from "@/lib/consult";
+import { ensureCarePlanSchema } from "@/lib/startup/ensure-care-plan-schema";
 
 async function requireAdmin() {
   const authClient = await createServerClient();
@@ -20,6 +21,8 @@ async function requireAdmin() {
  * means there is more to do — call it again.
  */
 export async function POST() {
+  // The build-time migration is best-effort; make sure the tables are there.
+  await ensureCarePlanSchema().catch(() => {});
   if (!(await requireAdmin())) return NextResponse.json({ error: "Forbidden" }, { status: 403 });
 
   const period = periodKey();
@@ -29,6 +32,8 @@ export async function POST() {
 
 /** GET — what the current period has already released. */
 export async function GET() {
+  // The build-time migration is best-effort; make sure the tables are there.
+  await ensureCarePlanSchema().catch(() => {});
   if (!(await requireAdmin())) return NextResponse.json({ error: "Forbidden" }, { status: 403 });
 
   const period = periodKey();

@@ -66,6 +66,14 @@ Routes: `/consults` (account creation), `/dashboard?tab=care` (the plan itself),
 Doctor side lives in the Care Plan tab of `/doc-login/dashboard`; admin side in
 the Care Plan and Pharmacies tabs.
 
+**Schema safety net:** `scripts/run-migration.mjs` runs at build time and every
+step is `continueOnError`, so a failed statement is logged as "already applied"
+and the table silently never appears (this is how `pharmacy_otps` went missing
+in production). The care-plan routes therefore call
+`ensureCarePlanSchema()` defensively, the same way the doctor-charging routes
+call `ensureEncounterSchema()`. Keep care-plan migration steps to **one
+statement each** — a combined block fails as a unit.
+
 ### 4. Public Pages
 - `/` - Landing page (the old `/home` route now redirects here)
 - `/about` - Company mission and values

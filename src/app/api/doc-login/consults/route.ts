@@ -7,6 +7,7 @@ import {
   getDoctorConsultWallet,
   getDoctorEmailFromConsultRequest,
 } from "@/lib/consult";
+import { ensureCarePlanSchema } from "@/lib/startup/ensure-care-plan-schema";
 
 /**
  * GET /api/doc-login/consults — the doctor's care-plan overview.
@@ -15,6 +16,8 @@ import {
  * thousand members, and the list is paged separately.
  */
 export async function GET(req: NextRequest) {
+  // The build-time migration is best-effort; make sure the tables are there.
+  await ensureCarePlanSchema().catch(() => {});
   try {
     const email = await getDoctorEmailFromConsultRequest(req);
     if (!email) return NextResponse.json({ error: "Not authenticated." }, { status: 401 });

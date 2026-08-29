@@ -2,9 +2,12 @@ export const dynamic = "force-dynamic";
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { getConsultSettings, getPharmacyFromRequest } from "@/lib/consult";
+import { ensureCarePlanSchema } from "@/lib/startup/ensure-care-plan-schema";
 
 /** GET /api/pharmacy/me — the signed-in pharmacy, with its headline numbers. */
 export async function GET(req: NextRequest) {
+  // The build-time migration is best-effort; make sure the tables are there.
+  await ensureCarePlanSchema().catch(() => {});
   try {
     const pharmacy = await getPharmacyFromRequest(req);
     if (!pharmacy) return NextResponse.json({ error: "Not authenticated." }, { status: 401 });

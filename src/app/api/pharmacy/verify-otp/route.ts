@@ -3,9 +3,12 @@ import { NextRequest, NextResponse } from "next/server";
 import { createHash } from "crypto";
 import { prisma } from "@/lib/prisma";
 import { PHARMACY_COOKIE, PHARMACY_SESSION_MS } from "@/lib/consult";
+import { ensureCarePlanSchema } from "@/lib/startup/ensure-care-plan-schema";
 
 /** POST /api/pharmacy/verify-otp — exchange an emailed code for a session. */
 export async function POST(req: NextRequest) {
+  // The build-time migration is best-effort; make sure the tables are there.
+  await ensureCarePlanSchema().catch(() => {});
   try {
     const { email, code } = await req.json();
     if (!email || !code) {

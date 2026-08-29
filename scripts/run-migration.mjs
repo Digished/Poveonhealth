@@ -1809,14 +1809,28 @@ const migrations = [
     continueOnError: true,
   },
   {
-    desc: "consult_patients indexes",
-    sql: `
-      CREATE UNIQUE INDEX IF NOT EXISTS consult_patients_code_key ON consult_patients (code);
-      CREATE UNIQUE INDEX IF NOT EXISTS consult_patients_email_key ON consult_patients (email);
-      CREATE INDEX IF NOT EXISTS consult_patients_doctor_status_idx ON consult_patients (doctor_email, status);
-      CREATE INDEX IF NOT EXISTS consult_patients_status_expires_idx ON consult_patients (status, expires_at);
-      CREATE INDEX IF NOT EXISTS consult_patients_email_idx ON consult_patients (email);
-    `,
+    desc: "consult_patients unique code index",
+    sql: `CREATE UNIQUE INDEX IF NOT EXISTS consult_patients_code_key ON consult_patients (code)`,
+    continueOnError: true,
+  },
+  {
+    desc: "consult_patients unique email index",
+    sql: `CREATE UNIQUE INDEX IF NOT EXISTS consult_patients_email_key ON consult_patients (email)`,
+    continueOnError: true,
+  },
+  {
+    desc: "consult_patients doctor/status index",
+    sql: `CREATE INDEX IF NOT EXISTS consult_patients_doctor_status_idx ON consult_patients (doctor_email, status)`,
+    continueOnError: true,
+  },
+  {
+    desc: "consult_patients status/expiry index",
+    sql: `CREATE INDEX IF NOT EXISTS consult_patients_status_expires_idx ON consult_patients (status, expires_at)`,
+    continueOnError: true,
+  },
+  {
+    desc: "consult_patients email index",
+    sql: `CREATE INDEX IF NOT EXISTS consult_patients_email_idx ON consult_patients (email)`,
     continueOnError: true,
   },
   {
@@ -1852,11 +1866,18 @@ const migrations = [
     continueOnError: true,
   },
   {
-    desc: "consult_earnings indexes",
-    sql: `
-      CREATE INDEX IF NOT EXISTS consult_earnings_doctor_status_idx ON consult_earnings (doctor_email, status);
-      CREATE INDEX IF NOT EXISTS consult_earnings_patient_created_idx ON consult_earnings (patient_id, created_at);
-    `,
+    desc: "consult_earnings doctor/status index",
+    sql: `CREATE INDEX IF NOT EXISTS consult_earnings_doctor_status_idx ON consult_earnings (doctor_email, status)`,
+    continueOnError: true,
+  },
+  {
+    desc: "consult_earnings patient/created index",
+    sql: `CREATE INDEX IF NOT EXISTS consult_earnings_patient_created_idx ON consult_earnings (patient_id, created_at)`,
+    continueOnError: true,
+  },
+  {
+    desc: "consult_earnings: drop the old one-per-member unique key",
+    sql: `DROP INDEX IF EXISTS consult_earnings_patient_id_key`,
     continueOnError: true,
   },
   {
@@ -1873,12 +1894,13 @@ const migrations = [
     continueOnError: true,
   },
   {
-    // The unique key is what makes the monthly release run idempotent.
-    desc: "consult_earning_releases indexes",
-    sql: `
-      CREATE UNIQUE INDEX IF NOT EXISTS consult_earning_releases_earning_period_key ON consult_earning_releases (earning_id, period);
-      CREATE INDEX IF NOT EXISTS consult_earning_releases_doctor_period_idx ON consult_earning_releases (doctor_email, period);
-    `,
+    desc: "consult_earning_releases unique (earning, period) — makes the release idempotent",
+    sql: `CREATE UNIQUE INDEX IF NOT EXISTS consult_earning_releases_earning_period_key ON consult_earning_releases (earning_id, period)`,
+    continueOnError: true,
+  },
+  {
+    desc: "consult_earning_releases doctor/period index",
+    sql: `CREATE INDEX IF NOT EXISTS consult_earning_releases_doctor_period_idx ON consult_earning_releases (doctor_email, period)`,
     continueOnError: true,
   },
   {
@@ -1902,34 +1924,50 @@ const migrations = [
     continueOnError: true,
   },
   {
-    desc: "pharmacies unique indexes",
-    sql: `
-      CREATE UNIQUE INDEX IF NOT EXISTS pharmacies_slug_key ON pharmacies (slug);
-      CREATE UNIQUE INDEX IF NOT EXISTS pharmacies_code_key ON pharmacies (code);
-      CREATE UNIQUE INDEX IF NOT EXISTS pharmacies_email_key ON pharmacies (email);
-    `,
+    desc: "pharmacies unique slug",
+    sql: `CREATE UNIQUE INDEX IF NOT EXISTS pharmacies_slug_key ON pharmacies (slug)`,
     continueOnError: true,
   },
   {
-    desc: "pharmacy_otps & pharmacy_sessions tables",
-    sql: `
-      CREATE TABLE IF NOT EXISTS pharmacy_otps (
-        id TEXT PRIMARY KEY,
-        email TEXT NOT NULL,
-        code_hash TEXT NOT NULL,
-        expires_at TIMESTAMP(3) NOT NULL,
-        used BOOLEAN NOT NULL DEFAULT false,
-        created_at TIMESTAMP(3) NOT NULL DEFAULT now()
-      );
-      CREATE INDEX IF NOT EXISTS pharmacy_otps_email_idx ON pharmacy_otps (email);
-      CREATE TABLE IF NOT EXISTS pharmacy_sessions (
-        id TEXT PRIMARY KEY,
-        pharmacy_id TEXT NOT NULL,
-        expires_at TIMESTAMP(3) NOT NULL,
-        created_at TIMESTAMP(3) NOT NULL DEFAULT now()
-      );
-      CREATE INDEX IF NOT EXISTS pharmacy_sessions_pharmacy_idx ON pharmacy_sessions (pharmacy_id);
-    `,
+    desc: "pharmacies unique code",
+    sql: `CREATE UNIQUE INDEX IF NOT EXISTS pharmacies_code_key ON pharmacies (code)`,
+    continueOnError: true,
+  },
+  {
+    desc: "pharmacies unique email",
+    sql: `CREATE UNIQUE INDEX IF NOT EXISTS pharmacies_email_key ON pharmacies (email)`,
+    continueOnError: true,
+  },
+  {
+    desc: "pharmacy_otps table",
+    sql: `CREATE TABLE IF NOT EXISTS pharmacy_otps (
+      id TEXT PRIMARY KEY,
+      email TEXT NOT NULL,
+      code_hash TEXT NOT NULL,
+      expires_at TIMESTAMP(3) NOT NULL,
+      used BOOLEAN NOT NULL DEFAULT false,
+      created_at TIMESTAMP(3) NOT NULL DEFAULT now()
+    )`,
+    continueOnError: true,
+  },
+  {
+    desc: "pharmacy_otps index",
+    sql: `CREATE INDEX IF NOT EXISTS pharmacy_otps_email_idx ON pharmacy_otps (email)`,
+    continueOnError: true,
+  },
+  {
+    desc: "pharmacy_sessions table",
+    sql: `CREATE TABLE IF NOT EXISTS pharmacy_sessions (
+      id TEXT PRIMARY KEY,
+      pharmacy_id TEXT NOT NULL,
+      expires_at TIMESTAMP(3) NOT NULL,
+      created_at TIMESTAMP(3) NOT NULL DEFAULT now()
+    )`,
+    continueOnError: true,
+  },
+  {
+    desc: "pharmacy_sessions index",
+    sql: `CREATE INDEX IF NOT EXISTS pharmacy_sessions_pharmacy_idx ON pharmacy_sessions (pharmacy_id)`,
     continueOnError: true,
   },
   {
@@ -1951,11 +1989,13 @@ const migrations = [
     continueOnError: true,
   },
   {
-    desc: "pharmacy_customers indexes",
-    sql: `
-      CREATE UNIQUE INDEX IF NOT EXISTS pharmacy_customers_pharmacy_patient_key ON pharmacy_customers (pharmacy_id, patient_id);
-      CREATE INDEX IF NOT EXISTS pharmacy_customers_pharmacy_visit_idx ON pharmacy_customers (pharmacy_id, last_visit_at);
-    `,
+    desc: "pharmacy_customers unique (pharmacy, patient)",
+    sql: `CREATE UNIQUE INDEX IF NOT EXISTS pharmacy_customers_pharmacy_patient_key ON pharmacy_customers (pharmacy_id, patient_id)`,
+    continueOnError: true,
+  },
+  {
+    desc: "pharmacy_customers pharmacy/visit index",
+    sql: `CREATE INDEX IF NOT EXISTS pharmacy_customers_pharmacy_visit_idx ON pharmacy_customers (pharmacy_id, last_visit_at)`,
     continueOnError: true,
   },
   {
@@ -1973,25 +2013,36 @@ const migrations = [
     continueOnError: true,
   },
   {
-    desc: "consult_redemptions indexes",
-    sql: `
-      CREATE INDEX IF NOT EXISTS consult_redemptions_patient_created_idx ON consult_redemptions (patient_id, created_at);
-      CREATE INDEX IF NOT EXISTS consult_redemptions_pharmacy_created_idx ON consult_redemptions (pharmacy_id, created_at);
-    `,
+    desc: "consult_redemptions patient/created index",
+    sql: `CREATE INDEX IF NOT EXISTS consult_redemptions_patient_created_idx ON consult_redemptions (patient_id, created_at)`,
     continueOnError: true,
   },
   {
-    // The care plan moved onto the patient portal's own identity: enrolment is
-    // keyed on the patient's email, the code is only issued once they pay, and
-    // the goal question was dropped.
-    desc: "consult_patients: nullable code, consent, no goal",
-    sql: `
-      ALTER TABLE consult_patients ALTER COLUMN code DROP NOT NULL;
-      ALTER TABLE consult_patients ADD COLUMN IF NOT EXISTS consent_at TIMESTAMP(3);
-      ALTER TABLE consult_patients DROP COLUMN IF EXISTS goal;
-      ALTER TABLE consult_patients DROP COLUMN IF EXISTS goal_metric;
-      ALTER TABLE consult_patients ALTER COLUMN message_allowance SET DEFAULT 40;
-    `,
+    desc: "consult_redemptions pharmacy/created index",
+    sql: `CREATE INDEX IF NOT EXISTS consult_redemptions_pharmacy_created_idx ON consult_redemptions (pharmacy_id, created_at)`,
+    continueOnError: true,
+  },
+  // The care plan moved onto the patient portal's own identity: enrolment is
+  // keyed on the patient's email, the code is only issued once they pay, and
+  // the goal question was dropped.
+  {
+    desc: "consult_patients.code becomes nullable (issued only on payment)",
+    sql: `ALTER TABLE consult_patients ALTER COLUMN code DROP NOT NULL`,
+    continueOnError: true,
+  },
+  {
+    desc: "consult_patients.consent_at column",
+    sql: `ALTER TABLE consult_patients ADD COLUMN IF NOT EXISTS consent_at TIMESTAMP(3)`,
+    continueOnError: true,
+  },
+  {
+    desc: "consult_patients: drop the goal columns",
+    sql: `ALTER TABLE consult_patients DROP COLUMN IF EXISTS goal, DROP COLUMN IF EXISTS goal_metric`,
+    continueOnError: true,
+  },
+  {
+    desc: "consult_patients: 40 messages a year by default",
+    sql: `ALTER TABLE consult_patients ALTER COLUMN message_allowance SET DEFAULT 40`,
     continueOnError: true,
   },
   {

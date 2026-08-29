@@ -6,6 +6,7 @@ import { prisma } from "@/lib/prisma";
 import { resend, FROM_ADDRESS } from "@/lib/email/resend";
 import { pharmacyAccountCreatedEmail } from "@/lib/email/templates";
 import { appUrl, generatePharmacyCode, getConsultSettings, uniquePharmacySlug } from "@/lib/consult";
+import { ensureCarePlanSchema } from "@/lib/startup/ensure-care-plan-schema";
 
 async function requireAdmin() {
   const authClient = await createServerClient();
@@ -17,6 +18,8 @@ async function requireAdmin() {
 
 /** GET /api/admin/pharmacies — the partner network with its activity counts. */
 export async function GET() {
+  // The build-time migration is best-effort; make sure the tables are there.
+  await ensureCarePlanSchema().catch(() => {});
   if (!(await requireAdmin())) return NextResponse.json({ error: "Forbidden" }, { status: 403 });
 
   const pharmacies = await prisma.pharmacy.findMany({ orderBy: { created_at: "desc" } });
@@ -86,6 +89,8 @@ const CreateSchema = z.object({
  * code, completes its details, and starts tracking its regulars.
  */
 export async function POST(req: NextRequest) {
+  // The build-time migration is best-effort; make sure the tables are there.
+  await ensureCarePlanSchema().catch(() => {});
   if (!(await requireAdmin())) return NextResponse.json({ error: "Forbidden" }, { status: 403 });
 
   const parsed = CreateSchema.safeParse(await req.json());

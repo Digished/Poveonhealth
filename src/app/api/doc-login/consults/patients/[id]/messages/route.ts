@@ -5,6 +5,7 @@ import { prisma } from "@/lib/prisma";
 import { resend, FROM_ADDRESS } from "@/lib/email/resend";
 import { carePlanReplyEmail } from "@/lib/email/templates";
 import { appUrl, getDoctorEmailFromConsultRequest } from "@/lib/consult";
+import { ensureCarePlanSchema } from "@/lib/startup/ensure-care-plan-schema";
 
 const BodySchema = z.object({ body: z.string().trim().min(2, "Write your reply first").max(6000) });
 
@@ -13,6 +14,8 @@ const BodySchema = z.object({ body: z.string().trim().min(2, "Write your reply f
  * member. Doctor messages are never counted against the member's allowance.
  */
 export async function POST(req: NextRequest, { params }: { params: { id: string } }) {
+  // The build-time migration is best-effort; make sure the tables are there.
+  await ensureCarePlanSchema().catch(() => {});
   try {
     const email = await getDoctorEmailFromConsultRequest(req);
     if (!email) return NextResponse.json({ error: "Not authenticated." }, { status: 401 });

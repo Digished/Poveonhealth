@@ -12,6 +12,7 @@ import {
   naira,
   verifyConsultPayment,
 } from "@/lib/consult";
+import { ensureCarePlanSchema } from "@/lib/startup/ensure-care-plan-schema";
 
 /**
  * POST /api/consults/verify — confirm a Paystack reference and switch the
@@ -21,6 +22,8 @@ import {
  * twice, and the member may refresh the return page).
  */
 export async function POST(req: NextRequest) {
+  // The build-time migration is best-effort; make sure the tables are there.
+  await ensureCarePlanSchema().catch(() => {});
   try {
     const { reference } = await req.json();
     if (!reference || typeof reference !== "string") {

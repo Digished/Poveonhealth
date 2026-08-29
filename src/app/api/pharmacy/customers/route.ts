@@ -4,11 +4,14 @@ import { Prisma } from "@prisma/client";
 import { z } from "zod";
 import { prisma } from "@/lib/prisma";
 import { getPharmacyFromRequest } from "@/lib/consult";
+import { ensureCarePlanSchema } from "@/lib/startup/ensure-care-plan-schema";
 
 const PAGE_SIZE = 25;
 
 /** GET /api/pharmacy/customers — the pharmacy's regulars, most recent first. */
 export async function GET(req: NextRequest) {
+  // The build-time migration is best-effort; make sure the tables are there.
+  await ensureCarePlanSchema().catch(() => {});
   try {
     const pharmacy = await getPharmacyFromRequest(req);
     if (!pharmacy) return NextResponse.json({ error: "Not authenticated." }, { status: 401 });
@@ -70,6 +73,8 @@ const CreateSchema = z.object({
 
 /** POST /api/pharmacy/customers — log a walk-in who isn't on the care plan. */
 export async function POST(req: NextRequest) {
+  // The build-time migration is best-effort; make sure the tables are there.
+  await ensureCarePlanSchema().catch(() => {});
   try {
     const pharmacy = await getPharmacyFromRequest(req);
     if (!pharmacy) return NextResponse.json({ error: "Not authenticated." }, { status: 401 });

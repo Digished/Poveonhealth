@@ -6,6 +6,7 @@ import { prisma } from "@/lib/prisma";
 import { resend, FROM_ADDRESS } from "@/lib/email/resend";
 import { pharmacyAccountCreatedEmail } from "@/lib/email/templates";
 import { appUrl } from "@/lib/consult";
+import { ensureCarePlanSchema } from "@/lib/startup/ensure-care-plan-schema";
 
 async function requireAdmin() {
   const authClient = await createServerClient();
@@ -28,6 +29,8 @@ const PatchSchema = z.object({
 
 /** PATCH /api/admin/pharmacies/[id] — edit terms, deactivate, or re-invite. */
 export async function PATCH(req: NextRequest, { params }: { params: { id: string } }) {
+  // The build-time migration is best-effort; make sure the tables are there.
+  await ensureCarePlanSchema().catch(() => {});
   if (!(await requireAdmin())) return NextResponse.json({ error: "Forbidden" }, { status: 403 });
 
   const parsed = PatchSchema.safeParse(await req.json());
@@ -80,6 +83,8 @@ export async function PATCH(req: NextRequest, { params }: { params: { id: string
  * customers and the discounts it gave stay on the record.
  */
 export async function DELETE(_req: NextRequest, { params }: { params: { id: string } }) {
+  // The build-time migration is best-effort; make sure the tables are there.
+  await ensureCarePlanSchema().catch(() => {});
   if (!(await requireAdmin())) return NextResponse.json({ error: "Forbidden" }, { status: 403 });
 
   const redemptions = await prisma.consultRedemption.count({ where: { pharmacy_id: params.id } });

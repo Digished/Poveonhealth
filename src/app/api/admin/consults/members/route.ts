@@ -5,6 +5,7 @@ import { z } from "zod";
 import { createServerClient } from "@/lib/supabase/server";
 import { prisma } from "@/lib/prisma";
 import { activeMemberWhere, getConsultSettings } from "@/lib/consult";
+import { ensureCarePlanSchema } from "@/lib/startup/ensure-care-plan-schema";
 
 const PAGE_SIZE = 25;
 
@@ -18,6 +19,8 @@ async function requireAdmin() {
 
 /** GET /api/admin/consults/members — every care-plan member, with revenue. */
 export async function GET(req: NextRequest) {
+  // The build-time migration is best-effort; make sure the tables are there.
+  await ensureCarePlanSchema().catch(() => {});
   if (!(await requireAdmin())) return NextResponse.json({ error: "Forbidden" }, { status: 403 });
 
   const params = req.nextUrl.searchParams;
@@ -85,6 +88,8 @@ const AssignSchema = z.object({
  * figure) picks up what the old doctor's loses.
  */
 export async function PATCH(req: NextRequest) {
+  // The build-time migration is best-effort; make sure the tables are there.
+  await ensureCarePlanSchema().catch(() => {});
   if (!(await requireAdmin())) return NextResponse.json({ error: "Forbidden" }, { status: 403 });
 
   const parsed = AssignSchema.safeParse(await req.json());

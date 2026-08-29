@@ -1,0 +1,218 @@
+import { prisma } from "@/lib/prisma";
+
+let ensured: Promise<void> | null = null;
+
+/**
+ * Guarantees the care-plan and pharmacy tables exist.
+ *
+ * Vercel doesn't run Prisma migrations on deploy — `scripts/run-migration.mjs`
+ * does, at build time, and every step there is `continueOnError`, so a single
+ * failed statement is logged as "already applied" and the table quietly never
+ * appears. That is how `pharmacy_otps` went missing in production while the
+ * rest of the feature deployed fine.
+ *
+ * So the care-plan routes call this defensively, exactly as the doctor-charging
+ * routes call ensureEncounterSchema. Memoised per process, so repeated calls
+ * are free after the first, and every statement is IF NOT EXISTS.
+ *
+ * @param force re-run even if already ensured this process
+ */
+export async function ensureCarePlanSchema(force = false): Promise<void> {
+  if (ensured && !force) return ensured;
+  ensured = runEnsure();
+  return ensured;
+}
+
+async function runEnsure(): Promise<void> {
+  try {
+    // One statement per call — a combined block fails as a unit, which is the
+    // trap the build-time migration fell into.
+    const exec = (sql: string) => prisma.$executeRawUnsafe(sql);
+
+    await exec(`
+      CREATE TABLE IF NOT EXISTS consult_settings (
+        id TEXT PRIMARY KEY DEFAULT 'default',
+        price_naira DECIMAL(12,2) NOT NULL DEFAULT 10000,
+        doctor_share_naira DECIMAL(12,2) NOT NULL DEFAULT 6000,
+        message_allowance INTEGER NOT NULL DEFAULT 40,
+        release_months INTEGER NOT NULL DEFAULT 12,
+        default_doctor_cap INTEGER NOT NULL DEFAULT 200,
+        lab_discount_percent INTEGER NOT NULL DEFAULT 15,
+        pharmacy_discount_percent INTEGER NOT NULL DEFAULT 10,
+        updated_at TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+        updated_by TEXT
+      );
+    `);
+    await exec(`INSERT INTO consult_settings (id) VALUES ('default') ON CONFLICT (id) DO NOTHING;`);
+
+    await exec(`
+      CREATE TABLE IF NOT EXISTS consult_patients (
+        id TEXT PRIMARY KEY,
+        code TEXT,
+        full_name TEXT NOT NULL,
+        email TEXT NOT NULL,
+        phone TEXT,
+        sex TEXT,
+        date_of_birth DATE,
+        state TEXT,
+        city TEXT,
+        conditions TEXT[] NOT NULL DEFAULT ARRAY[]::TEXT[],
+        consent_at TIMESTAMP(3),
+        doctor_email TEXT,
+        assigned_at TIMESTAMP(3),
+        status TEXT NOT NULL DEFAULT 'pending_payment',
+        subscribed_at TIMESTAMP(3),
+        expires_at TIMESTAMP(3),
+        amount_paid DECIMAL(12,2),
+        paystack_ref TEXT,
+        messages_used INTEGER NOT NULL DEFAULT 0,
+        message_allowance INTEGER NOT NULL DEFAULT 40,
+        created_at TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+        updated_at TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP
+      );
+    `);
+    // Brings a database created by the first version of this feature up to date.
+    await exec(`ALTER TABLE consult_patients ALTER COLUMN code DROP NOT NULL;`);
+    await exec(`ALTER TABLE consult_patients ADD COLUMN IF NOT EXISTS consent_at TIMESTAMP(3);`);
+    await exec(`ALTER TABLE consult_patients DROP COLUMN IF EXISTS goal;`);
+    await exec(`ALTER TABLE consult_patients DROP COLUMN IF EXISTS goal_metric;`);
+    await exec(`CREATE UNIQUE INDEX IF NOT EXISTS consult_patients_code_key ON consult_patients(code);`);
+    await exec(`CREATE UNIQUE INDEX IF NOT EXISTS consult_patients_email_key ON consult_patients(email);`);
+    await exec(`CREATE INDEX IF NOT EXISTS consult_patients_doctor_status_idx ON consult_patients(doctor_email, status);`);
+    await exec(`CREATE INDEX IF NOT EXISTS consult_patients_status_expires_idx ON consult_patients(status, expires_at);`);
+    await exec(`CREATE INDEX IF NOT EXISTS consult_patients_email_idx ON consult_patients(email);`);
+
+    await exec(`DROP TABLE IF EXISTS consult_patient_sessions;`);
+
+    await exec(`
+      CREATE TABLE IF NOT EXISTS consult_messages (
+        id TEXT PRIMARY KEY,
+        patient_id TEXT NOT NULL,
+        sender TEXT NOT NULL,
+        body TEXT NOT NULL,
+        read_at TIMESTAMP(3),
+        counted BOOLEAN NOT NULL DEFAULT false,
+        created_at TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP
+      );
+    `);
+    await exec(`CREATE INDEX IF NOT EXISTS consult_messages_patient_created_idx ON consult_messages(patient_id, created_at);`);
+
+    await exec(`
+      CREATE TABLE IF NOT EXISTS consult_earnings (
+        id TEXT PRIMARY KEY,
+        doctor_email TEXT NOT NULL,
+        patient_id TEXT NOT NULL,
+        total_naira DECIMAL(12,2) NOT NULL,
+        released_naira DECIMAL(12,2) NOT NULL DEFAULT 0,
+        status TEXT NOT NULL DEFAULT 'pending',
+        created_at TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+        updated_at TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP
+      );
+    `);
+    // The first version had one entitlement per member; renewals need one per year.
+    await exec(`DROP INDEX IF EXISTS consult_earnings_patient_id_key;`);
+    await exec(`CREATE INDEX IF NOT EXISTS consult_earnings_doctor_status_idx ON consult_earnings(doctor_email, status);`);
+    await exec(`CREATE INDEX IF NOT EXISTS consult_earnings_patient_created_idx ON consult_earnings(patient_id, created_at);`);
+
+    await exec(`
+      CREATE TABLE IF NOT EXISTS consult_earning_releases (
+        id TEXT PRIMARY KEY,
+        doctor_email TEXT NOT NULL,
+        earning_id TEXT NOT NULL,
+        amount_naira DECIMAL(12,2) NOT NULL,
+        period TEXT NOT NULL,
+        note TEXT,
+        created_at TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP
+      );
+    `);
+    // This unique key is what makes the monthly release run idempotent.
+    await exec(`CREATE UNIQUE INDEX IF NOT EXISTS consult_earning_releases_earning_period_key ON consult_earning_releases(earning_id, period);`);
+    await exec(`CREATE INDEX IF NOT EXISTS consult_earning_releases_doctor_period_idx ON consult_earning_releases(doctor_email, period);`);
+
+    await exec(`
+      CREATE TABLE IF NOT EXISTS pharmacies (
+        id TEXT PRIMARY KEY,
+        name TEXT NOT NULL,
+        slug TEXT NOT NULL,
+        code TEXT NOT NULL,
+        email TEXT NOT NULL,
+        phone TEXT,
+        address TEXT,
+        city TEXT,
+        state TEXT,
+        discount_percent INTEGER NOT NULL DEFAULT 10,
+        active BOOLEAN NOT NULL DEFAULT true,
+        onboarded_at TIMESTAMP(3),
+        created_at TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+        updated_at TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP
+      );
+    `);
+    await exec(`CREATE UNIQUE INDEX IF NOT EXISTS pharmacies_slug_key ON pharmacies(slug);`);
+    await exec(`CREATE UNIQUE INDEX IF NOT EXISTS pharmacies_code_key ON pharmacies(code);`);
+    await exec(`CREATE UNIQUE INDEX IF NOT EXISTS pharmacies_email_key ON pharmacies(email);`);
+
+    await exec(`
+      CREATE TABLE IF NOT EXISTS pharmacy_otps (
+        id TEXT PRIMARY KEY,
+        email TEXT NOT NULL,
+        code_hash TEXT NOT NULL,
+        expires_at TIMESTAMP(3) NOT NULL,
+        used BOOLEAN NOT NULL DEFAULT false,
+        created_at TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP
+      );
+    `);
+    await exec(`CREATE INDEX IF NOT EXISTS pharmacy_otps_email_idx ON pharmacy_otps(email);`);
+
+    await exec(`
+      CREATE TABLE IF NOT EXISTS pharmacy_sessions (
+        id TEXT PRIMARY KEY,
+        pharmacy_id TEXT NOT NULL,
+        expires_at TIMESTAMP(3) NOT NULL,
+        created_at TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP
+      );
+    `);
+    await exec(`CREATE INDEX IF NOT EXISTS pharmacy_sessions_pharmacy_idx ON pharmacy_sessions(pharmacy_id);`);
+
+    await exec(`
+      CREATE TABLE IF NOT EXISTS pharmacy_customers (
+        id TEXT PRIMARY KEY,
+        pharmacy_id TEXT NOT NULL,
+        patient_id TEXT,
+        full_name TEXT NOT NULL,
+        phone TEXT,
+        code TEXT,
+        visits INTEGER NOT NULL DEFAULT 0,
+        total_spend DECIMAL(12,2) NOT NULL DEFAULT 0,
+        last_visit_at TIMESTAMP(3),
+        notes TEXT,
+        created_at TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+        updated_at TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP
+      );
+    `);
+    await exec(`CREATE UNIQUE INDEX IF NOT EXISTS pharmacy_customers_pharmacy_patient_key ON pharmacy_customers(pharmacy_id, patient_id);`);
+    await exec(`CREATE INDEX IF NOT EXISTS pharmacy_customers_pharmacy_visit_idx ON pharmacy_customers(pharmacy_id, last_visit_at);`);
+
+    await exec(`
+      CREATE TABLE IF NOT EXISTS consult_redemptions (
+        id TEXT PRIMARY KEY,
+        patient_id TEXT NOT NULL,
+        pharmacy_id TEXT,
+        kind TEXT NOT NULL,
+        description TEXT,
+        gross_naira DECIMAL(12,2) NOT NULL,
+        discount_naira DECIMAL(12,2) NOT NULL,
+        created_at TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP
+      );
+    `);
+    await exec(`CREATE INDEX IF NOT EXISTS consult_redemptions_patient_created_idx ON consult_redemptions(patient_id, created_at);`);
+    await exec(`CREATE INDEX IF NOT EXISTS consult_redemptions_pharmacy_created_idx ON consult_redemptions(pharmacy_id, created_at);`);
+
+    await exec(`ALTER TABLE doctor_profiles ADD COLUMN IF NOT EXISTS consult_accepting BOOLEAN NOT NULL DEFAULT true;`);
+    await exec(`ALTER TABLE doctor_profiles ADD COLUMN IF NOT EXISTS consult_patient_cap INTEGER;`);
+  } catch (err) {
+    // Never block a request on this — the caller's own query will surface a
+    // real problem, and the next call retries.
+    console.error("[ensure-care-plan-schema]", err instanceof Error ? err.message : err);
+    ensured = null;
+  }
+}

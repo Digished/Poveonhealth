@@ -9,7 +9,7 @@ import {
   Clock, CheckCircle, Eye, MapPin, Phone, X, Menu, Shield, EyeOff, RefreshCw, MessageCircle, Star, MessageSquare, ExternalLink,
   Stethoscope, Pencil, Check, CreditCard, ChevronRight, Info, Send, HeartPulse, Activity,
 } from "lucide-react";
-import { DoctorNav, DoctorSubNav, type DoctorNavSection } from "@/components/doctor/DoctorNav";
+import { PortalNav, PortalSubNav, type PortalNavSection } from "@/components/ui/PortalNav";
 import { EARN_VIEWS, type EarnView } from "@/components/doctor/earn-views";
 import { CONSULT_VIEWS, type ConsultView } from "@/components/doctor/consult-views";
 import { getJson } from "@/lib/client-cache";
@@ -682,7 +682,7 @@ function DocDashboardInner() {
   // Reset the "show more" window whenever the visible set changes.
   useEffect(() => { setVisibleCount(REQUEST_PAGE_SIZE); }, [filter]);
 
-  const navSections: DoctorNavSection[] = [
+  const navSections: PortalNavSection[] = [
     {
       label: "Practice",
       items: [
@@ -813,7 +813,7 @@ function DocDashboardInner() {
       </header>
 
       <div className="mx-auto max-w-[1600px] px-4 py-5 lg:flex lg:gap-6 lg:px-6 lg:py-6">
-        <DoctorNav
+        <PortalNav
           sections={navSections}
           activeKey={parent}
           onSelect={(key) => navigate(key as View)}
@@ -822,7 +822,7 @@ function DocDashboardInner() {
         />
 
         <main className="min-w-0 flex-1">
-          <DoctorSubNav items={subMenu} activeKey={subActive} onSelect={onSubSelect} />
+          <PortalSubNav items={subMenu} activeKey={subActive} onSelect={onSubSelect} />
 
           {error && (
             <div className="mb-4 rounded-xl border border-red-100 bg-red-50 px-4 py-3 text-sm text-red-600">{error}</div>

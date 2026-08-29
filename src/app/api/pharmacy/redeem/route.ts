@@ -3,6 +3,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { z } from "zod";
 import { prisma } from "@/lib/prisma";
 import { getConsultSettings, getPharmacyFromRequest } from "@/lib/consult";
+import { ensureCarePlanSchema } from "@/lib/startup/ensure-care-plan-schema";
 
 const BodySchema = z.object({
   code: z.string().trim().min(4).max(32),
@@ -17,6 +18,8 @@ const BodySchema = z.object({
  * a one-off discount into a tracked regular.
  */
 export async function POST(req: NextRequest) {
+  // The build-time migration is best-effort; make sure the tables are there.
+  await ensureCarePlanSchema().catch(() => {});
   try {
     const pharmacy = await getPharmacyFromRequest(req);
     if (!pharmacy) return NextResponse.json({ error: "Not authenticated." }, { status: 401 });

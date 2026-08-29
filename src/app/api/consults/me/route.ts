@@ -2,6 +2,7 @@ export const dynamic = "force-dynamic";
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { getConsultSettings, getMemberByEmail, getPatientEmailFromRequest } from "@/lib/consult";
+import { ensureCarePlanSchema } from "@/lib/startup/ensure-care-plan-schema";
 
 /**
  * GET /api/consults/me — the signed-in patient's care plan.
@@ -12,6 +13,8 @@ import { getConsultSettings, getMemberByEmail, getPatientEmailFromRequest } from
  * enrolment form opens mostly filled in.
  */
 export async function GET(req: NextRequest) {
+  // The build-time migration is best-effort; make sure the tables are there.
+  await ensureCarePlanSchema().catch(() => {});
   try {
     const email = await getPatientEmailFromRequest(req);
     if (!email) return NextResponse.json({ error: "Not authenticated." }, { status: 401 });

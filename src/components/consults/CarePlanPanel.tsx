@@ -6,6 +6,7 @@ import {
   Send, Stethoscope, CalendarDays, ArrowRight, RefreshCw,
 } from "lucide-react";
 import { SectionLoader } from "@/components/PageLoader";
+import { getJson, invalidateJson } from "@/lib/client-cache";
 import {
   CarePlanEnrollModal,
   type CarePlanBenefits,
@@ -41,28 +42,45 @@ function formatWhen(iso: string) {
  * when they haven't joined, and their card, benefits and doctor thread when
  * they have. Enrolment happens in a popup over this panel.
  */
-export function CarePlanPanel({ autoOpenEnroll = false }: { autoOpenEnroll?: boolean }) {
+export function CarePlanPanel({
+  autoOpenEnroll = false,
+  onChanged,
+}: {
+  autoOpenEnroll?: boolean;
+  /** Lets the dashboard shell refresh its own care-plan prompt. */
+  onChanged?: () => void;
+}) {
   const [member, setMember] = useState<Member | null>(null);
   const [doctor, setDoctor] = useState<Doctor | null>(null);
   const [messages, setMessages] = useState<Message[]>([]);
   const [redemptions, setRedemptions] = useState<Redemption[]>([]);
-  const [benefits, setBenefits] = useState<CarePlanBenefits | null>(null);
+  // Seeded rather than null, so a failed call still shows the invitation
+  // instead of an empty tab.
+  const [benefits, setBenefits] = useState<CarePlanBenefits>({
+    price_naira: 10_000,
+    message_allowance: 40,
+    lab_discount_percent: 15,
+    pharmacy_discount_percent: 10,
+  });
   const [prefill, setPrefill] = useState<CarePlanPrefill>({});
   const [loading, setLoading] = useState(true);
   const [enrolling, setEnrolling] = useState(false);
   const [copied, setCopied] = useState(false);
   const opened = useRef(false);
 
-  const load = useCallback(async () => {
+  const load = useCallback(async (force = false) => {
     try {
-      const res = await fetch("/api/consults/me", { cache: "no-store" });
-      const data = await res.json();
-      if (!data.success) return;
+      // Shared with the dashboard shell's prompt through the client cache.
+      if (force) invalidateJson("/api/consults/me");
+      const data = await getJson<Record<string, unknown> & { success?: boolean }>(
+        "/api/consults/me", { force }
+      ) as any;
+      if (!data?.success) return;
       setMember(data.member);
       setDoctor(data.doctor ?? null);
       setMessages(data.messages ?? []);
       setRedemptions(data.redemptions ?? []);
-      setBenefits(data.benefits);
+      if (data.benefits) setBenefits(data.benefits);
       setPrefill(data.prefill ?? {});
     } finally {
       setLoading(false);
@@ -96,9 +114,9 @@ export function CarePlanPanel({ autoOpenEnroll = false }: { autoOpenEnroll?: boo
 
   return (
     <div className="space-y-4">
-      {!active && benefits && <JoinInvite benefits={benefits} lapsed={lapsed} onJoin={() => setEnrolling(true)} />}
+      {!active && <JoinInvite benefits={benefits} lapsed={lapsed} onJoin={() => setEnrolling(true)} />}
 
-      {active && member && benefits && (
+      {active && member && (
         <div className="grid gap-4 lg:grid-cols-[minmax(0,320px)_1fr]">
           <div className="space-y-4">
             {/* Care card */}
@@ -186,9 +204,10 @@ export function CarePlanPanel({ autoOpenEnroll = false }: { autoOpenEnroll?: boo
         </div>
       )}
 
-      {enrolling && benefits && (
+      {enrolling && (
         <CarePlanEnrollModal
           benefits={benefits}
+          onClose={() => { setEnrolling(false); onChanged?.(); }}
           prefill={
             member
               ? {
@@ -199,7 +218,6 @@ export function CarePlanPanel({ autoOpenEnroll = false }: { autoOpenEnroll?: boo
                 }
               : prefill
           }
-          onClose={() => setEnrolling(false)}
         />
       )}
     </div>

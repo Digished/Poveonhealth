@@ -5,6 +5,7 @@ import { prisma } from "@/lib/prisma";
 import { resend, FROM_ADDRESS } from "@/lib/email/resend";
 import { carePlanDoctorMessageEmail } from "@/lib/email/templates";
 import { appUrl, getMemberFromRequest } from "@/lib/consult";
+import { ensureCarePlanSchema } from "@/lib/startup/ensure-care-plan-schema";
 
 const BodySchema = z.object({ body: z.string().trim().min(2, "Write your message first").max(4000) });
 
@@ -15,6 +16,8 @@ const BodySchema = z.object({ body: z.string().trim().min(2, "Write your message
  * often as the case needs without spending anything.
  */
 export async function POST(req: NextRequest) {
+  // The build-time migration is best-effort; make sure the tables are there.
+  await ensureCarePlanSchema().catch(() => {});
   try {
     const member = await getMemberFromRequest(req);
     if (!member) return NextResponse.json({ error: "Not authenticated." }, { status: 401 });

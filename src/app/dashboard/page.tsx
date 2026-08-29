@@ -6,13 +6,15 @@ import { PoveonLogo } from "@/components/PoveonLogo";
 import { SupportFab } from "@/components/SupportFab";
 import { PageLoader, SectionLoader } from "@/components/PageLoader";
 import { CarePlanPanel } from "@/components/consults/CarePlanPanel";
+import { CarePlanPromptCard, CarePlanPromptModal, useCarePlan } from "@/components/consults/CarePlanPrompt";
+import { PortalNav, PortalSubNav, type PortalNavSection } from "@/components/ui/PortalNav";
 import { parsePhones } from "@/lib/phones";
 import { PhoneInput } from "@/components/PhoneInput";
 import {
   LogOut, Phone, MapPin, Calendar, Stethoscope, FlaskConical,
   ClipboardList, User, ChevronDown, ChevronUp, FileImage, ExternalLink,
   Pencil, Check, X, RefreshCw, MessageCircle, Filter, Search, UserCircle,
-  BadgeCheck, Shield, EyeOff, Eye, Star, MessageSquare, HeartPulse,
+  BadgeCheck, Shield, EyeOff, Eye, Star, MessageSquare, HeartPulse, Menu,
 } from "lucide-react";
 
 interface Lab {
@@ -927,65 +929,87 @@ function PatientEncountersSection({
   onBrowse: () => void;
 }) {
   const naira = (n: number) => `₦${Math.round(n).toLocaleString("en-NG")}`;
+  const active = subscriptions.filter((s) => s.active);
+  const totalPaid = encounters.reduce((sum, e) => sum + Number(e.amount_paid ?? 0), 0);
+  const answered = encounters.filter((e) => !!e.doctor_note).length;
 
   return (
     <div className="space-y-4">
-      {/* Active retainerships */}
-      {subscriptions.filter((s) => s.active).length > 0 && (
+      {/* Headline numbers, laid out like the care plan's */}
+      <div className="grid grid-cols-2 gap-3 xl:grid-cols-4">
+        <VisitStat icon={Stethoscope} label="Visits" value={String(encounters.length)} accent="medical" />
+        <VisitStat icon={MessageCircle} label="Doctor replies" value={String(answered)} accent="emerald" />
+        <VisitStat icon={BadgeCheck} label="Memberships" value={String(active.length)} accent="indigo" />
+        <VisitStat icon={ClipboardList} label="Spent" value={naira(totalPaid)} accent="slate" />
+      </div>
+
+      {active.length > 0 && (
         <div className="space-y-2">
-          <h2 className="text-sm font-bold text-slate-700 px-0.5">Your memberships</h2>
-          {subscriptions.filter((s) => s.active).map((s, i) => (
-            <div key={i} className="flex items-center gap-3 bg-gradient-to-br from-emerald-500 to-teal-600 rounded-2xl px-4 py-3.5 text-white shadow-sm">
-              <div className="w-10 h-10 rounded-xl bg-white/20 flex items-center justify-center shrink-0"><BadgeCheck className="w-5 h-5" /></div>
-              <div className="flex-1 min-w-0">
-                <p className="text-sm font-bold truncate">{s.doctor_name}</p>
-                <p className="text-[11px] text-white/80">{PLAN_LABEL[s.subscription_type] ?? "Retainer"} · active</p>
+          <h2 className="text-xs font-bold uppercase tracking-wider text-slate-400">Your memberships</h2>
+          <div className="grid gap-3 xl:grid-cols-2">
+            {active.map((s, i) => (
+              <div key={i} className="flex items-center gap-3 rounded-2xl bg-gradient-to-br from-emerald-500 to-teal-600 px-4 py-3.5 text-white shadow-sm">
+                <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-white/20">
+                  <BadgeCheck className="h-5 w-5" />
+                </div>
+                <div className="min-w-0 flex-1">
+                  <p className="truncate text-sm font-bold">{s.doctor_name}</p>
+                  <p className="text-[11px] text-white/80">{PLAN_LABEL[s.subscription_type] ?? "Retainer"} · active</p>
+                </div>
+                {s.expires_at && <p className="shrink-0 text-[11px] text-white/80">until {formatDate(s.expires_at)}</p>}
               </div>
-              {s.expires_at && <p className="text-[11px] text-white/80 shrink-0">until {formatDate(s.expires_at)}</p>}
-            </div>
-          ))}
+            ))}
+          </div>
         </div>
       )}
 
       {encounters.length === 0 ? (
-        <div className="flex flex-col items-center justify-center py-16 text-center">
-          <div className="w-14 h-14 rounded-2xl bg-white border border-slate-100 shadow-sm flex items-center justify-center mb-3">
-            <Stethoscope className="w-7 h-7 text-slate-200" />
-          </div>
-          <h2 className="text-slate-700 font-semibold text-sm mb-1">No doctor visits yet</h2>
-          <p className="text-slate-400 text-xs max-w-xs">When you consult a doctor through their Poveon link, your visits and replies appear here.</p>
+        <div className="rounded-2xl border border-slate-100 bg-white p-10 text-center shadow-sm">
+          <Stethoscope className="mx-auto mb-3 h-10 w-10 text-slate-200" />
+          <h2 className="text-sm font-semibold text-slate-700">No doctor visits yet</h2>
+          <p className="mx-auto mt-1 max-w-xs text-xs text-slate-400">
+            When you consult a doctor through their Poveon link, your visits and their replies appear here.
+          </p>
         </div>
       ) : (
-        <div className="space-y-3">
+        <div className="grid items-start gap-3 xl:grid-cols-2">
           {encounters.map((e) => (
-            <div key={e.id} className="bg-white rounded-2xl border border-slate-100 shadow-sm p-4">
+            <div key={e.id} className="rounded-2xl border border-slate-100 bg-white p-4 shadow-sm">
               <div className="flex items-center gap-3">
-                <div className="w-11 h-11 rounded-xl overflow-hidden bg-slate-100 flex items-center justify-center shrink-0">
+                <div className="flex h-11 w-11 shrink-0 items-center justify-center overflow-hidden rounded-xl bg-slate-100">
                   {e.doctor_avatar
                     // eslint-disable-next-line @next/next/no-img-element
-                    ? <img src={e.doctor_avatar} alt={e.doctor_name} className="w-full h-full object-cover" />
-                    : <Stethoscope className="w-5 h-5 text-slate-300" />}
+                    ? <img src={e.doctor_avatar} alt={e.doctor_name} className="h-full w-full object-cover" />
+                    : <Stethoscope className="h-5 w-5 text-slate-300" />}
                 </div>
-                <div className="flex-1 min-w-0">
-                  <p className="text-sm font-bold text-slate-800 truncate">{e.doctor_name}</p>
-                  <p className="text-[11px] text-slate-400 truncate">{e.doctor_specialty || PLAN_LABEL[e.plan_type]} · {formatDate(e.created_at)}</p>
+                <div className="min-w-0 flex-1">
+                  <p className="truncate text-sm font-bold text-slate-800">{e.doctor_name}</p>
+                  <p className="truncate text-[11px] text-slate-400">
+                    {e.doctor_specialty || PLAN_LABEL[e.plan_type]} · {formatDate(e.created_at)}
+                  </p>
                 </div>
-                <span className={`text-[10px] font-semibold border rounded-full px-2 py-0.5 shrink-0 ${STATUS_META[e.status]?.cls ?? "bg-slate-50 text-slate-500 border-slate-100"}`}>
+                <span className={`shrink-0 rounded-full border px-2 py-0.5 text-[10px] font-semibold ${STATUS_META[e.status]?.cls ?? "border-slate-100 bg-slate-50 text-slate-500"}`}>
                   {STATUS_META[e.status]?.label ?? e.status}
                 </span>
               </div>
 
-              <div className="flex items-center gap-3 mt-3 text-[11px] text-slate-400">
+              <div className="mt-3 flex items-center gap-3 text-[11px] text-slate-400">
                 <span className="font-mono">{e.code}</span>
                 <span>·</span>
                 <span>{PLAN_LABEL[e.plan_type] ?? e.plan_type}</span>
                 <span className="ml-auto font-semibold text-slate-600">{naira(e.amount_paid)}</span>
               </div>
 
-              {e.doctor_note && (
-                <div className="mt-3 px-3 py-2.5 rounded-xl bg-emerald-50 border border-emerald-100">
-                  <p className="text-[10px] font-bold uppercase tracking-wide text-emerald-600 mb-1 flex items-center gap-1"><MessageCircle className="w-3 h-3" /> Note from your doctor</p>
-                  <p className="text-xs text-emerald-800 leading-relaxed whitespace-pre-wrap">{e.doctor_note}</p>
+              {e.doctor_note ? (
+                <div className="mt-3 rounded-xl border border-emerald-100 bg-emerald-50 px-3 py-2.5">
+                  <p className="mb-1 flex items-center gap-1 text-[10px] font-bold uppercase tracking-wide text-emerald-600">
+                    <MessageCircle className="h-3 w-3" /> Note from your doctor
+                  </p>
+                  <p className="whitespace-pre-wrap text-xs leading-relaxed text-emerald-800">{e.doctor_note}</p>
+                </div>
+              ) : (
+                <div className="mt-3 rounded-xl border border-slate-200 bg-slate-50 px-3 py-2">
+                  <p className="text-xs italic text-slate-500">Waiting on your doctor&apos;s reply</p>
                 </div>
               )}
             </div>
@@ -993,12 +1017,66 @@ function PatientEncountersSection({
         </div>
       )}
 
-      <button onClick={onBrowse} className="w-full flex items-center justify-center gap-2 py-3 px-4 rounded-xl bg-white border border-slate-200 text-slate-600 font-semibold text-sm hover:border-slate-300 transition">
-        <ClipboardList className="w-4 h-4" /> Back to lab requests
+      <button
+        onClick={onBrowse}
+        className="flex w-full items-center justify-center gap-2 rounded-xl border border-slate-200 bg-white px-4 py-3 text-sm font-semibold text-slate-600 transition hover:border-slate-300"
+      >
+        <Stethoscope className="h-4 w-4" /> Find a doctor to consult
       </button>
     </div>
   );
 }
+
+function VisitStat({
+  icon: Icon, label, value, accent,
+}: {
+  icon: typeof Stethoscope; label: string; value: string; accent: "medical" | "emerald" | "indigo" | "slate";
+}) {
+  const tones = {
+    medical: "bg-medical-50 text-medical-600",
+    emerald: "bg-emerald-50 text-emerald-600",
+    indigo: "bg-indigo-50 text-indigo-600",
+    slate: "bg-slate-100 text-slate-500",
+  };
+  return (
+    <div className="rounded-2xl border border-slate-100 bg-white p-4 shadow-sm">
+      <div className={`flex h-8 w-8 items-center justify-center rounded-lg ${tones[accent]}`}>
+        <Icon className="h-4 w-4" />
+      </div>
+      <p className="mt-2.5 truncate text-xl font-extrabold text-slate-900">{value}</p>
+      <p className="text-xs text-slate-400">{label}</p>
+    </div>
+  );
+}
+
+/** Panels the patient portal can show. */
+type View = "care" | "visits" | "tests" | "results" | "profile" | "security";
+
+const VALID_VIEWS: View[] = ["care", "visits", "tests", "results", "profile", "security"];
+
+/** The care plan is the portal's home — it's what a patient comes back for. */
+const DEFAULT_VIEW: View = "care";
+
+/** Grouped entries land on their parent in the sidebar and expose a sub-menu. */
+const PARENT_OF: Record<View, View> = {
+  care: "care",
+  visits: "visits",
+  tests: "tests",
+  results: "tests",
+  profile: "profile",
+  security: "profile",
+};
+
+const SUB_MENUS: Partial<Record<View, { key: View; label: string }[]>> = {
+  tests: [
+    { key: "tests", label: "All tests" },
+    { key: "results", label: "Results" },
+  ],
+  profile: [
+    { key: "profile", label: "My details" },
+    { key: "security", label: "Security" },
+  ],
+};
 
 export default function DashboardPage() {
   return (
@@ -1020,10 +1098,28 @@ function DashboardInner() {
   // Two deep links land on the care plan: `?care=1` from /consults opens the
   // enrolment form as well, `?tab=care` (the payment return) just shows it.
   const wantsCarePlan = searchParams.get("care") === "1";
-  const carePlanTab = wantsCarePlan || searchParams.get("tab") === "care";
-  const [activeTab, setActiveTab] = useState<"tests" | "care" | "encounters" | "results" | "security">(
-    carePlanTab ? "care" : "tests"
-  );
+  const tabParam = searchParams.get("tab") as View | null;
+  const view: View =
+    wantsCarePlan ? "care"
+    : tabParam && VALID_VIEWS.includes(tabParam) ? tabParam
+    : DEFAULT_VIEW;
+  const [navOpen, setNavOpen] = useState(false);
+  const [accountMenuOpen, setAccountMenuOpen] = useState(false);
+  const [showCarePrompt, setShowCarePrompt] = useState(false);
+  const care = useCarePlan();
+  const careLoading = care.loading;
+
+  // Stable across renders — the panels take these as props.
+  const searchRef = useRef(searchParams.toString());
+  searchRef.current = searchParams.toString();
+
+  const navigate = useCallback((next: View, opts?: { enroll?: boolean }) => {
+    const params = new URLSearchParams(searchRef.current);
+    params.set("tab", next);
+    if (opts?.enroll) params.set("care", "1");
+    else params.delete("care");
+    router.replace(`/dashboard?${params.toString()}`, { scroll: false });
+  }, [router]);
   const [encounters, setEncounters] = useState<PatientEncounter[]>([]);
   const [subscriptions, setSubscriptions] = useState<PatientSubscription[]>([]);
   const [statusFilter, setStatusFilter] = useState<string>("all");
@@ -1062,6 +1158,18 @@ function DashboardInner() {
 
   useEffect(() => { load(); }, [load]);
 
+  // Prompt on every sign-in until they're on a live plan — but only once per
+  // session, so moving around the dashboard doesn't keep reopening it.
+  useEffect(() => {
+    if (careLoading || care.active || !patientEmail || wantsCarePlan) return;
+    try {
+      const key = `poveon_care_prompt_${patientEmail}`;
+      if (sessionStorage.getItem(key)) return;
+      sessionStorage.setItem(key, "1");
+    } catch { /* private mode — prompt anyway, it's dismissible */ }
+    setShowCarePrompt(true);
+  }, [careLoading, care.active, patientEmail, wantsCarePlan]);
+
   async function handleLogout() {
     setLoggingOut(true);
     try { await fetch("/api/patient/logout", { method: "POST" }); } catch { /* */ }
@@ -1082,275 +1190,369 @@ function DashboardInner() {
 
   const hasActiveFilter = statusFilter !== "all" || labFilter !== "all" || !!searchQuery;
   const displayName = profile?.name || null;
+  const completed = requests.filter((r) => r.status === "done");
+
+  const parent = PARENT_OF[view];
+  const subMenu = SUB_MENUS[parent] ?? [];
+
+  const navSections: PortalNavSection[] = [
+    {
+      label: "My care",
+      items: [
+        { key: "care", label: "Care Plan", icon: HeartPulse, alert: !careLoading && !care.active },
+        { key: "visits", label: "Doctor Visits", icon: Stethoscope, badge: encounters.length },
+      ],
+    },
+    {
+      label: "Records",
+      items: [{ key: "tests", label: "Lab Tests", icon: ClipboardList, badge: requests.length }],
+    },
+    {
+      label: "Account",
+      items: [{ key: "profile", label: "My Details", icon: User, alert: !loading && !displayName }],
+    },
+  ];
 
   return (
     <div className="min-h-dvh bg-gradient-to-br from-sky-50 via-blue-50 to-indigo-50">
-      <header className="bg-white/80 backdrop-blur-sm border-b border-white/60 sticky top-0 z-20 shadow-sm">
-        <div className="max-w-2xl mx-auto px-4 py-3 flex items-center justify-between gap-3">
-          <div className="flex items-center gap-2.5 min-w-0">
-            <div className="w-8 h-8 rounded-xl bg-gradient-to-br from-slate-900 via-slate-800 to-indigo-900 flex items-center justify-center shadow flex-shrink-0">
-              <ClipboardList className="w-4 h-4 text-sky-300" />
-            </div>
-            <div className="min-w-0">
-              <h1 className="text-sm font-bold text-slate-800 leading-tight">My Health</h1>
-              {patientEmail && <p className="text-xs text-slate-400 truncate max-w-[160px] sm:max-w-none">{patientEmail}</p>}
-            </div>
+      {/* Header */}
+      <header className="sticky top-0 z-30 border-b border-white/60 bg-white/85 backdrop-blur-md">
+        <div className="mx-auto flex max-w-[1600px] items-center gap-3 px-4 py-3 lg:px-6">
+          <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-gradient-to-br from-slate-900 via-slate-800 to-indigo-900 shadow-sm">
+            <ClipboardList className="h-4 w-4 text-sky-300" />
           </div>
-          <button
-            onClick={handleLogout}
-            disabled={loggingOut}
-            className="flex items-center gap-1.5 text-xs font-semibold text-slate-500 hover:text-red-600 disabled:opacity-50 transition px-3 py-1.5 rounded-lg hover:bg-red-50 flex-shrink-0"
-          >
-            <LogOut className="w-3.5 h-3.5" />
-            <span className="hidden sm:inline">{loggingOut ? "Signing out…" : "Sign out"}</span>
-          </button>
+          <div className="min-w-0 flex-1">
+            <p className="text-sm font-bold leading-tight text-slate-800">My Health</p>
+            <p className="truncate text-xs text-slate-400">{displayName ?? patientEmail ?? " "}</p>
+          </div>
+
+          {/* Desktop actions */}
+          <div className="hidden items-center gap-2 sm:flex">
+            <button
+              type="button"
+              onClick={() => router.push("/")}
+              className="inline-flex items-center gap-1.5 rounded-xl bg-sky-600 px-3.5 py-2 text-xs font-semibold text-white shadow-sm shadow-sky-600/25 transition hover:bg-sky-700"
+            >
+              <FlaskConical className="h-3.5 w-3.5" />
+              New lab request
+            </button>
+            <button
+              type="button"
+              onClick={handleLogout}
+              disabled={loggingOut}
+              className="inline-flex items-center gap-1.5 rounded-xl px-3 py-2 text-xs font-semibold text-slate-500 transition hover:bg-red-50 hover:text-red-600 disabled:opacity-50"
+            >
+              <LogOut className="h-3.5 w-3.5" />
+              {loggingOut ? "Signing out…" : "Sign out"}
+            </button>
+          </div>
+
+          {/* Mobile actions */}
+          <div className="relative sm:hidden">
+            <button
+              type="button"
+              onClick={() => setAccountMenuOpen((v) => !v)}
+              aria-label="Account menu"
+              className="rounded-lg p-2 text-slate-500 transition hover:bg-slate-100"
+            >
+              {accountMenuOpen ? <X className="h-5 w-5" /> : <Menu className="h-5 w-5" />}
+            </button>
+            {accountMenuOpen && (
+              <>
+                <div className="fixed inset-0 z-10" onClick={() => setAccountMenuOpen(false)} />
+                <div className="absolute right-0 top-full z-20 mt-2 w-60 overflow-hidden rounded-xl border border-slate-200 bg-white shadow-2xl">
+                  {patientEmail && (
+                    <p className="truncate border-b border-slate-100 bg-slate-50 px-4 py-2.5 text-xs text-slate-500">
+                      {patientEmail}
+                    </p>
+                  )}
+                  <button
+                    type="button"
+                    onClick={() => { setAccountMenuOpen(false); router.push("/"); }}
+                    className="flex w-full items-center gap-3 border-b border-slate-100 px-4 py-3 text-sm font-medium text-slate-700 active:bg-slate-50"
+                  >
+                    <FlaskConical className="h-4 w-4 text-sky-500" />
+                    New lab request
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => { setAccountMenuOpen(false); navigate("profile"); }}
+                    className="flex w-full items-center gap-3 border-b border-slate-100 px-4 py-3 text-sm font-medium text-slate-700 active:bg-slate-50"
+                  >
+                    <User className="h-4 w-4 text-slate-400" />
+                    My details
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => { setAccountMenuOpen(false); handleLogout(); }}
+                    className="flex w-full items-center gap-3 px-4 py-3 text-sm font-medium text-red-600 active:bg-red-50"
+                  >
+                    <LogOut className="h-4 w-4" />
+                    Sign out
+                  </button>
+                </div>
+              </>
+            )}
+          </div>
         </div>
       </header>
 
-      <main className="max-w-2xl mx-auto px-4 py-5 space-y-4 pb-12">
-        {loading && <SectionLoader label="Loading your dashboard…" />}
-        {!loading && patientEmail && (
-          <>
-            {editingProfile ? (
-              <ProfilePanel
-                profile={profile ?? { name: null, phone: null, dob: null, sex: null, address: null }}
-                email={patientEmail}
-                onUpdated={(p) => setProfile(p)}
-                onClose={() => setEditingProfile(false)}
-              />
-            ) : (
-              <div className="bg-white/80 backdrop-blur-sm rounded-2xl border border-white/60 px-4 py-4 shadow-sm">
-                <div className="flex items-start gap-3">
-                  <div className="w-11 h-11 rounded-full bg-gradient-to-br from-sky-500 to-indigo-500 flex items-center justify-center shrink-0">
-                    <User className="w-5 h-5 text-white" />
-                  </div>
-                  <div className="flex-1 min-w-0">
-                    <p className="text-base font-bold text-slate-800 leading-tight">
-                      {displayName ?? <span className="text-slate-400 font-normal italic text-sm">No name set</span>}
-                    </p>
-                    <p className="text-xs text-slate-500 truncate mt-0.5">{patientEmail}</p>
-                    {(profile?.dob || profile?.sex || profile?.phone) && (
-                      <div className="flex flex-wrap gap-x-4 gap-y-0.5 mt-2">
-                        {ageFromDob(profile.dob) && <span className="text-xs text-slate-500"><span className="text-slate-400">Age:</span> {ageFromDob(profile.dob)} yrs</span>}
-                        {profile.sex && <span className="text-xs text-slate-500 capitalize"><span className="text-slate-400">Sex:</span> {profile.sex}</span>}
-                        {profile.phone && <span className="text-xs text-slate-500"><span className="text-slate-400">Tel:</span> {profile.phone}</span>}
-                      </div>
-                    )}
-                  </div>
-                  <button
-                    onClick={() => setEditingProfile(true)}
-                    className="flex items-center gap-1.5 text-xs font-semibold text-sky-600 hover:text-sky-700 hover:bg-sky-50 transition px-2.5 py-1.5 rounded-lg border border-sky-100 shrink-0"
-                  >
-                    <Pencil className="w-3 h-3" />Edit
-                  </button>
-                </div>
-                {!displayName && (
-                  <p className="text-xs text-amber-600 bg-amber-50 border border-amber-100 rounded-xl px-3 py-2 mt-3">
-                    Set your name so labs and doctors can identify you correctly.
-                  </p>
-                )}
-              </div>
-            )}
-          </>
-        )}
+      <div className="mx-auto max-w-[1600px] px-4 py-5 lg:flex lg:gap-6 lg:px-6 lg:py-6">
+        <PortalNav
+          sections={navSections}
+          activeKey={parent}
+          onSelect={(key) => navigate(key as View)}
+          open={navOpen}
+          onOpenChange={setNavOpen}
+        />
 
-        {/* Tab Navigation — scrollable pills */}
-        {!loading && patientEmail && (
-          <div className="-mx-4 px-4 overflow-x-auto no-scrollbar">
-            <div className="flex gap-2 min-w-max pb-0.5">
-              {([
-                { key: "tests", label: "Lab Tests", Icon: ClipboardList },
-                { key: "care", label: "Care Plan", Icon: HeartPulse },
-                { key: "encounters", label: "Doctor Visits", Icon: Stethoscope },
-                { key: "results", label: "Results", Icon: BadgeCheck },
-                { key: "security", label: "Security", Icon: Shield },
-              ] as const).map(({ key, label, Icon }) => {
-                const counts = {
-                  tests: requests.length,
-                  care: 0,
-                  encounters: encounters.length,
-                  results: requests.filter((r) => r.status === "done").length,
-                  security: 0,
-                };
-                const active = activeTab === key;
-                return (
-                  <button key={key} onClick={() => setActiveTab(key)}
-                    className={`relative flex items-center gap-1.5 px-4 py-2.5 rounded-xl text-xs font-semibold whitespace-nowrap transition-all ${
-                      active
-                        ? "bg-gradient-to-br from-sky-600 to-indigo-600 text-white shadow-md shadow-sky-600/25"
-                        : "bg-white text-slate-600 border border-slate-200 hover:border-sky-200 hover:text-slate-800"
-                    }`}>
-                    <Icon className="w-3.5 h-3.5" />
-                    {label}
-                    {counts[key] > 0 && (
-                      <span className={`text-[10px] px-1.5 py-0.5 rounded-full font-bold ${active ? "bg-white/20 text-white" : "bg-slate-100 text-slate-500"}`}>{counts[key]}</span>
-                    )}
-                  </button>
-                );
-              })}
-            </div>
-          </div>
-        )}
+        <main className="min-w-0 flex-1 space-y-4">
+          <PortalSubNav items={subMenu} activeKey={view} onSelect={(key) => navigate(key as View)} />
 
-        {/* Care Plan Tab */}
-        {!loading && patientEmail && activeTab === "care" && (
-          <CarePlanPanel autoOpenEnroll={wantsCarePlan} />
-        )}
+          {/* Where the profile card used to sit: the standing invitation, on
+              every tab, until the patient is on a live plan. */}
+          {!loading && !careLoading && !care.active && view !== "care" && (
+            <CarePlanPromptCard
+              benefits={care.benefits}
+              lapsed={care.enrolled}
+              onJoin={() => navigate("care")}
+            />
+          )}
 
-        {/* Encounters Tab */}
-        {!loading && patientEmail && activeTab === "encounters" && (
-          <PatientEncountersSection encounters={encounters} subscriptions={subscriptions} onBrowse={() => router.push("/")} />
-        )}
+          {loading && <SectionLoader label="Loading your dashboard…" />}
 
-        {/* Security Tab */}
-        {!loading && patientEmail && activeTab === "security" && (
-          <PatientSecuritySection email={patientEmail} />
-        )}
+          {/* Care Plan */}
+          {!loading && patientEmail && view === "care" && (
+            <CarePlanPanel autoOpenEnroll={wantsCarePlan} onChanged={care.refresh} />
+          )}
 
-        {/* Results Tab — all completed tests */}
-        {!loading && activeTab === "results" && (
-          <div className="space-y-4">
-            {requests.filter((r) => r.status === "done").length === 0 ? (
-              <div className="flex flex-col items-center justify-center py-16 text-center">
-                <div className="w-14 h-14 rounded-2xl bg-white border border-slate-100 shadow-sm flex items-center justify-center mb-3">
-                  <BadgeCheck className="w-7 h-7 text-slate-200" />
-                </div>
-                <h2 className="text-slate-700 font-semibold text-sm mb-1">No completed tests yet</h2>
-                <p className="text-slate-400 text-xs max-w-xs">Tests marked as done by the lab will appear here.</p>
-              </div>
-            ) : (
-              requests.filter((r) => r.status === "done").map((req) => (
-                <ResultCard key={req.id} req={req} />
-              ))
-            )}
-          </div>
-        )}
+          {/* Doctor visits */}
+          {!loading && patientEmail && view === "visits" && (
+            <PatientEncountersSection
+              encounters={encounters}
+              subscriptions={subscriptions}
+              onBrowse={() => router.push("/")}
+            />
+          )}
 
-        {/* Tests Tab */}
-        {!loading && activeTab === "tests" && (
-          <>
-          {/* Submit New Request Button */}
-          <button
-            onClick={() => router.push("/")}
-            className="w-full flex items-center justify-center gap-2 py-3 px-4 rounded-xl bg-gradient-to-r from-emerald-500 to-green-500 text-white font-semibold text-sm hover:from-emerald-600 hover:to-green-600 transition-all shadow-md hover:shadow-lg"
-          >
-            <FlaskConical className="w-4 h-4" />
-            Submit New Lab Request
-          </button>
-
-          <div>
-            <div className="flex items-center justify-between gap-3 mb-3">
-              <div className="flex items-center gap-2">
-                <h2 className="text-sm font-bold text-slate-700">All Tests</h2>
-                <span className="text-xs text-slate-400 bg-white/70 border border-slate-100 rounded-full px-2 py-0.5">
-                  {filtered.length}{filtered.length !== requests.length ? ` of ${requests.length}` : ""}
-                </span>
-              </div>
-              <button
-                onClick={() => setShowFilters((v) => !v)}
-                className={`flex items-center gap-1.5 text-xs font-semibold px-3 py-1.5 rounded-lg border transition ${
-                  hasActiveFilter ? "bg-sky-50 text-sky-700 border-sky-200" : "bg-white/70 text-slate-500 border-slate-200 hover:border-slate-300"
-                }`}
-              >
-                <Filter className="w-3 h-3" />Filter
-                {hasActiveFilter && <span className="w-1.5 h-1.5 rounded-full bg-sky-500 ml-0.5" />}
-              </button>
-            </div>
-
-            {showFilters && (
-              <div ref={filterRef} className="bg-white rounded-2xl border border-slate-100 shadow-sm p-4 mb-4 space-y-3">
-                <div className="relative">
-                  <Search className="w-3.5 h-3.5 text-slate-400 absolute left-3 top-1/2 -translate-y-1/2 pointer-events-none" />
-                  <input
-                    value={searchQuery}
-                    onChange={(e) => setSearchQuery(e.target.value)}
-                    placeholder="Search lab name or test…"
-                    className="w-full pl-8 pr-3 py-2.5 text-sm border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-sky-400 bg-white"
-                  />
-                </div>
-                <div>
-                  <p className="text-xs font-semibold text-slate-500 uppercase tracking-wide mb-2">Status</p>
-                  <div className="flex flex-wrap gap-2">
-                    {STATUS_FILTER_OPTIONS.map((opt) => (
-                      <button key={opt.value} onClick={() => setStatusFilter(opt.value)}
-                        className={`text-xs font-semibold px-3 py-1.5 rounded-full border transition ${
-                          statusFilter === opt.value ? "bg-sky-500 text-white border-sky-500" : "bg-white text-slate-500 border-slate-200 hover:border-slate-300"
-                        }`}>
-                        {opt.label}
-                      </button>
-                    ))}
-                  </div>
-                </div>
-                {labOptions.length > 1 && (
-                  <div>
-                    <p className="text-xs font-semibold text-slate-500 uppercase tracking-wide mb-2">Lab</p>
-                    <div className="flex flex-wrap gap-2">
-                      <button onClick={() => setLabFilter("all")}
-                        className={`text-xs font-semibold px-3 py-1.5 rounded-full border transition ${
-                          labFilter === "all" ? "bg-sky-500 text-white border-sky-500" : "bg-white text-slate-500 border-slate-200 hover:border-slate-300"
-                        }`}>
-                        All Labs
-                      </button>
-                      {labOptions.map((lab) => (
-                        <button key={lab} onClick={() => setLabFilter(lab)}
-                          className={`text-xs font-semibold px-3 py-1.5 rounded-full border transition ${
-                            labFilter === lab ? "bg-sky-500 text-white border-sky-500" : "bg-white text-slate-500 border-slate-200 hover:border-slate-300"
-                          }`}>
-                          {lab}
-                        </button>
-                      ))}
+          {/* My details */}
+          {!loading && patientEmail && view === "profile" && (
+            <div className="xl:max-w-3xl">
+              {editingProfile ? (
+                <ProfilePanel
+                  profile={profile ?? { name: null, phone: null, dob: null, sex: null, address: null }}
+                  email={patientEmail}
+                  onUpdated={(p) => setProfile(p)}
+                  onClose={() => setEditingProfile(false)}
+                />
+              ) : (
+                <div className="rounded-2xl border border-slate-100 bg-white px-4 py-4 shadow-sm">
+                  <div className="flex items-start gap-3">
+                    <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-full bg-gradient-to-br from-sky-500 to-indigo-500">
+                      <User className="h-5 w-5 text-white" />
                     </div>
+                    <div className="min-w-0 flex-1">
+                      <p className="text-base font-bold leading-tight text-slate-800">
+                        {displayName ?? <span className="text-sm font-normal italic text-slate-400">No name set</span>}
+                      </p>
+                      <p className="mt-0.5 truncate text-xs text-slate-500">{patientEmail}</p>
+                      {(profile?.dob || profile?.sex || profile?.phone) && (
+                        <div className="mt-2 flex flex-wrap gap-x-4 gap-y-0.5">
+                          {ageFromDob(profile.dob) && (
+                            <span className="text-xs text-slate-500"><span className="text-slate-400">Age:</span> {ageFromDob(profile.dob)} yrs</span>
+                          )}
+                          {profile.sex && (
+                            <span className="text-xs capitalize text-slate-500"><span className="text-slate-400">Sex:</span> {profile.sex}</span>
+                          )}
+                          {profile.phone && (
+                            <span className="text-xs text-slate-500"><span className="text-slate-400">Tel:</span> {profile.phone}</span>
+                          )}
+                        </div>
+                      )}
+                    </div>
+                    <button
+                      onClick={() => setEditingProfile(true)}
+                      className="flex shrink-0 items-center gap-1.5 rounded-lg border border-sky-100 px-2.5 py-1.5 text-xs font-semibold text-sky-600 transition hover:bg-sky-50 hover:text-sky-700"
+                    >
+                      <Pencil className="h-3 w-3" />Edit
+                    </button>
                   </div>
-                )}
-                {hasActiveFilter && (
-                  <button onClick={() => { setStatusFilter("all"); setLabFilter("all"); setSearchQuery(""); }}
-                    className="text-xs text-slate-400 hover:text-slate-600 transition underline underline-offset-2">
-                    Clear all filters
-                  </button>
-                )}
-              </div>
-            )}
-          </div>
-
-          {/* Request list */}
-          {filtered.length > 0 ? (
-            <div className="space-y-4">
-              {filtered.map((req) => <RequestCard key={req.id} req={req} />)}
-            </div>
-          ) : requests.length === 0 ? (
-            <div className="flex flex-col items-center justify-center py-16 text-center">
-              <div className="w-16 h-16 rounded-2xl bg-white border border-slate-100 shadow-sm flex items-center justify-center mb-4">
-                <ClipboardList className="w-8 h-8 text-slate-300" />
-              </div>
-              <h2 className="text-slate-700 font-semibold text-base mb-1">No test requests yet</h2>
-              <p className="text-slate-400 text-sm max-w-xs">When a doctor sends a request to your email, it will appear here.</p>
-            </div>
-          ) : (
-            <div className="flex flex-col items-center justify-center py-12 text-center">
-              <div className="w-12 h-12 rounded-2xl bg-white border border-slate-100 shadow-sm flex items-center justify-center mb-3">
-                <Filter className="w-6 h-6 text-slate-300" />
-              </div>
-              <h2 className="text-slate-600 font-semibold text-sm mb-1">No results match your filters</h2>
-              <button onClick={() => { setStatusFilter("all"); setLabFilter("all"); setSearchQuery(""); }}
-                className="text-xs text-sky-600 hover:text-sky-700 font-medium mt-1 underline underline-offset-2">
-                Clear filters
-              </button>
+                  {!displayName && (
+                    <p className="mt-3 rounded-xl border border-amber-100 bg-amber-50 px-3 py-2 text-xs text-amber-600">
+                      Set your name so labs and doctors can identify you correctly.
+                    </p>
+                  )}
+                </div>
+              )}
             </div>
           )}
-          </>
-        )}
 
-        {loading && activeTab === "tests" && (
-          <><SkeletonCard /><SkeletonCard /><SkeletonCard /></>
-        )}
-      </main>
+          {/* Security */}
+          {!loading && patientEmail && view === "security" && (
+            <div className="xl:max-w-3xl">
+              <PatientSecuritySection email={patientEmail} />
+            </div>
+          )}
 
-      <footer className="pb-8 pt-2 flex items-center justify-center gap-1.5">
-        <PoveonLogo className="w-4 h-4 opacity-30" />
+          {/* Results — completed tests only */}
+          {!loading && view === "results" && (
+            completed.length === 0 ? (
+              <EmptyState
+                icon={<BadgeCheck className="h-7 w-7 text-slate-200" />}
+                title="No completed tests yet"
+                hint="Tests marked as done by the lab will appear here."
+              />
+            ) : (
+              <div className="grid gap-4 xl:grid-cols-2">
+                {completed.map((req) => <ResultCard key={req.id} req={req} />)}
+              </div>
+            )
+          )}
+
+          {/* Lab tests */}
+          {view === "tests" && (
+            <>
+              <button
+                onClick={() => router.push("/")}
+                className="flex w-full items-center justify-center gap-2 rounded-xl bg-gradient-to-r from-emerald-500 to-green-500 px-4 py-3 text-sm font-semibold text-white shadow-md transition-all hover:from-emerald-600 hover:to-green-600 hover:shadow-lg sm:hidden"
+              >
+                <FlaskConical className="h-4 w-4" />
+                Submit New Lab Request
+              </button>
+
+              <div>
+                <div className="mb-3 flex items-center justify-between gap-3">
+                  <div className="flex items-center gap-2">
+                    <h2 className="text-sm font-bold text-slate-700">All Tests</h2>
+                    <span className="rounded-full border border-slate-100 bg-white/70 px-2 py-0.5 text-xs text-slate-400">
+                      {filtered.length}{filtered.length !== requests.length ? ` of ${requests.length}` : ""}
+                    </span>
+                  </div>
+                  <button
+                    onClick={() => setShowFilters((v) => !v)}
+                    className={`flex items-center gap-1.5 rounded-lg border px-3 py-1.5 text-xs font-semibold transition ${
+                      hasActiveFilter ? "border-sky-200 bg-sky-50 text-sky-700" : "border-slate-200 bg-white/70 text-slate-500 hover:border-slate-300"
+                    }`}
+                  >
+                    <Filter className="h-3 w-3" />Filter
+                    {hasActiveFilter && <span className="ml-0.5 h-1.5 w-1.5 rounded-full bg-sky-500" />}
+                  </button>
+                </div>
+
+                {showFilters && (
+                  <div ref={filterRef} className="mb-4 space-y-3 rounded-2xl border border-slate-100 bg-white p-4 shadow-sm">
+                    <div className="relative">
+                      <Search className="pointer-events-none absolute left-3 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-slate-400" />
+                      <input
+                        value={searchQuery}
+                        onChange={(e) => setSearchQuery(e.target.value)}
+                        placeholder="Search lab name or test…"
+                        className="w-full rounded-xl border border-slate-200 bg-white py-2.5 pl-8 pr-3 text-sm focus:outline-none focus:ring-2 focus:ring-sky-400"
+                      />
+                    </div>
+                    <div>
+                      <p className="mb-2 text-xs font-semibold uppercase tracking-wide text-slate-500">Status</p>
+                      <div className="flex flex-wrap gap-2">
+                        {STATUS_FILTER_OPTIONS.map((opt) => (
+                          <button key={opt.value} onClick={() => setStatusFilter(opt.value)}
+                            className={`rounded-full border px-3 py-1.5 text-xs font-semibold transition ${
+                              statusFilter === opt.value ? "border-sky-500 bg-sky-500 text-white" : "border-slate-200 bg-white text-slate-500 hover:border-slate-300"
+                            }`}>
+                            {opt.label}
+                          </button>
+                        ))}
+                      </div>
+                    </div>
+                    {labOptions.length > 1 && (
+                      <div>
+                        <p className="mb-2 text-xs font-semibold uppercase tracking-wide text-slate-500">Lab</p>
+                        <div className="flex flex-wrap gap-2">
+                          <button onClick={() => setLabFilter("all")}
+                            className={`rounded-full border px-3 py-1.5 text-xs font-semibold transition ${
+                              labFilter === "all" ? "border-sky-500 bg-sky-500 text-white" : "border-slate-200 bg-white text-slate-500 hover:border-slate-300"
+                            }`}>
+                            All Labs
+                          </button>
+                          {labOptions.map((lab) => (
+                            <button key={lab} onClick={() => setLabFilter(lab)}
+                              className={`rounded-full border px-3 py-1.5 text-xs font-semibold transition ${
+                                labFilter === lab ? "border-sky-500 bg-sky-500 text-white" : "border-slate-200 bg-white text-slate-500 hover:border-slate-300"
+                              }`}>
+                              {lab}
+                            </button>
+                          ))}
+                        </div>
+                      </div>
+                    )}
+                    {hasActiveFilter && (
+                      <button onClick={() => { setStatusFilter("all"); setLabFilter("all"); setSearchQuery(""); }}
+                        className="text-xs text-slate-400 underline underline-offset-2 transition hover:text-slate-600">
+                        Clear all filters
+                      </button>
+                    )}
+                  </div>
+                )}
+              </div>
+
+              {loading ? (
+                <div className="grid items-start gap-4 xl:grid-cols-2">
+                  <SkeletonCard /><SkeletonCard /><SkeletonCard /><SkeletonCard />
+                </div>
+              ) : filtered.length > 0 ? (
+                <div className="grid items-start gap-4 xl:grid-cols-2">
+                  {filtered.map((req) => <RequestCard key={req.id} req={req} />)}
+                </div>
+              ) : requests.length === 0 ? (
+                <EmptyState
+                  icon={<ClipboardList className="h-8 w-8 text-slate-300" />}
+                  title="No test requests yet"
+                  hint="When a doctor sends a request to your email, it will appear here."
+                />
+              ) : (
+                <div className="flex flex-col items-center justify-center py-12 text-center">
+                  <div className="mb-3 flex h-12 w-12 items-center justify-center rounded-2xl border border-slate-100 bg-white shadow-sm">
+                    <Filter className="h-6 w-6 text-slate-300" />
+                  </div>
+                  <h2 className="mb-1 text-sm font-semibold text-slate-600">No results match your filters</h2>
+                  <button onClick={() => { setStatusFilter("all"); setLabFilter("all"); setSearchQuery(""); }}
+                    className="mt-1 text-xs font-medium text-sky-600 underline underline-offset-2 hover:text-sky-700">
+                    Clear filters
+                  </button>
+                </div>
+              )}
+            </>
+          )}
+        </main>
+      </div>
+
+      <footer className="flex items-center justify-center gap-1.5 pb-8 pt-2">
+        <PoveonLogo className="h-4 w-4 opacity-30" />
         <span className="text-xs text-slate-400">Powered by Poveon</span>
       </footer>
 
+      {/* Standing invitation — once per sign-in until they're on a live plan. */}
+      {showCarePrompt && (
+        <CarePlanPromptModal
+          benefits={care.benefits}
+          lapsed={care.enrolled}
+          onJoin={() => { setShowCarePrompt(false); navigate("care", { enroll: true }); }}
+          onClose={() => setShowCarePrompt(false)}
+        />
+      )}
+
       <SupportFab />
+    </div>
+  );
+}
+
+function EmptyState({ icon, title, hint }: { icon: React.ReactNode; title: string; hint: string }) {
+  return (
+    <div className="flex flex-col items-center justify-center py-16 text-center">
+      <div className="mb-3 flex h-14 w-14 items-center justify-center rounded-2xl border border-slate-100 bg-white shadow-sm">
+        {icon}
+      </div>
+      <h2 className="mb-1 text-sm font-semibold text-slate-700">{title}</h2>
+      <p className="max-w-xs text-xs text-slate-400">{hint}</p>
     </div>
   );
 }

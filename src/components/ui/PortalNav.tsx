@@ -2,7 +2,7 @@
 
 import { ChevronDown, ChevronRight, type LucideIcon } from "lucide-react";
 
-export type DoctorNavItem = {
+export type PortalNavItem = {
   key: string;
   label: string;
   icon: LucideIcon;
@@ -12,21 +12,21 @@ export type DoctorNavItem = {
   alert?: boolean;
 };
 
-export type DoctorNavSection = { label: string; items: DoctorNavItem[] };
+export type PortalNavSection = { label: string; items: PortalNavItem[] };
 
 /**
  * Grouped portal navigation — a sticky sidebar from `lg` up, and a collapsible
- * grouped menu below it. Mirrors the lab dashboard's navigation so the two
- * portals read the same, in the doctor portal's light palette.
+ * grouped menu below it. Shared by the doctor and patient portals so both read
+ * the same, and mirrors the lab dashboard's structure in a light palette.
  */
-export function DoctorNav({
+export function PortalNav({
   sections,
   activeKey,
   onSelect,
   open,
   onOpenChange,
 }: {
-  sections: DoctorNavSection[];
+  sections: PortalNavSection[];
   /** Key of the active item — for grouped entries, the parent's key. */
   activeKey: string;
   onSelect: (key: string) => void;
@@ -112,7 +112,7 @@ export function DoctorNav({
   );
 }
 
-function NavButton({ item, active, onClick }: { item: DoctorNavItem; active: boolean; onClick: () => void }) {
+function NavButton({ item, active, onClick }: { item: PortalNavItem; active: boolean; onClick: () => void }) {
   return (
     <button
       type="button"
@@ -130,7 +130,7 @@ function NavButton({ item, active, onClick }: { item: DoctorNavItem; active: boo
   );
 }
 
-function ItemMeta({ item, active }: { item: DoctorNavItem; active: boolean }) {
+function ItemMeta({ item, active }: { item: PortalNavItem; active: boolean }) {
   return (
     <>
       {!!item.badge && item.badge > 0 && (
@@ -150,7 +150,7 @@ function ItemMeta({ item, active }: { item: DoctorNavItem; active: boolean }) {
 /**
  * Sub-menu strip shown above the panel when the active nav entry has children.
  */
-export function DoctorSubNav({
+export function PortalSubNav({
   items,
   activeKey,
   onSelect,

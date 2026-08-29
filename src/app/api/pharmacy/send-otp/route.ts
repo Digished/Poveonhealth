@@ -5,6 +5,7 @@ import { z } from "zod";
 import { prisma } from "@/lib/prisma";
 import { resend, FROM_ADDRESS } from "@/lib/email/resend";
 import { carePlanOtpEmail } from "@/lib/email/templates";
+import { ensureCarePlanSchema } from "@/lib/startup/ensure-care-plan-schema";
 
 const BodySchema = z.object({ email: z.string().email() });
 
@@ -14,6 +15,8 @@ const BodySchema = z.object({ email: z.string().email() });
  * used to enumerate the network.
  */
 export async function POST(req: NextRequest) {
+  // The build-time migration is best-effort; make sure the tables are there.
+  await ensureCarePlanSchema().catch(() => {});
   try {
     const parsed = BodySchema.safeParse(await req.json());
     if (!parsed.success) {
