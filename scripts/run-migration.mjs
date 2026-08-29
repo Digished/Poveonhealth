@@ -2226,6 +2226,30 @@ const migrations = [
       ADD COLUMN IF NOT EXISTS preferred_lab_id TEXT`,
     continueOnError: true,
   },
+  {
+    // Taken before payment, so the assigned doctor has something to work from
+    // the moment a member lands in their pool.
+    desc: "consult_patients baseline health answers",
+    sql: `ALTER TABLE consult_patients
+      ADD COLUMN IF NOT EXISTS baseline_medications TEXT,
+      ADD COLUMN IF NOT EXISTS medication_adherence TEXT,
+      ADD COLUMN IF NOT EXISTS hypertension_years INTEGER,
+      ADD COLUMN IF NOT EXISTS diabetes_years INTEGER,
+      ADD COLUMN IF NOT EXISTS baseline_bp_systolic INTEGER,
+      ADD COLUMN IF NOT EXISTS baseline_bp_diastolic INTEGER,
+      ADD COLUMN IF NOT EXISTS baseline_bp_taken_on DATE,
+      ADD COLUMN IF NOT EXISTS baseline_glucose_mg_dl DECIMAL(6,1),
+      ADD COLUMN IF NOT EXISTS baseline_glucose_context TEXT,
+      ADD COLUMN IF NOT EXISTS baseline_glucose_taken_on DATE,
+      ADD COLUMN IF NOT EXISTS baseline_notes TEXT,
+      ADD COLUMN IF NOT EXISTS baseline_captured_at TIMESTAMP(3)`,
+    continueOnError: true,
+  },
+  {
+    desc: "consult_patients adherence index (programme statistics)",
+    sql: `CREATE INDEX IF NOT EXISTS consult_patients_adherence_idx ON consult_patients (medication_adherence)`,
+    continueOnError: true,
+  },
 ];
 
 let failed = false;

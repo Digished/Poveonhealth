@@ -8,6 +8,10 @@ import { ensureCarePlanSchema } from "@/lib/startup/ensure-care-plan-schema";
 
 const BUCKET = "doctor-credentials";
 
+/** Scans of a practising licence are often large; 15MB covers a phone photo. */
+const MAX_MB = 15;
+const MAX_BYTES = MAX_MB * 1024 * 1024;
+
 /** Which document slot is being filled. */
 const SLOTS = { license: "license_doc_url", id: "id_doc_url", cv: "cv_url" } as const;
 type Slot = keyof typeof SLOTS;
@@ -40,6 +44,19 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: "Unknown document type." }, { status: 400 });
     }
 
+    // While an application is with a reviewer, its documents are frozen —
+    // otherwise the thing being reviewed can change underneath them.
+    const credential = await prisma.doctorCredential.findUnique({
+      where: { email },
+      select: { status: true },
+    });
+    if (credential?.status === "pending") {
+      return NextResponse.json(
+        { error: "Your application is with the review team — you can't change documents until they respond." },
+        { status: 409 }
+      );
+    }
+
     const file = form.get("file");
     if (!file || typeof file === "string") {
       return NextResponse.json({ error: "No file provided." }, { status: 400 });
@@ -49,8 +66,8 @@ export async function POST(req: NextRequest) {
     if (!allowed.includes(file.type)) {
       return NextResponse.json({ error: "Upload a JPEG, PNG, WebP or PDF." }, { status: 400 });
     }
-    if (file.size > 8 * 1024 * 1024) {
-      return NextResponse.json({ error: "File must be under 8MB." }, { status: 400 });
+    if (file.size > MAX_BYTES) {
+      return NextResponse.json({ error: `File must be under ${MAX_MB}MB.` }, { status: 400 });
     }
 
     const supabaseAdmin = createAdminClient();
@@ -68,6 +85,22 @@ export async function POST(req: NextRequest) {
 
     let { error: uploadError } = await put();
 
+    // A bucket made by an earlier deploy keeps the size limit it was created
+    // with, and Supabase enforces that at the bucket rather than here — so an
+    // "exceeded the maximum" rejection means the bucket needs raising.
+    if (uploadError && /maximum allowed size|payload too large|exceeded/i.test(uploadError.message)) {
+      const { error: raiseError } = await supabaseAdmin.storage.updateBucket(BUCKET, {
+        public: false,
+        fileSizeLimit: MAX_BYTES,
+        allowedMimeTypes: allowed,
+      });
+      if (raiseError) {
+        console.error("[credentials/document] could not raise the bucket limit:", raiseError.message);
+      } else {
+        ({ error: uploadError } = await put());
+      }
+    }
+
     // First upload for this deployment: the bucket won't exist yet. Create it
     // (private — these are identity documents) and try once more.
     if (uploadError) {
@@ -79,7 +112,7 @@ export async function POST(req: NextRequest) {
 
       const { error: bucketError } = await supabaseAdmin.storage.createBucket(BUCKET, {
         public: false,
-        fileSizeLimit: 8 * 1024 * 1024,
+        fileSizeLimit: MAX_BYTES,
         allowedMimeTypes: allowed,
       });
       // "already exists" is fine — another request may have won the race.

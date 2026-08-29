@@ -2,8 +2,9 @@
 
 import { useCallback, useEffect, useState } from "react";
 import { toast } from "react-hot-toast";
+import { ADHERENCE_OPTIONS, DURATION_OPTIONS } from "@/components/consults/baseline";
 import {
-  BadgeCheck, Banknote, Check, ExternalLink, FileText, HeartPulse, Loader2, Play,
+  Activity, BadgeCheck, Banknote, Check, ExternalLink, FileText, HeartPulse, Loader2, Play,
   RefreshCw, Save, Search, Settings2, ShieldCheck, TrendingUp, Users, UserCog, X,
 } from "lucide-react";
 
@@ -49,7 +50,7 @@ const STATUS_STYLES: Record<string, string> = {
   cancelled: "bg-red-100 text-red-600",
 };
 
-type SubTab = "members" | "doctors" | "pricing" | "payouts";
+type SubTab = "members" | "doctors" | "baseline" | "pricing" | "payouts";
 
 export function AdminCarePlanTab() {
   const [subTab, setSubTab] = useState<SubTab>("members");
@@ -71,6 +72,7 @@ export function AdminCarePlanTab() {
         {([
           ["members", "Members", Users],
           ["doctors", "Doctor approvals", ShieldCheck],
+          ["baseline", "Health statistics", Activity],
           ["pricing", "Pricing", Settings2],
           ["payouts", "Doctor payouts", Banknote],
         ] as const).map(([key, label, Icon]) => (
@@ -89,6 +91,7 @@ export function AdminCarePlanTab() {
 
       {subTab === "members" && <MembersPanel />}
       {subTab === "doctors" && <DoctorApprovalsPanel />}
+      {subTab === "baseline" && <BaselineStatsPanel />}
       {subTab === "pricing" && <PricingPanel />}
       {subTab === "payouts" && <PayoutsPanel />}
     </div>
@@ -176,6 +179,7 @@ function MembersPanel() {
   const [loading, setLoading] = useState(true);
   const [assigning, setAssigning] = useState<string | null>(null);
   const [activating, setActivating] = useState(false);
+  const [reassigning, setReassigning] = useState<Member | null>(null);
 
   const load = useCallback(async (nextPage: number, append: boolean) => {
     setLoading(true);
@@ -203,22 +207,18 @@ function MembersPanel() {
     return () => clearTimeout(t);
   }, [load, q]);
 
-  async function reassign(member: Member) {
-    const next = window.prompt(
-      `Assign ${member.full_name} to which doctor? (email, or leave blank to unassign)`,
-      member.doctor_email ?? ""
-    );
-    if (next === null) return;
+  async function assign(member: Member, doctorEmail: string | null) {
     setAssigning(member.id);
     try {
       const res = await fetch("/api/admin/consults/members", {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ patient_id: member.id, doctor_email: next.trim() || null }),
+        body: JSON.stringify({ patient_id: member.id, doctor_email: doctorEmail }),
       });
       const d = await res.json();
       if (!res.ok || !d.success) { toast.error(d.error ?? "Could not reassign."); return; }
-      toast.success("Member reassigned");
+      toast.success(doctorEmail ? "Member reassigned" : "Member unassigned");
+      setReassigning(null);
       load(1, false);
     } finally {
       setAssigning(null);
@@ -273,6 +273,15 @@ function MembersPanel() {
         <ActivateForm onClose={() => setActivating(false)} onDone={() => { setActivating(false); load(1, false); }} />
       )}
 
+      {reassigning && (
+        <AssignDoctorDialog
+          member={reassigning}
+          busy={assigning === reassigning.id}
+          onClose={() => setReassigning(null)}
+          onPick={(email) => assign(reassigning, email)}
+        />
+      )}
+
       <div className="overflow-hidden rounded-xl border border-white/10 bg-white/5">
         <div className="overflow-x-auto">
           <table className="w-full min-w-[900px] text-sm">
@@ -317,11 +326,11 @@ function MembersPanel() {
                   </td>
                   <td className="px-4 py-3 text-right">
                     <button
-                      onClick={() => reassign(m)}
+                      onClick={() => setReassigning(m)}
                       disabled={assigning === m.id}
                       className="rounded-lg bg-white/10 px-2.5 py-1.5 text-xs font-semibold text-slate-200 transition hover:bg-white/20 disabled:opacity-50"
                     >
-                      {assigning === m.id ? "…" : "Reassign"}
+                      {assigning === m.id ? "…" : m.doctor_email ? "Reassign" : "Assign"}
                     </button>
                   </td>
                 </tr>
@@ -341,6 +350,161 @@ function MembersPanel() {
             </button>
           )}
         </div>
+      </div>
+    </div>
+  );
+}
+
+type AssignableDoctor = {
+  email: string; name: string; specialty: string | null;
+  approved: boolean; accepting: boolean; members: number; cap: number; full: boolean;
+};
+
+/**
+ * Pick the doctor a member goes to.
+ *
+ * Replaces typing an email from memory — which also failed outright whenever
+ * the casing didn't match the stored profile.
+ */
+function AssignDoctorDialog({
+  member, busy, onClose, onPick,
+}: {
+  member: Member;
+  busy: boolean;
+  onClose: () => void;
+  onPick: (email: string | null) => void;
+}) {
+  const [doctors, setDoctors] = useState<AssignableDoctor[]>([]);
+  const [q, setQ] = useState("");
+  const [loading, setLoading] = useState(true);
+
+  const load = useCallback(async () => {
+    setLoading(true);
+    try {
+      const params = new URLSearchParams();
+      if (q.trim()) params.set("q", q.trim());
+      const res = await fetch(`/api/admin/consults/doctors?${params}`, { cache: "no-store" });
+      const d = await res.json();
+      if (d.success) setDoctors(d.doctors);
+    } catch {
+      toast.error("Could not load doctors.");
+    } finally {
+      setLoading(false);
+    }
+  }, [q]);
+
+  useEffect(() => {
+    const t = setTimeout(load, q ? 300 : 0);
+    return () => clearTimeout(t);
+  }, [load, q]);
+
+  return (
+    <div
+      className="fixed inset-0 z-[300] flex items-end justify-center bg-slate-900/60 p-0 backdrop-blur-sm sm:items-center sm:p-4"
+      onClick={(e) => { if (e.target === e.currentTarget) onClose(); }}
+      role="dialog"
+      aria-modal="true"
+    >
+      <div className="flex max-h-[90dvh] w-full flex-col overflow-hidden rounded-t-2xl border border-white/10 bg-slate-900 shadow-2xl sm:max-w-lg sm:rounded-2xl">
+        <div className="flex items-start justify-between gap-3 border-b border-white/10 p-5">
+          <div className="min-w-0">
+            <h3 className="text-sm font-bold text-white">Assign a doctor</h3>
+            <p className="mt-0.5 truncate text-xs text-slate-400">
+              {member.full_name} · {member.email}
+            </p>
+            {member.doctor_email && (
+              <p className="mt-1 text-xs text-slate-500">Currently with {member.doctor_email}</p>
+            )}
+          </div>
+          <button onClick={onClose} className="rounded-lg p-1 text-slate-400 hover:bg-white/10" aria-label="Close">
+            <X className="h-4 w-4" />
+          </button>
+        </div>
+
+        <div className="border-b border-white/10 p-4">
+          <div className="relative">
+            <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-500" />
+            <input
+              autoFocus
+              value={q}
+              onChange={(e) => setQ(e.target.value)}
+              placeholder="Search by name or email…"
+              className="w-full rounded-lg border border-white/10 bg-white/5 py-2.5 pl-9 pr-3 text-sm text-white placeholder-slate-500 focus:border-medical-500 focus:outline-none"
+            />
+          </div>
+        </div>
+
+        <div className="min-h-0 flex-1 overflow-y-auto p-3">
+          {loading && doctors.length === 0 ? (
+            <div className="flex justify-center py-10">
+              <Loader2 className="h-5 w-5 animate-spin text-slate-600" />
+            </div>
+          ) : doctors.length === 0 ? (
+            <p className="py-10 text-center text-sm text-slate-500">No doctors match that.</p>
+          ) : (
+            <ul className="space-y-1.5">
+              {doctors.map((doc) => {
+                const current = doc.email === member.doctor_email;
+                return (
+                  <li key={doc.email}>
+                    <button
+                      onClick={() => onPick(doc.email)}
+                      disabled={busy || current}
+                      className={`flex w-full items-center gap-3 rounded-xl border p-3 text-left transition disabled:opacity-50 ${
+                        current
+                          ? "border-medical-500/40 bg-medical-600/15"
+                          : "border-white/10 bg-white/5 hover:bg-white/10"
+                      }`}
+                    >
+                      <span className="min-w-0 flex-1">
+                        <span className="flex flex-wrap items-center gap-2">
+                          <span className="truncate text-sm font-semibold text-white">{doc.name}</span>
+                          {doc.approved ? (
+                            <span className="inline-flex items-center gap-1 rounded-full bg-emerald-500/20 px-2 py-0.5 text-[10px] font-bold text-emerald-300">
+                              <BadgeCheck className="h-3 w-3" /> Approved
+                            </span>
+                          ) : (
+                            <span className="rounded-full bg-amber-500/20 px-2 py-0.5 text-[10px] font-bold text-amber-300">
+                              Not approved
+                            </span>
+                          )}
+                          {doc.full && (
+                            <span className="rounded-full bg-white/10 px-2 py-0.5 text-[10px] font-bold text-slate-300">
+                              At cap
+                            </span>
+                          )}
+                          {!doc.accepting && (
+                            <span className="rounded-full bg-white/10 px-2 py-0.5 text-[10px] font-bold text-slate-300">
+                              Paused
+                            </span>
+                          )}
+                        </span>
+                        <span className="mt-0.5 block truncate text-xs text-slate-400">{doc.email}</span>
+                        <span className="mt-0.5 block text-xs text-slate-500">
+                          {doc.members} of {doc.cap} members
+                          {doc.specialty ? ` · ${doc.specialty}` : ""}
+                        </span>
+                      </span>
+                      {current && <Check className="h-4 w-4 shrink-0 text-medical-300" />}
+                    </button>
+                  </li>
+                );
+              })}
+            </ul>
+          )}
+        </div>
+
+        {member.doctor_email && (
+          <div className="border-t border-white/10 p-4">
+            <button
+              onClick={() => onPick(null)}
+              disabled={busy}
+              className="w-full rounded-lg border border-white/10 py-2.5 text-xs font-semibold text-slate-300 transition hover:bg-white/10 disabled:opacity-50"
+            >
+              Unassign — leave this member without a doctor
+            </button>
+          </div>
+        )}
       </div>
     </div>
   );
@@ -610,6 +774,223 @@ function CredField({ label, value }: { label: string; value: string | null }) {
     <div>
       <dt className="text-[11px] font-semibold uppercase tracking-wide text-slate-500">{label}</dt>
       <dd className="mt-0.5 text-sm text-slate-200">{value || <span className="text-slate-600">—</span>}</dd>
+    </div>
+  );
+}
+
+// ── Health statistics ───────────────────────────────────────────────────────
+
+type BaselineStats = {
+  total_members: number;
+  captured: number;
+  adherence: { key: string; count: number }[];
+  hypertension_years: { years: number; count: number }[];
+  diabetes_years: { years: number; count: number }[];
+  bp: {
+    reported: number; very_high: number; high: number; raised: number; at_target: number;
+    systolic_avg: number | null; diastolic_avg: number | null;
+  };
+  glucose: {
+    fasting: number; fasting_avg: number | null; fasting_high: number;
+    random: number; random_avg: number | null; random_high: number;
+  };
+};
+
+/**
+ * The membership as it looked on day one — built from the baseline answers
+ * everyone gives before they pay, so it says something about who is joining
+ * rather than who has been active since.
+ */
+function BaselineStatsPanel() {
+  const [stats, setStats] = useState<BaselineStats | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState("");
+
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      try {
+        const res = await fetch("/api/admin/consults/baseline", { cache: "no-store" });
+        const d = await res.json();
+        if (cancelled) return;
+        if (!res.ok || !d.success) setError(d.error ?? "Could not load statistics.");
+        else setStats(d);
+      } catch {
+        if (!cancelled) setError("Network error.");
+      } finally {
+        if (!cancelled) setLoading(false);
+      }
+    })();
+    return () => { cancelled = true; };
+  }, []);
+
+  if (loading) {
+    return <div className="h-64 animate-pulse rounded-xl border border-white/10 bg-white/5" />;
+  }
+  if (error || !stats) {
+    return (
+      <div className="rounded-xl border border-white/10 bg-white/5 p-6 text-sm text-slate-400">
+        {error || "No statistics yet."}
+      </div>
+    );
+  }
+
+  if (stats.captured === 0) {
+    return (
+      <div className="rounded-xl border border-white/10 bg-white/5 p-6 text-sm text-slate-400">
+        No baseline answers yet. Members answer these questions while they enrol, so this fills in as
+        people sign up.
+      </div>
+    );
+  }
+
+  const bp = stats.bp;
+  const glu = stats.glucose;
+  const offTarget = bp.very_high + bp.high + bp.raised;
+  const adherenceTotal = stats.adherence.reduce((sum, a) => sum + a.count, 0);
+  const htnTotal = stats.hypertension_years.reduce((sum, r) => sum + r.count, 0);
+  const dmTotal = stats.diabetes_years.reduce((sum, r) => sum + r.count, 0);
+
+  return (
+    <div className="space-y-4">
+      <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+        <AdminStat
+          label={`Baselines on file (of ${stats.total_members} members)`}
+          value={String(stats.captured)}
+          icon={<Activity className="h-4 w-4" />}
+        />
+        <AdminStat
+          label="Average blood pressure"
+          value={bp.systolic_avg != null && bp.diastolic_avg != null ? `${bp.systolic_avg}/${bp.diastolic_avg}` : "—"}
+          icon={<HeartPulse className="h-4 w-4" />}
+          tone={bp.systolic_avg != null && bp.systolic_avg >= 140 ? "amber" : "emerald"}
+        />
+        <AdminStat
+          label="Joined above BP target"
+          value={bp.reported ? `${Math.round((offTarget / bp.reported) * 100)}%` : "—"}
+          icon={<TrendingUp className="h-4 w-4" />}
+          tone="amber"
+        />
+        <AdminStat
+          label="Average fasting sugar (mg/dL)"
+          value={glu.fasting_avg != null ? String(glu.fasting_avg) : "—"}
+          icon={<Activity className="h-4 w-4" />}
+          tone={glu.fasting_avg != null && glu.fasting_avg >= 126 ? "amber" : "emerald"}
+        />
+      </div>
+
+      <div className="grid gap-4 lg:grid-cols-2">
+        <StatCard title="How members take their medication" total={adherenceTotal}>
+          {ADHERENCE_OPTIONS.map((o) => (
+            <StatBar
+              key={o.value}
+              label={o.label}
+              count={stats.adherence.find((a) => a.key === o.value)?.count ?? 0}
+              total={adherenceTotal}
+            />
+          ))}
+        </StatCard>
+
+        <StatCard title="Blood pressure at sign-up" total={bp.reported} unit="reported a reading">
+          <StatBar label="Very high (180/120+)" count={bp.very_high} total={bp.reported} tone="red" />
+          <StatBar label="High (140/90+)" count={bp.high} total={bp.reported} tone="amber" />
+          <StatBar label="Raised (130/80+)" count={bp.raised} total={bp.reported} tone="amber" />
+          <StatBar label="At target" count={bp.at_target} total={bp.reported} tone="emerald" />
+        </StatCard>
+
+        <StatCard title="Years with hypertension" total={htnTotal}>
+          {DURATION_OPTIONS.map((o) => (
+            <StatBar
+              key={o.value}
+              label={o.label}
+              count={stats.hypertension_years.find((r) => r.years === o.value)?.count ?? 0}
+              total={htnTotal}
+            />
+          ))}
+        </StatCard>
+
+        <StatCard title="Years with diabetes" total={dmTotal}>
+          {DURATION_OPTIONS.map((o) => (
+            <StatBar
+              key={o.value}
+              label={o.label}
+              count={stats.diabetes_years.find((r) => r.years === o.value)?.count ?? 0}
+              total={dmTotal}
+            />
+          ))}
+        </StatCard>
+      </div>
+
+      <div className="grid gap-4 sm:grid-cols-2">
+        <div className="rounded-xl border border-white/10 bg-white/5 p-4">
+          <p className="text-xs font-bold uppercase tracking-wider text-slate-400">Fasting sugar</p>
+          <p className="mt-1 text-2xl font-extrabold text-white">
+            {glu.fasting_avg != null ? `${glu.fasting_avg} mg/dL` : "—"}
+          </p>
+          <p className="text-xs text-slate-400">
+            {glu.fasting} reported · {glu.fasting_high} at or above 126
+          </p>
+        </div>
+        <div className="rounded-xl border border-white/10 bg-white/5 p-4">
+          <p className="text-xs font-bold uppercase tracking-wider text-slate-400">Random sugar</p>
+          <p className="mt-1 text-2xl font-extrabold text-white">
+            {glu.random_avg != null ? `${glu.random_avg} mg/dL` : "—"}
+          </p>
+          <p className="text-xs text-slate-400">
+            {glu.random} reported · {glu.random_high} at or above 200
+          </p>
+        </div>
+      </div>
+
+      <p className="text-xs text-slate-500">
+        Readings are self-reported at enrolment and are not a substitute for a clinic measurement.
+      </p>
+    </div>
+  );
+}
+
+function StatCard({
+  title, total, unit = "answered", children,
+}: {
+  title: string; total: number; unit?: string; children: React.ReactNode;
+}) {
+  return (
+    <div className="rounded-xl border border-white/10 bg-white/5 p-4">
+      <div className="flex items-baseline justify-between gap-2">
+        <h3 className="text-sm font-bold text-white">{title}</h3>
+        <span className="text-xs text-slate-400">{total} {unit}</span>
+      </div>
+      <div className="mt-3 space-y-2.5">
+        {total === 0 ? <p className="text-xs text-slate-500">No answers yet.</p> : children}
+      </div>
+    </div>
+  );
+}
+
+const BAR_TONES: Record<string, string> = {
+  medical: "bg-medical-400",
+  emerald: "bg-emerald-400",
+  amber: "bg-amber-400",
+  red: "bg-red-400",
+};
+
+function StatBar({
+  label, count, total, tone = "medical",
+}: {
+  label: string; count: number; total: number; tone?: "medical" | "emerald" | "amber" | "red";
+}) {
+  const pct = total > 0 ? Math.round((count / total) * 100) : 0;
+  return (
+    <div>
+      <div className="flex items-center justify-between gap-2 text-xs">
+        <span className="truncate text-slate-300">{label}</span>
+        <span className="shrink-0 font-semibold text-white">
+          {count} <span className="font-normal text-slate-500">({pct}%)</span>
+        </span>
+      </div>
+      <div className="mt-1 h-1.5 overflow-hidden rounded-full bg-white/10">
+        <div className={`h-full rounded-full ${BAR_TONES[tone]}`} style={{ width: `${pct}%` }} />
+      </div>
     </div>
   );
 }

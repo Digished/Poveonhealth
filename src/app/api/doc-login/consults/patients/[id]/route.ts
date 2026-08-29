@@ -76,6 +76,25 @@ export async function GET(req: NextRequest, { params }: { params: { id: string }
         message_allowance: patient.message_allowance,
         messages_left: Math.max(0, patient.message_allowance - patient.messages_used),
       },
+      baseline: patient.baseline_captured_at
+        ? {
+            medications: patient.baseline_medications,
+            adherence: patient.medication_adherence,
+            hypertension_years: patient.hypertension_years,
+            diabetes_years: patient.diabetes_years,
+            bp_systolic: patient.baseline_bp_systolic,
+            bp_diastolic: patient.baseline_bp_diastolic,
+            bp_taken_on: patient.baseline_bp_taken_on,
+            glucose_mg_dl:
+              patient.baseline_glucose_mg_dl == null
+                ? null
+                : Number(patient.baseline_glucose_mg_dl),
+            glucose_context: patient.baseline_glucose_context,
+            glucose_taken_on: patient.baseline_glucose_taken_on,
+            notes: patient.baseline_notes,
+            captured_at: patient.baseline_captured_at,
+          }
+        : null,
       earning: earning
         ? {
             total: Number(earning.total_naira),

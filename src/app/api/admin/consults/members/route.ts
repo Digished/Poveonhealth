@@ -94,14 +94,28 @@ export async function PATCH(req: NextRequest) {
 
   const parsed = AssignSchema.safeParse(await req.json());
   if (!parsed.success) return NextResponse.json({ error: "Invalid assignment." }, { status: 400 });
-  const { patient_id, doctor_email } = parsed.data;
+  const { patient_id } = parsed.data;
+  // Profiles are keyed on a lowercase email, so a typed or pasted address with
+  // different casing used to 404 as "no Poveon profile".
+  const doctorEmailRaw = parsed.data.doctor_email?.trim().toLowerCase() || null;
 
   const patient = await prisma.consultPatient.findUnique({ where: { id: patient_id } });
   if (!patient) return NextResponse.json({ error: "Member not found." }, { status: 404 });
 
+  let doctor_email = doctorEmailRaw;
   if (doctor_email) {
-    const doctor = await prisma.doctorProfile.findUnique({ where: { email: doctor_email }, select: { email: true } });
-    if (!doctor) return NextResponse.json({ error: "That doctor has no Poveon profile." }, { status: 404 });
+    const doctor = await prisma.doctorProfile.findFirst({
+      where: { email: { equals: doctor_email, mode: "insensitive" } },
+      select: { email: true },
+    });
+    if (!doctor) {
+      return NextResponse.json(
+        { error: `No Poveon doctor profile for ${doctor_email}.` },
+        { status: 404 }
+      );
+    }
+    // Store exactly what the profile holds, so every downstream join matches.
+    doctor_email = doctor.email;
   }
 
   const settings = await getConsultSettings();

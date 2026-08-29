@@ -64,6 +64,12 @@ const BodySchema = z.object({
 /**
  * PATCH /api/doc-login/credentials — save, or file for review.
  *
+ * What may change depends on where the application stands:
+ *   • unsubmitted / rejected — everything
+ *   • pending — nothing, it's with a reviewer
+ *   • approved — only the licence expiry, so a renewed licence can be recorded
+ *     without re-opening an approved identity
+ *
  * Filing requires the practising licence to be attached; approval itself is
  * always a person's decision, never automatic.
  */
@@ -84,7 +90,26 @@ export async function PATCH(req: NextRequest) {
       return NextResponse.json({ error: "That licence expiry date isn't valid." }, { status: 400 });
     }
 
-    const existing = await prisma.doctorCredential.findUnique({ where: { email } });
+    const [existing, profile] = await Promise.all([
+      prisma.doctorCredential.findUnique({ where: { email } }),
+      prisma.doctorProfile.findUnique({ where: { email }, select: { consult_approved: true } }),
+    ]);
+
+    if (existing?.status === "pending") {
+      return NextResponse.json(
+        { error: "Your application is with the review team — you can't change it until they respond." },
+        { status: 409 }
+      );
+    }
+
+    // An approved doctor renews their licence; everything else is settled.
+    if (profile?.consult_approved) {
+      await prisma.doctorCredential.update({
+        where: { email },
+        data: { license_expires_at: expiry },
+      });
+      return NextResponse.json({ success: true, status: "approved", renewed: true });
+    }
 
     if (d.submit && !existing?.license_doc_url) {
       return NextResponse.json(

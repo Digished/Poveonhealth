@@ -53,6 +53,8 @@ const SENTINEL_COLUMNS = [
   "consult_patients.consent_at",
   "consult_patients.preferred_pharmacy_id",
   "consult_patients.preferred_lab_id",
+  "consult_patients.medication_adherence",
+  "consult_patients.baseline_captured_at",
   "doctor_profiles.consult_approved",
 ];
 
@@ -150,6 +152,20 @@ async function runEnsure(): Promise<void> {
 
     await exec(`ALTER TABLE consult_patients ADD COLUMN IF NOT EXISTS preferred_pharmacy_id TEXT;`);
     await exec(`ALTER TABLE consult_patients ADD COLUMN IF NOT EXISTS preferred_lab_id TEXT;`);
+    await exec(`ALTER TABLE consult_patients
+      ADD COLUMN IF NOT EXISTS baseline_medications TEXT,
+      ADD COLUMN IF NOT EXISTS medication_adherence TEXT,
+      ADD COLUMN IF NOT EXISTS hypertension_years INTEGER,
+      ADD COLUMN IF NOT EXISTS diabetes_years INTEGER,
+      ADD COLUMN IF NOT EXISTS baseline_bp_systolic INTEGER,
+      ADD COLUMN IF NOT EXISTS baseline_bp_diastolic INTEGER,
+      ADD COLUMN IF NOT EXISTS baseline_bp_taken_on DATE,
+      ADD COLUMN IF NOT EXISTS baseline_glucose_mg_dl DECIMAL(6,1),
+      ADD COLUMN IF NOT EXISTS baseline_glucose_context TEXT,
+      ADD COLUMN IF NOT EXISTS baseline_glucose_taken_on DATE,
+      ADD COLUMN IF NOT EXISTS baseline_notes TEXT,
+      ADD COLUMN IF NOT EXISTS baseline_captured_at TIMESTAMP(3);`);
+    await exec(`CREATE INDEX IF NOT EXISTS consult_patients_adherence_idx ON consult_patients(medication_adherence);`);
     await exec(`CREATE INDEX IF NOT EXISTS doctor_patients_patient_email_idx ON doctor_patients(patient_email);`);
 
     await exec(`DROP TABLE IF EXISTS consult_patient_sessions;`);

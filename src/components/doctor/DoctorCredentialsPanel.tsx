@@ -115,6 +115,12 @@ export function DoctorCredentialsPanel({ onApproved }: { onApproved?: (approved:
 
   const status = approved ? "approved" : credential?.status ?? "unsubmitted";
   const hasLicence = !!credential?.license_doc_url;
+  // Under review: frozen, so what the reviewer is looking at can't change.
+  const underReview = status === "pending";
+  // Approved: identity is settled. The licence still expires every year, so
+  // that one field — and the documents — stay open.
+  const settled = status === "approved";
+  const fieldsLocked = underReview || settled;
   const canSubmit =
     form.mdcn_number.trim().length >= 3 &&
     !!form.license_expires_at &&
@@ -134,71 +140,98 @@ export function DoctorCredentialsPanel({ onApproved }: { onApproved?: (approved:
 
         <div className="mt-5 space-y-4">
           <Field label="MDCN registration number" required>
-            <input
-              value={form.mdcn_number}
-              onChange={(e) => setForm({ ...form, mdcn_number: e.target.value })}
-              placeholder="e.g. MDCN/R/12345"
-              className={inputClass}
-            />
+            {fieldsLocked ? (
+              <ReadOnly value={form.mdcn_number} />
+            ) : (
+              <input
+                value={form.mdcn_number}
+                onChange={(e) => setForm({ ...form, mdcn_number: e.target.value })}
+                placeholder="e.g. MDCN/R/12345"
+                className={inputClass}
+              />
+            )}
           </Field>
 
+          {/* Always editable once approved — a practising licence is annual. */}
           <Field label="Practising licence expires" required>
-            <DateInput
-              value={form.license_expires_at}
-              onChange={(iso) => setForm({ ...form, license_expires_at: iso })}
-              futureOnly
-            />
+            {underReview ? (
+              <ReadOnly value={form.license_expires_at ? formatDate(form.license_expires_at) : ""} />
+            ) : (
+              <DateInput
+                value={form.license_expires_at}
+                onChange={(iso) => setForm({ ...form, license_expires_at: iso })}
+                futureOnly
+              />
+            )}
             <p className="mt-1 text-xs text-slate-400">
-              The expiry on your current annual licence, as dd/mm/yyyy.
+              {settled
+                ? "Renewed your licence? Update the expiry and upload the new one below."
+                : "The expiry on your current annual licence, as dd/mm/yyyy."}
             </p>
           </Field>
 
           <Field label="Qualifications" required>
-            <input
-              value={form.qualifications}
-              onChange={(e) => setForm({ ...form, qualifications: e.target.value })}
-              placeholder="e.g. MBBS (Ibadan), FWACP"
-              className={inputClass}
-            />
+            {fieldsLocked ? (
+              <ReadOnly value={form.qualifications} />
+            ) : (
+              <input
+                value={form.qualifications}
+                onChange={(e) => setForm({ ...form, qualifications: e.target.value })}
+                placeholder="e.g. MBBS (Ibadan), FWACP"
+                className={inputClass}
+              />
+            )}
           </Field>
 
           <div className="grid gap-4 sm:grid-cols-2">
             <Field label="Specialty">
-              <input
-                value={form.specialty}
-                onChange={(e) => setForm({ ...form, specialty: e.target.value })}
-                placeholder="e.g. Family Medicine"
-                className={inputClass}
-              />
+              {fieldsLocked ? (
+                <ReadOnly value={form.specialty} />
+              ) : (
+                <input
+                  value={form.specialty}
+                  onChange={(e) => setForm({ ...form, specialty: e.target.value })}
+                  placeholder="e.g. Family Medicine"
+                  className={inputClass}
+                />
+              )}
             </Field>
             <Field label="Years in practice">
-              <input
-                inputMode="numeric"
-                value={form.years_experience}
-                onChange={(e) => setForm({ ...form, years_experience: e.target.value.replace(/\D/g, "") })}
-                placeholder="e.g. 8"
-                className={inputClass}
-              />
+              {fieldsLocked ? (
+                <ReadOnly value={form.years_experience} />
+              ) : (
+                <input
+                  inputMode="numeric"
+                  value={form.years_experience}
+                  onChange={(e) => setForm({ ...form, years_experience: e.target.value.replace(/\D/g, "") })}
+                  placeholder="e.g. 8"
+                  className={inputClass}
+                />
+              )}
             </Field>
           </div>
 
-          <Field label="Anything the reviewer should know">
-            <textarea
-              rows={3}
-              maxLength={1000}
-              value={form.note}
-              onChange={(e) => setForm({ ...form, note: e.target.value })}
-              placeholder="Optional — experience with hypertension or diabetes care, clinics you run…"
-              className={`${inputClass} resize-none`}
-            />
-          </Field>
+          {!fieldsLocked && (
+            <Field label="Anything the reviewer should know">
+              <textarea
+                rows={3}
+                maxLength={1000}
+                value={form.note}
+                onChange={(e) => setForm({ ...form, note: e.target.value })}
+                placeholder="Optional — experience with hypertension or diabetes care, clinics you run…"
+                className={`${inputClass} resize-none`}
+              />
+            </Field>
+          )}
         </div>
       </div>
 
       <div className="rounded-2xl border border-slate-100 bg-white p-5 shadow-sm">
         <h3 className="text-sm font-bold text-slate-800">Documents</h3>
         <p className="mt-1 text-sm text-slate-500">
-          Stored privately and only opened by the reviewing admin. JPEG, PNG, WebP or PDF, under 8MB.
+          {underReview
+            ? "Locked while your application is being reviewed."
+            : "Stored privately and only opened by the reviewing admin. JPEG, PNG, WebP or PDF, up to 15MB."}
         </p>
         <div className="mt-4 space-y-2.5">
           {SLOTS.map((slot) => (
@@ -208,42 +241,61 @@ export function DoctorCredentialsPanel({ onApproved }: { onApproved?: (approved:
               label={slot.label}
               required={slot.required}
               uploaded={!!credential?.[slot.field]}
+              locked={underReview}
               onUploaded={load}
             />
           ))}
         </div>
+        {settled && (
+          <p className="mt-3 text-xs text-slate-500">
+            Upload a renewed licence here each year. Anything you skipped earlier can still be added.
+          </p>
+        )}
       </div>
 
       {error && (
         <p className="rounded-xl border border-red-100 bg-red-50 px-4 py-3 text-sm text-red-600">{error}</p>
       )}
 
-      {status !== "approved" && (
-        <div className="flex flex-col gap-2 sm:flex-row">
-          <button
-            onClick={() => save(false)}
-            disabled={!!saving}
-            className="inline-flex items-center justify-center gap-2 rounded-xl border border-slate-200 bg-white px-5 py-3 text-sm font-semibold text-slate-600 transition hover:border-slate-300 disabled:opacity-50"
-          >
-            {saving === "draft" ? <Loader2 className="h-4 w-4 animate-spin" /> : <Save className="h-4 w-4" />}
-            Save draft
-          </button>
-          <button
-            onClick={() => save(true)}
-            disabled={!!saving || !canSubmit}
-            className="flex flex-1 items-center justify-center gap-2 rounded-xl bg-medical-600 px-5 py-3 text-sm font-bold text-white shadow-lg shadow-medical-600/25 transition hover:bg-medical-700 disabled:opacity-40"
-          >
-            {saving === "submit" ? <Loader2 className="h-4 w-4 animate-spin" /> : <ShieldCheck className="h-4 w-4" />}
-            {credential?.status === "rejected" ? "Re-submit for review" : "Submit for review"}
-          </button>
-        </div>
+      {settled && (
+        <button
+          onClick={() => save(false)}
+          disabled={!!saving || !form.license_expires_at}
+          className="flex w-full items-center justify-center gap-2 rounded-xl bg-medical-600 px-5 py-3 text-sm font-bold text-white transition hover:bg-medical-700 disabled:opacity-40"
+        >
+          {saving === "draft" ? <Loader2 className="h-4 w-4 animate-spin" /> : <Save className="h-4 w-4" />}
+          Save licence renewal
+        </button>
       )}
-      {status !== "approved" && !canSubmit && (
-        <p className="text-xs text-slate-400">
-          {hasLicence
-            ? "Fill in your MDCN number, licence expiry and qualifications to submit."
-            : "Attach your current practising licence to submit."}
-        </p>
+
+      {!settled && !underReview && (
+        <>
+          <div className="flex flex-col gap-2 sm:flex-row">
+            <button
+              onClick={() => save(false)}
+              disabled={!!saving}
+              className="inline-flex items-center justify-center gap-2 rounded-xl border border-slate-200 bg-white px-5 py-3 text-sm font-semibold text-slate-600 transition hover:border-slate-300 disabled:opacity-50"
+            >
+              {saving === "draft" ? <Loader2 className="h-4 w-4 animate-spin" /> : <Save className="h-4 w-4" />}
+              Save draft
+            </button>
+            <button
+              onClick={() => save(true)}
+              disabled={!!saving || !canSubmit}
+              className="flex flex-1 items-center justify-center gap-2 rounded-xl bg-medical-600 px-5 py-3 text-sm font-bold text-white shadow-lg shadow-medical-600/25 transition hover:bg-medical-700 disabled:opacity-40"
+            >
+              {saving === "submit" ? <Loader2 className="h-4 w-4 animate-spin" /> : <ShieldCheck className="h-4 w-4" />}
+              {credential?.status === "rejected" ? "Re-submit for review" : "Submit for review"}
+            </button>
+          </div>
+          {!canSubmit && (
+            <p className="text-xs text-slate-400">
+              {hasLicence
+                ? "Fill in your MDCN number, licence expiry and qualifications to submit."
+                : "Attach your current practising licence to submit."}
+            </p>
+          )}
+        </>
       )}
     </div>
   );
@@ -251,6 +303,22 @@ export function DoctorCredentialsPanel({ onApproved }: { onApproved?: (approved:
 
 const inputClass =
   "w-full rounded-xl border border-slate-200 bg-white px-4 py-2.5 text-sm text-slate-800 placeholder-slate-400 transition focus:border-medical-400 focus:outline-none focus:ring-2 focus:ring-medical-400/40";
+
+/** A settled value — shown instead of an input once it can no longer change. */
+function ReadOnly({ value }: { value: string }) {
+  return (
+    <p className="rounded-xl border border-slate-200 bg-slate-50 px-4 py-2.5 text-sm text-slate-700">
+      {value || <span className="text-slate-400">—</span>}
+    </p>
+  );
+}
+
+function formatDate(iso: string) {
+  const d = new Date(iso);
+  return Number.isNaN(d.getTime())
+    ? iso
+    : d.toLocaleDateString("en-GB", { day: "numeric", month: "short", year: "numeric" });
+}
 
 function Field({ label, required, children }: { label: string; required?: boolean; children: React.ReactNode }) {
   return (
@@ -318,9 +386,10 @@ function StatusBanner({ status, note }: { status: string; note: string | null })
 }
 
 function DocumentRow({
-  slot, label, required, uploaded, onUploaded,
+  slot, label, required, uploaded, locked, onUploaded,
 }: {
-  slot: string; label: string; required: boolean; uploaded: boolean; onUploaded: () => void;
+  slot: string; label: string; required: boolean; uploaded: boolean; locked: boolean;
+  onUploaded: () => void;
 }) {
   const [busy, setBusy] = useState(false);
   const fileRef = useRef<HTMLInputElement>(null);
@@ -373,14 +442,16 @@ function DocumentRow({
         </p>
         <p className="text-xs text-slate-400">{uploaded ? "On file" : "Not uploaded"}</p>
       </div>
-      <button
-        onClick={() => fileRef.current?.click()}
-        disabled={busy}
-        className="inline-flex shrink-0 items-center gap-1.5 rounded-lg border border-slate-200 px-3 py-1.5 text-xs font-semibold text-slate-600 transition hover:border-medical-300 disabled:opacity-50"
-      >
-        {busy ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Upload className="h-3.5 w-3.5" />}
-        {uploaded ? "Replace" : "Upload"}
-      </button>
+      {!locked && (
+        <button
+          onClick={() => fileRef.current?.click()}
+          disabled={busy}
+          className="inline-flex shrink-0 items-center gap-1.5 rounded-lg border border-slate-200 px-3 py-1.5 text-xs font-semibold text-slate-600 transition hover:border-medical-300 disabled:opacity-50"
+        >
+          {busy ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Upload className="h-3.5 w-3.5" />}
+          {uploaded ? "Replace" : "Upload"}
+        </button>
+      )}
     </div>
   );
 }

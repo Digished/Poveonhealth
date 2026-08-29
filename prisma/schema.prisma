@@ -1901,6 +1901,24 @@ model ConsultPatient {
   preferred_pharmacy_id String?
   preferred_lab_id      String?
 
+  // ── Baseline, taken before payment ───────────────────────────────────────
+  // What the assigned doctor sees the moment a member lands in their pool, and
+  // what the programme's statistics are built from. Everything but adherence
+  // is optional — a blank answer is better than a guessed one.
+  baseline_medications  String? // free text, as the member describes it
+  // daily | skip_monthly | few_weekly | rarely | none
+  medication_adherence  String?
+  hypertension_years    Int? // years since diagnosis
+  diabetes_years        Int?
+  baseline_bp_systolic  Int?
+  baseline_bp_diastolic Int?
+  baseline_bp_taken_on  DateTime? @db.Date
+  baseline_glucose_mg_dl  Decimal?  @db.Decimal(6, 1)
+  baseline_glucose_context String? // fasting | random
+  baseline_glucose_taken_on DateTime? @db.Date
+  baseline_notes        String?
+  baseline_captured_at  DateTime?
+
   doctor_email String? // assigned at activation, by fair round-robin
   assigned_at  DateTime?
 

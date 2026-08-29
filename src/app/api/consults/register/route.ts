@@ -21,6 +21,20 @@ const BodySchema = z.object({
   // Where they'd rather be sent — a preference, changeable at any time.
   preferred_pharmacy_id: z.string().min(1).optional().nullable(),
   preferred_lab_id: z.string().min(1).optional().nullable(),
+
+  // Baseline, taken before payment so the assigned doctor has something to
+  // work from immediately. Only adherence is required.
+  medication_adherence: z.enum(["daily", "skip_monthly", "few_weekly", "rarely", "none"], {
+    errorMap: () => ({ message: "Tell us how often you take your medication" }),
+  }),
+  baseline_medications: z.string().trim().max(1000).optional().nullable(),
+  hypertension_years: z.coerce.number().int().min(0).max(80).optional().nullable(),
+  diabetes_years: z.coerce.number().int().min(0).max(80).optional().nullable(),
+  baseline_bp_systolic: z.coerce.number().int().min(50).max(300).optional().nullable(),
+  baseline_bp_diastolic: z.coerce.number().int().min(30).max(200).optional().nullable(),
+  baseline_glucose_mg_dl: z.coerce.number().min(10).max(900).optional().nullable(),
+  baseline_glucose_context: z.enum(["fasting", "random"]).optional().nullable(),
+  baseline_notes: z.string().trim().max(1000).optional().nullable(),
   consent: z.literal(true, { errorMap: () => ({ message: "Please agree to the terms to continue" }) }),
 });
 
@@ -65,6 +79,21 @@ export async function POST(req: NextRequest) {
       conditions: d.conditions,
       preferred_pharmacy_id: d.preferred_pharmacy_id || null,
       preferred_lab_id: d.preferred_lab_id || null,
+
+      medication_adherence: d.medication_adherence,
+      baseline_medications: d.baseline_medications || null,
+      hypertension_years: d.hypertension_years ?? null,
+      diabetes_years: d.diabetes_years ?? null,
+      baseline_bp_systolic: d.baseline_bp_systolic ?? null,
+      baseline_bp_diastolic: d.baseline_bp_diastolic ?? null,
+      // A reading is only meaningful with a date; today is when they told us.
+      baseline_bp_taken_on: d.baseline_bp_systolic != null ? new Date() : null,
+      baseline_glucose_mg_dl: d.baseline_glucose_mg_dl ?? null,
+      baseline_glucose_context: d.baseline_glucose_context || null,
+      baseline_glucose_taken_on: d.baseline_glucose_mg_dl != null ? new Date() : null,
+      baseline_notes: d.baseline_notes || null,
+      baseline_captured_at: new Date(),
+
       consent_at: new Date(),
       message_allowance: settings.message_allowance,
     };

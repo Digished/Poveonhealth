@@ -2,7 +2,7 @@
 
 import { useMemo, useState } from "react";
 import {
-  ArrowLeft, ArrowRight, Check, Droplet, HeartPulse, Loader2, MapPin,
+  Activity, ArrowLeft, ArrowRight, Check, Droplet, HeartPulse, Loader2, MapPin,
   ShieldCheck, User, X,
 } from "lucide-react";
 import { STATE_NAMES, lgasForState } from "@/lib/nigeria-locations";
@@ -10,6 +10,12 @@ import { FuzzyCombo } from "@/components/ui/FuzzyCombo";
 import { PhoneInput } from "@/components/PhoneInput";
 import { DobInput } from "@/components/DobInput";
 import { ProviderPicker, ProviderRow, type Provider } from "@/components/consults/ProviderPicker";
+import {
+  ADHERENCE_OPTIONS,
+  DURATION_OPTIONS,
+  GLUCOSE_CONTEXTS,
+  type Adherence,
+} from "@/components/consults/baseline";
 
 export type CarePlanBenefits = {
   price_naira: number;
@@ -36,7 +42,7 @@ type Form = {
   consent: boolean;
 };
 
-const STEPS = ["Your details", "Your health", "Confirm"] as const;
+const STEPS = ["Your details", "Your health", "Your baseline", "Confirm"] as const;
 
 const naira = (n: number) => `₦${Math.round(n).toLocaleString("en-NG")}`;
 
@@ -84,6 +90,19 @@ export function CarePlanEnrollModal({
   const [pharmacy, setPharmacy] = useState<Provider | null>(null);
   const [lab, setLab] = useState<Provider | null>(null);
   const [picking, setPicking] = useState<"pharmacy" | "lab" | null>(null);
+  // Baseline — everything but adherence is optional, and a blank answer is
+  // better than a guessed one.
+  const [baseline, setBaseline] = useState({
+    medication_adherence: "" as Adherence | "",
+    baseline_medications: "",
+    hypertension_years: "",
+    diabetes_years: "",
+    baseline_bp_systolic: "",
+    baseline_bp_diastolic: "",
+    baseline_glucose_mg_dl: "",
+    baseline_glucose_context: "",
+    baseline_notes: "",
+  });
 
   const set = <K extends keyof Form>(key: K, value: Form[K]) =>
     setForm((f) => ({ ...f, [key]: value }));
@@ -102,10 +121,12 @@ export function CarePlanEnrollModal({
         return form.full_name.trim().length >= 2 && form.phone.replace(/\D/g, "").length >= 10;
       case 1:
         return form.conditions.length > 0;
+      case 2:
+        return !!baseline.medication_adherence;
       default:
         return form.consent;
     }
-  }, [step, form]);
+  }, [step, form, baseline]);
 
   function next() {
     setError("");
@@ -130,6 +151,17 @@ export function CarePlanEnrollModal({
           conditions: form.conditions,
           preferred_pharmacy_id: pharmacy?.id ?? null,
           preferred_lab_id: lab?.id ?? null,
+
+          medication_adherence: baseline.medication_adherence,
+          baseline_medications: baseline.baseline_medications || null,
+          hypertension_years: baseline.hypertension_years ? Number(baseline.hypertension_years) : null,
+          diabetes_years: baseline.diabetes_years ? Number(baseline.diabetes_years) : null,
+          baseline_bp_systolic: baseline.baseline_bp_systolic ? Number(baseline.baseline_bp_systolic) : null,
+          baseline_bp_diastolic: baseline.baseline_bp_diastolic ? Number(baseline.baseline_bp_diastolic) : null,
+          baseline_glucose_mg_dl: baseline.baseline_glucose_mg_dl ? Number(baseline.baseline_glucose_mg_dl) : null,
+          baseline_glucose_context: baseline.baseline_glucose_context || null,
+          baseline_notes: baseline.baseline_notes || null,
+
           consent: true,
         }),
       });
@@ -307,6 +339,161 @@ export function CarePlanEnrollModal({
 
           {step === 2 && (
             <Section
+              icon={<Activity className="h-5 w-5" />}
+              title="Where you are today"
+              blurb="Your doctor reads this first. Answer what you know — skip anything you don't."
+            >
+              <Field label="How often do you take your medication?">
+                <div className="space-y-2">
+                  {ADHERENCE_OPTIONS.map((o) => {
+                    const on = baseline.medication_adherence === o.value;
+                    return (
+                      <button
+                        key={o.value}
+                        type="button"
+                        onClick={() => setBaseline((b) => ({ ...b, medication_adherence: o.value }))}
+                        aria-pressed={on}
+                        className={`flex w-full items-center gap-3 rounded-xl border p-3 text-left transition ${
+                          on
+                            ? "border-medical-500 bg-medical-50"
+                            : "border-slate-200 bg-white hover:border-medical-200"
+                        }`}
+                      >
+                        <span
+                          className={`flex h-4 w-4 shrink-0 items-center justify-center rounded-full border-2 ${
+                            on ? "border-medical-600" : "border-slate-300"
+                          }`}
+                        >
+                          {on && <span className="h-2 w-2 rounded-full bg-medical-600" />}
+                        </span>
+                        <span className="min-w-0">
+                          <span className={`block text-sm font-semibold ${on ? "text-medical-900" : "text-slate-700"}`}>
+                            {o.label}
+                          </span>
+                          <span className="block text-xs text-slate-500">{o.blurb}</span>
+                        </span>
+                      </button>
+                    );
+                  })}
+                </div>
+              </Field>
+
+              {baseline.medication_adherence !== "none" && (
+                <Field label="What medication are you on?" optional>
+                  <textarea
+                    rows={3}
+                    maxLength={1000}
+                    value={baseline.baseline_medications}
+                    onChange={(e) => setBaseline((b) => ({ ...b, baseline_medications: e.target.value }))}
+                    placeholder="e.g. Amlodipine 5mg once daily, Metformin 500mg twice daily"
+                    className={`${inputClass} resize-none`}
+                  />
+                  <p className="mt-1 text-[11px] text-slate-400">
+                    Names and doses if you know them — otherwise just describe them.
+                  </p>
+                </Field>
+              )}
+
+              {form.conditions.includes("hypertension") && (
+                <Field label="How long have you had high blood pressure?" optional>
+                  <DurationChips
+                    value={baseline.hypertension_years}
+                    onChange={(v) => setBaseline((b) => ({ ...b, hypertension_years: v }))}
+                  />
+                </Field>
+              )}
+
+              {form.conditions.includes("diabetes") && (
+                <Field label="How long have you had diabetes?" optional>
+                  <DurationChips
+                    value={baseline.diabetes_years}
+                    onChange={(v) => setBaseline((b) => ({ ...b, diabetes_years: v }))}
+                  />
+                </Field>
+              )}
+
+              {form.conditions.includes("hypertension") && (
+                <Field label="Your last blood-pressure reading" optional>
+                  <div className="flex items-center gap-2">
+                    <input
+                      inputMode="numeric"
+                      maxLength={3}
+                      value={baseline.baseline_bp_systolic}
+                      onChange={(e) =>
+                        setBaseline((b) => ({ ...b, baseline_bp_systolic: e.target.value.replace(/\D/g, "") }))
+                      }
+                      placeholder="120"
+                      className={`${inputClass} text-center`}
+                    />
+                    <span className="text-lg font-bold text-slate-300">/</span>
+                    <input
+                      inputMode="numeric"
+                      maxLength={3}
+                      value={baseline.baseline_bp_diastolic}
+                      onChange={(e) =>
+                        setBaseline((b) => ({ ...b, baseline_bp_diastolic: e.target.value.replace(/\D/g, "") }))
+                      }
+                      placeholder="80"
+                      className={`${inputClass} text-center`}
+                    />
+                    <span className="shrink-0 text-xs text-slate-400">mmHg</span>
+                  </div>
+                </Field>
+              )}
+
+              {form.conditions.includes("diabetes") && (
+                <Field label="Your last blood-sugar reading" optional>
+                  <div className="flex items-center gap-2">
+                    <input
+                      inputMode="decimal"
+                      value={baseline.baseline_glucose_mg_dl}
+                      onChange={(e) =>
+                        setBaseline((b) => ({ ...b, baseline_glucose_mg_dl: e.target.value.replace(/[^\d.]/g, "") }))
+                      }
+                      placeholder="110"
+                      className={`${inputClass} text-center`}
+                    />
+                    <span className="shrink-0 text-xs text-slate-400">mg/dL</span>
+                  </div>
+                  <div className="mt-2 flex gap-2">
+                    {GLUCOSE_CONTEXTS.map((c) => (
+                      <button
+                        key={c.value}
+                        type="button"
+                        onClick={() =>
+                          setBaseline((b) => ({
+                            ...b,
+                            baseline_glucose_context: b.baseline_glucose_context === c.value ? "" : c.value,
+                          }))
+                        }
+                        className={`flex-1 rounded-xl border px-3 py-2 text-xs font-semibold transition ${
+                          baseline.baseline_glucose_context === c.value
+                            ? "border-medical-500 bg-medical-50 text-medical-800"
+                            : "border-slate-200 bg-white text-slate-600 hover:border-slate-300"
+                        }`}
+                      >
+                        {c.label}
+                      </button>
+                    ))}
+                  </div>
+                </Field>
+              )}
+
+              <Field label="Anything else your doctor should know?" optional>
+                <textarea
+                  rows={2}
+                  maxLength={1000}
+                  value={baseline.baseline_notes}
+                  onChange={(e) => setBaseline((b) => ({ ...b, baseline_notes: e.target.value }))}
+                  placeholder="Other conditions, allergies, symptoms you've noticed…"
+                  className={`${inputClass} resize-none`}
+                />
+              </Field>
+            </Section>
+          )}
+
+          {step === 3 && (
+            <Section
               icon={<ShieldCheck className="h-5 w-5" />}
               title="One payment, one year of care"
               blurb="Check it over, agree to the terms, then pay securely with Paystack."
@@ -455,6 +642,31 @@ function Field({ label, optional, children }: { label: string; optional?: boolea
         {optional && <span className="text-xs font-normal text-slate-400">optional</span>}
       </span>
       {children}
+    </div>
+  );
+}
+
+/** Duration answered in bands — nobody remembers an exact diagnosis date. */
+function DurationChips({ value, onChange }: { value: string; onChange: (v: string) => void }) {
+  return (
+    <div className="flex flex-wrap gap-2">
+      {DURATION_OPTIONS.map((o) => {
+        const on = value === String(o.value);
+        return (
+          <button
+            key={o.value}
+            type="button"
+            onClick={() => onChange(on ? "" : String(o.value))}
+            className={`rounded-full border px-3 py-1.5 text-xs font-semibold transition ${
+              on
+                ? "border-medical-500 bg-medical-50 text-medical-800"
+                : "border-slate-200 bg-white text-slate-600 hover:border-slate-300"
+            }`}
+          >
+            {o.label}
+          </button>
+        );
+      })}
     </div>
   );
 }

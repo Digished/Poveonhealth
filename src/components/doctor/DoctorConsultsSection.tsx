@@ -14,6 +14,7 @@ import {
   type Prescription,
   type TestOrder,
 } from "@/components/doctor/CarePlanOrders";
+import { ADHERENCE_LABEL, bpBand, durationLabel } from "@/components/consults/baseline";
 
 const naira = (n: number) => `₦${Math.round(n).toLocaleString("en-NG")}`;
 const CONDITION_LABEL: Record<string, string> = { hypertension: "Hypertension", diabetes: "Diabetes" };
@@ -44,6 +45,22 @@ type MemberRow = {
 
 type Message = { id: string; sender: string; body: string; created_at: string };
 
+/** What the member told us about themselves before they paid. */
+type Baseline = {
+  medications: string | null;
+  adherence: string | null;
+  hypertension_years: number | null;
+  diabetes_years: number | null;
+  bp_systolic: number | null;
+  bp_diastolic: number | null;
+  bp_taken_on: string | null;
+  glucose_mg_dl: number | null;
+  glucose_context: string | null;
+  glucose_taken_on: string | null;
+  notes: string | null;
+  captured_at: string | null;
+};
+
 /** The detail endpoint returns the member's full record, not the list summary. */
 type MemberDetailData = {
   patient: {
@@ -53,6 +70,7 @@ type MemberDetailData = {
     assigned_at: string | null; subscribed_at: string | null; expires_at: string | null;
     messages_used: number; message_allowance: number; messages_left: number;
   };
+  baseline: Baseline | null;
   earning: { total: number; released: number; pending: number; status: string } | null;
   messages: Message[];
   prescriptions: Prescription[];
@@ -502,6 +520,94 @@ function ListSkeleton() {
   );
 }
 
+/**
+ * What the member reported when they signed up — their starting point, so the
+ * doctor sees where they were before the plan began.
+ */
+const BP_TONE: Record<string, string> = {
+  emerald: "bg-emerald-50 text-emerald-700",
+  amber: "bg-amber-50 text-amber-700",
+  red: "bg-red-50 text-red-700",
+  slate: "bg-slate-100 text-slate-500",
+};
+
+function BaselineCard({ baseline, conditions }: { baseline: Baseline | null; conditions: string[] }) {
+  if (!baseline) {
+    return (
+      <div className="rounded-2xl border border-dashed border-slate-200 bg-white p-4 text-sm text-slate-500">
+        <h3 className="text-xs font-bold uppercase tracking-wider text-slate-400">Baseline</h3>
+        <p className="mt-2">
+          This member joined before we started asking baseline questions. Ask them in the thread for
+          their current medications and latest readings.
+        </p>
+      </div>
+    );
+  }
+
+  const band = bpBand(baseline.bp_systolic, baseline.bp_diastolic);
+  const hasBp = baseline.bp_systolic != null && baseline.bp_diastolic != null;
+  const glucoseContext =
+    baseline.glucose_context === "fasting" ? "fasting" : baseline.glucose_context === "random" ? "random" : null;
+  const hypertension = conditions.includes("hypertension");
+  const diabetes = conditions.includes("diabetes");
+
+  return (
+    <div className="rounded-2xl border border-slate-100 bg-white p-5 shadow-sm">
+      <div className="flex items-center justify-between gap-2">
+        <h3 className="text-xs font-bold uppercase tracking-wider text-slate-400">Baseline</h3>
+        {baseline.captured_at && (
+          <span className="text-[11px] text-slate-400">{formatDate(baseline.captured_at)}</span>
+        )}
+      </div>
+
+      <div className="mt-3 grid grid-cols-2 gap-3">
+        <div className="rounded-xl bg-slate-50 p-3">
+          <p className="text-[11px] font-semibold uppercase tracking-wide text-slate-400">Blood pressure</p>
+          <p className="mt-1 text-lg font-extrabold text-slate-900">
+            {hasBp ? `${baseline.bp_systolic}/${baseline.bp_diastolic}` : "Not given"}
+          </p>
+          {hasBp && (
+            <span className={`mt-1 inline-block rounded-full px-2 py-0.5 text-[11px] font-semibold ${BP_TONE[band.tone]}`}>
+              {band.label}
+            </span>
+          )}
+        </div>
+        <div className="rounded-xl bg-slate-50 p-3">
+          <p className="text-[11px] font-semibold uppercase tracking-wide text-slate-400">Blood sugar</p>
+          <p className="mt-1 text-lg font-extrabold text-slate-900">
+            {baseline.glucose_mg_dl != null ? `${baseline.glucose_mg_dl}` : "Not given"}
+          </p>
+          <p className="mt-1 text-[11px] text-slate-400">
+            {baseline.glucose_mg_dl != null ? `mg/dL${glucoseContext ? ` · ${glucoseContext}` : ""}` : "\u00a0"}
+          </p>
+        </div>
+      </div>
+
+      <dl className="mt-4 space-y-1.5 text-sm">
+        <DetailRow label="Takes medication" value={ADHERENCE_LABEL[baseline.adherence ?? ""] ?? "Not given"} />
+        {hypertension && (
+          <DetailRow label="Hypertension for" value={durationLabel(baseline.hypertension_years) ?? "Not given"} />
+        )}
+        {diabetes && <DetailRow label="Diabetes for" value={durationLabel(baseline.diabetes_years) ?? "Not given"} />}
+      </dl>
+
+      {baseline.medications && (
+        <div className="mt-3 rounded-xl bg-medical-50/60 p-3">
+          <p className="text-[11px] font-semibold uppercase tracking-wide text-medical-700">Current medication</p>
+          <p className="mt-1 whitespace-pre-wrap text-sm text-slate-700">{baseline.medications}</p>
+        </div>
+      )}
+
+      {baseline.notes && (
+        <div className="mt-3 rounded-xl bg-slate-50 p-3">
+          <p className="text-[11px] font-semibold uppercase tracking-wide text-slate-400">In their words</p>
+          <p className="mt-1 whitespace-pre-wrap text-sm text-slate-700">{baseline.notes}</p>
+        </div>
+      )}
+    </div>
+  );
+}
+
 // ── One member ──────────────────────────────────────────────────────────────
 
 function MemberDetail({
@@ -608,6 +714,8 @@ function MemberDetail({
               <DetailRow label="Messages" value={`${p.messages_used} of ${p.message_allowance} used`} />
             </dl>
           </div>
+
+          <BaselineCard baseline={data.baseline} conditions={p.conditions} />
 
           <CarePlanOrders
             patientId={p.id}
