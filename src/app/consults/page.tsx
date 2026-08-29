@@ -1,11 +1,10 @@
 import type { Metadata } from "next";
 import Link from "next/link";
 import {
-  HeartPulse, Droplet, MessageSquareText, Target, FlaskConical, Pill,
-  ShieldCheck, ArrowRight, Check,
+  HeartPulse, Droplet, MessageSquareText, FlaskConical, Pill, Check, ArrowRight,
 } from "lucide-react";
 import { PoveonLogo } from "@/components/PoveonLogo";
-import { CarePlanSignup } from "@/components/consults/CarePlanSignup";
+import { CarePlanAccountForm } from "@/components/consults/CarePlanAccountForm";
 import { getConsultSettings } from "@/lib/consult";
 
 // Pricing is admin-editable, so the page must not be baked at build time.
@@ -26,51 +25,42 @@ const naira = (n: number) => `₦${Math.round(n).toLocaleString("en-NG")}`;
 
 export default async function ConsultsPage() {
   const settings = await getConsultSettings();
+  const price = naira(settings.price_naira);
 
   return (
     <div className="min-h-dvh bg-gradient-to-br from-sky-50 via-white to-emerald-50/60">
-      {/* Nav */}
       <nav className="sticky top-0 z-30 border-b border-white/60 bg-white/80 backdrop-blur-md">
         <div className="mx-auto flex max-w-6xl items-center justify-between px-4 py-3.5">
           <Link href="/" className="flex items-center gap-2">
             <PoveonLogo className="h-6 w-6 text-medical-600" />
             <span className="text-lg font-bold text-slate-900">Poveon</span>
           </Link>
-          <div className="flex items-center gap-2">
-            <Link
-              href="/consults/login"
-              className="rounded-xl px-3 py-2 text-sm font-semibold text-slate-600 transition hover:bg-slate-100 hover:text-slate-900"
-            >
-              Member sign in
-            </Link>
-            <a
-              href="#join"
-              className="inline-flex items-center gap-1.5 rounded-xl bg-medical-600 px-4 py-2 text-sm font-semibold text-white shadow-sm shadow-medical-600/25 transition hover:bg-medical-700"
-            >
-              Join
-              <ArrowRight className="h-3.5 w-3.5" />
-            </a>
-          </div>
+          <a
+            href="#join"
+            className="inline-flex items-center gap-1.5 rounded-xl bg-medical-600 px-4 py-2 text-sm font-semibold text-white shadow-sm shadow-medical-600/25 transition hover:bg-medical-700"
+          >
+            Get started
+            <ArrowRight className="h-3.5 w-3.5" />
+          </a>
         </div>
       </nav>
 
-      {/* Hero + sign-up, side by side once there's room */}
-      <section className="mx-auto max-w-6xl px-4 py-10 lg:py-16">
-        <div className="grid items-start gap-10 lg:grid-cols-[1fr_minmax(0,520px)] lg:gap-14">
-          <div className="space-y-8">
+      {/* The form is the page. Everything else is there to justify it. */}
+      <section className="mx-auto max-w-6xl px-4 py-8 lg:py-14">
+        <div className="grid items-start gap-8 lg:grid-cols-[1fr_minmax(0,440px)] lg:gap-14">
+          <div className="space-y-7">
             <div className="space-y-4">
               <span className="inline-flex items-center gap-2 rounded-full border border-medical-100 bg-medical-50 px-3 py-1 text-xs font-semibold text-medical-700">
                 <HeartPulse className="h-3.5 w-3.5" />
                 For hypertension &amp; diabetes
               </span>
               <h1 className="text-3xl font-extrabold leading-tight tracking-tight text-slate-900 sm:text-4xl lg:text-5xl">
-                A year of care for{" "}
-                <span className="text-medical-600">{naira(settings.price_naira)}</span>
+                A year of care for <span className="text-medical-600">{price}</span>
               </h1>
               <p className="max-w-xl text-base leading-relaxed text-slate-600">
                 Living with high blood pressure or diabetes shouldn&apos;t mean guessing between
                 appointments. One yearly payment gets you cheaper tests, cheaper prescriptions, and a
-                doctor who knows your name and your goal.
+                doctor who knows your name.
               </p>
             </div>
 
@@ -92,26 +82,15 @@ export default async function ConsultsPage() {
               />
             </div>
 
-            <div className="space-y-5 rounded-2xl border border-slate-100 bg-white/70 p-5 backdrop-blur-sm">
-              <h2 className="text-sm font-bold uppercase tracking-wider text-slate-400">How it works</h2>
-              <Step
-                n={1}
-                icon={<Target className="h-4 w-4" />}
-                title="Tell us your goal for the year"
-                blurb="One thing you want to be true in twelve months. It's the first thing your doctor reads."
-              />
-              <Step
-                n={2}
-                icon={<ShieldCheck className="h-4 w-4" />}
-                title="Pay once and get your care code"
-                blurb="Show it at any partner lab or pharmacy for your discount, straight away."
-              />
-              <Step
-                n={3}
-                icon={<MessageSquareText className="h-4 w-4" />}
-                title="Get matched with a doctor"
-                blurb="They send you a first assessment, then you write whenever something changes — no appointments to chase."
-              />
+            <div className="rounded-2xl border border-slate-100 bg-white/70 p-5 backdrop-blur-sm">
+              <h2 className="text-xs font-bold uppercase tracking-wider text-slate-400">
+                Three steps, about two minutes
+              </h2>
+              <ol className="mt-4 space-y-4">
+                <Step n={1} title="Create your account" blurb="An email and a 4-digit PIN. That PIN is how you sign in from now on." />
+                <Step n={2} title="Fill in the care plan" blurb="A short form on your dashboard — already filled in if we've met before." />
+                <Step n={3} title="Pay and get your code" blurb="Your care code is issued the moment payment clears, and a doctor is assigned to you." />
+              </ol>
             </div>
 
             <div className="flex flex-wrap items-center gap-x-6 gap-y-2 text-sm text-slate-500">
@@ -121,11 +100,13 @@ export default async function ConsultsPage() {
             </div>
           </div>
 
-          <CarePlanSignup settings={settings} />
+          {/* Sticky on desktop so the form is in reach however far you scroll */}
+          <div className="lg:sticky lg:top-24">
+            <CarePlanAccountForm priceLabel={price} />
+          </div>
         </div>
       </section>
 
-      {/* Who it's for */}
       <section className="border-t border-slate-100 bg-white/60">
         <div className="mx-auto max-w-6xl px-4 py-12">
           <h2 className="text-center text-2xl font-bold text-slate-900">Built for two conditions, properly</h2>
@@ -149,9 +130,19 @@ export default async function ConsultsPage() {
               points={[
                 "Cheaper HbA1c and fasting glucose tests",
                 "Discounted prescriptions and test strips",
-                "A doctor tracking your numbers against your goal",
+                "A doctor tracking your numbers month to month",
               ]}
             />
+          </div>
+
+          <div className="mt-10 text-center">
+            <a
+              href="#join"
+              className="inline-flex items-center gap-2 rounded-2xl bg-medical-600 px-7 py-4 text-sm font-bold text-white shadow-lg shadow-medical-600/25 transition hover:bg-medical-700"
+            >
+              Create your account
+              <ArrowRight className="h-4 w-4" />
+            </a>
           </div>
         </div>
       </section>
@@ -168,7 +159,7 @@ export default async function ConsultsPage() {
           </p>
           <div className="flex flex-wrap justify-center gap-4 text-xs text-slate-500">
             <Link href="/" className="hover:text-slate-800">Home</Link>
-            <Link href="/consults/login" className="hover:text-slate-800">Member sign in</Link>
+            <Link href="/dashboard" className="hover:text-slate-800">My dashboard</Link>
             <Link href="/pharmacy-login" className="hover:text-slate-800">Pharmacy portal</Link>
             <Link href="/privacy" className="hover:text-slate-800">Privacy</Link>
           </div>
@@ -188,20 +179,17 @@ function Benefit({ icon, value, label }: { icon: React.ReactNode; value: string;
   );
 }
 
-function Step({ n, icon, title, blurb }: { n: number; icon: React.ReactNode; title: string; blurb: string }) {
+function Step({ n, title, blurb }: { n: number; title: string; blurb: string }) {
   return (
-    <div className="flex gap-3">
-      <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-xl bg-medical-600 text-white">
-        {icon}
-      </div>
+    <li className="flex gap-3">
+      <span className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-medical-600 text-xs font-bold text-white">
+        {n}
+      </span>
       <div className="min-w-0">
-        <p className="text-sm font-bold text-slate-800">
-          <span className="mr-1.5 text-medical-500">{n}.</span>
-          {title}
-        </p>
+        <p className="text-sm font-bold text-slate-800">{title}</p>
         <p className="mt-0.5 text-sm leading-relaxed text-slate-500">{blurb}</p>
       </div>
-    </div>
+    </li>
   );
 }
 

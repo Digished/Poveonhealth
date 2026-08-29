@@ -19,7 +19,7 @@ type Settings = {
 
 type Member = {
   id: string; code: string; full_name: string; email: string; phone: string | null;
-  conditions: string[]; goal: string | null; status: string; doctor_email: string | null;
+  conditions: string[]; status: string; doctor_email: string | null;
   subscribed_at: string | null; expires_at: string | null; amount_paid: number | null;
   messages_used: number; message_allowance: number;
 };

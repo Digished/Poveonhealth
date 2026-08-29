@@ -27,9 +27,16 @@ export async function GET(req: NextRequest) {
     const filter = params.get("filter") ?? "all";
     const page = Math.max(1, Number(params.get("page") ?? 1) || 1);
 
+    const now = new Date();
     const where: Prisma.ConsultPatientWhereInput = { doctor_email: email };
-    if (filter === "inactive") where.status = { not: "active" };
-    else where.status = "active";
+    // A plan that has run out is lapsed whether or not its flag has been
+    // flipped yet, so the expiry is part of the filter, not just the status.
+    if (filter === "inactive") {
+      where.OR = [{ status: { not: "active" } }, { expires_at: { lte: now } }];
+    } else {
+      where.status = "active";
+      where.expires_at = { gt: now };
+    }
 
     if (filter === "needs_reply") {
       where.messages = { some: { sender: "patient", read_at: null } };
@@ -39,11 +46,15 @@ export async function GET(req: NextRequest) {
     }
 
     if (q) {
-      where.OR = [
-        { full_name: { contains: q, mode: "insensitive" } },
-        { email: { contains: q, mode: "insensitive" } },
-        { code: { contains: q, mode: "insensitive" } },
-        { phone: { contains: q } },
+      where.AND = [
+        {
+          OR: [
+            { full_name: { contains: q, mode: "insensitive" } },
+            { email: { contains: q, mode: "insensitive" } },
+            { code: { contains: q, mode: "insensitive" } },
+            { phone: { contains: q } },
+          ],
+        },
       ];
     }
 
@@ -56,7 +67,7 @@ export async function GET(req: NextRequest) {
         take: PAGE_SIZE,
         select: {
           id: true, code: true, full_name: true, email: true, phone: true,
-          conditions: true, goal: true, status: true, assigned_at: true,
+          conditions: true, status: true, assigned_at: true,
           expires_at: true, messages_used: true, message_allowance: true,
         },
       }),

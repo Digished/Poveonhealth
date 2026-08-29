@@ -1851,7 +1851,7 @@ model ConsultSettings {
   id                 String   @id @default("default")
   price_naira        Decimal  @default(10000) @db.Decimal(12, 2) // member pays this per year
   doctor_share_naira Decimal  @default(6000) @db.Decimal(12, 2) // doctor's entitlement per member-year
-  message_allowance  Int      @default(10) // messages a member may send per year
+  message_allowance  Int      @default(40) // messages a member may send per year
   release_months     Int      @default(12) // the pool is released over this many months
   default_doctor_cap Int      @default(200) // patients per doctor per year, until they set their own
   lab_discount_percent      Int @default(15)
@@ -1862,9 +1862,14 @@ model ConsultSettings {
   @@map("consult_settings")
 }
 
+// A care-plan enrolment. Identity is the patient's email — the same one the
+// patient portal signs in with — so anyone we already hold an email for (a lab
+// request, a referral) can enrol without a second account.
 model ConsultPatient {
-  id            String    @id @default(uuid())
-  code          String    @unique // discount card code, e.g. "PVC-8X4K29Q"
+  id String @id @default(uuid())
+  // Issued only when the subscription is paid for. Null while the enrolment is
+  // still awaiting payment, so an unpaid form can never be shown a live code.
+  code          String?   @unique
   full_name     String
   email         String    @unique
   phone         String?
@@ -1873,10 +1878,10 @@ model ConsultPatient {
   state         String?
   city          String?
   conditions    String[]  @default([]) // "hypertension" | "diabetes"
-  // What the member wants to achieve in the next year — asked at sign-up and
-  // shown to their doctor as the framing for every assessment.
-  goal          String?
-  goal_metric   String? // how they'll measure it, in their words
+
+  // Consent to share the enrolment with the assigned doctor and partners,
+  // captured on the last step of the form.
+  consent_at DateTime?
 
   doctor_email String? // assigned at activation, by fair round-robin
   assigned_at  DateTime?
@@ -1888,7 +1893,7 @@ model ConsultPatient {
   paystack_ref  String?
 
   messages_used     Int @default(0) // patient-sent messages counted against the allowance
-  message_allowance Int @default(10) // snapshot of the allowance at sign-up
+  message_allowance Int @default(40) // snapshot of the allowance at sign-up
 
   created_at DateTime @default(now())
   updated_at DateTime @updatedAt
@@ -1897,24 +1902,11 @@ model ConsultPatient {
   earnings           ConsultEarning[]
   redemptions        ConsultRedemption[]
   pharmacy_customers PharmacyCustomer[]
-  sessions           ConsultPatientSession[]
 
   @@index([doctor_email, status])
   @@index([status, expires_at])
   @@index([email])
   @@map("consult_patients")
-}
-
-model ConsultPatientSession {
-  id         String   @id @default(uuid())
-  patient_id String
-  expires_at DateTime
-  created_at DateTime @default(now())
-
-  patient ConsultPatient @relation(fields: [patient_id], references: [id], onDelete: Cascade)
-
-  @@index([patient_id])
-  @@map("consult_patient_sessions")
 }
 
 // One asynchronous message either way. Only patient messages count against the

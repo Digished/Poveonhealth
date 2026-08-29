@@ -37,12 +37,22 @@
 
 ### 3b. Care Plan (`/consults`)
 An annual subscription for people living with **hypertension** or **diabetes**.
+It runs on the **patient portal's own identity** — enrolment is keyed on the
+patient's email, so anyone we already hold an email for (a lab request, a
+referral) enrols from their dashboard without a second account.
+
+- `/consults` is a landing page whose one form creates (or signs into) a Poveon
+  account with an email and a 4-digit PIN — after that, no emailed codes
+- Enrolment itself is a **popup in `/dashboard`** (Care Plan tab), pre-filled
+  from the patient's profile or their most recent lab request, with consent on
+  the final step
 - One yearly payment (price set by admin, default ₦10,000) via Paystack
-- Member gets a care code (discounts at partner labs and pharmacies) plus an
-  allowance of asynchronous messages to a doctor (default 10 per year)
-- Sign-up is a multistep form that asks for the member's goal for the year
+- The **care code is only issued when the payment clears**, and the plan goes
+  inactive the moment its year runs out and isn't renewed
+- Members get discounts at partner labs and pharmacies plus an allowance of
+  asynchronous messages to a doctor (default 40 per year)
 - The platform assigns each new member to the accepting doctor carrying the
-  fewest members and still under their own yearly cap
+  fewest live members and still under their own yearly cap
 - The doctor's share (default ₦6,000 per member-year) is held as a pending
   entitlement and released into their wallet in monthly instalments
   (pool ÷ release months); a member who leaves stops accruing
@@ -51,9 +61,10 @@ An annual subscription for people living with **hypertension** or **diabetes**.
 - Partner **pharmacies** are created by an admin, sign in with an emailed code
   at `/pharmacy-login`, verify care codes and track their own regulars
 
-Routes: `/consults`, `/consults/login`, `/consults/dashboard`, `/consults/paid`,
-`/pharmacy-login`, `/pharmacy-dashboard`. Doctor side lives in the Care Plan tab
-of `/doc-login/dashboard`; admin side in the Care Plan and Pharmacies tabs.
+Routes: `/consults` (account creation), `/dashboard?tab=care` (the plan itself),
+`/consults/paid` (payment return), `/pharmacy-login`, `/pharmacy-dashboard`.
+Doctor side lives in the Care Plan tab of `/doc-login/dashboard`; admin side in
+the Care Plan and Pharmacies tabs.
 
 ### 4. Public Pages
 - `/` - Landing page (the old `/home` route now redirects here)

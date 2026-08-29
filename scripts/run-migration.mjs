@@ -1770,7 +1770,7 @@ const migrations = [
       id TEXT PRIMARY KEY DEFAULT 'default',
       price_naira DECIMAL(12,2) NOT NULL DEFAULT 10000,
       doctor_share_naira DECIMAL(12,2) NOT NULL DEFAULT 6000,
-      message_allowance INTEGER NOT NULL DEFAULT 10,
+      message_allowance INTEGER NOT NULL DEFAULT 40,
       release_months INTEGER NOT NULL DEFAULT 12,
       default_doctor_cap INTEGER NOT NULL DEFAULT 200,
       lab_discount_percent INTEGER NOT NULL DEFAULT 15,
@@ -1784,7 +1784,7 @@ const migrations = [
     desc: "consult_patients table (care-plan members)",
     sql: `CREATE TABLE IF NOT EXISTS consult_patients (
       id TEXT PRIMARY KEY,
-      code TEXT NOT NULL,
+      code TEXT,
       full_name TEXT NOT NULL,
       email TEXT NOT NULL,
       phone TEXT,
@@ -1793,8 +1793,7 @@ const migrations = [
       state TEXT,
       city TEXT,
       conditions TEXT[] NOT NULL DEFAULT '{}',
-      goal TEXT,
-      goal_metric TEXT,
+      consent_at TIMESTAMP(3),
       doctor_email TEXT,
       assigned_at TIMESTAMP(3),
       status TEXT NOT NULL DEFAULT 'pending_payment',
@@ -1803,7 +1802,7 @@ const migrations = [
       amount_paid DECIMAL(12,2),
       paystack_ref TEXT,
       messages_used INTEGER NOT NULL DEFAULT 0,
-      message_allowance INTEGER NOT NULL DEFAULT 10,
+      message_allowance INTEGER NOT NULL DEFAULT 40,
       created_at TIMESTAMP(3) NOT NULL DEFAULT now(),
       updated_at TIMESTAMP(3) NOT NULL DEFAULT now()
     )`,
@@ -1818,21 +1817,6 @@ const migrations = [
       CREATE INDEX IF NOT EXISTS consult_patients_status_expires_idx ON consult_patients (status, expires_at);
       CREATE INDEX IF NOT EXISTS consult_patients_email_idx ON consult_patients (email);
     `,
-    continueOnError: true,
-  },
-  {
-    desc: "consult_patient_sessions table",
-    sql: `CREATE TABLE IF NOT EXISTS consult_patient_sessions (
-      id TEXT PRIMARY KEY,
-      patient_id TEXT NOT NULL,
-      expires_at TIMESTAMP(3) NOT NULL,
-      created_at TIMESTAMP(3) NOT NULL DEFAULT now()
-    )`,
-    continueOnError: true,
-  },
-  {
-    desc: "consult_patient_sessions index",
-    sql: `CREATE INDEX IF NOT EXISTS consult_patient_sessions_patient_idx ON consult_patient_sessions (patient_id)`,
     continueOnError: true,
   },
   {
@@ -1994,6 +1978,32 @@ const migrations = [
       CREATE INDEX IF NOT EXISTS consult_redemptions_patient_created_idx ON consult_redemptions (patient_id, created_at);
       CREATE INDEX IF NOT EXISTS consult_redemptions_pharmacy_created_idx ON consult_redemptions (pharmacy_id, created_at);
     `,
+    continueOnError: true,
+  },
+  {
+    // The care plan moved onto the patient portal's own identity: enrolment is
+    // keyed on the patient's email, the code is only issued once they pay, and
+    // the goal question was dropped.
+    desc: "consult_patients: nullable code, consent, no goal",
+    sql: `
+      ALTER TABLE consult_patients ALTER COLUMN code DROP NOT NULL;
+      ALTER TABLE consult_patients ADD COLUMN IF NOT EXISTS consent_at TIMESTAMP(3);
+      ALTER TABLE consult_patients DROP COLUMN IF EXISTS goal;
+      ALTER TABLE consult_patients DROP COLUMN IF EXISTS goal_metric;
+      ALTER TABLE consult_patients ALTER COLUMN message_allowance SET DEFAULT 40;
+    `,
+    continueOnError: true,
+  },
+  {
+    // Members sign in through the patient portal now, so the care plan has no
+    // session table of its own.
+    desc: "drop consult_patient_sessions (patient portal session is used)",
+    sql: `DROP TABLE IF EXISTS consult_patient_sessions`,
+    continueOnError: true,
+  },
+  {
+    desc: "consult_settings: 40 messages a year by default",
+    sql: `ALTER TABLE consult_settings ALTER COLUMN message_allowance SET DEFAULT 40`,
     continueOnError: true,
   },
   {

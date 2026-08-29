@@ -4,44 +4,46 @@ import { z } from "zod";
 import { prisma } from "@/lib/prisma";
 import {
   CONSULT_CONDITIONS,
-  generateMemberCode,
   getConsultSettings,
+  getPatientEmailFromRequest,
   initConsultPayment,
 } from "@/lib/consult";
 
 const BodySchema = z.object({
   full_name: z.string().trim().min(2, "Please enter your full name").max(120),
-  email: z.string().trim().email("Please enter a valid email address"),
-  phone: z.string().trim().min(7).max(20),
+  phone: z.string().trim().min(7, "Please enter your phone number").max(20),
   sex: z.enum(["male", "female"]).optional().nullable(),
   date_of_birth: z.string().trim().optional().nullable(),
   state: z.string().trim().max(80).optional().nullable(),
   city: z.string().trim().max(80).optional().nullable(),
   conditions: z.array(z.enum(CONSULT_CONDITIONS)).min(1, "Select at least one condition"),
-  goal: z.string().trim().min(3, "Tell us your goal for the year").max(500),
-  goal_metric: z.string().trim().max(300).optional().nullable(),
+  consent: z.literal(true, { errorMap: () => ({ message: "Please agree to the terms to continue" }) }),
 });
 
 /**
- * POST /api/consults/register — start a care-plan membership.
+ * POST /api/consults/register — enrol the signed-in patient on the care plan.
  *
- * Creates (or refreshes) a pending member record and hands back a Paystack
- * checkout URL. Nothing is activated until the payment is verified.
+ * Saves (or refreshes) their enrolment and hands back a Paystack checkout URL.
+ * Nothing is activated and no care code is issued until the payment is verified.
  */
 export async function POST(req: NextRequest) {
   try {
+    const email = await getPatientEmailFromRequest(req);
+    if (!email) {
+      return NextResponse.json({ error: "Please sign in to join the care plan." }, { status: 401 });
+    }
+
     const parsed = BodySchema.safeParse(await req.json());
     if (!parsed.success) {
       return NextResponse.json({ error: parsed.error.issues[0]?.message ?? "Invalid details." }, { status: 400 });
     }
     const d = parsed.data;
-    const email = d.email.toLowerCase();
     const settings = await getConsultSettings();
 
     const existing = await prisma.consultPatient.findUnique({ where: { email } });
     if (existing?.status === "active") {
       return NextResponse.json(
-        { error: "This email already has an active care plan. Sign in to see your code." },
+        { error: "You already have an active care plan." },
         { status: 409 }
       );
     }
@@ -55,22 +57,39 @@ export async function POST(req: NextRequest) {
       state: d.state || null,
       city: d.city || null,
       conditions: d.conditions,
-      goal: d.goal,
-      goal_metric: d.goal_metric || null,
+      consent_at: new Date(),
       message_allowance: settings.message_allowance,
     };
 
-    // Someone who started and abandoned a sign-up keeps their row (and code) —
-    // re-registering just refreshes the details and issues a new checkout.
+    // An abandoned enrolment keeps its row — re-submitting refreshes the
+    // details and issues a fresh checkout. Still no code until they pay.
     const patient = existing
       ? await prisma.consultPatient.update({ where: { id: existing.id }, data: fields })
       : await prisma.consultPatient.create({
-          data: { ...fields, email, code: await generateMemberCode(), status: "pending_payment" },
+          data: { ...fields, email, status: "pending_payment" },
         });
+
+    // Keep the portal profile in step, so the next lab request is pre-filled.
+    await prisma.patientProfile.upsert({
+      where: { email },
+      create: {
+        email,
+        name: d.full_name,
+        phone: d.phone,
+        dob: fields.date_of_birth ? fields.date_of_birth.toISOString().slice(0, 10) : null,
+        sex: d.sex ?? null,
+      },
+      update: {
+        name: d.full_name,
+        phone: d.phone,
+        ...(fields.date_of_birth ? { dob: fields.date_of_birth.toISOString().slice(0, 10) } : {}),
+        ...(d.sex ? { sex: d.sex } : {}),
+      },
+    }).catch((e) => console.error("[consults/register] profile sync:", e));
 
     const payment = await initConsultPayment({
       patientId: patient.id,
-      code: patient.code,
+      code: patient.code ?? patient.id,
       email,
       amountNaira: settings.price_naira,
     });
@@ -94,6 +113,6 @@ export async function POST(req: NextRequest) {
     });
   } catch (err) {
     console.error("[consults/register]", err);
-    return NextResponse.json({ error: "Could not complete your registration." }, { status: 500 });
+    return NextResponse.json({ error: "Could not complete your enrolment." }, { status: 500 });
   }
 }

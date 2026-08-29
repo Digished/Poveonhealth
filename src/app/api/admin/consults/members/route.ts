@@ -4,7 +4,7 @@ import { Prisma } from "@prisma/client";
 import { z } from "zod";
 import { createServerClient } from "@/lib/supabase/server";
 import { prisma } from "@/lib/prisma";
-import { getConsultSettings } from "@/lib/consult";
+import { activeMemberWhere, getConsultSettings } from "@/lib/consult";
 
 const PAGE_SIZE = 25;
 
@@ -45,14 +45,14 @@ export async function GET(req: NextRequest) {
       take: PAGE_SIZE,
       select: {
         id: true, code: true, full_name: true, email: true, phone: true,
-        conditions: true, goal: true, status: true, doctor_email: true,
+        conditions: true, status: true, doctor_email: true,
         subscribed_at: true, expires_at: true, amount_paid: true,
         messages_used: true, message_allowance: true,
       },
     }),
-    prisma.consultPatient.aggregate({ where: { status: "active" }, _sum: { amount_paid: true } }),
-    prisma.consultPatient.count({ where: { status: "active" } }),
-    prisma.consultPatient.count({ where: { status: "active", doctor_email: null } }),
+    prisma.consultPatient.aggregate({ where: activeMemberWhere(), _sum: { amount_paid: true } }),
+    prisma.consultPatient.count({ where: activeMemberWhere() }),
+    prisma.consultPatient.count({ where: { ...activeMemberWhere(), doctor_email: null } }),
   ]);
 
   const settings = await getConsultSettings();

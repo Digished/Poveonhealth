@@ -3,7 +3,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import {
   AlertCircle, ArrowLeft, BadgeCheck, Banknote, CalendarDays, Check, HeartPulse,
-  Loader2, MessageSquareText, Search, Send, Target, TrendingUp, Users, Wallet,
+  Loader2, MessageSquareText, Search, Send, TrendingUp, Users, Wallet,
 } from "lucide-react";
 import { getJson, invalidateJson } from "@/lib/client-cache";
 import type { ConsultView } from "@/components/doctor/consult-views";
@@ -28,7 +28,7 @@ type Overview = {
 
 type MemberRow = {
   id: string; code: string; full_name: string; email: string; phone: string | null;
-  conditions: string[]; goal: string | null; status: string; assigned_at: string | null;
+  conditions: string[]; status: string; assigned_at: string | null;
   expires_at: string | null; messages_used: number; message_allowance: number;
   messages_left: number; unread: number; assessed: boolean;
   last_message: { sender: string; preview: string; created_at: string } | null;
@@ -41,7 +41,7 @@ type MemberDetailData = {
   patient: {
     id: string; code: string; full_name: string; email: string; phone: string | null;
     sex: string | null; date_of_birth: string | null; state: string | null; city: string | null;
-    conditions: string[]; goal: string | null; goal_metric: string | null; status: string;
+    conditions: string[]; status: string;
     assigned_at: string | null; subscribed_at: string | null; expires_at: string | null;
     messages_used: number; message_allowance: number; messages_left: number;
   };
@@ -414,15 +414,8 @@ function MemberCard({ member, onClick }: { member: MemberRow; onClick: () => voi
         </span>
       </div>
 
-      {member.goal && (
-        <p className="mt-3 flex items-start gap-1.5 rounded-xl bg-emerald-50/70 px-3 py-2 text-xs text-emerald-900">
-          <Target className="mt-0.5 h-3.5 w-3.5 shrink-0 text-emerald-500" />
-          <span className="line-clamp-2">{member.goal}</span>
-        </p>
-      )}
-
       {member.last_message && (
-        <p className="mt-2 truncate text-xs text-slate-500">
+        <p className="mt-3 truncate text-xs text-slate-500">
           <span className="font-semibold text-slate-600">
             {member.last_message.sender === "doctor" ? "You" : member.full_name.split(" ")[0]}:
           </span>{" "}
@@ -548,17 +541,6 @@ function MemberDetail({ id, onBack }: { id: string; onBack: () => void }) {
             </dl>
           </div>
 
-          {p.goal && (
-            <div className="rounded-2xl border border-emerald-100 bg-emerald-50/70 p-4">
-              <h3 className="flex items-center gap-1.5 text-xs font-bold uppercase tracking-wider text-emerald-700">
-                <Target className="h-3.5 w-3.5" />
-                Their goal this year
-              </h3>
-              <p className="mt-2 text-sm font-medium leading-relaxed text-emerald-900">{p.goal}</p>
-              {p.goal_metric && <p className="mt-1.5 text-xs text-emerald-700/80">Measured by: {p.goal_metric}</p>}
-            </div>
-          )}
-
           {data.earning && (
             <div className="rounded-2xl border border-slate-100 bg-white p-4 shadow-sm">
               <h3 className="text-xs font-bold uppercase tracking-wider text-slate-400">Your pay for this member</h3>
@@ -592,7 +574,7 @@ function MemberDetail({ id, onBack }: { id: string; onBack: () => void }) {
                 <BadgeCheck className="h-10 w-10 text-slate-200" />
                 <p className="text-sm font-semibold text-slate-500">No messages yet</p>
                 <p className="max-w-xs text-xs text-slate-400">
-                  Send a first assessment against their goal — it&apos;s what they joined for.
+                  Send a first assessment — it&apos;s what they joined for.
                 </p>
               </div>
             ) : (

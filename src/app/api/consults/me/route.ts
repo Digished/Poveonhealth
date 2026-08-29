@@ -1,15 +1,60 @@
 export const dynamic = "force-dynamic";
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
-import { getConsultSettings, getMemberFromRequest } from "@/lib/consult";
+import { getConsultSettings, getMemberByEmail, getPatientEmailFromRequest } from "@/lib/consult";
 
-/** GET /api/consults/me — the signed-in member's card, doctor and thread. */
+/**
+ * GET /api/consults/me — the signed-in patient's care plan.
+ *
+ * Always answers for a signed-in patient, enrolled or not: `member` is null
+ * when they have never joined, and `prefill` carries whatever we already know
+ * about them (portal profile, then their most recent lab request) so the
+ * enrolment form opens mostly filled in.
+ */
 export async function GET(req: NextRequest) {
   try {
-    const member = await getMemberFromRequest(req);
-    if (!member) return NextResponse.json({ error: "Not authenticated." }, { status: 401 });
+    const email = await getPatientEmailFromRequest(req);
+    if (!email) return NextResponse.json({ error: "Not authenticated." }, { status: 401 });
 
-    const settings = await getConsultSettings();
+    const [member, settings, profile] = await Promise.all([
+      getMemberByEmail(email),
+      getConsultSettings(),
+      prisma.patientProfile.findUnique({
+        where: { email },
+        select: { name: true, phone: true, dob: true, sex: true, address: true },
+      }),
+    ]);
+
+    const benefits = {
+      price_naira: settings.price_naira,
+      message_allowance: settings.message_allowance,
+      lab_discount_percent: settings.lab_discount_percent,
+      pharmacy_discount_percent: settings.pharmacy_discount_percent,
+    };
+
+    if (!member) {
+      // Fall back to the last lab request for anyone we only know through a
+      // referral — they've never filled in a portal profile.
+      const lastRequest = profile?.name
+        ? null
+        : await prisma.request.findFirst({
+            where: { patient_email: email },
+            orderBy: { created_at: "desc" },
+            select: { patient_name: true, patient_phone: true, dob: true, sex: true, address: true },
+          });
+
+      return NextResponse.json({
+        success: true,
+        member: null,
+        benefits,
+        prefill: {
+          full_name: profile?.name ?? lastRequest?.patient_name ?? "",
+          phone: profile?.phone ?? lastRequest?.patient_phone ?? "",
+          date_of_birth: profile?.dob ?? (lastRequest?.dob ? lastRequest.dob.toISOString().slice(0, 10) : ""),
+          sex: profile?.sex ?? lastRequest?.sex ?? "",
+        },
+      });
+    }
 
     const [doctor, messages, redemptions] = await Promise.all([
       member.doctor_email
@@ -41,15 +86,18 @@ export async function GET(req: NextRequest) {
 
     return NextResponse.json({
       success: true,
+      benefits,
       member: {
         id: member.id,
         code: member.code,
         full_name: member.full_name,
         email: member.email,
         phone: member.phone,
+        sex: member.sex,
+        date_of_birth: member.date_of_birth,
+        state: member.state,
+        city: member.city,
         conditions: member.conditions,
-        goal: member.goal,
-        goal_metric: member.goal_metric,
         status: member.status,
         subscribed_at: member.subscribed_at,
         expires_at: member.expires_at,
@@ -79,10 +127,6 @@ export async function GET(req: NextRequest) {
         discount_naira: Number(r.discount_naira),
         created_at: r.created_at,
       })),
-      benefits: {
-        lab_discount_percent: settings.lab_discount_percent,
-        pharmacy_discount_percent: settings.pharmacy_discount_percent,
-      },
     });
   } catch (err) {
     console.error("[consults/me]", err);

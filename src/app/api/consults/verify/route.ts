@@ -6,9 +6,8 @@ import { carePlanWelcomeEmail, carePlanDoctorNewMemberEmail } from "@/lib/email/
 import {
   activateMembership,
   appUrl,
+  activeMemberWhere,
   CONDITION_LABELS,
-  CONSULT_COOKIE,
-  CONSULT_SESSION_MS,
   getConsultSettings,
   naira,
   verifyConsultPayment,
@@ -16,7 +15,7 @@ import {
 
 /**
  * POST /api/consults/verify — confirm a Paystack reference and switch the
- * membership on. Also signs the member in, so they land straight on their card.
+ * membership on. The care code is issued here, never before.
  *
  * Safe to call more than once for the same reference (Paystack can redirect
  * twice, and the member may refresh the return page).
@@ -52,18 +51,12 @@ export async function POST(req: NextRequest) {
     const patient = await prisma.consultPatient.findUnique({ where: { id: patientId } });
     if (!patient) return NextResponse.json({ error: "Membership not found." }, { status: 404 });
 
-    // Sign the member in so the return page can show their card immediately.
-    const expiresAt = new Date(Date.now() + CONSULT_SESSION_MS);
-    const session = await prisma.consultPatientSession.create({
-      data: { patient_id: patient.id, expires_at: expiresAt },
-    });
-
     if (!result.alreadyActive) {
       // Fire-and-forget — a slow mail server must not hold up the return page.
       void sendActivationEmails(patient.id).catch((e) => console.error("[consults/verify] emails:", e));
     }
 
-    const res = NextResponse.json({
+    return NextResponse.json({
       success: true,
       member: {
         code: patient.code,
@@ -72,14 +65,6 @@ export async function POST(req: NextRequest) {
         doctor_assigned: !!patient.doctor_email,
       },
     });
-    res.cookies.set(CONSULT_COOKIE, session.id, {
-      httpOnly: true,
-      secure: process.env.NODE_ENV === "production",
-      sameSite: "lax",
-      path: "/",
-      expires: expiresAt,
-    });
-    return res;
   } catch (err) {
     console.error("[consults/verify]", err);
     return NextResponse.json({ error: "Could not confirm that payment." }, { status: 500 });
@@ -89,7 +74,7 @@ export async function POST(req: NextRequest) {
 /** Welcome the member, and tell the assigned doctor they have someone new. */
 async function sendActivationEmails(patientId: string) {
   const patient = await prisma.consultPatient.findUnique({ where: { id: patientId } });
-  if (!patient) return;
+  if (!patient?.code) return;
   const settings = await getConsultSettings();
 
   const doctor = patient.doctor_email
@@ -118,14 +103,14 @@ async function sendActivationEmails(patientId: string) {
       expiresOn,
       labDiscount: settings.lab_discount_percent,
       pharmacyDiscount: settings.pharmacy_discount_percent,
-      dashboardUrl: `${appUrl()}/consults/dashboard`,
+      dashboardUrl: `${appUrl()}/dashboard?tab=care`,
     }),
   });
 
   if (!patient.doctor_email) return;
 
   const poolSize = await prisma.consultPatient.count({
-    where: { doctor_email: patient.doctor_email, status: "active" },
+    where: { doctor_email: patient.doctor_email, ...activeMemberWhere() },
   });
 
   await resend.emails.send({
@@ -136,7 +121,6 @@ async function sendActivationEmails(patientId: string) {
       doctorName: doctorName ?? "Doctor",
       memberName: patient.full_name,
       conditions: patient.conditions.map((c) => CONDITION_LABELS[c] ?? c),
-      goal: patient.goal,
       poolSize,
       earningPerMember: naira(settings.doctor_share_naira),
       dashboardUrl: `${appUrl()}/doc-login/dashboard?tab=consults`,

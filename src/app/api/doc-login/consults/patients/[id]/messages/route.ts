@@ -58,7 +58,7 @@ async function notifyMember(to: string, memberName: string, doctorEmail: string,
       memberName,
       doctorName: doctor?.full_name ? `${doctor.prefix ? `${doctor.prefix} ` : ""}${doctor.full_name}` : "Your doctor",
       preview: body.slice(0, 800),
-      dashboardUrl: `${appUrl()}/consults/dashboard`,
+      dashboardUrl: `${appUrl()}/dashboard?tab=care`,
     }),
   });
 }

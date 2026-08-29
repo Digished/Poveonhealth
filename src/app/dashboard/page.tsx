@@ -1,17 +1,18 @@
 "use client";
 
-import { useEffect, useState, useCallback, useRef } from "react";
-import { useRouter } from "next/navigation";
+import { useEffect, useState, useCallback, useRef, Suspense } from "react";
+import { useRouter, useSearchParams } from "next/navigation";
 import { PoveonLogo } from "@/components/PoveonLogo";
 import { SupportFab } from "@/components/SupportFab";
-import { SectionLoader } from "@/components/PageLoader";
+import { PageLoader, SectionLoader } from "@/components/PageLoader";
+import { CarePlanPanel } from "@/components/consults/CarePlanPanel";
 import { parsePhones } from "@/lib/phones";
 import { PhoneInput } from "@/components/PhoneInput";
 import {
   LogOut, Phone, MapPin, Calendar, Stethoscope, FlaskConical,
   ClipboardList, User, ChevronDown, ChevronUp, FileImage, ExternalLink,
   Pencil, Check, X, RefreshCw, MessageCircle, Filter, Search, UserCircle,
-  BadgeCheck, Shield, EyeOff, Eye, Star, MessageSquare,
+  BadgeCheck, Shield, EyeOff, Eye, Star, MessageSquare, HeartPulse,
 } from "lucide-react";
 
 interface Lab {
@@ -1000,14 +1001,29 @@ function PatientEncountersSection({
 }
 
 export default function DashboardPage() {
+  return (
+    <Suspense fallback={<PageLoader />}>
+      <DashboardInner />
+    </Suspense>
+  );
+}
+
+function DashboardInner() {
   const router = useRouter();
+  const searchParams = useSearchParams();
   const [requests, setRequests] = useState<LabRequest[]>([]);
   const [patientEmail, setPatientEmail] = useState<string | null>(null);
   const [profile, setProfile] = useState<PatientProfile | null>(null);
   const [loading, setLoading] = useState(true);
   const [loggingOut, setLoggingOut] = useState(false);
   const [editingProfile, setEditingProfile] = useState(false);
-  const [activeTab, setActiveTab] = useState<"tests" | "encounters" | "results" | "security">("tests");
+  // Two deep links land on the care plan: `?care=1` from /consults opens the
+  // enrolment form as well, `?tab=care` (the payment return) just shows it.
+  const wantsCarePlan = searchParams.get("care") === "1";
+  const carePlanTab = wantsCarePlan || searchParams.get("tab") === "care";
+  const [activeTab, setActiveTab] = useState<"tests" | "care" | "encounters" | "results" | "security">(
+    carePlanTab ? "care" : "tests"
+  );
   const [encounters, setEncounters] = useState<PatientEncounter[]>([]);
   const [subscriptions, setSubscriptions] = useState<PatientSubscription[]>([]);
   const [statusFilter, setStatusFilter] = useState<string>("all");
@@ -1144,12 +1160,14 @@ export default function DashboardPage() {
             <div className="flex gap-2 min-w-max pb-0.5">
               {([
                 { key: "tests", label: "Lab Tests", Icon: ClipboardList },
+                { key: "care", label: "Care Plan", Icon: HeartPulse },
                 { key: "encounters", label: "Doctor Visits", Icon: Stethoscope },
                 { key: "results", label: "Results", Icon: BadgeCheck },
                 { key: "security", label: "Security", Icon: Shield },
               ] as const).map(({ key, label, Icon }) => {
                 const counts = {
                   tests: requests.length,
+                  care: 0,
                   encounters: encounters.length,
                   results: requests.filter((r) => r.status === "done").length,
                   security: 0,
@@ -1172,6 +1190,11 @@ export default function DashboardPage() {
               })}
             </div>
           </div>
+        )}
+
+        {/* Care Plan Tab */}
+        {!loading && patientEmail && activeTab === "care" && (
+          <CarePlanPanel autoOpenEnroll={wantsCarePlan} />
         )}
 
         {/* Encounters Tab */}

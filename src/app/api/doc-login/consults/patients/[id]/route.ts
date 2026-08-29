@@ -55,8 +55,6 @@ export async function GET(req: NextRequest, { params }: { params: { id: string }
         state: patient.state,
         city: patient.city,
         conditions: patient.conditions,
-        goal: patient.goal,
-        goal_metric: patient.goal_metric,
         status: patient.status,
         assigned_at: patient.assigned_at,
         subscribed_at: patient.subscribed_at,

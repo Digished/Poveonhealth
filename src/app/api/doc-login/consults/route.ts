@@ -2,6 +2,7 @@ export const dynamic = "force-dynamic";
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import {
+  activeMemberWhere,
   getConsultSettings,
   getDoctorConsultWallet,
   getDoctorEmailFromConsultRequest,
@@ -32,7 +33,7 @@ export async function GET(req: NextRequest) {
       }),
       // Members the doctor has never written to — the first-assessment queue.
       prisma.consultPatient.count({
-        where: { doctor_email: email, status: "active", messages: { none: { sender: "doctor" } } },
+        where: { doctor_email: email, ...activeMemberWhere(), messages: { none: { sender: "doctor" } } },
       }),
       prisma.consultEarningRelease.findMany({
         where: { doctor_email: email },

@@ -3,8 +3,12 @@
 //
 // An annual subscription for people living with hypertension or diabetes.
 // A member pays once a year and gets:
-//   • a discount code honoured by partner labs and pharmacies
+//   • a care code honoured by partner labs and pharmacies (issued on payment)
 //   • an allowance of asynchronous messages to a doctor assigned to them
+//
+// Enrolment is keyed on the patient's email — the same identity the patient
+// portal signs in with — so anyone we already hold an email for (a lab request,
+// a referral) can enrol from their dashboard without a second account.
 //
 // The doctor's share of each subscription is held as a pending entitlement and
 // released into their wallet in monthly instalments over the year. Prices, the
@@ -46,7 +50,7 @@ export type ConsultSettingsPayload = {
 export const CONSULT_DEFAULTS: ConsultSettingsPayload = {
   price_naira: 10_000,
   doctor_share_naira: 6_000,
-  message_allowance: 10,
+  message_allowance: 40,
   release_months: 12,
   default_doctor_cap: 200,
   lab_discount_percent: 15,
@@ -168,7 +172,7 @@ export async function pickDoctorForMember(): Promise<string | null> {
   const [counts, lastAssigned] = await Promise.all([
     prisma.consultPatient.groupBy({
       by: ["doctor_email"],
-      where: { doctor_email: { in: emails }, status: "active" },
+      where: { doctor_email: { in: emails }, status: "active", expires_at: { gt: new Date() } },
       _count: { id: true },
     }),
     prisma.consultPatient.groupBy({
@@ -242,7 +246,7 @@ export async function getDoctorConsultWallet(doctorEmail: string): Promise<Consu
   }
 
   const activePatients = await prisma.consultPatient.count({
-    where: { doctor_email: doctorEmail, status: "active" },
+    where: { doctor_email: doctorEmail, ...activeMemberWhere() },
   });
 
   const months = Math.max(1, settings.release_months);
@@ -442,11 +446,16 @@ export async function activateMembership(params: {
   const expires = new Date(now);
   expires.setFullYear(expires.getFullYear() + 1);
 
+  // The care code exists only for a paid plan — an abandoned sign-up never
+  // holds one. A renewing member keeps the code they already have.
+  const code = patient.code ?? (await generateMemberCode());
+
   // Compare-and-set: Paystack can deliver the same callback twice, and the
   // member may refresh the return page. Only one caller flips the row.
   const claimed = await prisma.consultPatient.updateMany({
     where: { id: patient.id, status: { not: "active" } },
     data: {
+      code,
       status: "active",
       subscribed_at: now,
       expires_at: expires,
@@ -493,26 +502,48 @@ export async function activateMembership(params: {
 
 // ── Auth helpers ─────────────────────────────────────────────────────────────
 
-export const CONSULT_COOKIE = "consult_token";
-export const CONSULT_SESSION_MS = 30 * 24 * 60 * 60 * 1000; // 30 days
-
-export async function getMemberFromRequest(req: NextRequest) {
-  const token = req.cookies.get(CONSULT_COOKIE)?.value;
+/** The signed-in patient's email, from the patient portal's own cookie. */
+export async function getPatientEmailFromRequest(req: NextRequest): Promise<string | null> {
+  const token = req.cookies.get("patient_token")?.value;
   if (!token) return null;
-  const session = await prisma.consultPatientSession.findUnique({
-    where: { id: token },
-    include: { patient: true },
-  });
+  const session = await prisma.patientSession.findUnique({ where: { id: token } });
   if (!session || session.expires_at < new Date()) return null;
+  return session.patient_email;
+}
 
-  // No nightly job runs, so a lapsed year is settled the next time the member
-  // is read. Everything downstream can then trust `status`.
-  const patient = session.patient;
+/**
+ * This patient's care-plan enrolment, or null if they have never enrolled.
+ *
+ * Nothing runs nightly, so a lapsed year is settled here — the plan goes
+ * inactive the moment it is read past its expiry, and everything downstream
+ * can trust `status`.
+ */
+export async function getMemberByEmail(email: string) {
+  const patient = await prisma.consultPatient.findUnique({ where: { email } });
+  if (!patient) return null;
   if (patient.status === "active" && patient.expires_at && patient.expires_at < new Date()) {
     await prisma.consultPatient.update({ where: { id: patient.id }, data: { status: "expired" } });
     return { ...patient, status: "expired" };
   }
   return patient;
+}
+
+/**
+ * What "active" means in a query.
+ *
+ * A plan goes inactive the moment its year runs out, and nothing runs nightly
+ * to flip the flag — so every read filters on the expiry too, rather than
+ * trusting `status` alone.
+ */
+export function activeMemberWhere() {
+  return { status: "active", expires_at: { gt: new Date() } };
+}
+
+/** The signed-in patient's enrolment, or null. */
+export async function getMemberFromRequest(req: NextRequest) {
+  const email = await getPatientEmailFromRequest(req);
+  if (!email) return null;
+  return getMemberByEmail(email);
 }
 
 export const PHARMACY_COOKIE = "pharmacy_token";

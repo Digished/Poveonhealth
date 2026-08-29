@@ -85,10 +85,10 @@ function PaidInner() {
                 Try again
               </button>
               <Link
-                href="/consults"
-                className="w-full rounded-xl border border-slate-200 py-3 text-sm font-semibold text-slate-600 transition hover:border-slate-300"
+                href="/dashboard?care=1"
+                className="block w-full rounded-xl border border-slate-200 py-3 text-center text-sm font-semibold text-slate-600 transition hover:border-slate-300"
               >
-                Back to the care plan
+                Back to my dashboard
               </Link>
             </div>
             <p className="mt-4 text-xs text-slate-400">
@@ -128,7 +128,7 @@ function PaidInner() {
               </p>
 
               <button
-                onClick={() => router.push("/consults/dashboard")}
+                onClick={() => router.push("/dashboard?tab=care")}
                 className="flex w-full items-center justify-center gap-2 rounded-xl bg-medical-600 py-3.5 text-sm font-bold text-white shadow-lg shadow-medical-600/25 transition hover:bg-medical-700"
               >
                 Open my care plan

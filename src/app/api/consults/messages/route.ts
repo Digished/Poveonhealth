@@ -19,7 +19,10 @@ export async function POST(req: NextRequest) {
     const member = await getMemberFromRequest(req);
     if (!member) return NextResponse.json({ error: "Not authenticated." }, { status: 401 });
     if (member.status !== "active") {
-      return NextResponse.json({ error: "Your care plan is not active." }, { status: 403 });
+      return NextResponse.json(
+        { error: "Your care plan isn't active. Renew it to keep messaging your doctor." },
+        { status: 403 }
+      );
     }
     if (!member.doctor_email) {
       return NextResponse.json(

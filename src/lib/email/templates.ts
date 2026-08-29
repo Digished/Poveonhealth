@@ -2300,7 +2300,6 @@ export function carePlanDoctorNewMemberEmail({
   doctorName,
   memberName,
   conditions,
-  goal,
   poolSize,
   earningPerMember,
   dashboardUrl,
@@ -2308,7 +2307,6 @@ export function carePlanDoctorNewMemberEmail({
   doctorName: string;
   memberName: string;
   conditions: string[];
-  goal: string | null;
   poolSize: number;
   earningPerMember: string;
   dashboardUrl: string;
@@ -2322,9 +2320,6 @@ export function carePlanDoctorNewMemberEmail({
 
     ${label("Living with")}
     ${value(conditions.length ? escapeHtml(conditions.join(", ")) : "—")}
-
-    ${label("Their goal for the year")}
-    ${value(goal ? escapeHtml(goal) : "Not stated")}
 
     ${divider}
 
