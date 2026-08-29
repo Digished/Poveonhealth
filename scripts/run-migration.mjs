@@ -2450,6 +2450,16 @@ const migrations = [
     sql: `CREATE INDEX IF NOT EXISTS consult_patients_risk_idx ON consult_patients (doctor_email, risk_level)`,
     continueOnError: true,
   },
+  {
+    desc: "consult_patients preferred pharmacy index (partner roster)",
+    sql: `CREATE INDEX IF NOT EXISTS consult_patients_pref_pharmacy_idx ON consult_patients (preferred_pharmacy_id)`,
+    continueOnError: true,
+  },
+  {
+    desc: "consult_patients preferred lab index (partner roster)",
+    sql: `CREATE INDEX IF NOT EXISTS consult_patients_pref_lab_idx ON consult_patients (preferred_lab_id)`,
+    continueOnError: true,
+  },
 ];
 
 let failed = false;

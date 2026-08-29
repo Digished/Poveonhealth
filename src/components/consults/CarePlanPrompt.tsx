@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { ArrowRight, FlaskConical, HeartPulse, MessageSquareText, Pill, RefreshCw, X } from "lucide-react";
 import { getJson, invalidateJson } from "@/lib/client-cache";
 import type { CarePlanBenefits, CarePlanPrefill } from "@/components/consults/CarePlanEnrollModal";
@@ -36,12 +36,37 @@ export type CarePlanState = {
  * client cache collapses both callers onto one request. Benefits always have a
  * value, so a failed call still shows the invitation rather than a blank tab.
  */
-export function useCarePlan(): CarePlanState {
-  const [loading, setLoading] = useState(true);
-  const [active, setActive] = useState(false);
-  const [lapsed, setLapsed] = useState(false);
-  const [benefits, setBenefits] = useState<CarePlanBenefits>(FALLBACK_BENEFITS);
-  const [prefill, setPrefill] = useState<CarePlanPrefill>({});
+export type CarePlanSeed = {
+  active: boolean;
+  lapsed: boolean;
+  benefits?: CarePlanBenefits;
+  prefill?: CarePlanPrefill;
+};
+
+/**
+ * @param seed what the dashboard's own bootstrap already fetched. Given one,
+ *   this never issues a request of its own on first render — refreshing after
+ *   a change still goes to the network.
+ */
+export function useCarePlan(seed?: CarePlanSeed | null): CarePlanState {
+  const [loading, setLoading] = useState(!seed);
+  const [active, setActive] = useState(seed?.active ?? false);
+  const [lapsed, setLapsed] = useState(seed?.lapsed ?? false);
+  const [benefits, setBenefits] = useState<CarePlanBenefits>(seed?.benefits ?? FALLBACK_BENEFITS);
+  const [prefill, setPrefill] = useState<CarePlanPrefill>(seed?.prefill ?? {});
+
+  // Later arrivals of the same data (the bootstrap resolving after mount) are
+  // applied without a second round-trip.
+  const seenSeed = useRef(false);
+  useEffect(() => {
+    if (!seed) return;
+    seenSeed.current = true;
+    setActive(seed.active);
+    setLapsed(seed.lapsed);
+    if (seed.benefits) setBenefits(seed.benefits);
+    if (seed.prefill) setPrefill(seed.prefill);
+    setLoading(false);
+  }, [seed]);
 
   const load = useCallback(async (force = false) => {
     setLoading(true);
@@ -65,7 +90,11 @@ export function useCarePlan(): CarePlanState {
     }
   }, []);
 
-  useEffect(() => { load(); }, [load]);
+  // Only fetch when nobody handed us the answer.
+  useEffect(() => {
+    if (seenSeed.current) return;
+    load();
+  }, [load]);
 
   const refresh = useCallback(() => {
     invalidateJson("/api/consults/me");

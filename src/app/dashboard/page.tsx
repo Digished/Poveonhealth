@@ -6,7 +6,12 @@ import { PoveonLogo } from "@/components/PoveonLogo";
 import { SupportFab } from "@/components/SupportFab";
 import { PageLoader, SectionLoader } from "@/components/PageLoader";
 import { CarePlanPanel } from "@/components/consults/CarePlanPanel";
-import { CarePlanPromptCard, CarePlanPromptModal, useCarePlan } from "@/components/consults/CarePlanPrompt";
+import {
+  CarePlanPromptCard,
+  CarePlanPromptModal,
+  useCarePlan,
+  type CarePlanSeed,
+} from "@/components/consults/CarePlanPrompt";
 import { PharmacyDirectory } from "@/components/consults/PharmacyDirectory";
 import { LabDirectory } from "@/components/consults/LabDirectory";
 import { CarePlanChatFab } from "@/components/consults/CarePlanChatFab";
@@ -1135,7 +1140,10 @@ function DashboardInner() {
   const [navOpen, setNavOpen] = useState(false);
   const [accountMenuOpen, setAccountMenuOpen] = useState(false);
   const [showCarePrompt, setShowCarePrompt] = useState(false);
-  const care = useCarePlan();
+  // What the bootstrap already told us about their care plan, handed to the
+  // hook so it doesn't go and ask again.
+  const [careSeed, setCareSeed] = useState<CarePlanSeed | null>(null);
+  const care = useCarePlan(careSeed);
   const careLoading = care.loading;
 
   // Stable across renders — the panels take these as props.
@@ -1157,23 +1165,22 @@ function DashboardInner() {
   const [showFilters, setShowFilters] = useState(false);
   const filterRef = useRef<HTMLDivElement>(null);
 
+  // One request for the whole first screen. This used to be three — requests,
+  // profile and care plan — each its own serverless invocation repeating the
+  // same session lookup before it got to the data it was for.
   const load = useCallback(() => {
-    fetch("/api/patient/me")
+    fetch("/api/patient/bootstrap", { cache: "no-store" })
       .then(async (res) => {
         if (res.status === 401) { router.replace("/login"); return; }
         const json = await res.json();
         if (!json.success) { router.replace("/login"); return; }
         setPatientEmail(json.patient_email);
         setRequests(json.requests ?? []);
+        setProfile(json.profile ?? null);
+        setCareSeed(json.care ?? null);
       })
       .catch(() => router.replace("/login"))
       .finally(() => setLoading(false));
-
-    fetch("/api/patient/profile")
-      .then((res) => res.ok ? res.json() : null)
-      .then((data) => { if (data?.success) setProfile(data.profile); })
-      .catch(() => null);
-
   }, [router]);
 
   useEffect(() => { load(); }, [load]);

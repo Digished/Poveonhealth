@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useRef, useState } from "react";
 import { toast } from "react-hot-toast";
-import { BadgeCheck, Download, ImagePlus, Loader2, Mail, MapPin, Pill, Plus, Power, QrCode, RefreshCw, Save, TicketPercent, Trash2, Users, X } from "lucide-react";
+import { BadgeCheck, Download, FileText, ImagePlus, Loader2, Mail, MapPin, Pill, Plus, Power, QrCode, RefreshCw, Save, TicketPercent, Trash2, Users, X } from "lucide-react";
 import { Modal } from "@/components/ui/Overlay";
 import { STATE_NAMES, lgasForState } from "@/lib/nigeria-locations";
 import { FuzzyCombo } from "@/components/ui/FuzzyCombo";
@@ -137,12 +137,24 @@ export function AdminPharmaciesTab() {
               Anyone who scans this starts their care plan with {qrFor.name} already set as their
               pharmacy. Print it for their counter.
             </p>
-            <a
-              href={`/api/admin/partner-qr?kind=pharmacy&id=${qrFor.id}`}
-              className="inline-flex items-center gap-1.5 rounded-xl bg-medical-600 px-4 py-2.5 text-xs font-bold text-white transition hover:bg-medical-700"
-            >
-              <Download className="h-3.5 w-3.5" /> Download the PNG
-            </a>
+            <div className="flex flex-wrap justify-center gap-2">
+              <a
+                href={`/api/admin/partner-qr?kind=pharmacy&id=${qrFor.id}`}
+                className="inline-flex items-center gap-1.5 rounded-xl bg-white px-4 py-2.5 text-xs font-bold text-medical-700 ring-1 ring-medical-200 transition hover:ring-medical-300"
+              >
+                <Download className="h-3.5 w-3.5" /> Just the QR code
+              </a>
+              <a
+                href={`/api/admin/partner-promo?kind=pharmacy&id=${qrFor.id}`}
+                className="inline-flex items-center gap-1.5 rounded-xl bg-medical-600 px-4 py-2.5 text-xs font-bold text-white transition hover:bg-medical-700"
+              >
+                <FileText className="h-3.5 w-3.5" /> Printable flyer (PDF)
+              </a>
+            </div>
+            <p className="text-center text-[11px] text-slate-400">
+              The flyer carries today&apos;s price and discounts — change them under Care Plan →
+              Pricing and every flyer printed afterwards follows.
+            </p>
           </div>
         )}
       </Modal>

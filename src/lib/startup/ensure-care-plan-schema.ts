@@ -504,6 +504,8 @@ async function runEnsure(): Promise<void> {
       ADD COLUMN IF NOT EXISTS risk_reason TEXT,
       ADD COLUMN IF NOT EXISTS risk_rated_at TIMESTAMP(3);`);
     await exec(`CREATE INDEX IF NOT EXISTS consult_patients_risk_idx ON consult_patients(doctor_email, risk_level);`);
+    await exec(`CREATE INDEX IF NOT EXISTS consult_patients_pref_pharmacy_idx ON consult_patients(preferred_pharmacy_id);`);
+    await exec(`CREATE INDEX IF NOT EXISTS consult_patients_pref_lab_idx ON consult_patients(preferred_lab_id);`);
   } catch (err) {
     // Never block a request on this — the caller's own query will surface a
     // real problem, and the next call retries.

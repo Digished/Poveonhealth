@@ -3,13 +3,63 @@
 import { useState, useEffect, useCallback, useRef, useMemo } from "react";
 import { toast } from "react-hot-toast";
 import {
-  Plus, FlaskConical, BarChart3, List, LogOut,
-  Building2, Trash2, Eye, EyeOff, RefreshCw, X, Pencil,
-  Phone, Upload, Check, MapPin, Users, ChevronRight, ChevronDown, ChevronUp,
-  Code2, Key, Copy, TrendingUp, Link, Sun, Moon, Star, GitBranch,
-  ArrowUpRight, ArrowDownRight, ArrowDownToLine, Settings, CreditCard, MessageCircle,
-  BookOpen, Database, Sparkles, Search, Layers, UserCircle, Wallet, FileText, AlertCircle, Filter, Download, Stethoscope, Mail, Zap, HeartPulse, Gift, HeartHandshake, Pill, ShieldPlus,
+  AlertCircle,
+  ArrowDownRight,
+  ArrowDownToLine,
+  ArrowUpRight,
+  BarChart3,
+  BookOpen,
+  Building2,
+  Check,
+  ChevronDown,
+  ChevronRight,
+  ChevronUp,
+  Code2,
+  Copy,
+  CreditCard,
+  Database,
+  Download,
+  Eye,
+  EyeOff,
+  FileText,
+  Filter,
+  FlaskConical,
+  Gift,
+  GitBranch,
+  HeartHandshake,
+  HeartPulse,
+  Key,
+  Layers,
+  Link,
+  List,
+  LogOut,
+  Mail,
+  MapPin,
+  MessageCircle,
+  Moon,
+  Pencil,
+  Phone,
+  Pill,
+  Plus,
+  QrCode,
+  RefreshCw,
+  Search,
+  Settings,
+  ShieldPlus,
+  Sparkles,
+  Star,
+  Stethoscope,
+  Sun,
+  Trash2,
+  TrendingUp,
+  Upload,
+  UserCircle,
+  Users,
+  Wallet,
+  X,
+  Zap,
 } from "lucide-react";
+import { Modal } from "@/components/ui/Overlay";
 import { useDashTheme } from "@/hooks/useDashTheme";
 import { renderLabSla, EMPTY_LAB_SLA, type LabSlaData } from "@/lib/labSlaTemplate";
 import { serializeAgreementToText } from "@/lib/agreement/content";
@@ -121,6 +171,8 @@ export function AdminDashboard() {
   const [sendAgreementLab, setSendAgreementLab] = useState<Lab | null>(null);
   const [transferEmailLab, setTransferEmailLab] = useState<Lab | null>(null);
   const [catalogLab, setCatalogLab] = useState<Lab | null>(null);
+  // The lab whose care-plan flyer and QR poster are being shown.
+  const [promoLab, setPromoLab] = useState<{ id: string; name: string; slug: string | null } | null>(null);
   const [partnersLab, setPartnersLab] = useState<Lab | null>(null);
   type AgreementRecord = { id: string; version: string; signed_at: string; signer_name: string; signer_email: string; signer_title: string | null; pdf_hash: string; lab: { id: string; name: string; email: string } };
   const [agreements, setAgreements] = useState<AgreementRecord[]>([]);
@@ -1073,6 +1125,13 @@ export function AdminDashboard() {
                           <button onClick={openStats} title="Stats" className="p-2 rounded-lg hover:bg-emerald-500/15 text-slate-500 hover:text-emerald-400 transition-colors">
                             <BarChart3 className="w-3.5 h-3.5" />
                           </button>
+                          <button
+                            onClick={() => setPromoLab({ id: lab.id, name: lab.name, slug: lab.slug ?? null })}
+                            title="Care Plan flyer & QR code"
+                            className="p-2 rounded-lg hover:bg-sky-500/15 text-slate-500 hover:text-sky-400 transition-colors"
+                          >
+                            <QrCode className="w-3.5 h-3.5" />
+                          </button>
                           <button onClick={() => setCatalogLab(lab)} title="Test Catalog" className="p-2 rounded-lg hover:bg-teal-500/15 text-slate-500 hover:text-teal-400 transition-colors">
                             <FlaskConical className="w-3.5 h-3.5" />
                           </button>
@@ -1210,6 +1269,12 @@ export function AdminDashboard() {
                             </button>
                             <button onClick={openStats} className="flex items-center justify-center gap-1.5 px-3 py-2 rounded-xl bg-emerald-500/10 hover:bg-emerald-500/20 text-emerald-400 text-xs font-medium transition-colors">
                               <BarChart3 className="w-3.5 h-3.5" />Stats
+                            </button>
+                            <button
+                              onClick={() => setPromoLab({ id: lab.id, name: lab.name, slug: lab.slug ?? null })}
+                              className="flex items-center justify-center gap-1.5 px-3 py-2 rounded-xl bg-sky-500/10 hover:bg-sky-500/20 text-sky-400 text-xs font-medium transition-colors"
+                            >
+                              <QrCode className="w-3.5 h-3.5" />Care flyer
                             </button>
                             <button onClick={() => setCatalogLab(lab)} className="flex items-center justify-center gap-1.5 px-3 py-2 rounded-xl bg-teal-500/10 hover:bg-teal-500/20 text-teal-400 text-xs font-medium transition-colors">
                               <FlaskConical className="w-3.5 h-3.5" />Catalog
@@ -1710,6 +1775,53 @@ export function AdminDashboard() {
       {editLab && (
         <EditLabForm lab={editLab} onClose={() => setEditLab(null)} onSuccess={() => { setEditLab(null); fetchLabs(); }} />
       )}
+      <Modal
+        open={!!promoLab}
+        onClose={() => setPromoLab(null)}
+        title="Care Plan promotion"
+        subtitle={promoLab?.name}
+      >
+        {promoLab && (
+          promoLab.slug ? (
+            <div className="flex flex-col items-center gap-3">
+              {/* eslint-disable-next-line @next/next/no-img-element */}
+              <img
+                src={`/api/admin/partner-qr?kind=lab&id=${promoLab.id}`}
+                alt={`Sign-up QR code for ${promoLab.name}`}
+                className="h-52 w-52 rounded-xl ring-1 ring-slate-100"
+              />
+              <p className="text-center text-xs text-slate-500">
+                Anyone who scans this joins the care plan with {promoLab.name} already set as their
+                lab, so their scheduled tests show up here.
+              </p>
+              <div className="flex flex-wrap justify-center gap-2">
+                <a
+                  href={`/api/admin/partner-qr?kind=lab&id=${promoLab.id}`}
+                  className="inline-flex items-center gap-1.5 rounded-xl bg-white px-4 py-2.5 text-xs font-bold text-medical-700 ring-1 ring-medical-200 transition hover:ring-medical-300"
+                >
+                  Just the QR code
+                </a>
+                <a
+                  href={`/api/admin/partner-promo?kind=lab&id=${promoLab.id}`}
+                  className="inline-flex items-center gap-1.5 rounded-xl bg-medical-600 px-4 py-2.5 text-xs font-bold text-white transition hover:bg-medical-700"
+                >
+                  Printable flyer (PDF)
+                </a>
+              </div>
+              <p className="text-center text-[11px] text-slate-400">
+                The flyer carries today&apos;s price and discounts — change them under Care Plan →
+                Pricing and every flyer printed afterwards follows.
+              </p>
+            </div>
+          ) : (
+            <p className="text-sm text-slate-600">
+              This lab has no slug yet, so it has no scannable link. Give it one in Edit Lab and the
+              flyer will be available.
+            </p>
+          )
+        )}
+      </Modal>
+
       {catalogLab && (
         <AdminLabCatalogModal lab={catalogLab} onClose={() => setCatalogLab(null)} />
       )}

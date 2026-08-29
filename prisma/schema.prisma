@@ -1962,6 +1962,10 @@ model ConsultPatient {
   @@index([doctor_email, status])
   @@index([status, expires_at])
   @@index([email])
+  // The partner rosters filter on these on every load of a pharmacy's or lab's
+  // dashboard, and neither was served by an index.
+  @@index([preferred_pharmacy_id])
+  @@index([preferred_lab_id])
   @@map("consult_patients")
 }
 
