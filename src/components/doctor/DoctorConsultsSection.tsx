@@ -21,7 +21,7 @@ import {
   Users,
   Wallet,
 } from "lucide-react";
-import { getJson, invalidateJson } from "@/lib/client-cache";
+import { getJson, invalidateJson, peekJson } from "@/lib/client-cache";
 import type { ConsultView } from "@/components/doctor/consult-views";
 import { DoctorCredentialsPanel } from "@/components/doctor/DoctorCredentialsPanel";
 import {
@@ -218,7 +218,13 @@ export function DoctorConsultsSection({
       <MemberDetail
         id={openMemberId}
         canPrescribe={!!overview?.approved}
-        onBack={() => { setOpenMemberId(null); invalidateJson("/api/doc-login/consults"); load(true); }}
+        onBack={() => {
+          setOpenMemberId(null);
+          // A risk change or a new order made in there should show in the list.
+          invalidateJson("/api/doc-login/consults");
+          invalidateJson("/api/doc-login/consults/patients?page=1&filter=all");
+          load(true);
+        }}
       />
     );
   }
@@ -437,26 +443,48 @@ const FILTERS = [
 ] as const;
 
 function MembersPanel({ onOpen }: { onOpen: (id: string) => void }) {
-  const [members, setMembers] = useState<MemberRow[]>([]);
-  const [total, setTotal] = useState(0);
+  // Paint from the last good response if it is still fresh, so coming back to
+  // this tab shows the list immediately rather than a skeleton.
+  const cached = peekJson<{ patients: MemberRow[]; total: number; has_more: boolean }>(
+    "/api/doc-login/consults/patients?page=1&filter=all",
+    20_000
+  );
+  const [members, setMembers] = useState<MemberRow[]>(cached?.patients ?? []);
+  const [total, setTotal] = useState(cached?.total ?? 0);
   const [page, setPage] = useState(1);
-  const [hasMore, setHasMore] = useState(false);
+  const [hasMore, setHasMore] = useState(cached?.has_more ?? false);
   const [q, setQ] = useState("");
   const [filter, setFilter] = useState<string>("all");
-  const [loading, setLoading] = useState(true);
+  const [loading, setLoading] = useState(!cached);
 
-  const load = useCallback(async (nextPage: number, append: boolean) => {
+  /**
+   * Two things made this feel slow on every visit, neither of them the query:
+   * it bypassed the client cache, so leaving the tab and coming back always
+   * went to the network; and it blanked the list to a skeleton while doing so,
+   * so a fast refresh still looked like a cold load.
+   *
+   * Now it serves the cached page immediately and refreshes behind it.
+   */
+  const load = useCallback(async (nextPage: number, append: boolean, force = false) => {
+    const params = new URLSearchParams({ page: String(nextPage), filter });
+    if (q.trim()) params.set("q", q.trim());
+    const url = `/api/doc-login/consults/patients?${params}`;
+
     setLoading(true);
     try {
-      const params = new URLSearchParams({ page: String(nextPage), filter });
-      if (q.trim()) params.set("q", q.trim());
-      const res = await fetch(`/api/doc-login/consults/patients?${params}`, { cache: "no-store" });
-      const data = await res.json();
+      const data = await getJson<{
+        success: boolean;
+        patients: MemberRow[];
+        total: number;
+        has_more: boolean;
+      }>(url, { force, ttlMs: 20_000 });
       if (!data.success) return;
       setMembers((prev) => (append ? [...prev, ...data.patients] : data.patients));
       setTotal(data.total);
       setHasMore(data.has_more);
       setPage(nextPage);
+    } catch {
+      /* leave the last good list on screen */
     } finally {
       setLoading(false);
     }

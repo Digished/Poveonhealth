@@ -2,10 +2,11 @@
 
 import { useCallback, useEffect, useRef, useState } from "react";
 import dynamic from "next/dynamic";
+import Image from "next/image";
 import { toast } from "react-hot-toast";
 import {
-  Check, ClipboardList, Copy, FlaskConical, HeartPulse, Loader2, MessageSquareText, Pill,
-  Send, Stethoscope, CalendarDays, ArrowRight, RefreshCw, CalendarClock, RotateCw,
+  ArrowRight, CalendarClock, CalendarDays, Check, ClipboardList, Copy, FlaskConical, HeartPulse,
+  ImagePlus, Loader2, MessageSquareText, Pill, RefreshCw, RotateCw, Send, Stethoscope, X,
 } from "lucide-react";
 import { SectionLoader } from "@/components/PageLoader";
 import { getJson, invalidateJson } from "@/lib/client-cache";
@@ -39,7 +40,11 @@ type Member = {
   messages_used: number; message_allowance: number; messages_left: number;
 };
 type Doctor = { name: string; specialty: string | null; avatar_url: string | null };
-type Message = { id: string; sender: string; body: string; created_at: string };
+type Message = {
+  id: string; sender: string; body: string; created_at: string;
+  /** Fetched through /api/consults/chat-image, which checks who is asking. */
+  has_image?: boolean;
+};
 type Redemption = {
   id: string; kind: string; description: string | null; pharmacy_name: string | null;
   gross_naira: number; discount_naira: number; created_at: string;
@@ -605,6 +610,8 @@ function MessageThread({
   const [body, setBody] = useState("");
   const [sending, setSending] = useState(false);
   const [error, setError] = useState("");
+  const [file, setFile] = useState<File | null>(null);
+  const fileRef = useRef<HTMLInputElement | null>(null);
   const endRef = useRef<HTMLDivElement | null>(null);
 
   useEffect(() => { endRef.current?.scrollIntoView({ behavior: "smooth" }); }, [messages.length]);
@@ -612,22 +619,34 @@ function MessageThread({
   const outOfMessages = member.messages_left <= 0;
 
   async function send() {
-    if (sending || body.trim().length < 2) return;
+    const text = body.trim();
+    // A photo on its own is a message — "here is my reading" needs no words.
+    if (sending || (!text && !file)) return;
     setSending(true);
     setError("");
     try {
-      const res = await fetch("/api/consults/messages", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ body: body.trim() }),
-      });
-      const data = await res.json();
-      if (!res.ok || !data.success) {
-        setError(data.error ?? "Could not send that message.");
+      let res: Response;
+      if (file) {
+        const form = new FormData();
+        form.append("body", text);
+        form.append("file", file);
+        res = await fetch("/api/consults/messages", { method: "POST", body: form });
+      } else {
+        res = await fetch("/api/consults/messages", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ body: text }),
+        });
+      }
+      const data = await res.json().catch(() => null);
+      if (!res.ok || !data?.success) {
+        setError(data?.error ?? "Could not send that message.");
         return;
       }
       onSent(data.message, data.messages_left);
       setBody("");
+      setFile(null);
+      if (fileRef.current) fileRef.current.value = "";
     } catch {
       setError("Network error. Please try again.");
     } finally {
@@ -676,7 +695,26 @@ function MessageThread({
                     : "rounded-bl-md border border-slate-100 bg-white text-slate-700"
                 }`}
               >
-                <p className="whitespace-pre-wrap text-sm leading-relaxed">{m.body}</p>
+                {m.has_image && (
+                  <a
+                    href={`/api/consults/chat-image?id=${m.id}`}
+                    target="_blank"
+                    rel="noreferrer"
+                    className="mb-1.5 block overflow-hidden rounded-xl"
+                  >
+                    {/* Served from a private bucket through a signed link, so
+                        it is loaded unoptimised rather than via the image CDN. */}
+                    <Image
+                      src={`/api/consults/chat-image?id=${m.id}`}
+                      alt="Attached photo"
+                      width={320}
+                      height={240}
+                      unoptimized
+                      className="h-auto w-full max-w-[280px] object-cover"
+                    />
+                  </a>
+                )}
+                {m.body && <p className="whitespace-pre-wrap text-sm leading-relaxed">{m.body}</p>}
                 <p className={`mt-1 text-[10px] ${m.sender === "patient" ? "text-white/60" : "text-slate-400"}`}>
                   <CalendarDays className="mr-1 inline h-3 w-3" />
                   {formatWhen(m.created_at)}
@@ -696,7 +734,37 @@ function MessageThread({
           </p>
         ) : (
           <>
+            {file && (
+              <div className="mb-2 flex items-center justify-between gap-2 rounded-lg bg-slate-50 px-3 py-2">
+                <span className="truncate text-xs text-slate-600">{file.name}</span>
+                <button
+                  onClick={() => {
+                    setFile(null);
+                    if (fileRef.current) fileRef.current.value = "";
+                  }}
+                  className="text-slate-400 transition hover:text-slate-600"
+                  aria-label="Remove photo"
+                >
+                  <X className="h-3.5 w-3.5" />
+                </button>
+              </div>
+            )}
             <div className="flex items-end gap-2">
+              <input
+                ref={fileRef}
+                type="file"
+                accept="image/*"
+                hidden
+                onChange={(e) => setFile(e.target.files?.[0] ?? null)}
+              />
+              <button
+                onClick={() => fileRef.current?.click()}
+                className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl text-slate-400 transition hover:bg-slate-100 hover:text-medical-600"
+                aria-label="Attach a photo"
+                title="Attach a photo of a reading, a rash, a strip of tablets…"
+              >
+                <ImagePlus className="h-5 w-5" />
+              </button>
               <textarea
                 rows={2}
                 maxLength={4000}
@@ -707,7 +775,7 @@ function MessageThread({
               />
               <button
                 onClick={send}
-                disabled={sending || body.trim().length < 2}
+                disabled={sending || (!body.trim() && !file)}
                 className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl bg-medical-600 text-white transition hover:bg-medical-700 disabled:opacity-40"
                 aria-label="Send message"
               >
@@ -715,7 +783,8 @@ function MessageThread({
               </button>
             </div>
             <p className="mt-1.5 text-[11px] text-slate-400">
-              Uses 1 of your {member.messages_left} remaining messages. Not for emergencies.
+              Uses 1 of your {member.messages_left} remaining messages. You can attach a photo. Not
+              for emergencies.
             </p>
           </>
         )}

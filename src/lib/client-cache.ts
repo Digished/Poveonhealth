@@ -54,3 +54,16 @@ export function invalidateJson(prefix: string) {
     if (key.startsWith(prefix)) cache.delete(key);
   }
 }
+
+/**
+ * What's already in the cache, without a request.
+ *
+ * Lets a panel paint from the last good response on mount instead of showing a
+ * skeleton for a frame while an instantly-resolving promise settles. Returns
+ * undefined when there is nothing fresh.
+ */
+export function peekJson<T = unknown>(url: string, ttlMs = DEFAULT_TTL_MS): T | undefined {
+  const hit = cache.get(url);
+  if (hit && Date.now() - hit.at < ttlMs) return hit.data as T;
+  return undefined;
+}

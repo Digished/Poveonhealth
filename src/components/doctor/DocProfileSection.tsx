@@ -337,6 +337,18 @@ export function DocProfileSection({
 
       {/* Personal Section */}
       <div className="bg-white rounded-2xl border border-slate-100 shadow-sm overflow-hidden">
+        {/* The photo sits above the fold and outside the edit toggle: it is a
+            one-tap change, not a form field to unlock first. */}
+        <div className="border-b border-slate-100 px-4 py-4">
+          <AvatarPicker
+            url={profile.avatar_url ?? null}
+            name={profile.full_name ?? ""}
+            onUploaded={(url) => {
+              setProfile((prev) => ({ ...prev, avatar_url: url }));
+              onProfileUpdate({ ...profile, avatar_url: url });
+            }}
+          />
+        </div>
         <div className="px-4 py-3.5 flex items-center gap-3 border-b border-slate-100">
           <User className="w-4 h-4 text-medical-600 shrink-0" />
           <p className="text-sm font-bold text-slate-800 flex-1">Personal Details</p>
