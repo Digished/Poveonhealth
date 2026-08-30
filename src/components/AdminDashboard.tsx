@@ -3,61 +3,7 @@
 import { useState, useEffect, useCallback, useRef, useMemo } from "react";
 import { toast } from "react-hot-toast";
 import {
-  AlertCircle,
-  ArrowDownRight,
-  ArrowDownToLine,
-  ArrowUpRight,
-  BarChart3,
-  BookOpen,
-  Building2,
-  Check,
-  ChevronDown,
-  ChevronRight,
-  ChevronUp,
-  Code2,
-  Copy,
-  CreditCard,
-  Database,
-  Download,
-  Eye,
-  EyeOff,
-  FileText,
-  Filter,
-  FlaskConical,
-  Gift,
-  GitBranch,
-  HeartHandshake,
-  HeartPulse,
-  Key,
-  Layers,
-  Link,
-  List,
-  LogOut,
-  Mail,
-  MapPin,
-  MessageCircle,
-  Moon,
-  Pencil,
-  Phone,
-  Pill,
-  Plus,
-  QrCode,
-  RefreshCw,
-  Search,
-  Settings,
-  ShieldPlus,
-  Sparkles,
-  Star,
-  Stethoscope,
-  Sun,
-  Trash2,
-  TrendingUp,
-  Upload,
-  UserCircle,
-  Users,
-  Wallet,
-  X,
-  Zap,
+  AlertCircle, ArrowDownRight, ArrowDownToLine, ArrowUpRight, BarChart3, Building2, Check, ChevronDown, ChevronUp, Code2, Copy, CreditCard, Download, Eye, EyeOff, FileText, Filter, FlaskConical, Gift, GitBranch, HeartHandshake, HeartPulse, Key, Link, List, LogOut, Mail, MapPin, MessageCircle, Moon, Pencil, Phone, Pill, Plus, QrCode, RefreshCw, Search, Settings, ShieldPlus, Sparkles, Star, Stethoscope, Sun, Trash2, Upload, UserCircle, Users, Wallet, X, Menu,
 } from "lucide-react";
 import { Modal } from "@/components/ui/Overlay";
 import { useDashTheme } from "@/hooks/useDashTheme";
@@ -66,7 +12,7 @@ import { serializeAgreementToText } from "@/lib/agreement/content";
 import { CreateLabForm } from "@/components/admin/CreateLabForm";
 import { EditLabForm } from "@/components/admin/EditLabForm";
 import { AdminProfessionalsTab } from "@/components/admin/AdminProfessionalsTab";
-import { AdminSkinConsultsTab } from "@/components/admin/AdminSkinConsultsTab";
+import { AdminNav, type AdminNavGroup } from "@/components/admin/AdminNav";
 import { AdminEncountersTab } from "@/components/admin/AdminEncountersTab";
 import { AdminBroadcastTab } from "@/components/admin/AdminBroadcastTab";
 import { AdminHmoTab } from "@/components/admin/AdminHmoTab";
@@ -79,27 +25,84 @@ import { AdminLabPartnersModal } from "@/components/admin/AdminLabPartnersModal"
 import { SpecialtyTreePicker } from "@/components/admin/SpecialtyTreePicker";
 import { HospitalDoctorsPanel } from "@/components/admin/HospitalDoctorsPanel";
 import { Button } from "@/components/ui/Button";
-import { Input, Textarea } from "@/components/ui/Input";
+import { Input } from "@/components/ui/Input";
 import { StatusBadge, Badge } from "@/components/ui/Badge";
-import type { Lab, LabRequest, ApiLog, ApiLogSummary, LabApiKey, LabRole, LabMember } from "@/lib/types";
+import type { Lab, LabRequest, LabApiKey, LabRole, LabMember } from "@/lib/types";
 import { parsePhones } from "@/lib/phones";
 import { format } from "date-fns";
-import { createClient } from "@/lib/supabase/client"; // still used for auth sign-out
-import { useRouter } from "next/navigation";
+import {
+  createClient } from "@/lib/supabase/client"; // still used for auth sign-out
+import { useRouter,
+} from "next/navigation";
 import { labUrl, labHost, LAB_SUBDOMAINS_ENABLED } from "@/lib/lab-urls";
 
-type AdminTab = "metrics" | "clients" | "requests" | "referrals" | "labs" | "analytics" | "marketers" | "lab-marketers" | "professionals" | "settings" | "transactions" | "knowledge-base" | "users" | "hospitals" | "agreements" | "skin" | "encounters" | "broadcast" | "hmo" | "perks" | "care-plan" | "pharmacies";
+/**
+ * The admin sections.
+ *
+ * Six were retired with the redesign — Referrals, Marketers, Lab Marketers,
+ * Skin Consults, Knowledge Base and API Analytics — because the features behind
+ * them are hidden elsewhere in the product (doctor-portal referrals, Fast Mode)
+ * or were engineering tooling rather than operations. Their panels, fetchers
+ * and state went with them; the APIs are untouched.
+ */
+type AdminTab =
+  | "metrics" | "clients" | "requests" | "encounters" | "transactions"
+  | "labs" | "hospitals" | "pharmacies" | "hmo"
+  | "care-plan" | "professionals"
+  | "perks" | "broadcast"
+  | "users" | "agreements" | "settings";
 
-interface ReferralGroup {
-  key: string; // doctor_email
-  email: string;
-  referrerName: string;
-  hospital: string | null;
-  requests: LabRequest[];
-  thisMonthCount: number;
-  registered: boolean; // has a DoctorProfile on file
-  fastCount: number; // Fast Mode submissions
-}
+/** The order and grouping the sidebar renders. */
+const ADMIN_NAV: AdminNavGroup[] = [
+  {
+    label: "Overview",
+    items: [{ key: "metrics", label: "Metrics", icon: BarChart3, hint: "platform numbers, trends" }],
+  },
+  {
+    label: "Operations",
+    items: [
+      { key: "requests", label: "All Requests", icon: List, hint: "lab requests, orders" },
+      { key: "clients", label: "Clients", icon: Users, hint: "patients, people" },
+      { key: "encounters", label: "Doctor Encounters", icon: Stethoscope, hint: "consultations" },
+      { key: "transactions", label: "Transactions", icon: CreditCard, hint: "money, payments, revenue" },
+    ],
+  },
+  {
+    label: "Partners",
+    items: [
+      { key: "labs", label: "Labs", icon: FlaskConical, hint: "laboratories, catalogue" },
+      { key: "hospitals", label: "Hospitals", icon: Building2, hint: "clinics" },
+      { key: "pharmacies", label: "Pharmacies", icon: Pill, hint: "chemists, dispensing" },
+      { key: "hmo", label: "HMOs", icon: HeartPulse, hint: "insurers, health plans" },
+    ],
+  },
+  {
+    label: "Care",
+    items: [
+      { key: "care-plan", label: "Care Plan", icon: ShieldPlus, hint: "members, subscription, pricing" },
+      { key: "professionals", label: "Professionals", icon: UserCircle, hint: "doctors, credentials" },
+    ],
+  },
+  {
+    label: "Growth",
+    items: [
+      { key: "perks", label: "Perks & Rides", icon: Gift, hint: "referrals, rewards, logistics" },
+      { key: "broadcast", label: "Bulk Email", icon: Mail, hint: "campaigns, messaging" },
+    ],
+  },
+  {
+    label: "Platform",
+    items: [
+      { key: "users", label: "Users", icon: Users, hint: "accounts, access" },
+      { key: "agreements", label: "Agreements", icon: FileText, hint: "contracts, signatures" },
+      { key: "settings", label: "Settings", icon: Settings, hint: "configuration" },
+    ],
+  },
+];
+
+/** Valid `?tab=` values, so a stale or hand-typed link falls back cleanly. */
+const ADMIN_KEYS = new Set(ADMIN_NAV.flatMap((g) => g.items).map((i) => i.key));
+
 
 /** Per-test aggregate across a set of requests (for robust admin test tracking). */
 interface TestStat { name: string; total: number; done: number; fast: number }
@@ -135,20 +138,69 @@ function refLink(code: string) {
   return `${origin}/?ref=${code}`;
 }
 
+/** A square header button. Token-coloured, so it is legible in both themes. */
+function IconAction({
+  onClick,
+  label,
+  icon,
+}: {
+  onClick: () => void;
+  label: string;
+  icon: React.ReactNode;
+}) {
+  return (
+    <button
+      onClick={onClick}
+      title={label}
+      aria-label={label}
+      className="dash-ring dash-hover rounded-xl p-2 transition-colors"
+      style={{ color: "var(--dash-muted)" }}
+    >
+      {icon}
+    </button>
+  );
+}
+
 export function AdminDashboard() {
   const router = useRouter();
   const { isLight, toggle, themeClass } = useDashTheme("admin_dash_theme");
-  const [activeTab, setActiveTab] = useState<AdminTab>("metrics");
+  // The header names the section you are in, which is what the old horizontal
+  // strip used to do by highlighting a pill you often could not see.
+  const currentSection = ADMIN_NAV.flatMap((g) => g.items).find((i) => i.key === activeTab);
+  /**
+   * The open section, mirrored into `?tab=` so a refresh, a bookmark or a link
+   * to "the pharmacies page" all land where they should. Read once on mount
+   * rather than through useSearchParams, which would force the whole dashboard
+   * into a Suspense boundary for one string.
+   */
+  const [activeTab, setActiveTabState] = useState<AdminTab>(() => {
+    if (typeof window === "undefined") return "metrics";
+    const want = new URLSearchParams(window.location.search).get("tab");
+    return ADMIN_KEYS.has(want ?? "") ? (want as AdminTab) : "metrics";
+  });
+
+  const setActiveTab = useCallback((key: AdminTab) => {
+    setActiveTabState(key);
+    if (typeof window === "undefined") return;
+    const url = new URL(window.location.href);
+    url.searchParams.set("tab", key);
+    window.history.replaceState(null, "", url);
+  }, []);
+
+  // Back/forward should move between sections, not out of the dashboard.
+  useEffect(() => {
+    const onPop = () => {
+      const want = new URLSearchParams(window.location.search).get("tab");
+      setActiveTabState(ADMIN_KEYS.has(want ?? "") ? (want as AdminTab) : "metrics");
+    };
+    window.addEventListener("popstate", onPop);
+    return () => window.removeEventListener("popstate", onPop);
+  }, []);
   const [mobileTabOpen, setMobileTabOpen] = useState(false);
   const [labs, setLabs] = useState<Lab[]>([]);
   const [requests, setRequests] = useState<LabRequest[]>([]);
   const [loading, setLoading] = useState(true);
   const [showCreateLab, setShowCreateLab] = useState(false);
-  const [showCreateMarketer, setShowCreateMarketer] = useState(false);
-  const [marketers, setMarketers] = useState<{ id: string; name: string; email: string; phone: string | null; code: string; suspended: boolean; created_at: string; doctor_count: number; referral_link: string }[]>([]);
-  const [selectedMarketerId, setSelectedMarketerId] = useState<string | null>(null);
-  const [togglingMarketerId, setTogglingMarketerId] = useState<string | null>(null);
-  const [deletingMarketerId, setDeletingMarketerId] = useState<string | null>(null);
   const [editLab, setEditLab] = useState<Lab | null>(null);
   const [deletingId, setDeletingId] = useState<string | null>(null);
   const [togglingId, setTogglingId] = useState<string | null>(null);
@@ -157,17 +209,10 @@ export function AdminDashboard() {
   const [tempPasswordLab, setTempPasswordLab] = useState<Lab | null>(null);
   const [settingTempPassword, setSettingTempPassword] = useState(false);
   const [deleteConfirmLab, setDeleteConfirmLab] = useState<Lab | null>(null);
-  const [deleteConfirmMarketer, setDeleteConfirmMarketer] = useState<typeof marketers[number] | null>(null);
   const [deletingRequestId, setDeletingRequestId] = useState<string | null>(null);
-  const [selectedReferralGroup, setSelectedReferralGroup] = useState<ReferralGroup | null>(null);
-  const [referralGroupsRemote, setReferralGroupsRemote] = useState<ReferralGroup[] | null>(null);
-  const [referralsLoading, setReferralsLoading] = useState(false);
-  const [apiLogs, setApiLogs] = useState<ApiLog[]>([]);
-  const [apiLogSummary, setApiLogSummary] = useState<ApiLogSummary | null>(null);
   const [expandedLabIntegration, setExpandedLabIntegration] = useState<string | null>(null);
   const [expandedLabIds, setExpandedLabIds] = useState<Set<string>>(new Set());
   const [branchModalLabId, setBranchModalLabId] = useState<string | null>(null);
-  const [sendingAgreementId, setSendingAgreementId] = useState<string | null>(null);
   const [sendAgreementLab, setSendAgreementLab] = useState<Lab | null>(null);
   const [transferEmailLab, setTransferEmailLab] = useState<Lab | null>(null);
   const [catalogLab, setCatalogLab] = useState<Lab | null>(null);
@@ -181,41 +226,9 @@ export function AdminDashboard() {
   const [supportEmail, setSupportEmail] = useState<string>("spendbox@gmail.com");
   const [savingSettings, setSavingSettings] = useState(false);
 
-  // Lab marketers state
-  const [labMarketers, setLabMarketers] = useState<any[]>([]);
-  const [labMarketerLoading, setLabMarketerLoading] = useState(false);
-  const [selectedLabMarketerLabId, setSelectedLabMarketerLabId] = useState<string | null>(null);
-  const [selectedLabMarketerActivity, setSelectedLabMarketerActivity] = useState<any[]>([]);
   // Admin → assign a marketer to a lab
-  const [assignLabId, setAssignLabId] = useState("");
-  const [assignEmail, setAssignEmail] = useState("");
-  const [assignName, setAssignName] = useState("");
-  const [assigningMarketer, setAssigningMarketer] = useState(false);
 
-  async function assignLabMarketer() {
-    if (!assignLabId || !assignEmail.trim()) { toast.error("Pick a lab and enter the marketer's email"); return; }
-    setAssigningMarketer(true);
-    try {
-      const res = await fetch("/api/admin/lab-marketers", {
-        method: "POST", headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ lab_id: assignLabId, email: assignEmail.trim(), name: assignName.trim() || undefined }),
-      });
-      const data = await res.json();
-      if (!res.ok || !data.success) { toast.error(data.error ?? "Failed to assign"); return; }
-      toast.success("Marketer assigned to lab");
-      setAssignEmail(""); setAssignName("");
-      fetchLabMarketers();
-    } finally {
-      setAssigningMarketer(false);
-    }
-  }
 
-  async function removeLabMarketer(id: string) {
-    if (!confirm("Remove this marketer from the lab?")) return;
-    const res = await fetch(`/api/admin/lab-marketers?id=${id}`, { method: "DELETE" });
-    if (res.ok) { toast.success("Removed"); fetchLabMarketers(); }
-    else toast.error("Failed to remove");
-  }
 
 
   // Per-lab analytics modal
@@ -251,18 +264,6 @@ export function AdminDashboard() {
     }
   }, []);
 
-  const fetchApiLogs = useCallback(async () => {
-    try {
-      const res = await fetch("/api/admin/api-logs");
-      const data = await res.json();
-      if (data.success) {
-        setApiLogs(data.logs ?? []);
-        setApiLogSummary(data.summary ?? null);
-      }
-    } catch {
-      // non-critical — don't toast on analytics failures
-    }
-  }, []);
 
   const fetchLabs = useCallback(async () => {
     try {
@@ -275,40 +276,8 @@ export function AdminDashboard() {
     }
   }, []);
 
-  const fetchMarketers = useCallback(async () => {
-    try {
-      const res = await fetch("/api/admin/create-marketer");
-      const data = await res.json();
-      if (data.success) setMarketers(data.marketers ?? []);
-    } catch {
-      // non-critical
-    }
-  }, []);
 
-  const fetchLabMarketers = useCallback(async () => {
-    setLabMarketerLoading(true);
-    try {
-      const res = await fetch("/api/admin/lab-marketers");
-      const data = await res.json();
-      if (data.success) setLabMarketers(data.lab_marketers ?? []);
-    } catch (error) {
-      console.error("[fetchLabMarketers]", error);
-      toast.error("Failed to load lab marketers");
-    } finally {
-      setLabMarketerLoading(false);
-    }
-  }, []);
 
-  const fetchLabMarketerActivity = useCallback(async (labId: string) => {
-    try {
-      const res = await fetch(`/api/admin/lab-marketers/${labId}/activity`);
-      const data = await res.json();
-      if (data.success) setSelectedLabMarketerActivity(data.events ?? []);
-    } catch (error) {
-      console.error("[fetchLabMarketerActivity]", error);
-      toast.error("Failed to load activity");
-    }
-  }, []);
 
   const fetchSettings = useCallback(async () => {
     try {
@@ -361,9 +330,7 @@ export function AdminDashboard() {
       const [reqRes] = await Promise.all([
         fetch("/api/admin/requests"),
         fetchLabs(),
-        fetchApiLogs(),
         fetchSettings(),
-        fetchMarketers(),
       ]);
       const reqData = await reqRes.json();
       if (reqData.success) {
@@ -374,27 +341,13 @@ export function AdminDashboard() {
     } finally {
       setLoading(false);
     }
-  }, [fetchLabs, fetchMarketers]);
+  }, [fetchLabs]);
 
   useEffect(() => { fetchData(); }, [fetchData]);
-  useEffect(() => { if (activeTab === "lab-marketers") fetchLabMarketers(); }, [activeTab, fetchLabMarketers]);
 
   // Referral tracking aggregated over ALL requests (server-side) so counts are
   // accurate rather than limited to the latest page loaded on the dashboard.
-  const fetchReferralTracking = useCallback(async () => {
-    setReferralsLoading(true);
-    try {
-      const res = await fetch("/api/admin/referral-tracking");
-      const data = await res.json();
-      if (data.success) setReferralGroupsRemote(data.groups ?? []);
-    } catch {
-      toast.error("Failed to load referral tracking");
-    } finally {
-      setReferralsLoading(false);
-    }
-  }, []);
 
-  useEffect(() => { if (activeTab === "referrals") fetchReferralTracking(); }, [activeTab, fetchReferralTracking]);
 
   // ── All Requests tab: searchable, paginated back to the very first request ──
   const [allReqs, setAllReqs] = useState<LabRequest[]>([]);
@@ -430,37 +383,6 @@ export function AdminDashboard() {
     return () => clearTimeout(t);
   }, [activeTab, allReqSearch, loadAllRequests]);
 
-  const referralGroups = useMemo<ReferralGroup[]>(() => {
-    const map = new Map<string, ReferralGroup>();
-    const now = new Date();
-    for (const req of requests) {
-      const key = req.doctor_email?.trim().toLowerCase() || `nomail:${[req.doctor_prefix, req.doctor_name].filter(Boolean).join(" ")}`;
-      const d = new Date(req.created_at);
-      const isThisMonth = d.getMonth() === now.getMonth() && d.getFullYear() === now.getFullYear();
-      const existing = map.get(key);
-      if (existing) {
-        existing.requests.push(req);
-        if (isThisMonth) existing.thisMonthCount++;
-        if (req.fast_mode) existing.fastCount++;
-        if (req.doctor_registered) existing.registered = true;
-        // Keep most complete name seen across requests
-        if (!existing.referrerName && req.doctor_name) existing.referrerName = [req.doctor_prefix, req.doctor_name].filter(Boolean).join(" ");
-        if (!existing.hospital && req.doctor_hospital) existing.hospital = req.doctor_hospital;
-      } else {
-        map.set(key, {
-          key,
-          email: req.doctor_email ?? "",
-          referrerName: [req.doctor_prefix, req.doctor_name].filter(Boolean).join(" "),
-          hospital: req.doctor_hospital ?? null,
-          requests: [req],
-          thisMonthCount: isThisMonth ? 1 : 0,
-          registered: !!req.doctor_registered,
-          fastCount: req.fast_mode ? 1 : 0,
-        });
-      }
-    }
-    return Array.from(map.values()).sort((a, b) => b.requests.length - a.requests.length);
-  }, [requests]);
 
   async function handleDeleteRequest(req: LabRequest) {
     if (!confirm(`Delete request ${req.code} for "${req.patient_name}"? This permanently removes it from the lab dashboard too.`)) return;
@@ -482,45 +404,7 @@ export function AdminDashboard() {
     }
   }
 
-  async function handleToggleMarketerSuspended(m: typeof marketers[number]) {
-    setTogglingMarketerId(m.id);
-    try {
-      const res = await fetch(`/api/admin/marketers/${m.id}`, {
-        method: "PATCH",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ suspended: !m.suspended }),
-      });
-      const data = await res.json();
-      if (data.success) {
-        toast.success(m.suspended ? `${m.name} unsuspended` : `${m.name} suspended`);
-        await fetchMarketers();
-      } else {
-        toast.error(data.error ?? "Failed to update");
-      }
-    } catch {
-      toast.error("Network error");
-    } finally {
-      setTogglingMarketerId(null);
-    }
-  }
 
-  async function handleDeleteMarketer(m: typeof marketers[number]) {
-    setDeletingMarketerId(m.id);
-    try {
-      const res = await fetch(`/api/admin/marketers/${m.id}`, { method: "DELETE" });
-      const data = await res.json();
-      if (data.success) {
-        toast.success(`"${m.name}" deleted`);
-        await fetchMarketers();
-      } else {
-        toast.error(data.error ?? "Failed to delete");
-      }
-    } catch {
-      toast.error("Network error");
-    } finally {
-      setDeletingMarketerId(null);
-    }
-  }
 
   async function handleSignOut() {
     await createClient().auth.signOut();
@@ -639,125 +523,76 @@ export function AdminDashboard() {
   }
 
   return (
-    <div className={`min-h-screen bg-gradient-to-br from-slate-900 via-medical-950 to-slate-900 text-white transition-colors duration-300 ${themeClass}`}>
-      <header className="border-b border-white/10 bg-white/5 backdrop-blur-sm sticky top-0 z-10">
-        <div className="max-w-7xl mx-auto px-4 py-4 flex items-center justify-between">
-          <div className="flex items-center gap-3">
-            <div className="w-9 h-9 bg-medical-600 rounded-xl flex items-center justify-center">
-              <FlaskConical className="w-5 h-5 text-white" />
+    <div
+      className={`dash min-h-screen transition-colors duration-300 ${themeClass}`}
+      style={{
+        background: "linear-gradient(160deg, var(--dash-bg) 0%, var(--dash-bg-2) 55%, var(--dash-bg) 100%)",
+        color: "var(--dash-text)",
+      }}
+    >
+      <header
+        className="sticky top-0 z-30 backdrop-blur-xl"
+        style={{
+          background: "color-mix(in srgb, var(--dash-bg) 82%, transparent)",
+          borderBottom: "1px solid var(--dash-border)",
+        }}
+      >
+        <div className="mx-auto flex max-w-[1600px] items-center gap-2 px-3 py-2.5 sm:px-5 sm:py-3">
+          {/* Below lg the sections live in a sheet, opened from here. */}
+          <button
+            onClick={() => setMobileTabOpen(true)}
+            aria-label="Open sections"
+            className="dash-ring lg:hidden shrink-0 rounded-xl p-2"
+            style={{ background: "var(--dash-surface-2)", color: "var(--dash-text-2)" }}
+          >
+            <Menu className="h-[18px] w-[18px]" />
+          </button>
+
+          <div className="flex min-w-0 flex-1 items-center gap-2.5">
+            <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-medical-600 shadow-lg shadow-medical-600/25">
+              <FlaskConical className="h-[18px] w-[18px] text-white" />
             </div>
-            <div>
-              <h1 className="font-bold text-white text-sm">Poveon</h1>
-              <p className="text-xs text-blue-300">Admin Dashboard</p>
+            <div className="min-w-0">
+              <p className="truncate text-sm font-bold leading-tight" style={{ color: "var(--dash-text)" }}>
+                {currentSection?.label ?? "Poveon"}
+              </p>
+              <p className="dash-muted truncate text-[11px] leading-tight">Poveon admin</p>
             </div>
           </div>
-          <div className="flex items-center gap-2">
-            <button
+
+          <div className="flex shrink-0 items-center gap-1">
+            <IconAction
               onClick={toggle}
-              className="p-2 rounded-lg hover:bg-white/10 text-slate-400 hover:text-white transition-colors"
-              title={isLight ? "Switch to dark mode" : "Switch to light mode"}
+              label={isLight ? "Switch to dark mode" : "Switch to light mode"}
+              icon={isLight ? <Moon className="h-4 w-4" /> : <Sun className="h-4 w-4" />}
+            />
+            <IconAction
+              onClick={() => fetchData()}
+              label="Refresh"
+              icon={<RefreshCw className={`h-4 w-4 ${loading ? "animate-spin" : ""}`} />}
+            />
+            <button
+              onClick={handleSignOut}
+              className="dash-ring flex items-center gap-1.5 rounded-xl px-2.5 py-2 text-sm font-medium transition-colors"
+              style={{ color: "var(--dash-muted)" }}
             >
-              {isLight ? <Moon className="w-4 h-4" /> : <Sun className="w-4 h-4" />}
-            </button>
-            <button onClick={() => fetchData()} className="p-2 rounded-lg hover:bg-white/10 text-slate-400 hover:text-white transition-colors">
-              <RefreshCw className={`w-4 h-4 ${loading ? "animate-spin" : ""}`} />
-            </button>
-            <button onClick={handleSignOut} className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg hover:bg-white/10 text-slate-400 hover:text-white text-sm transition-colors">
-              <LogOut className="w-4 h-4" />
-              <span className="hidden sm:inline">Sign Out</span>
+              <LogOut className="h-4 w-4" />
+              <span className="hidden sm:inline">Sign out</span>
             </button>
           </div>
         </div>
       </header>
 
-      <div className="max-w-7xl mx-auto px-4 py-5 md:py-8">
-        {/* Tab nav — dropdown on mobile, scroll row on desktop */}
-        {(() => {
-          const tabs = [
-            { key: "metrics" as AdminTab, label: "Metrics", icon: <BarChart3 className="w-4 h-4" /> },
-            { key: "clients" as AdminTab, label: "Clients", icon: <Users className="w-4 h-4" /> },
-            { key: "requests" as AdminTab, label: "All Requests", icon: <List className="w-4 h-4" /> },
-            { key: "referrals" as AdminTab, label: "Referrals", icon: <Users className="w-4 h-4" /> },
-            { key: "labs" as AdminTab, label: "Labs", icon: <Building2 className="w-4 h-4" /> },
-            { key: "analytics" as AdminTab, label: "API Analytics", icon: <BarChart3 className="w-4 h-4" /> },
-            { key: "marketers" as AdminTab, label: "Marketers", icon: <TrendingUp className="w-4 h-4" /> },
-            { key: "lab-marketers" as AdminTab, label: "Lab Marketers", icon: <Users className="w-4 h-4" /> },
-            { key: "professionals" as AdminTab, label: "Professionals", icon: <UserCircle className="w-4 h-4" /> },
-            { key: "settings" as AdminTab, label: "Settings", icon: <Settings className="w-4 h-4" /> },
-            { key: "transactions" as AdminTab, label: "Transactions", icon: <CreditCard className="w-4 h-4" /> },
-            { key: "knowledge-base" as AdminTab, label: "Knowledge Base", icon: <BookOpen className="w-4 h-4" /> },
-            { key: "users" as AdminTab, label: "Users", icon: <UserCircle className="w-4 h-4" /> },
-            { key: "hospitals" as AdminTab, label: "Hospitals", icon: <Building2 className="w-4 h-4" /> },
-            { key: "agreements" as AdminTab, label: "Agreements", icon: <FileText className="w-4 h-4" /> },
-            { key: "skin" as AdminTab, label: "Skin Consults", icon: <Stethoscope className="w-4 h-4" /> },
-            { key: "encounters" as AdminTab, label: "Doctor Encounters", icon: <CreditCard className="w-4 h-4" /> },
-            { key: "broadcast" as AdminTab, label: "Bulk Email", icon: <Mail className="w-4 h-4" /> },
-            { key: "hmo" as AdminTab, label: "HMOs", icon: <HeartPulse className="w-4 h-4" /> },
-            { key: "perks" as AdminTab, label: "Perks & Rides", icon: <Gift className="w-4 h-4" /> },
-            { key: "care-plan" as AdminTab, label: "Care Plan", icon: <ShieldPlus className="w-4 h-4" /> },
-            { key: "pharmacies" as AdminTab, label: "Pharmacies", icon: <Pill className="w-4 h-4" /> },
-          ];
-          const current = tabs.find((t) => t.key === activeTab) ?? tabs[0];
-          return (
-            <div className="mb-6 md:mb-8">
-              {/* Mobile dropdown */}
-              <div className="md:hidden relative">
-                <button
-                  onClick={() => setMobileTabOpen((v) => !v)}
-                  className="flex items-center gap-2.5 w-full px-4 py-3 rounded-xl bg-white/8 border border-white/12 text-sm font-semibold text-white"
-                >
-                  <span className="text-slate-300">{current.icon}</span>
-                  <span className="flex-1 text-left">{current.label}</span>
-                  <ChevronDown className={`w-4 h-4 text-slate-400 transition-transform duration-200 ${mobileTabOpen ? "rotate-180" : ""}`} />
-                </button>
-                {mobileTabOpen && (
-                  <div className="absolute top-full left-0 right-0 mt-1.5 rounded-xl border border-white/10 bg-slate-800 shadow-2xl overflow-hidden z-30">
-                    {tabs.map((tab) => (
-                      "href" in tab ? (
-                        <a key={tab.key} href={(tab as { href: string }).href}
-                          className="flex items-center gap-3 w-full px-4 py-3.5 text-sm font-medium transition-colors border-b border-white/5 last:border-0 text-slate-300 hover:bg-white/8">
-                          <span className="text-slate-500">{tab.icon}</span>{tab.label}
-                        </a>
-                      ) : (
-                        <button key={tab.key}
-                          onClick={() => { setActiveTab(tab.key); setMobileTabOpen(false); }}
-                          className={`flex items-center gap-3 w-full px-4 py-3.5 text-sm font-medium transition-colors border-b border-white/5 last:border-0 ${
-                            activeTab === tab.key ? "bg-white/12 text-white" : "text-slate-300 hover:bg-white/8"
-                          }`}
-                        >
-                          <span className={activeTab === tab.key ? "text-white" : "text-slate-500"}>{tab.icon}</span>
-                          {tab.label}
-                          {activeTab === tab.key && <ChevronRight className="w-3.5 h-3.5 ml-auto text-white/40" />}
-                        </button>
-                      )
-                    ))}
-                  </div>
-                )}
-              </div>
-              {/* Desktop scroll row */}
-              <div className="hidden md:block overflow-x-auto -mx-4 px-4">
-                <div className="flex gap-1 bg-white/5 rounded-xl p-1 w-max">
-                  {tabs.map((tab) => (
-                    "href" in tab ? (
-                      <a key={tab.key} href={(tab as { href: string }).href}
-                        className="flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-medium transition-all shrink-0 text-slate-400 hover:text-white">
-                        {tab.icon}{tab.label}
-                      </a>
-                    ) : (
-                      <button key={tab.key} onClick={() => setActiveTab(tab.key)}
-                        className={`flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-medium transition-all shrink-0 ${
-                          activeTab === tab.key ? "bg-white/15 text-white" : "text-slate-400 hover:text-white"
-                        }`}
-                      >
-                        {tab.icon}{tab.label}
-                      </button>
-                    )
-                  ))}
-                </div>
-              </div>
-            </div>
-          );
-        })()}
+      <div className="mx-auto flex max-w-[1600px] gap-5 px-3 py-4 sm:px-5 sm:py-6">
+        <AdminNav
+          groups={ADMIN_NAV}
+          activeKey={activeTab}
+          onSelect={(k) => setActiveTab(k as AdminTab)}
+          open={mobileTabOpen}
+          onOpenChange={setMobileTabOpen}
+        />
+
+        <main className="min-w-0 flex-1">
 
         {/* ── METRICS ── */}
         {activeTab === "metrics" && <AdminMetricsTab />}
@@ -935,64 +770,6 @@ export function AdminDashboard() {
         )}
 
         {/* ── REFERRALS ── */}
-        {activeTab === "referrals" && (() => {
-          // Prefer the server-side aggregate (all requests); fall back to the
-          // page-scoped memo only while the full set is still loading.
-          const groups = referralGroupsRemote ?? referralGroups;
-          const groupsLoading = referralsLoading && referralGroupsRemote === null;
-          return (
-          <div className="animate-fade-in space-y-4">
-            <div className="flex items-center justify-between">
-              <h2 className="font-semibold text-white">Referral Tracking</h2>
-              <span className="text-xs text-slate-500 bg-white/5 px-3 py-1.5 rounded-full">{groups.length} referrer{groups.length !== 1 ? "s" : ""}</span>
-            </div>
-
-            {groupsLoading ? (
-              <div className="space-y-1">
-                {[...Array(6)].map((_, i) => (
-                  <div key={i} className="bg-white/5 border border-white/10 rounded-xl h-14 animate-pulse" />
-                ))}
-              </div>
-            ) : groups.length === 0 ? (
-              <div className="text-center py-20 text-slate-500">No referrals yet</div>
-            ) : (
-              <div className="rounded-2xl overflow-hidden border border-white/8 divide-y divide-white/5">
-                {groups.map((group) => (
-                  <button
-                    key={group.key}
-                    onClick={() => setSelectedReferralGroup(group)}
-                    className="w-full flex items-center gap-3 px-4 py-3 bg-white/3 hover:bg-white/8 text-left transition-colors group"
-                  >
-                    <div className="w-8 h-8 bg-medical-700/40 rounded-lg flex items-center justify-center shrink-0">
-                      <Users className="w-4 h-4 text-medical-400" />
-                    </div>
-                    <div className="flex-1 min-w-0">
-                      <p className="text-sm font-semibold text-white truncate leading-tight">{group.referrerName || group.email || "—"}</p>
-                      <p className="text-xs text-slate-500 truncate">{group.hospital || (group.referrerName ? group.email : "")}</p>
-                      <div className="mt-1 flex flex-wrap items-center gap-1">
-                        <span className={`inline-flex items-center rounded-full px-1.5 py-0.5 text-[9px] font-semibold ${group.registered ? "bg-emerald-500/15 text-emerald-300" : "bg-amber-500/15 text-amber-300"}`}>
-                          {group.registered ? "Registered" : "Unregistered"}
-                        </span>
-                        {group.fastCount > 0 && (
-                          <span className="inline-flex items-center gap-0.5 rounded-full bg-medical-500/15 px-1.5 py-0.5 text-[9px] font-semibold text-medical-300"><Zap className="w-2.5 h-2.5" /> {group.fastCount} fast</span>
-                        )}
-                      </div>
-                    </div>
-                    <div className="shrink-0 text-right">
-                      <span className="text-sm font-bold text-white">{group.requests.length}</span>
-                      <span className="text-xs text-slate-500 ml-1">total</span>
-                      {group.thisMonthCount > 0 && (
-                        <p className="text-[10px] text-medical-400">{group.thisMonthCount} this mo.</p>
-                      )}
-                    </div>
-                    <ChevronRight className="w-3.5 h-3.5 text-slate-600 group-hover:text-slate-400 transition-colors shrink-0" />
-                  </button>
-                ))}
-              </div>
-            )}
-          </div>
-          );
-        })()}
 
         {/* ── LABS ── */}
         {activeTab === "labs" && (
@@ -1319,142 +1096,6 @@ export function AdminDashboard() {
           </div>
         )}
         {/* ── API ANALYTICS ── */}
-        {activeTab === "analytics" && (
-          <div className="animate-fade-in space-y-6">
-            <div className="flex items-center justify-between">
-              <div>
-                <h2 className="font-semibold text-white">API Analytics</h2>
-                <p className="text-xs text-slate-500 mt-0.5">Live API call tracking — last 200 calls</p>
-              </div>
-              <button onClick={fetchApiLogs} className="p-2 rounded-lg hover:bg-white/10 text-slate-400 hover:text-white transition-colors">
-                <RefreshCw className="w-4 h-4" />
-              </button>
-            </div>
-
-            {/* Summary cards */}
-            {apiLogSummary && (
-              <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-                {[
-                  { label: "Calls Today", value: apiLogSummary.today, color: "from-blue-500/20 to-blue-600/10 border-blue-500/30" },
-                  { label: "Calls This Week", value: apiLogSummary.week, color: "from-medical-500/20 to-medical-600/10 border-medical-500/30" },
-                  { label: "Success (2xx)", value: apiLogSummary.byStatus.filter(s => s.status >= 200 && s.status < 300).reduce((a, b) => a + b.count, 0), color: "from-emerald-400/20 to-emerald-500/10 border-emerald-400/30" },
-                  { label: "Errors (4xx/5xx)", value: apiLogSummary.byStatus.filter(s => s.status >= 400).reduce((a, b) => a + b.count, 0), color: "from-red-400/20 to-red-500/10 border-red-400/30" },
-                ].map((stat) => (
-                  <div key={stat.label} className={`bg-gradient-to-br ${stat.color} border rounded-2xl p-5`}>
-                    <p className="text-xs text-slate-400 font-medium uppercase tracking-wider mb-1">{stat.label}</p>
-                    <p className="text-3xl font-bold text-white">{stat.value}</p>
-                  </div>
-                ))}
-              </div>
-            )}
-
-            {/* Top endpoints */}
-            {apiLogSummary && apiLogSummary.topEndpoints.length > 0 && (
-              <div className="bg-white/5 border border-white/10 rounded-2xl p-5">
-                <h3 className="text-sm font-semibold text-slate-300 mb-4">Top Endpoints (last 7 days)</h3>
-                <div className="space-y-3">
-                  {apiLogSummary.topEndpoints.map((ep) => {
-                    const max = apiLogSummary.topEndpoints[0]?.count ?? 1;
-                    return (
-                      <div key={ep.path} className="space-y-1">
-                        <div className="flex items-center justify-between gap-2">
-                          <code className="text-xs font-mono text-medical-300 truncate min-w-0">{ep.path}</code>
-                          <span className="text-xs text-slate-400 font-mono shrink-0">{ep.count}</span>
-                        </div>
-                        <div className="bg-white/8 rounded-full h-1.5 overflow-hidden">
-                          <div className="h-full bg-medical-500 rounded-full transition-all" style={{ width: `${(ep.count / max) * 100}%` }} />
-                        </div>
-                      </div>
-                    );
-                  })}
-                </div>
-              </div>
-            )}
-
-            {/* Recent calls */}
-            <div className="bg-white/5 border border-white/10 rounded-2xl overflow-hidden">
-              <div className="px-5 py-3 border-b border-white/10">
-                <h3 className="text-sm font-semibold text-slate-300">Recent API Calls</h3>
-              </div>
-
-              {apiLogs.length === 0 && (
-                <p className="py-12 text-center text-slate-500 text-sm">No API calls recorded yet. Calls will appear here as the API is used.</p>
-              )}
-
-              {/* Mobile card list */}
-              {apiLogs.length > 0 && (
-                <div className="md:hidden divide-y divide-white/5">
-                  {apiLogs.map((log) => (
-                    <div key={log.id} className="px-4 py-3 space-y-1.5">
-                      <div className="flex items-center justify-between gap-2">
-                        <span className={`text-xs font-mono font-bold px-1.5 py-0.5 rounded ${
-                          log.method === "GET" ? "text-emerald-400 bg-emerald-400/10" :
-                          log.method === "POST" ? "text-blue-400 bg-blue-400/10" :
-                          log.method === "DELETE" ? "text-red-400 bg-red-400/10" :
-                          "text-slate-400 bg-white/10"
-                        }`}>{log.method}</span>
-                        <span className={`text-xs font-mono font-bold ${
-                          log.status >= 200 && log.status < 300 ? "text-emerald-400" :
-                          log.status >= 400 ? "text-red-400" : "text-slate-400"
-                        }`}>{log.status}</span>
-                        <span className="text-xs text-slate-500 font-mono ml-auto">{log.duration_ms != null ? `${log.duration_ms}ms` : "—"}</span>
-                      </div>
-                      <code className="text-xs font-mono text-slate-400 block truncate">{log.path}</code>
-                      <p className="text-xs text-slate-600">{format(new Date(log.created_at), "dd MMM HH:mm:ss")}</p>
-                    </div>
-                  ))}
-                </div>
-              )}
-
-              {/* Desktop table */}
-              {apiLogs.length > 0 && (
-                <div className="hidden md:block overflow-x-auto">
-                  <table className="w-full text-sm">
-                    <thead>
-                      <tr className="border-b border-white/8">
-                        {["Time", "Method", "Endpoint", "Status", "Duration"].map((h) => (
-                          <th key={h} className={`pb-2 pt-3 px-4 text-left text-xs text-slate-500 font-semibold uppercase tracking-wider${["Time", "Method", "Status", "Duration"].includes(h) ? " w-px whitespace-nowrap" : ""}`}>{h}</th>
-                        ))}
-                      </tr>
-                    </thead>
-                    <tbody className="divide-y divide-white/5">
-                      {apiLogs.map((log) => (
-                        <tr key={log.id} className="hover:bg-white/4 transition-colors">
-                          <td className="py-2.5 px-4 text-xs text-slate-500 whitespace-nowrap">{format(new Date(log.created_at), "dd MMM HH:mm:ss")}</td>
-                          <td className="py-2.5 px-4">
-                            <span className={`text-xs font-mono font-bold px-1.5 py-0.5 rounded ${
-                              log.method === "GET" ? "text-emerald-400 bg-emerald-400/10" :
-                              log.method === "POST" ? "text-blue-400 bg-blue-400/10" :
-                              log.method === "DELETE" ? "text-red-400 bg-red-400/10" :
-                              "text-slate-400 bg-white/10"
-                            }`}>{log.method}</span>
-                          </td>
-                          <td className="py-2.5 px-4"><code className="text-xs font-mono text-slate-300">{log.path}</code></td>
-                          <td className="py-2.5 px-4">
-                            <span className={`text-xs font-mono font-bold ${
-                              log.status >= 200 && log.status < 300 ? "text-emerald-400" :
-                              log.status >= 400 ? "text-red-400" : "text-slate-400"
-                            }`}>{log.status}</span>
-                          </td>
-                          <td className="py-2.5 px-4 text-xs text-slate-500 font-mono">{log.duration_ms != null ? `${log.duration_ms}ms` : "—"}</td>
-                        </tr>
-                      ))}
-                    </tbody>
-                  </table>
-                </div>
-              )}
-            </div>
-
-            {/* Security notice */}
-            <div className="bg-amber-500/8 border border-amber-500/20 rounded-2xl p-4">
-              <p className="text-xs font-semibold text-amber-400 mb-1">Security Notice</p>
-              <p className="text-xs text-amber-200/70 leading-relaxed">
-                IP addresses are not stored. Lab IDs are logged only for authenticated lab endpoints.
-                Logs older than 90 days should be purged periodically to comply with data minimisation principles.
-              </p>
-            </div>
-          </div>
-        )}
 
         {/* ── SETTINGS ── */}
         {activeTab === "settings" && (
@@ -1538,180 +1179,13 @@ export function AdminDashboard() {
         )}
 
         {/* ── MARKETERS ── */}
-        {activeTab === "marketers" && (
-          <div className="animate-fade-in space-y-6">
-            <div className="flex items-center justify-between">
-              <h2 className="font-semibold text-white">Marketers ({marketers.length})</h2>
-              <Button onClick={() => setShowCreateMarketer(true)}>
-                <Plus className="w-4 h-4" />
-                <span className="hidden sm:inline">Add Marketer</span>
-              </Button>
-            </div>
-
-            {marketers.length === 0 && !loading ? (
-              <div className="bg-white/5 border border-white/10 rounded-2xl p-10 text-center">
-                <TrendingUp className="w-10 h-10 text-slate-600 mx-auto mb-3" />
-                <p className="text-sm font-semibold text-slate-400">No marketers yet</p>
-                <p className="text-xs text-slate-500 mt-1">Add a marketer to track their referrals.</p>
-              </div>
-            ) : (
-              <div className="rounded-2xl overflow-hidden border border-white/8 divide-y divide-white/5">
-                {marketers.map((m) => (
-                  <div key={m.id} className={`flex items-center gap-3 px-4 py-3 bg-white/3 transition-opacity ${m.suspended ? "opacity-60" : ""}`}>
-                    <button
-                      type="button"
-                      onClick={() => setSelectedMarketerId(m.id)}
-                      className="flex items-center gap-3 flex-1 min-w-0 text-left group"
-                    >
-                      <div className={`w-8 h-8 rounded-lg flex items-center justify-center shrink-0 ${m.suspended ? "bg-slate-700/40" : "bg-emerald-700/40"}`}>
-                        <TrendingUp className={`w-4 h-4 ${m.suspended ? "text-slate-500" : "text-emerald-400"}`} />
-                      </div>
-                      <div className="min-w-0 flex-1">
-                        <div className="flex items-center gap-2 min-w-0">
-                          <p className="text-sm font-semibold text-white truncate leading-tight">{m.name}</p>
-                          {m.suspended && <span className="text-[10px] bg-red-900/40 text-red-400 border border-red-800/30 px-1.5 py-0.5 rounded-full shrink-0">Suspended</span>}
-                        </div>
-                        <p className="text-xs text-slate-500 truncate">{m.email}</p>
-                      </div>
-                      <div className="shrink-0 text-right mr-1">
-                        <span className="text-xs font-mono text-emerald-400">{m.code}</span>
-                        <p className="text-[10px] text-slate-500">{m.doctor_count} dr</p>
-                      </div>
-                      <ChevronRight className="w-3.5 h-3.5 text-slate-600 group-hover:text-slate-400 transition-colors shrink-0" />
-                    </button>
-                    <div className="flex items-center gap-1 shrink-0">
-                      <button
-                        type="button"
-                        onClick={() => handleToggleMarketerSuspended(m)}
-                        disabled={togglingMarketerId === m.id}
-                        title={m.suspended ? "Unsuspend" : "Suspend"}
-                        className={`p-1.5 rounded-lg transition-colors disabled:opacity-40 ${m.suspended ? "hover:bg-emerald-500/15 text-slate-500 hover:text-emerald-400" : "hover:bg-amber-500/15 text-slate-500 hover:text-amber-400"}`}
-                      >
-                        {togglingMarketerId === m.id ? <RefreshCw className="w-3.5 h-3.5 animate-spin" /> : m.suspended ? <Eye className="w-3.5 h-3.5" /> : <EyeOff className="w-3.5 h-3.5" />}
-                      </button>
-                      <button
-                        type="button"
-                        onClick={() => setDeleteConfirmMarketer(m)}
-                        disabled={deletingMarketerId === m.id}
-                        title="Delete marketer"
-                        className="p-1.5 rounded-lg hover:bg-red-500/15 text-slate-500 hover:text-red-400 transition-colors disabled:opacity-40"
-                      >
-                        {deletingMarketerId === m.id ? <RefreshCw className="w-3.5 h-3.5 animate-spin" /> : <Trash2 className="w-3.5 h-3.5" />}
-                      </button>
-                    </div>
-                  </div>
-                ))}
-              </div>
-            )}
-          </div>
-        )}
 
         {/* ── TRANSACTIONS ── */}
         {activeTab === "transactions" && <AdminTransactionsTab labs={labs} />}
 
         {/* ── KNOWLEDGE BASE ── */}
-        {activeTab === "knowledge-base" && <AdminKnowledgeBaseTab />}
 
         {/* ── LAB MARKETERS ── */}
-        {activeTab === "lab-marketers" && (
-          <div className="animate-fade-in space-y-5">
-            <div className="flex items-center justify-between">
-              <h2 className="text-lg font-semibold text-white">Lab-Specific Marketers</h2>
-              <button
-                onClick={() => fetchLabMarketers()}
-                disabled={labMarketerLoading}
-                className="p-2 rounded-lg bg-white/8 border border-white/10 text-slate-400 hover:text-white transition-colors disabled:opacity-50"
-              >
-                <RefreshCw className={`w-4 h-4 ${labMarketerLoading ? "animate-spin" : ""}`} />
-              </button>
-            </div>
-
-            {/* Assign a marketer to a lab (Poveon admin helps labs add marketers) */}
-            <div className="bg-emerald-500/5 border border-emerald-500/20 rounded-2xl p-4 space-y-3">
-              <p className="text-sm font-semibold text-emerald-300">Assign a marketer to a lab</p>
-              <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
-                <select value={assignLabId} onChange={(e) => setAssignLabId(e.target.value)} className="px-3 py-2 rounded-xl bg-white/8 border border-white/10 text-sm text-white focus:outline-none focus:border-white/25">
-                  <option value="">Select lab…</option>
-                  {labs.map((l) => <option key={l.id} value={l.id} className="bg-slate-800">{l.name}</option>)}
-                </select>
-                <input value={assignEmail} onChange={(e) => setAssignEmail(e.target.value)} type="email" placeholder="Marketer email" className="px-3 py-2 rounded-xl bg-white/8 border border-white/10 text-sm text-white placeholder-slate-500 focus:outline-none focus:border-white/25" />
-                <input value={assignName} onChange={(e) => setAssignName(e.target.value)} placeholder="Name (optional)" className="px-3 py-2 rounded-xl bg-white/8 border border-white/10 text-sm text-white placeholder-slate-500 focus:outline-none focus:border-white/25" />
-              </div>
-              <button onClick={assignLabMarketer} disabled={assigningMarketer || !assignLabId || !assignEmail.trim()} className="flex items-center gap-1.5 px-4 py-2 rounded-xl bg-emerald-600 hover:bg-emerald-500 disabled:opacity-50 text-white text-sm font-semibold">
-                <Plus className="w-4 h-4" />{assigningMarketer ? "Assigning…" : "Assign marketer"}
-              </button>
-              <p className="text-xs text-slate-500">If the marketer email is new, an account is created automatically. Their pitch and scripts are tailored to this lab.</p>
-            </div>
-
-            {labMarketerLoading ? (
-              <div className="space-y-2">{[...Array(5)].map((_, i) => <div key={i} className="bg-white/5 border border-white/10 rounded-xl h-16 animate-pulse" />)}</div>
-            ) : labMarketers.length === 0 ? (
-              <div className="text-center py-12 text-slate-400">
-                <Users className="w-12 h-12 mx-auto mb-3 opacity-30" />
-                <p className="text-sm">No lab marketers assigned yet.</p>
-              </div>
-            ) : (
-              <div className="space-y-2">
-                {labMarketers.map((lm) => (
-                  <div
-                    key={lm.id}
-                    className="bg-white/5 border border-white/10 rounded-xl overflow-hidden hover:bg-white/8 transition-colors"
-                  >
-                    <button
-                      onClick={() => {
-                        if (selectedLabMarketerLabId === lm.lab.id) {
-                          setSelectedLabMarketerLabId(null);
-                        } else {
-                          setSelectedLabMarketerLabId(lm.lab.id);
-                          fetchLabMarketerActivity(lm.lab.id);
-                        }
-                      }}
-                      className="w-full flex items-center gap-4 px-4 py-3 text-left"
-                    >
-                      <div className="flex-1 min-w-0">
-                        <p className="text-sm font-semibold text-white">{lm.lab.name}</p>
-                        <p className="text-xs text-slate-400">{lm.marketer.name} ({lm.marketer.email})</p>
-                      </div>
-                      <div className="text-right shrink-0">
-                        <p className="text-xs text-emerald-400 font-semibold">{lm.doctors_count} doctors</p>
-                        <p className="text-[10px] text-slate-500">Added by {lm.added_by}</p>
-                      </div>
-                      <span
-                        role="button"
-                        tabIndex={0}
-                        onClick={(e) => { e.stopPropagation(); removeLabMarketer(lm.id); }}
-                        className="p-1.5 text-slate-600 hover:text-rose-400 transition-colors shrink-0 cursor-pointer"
-                        title="Remove marketer from this lab"
-                      >
-                        <Trash2 className="w-3.5 h-3.5" />
-                      </span>
-                      <ChevronDown className={`w-4 h-4 text-slate-500 transition-transform ${selectedLabMarketerLabId === lm.lab.id ? "rotate-180" : ""}`} />
-                    </button>
-
-                    {selectedLabMarketerLabId === lm.lab.id && (
-                      <div className="border-t border-white/8 px-4 py-4 space-y-3 bg-slate-950/40">
-                        <p className="text-xs text-slate-400 font-semibold uppercase tracking-wider">Activity Timeline</p>
-                        {selectedLabMarketerActivity.length === 0 ? (
-                          <p className="text-sm text-slate-500">No activity yet</p>
-                        ) : (
-                          <div className="space-y-2 max-h-96 overflow-y-auto">
-                            {selectedLabMarketerActivity.slice(0, 50).map((event, i) => (
-                              <div key={i} className="text-xs text-slate-300 border-l border-slate-700/50 pl-3 py-1.5">
-                                <p className="font-medium text-slate-200">{event.type.replace(/_/g, " ").toUpperCase()}</p>
-                                <p className="text-slate-400 text-[11px] mt-0.5">{event.description}</p>
-                                <p className="text-slate-600 text-[10px] mt-1">{new Date(event.timestamp).toLocaleString()}</p>
-                              </div>
-                            ))}
-                          </div>
-                        )}
-                      </div>
-                    )}
-                  </div>
-                ))}
-              </div>
-            )}
-          </div>
-        )}
 
         {/* ── USERS ── */}
         {activeTab === "users" && <AdminUsersTab />}
@@ -1723,7 +1197,6 @@ export function AdminDashboard() {
         {activeTab === "professionals" && <AdminProfessionalsTab />}
 
         {/* ── SKIN CONSULTS ── */}
-        {activeTab === "skin" && <AdminSkinConsultsTab />}
 
         {activeTab === "clients" && <AdminClientsTab />}
 
@@ -1756,19 +1229,9 @@ export function AdminDashboard() {
           />
         )}
 
+        </main>
       </div>
 
-      {showCreateMarketer && (
-        <CreateMarketerModal onClose={() => setShowCreateMarketer(false)} onSuccess={() => { setShowCreateMarketer(false); fetchMarketers(); }} />
-      )}
-      {selectedMarketerId && (
-        <MarketerDetailModal
-          marketerId={selectedMarketerId}
-          onClose={() => setSelectedMarketerId(null)}
-          onSuspendToggle={() => fetchMarketers()}
-          onDelete={() => { setSelectedMarketerId(null); fetchMarketers(); }}
-        />
-      )}
       {showCreateLab && (
         <CreateLabForm onClose={() => setShowCreateLab(false)} onSuccess={() => { setShowCreateLab(false); fetchLabs(); }} />
       )}
@@ -1829,9 +1292,6 @@ export function AdminDashboard() {
       {partnersLab && (
         <AdminLabPartnersModal lab={partnersLab} onClose={() => setPartnersLab(null)} />
       )}
-      {selectedReferralGroup && (
-        <ReferralDetailModal group={selectedReferralGroup} onClose={() => setSelectedReferralGroup(null)} />
-      )}
       {expandedLabIntegration && (() => {
         const lab = labs.find((l) => l.id === expandedLabIntegration);
         return lab ? (
@@ -1868,14 +1328,6 @@ export function AdminDashboard() {
           label="lab"
           onClose={() => setDeleteConfirmLab(null)}
           onConfirm={() => { setDeleteConfirmLab(null); handleDeleteLab(deleteConfirmLab); }}
-        />
-      )}
-      {deleteConfirmMarketer && (
-        <DeleteConfirmModal
-          name={deleteConfirmMarketer.name}
-          label="marketer"
-          onClose={() => setDeleteConfirmMarketer(null)}
-          onConfirm={() => { setDeleteConfirmMarketer(null); handleDeleteMarketer(deleteConfirmMarketer); }}
         />
       )}
 
@@ -2177,135 +1629,6 @@ export function AdminDashboard() {
 // =============================================================================
 // Referral Detail Modal
 // =============================================================================
-function ReferralDetailModal({ group, onClose }: { group: ReferralGroup; onClose: () => void }) {
-  const [monthFilter, setMonthFilter] = useState<string>("all");
-
-  // Build unique month options from the group's requests
-  const monthOptions = useMemo(() => {
-    const seen = new Set<string>();
-    const opts: { value: string; label: string }[] = [];
-    for (const req of group.requests) {
-      const d = new Date(req.created_at);
-      const val = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}`;
-      if (!seen.has(val)) {
-        seen.add(val);
-        opts.push({ value: val, label: format(d, "MMMM yyyy") });
-      }
-    }
-    return opts.sort((a, b) => b.value.localeCompare(a.value));
-  }, [group.requests]);
-
-  const filtered = useMemo(() => {
-    if (monthFilter === "all") return group.requests;
-    return group.requests.filter((r) => {
-      const d = new Date(r.created_at);
-      return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}` === monthFilter;
-    });
-  }, [group.requests, monthFilter]);
-
-  const testStats = useMemo(() => testStatsFor(filtered), [filtered]);
-
-  return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm p-4">
-      <div className="bg-slate-900 border border-white/15 rounded-2xl w-full max-w-lg shadow-2xl animate-slide-up max-h-[90vh] flex flex-col">
-        {/* Header */}
-        <div className="flex items-start justify-between p-5 border-b border-white/10 shrink-0">
-          <div>
-            <h2 className="font-semibold text-white">{group.referrerName || group.email || "Unknown Referrer"}</h2>
-            {group.referrerName && group.email && <p className="text-xs text-slate-400 mt-0.5">{group.email}</p>}
-            {group.hospital && <p className="text-xs text-slate-500 mt-0.5">{group.hospital}</p>}
-            <div className="mt-1.5 flex flex-wrap items-center gap-1.5">
-              <span className={`inline-flex items-center rounded-full px-2 py-0.5 text-[10px] font-semibold ${group.registered ? "bg-emerald-500/15 text-emerald-300" : "bg-amber-500/15 text-amber-300"}`}>
-                {group.registered ? "Registered doctor" : "Unregistered referrer"}
-              </span>
-              {group.fastCount > 0 && (
-                <span className="inline-flex items-center gap-1 rounded-full bg-medical-500/15 px-2 py-0.5 text-[10px] font-semibold text-medical-300"><Zap className="w-3 h-3" /> {group.fastCount} Fast Mode</span>
-              )}
-            </div>
-          </div>
-          <button onClick={onClose} className="p-1.5 rounded-lg hover:bg-white/10 text-slate-400 transition-colors mt-0.5">
-            <X className="w-4 h-4" />
-          </button>
-        </div>
-
-        {/* Stats bar */}
-        <div className="flex flex-wrap items-center gap-x-6 gap-y-2 px-5 py-3 bg-white/3 border-b border-white/5 shrink-0">
-          <div>
-            <span className="text-lg font-bold text-white">{group.requests.length}</span>
-            <span className="text-xs text-slate-500 ml-1.5">total referrals</span>
-          </div>
-          <div>
-            <span className="text-lg font-bold text-medical-400">{group.thisMonthCount}</span>
-            <span className="text-xs text-slate-500 ml-1.5">this month</span>
-          </div>
-          {/* Month filter */}
-          <select
-            value={monthFilter}
-            onChange={(e) => setMonthFilter(e.target.value)}
-            className="ml-auto text-xs bg-white/8 border border-white/10 text-slate-300 rounded-lg px-2.5 py-1.5 focus:outline-none focus:ring-1 focus:ring-medical-500"
-          >
-            <option value="all">All months</option>
-            {monthOptions.map((o) => (
-              <option key={o.value} value={o.value}>{o.label}</option>
-            ))}
-          </select>
-        </div>
-
-        {/* Referral list */}
-        <div className="overflow-y-auto flex-1 p-4 space-y-2">
-          {filtered.length === 0 && (
-            <p className="text-center text-slate-500 py-10 text-sm">No referrals for this period</p>
-          )}
-
-          {/* Per-test breakdown — robust tracking of what this referrer orders */}
-          {testStats.length > 0 && (
-            <div className="mb-2 rounded-xl border border-white/8 bg-white/3 p-3">
-              <p className="mb-2 text-[11px] font-bold uppercase tracking-wide text-slate-400">Tests referred ({testStats.length})</p>
-              <div className="space-y-1.5">
-                {testStats.slice(0, 10).map((t) => (
-                  <div key={t.name} className="flex items-center gap-2">
-                    <div className="min-w-0 flex-1">
-                      <div className="flex items-center justify-between gap-2">
-                        <span className="truncate text-xs text-slate-200">{t.name}</span>
-                        <span className="shrink-0 text-[11px] font-semibold text-white">{t.total}</span>
-                      </div>
-                      <div className="mt-0.5 h-1 overflow-hidden rounded-full bg-white/5">
-                        <div className="h-full rounded-full bg-medical-500" style={{ width: `${Math.round((t.total / testStats[0].total) * 100)}%` }} />
-                      </div>
-                    </div>
-                    <div className="flex shrink-0 items-center gap-1">
-                      <span className="rounded bg-emerald-500/15 px-1.5 py-0.5 text-[9px] font-semibold text-emerald-300" title="Completed">{t.done} done</span>
-                      {t.fast > 0 && <span className="inline-flex items-center gap-0.5 rounded bg-medical-500/15 px-1.5 py-0.5 text-[9px] font-semibold text-medical-300" title="Fast Mode"><Zap className="w-2.5 h-2.5" />{t.fast}</span>}
-                    </div>
-                  </div>
-                ))}
-              </div>
-            </div>
-          )}
-
-          {filtered.map((req) => (
-            <div key={req.id} className="bg-white/5 border border-white/8 rounded-xl px-4 py-3">
-              <div className="flex items-start justify-between gap-2 mb-1">
-                <div className="flex min-w-0 items-center gap-1.5">
-                  <p className="text-sm text-white font-medium truncate">{req.patient_name}</p>
-                  {req.fast_mode && <span className="inline-flex shrink-0 items-center gap-0.5 rounded-full bg-medical-500/15 px-1.5 py-0.5 text-[9px] font-semibold text-medical-300"><Zap className="w-2.5 h-2.5" /> Fast</span>}
-                </div>
-                <StatusBadge status={req.status} />
-              </div>
-              <div className="flex items-center justify-between gap-2">
-                <p className="text-xs text-slate-500 truncate flex-1">{req.tests}</p>
-                <div className="flex items-center gap-2 shrink-0">
-                  <span className="font-mono text-xs text-medical-400">{req.code}</span>
-                  <span className="text-xs text-slate-600">{format(new Date(req.created_at), "dd MMM · HH:mm")}</span>
-                </div>
-              </div>
-            </div>
-          ))}
-        </div>
-      </div>
-    </div>
-  );
-}
 
 // =============================================================================
 // Lab Integration Panel — shown inline on each lab card when "Dev" is clicked
@@ -3230,355 +2553,9 @@ function SearchableCheckboxGroup({
 // =============================================================================
 // Create Marketer Modal
 // =============================================================================
-function CreateMarketerModal({ onClose, onSuccess }: { onClose: () => void; onSuccess: () => void }) {
-  const [name, setName] = useState("");
-  const [email, setEmail] = useState("");
-  const [phone, setPhone] = useState("");
-  const [loading, setLoading] = useState(false);
-  const [created, setCreated] = useState<{ code: string } | null>(null);
 
-  async function handleSubmit(e: React.FormEvent) {
-    e.preventDefault();
-    if (!name.trim() || !email.trim()) { toast.error("Name and email are required"); return; }
-    setLoading(true);
-    try {
-      const res = await fetch("/api/admin/create-marketer", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ name: name.trim(), email: email.trim(), phone: phone.trim() || undefined }),
-      });
-      const data = await res.json();
-      if (data.success) {
-        setCreated({ code: data.marketer.code });
-        toast.success(`Marketer "${name}" created!`);
-      } else {
-        toast.error(data.error ?? "Failed to create marketer");
-      }
-    } catch {
-      toast.error("Network error");
-    } finally {
-      setLoading(false);
-    }
-  }
 
-  return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm p-4">
-      <div className="bg-slate-900 border border-white/15 rounded-2xl w-full max-w-md shadow-2xl animate-slide-up">
-        <div className="flex items-center justify-between p-5 border-b border-white/10">
-          <h2 className="font-semibold text-white">Add New Marketer</h2>
-          <button onClick={onClose} className="p-1.5 rounded-lg hover:bg-white/10 text-slate-400 transition-colors"><X className="w-4 h-4" /></button>
-        </div>
-        {created ? (
-          <div className="p-5 space-y-4">
-            <div className="text-center">
-              <div className="w-12 h-12 bg-emerald-500/20 rounded-full flex items-center justify-center mx-auto mb-3">
-                <TrendingUp className="w-6 h-6 text-emerald-400" />
-              </div>
-              <h3 className="font-semibold text-white mb-1">Marketer Created!</h3>
-              <p className="text-sm text-slate-400">Their referral code is ready.</p>
-            </div>
-            <div className="bg-white/5 border border-white/10 rounded-xl p-4">
-              <p className="text-xs text-slate-400 mb-1 font-semibold uppercase tracking-wider">Referral Code</p>
-              <p className="font-mono text-lg text-emerald-400 font-bold">{created.code}</p>
-            </div>
-            <p className="text-xs text-slate-500 leading-relaxed">
-              The marketer can log in at <span className="text-slate-300 font-mono">/scale</span> using their email address (OTP-based, no password needed).
-            </p>
-            <Button fullWidth onClick={onSuccess}>Done</Button>
-          </div>
-        ) : (
-          <form onSubmit={handleSubmit} className="p-5 space-y-4">
-            <div>
-              <label className="text-sm font-medium text-slate-300 block mb-1">Full Name <span className="text-red-400">*</span></label>
-              <input className={`w-full rounded-xl border px-4 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500 ${whiteInput}`} placeholder="e.g. Amaka Johnson" value={name} onChange={(e) => setName(e.target.value)} required />
-            </div>
-            <div>
-              <label className="text-sm font-medium text-slate-300 block mb-1">Email Address <span className="text-red-400">*</span></label>
-              <input type="email" className={`w-full rounded-xl border px-4 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500 ${whiteInput}`} placeholder="marketer@example.com" value={email} onChange={(e) => setEmail(e.target.value)} required />
-              <p className="text-xs text-slate-500 mt-1">They&apos;ll use this to log in at /scale.</p>
-            </div>
-            <div>
-              <label className="text-sm font-medium text-slate-300 block mb-1">Phone Number <span className="text-xs text-slate-500">(optional)</span></label>
-              <input className={`w-full rounded-xl border px-4 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500 ${whiteInput}`} placeholder="+234 800 000 0000" value={phone} onChange={(e) => setPhone(e.target.value)} />
-            </div>
-            <div className="flex gap-3 pt-2">
-              <Button type="button" variant="secondary" fullWidth onClick={onClose}>Cancel</Button>
-              <Button type="submit" fullWidth loading={loading}>Create Marketer</Button>
-            </div>
-          </form>
-        )}
-      </div>
-    </div>
-  );
-}
 
-// =============================================================================
-// Marketer Detail Modal
-// =============================================================================
-interface MarketerDetail {
-  id: string;
-  name: string;
-  email: string;
-  phone: string | null;
-  code: string;
-  suspended: boolean;
-  created_at: string;
-  referral_link: string;
-}
-interface MarketerDoctorDetail {
-  doctor_email: string;
-  doctor_name: string;
-  doctor_phone: string | null;
-  doctor_hospital: string | null;
-  total_requests: number;
-  linked_since: string;
-  requests: {
-    id: string;
-    code: string;
-    patient_name: string;
-    tests: string;
-    status: string;
-    created_at: string;
-    seen_at: string | null;
-    completed_at: string | null;
-  }[];
-}
-
-const MSTATUS: Record<string, { label: string; color: string }> = {
-  incoming: { label: "Pending", color: "bg-amber-400/15 text-amber-300 border border-amber-400/25" },
-  seen: { label: "Arrived", color: "bg-blue-400/15 text-blue-300 border border-blue-400/25" },
-  done: { label: "Completed", color: "bg-emerald-400/15 text-emerald-300 border border-emerald-400/25" },
-};
-
-function MarketerDetailModal({
-  marketerId,
-  onClose,
-  onSuspendToggle,
-  onDelete,
-}: {
-  marketerId: string;
-  onClose: () => void;
-  onSuspendToggle: () => void;
-  onDelete: () => void;
-}) {
-  const [data, setData] = useState<{ marketer: MarketerDetail; doctors: MarketerDoctorDetail[]; stats: { total_doctors: number; total_requests: number; pending: number; seen: number; done: number } } | null>(null);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState("");
-  const [expandedEmail, setExpandedEmail] = useState<string | null>(null);
-  const [toggling, setToggling] = useState(false);
-  const [deleting, setDeleting] = useState(false);
-
-  useEffect(() => {
-    (async () => {
-      try {
-        const res = await fetch(`/api/admin/marketers/${marketerId}`);
-        const json = await res.json();
-        if (json.success) setData(json);
-        else setError(json.error ?? "Failed to load");
-      } catch {
-        setError("Network error");
-      } finally {
-        setLoading(false);
-      }
-    })();
-  }, [marketerId]);
-
-  async function handleSuspendToggle() {
-    if (!data) return;
-    setToggling(true);
-    try {
-      const res = await fetch(`/api/admin/marketers/${marketerId}`, {
-        method: "PATCH",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ suspended: !data.marketer.suspended }),
-      });
-      const json = await res.json();
-      if (json.success) {
-        setData((d) => d ? { ...d, marketer: { ...d.marketer, suspended: !d.marketer.suspended } } : d);
-        toast.success(data.marketer.suspended ? "Marketer unsuspended" : "Marketer suspended");
-        onSuspendToggle();
-      } else {
-        toast.error(json.error ?? "Failed to update");
-      }
-    } catch {
-      toast.error("Network error");
-    } finally {
-      setToggling(false);
-    }
-  }
-
-  async function handleDelete() {
-    if (!data) return;
-    if (!confirm(`Delete marketer "${data.marketer.name}"? This removes all their referral links. Cannot be undone.`)) return;
-    setDeleting(true);
-    try {
-      const res = await fetch(`/api/admin/marketers/${marketerId}`, { method: "DELETE" });
-      const json = await res.json();
-      if (json.success) {
-        toast.success(`"${data.marketer.name}" deleted`);
-        onDelete();
-      } else {
-        toast.error(json.error ?? "Failed to delete");
-      }
-    } catch {
-      toast.error("Network error");
-    } finally {
-      setDeleting(false);
-    }
-  }
-
-  return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm p-4">
-      <div className="bg-slate-900 border border-white/15 rounded-2xl w-full max-w-2xl shadow-2xl animate-slide-up max-h-[90vh] flex flex-col">
-        {/* Header */}
-        <div className="flex items-center justify-between px-5 py-4 border-b border-white/10 shrink-0">
-          <div className="flex items-center gap-2 min-w-0">
-            <div className={`w-8 h-8 rounded-lg flex items-center justify-center shrink-0 ${data?.marketer.suspended ? "bg-slate-700/40" : "bg-emerald-700/40"}`}>
-              <TrendingUp className={`w-4 h-4 ${data?.marketer.suspended ? "text-slate-500" : "text-emerald-400"}`} />
-            </div>
-            <div className="min-w-0">
-              <div className="flex items-center gap-2 flex-wrap">
-                <h2 className="font-semibold text-white text-sm truncate">{data?.marketer.name ?? "Loading…"}</h2>
-                {data?.marketer.suspended && <span className="text-xs bg-red-900/40 text-red-400 border border-red-800/30 px-1.5 py-0.5 rounded-full">Suspended</span>}
-              </div>
-              {data && <p className="text-xs text-slate-400">{data.marketer.email}</p>}
-            </div>
-          </div>
-          <div className="flex items-center gap-1 shrink-0">
-            {data && (
-              <>
-                <button
-                  type="button"
-                  onClick={handleSuspendToggle}
-                  disabled={toggling}
-                  title={data.marketer.suspended ? "Unsuspend" : "Suspend"}
-                  className={`p-2 rounded-lg transition-colors disabled:opacity-40 text-xs ${data.marketer.suspended ? "hover:bg-emerald-500/15 text-slate-400 hover:text-emerald-400" : "hover:bg-amber-500/15 text-slate-400 hover:text-amber-400"}`}
-                >
-                  {toggling ? <RefreshCw className="w-4 h-4 animate-spin" /> : data.marketer.suspended ? <Eye className="w-4 h-4" /> : <EyeOff className="w-4 h-4" />}
-                </button>
-                <button
-                  type="button"
-                  onClick={handleDelete}
-                  disabled={deleting}
-                  title="Delete marketer"
-                  className="p-2 rounded-lg hover:bg-red-500/15 text-slate-400 hover:text-red-400 transition-colors disabled:opacity-40"
-                >
-                  {deleting ? <RefreshCw className="w-4 h-4 animate-spin" /> : <Trash2 className="w-4 h-4" />}
-                </button>
-              </>
-            )}
-            <button onClick={onClose} className="p-2 rounded-lg hover:bg-white/10 text-slate-400 transition-colors ml-1">
-              <X className="w-4 h-4" />
-            </button>
-          </div>
-        </div>
-
-        {/* Body */}
-        <div className="overflow-y-auto flex-1 p-5 space-y-5">
-          {loading && (
-            <div className="space-y-3">
-              {[1, 2, 3].map((i) => <div key={i} className="bg-white/5 rounded-xl h-12 animate-pulse" />)}
-            </div>
-          )}
-          {error && <p className="text-sm text-red-400 bg-red-500/10 border border-red-500/20 rounded-xl px-4 py-3">{error}</p>}
-          {data && (
-            <>
-              {/* Info */}
-              <div className="bg-white/5 border border-white/10 rounded-xl p-4 space-y-2">
-                <p className="text-xs text-slate-500 font-semibold uppercase tracking-wider">Details</p>
-                {data.marketer.phone && (
-                  <p className="text-xs text-slate-300 flex items-center gap-1.5"><Phone className="w-3 h-3 text-slate-500" />{data.marketer.phone}</p>
-                )}
-                <p className="text-xs text-slate-400">Code: <span className="font-mono text-emerald-400">{data.marketer.code}</span></p>
-                <p className="text-xs text-slate-600">Joined {format(new Date(data.marketer.created_at), "dd MMM yyyy")}</p>
-              </div>
-
-              {/* Stats */}
-              <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
-                {[
-                  { label: "Doctors", value: data.stats.total_doctors, color: "text-emerald-400" },
-                  { label: "Requests", value: data.stats.total_requests, color: "text-white" },
-                  { label: "Pending", value: data.stats.pending, color: "text-amber-400" },
-                  { label: "Completed", value: data.stats.done, color: "text-emerald-400" },
-                ].map((s) => (
-                  <div key={s.label} className="bg-white/5 border border-white/10 rounded-xl p-3 text-center">
-                    <p className={`text-2xl font-bold ${s.color}`}>{s.value}</p>
-                    <p className="text-xs text-slate-500 mt-0.5">{s.label}</p>
-                  </div>
-                ))}
-              </div>
-
-              {/* Doctor list */}
-              <div>
-                <p className="text-xs font-semibold text-slate-400 uppercase tracking-wider mb-3">Referred Doctors</p>
-                {data.doctors.length === 0 ? (
-                  <div className="bg-white/5 border border-white/10 rounded-xl p-8 text-center">
-                    <Users className="w-8 h-8 text-slate-600 mx-auto mb-2" />
-                    <p className="text-sm text-slate-500">No doctors referred yet</p>
-                  </div>
-                ) : (
-                  <div className="space-y-2">
-                    {data.doctors.map((doc) => (
-                      <div key={doc.doctor_email} className="bg-white/5 border border-white/8 rounded-xl overflow-hidden">
-                        {/* Doctor row */}
-                        <button
-                          type="button"
-                          onClick={() => setExpandedEmail(expandedEmail === doc.doctor_email ? null : doc.doctor_email)}
-                          className="w-full flex items-center gap-3 px-4 py-3 hover:bg-white/5 transition-colors text-left"
-                        >
-                          <div className="w-7 h-7 rounded-lg bg-slate-700/50 flex items-center justify-center shrink-0">
-                            <Users className="w-3.5 h-3.5 text-slate-400" />
-                          </div>
-                          <div className="flex-1 min-w-0">
-                            <p className="text-sm font-semibold text-white truncate">{doc.doctor_name}</p>
-                            <div className="flex items-center gap-2 flex-wrap mt-0.5">
-                              {doc.doctor_hospital && <span className="text-xs text-slate-500 truncate">{doc.doctor_hospital}</span>}
-                              {doc.doctor_phone && <span className="text-xs text-slate-600">· {doc.doctor_phone}</span>}
-                            </div>
-                          </div>
-                          <div className="shrink-0 flex items-center gap-2">
-                            <span className="text-xs text-slate-400">{doc.total_requests} req</span>
-                            {expandedEmail === doc.doctor_email ? <ChevronUp className="w-3.5 h-3.5 text-slate-500" /> : <ChevronDown className="w-3.5 h-3.5 text-slate-500" />}
-                          </div>
-                        </button>
-
-                        {/* Expanded requests */}
-                        {expandedEmail === doc.doctor_email && (
-                          <div className="border-t border-white/8 px-4 py-3 space-y-2 bg-slate-950/30">
-                            {doc.requests.length === 0 ? (
-                              <p className="text-xs text-slate-500 py-2 text-center">No requests yet</p>
-                            ) : (
-                              doc.requests.map((req) => {
-                                const st = MSTATUS[req.status] ?? MSTATUS.incoming;
-                                return (
-                                  <div key={req.id} className="flex items-start gap-3 py-2 border-b border-white/5 last:border-0">
-                                    <div className="flex-1 min-w-0">
-                                      <div className="flex items-center gap-2 flex-wrap">
-                                        <span className="font-mono text-xs text-medical-400">{req.code}</span>
-                                        <span className={`text-xs font-semibold px-1.5 py-0.5 rounded-full ${st.color}`}>{st.label}</span>
-                                      </div>
-                                      <p className="text-xs text-slate-500 mt-0.5">Patient: <span className="text-slate-300 font-medium">{req.patient_name}</span></p>
-                                      <p className="text-xs text-slate-600 mt-0.5 line-clamp-2 leading-relaxed">{req.tests}</p>
-                                    </div>
-                                    <span className="text-xs text-slate-600 whitespace-nowrap shrink-0 mt-0.5">{format(new Date(req.created_at), REQ_DATE_TIME)}</span>
-                                  </div>
-                                );
-                              })
-                            )}
-                          </div>
-                        )}
-                      </div>
-                    ))}
-                  </div>
-                )}
-              </div>
-            </>
-          )}
-        </div>
-      </div>
-    </div>
-  );
-}
 
 /* ─────────────────────────────────────────────
    Admin Transactions Tab
@@ -3865,500 +2842,7 @@ function AdminTransactionsTab({ labs }: { labs: Lab[] }) {
 /* ─────────────────────────────────────────────
    Admin Knowledge Base Tab
 ───────────────────────────────────────────── */
-type KbTest = {
-  id: string; canonical_name: string; synonyms: string[]; variants: string[];
-  category: string | null; description: string | null;
-  lab_count: number;
-  labs: { lab_id: string; lab_name: string; price: number }[];
-};
 
-function AdminKnowledgeBaseTab() {
-  const [tests, setTests] = useState<KbTest[]>([]);
-  const [stats, setStats] = useState<{ total_kb: number; total_lab_tests: number; total_labs: number } | null>(null);
-  const [loading, setLoading] = useState(false);
-  const [fetched, setFetched] = useState(false);
-  const [search, setSearch] = useState("");
-  const [expandedId, setExpandedId] = useState<string | null>(null);
-  const [showAdd, setShowAdd] = useState(false);
-  const [addName, setAddName] = useState("");
-  const [addCategory, setAddCategory] = useState("");
-  const [addSyns, setAddSyns] = useState("");
-  const [adding, setAdding] = useState(false);
-  const [editingSyns, setEditingSyns] = useState<{ id: string; value: string } | null>(null);
-  const [savingSyn, setSavingSyn] = useState(false);
-  const [syncing, setSyncing] = useState(false);
-  const [syncMode, setSyncMode] = useState<"new_only" | "merge_synonyms">("new_only");
-  const [seeding, setSeeding] = useState(false);
-  const csvFileRef = useRef<HTMLInputElement | null>(null);
-  const [uploadingCsv, setUploadingCsv] = useState(false);
-  const [hospitalTab, setHospitalTab] = useState(false);
-  const [hospitals, setHospitals] = useState<{ id: string; name: string; city: string | null; email: string | null; phone: string | null; is_active: boolean }[]>([]);
-  const [hospLoading, setHospLoading] = useState(false);
-  const [hospSearch, setHospSearch] = useState("");
-  const [showAddHosp, setShowAddHosp] = useState(false);
-  const [newHospName, setNewHospName] = useState("");
-  const [newHospCity, setNewHospCity] = useState("");
-  const [newHospEmail, setNewHospEmail] = useState("");
-  const [newHospPhone, setNewHospPhone] = useState("");
-
-  const fetchKb = useCallback(async (q?: string) => {
-    setLoading(true);
-    const url = `/api/admin/test-kb-manage${q ? `?q=${encodeURIComponent(q)}` : ""}`;
-    try {
-      const res = await fetch(url);
-      const data = await res.json().catch(() => ({ success: false, error: `HTTP ${res.status}` }));
-      if (data.success) {
-        setTests(data.tests);
-        setStats(data.stats);
-      } else {
-        const msg = data.error || `HTTP ${res.status}`;
-        console.error("[fetchKb] Failed:", msg, data);
-        toast.error(`KB load failed: ${msg}${data.hint ? ` — ${data.hint}` : ""}`, { duration: 8000 });
-      }
-    } catch (e) {
-      console.error("[fetchKb] Exception:", e);
-    }
-    setLoading(false);
-    setFetched(true);
-  }, []);
-
-  const fetchHospitals = useCallback(async () => {
-    setHospLoading(true);
-    try {
-      const res = await fetch(`/api/admin/hospitals${hospSearch ? `?q=${encodeURIComponent(hospSearch)}` : ""}`);
-      const data = await res.json();
-      if (data.success) setHospitals(data.hospitals);
-    } catch { /* ignore */ }
-    setHospLoading(false);
-  }, [hospSearch]);
-
-  useEffect(() => { fetchKb(); }, [fetchKb]);
-  useEffect(() => { if (hospitalTab) fetchHospitals(); }, [hospitalTab, fetchHospitals]);
-
-  async function handleSeed() {
-    setSeeding(true);
-    try {
-      const res = await fetch("/api/admin/test-kb-manage/seed", {
-        method: "POST", headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ action: "seed" }),
-      });
-      // Surface HTTP errors (403, 500, etc) with the real server message
-      const data = await res.json().catch(() => ({ success: false, error: `HTTP ${res.status} ${res.statusText}` }));
-      if (!res.ok || !data.success) {
-        const msg = data.error || data.message || `HTTP ${res.status}`;
-        console.error("[Seed KB] Failed:", msg, data);
-        toast.error(`Seeding failed: ${msg}`, { duration: 6000 });
-      } else {
-        toast.success(`Seeded ${data.created} tests (${data.skipped} already existed)`);
-        await fetchKb();
-      }
-    } catch (e) {
-      console.error("[Seed KB] Exception:", e);
-      toast.error(`Seed failed: ${e instanceof Error ? e.message : "Unknown error"}`, { duration: 6000 });
-    }
-    setSeeding(false);
-  }
-
-  async function handleCsvUpload(e: React.ChangeEvent<HTMLInputElement>) {
-    const file = e.target.files?.[0];
-    if (!file) return;
-    setUploadingCsv(true);
-    try {
-      const formData = new FormData();
-      formData.append("file", file);
-      const res = await fetch("/api/admin/test-kb/import-csv", {
-        method: "POST",
-        body: formData,
-      });
-      const data = await res.json().catch(() => ({ success: false, error: `HTTP ${res.status}` }));
-      if (!res.ok || !data.success) {
-        toast.error(`Import failed: ${data.error || `HTTP ${res.status}`}`, { duration: 6000 });
-      } else {
-        toast.success(`Imported ${data.created} tests (${data.skipped} skipped)`);
-        if (data.errors && data.errors.length > 0) {
-          console.warn("[CSV Import] Errors:", data.errors);
-          toast(`${data.errors.length} rows had errors — see console`, { duration: 5000 });
-        }
-        await fetchKb();
-      }
-    } catch (err) {
-      console.error("[CSV Import] Exception:", err);
-      toast.error(`Upload failed: ${err instanceof Error ? err.message : "Unknown error"}`);
-    }
-    setUploadingCsv(false);
-    if (csvFileRef.current) csvFileRef.current.value = "";
-  }
-
-  async function handleSync() {
-    setSyncing(true);
-    try {
-      const callStep = async (action: string) => {
-        const res = await fetch("/api/admin/test-kb-manage/migrate", {
-          method: "POST", headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ action }),
-        });
-        const data = await res.json().catch(() => ({ success: false, error: `HTTP ${res.status}` }));
-        if (!res.ok || !data.success) {
-          throw new Error(`${action}: ${data.error || `HTTP ${res.status}`}`);
-        }
-        return data;
-      };
-
-      const migrateData = await callStep("migrate_from_old_kb");
-      const clearData = await callStep("clear_old_synonyms");
-      const mapData = await callStep("map_labs_to_kb");
-
-      console.log("[Sync] migrate:", migrateData, "clear:", clearData, "map:", mapData);
-      toast.success(`Sync complete: Migrated ${migrateData.migrated ?? 0} tests, mapped ${mapData.created ?? 0} lab tests`);
-      await fetchKb();
-    } catch (e) {
-      console.error("[Sync] Exception:", e);
-      toast.error(`Sync failed: ${e instanceof Error ? e.message : "Unknown error"}`, { duration: 8000 });
-    }
-    setSyncing(false);
-  }
-
-  async function handleAdd() {
-    if (!addName.trim()) return;
-    setAdding(true);
-    try {
-      const syns = addSyns.split(",").map((s) => s.trim()).filter(Boolean);
-      const res = await fetch("/api/admin/test-kb-manage", {
-        method: "POST", headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ canonical_name: addName.trim(), synonyms: syns, category: addCategory.trim() || null }),
-      });
-      if (res.ok) {
-        toast.success("Added to knowledge base");
-        setAddName(""); setAddCategory(""); setAddSyns(""); setShowAdd(false); fetchKb();
-      } else { toast.error("Failed to add"); }
-    } catch { toast.error("Failed"); }
-    setAdding(false);
-  }
-
-  async function handleDelete(id: string, name: string) {
-    if (!confirm(`Remove "${name}" from the knowledge base?`)) return;
-    await fetch(`/api/admin/test-kb-manage/${id}`, { method: "DELETE" });
-    setTests((prev) => prev.filter((t) => t.id !== id));
-  }
-
-  async function saveSynonyms(id: string, raw: string) {
-    setSavingSyn(true);
-    const syns = raw.split(",").map((s) => s.trim()).filter(Boolean);
-    const res = await fetch(`/api/admin/test-kb-manage/${id}`, {
-      method: "PATCH", headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ synonyms: syns }),
-    });
-    const data = await res.json();
-    if (data.success) {
-      setTests((prev) => prev.map((t) => t.id === id ? { ...t, synonyms: data.test.synonyms } : t));
-      setEditingSyns(null); toast.success("Synonyms updated");
-    } else { toast.error("Failed"); }
-    setSavingSyn(false);
-  }
-
-  async function handleAddHospital() {
-    if (!newHospName.trim()) return;
-    const email = newHospEmail.trim().toLowerCase();
-    if (email && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) { toast.error("Enter a valid email"); return; }
-    const res = await fetch("/api/admin/hospitals", {
-      method: "POST", headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        name: newHospName.trim(),
-        city: newHospCity.trim() || null,
-        email: email || null,
-        phone: newHospPhone.trim() || null,
-      }),
-    });
-    const data = await res.json();
-    if (data.success) {
-      toast.success(email ? "Hospital added — invite sent to log in" : "Hospital added");
-      setNewHospName(""); setNewHospCity(""); setNewHospEmail(""); setNewHospPhone(""); setShowAddHosp(false); fetchHospitals();
-    } else { toast.error(data.error ?? "Failed"); }
-  }
-
-  async function setHospitalEmail(id: string, current: string | null) {
-    const input = window.prompt("Login email for this hospital (used at /hospital-login):", current ?? "");
-    if (input == null) return;
-    const email = input.trim().toLowerCase();
-    if (email && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) { toast.error("Enter a valid email"); return; }
-    const res = await fetch(`/api/admin/hospitals/${id}`, {
-      method: "PATCH", headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ email: email || null }),
-    });
-    const data = await res.json();
-    if (res.ok && data.success !== false) {
-      toast.success(email ? "Email saved — they can now log in" : "Email cleared");
-      setHospitals((prev) => prev.map((h) => h.id === id ? { ...h, email: email || null } : h));
-    } else { toast.error(data.error ?? "Failed to update email"); }
-  }
-
-  async function toggleHospActive(id: string, current: boolean) {
-    await fetch(`/api/admin/hospitals/${id}`, {
-      method: "PATCH", headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ is_active: !current }),
-    });
-    setHospitals((prev) => prev.map((h) => h.id === id ? { ...h, is_active: !current } : h));
-  }
-
-  async function deleteHospital(id: string, name: string) {
-    if (!confirm(`Remove "${name}"?`)) return;
-    await fetch(`/api/admin/hospitals/${id}`, { method: "DELETE" });
-    setHospitals((prev) => prev.filter((h) => h.id !== id));
-  }
-
-  const filtered = search
-    ? tests.filter((t) =>
-        t.canonical_name.toLowerCase().includes(search.toLowerCase()) ||
-        (t.synonyms as string[]).some((s) => s.toLowerCase().includes(search.toLowerCase()))
-      )
-    : tests;
-
-  return (
-    <div className="animate-fade-in space-y-5">
-      {/* Sub-tabs */}
-      <div className="flex gap-1 bg-white/5 rounded-xl p-1 w-fit">
-        <button onClick={() => setHospitalTab(false)} className={`flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-medium transition-all ${!hospitalTab ? "bg-white/15 text-white" : "text-slate-400 hover:text-white"}`}>
-          <Database className="w-4 h-4" />Test Catalog
-        </button>
-        <button onClick={() => setHospitalTab(true)} className={`flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-medium transition-all ${hospitalTab ? "bg-white/15 text-white" : "text-slate-400 hover:text-white"}`}>
-          <Building2 className="w-4 h-4" />Hospitals
-        </button>
-      </div>
-
-      {/* ── Test Catalog ── */}
-      {!hospitalTab && (
-        <div className="space-y-5">
-          {stats && (
-            <div className="grid grid-cols-3 gap-3">
-              {[
-                { label: "KB Tests", value: stats.total_kb, icon: <BookOpen className="w-4 h-4 text-sky-400" /> },
-                { label: "Lab Tests", value: stats.total_lab_tests, icon: <Layers className="w-4 h-4 text-emerald-400" /> },
-                { label: "Labs", value: stats.total_labs, icon: <Building2 className="w-4 h-4 text-violet-400" /> },
-              ].map((s) => (
-                <div key={s.label} className="bg-white/5 border border-white/10 rounded-xl p-4 flex items-center gap-3">
-                  {s.icon}
-                  <div>
-                    <p className="text-xl font-bold text-white">{s.value}</p>
-                    <p className="text-xs text-slate-400">{s.label}</p>
-                  </div>
-                </div>
-              ))}
-            </div>
-          )}
-
-          <div className="bg-white/5 border border-white/10 rounded-2xl p-4 space-y-3">
-            <div className="flex items-center gap-2 flex-wrap">
-              <div className="relative flex-1 min-w-[200px]">
-                <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-500 pointer-events-none" />
-                <input
-                  value={search}
-                  onChange={(e) => setSearch(e.target.value)}
-                  placeholder="Search tests or synonyms…"
-                  className="w-full pl-9 pr-4 py-2 rounded-xl bg-white/8 border border-white/10 text-sm text-white placeholder-slate-500 focus:outline-none focus:border-white/25"
-                />
-              </div>
-              <button onClick={() => setShowAdd((v) => !v)} className="flex items-center gap-1.5 px-3 py-2 rounded-xl bg-emerald-600/20 border border-emerald-600/30 text-emerald-400 text-sm hover:bg-emerald-600/30 transition-colors">
-                <Plus className="w-4 h-4" />Add Test
-              </button>
-              <button onClick={() => fetchKb(search || undefined)} disabled={loading} className="p-2 rounded-xl bg-white/8 border border-white/10 text-slate-400 hover:text-white transition-colors">
-                <RefreshCw className={`w-4 h-4 ${loading ? "animate-spin" : ""}`} />
-              </button>
-            </div>
-            <div className="flex items-center gap-3 pt-1 border-t border-white/8">
-              <Sparkles className="w-4 h-4 text-amber-400 shrink-0" />
-              <p className="text-xs text-slate-400 flex-1">Populate or sync the Knowledge Base with tests and lab data.</p>
-              <div className="flex gap-2">
-                <button onClick={handleSeed} disabled={seeding} className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-green-500/20 border border-green-500/30 text-green-300 text-xs font-semibold hover:bg-green-500/30 transition-colors disabled:opacity-50">
-                  {seeding ? <RefreshCw className="w-3.5 h-3.5 animate-spin" /> : <Plus className="w-3.5 h-3.5" />}
-                  {seeding ? "Seeding…" : "Seed KB"}
-                </button>
-                <input
-                  ref={csvFileRef}
-                  type="file"
-                  accept=".csv,text/csv"
-                  onChange={handleCsvUpload}
-                  className="hidden"
-                />
-                <button
-                  onClick={() => csvFileRef.current?.click()}
-                  disabled={uploadingCsv}
-                  className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-sky-500/20 border border-sky-500/30 text-sky-300 text-xs font-semibold hover:bg-sky-500/30 transition-colors disabled:opacity-50"
-                  title="Upload CSV: canonical_name, synonyms, variants, category"
-                >
-                  {uploadingCsv ? <RefreshCw className="w-3.5 h-3.5 animate-spin" /> : <Upload className="w-3.5 h-3.5" />}
-                  {uploadingCsv ? "Uploading…" : "Import CSV"}
-                </button>
-                <button onClick={handleSync} disabled={syncing} className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-amber-500/20 border border-amber-500/30 text-amber-300 text-xs font-semibold hover:bg-amber-500/30 transition-colors disabled:opacity-50">
-                  {syncing ? <RefreshCw className="w-3.5 h-3.5 animate-spin" /> : <Sparkles className="w-3.5 h-3.5" />}
-                  {syncing ? "Syncing…" : "Migrate & Sync"}
-                </button>
-              </div>
-            </div>
-          </div>
-
-          {showAdd && (
-            <div className="bg-emerald-500/5 border border-emerald-500/20 rounded-2xl p-4 space-y-3">
-              <p className="text-sm font-semibold text-emerald-300">New Knowledge Base Entry</p>
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                <input value={addName} onChange={(e) => setAddName(e.target.value)} placeholder="Canonical name *" className="px-3 py-2 rounded-xl bg-white/8 border border-white/10 text-sm text-white placeholder-slate-500 focus:outline-none focus:border-white/25" />
-                <input value={addCategory} onChange={(e) => setAddCategory(e.target.value)} placeholder="Category (optional)" className="px-3 py-2 rounded-xl bg-white/8 border border-white/10 text-sm text-white placeholder-slate-500 focus:outline-none focus:border-white/25" />
-              </div>
-              <input value={addSyns} onChange={(e) => setAddSyns(e.target.value)} placeholder="Synonyms, comma-separated (e.g. FBC, CBC, full blood count)" className="w-full px-3 py-2 rounded-xl bg-white/8 border border-white/10 text-sm text-white placeholder-slate-500 focus:outline-none focus:border-white/25" />
-              <div className="flex gap-2">
-                <button onClick={handleAdd} disabled={adding || !addName.trim()} className="flex items-center gap-1.5 px-4 py-2 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white text-sm font-semibold disabled:opacity-50">
-                  <Check className="w-4 h-4" />{adding ? "Adding…" : "Add"}
-                </button>
-                <button onClick={() => setShowAdd(false)} className="px-4 py-2 rounded-xl bg-white/8 text-slate-400 text-sm">Cancel</button>
-              </div>
-            </div>
-          )}
-
-          {loading && !fetched ? (
-            <div className="space-y-2">{[...Array(5)].map((_, i) => <div key={i} className="bg-white/5 border border-white/10 rounded-xl h-14 animate-pulse" />)}</div>
-          ) : filtered.length === 0 ? (
-            <div className="text-center py-16 text-slate-500">
-              {search ? "No tests match your search." : `Knowledge base is empty. Click "Sync from Labs" to populate it.`}
-            </div>
-          ) : (
-            <div className="space-y-2">
-              {filtered.map((test) => {
-                const isExpanded = expandedId === test.id;
-                return (
-                  <div key={test.id} className="bg-white/5 border border-white/10 rounded-xl overflow-hidden">
-                    <button type="button" onClick={() => setExpandedId(isExpanded ? null : test.id)} className="w-full flex items-center gap-3 px-4 py-3 text-left hover:bg-white/5 transition-colors">
-                      <div className="flex-1 min-w-0">
-                        <div className="flex items-center gap-2 flex-wrap">
-                          <p className="text-sm font-semibold text-white">{test.canonical_name}</p>
-                          {test.category && <span className="text-[10px] bg-sky-500/15 text-sky-400 border border-sky-500/20 px-1.5 py-0.5 rounded-full">{test.category}</span>}
-                        </div>
-                        <p className="text-xs text-slate-500 mt-0.5 truncate">
-                          {test.synonyms.length > 0 ? test.synonyms.slice(0, 3).join(" · ") + (test.synonyms.length > 3 ? ` +${test.synonyms.length - 3}` : "") : "No synonyms"}
-                          {test.variants && test.variants.length > 0 && ` • Variants: ${test.variants.slice(0, 2).join(", ")}`}
-                        </p>
-                      </div>
-                      <div className="shrink-0 text-right">
-                        <p className="text-xs text-emerald-400 font-semibold">{test.lab_count} lab{test.lab_count !== 1 ? "s" : ""}</p>
-                        <ChevronDown className={`w-3.5 h-3.5 text-slate-500 ml-auto mt-0.5 transition-transform ${isExpanded ? "rotate-180" : ""}`} />
-                      </div>
-                    </button>
-                    {isExpanded && (
-                      <div className="border-t border-white/8 px-4 py-4 space-y-4 bg-slate-950/40">
-                        <div>
-                          <p className="text-xs text-slate-400 font-semibold uppercase tracking-wider mb-2">Synonyms</p>
-                          {editingSyns?.id === test.id ? (
-                            <div className="flex gap-2 items-center">
-                              <input value={editingSyns.value} onChange={(e) => setEditingSyns({ id: test.id, value: e.target.value })} className="flex-1 px-3 py-1.5 rounded-lg bg-white/8 border border-white/15 text-sm text-white placeholder-slate-500 focus:outline-none focus:border-white/30" placeholder="Comma-separated synonyms" />
-                              <button onClick={() => saveSynonyms(test.id, editingSyns.value)} disabled={savingSyn} className="px-3 py-1.5 rounded-lg bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-semibold disabled:opacity-50">{savingSyn ? "…" : "Save"}</button>
-                              <button onClick={() => setEditingSyns(null)} className="p-1.5 text-slate-500 hover:text-white"><X className="w-3.5 h-3.5" /></button>
-                            </div>
-                          ) : (
-                            <div className="flex flex-wrap gap-1.5 items-center">
-                              {test.synonyms.length > 0
-                                ? test.synonyms.map((s) => <span key={s} className="text-xs bg-blue-500/10 text-blue-300 border border-blue-500/20 px-2 py-0.5 rounded-full">{s}</span>)
-                                : <span className="text-xs text-slate-600 italic">none yet</span>}
-                              <button onClick={() => setEditingSyns({ id: test.id, value: test.synonyms.join(", ") })} className="text-xs text-slate-500 hover:text-white border border-dashed border-slate-700 hover:border-white/30 px-2 py-0.5 rounded-full transition-colors">Edit</button>
-                            </div>
-                          )}
-                        </div>
-                        {test.variants && test.variants.length > 0 && (
-                          <div>
-                            <p className="text-xs text-slate-400 font-semibold uppercase tracking-wider mb-2">Variants</p>
-                            <div className="flex flex-wrap gap-1.5">
-                              {test.variants.map((v) => <span key={v} className="text-xs bg-purple-500/10 text-purple-300 border border-purple-500/20 px-2 py-0.5 rounded-full">{v}</span>)}
-                            </div>
-                          </div>
-                        )}
-                        {test.labs.length > 0 && (
-                          <div>
-                            <p className="text-xs text-slate-400 font-semibold uppercase tracking-wider mb-2">Labs offering this test</p>
-                            <div className="space-y-1">
-                              {test.labs.map((lab) => (
-                                <div key={lab.lab_id} className="flex items-center justify-between text-xs py-1 border-b border-white/5 last:border-0">
-                                  <span className="text-slate-200">{lab.lab_name}</span>
-                                  <span className="font-mono text-white">₦{lab.price.toLocaleString()}</span>
-                                </div>
-                              ))}
-                            </div>
-                          </div>
-                        )}
-                        <button onClick={() => handleDelete(test.id, test.canonical_name)} className="text-xs text-rose-400 hover:text-rose-300 border border-rose-500/20 hover:border-rose-500/40 px-3 py-1.5 rounded-lg transition-colors">Remove from KB</button>
-                      </div>
-                    )}
-                  </div>
-                );
-              })}
-            </div>
-          )}
-        </div>
-      )}
-
-      {/* ── Hospitals ── */}
-      {hospitalTab && (
-        <div className="space-y-4">
-          <div className="bg-white/5 border border-white/10 rounded-2xl p-4 flex items-center gap-3 flex-wrap">
-            <div className="relative flex-1 min-w-[200px]">
-              <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-500 pointer-events-none" />
-              <input value={hospSearch} onChange={(e) => setHospSearch(e.target.value)} placeholder="Search hospitals…" className="w-full pl-9 pr-4 py-2 rounded-xl bg-white/8 border border-white/10 text-sm text-white placeholder-slate-500 focus:outline-none focus:border-white/25" />
-            </div>
-            <button onClick={() => setShowAddHosp((v) => !v)} className="flex items-center gap-1.5 px-3 py-2 rounded-xl bg-emerald-600/20 border border-emerald-600/30 text-emerald-400 text-sm hover:bg-emerald-600/30 transition-colors">
-              <Plus className="w-4 h-4" />Add Hospital
-            </button>
-            <button onClick={fetchHospitals} disabled={hospLoading} className="p-2 rounded-xl bg-white/8 border border-white/10 text-slate-400 hover:text-white transition-colors">
-              <RefreshCw className={`w-4 h-4 ${hospLoading ? "animate-spin" : ""}`} />
-            </button>
-          </div>
-          {showAddHosp && (
-            <div className="bg-emerald-500/5 border border-emerald-500/20 rounded-2xl p-4 space-y-3">
-              <p className="text-sm font-semibold text-emerald-300">Add Hospital / Clinic</p>
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                <input value={newHospName} onChange={(e) => setNewHospName(e.target.value)} placeholder="Name *" className="px-3 py-2 rounded-xl bg-white/8 border border-white/10 text-sm text-white placeholder-slate-500 focus:outline-none focus:border-white/25" />
-                <input value={newHospCity} onChange={(e) => setNewHospCity(e.target.value)} placeholder="City (optional)" className="px-3 py-2 rounded-xl bg-white/8 border border-white/10 text-sm text-white placeholder-slate-500 focus:outline-none focus:border-white/25" />
-                <input value={newHospEmail} onChange={(e) => setNewHospEmail(e.target.value)} type="email" placeholder="Login email (for /hospital-login)" className="px-3 py-2 rounded-xl bg-white/8 border border-white/10 text-sm text-white placeholder-slate-500 focus:outline-none focus:border-white/25" />
-                <input value={newHospPhone} onChange={(e) => setNewHospPhone(e.target.value)} placeholder="Phone (optional)" className="px-3 py-2 rounded-xl bg-white/8 border border-white/10 text-sm text-white placeholder-slate-500 focus:outline-none focus:border-white/25" />
-              </div>
-              <p className="text-xs text-slate-500">Add an email to activate this hospital&apos;s login — they sign in at <span className="font-mono text-slate-400">/hospital-login</span> with it. No email = directory listing only.</p>
-              <div className="flex gap-2">
-                <button onClick={handleAddHospital} disabled={!newHospName.trim()} className="flex items-center gap-1.5 px-4 py-2 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white text-sm font-semibold disabled:opacity-50"><Check className="w-4 h-4" />Add</button>
-                <button onClick={() => setShowAddHosp(false)} className="px-4 py-2 rounded-xl bg-white/8 text-slate-400 text-sm">Cancel</button>
-              </div>
-            </div>
-          )}
-          {hospLoading ? (
-            <div className="space-y-2">{[...Array(4)].map((_, i) => <div key={i} className="bg-white/5 border border-white/10 rounded-xl h-12 animate-pulse" />)}</div>
-          ) : hospitals.filter((h) => !hospSearch || h.name.toLowerCase().includes(hospSearch.toLowerCase())).length === 0 ? (
-            <div className="text-center py-12 text-slate-500">No hospitals yet. Add one to start building the list.</div>
-          ) : (
-            <div className="space-y-1.5">
-              {hospitals.filter((h) => !hospSearch || h.name.toLowerCase().includes(hospSearch.toLowerCase())).map((h) => (
-                <div key={h.id} className={`flex items-center gap-3 px-4 py-3 rounded-xl border ${h.is_active ? "bg-white/5 border-white/10" : "bg-white/2 border-white/5 opacity-50"}`}>
-                  <Building2 className="w-4 h-4 text-slate-500 shrink-0" />
-                  <div className="flex-1 min-w-0">
-                    <p className="text-sm text-white font-medium">{h.name}</p>
-                    <p className="text-xs text-slate-500 truncate">
-                      {h.city ? `${h.city} · ` : ""}
-                      {h.email
-                        ? <span className="text-slate-400">{h.email}</span>
-                        : <span className="text-amber-400/80">no login email</span>}
-                    </p>
-                  </div>
-                  <button onClick={() => setHospitalEmail(h.id, h.email)} className="text-xs px-2.5 py-1 rounded-full border border-white/10 text-slate-400 hover:text-white hover:bg-white/10 font-medium">
-                    {h.email ? "Edit email" : "Set email"}
-                  </button>
-                  <button onClick={() => toggleHospActive(h.id, h.is_active)} className={`text-xs px-2.5 py-1 rounded-full border font-medium ${h.is_active ? "text-emerald-400 border-emerald-500/30 bg-emerald-500/10 hover:bg-emerald-500/20" : "text-slate-500 border-slate-700 bg-white/5 hover:bg-white/10"}`}>
-                    {h.is_active ? "Active" : "Inactive"}
-                  </button>
-                  <button onClick={() => deleteHospital(h.id, h.name)} className="p-1.5 text-slate-600 hover:text-rose-400 transition-colors">
-                    <Trash2 className="w-3.5 h-3.5" />
-                  </button>
-                </div>
-              ))}
-            </div>
-          )}
-        </div>
-      )}
-    </div>
-  );
-}
 
 // ─────────────────────────────────────────────────────────
 // Admin Users Tab — view & delete doctor portal users
@@ -6078,9 +4562,6 @@ function AdminLabCatalogModal({ lab, onClose }: { lab: Lab; onClose: () => void 
   const [isModalMinimized, setIsModalMinimized] = useState(false);
   const [kbMappings, setKbMappings] = useState<Record<string, { canonical: string; synonyms: string[]; variants: string[] }>>({});
   const [mappingLabTestId, setMappingLabTestId] = useState<string | null>(null);
-  const [mappingSearchQuery, setMappingSearchQuery] = useState("");
-  const [mappingOptions, setMappingOptions] = useState<Array<{ id: string; canonical: string; synonyms: string[]; variants: string[] }>>([]);
-  const [mappingLoading, setMappingLoading] = useState(false);
   const fileRef = useRef<HTMLInputElement>(null);
 
   // Fetch KB mappings for this lab
