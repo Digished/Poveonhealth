@@ -35,21 +35,29 @@ export async function GET(req: NextRequest) {
     let name = "";
     let addressLine: string | null = null;
     let phone: string | null = null;
+    let logoUrl: string | null = null;
 
     if (kind === "pharmacy") {
       const p = await prisma.pharmacy.findUnique({
         where: { id },
-        select: { code: true, name: true, address: true, city: true, state: true, phone: true },
+        select: {
+          code: true, name: true, address: true, city: true, state: true,
+          phone: true, logo_url: true,
+        },
       });
       if (!p) return NextResponse.json({ error: "Pharmacy not found." }, { status: 404 });
       code = p.code;
       name = p.name;
       addressLine = [p.address, p.city, p.state].filter(Boolean).join(", ") || null;
       phone = p.phone;
+      logoUrl = p.logo_url;
     } else {
       const l = await prisma.lab.findUnique({
         where: { id },
-        select: { slug: true, name: true, address: true, city: true, state: true, phones: true },
+        select: {
+          slug: true, name: true, address: true, city: true, state: true,
+          phones: true, logo_url: true,
+        },
       });
       if (!l) return NextResponse.json({ error: "Lab not found." }, { status: 404 });
       if (!l.slug) {
@@ -62,13 +70,15 @@ export async function GET(req: NextRequest) {
       name = l.name;
       addressLine = [l.address, l.city, l.state].filter(Boolean).join(", ") || null;
       phone = parsePhones(l.phones)[0]?.number ?? null;
+      logoUrl = l.logo_url;
     }
 
     if (!code) return NextResponse.json({ error: "That partner has no scannable code." }, { status: 400 });
 
-    const [settings, qr] = await Promise.all([
+    const [settings, qr, logoDataUri] = await Promise.all([
       getConsultSettings(),
       partnerQrPng(kind, code, 600),
+      fetchLogoDataUri(logoUrl),
     ]);
 
     const { renderToBuffer } = await import("@react-pdf/renderer");
@@ -83,6 +93,7 @@ export async function GET(req: NextRequest) {
         // @react-pdf takes an image as a data URI, so the QR is embedded
         // rather than fetched — the flyer renders with no network at all.
         qrDataUri: `data:image/png;base64,${qr.toString("base64")}`,
+        logoDataUri,
         joinUrl: partnerJoinUrl(kind, code),
         priceNaira: settings.price_naira,
         labDiscountPercent: settings.lab_discount_percent,
@@ -103,5 +114,29 @@ export async function GET(req: NextRequest) {
   } catch (err) {
     console.error("[admin/partner-promo]", err);
     return NextResponse.json({ error: "Could not build that flyer." }, { status: 500 });
+  }
+}
+
+
+/**
+ * The partner's logo, inlined so the PDF renders with no network of its own.
+ *
+ * Best-effort by design: a partner without a logo, or one whose logo has gone
+ * missing, still gets a flyer with their initial in a mark. A broken image URL
+ * must not cost them their poster.
+ */
+async function fetchLogoDataUri(url: string | null): Promise<string | null> {
+  if (!url) return null;
+  try {
+    const res = await fetch(url, { signal: AbortSignal.timeout(4000) });
+    if (!res.ok) return null;
+    const type = res.headers.get("content-type") ?? "";
+    // react-pdf only takes PNG and JPEG; an SVG logo would render as nothing.
+    if (!/image\/(png|jpe?g)/i.test(type)) return null;
+    const bytes = Buffer.from(await res.arrayBuffer());
+    if (bytes.byteLength > 2 * 1024 * 1024) return null;
+    return `data:${type.split(";")[0]};base64,${bytes.toString("base64")}`;
+  } catch {
+    return null;
   }
 }

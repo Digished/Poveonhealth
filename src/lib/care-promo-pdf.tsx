@@ -30,6 +30,8 @@ export type PromoData = {
   phone: string | null;
   /** A PNG data URI of the partner's sign-up QR code. */
   qrDataUri: string;
+  /** A data URI of the partner's own logo, when they have one. */
+  logoDataUri?: string | null;
   joinUrl: string;
   priceNaira: number;
   labDiscountPercent: number;
@@ -51,11 +53,17 @@ const HAIR = "#e4ebf2";
 const PAGE_X = 40;
 
 const s = StyleSheet.create({
-  page: { fontFamily: "Helvetica", fontSize: 10, color: INK, paddingBottom: 0 },
+  page: {
+    fontFamily: "Helvetica",
+    fontSize: 10,
+    color: INK,
+    display: "flex",
+    flexDirection: "column",
+  },
   topRule: { height: 5, backgroundColor: ACCENT },
 
   // ── Header ────────────────────────────────────────────────────────────────
-  header: { backgroundColor: NAVY, paddingTop: 30, paddingBottom: 62, paddingHorizontal: PAGE_X },
+  header: { backgroundColor: NAVY, paddingTop: 24, paddingBottom: 56, paddingHorizontal: PAGE_X },
   eyebrowRow: { flexDirection: "row", alignItems: "center" },
   wordmark: { fontSize: 17, fontFamily: "Helvetica-Bold", color: "#ffffff", letterSpacing: 0.3 },
   eyebrowRule: { flex: 1, height: 1, backgroundColor: "#ffffff", opacity: 0.18, marginLeft: 12, marginRight: 12 },
@@ -63,7 +71,7 @@ const s = StyleSheet.create({
 
   headRow: { flexDirection: "row", marginTop: 22 },
   headLeft: { flex: 1, paddingRight: 18 },
-  chips: { width: 132, paddingTop: 4 },
+  chips: { width: 132 },
   chip: {
     borderWidth: 1,
     borderColor: "#2f5d85",
@@ -75,9 +83,38 @@ const s = StyleSheet.create({
   chipTitle: { fontSize: 10, fontFamily: "Helvetica-Bold", color: "#ffffff" },
   chipBody: { fontSize: 7.5, color: "#8fc4ec", marginTop: 2, lineHeight: 1.4 },
 
-  headline: { fontSize: 30, fontFamily: "Helvetica-Bold", color: "#ffffff", lineHeight: 1.12 },
+  headline: { fontSize: 25, fontFamily: "Helvetica-Bold", color: "#ffffff", lineHeight: 1.12 },
+
+  // The partner's own badge, top right — this is their flyer as much as ours.
+  partnerBadge: {
+    backgroundColor: "#ffffff",
+    borderRadius: 8,
+    padding: 10,
+    alignItems: "center",
+    width: 132,
+  },
+  partnerLogo: { width: 74, height: 44, objectFit: "contain", marginBottom: 6 },
+  partnerBadgeName: {
+    fontSize: 10,
+    fontFamily: "Helvetica-Bold",
+    color: NAVY,
+    textAlign: "center",
+    maxLines: 2,
+    textOverflow: "ellipsis",
+  },
+  partnerBadgeKind: { fontSize: 7, color: MUTED, letterSpacing: 1.1, marginTop: 3, textAlign: "center" },
+  partnerBadgeMark: {
+    width: 44,
+    height: 44,
+    borderRadius: 22,
+    backgroundColor: BRAND_TINT,
+    marginBottom: 6,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  partnerBadgeInitial: { fontSize: 19, fontFamily: "Helvetica-Bold", color: BRAND },
   headlineAccent: { color: "#5cc8ff" },
-  subhead: { fontSize: 11, color: "#c2dcf1", marginTop: 10, lineHeight: 1.55 },
+  subhead: { fontSize: 10.5, color: "#c2dcf1", marginTop: 8, lineHeight: 1.5 },
 
   // ── The offer card, lifted over the header edge ──────────────────────────
   offerWrap: { marginTop: -44, paddingHorizontal: PAGE_X },
@@ -87,7 +124,7 @@ const s = StyleSheet.create({
     borderWidth: 1,
     borderColor: HAIR,
     borderRadius: 10,
-    padding: 16,
+    padding: 14,
     alignItems: "center",
   },
   offerLeft: { flex: 1, paddingRight: 14 },
@@ -109,17 +146,31 @@ const s = StyleSheet.create({
   qrCaption: { fontSize: 7.5, fontFamily: "Helvetica-Bold", color: NAVY, marginTop: 5, letterSpacing: 0.4 },
 
   // ── Body ──────────────────────────────────────────────────────────────────
-  body: { paddingHorizontal: PAGE_X, paddingTop: 22 },
-  sectionRow: { flexDirection: "row", alignItems: "center", marginBottom: 12 },
+  // Grows to fill whatever is left, which is what pins the footer to the foot.
+  body: { flexGrow: 1, paddingHorizontal: PAGE_X, paddingTop: 18 },
+  sectionRow: { flexDirection: "row", alignItems: "center", marginBottom: 10 },
   sectionTitle: { fontSize: 12.5, fontFamily: "Helvetica-Bold", color: INK },
   sectionRule: { flex: 1, height: 1, backgroundColor: HAIR, marginLeft: 12 },
 
   grid: { flexDirection: "row", flexWrap: "wrap", marginHorizontal: -5 },
-  cell: { width: "50%", paddingHorizontal: 5, marginBottom: 10 },
-  card: { backgroundColor: BRAND_TINT, borderRadius: 8, padding: 12, height: 82 },
+  cell: { width: "50%", paddingHorizontal: 5, marginBottom: 8 },
+  card: { backgroundColor: BRAND_TINT, borderRadius: 8, padding: 11, height: 72 },
   cardBig: { fontSize: 19, fontFamily: "Helvetica-Bold", color: BRAND, letterSpacing: -0.3 },
   cardTitle: { fontSize: 10, fontFamily: "Helvetica-Bold", color: INK, marginTop: 3 },
-  cardBody: { fontSize: 8.5, color: MUTED, marginTop: 3, lineHeight: 1.45 },
+  cardBody: { fontSize: 8.5, color: MUTED, marginTop: 3, lineHeight: 1.45, maxLines: 3 },
+
+  savingsBand: {
+    flexDirection: "row",
+    backgroundColor: NAVY,
+    borderRadius: 8,
+    paddingVertical: 10,
+    paddingHorizontal: 6,
+    marginTop: 2,
+  },
+  savingCell: { flex: 1, paddingHorizontal: 10 },
+  savingDivider: { borderRightWidth: 1, borderRightColor: "#1d4468" },
+  savingTitle: { fontSize: 9.5, fontFamily: "Helvetica-Bold", color: "#ffffff" },
+  savingBody: { fontSize: 7.5, color: "#a9cbe6", marginTop: 3, lineHeight: 1.45 },
 
   // ── Steps ────────────────────────────────────────────────────────────────
   steps: { flexDirection: "row", marginHorizontal: -6 },
@@ -128,23 +179,19 @@ const s = StyleSheet.create({
   stepN: { fontSize: 7.5, fontFamily: "Helvetica-Bold", color: ACCENT, letterSpacing: 1.2 },
   stepText: { fontSize: 9, color: "#334155", lineHeight: 1.5, marginTop: 3 },
 
-  smallPrint: { fontSize: 7.5, color: "#94a3b8", lineHeight: 1.5, marginTop: 18 },
+  smallPrint: { fontSize: 7, color: "#94a3b8", lineHeight: 1.45, marginTop: 8 },
 
   // ── Footer band ──────────────────────────────────────────────────────────
   footer: {
-    position: "absolute",
-    left: 0,
-    right: 0,
-    bottom: 0,
     backgroundColor: NAVY,
-    paddingVertical: 16,
+    paddingVertical: 14,
     paddingHorizontal: PAGE_X,
     flexDirection: "row",
     alignItems: "center",
   },
   footerLabel: { fontSize: 7.5, color: "#7fb4dd", letterSpacing: 1.6 },
-  footerName: { fontSize: 14, fontFamily: "Helvetica-Bold", color: "#ffffff", marginTop: 3 },
-  footerMeta: { fontSize: 9, color: "#a9cbe6", marginTop: 2 },
+  footerName: { fontSize: 14, fontFamily: "Helvetica-Bold", color: "#ffffff", marginTop: 3, maxLines: 2 },
+  footerMeta: { fontSize: 9, color: "#a9cbe6", marginTop: 2, maxLines: 1, textOverflow: "ellipsis" },
   footerRight: { alignItems: "flex-end", maxWidth: 210 },
   footerUrl: { fontSize: 8, color: "#7fb4dd" },
 });
@@ -160,7 +207,7 @@ export function CarePromoDocument(d: PromoData) {
     {
       big: `${ownPct}% off`,
       title: isLab ? "Your lab tests" : "Your medication",
-      body: `Here at ${d.partnerName}, and at every other Poveon partner.`,
+      body: "Here at this counter, and at every other Poveon partner in the network.",
     },
     {
       big: `${otherPct}% off`,
@@ -169,20 +216,27 @@ export function CarePromoDocument(d: PromoData) {
     },
     {
       big: `${d.messageAllowance} messages`,
-      title: "Your own doctor",
-      body: "Ask about your readings or your medication. Their replies are unlimited.",
+      title: "A doctor in your pocket",
+      body: "Ask from home instead of taking a day off to sit in a waiting room. Their replies are unlimited.",
     },
     {
-      big: "A real plan",
-      title: "Checked, not guessed",
-      body: "Your doctor sets what to check and when, and sees what you record.",
+      big: "No wasted trips",
+      title: "Everything on your phone",
+      body: "Your plan, your readings and your prescriptions live in one place you can open anywhere.",
     },
+  ];
+
+  // Why it is cheaper than the way most people manage these conditions now.
+  const savings = [
+    { t: "Fewer trips", b: "No transport and no lost day's pay for a routine check-in." },
+    { t: "Less spent at the counter", b: `Up to ${Math.max(ownPct, otherPct)}% off across the network, all year.` },
+    { t: "Caught earlier", b: "Small problems handled in a message, before they become a hospital bill." },
   ];
 
   const steps = [
     { n: "STEP 1", t: "Scan the code above with your phone camera." },
-    { n: "STEP 2", t: "Add your email, set a PIN, answer a few health questions." },
-    { n: "STEP 3", t: "Pay once. Your care code arrives at once - show it here." },
+    { n: "STEP 2", t: "Add your email and set a PIN." },
+    { n: "STEP 3", t: "Pay once. Your care code arrives straight away." },
   ];
 
   return (
@@ -213,13 +267,28 @@ export function CarePromoDocument(d: PromoData) {
             </View>
 
             <View style={s.chips}>
-              <View style={s.chip}>
-                <Text style={s.chipTitle}>Hypertension</Text>
-                <Text style={s.chipBody}>Readings watched, medication kept on track</Text>
+              {/* The partner's own badge leads: someone picks this up at their
+                  counter, and it should look like it came from them. */}
+              <View style={s.partnerBadge}>
+                {d.logoDataUri ? (
+                  // eslint-disable-next-line jsx-a11y/alt-text
+                  <Image src={d.logoDataUri} style={s.partnerLogo} />
+                ) : (
+                  <View style={s.partnerBadgeMark}>
+                    <Text style={s.partnerBadgeInitial}>
+                      {(d.partnerName || "P").trim().charAt(0).toUpperCase()}
+                    </Text>
+                  </View>
+                )}
+                <Text style={s.partnerBadgeName}>{d.partnerName}</Text>
+                <Text style={s.partnerBadgeKind}>
+                  YOUR POVEON {isLab ? "LAB" : "PHARMACY"}
+                </Text>
               </View>
-              <View style={s.chip}>
-                <Text style={s.chipTitle}>Diabetes</Text>
-                <Text style={s.chipBody}>Sugar checked on a schedule you can keep</Text>
+
+              <View style={[s.chip, { marginTop: 8 }]}>
+                <Text style={s.chipTitle}>All on your phone</Text>
+                <Text style={s.chipBody}>No queue, no appointment, no travelling to be told to come back</Text>
               </View>
             </View>
           </View>
@@ -266,7 +335,16 @@ export function CarePromoDocument(d: PromoData) {
             ))}
           </View>
 
-          <View style={[s.sectionRow, { marginTop: 8 }]}>
+          <View style={s.savingsBand}>
+            {savings.map((x, i) => (
+              <View key={x.t} style={[s.savingCell, i < savings.length - 1 ? s.savingDivider : {}]}>
+                <Text style={s.savingTitle}>{x.t}</Text>
+                <Text style={s.savingBody}>{x.b}</Text>
+              </View>
+            ))}
+          </View>
+
+          <View style={[s.sectionRow, { marginTop: 12 }]}>
             <Text style={s.sectionTitle}>Joining takes three minutes</Text>
             <View style={s.sectionRule} />
           </View>
@@ -291,7 +369,9 @@ export function CarePromoDocument(d: PromoData) {
         <View style={s.footer}>
           <View style={{ flex: 1 }}>
             <Text style={s.footerLabel}>YOUR POVEON PARTNER {isLab ? "LAB" : "PHARMACY"}</Text>
-            <Text style={s.footerName}>{d.partnerName}</Text>
+            <Text style={[s.footerName, d.partnerName.length > 34 ? { fontSize: 12 } : {}]}>
+              {d.partnerName}
+            </Text>
             {(d.addressLine || d.phone) && (
               <Text style={s.footerMeta}>
                 {[d.addressLine, d.phone].filter(Boolean).join("  ·  ")}
