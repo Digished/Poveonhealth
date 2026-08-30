@@ -2531,6 +2531,11 @@ const migrations = [
     continueOnError: true,
   },
   {
+    desc: "consult_patients.reminded_at (the daily nudge job's high-water mark)",
+    sql: `ALTER TABLE consult_patients ADD COLUMN IF NOT EXISTS reminded_at TIMESTAMP(3)`,
+    continueOnError: true,
+  },
+  {
     desc: "push_subscriptions table (PWA notifications)",
     sql: `    CREATE TABLE IF NOT EXISTS push_subscriptions (
       id TEXT PRIMARY KEY,

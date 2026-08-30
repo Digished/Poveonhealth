@@ -1959,6 +1959,11 @@ model ConsultPatient {
   messages_used     Int @default(0) // patient-sent messages counted against the allowance
   message_allowance Int @default(40) // snapshot of the allowance at sign-up
 
+  // Last time the daily reminder job nudged them. One nudge covers everything
+  // outstanding, and a member is never nudged twice in the same window however
+  // many items are due.
+  reminded_at DateTime?
+
   created_at DateTime @default(now())
   updated_at DateTime @updatedAt
 

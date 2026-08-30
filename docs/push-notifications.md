@@ -51,3 +51,33 @@ spot, so the table does not fill with dead endpoints.
   be created — that is Apple's rule, not a bug here.
 - Nothing is queued. A device that is off simply misses the notification; the
   message is still in the thread and the email still arrives.
+
+## The daily reminder
+
+`src/app/api/internal/care-reminders/route.ts` is what makes a treatment plan
+and a symptom check-in more than a page a member has to remember to open. It
+looks at every active member, works out what is due, and sends at most one
+push per member per day covering all of it — three overdue checklist items and
+a check-in are one notification, not four.
+
+It does not run on its own. `vercel.json` schedules it daily at 08:00 UTC via
+Vercel Cron, which issues a `GET` carrying `Authorization: Bearer $CRON_SECRET`.
+Anything else that can hold a secret can call it too, with either verb and the
+secret in `?secret=` or the same header:
+
+```
+curl -X POST "https://poveon.com/api/internal/care-reminders?secret=$CARE_REMINDER_SECRET"
+```
+
+Environment:
+
+- `CRON_SECRET` — set this in the Vercel project and the scheduled run works.
+- `CARE_REMINDER_SECRET` — optional second secret for calling it by hand.
+
+With neither set the endpoint answers 401 to everyone: an unset secret means
+the job is switched off, never that it is open.
+
+`consult_patients.reminded_at` is the high-water mark. It is stamped whether or
+not a push actually landed, so a member with no subscribed device is not
+re-examined on every run, and a retry or a manual run cannot double-notify
+anyone within the quiet window.

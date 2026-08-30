@@ -73,6 +73,7 @@ const SENTINEL_COLUMNS = [
   "consult_treatment_items.measure",
   "consult_patients.risk_level",
   "consult_patients.risk_manual",
+  "consult_patients.reminded_at",
   "consult_settings.topup_price_naira",
   "consult_treatment_plans.source",
   "consult_prescriptions.source",
@@ -546,6 +547,7 @@ async function runEnsure(): Promise<void> {
     `);
     await exec(`CREATE INDEX IF NOT EXISTS consult_screenings_patient_idx ON consult_screenings(patient_id, created_at);`);
     await exec(`CREATE INDEX IF NOT EXISTS consult_screenings_due_idx ON consult_screenings(severity, due_on);`);
+    await exec(`ALTER TABLE consult_patients ADD COLUMN IF NOT EXISTS reminded_at TIMESTAMP(3);`);
     await exec(`
     CREATE TABLE IF NOT EXISTS push_subscriptions (
       id TEXT PRIMARY KEY,
