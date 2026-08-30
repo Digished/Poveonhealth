@@ -2461,6 +2461,13 @@ const migrations = [
     continueOnError: true,
   },
   {
+    desc: "patient_profiles location columns (nearest partners)",
+    sql: `ALTER TABLE patient_profiles
+      ADD COLUMN IF NOT EXISTS state TEXT,
+      ADD COLUMN IF NOT EXISTS city TEXT`,
+    continueOnError: true,
+  },
+  {
     desc: "consult_patients manual risk columns (a doctor's own judgement)",
     sql: `ALTER TABLE consult_patients
       ADD COLUMN IF NOT EXISTS risk_manual TEXT,

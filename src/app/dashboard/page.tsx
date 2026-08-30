@@ -28,6 +28,10 @@ const LabDirectory = dynamic(
 const SupportFab = dynamic(() => import("@/components/SupportFab").then((m) => m.SupportFab), {
   ssr: false,
 });
+const LocationPicker = dynamic(
+  () => import("@/components/consults/LocationPicker").then((m) => m.LocationPicker),
+  { ssr: false, loading: () => <div className="h-20 animate-pulse rounded-xl bg-slate-100" /> }
+);
 const CarePlanChatFab = dynamic(
   () => import("@/components/consults/CarePlanChatFab").then((m) => m.CarePlanChatFab),
   { ssr: false }
@@ -103,6 +107,9 @@ interface PatientProfile {
   dob: string | null;
   sex: string | null;
   address: string | null;
+  /** Structured location, used to show the nearest partners. */
+  state?: string | null;
+  city?: string | null;
 }
 
 const STATUS_MAP = {
@@ -193,6 +200,8 @@ function ProfilePanel({
   const [age, setAge] = useState(ageFromDob(profile.dob ?? ""));
   const [sex, setSex] = useState(profile.sex ?? "");
   const [address, setAddress] = useState(profile.address ?? "");
+  const [state, setState] = useState(profile.state ?? "");
+  const [city, setCity] = useState(profile.city ?? "");
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState("");
 
@@ -201,11 +210,14 @@ function ProfilePanel({
     setSaving(true);
     setError("");
     try {
-      const body: Record<string, string> = { name: name.trim() };
+      const body: Record<string, string | null> = { name: name.trim() };
       if (phone.trim()) body.phone = phone.trim();
       if (age) body.age = age;
       if (sex) body.sex = sex;
       if (address.trim()) body.address = address.trim();
+      // Sent even when cleared, so a member can correct a wrong state.
+      body.state = state || null;
+      body.city = city || null;
       const res = await fetch("/api/patient/profile", {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
@@ -256,46 +268,42 @@ function ProfilePanel({
           <label className="text-xs font-semibold text-slate-500 uppercase tracking-wide block mb-1.5">Phone Number</label>
           <PhoneInput value={phone} onChange={setPhone} hint="Doctors can auto-fill your details when they enter this number." />
         </div>
-        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+        {/* Age and sex are clinical facts a doctor reads results against, so
+            they are shown but not edited here — a member who needs one changed
+            asks, and it is corrected on the record rather than silently. */}
+        <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
           <div>
-            <label className="text-xs font-semibold text-slate-500 uppercase tracking-wide block mb-1.5">Age</label>
-            <input
-              type="number"
-              min="0"
-              max="130"
-              inputMode="numeric"
-              value={age}
-              onChange={(e) => setAge(e.target.value.replace(/\D/g, "").slice(0, 3))}
-              placeholder="e.g. 42"
-              className="w-full rounded-xl border border-slate-200 bg-white/60 px-4 py-2.5 text-slate-800 text-sm focus:outline-none focus:ring-2 focus:ring-medical-500 focus:border-medical-400"
-            />
+            <label className="mb-1.5 block text-xs font-semibold uppercase tracking-wide text-slate-500">Age</label>
+            <div className="rounded-xl border border-slate-200 bg-slate-50 px-4 py-2.5 text-sm text-slate-600">
+              {age ? `${age} years` : "Not recorded"}
+            </div>
           </div>
           <div>
-            <label className="text-xs font-semibold text-slate-500 uppercase tracking-wide block mb-1.5">Sex</label>
-            <div className="flex gap-2">
-              {(["male", "female"] as const).map((s) => (
-                <button
-                  key={s}
-                  type="button"
-                  onClick={() => setSex(sex === s ? "" : s)}
-                  className={`flex-1 py-2.5 rounded-xl border-2 text-xs font-semibold capitalize transition-all ${
-                    sex === s ? "border-sky-400 bg-sky-50 text-sky-700" : "border-slate-200 bg-white text-slate-500 hover:border-slate-300"
-                  }`}
-                >
-                  {s}
-                </button>
-              ))}
+            <label className="mb-1.5 block text-xs font-semibold uppercase tracking-wide text-slate-500">Sex</label>
+            <div className="rounded-xl border border-slate-200 bg-slate-50 px-4 py-2.5 text-sm capitalize text-slate-600">
+              {sex || "Not recorded"}
             </div>
           </div>
         </div>
+        <p className="-mt-1 text-[11px] text-slate-400">
+          Ask your doctor or lab to correct your age or sex — results are read against them.
+        </p>
+        <LocationPicker
+          state={state}
+          city={city}
+          onStateChange={setState}
+          onCityChange={setCity}
+          hint="We use this to show you the nearest partner pharmacies and labs."
+        />
+
         <div>
-          <label className="text-xs font-semibold text-slate-500 uppercase tracking-wide block mb-1.5">Home Address</label>
+          <label className="mb-1.5 block text-xs font-semibold uppercase tracking-wide text-slate-500">Home Address</label>
           <textarea
             value={address}
             onChange={(e) => setAddress(e.target.value)}
             placeholder="Your residential address"
             rows={2}
-            className="w-full text-sm px-3 py-2.5 border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-sky-400 bg-white resize-none"
+            className="w-full resize-none rounded-xl border border-slate-200 bg-white px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-sky-400"
           />
         </div>
         {error && <p className="text-sm text-red-600 bg-red-50 border border-red-100 rounded-xl px-3 py-2">{error}</p>}
@@ -1082,13 +1090,13 @@ function VisitStat({
 
 /** Panels the patient portal can show. */
 type View =
-  | "care" | "care-schedule" | "care-messages"
+  | "care" | "care-schedule" | "care-history" | "care-messages"
   | "pharmacies" | "labs" | "visits"
   | "tests" | "results"
   | "profile" | "security";
 
 const VALID_VIEWS: View[] = [
-  "care", "care-schedule", "care-messages",
+  "care", "care-schedule", "care-history", "care-messages",
   "pharmacies", "labs", "visits",
   "tests", "results",
   "profile", "security",
@@ -1101,6 +1109,7 @@ const DEFAULT_VIEW: View = "care";
 const PARENT_OF: Record<View, View> = {
   care: "care",
   "care-schedule": "care",
+  "care-history": "care",
   "care-messages": "care",
   pharmacies: "pharmacies",
   labs: "labs",
@@ -1117,6 +1126,7 @@ const SUB_MENUS: Partial<Record<View, { key: View; label: string }[]>> = {
   care: [
     { key: "care", label: "My plan" },
     { key: "care-schedule", label: "Care" },
+    { key: "care-history", label: "My history" },
     { key: "care-messages", label: "Messages" },
   ],
   tests: [
@@ -1383,7 +1393,10 @@ function DashboardInner() {
               autoOpenEnroll={wantsCarePlan}
               partnerCode={partnerFromQr}
               section={
-                view === "care-schedule" ? "schedule" : view === "care-messages" ? "messages" : "plan"
+                view === "care-schedule" ? "schedule"
+                : view === "care-history" ? "history"
+                : view === "care-messages" ? "messages"
+                : "plan"
               }
               onChanged={care.refresh}
             />

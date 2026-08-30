@@ -18,6 +18,7 @@ async function requireAdmin() {
 
 const PatchSchema = z.object({
   name: z.string().trim().min(2).max(160).optional(),
+  email: z.string().trim().email().max(160).optional(),
   phone: z.string().trim().max(20).optional().nullable(),
   address: z.string().trim().max(300).optional().nullable(),
   city: z.string().trim().max(80).optional().nullable(),
@@ -39,6 +40,21 @@ export async function PATCH(req: NextRequest, { params }: { params: { id: string
 
   const existing = await prisma.pharmacy.findUnique({ where: { id: params.id } });
   if (!existing) return NextResponse.json({ error: "Pharmacy not found." }, { status: 404 });
+
+  // The email is how they sign in, so it has to stay unique — and changing it
+  // is a real move, not a typo fix, so say plainly when it is already taken.
+  if (d.email && d.email.toLowerCase() !== existing.email.toLowerCase()) {
+    const clash = await prisma.pharmacy.findFirst({
+      where: { email: { equals: d.email, mode: "insensitive" }, id: { not: params.id } },
+      select: { name: true },
+    });
+    if (clash) {
+      return NextResponse.json(
+        { error: `${clash.name} already signs in with that email.` },
+        { status: 409 }
+      );
+    }
+  }
 
   if (d.resend_invite) {
     const sent = await resend.emails.send({
@@ -63,6 +79,7 @@ export async function PATCH(req: NextRequest, { params }: { params: { id: string
     where: { id: params.id },
     data: {
       ...(d.name !== undefined ? { name: d.name } : {}),
+      ...(d.email !== undefined ? { email: d.email.toLowerCase() } : {}),
       ...(d.phone !== undefined ? { phone: d.phone || null } : {}),
       ...(d.address !== undefined ? { address: d.address || null } : {}),
       ...(d.city !== undefined ? { city: d.city || null } : {}),
@@ -70,7 +87,10 @@ export async function PATCH(req: NextRequest, { params }: { params: { id: string
       ...(d.discount_percent !== undefined ? { discount_percent: d.discount_percent } : {}),
       ...(d.active !== undefined ? { active: d.active } : {}),
     },
-    select: { id: true, active: true, discount_percent: true },
+    select: {
+      id: true, name: true, email: true, phone: true, address: true,
+      city: true, state: true, discount_percent: true, active: true, logo_url: true,
+    },
   });
 
   return NextResponse.json({ success: true, pharmacy: updated });

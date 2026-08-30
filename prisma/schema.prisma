@@ -539,6 +539,10 @@ model PatientProfile {
   dob        String? // ISO date string "YYYY-MM-DD"
   sex        String? // "male" | "female" | "other"
   address    String?
+  // Structured location, so the partner directories can be filtered by it the
+  // same way the lab and pharmacy records are.
+  state      String?
+  city       String?
   pin_hash   String? // SHA-256 of 4-digit PIN; null = no PIN set
   updated_at DateTime @updatedAt
 

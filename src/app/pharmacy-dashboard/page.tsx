@@ -650,6 +650,8 @@ type CareMember = {
     id: string; medication: string; form: string | null; dosage: string | null;
     frequency: string | null; duration_days: number | null;
     start_date: string | null; end_date: string | null; status: string;
+    /** When they are next expected for it — what the month filter reads. */
+    refill_due: string | null;
   }[];
 
 };
@@ -665,6 +667,8 @@ type CareMember = {
 function CareMembersPanel() {
   const [members, setMembers] = useState<CareMember[]>([]);
   const [summary, setSummary] = useState<{ members: number; pending_prescriptions: number } | null>(null);
+  const [months, setMonths] = useState<{ month: string; count: number }[]>([]);
+  const [month, setMonth] = useState<string>("");
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
 
@@ -676,7 +680,7 @@ function CareMembersPanel() {
         const d = await res.json();
         if (cancelled) return;
         if (!res.ok || !d.success) setError(d.error ?? "Could not load your members.");
-        else { setMembers(d.members); setSummary(d.summary); }
+        else { setMembers(d.members); setSummary(d.summary); setMonths(d.months ?? []); }
       } catch {
         if (!cancelled) setError("Network error.");
       } finally {
@@ -703,9 +707,47 @@ function CareMembersPanel() {
     );
   }
 
+  /** Only the lines due in the chosen month, when one is chosen. */
+  const visibleRx = (m: CareMember) =>
+    month ? m.prescriptions.filter((rx) => (rx.refill_due ?? "").startsWith(month)) : m.prescriptions;
+  const shown = month ? members.filter((m) => visibleRx(m).length > 0) : members;
+
   return (
     <div className="space-y-3">
       <PharmacyQrCard />
+
+      {months.length > 0 && (
+        <div>
+          <p className="mb-1.5 text-[11px] font-bold uppercase tracking-wide text-slate-400">
+            Refills due
+          </p>
+          <div className="flex flex-wrap gap-1.5">
+            <button
+              onClick={() => setMonth("")}
+              className={`rounded-full px-3 py-1.5 text-xs font-semibold transition ${
+                month === ""
+                  ? "bg-emerald-600 text-white"
+                  : "bg-white text-slate-600 ring-1 ring-slate-200 hover:ring-slate-300"
+              }`}
+            >
+              All ({summary?.pending_prescriptions ?? 0})
+            </button>
+            {months.map((m) => (
+              <button
+                key={m.month}
+                onClick={() => setMonth(month === m.month ? "" : m.month)}
+                className={`rounded-full px-3 py-1.5 text-xs font-semibold transition ${
+                  month === m.month
+                    ? "bg-emerald-600 text-white"
+                    : "bg-white text-slate-600 ring-1 ring-slate-200 hover:ring-slate-300"
+                }`}
+              >
+                {monthLabel(m.month)} ({m.count})
+              </button>
+            ))}
+          </div>
+        </div>
+      )}
 
       <p className="text-xs text-slate-500">
         {summary?.members} member{summary?.members === 1 ? "" : "s"} chose you ·{" "}
@@ -713,7 +755,7 @@ function CareMembersPanel() {
         Names are shortened until someone has been served here.
       </p>
 
-      {members.map((m) => (
+      {shown.map((m) => (
         <div key={m.id} className="rounded-2xl border border-slate-100 bg-white p-4 shadow-sm">
           <div className="flex flex-wrap items-start justify-between gap-2">
             <div className="min-w-0">
@@ -739,11 +781,11 @@ function CareMembersPanel() {
             )}
           </div>
 
-          {m.prescriptions.length === 0 ? (
+          {visibleRx(m).length === 0 ? (
             <p className="mt-3 text-xs text-slate-400">Nothing scheduled right now.</p>
           ) : (
             <ul className="mt-3 space-y-1.5">
-              {m.prescriptions.map((rx) => (
+              {visibleRx(m).map((rx) => (
                 <li key={rx.id} className="rounded-xl bg-slate-50 px-3 py-2">
                   <p className="text-sm font-semibold text-slate-700">
                     {rx.form ? `${rx.form.charAt(0).toUpperCase()}${rx.form.slice(1)} · ` : ""}
@@ -891,4 +933,16 @@ function PharmacyQrCard() {
       </Modal>
     </div>
   );
+}
+
+
+/** "2026-03" → "March", or "March 2027" when it is not this year. */
+function monthLabel(key: string): string {
+  const [y, m] = key.split("-").map(Number);
+  if (!y || !m) return key;
+  const d = new Date(y, m - 1, 1);
+  return d.toLocaleDateString("en-GB", {
+    month: "long",
+    ...(y === new Date().getFullYear() ? {} : { year: "numeric" }),
+  });
 }

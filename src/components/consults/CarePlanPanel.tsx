@@ -11,6 +11,7 @@ import {
 import { SectionLoader } from "@/components/PageLoader";
 import { getJson, invalidateJson } from "@/lib/client-cache";
 import { CADENCE_LABEL } from "@/lib/treatment-plan";
+import { CareHistoryPanel } from "@/components/consults/CareHistoryPanel";
 import { isMedicationLive, MED_STATUS_LABEL } from "@/lib/medication-status";
 import { Modal } from "@/components/ui/Overlay";
 import { ProviderRow } from "@/components/consults/ProviderRow";
@@ -55,7 +56,7 @@ type Prescription = {
 };
 type TestOrder = {
   id: string; tests: string; reason: string | null; due_date: string | null;
-  recurrence: string; status: string;
+  recurrence: string; status: string; created_at?: string | null;
 };
 
 const naira = (n: number) => `₦${Math.round(n).toLocaleString("en-NG")}`;
@@ -88,7 +89,7 @@ export function CarePlanPanel({
    * plan itself; the schedule and the thread each get their own sub-tab so
    * neither is buried under the other.
    */
-  section?: "plan" | "schedule" | "messages";
+  section?: "plan" | "schedule" | "messages" | "history";
   /** Lets the dashboard shell refresh its own care-plan prompt. */
   onChanged?: () => void;
 }) {
@@ -219,6 +220,46 @@ export function CarePlanPanel({
         </>
       )}
 
+      {active && member && section === "history" && (
+        <CareHistoryPanel
+          shareHistory={member.share_history !== false}
+          onShareChange={saveHistorySharing}
+          events={[
+            ...testOrders.map((t) => ({
+              when: t.status === "done" ? t.due_date ?? t.created_at ?? "" : t.due_date ?? "",
+              title: t.tests,
+              detail:
+                t.status === "done" ? "Test done" : t.status === "cancelled" ? "Cancelled" : "Booked by your doctor",
+              kind: "test" as const,
+            })),
+            ...prescriptions.map((m) => ({
+              when: m.start_date ?? "",
+              title: m.medication,
+              detail:
+                m.status === "cancelled" ? "Stopped"
+                : m.status === "completed" ? "Course finished"
+                : "Added by your doctor",
+              kind: "medication" as const,
+            })),
+            ...redemptions.map((r) => ({
+              when: r.created_at,
+              title: r.description ?? (r.kind === "pharmacy" ? "Pharmacy visit" : "Lab visit"),
+              detail: `You saved ${naira(r.discount_naira)}${r.pharmacy_name ? ` at ${r.pharmacy_name}` : ""}`,
+              kind: "saving" as const,
+            })),
+            ...(plan ? [{
+              when: plan.updated_at,
+              title: plan.title,
+              detail: `Your doctor set out ${plan.items.length} thing${plan.items.length === 1 ? "" : "s"} to do`,
+              kind: "plan" as const,
+            }] : []),
+          ]
+            .filter((e) => e.when)
+            .sort((a, b) => new Date(b.when).getTime() - new Date(a.when).getTime())
+            .slice(0, 60)}
+        />
+      )}
+
       {active && member && section === "messages" && (
         <MessageThread
           doctor={doctor}
@@ -311,29 +352,6 @@ export function CarePlanPanel({
               </p>
             </div>
 
-            {/* If they ever move doctors, this decides what travels with them. */}
-            <div className="rounded-2xl border border-slate-100 bg-white p-4 shadow-sm">
-              <h3 className="text-xs font-bold uppercase tracking-wider text-slate-400">
-                If your doctor changes
-              </h3>
-              <label className="mt-3 flex items-start gap-2.5">
-                <input
-                  type="checkbox"
-                  checked={member.share_history !== false}
-                  onChange={(e) => saveHistorySharing(e.target.checked)}
-                  className="mt-0.5 h-4 w-4 shrink-0 rounded border-slate-300 text-medical-600"
-                />
-                <span className="min-w-0">
-                  <span className="block text-sm font-medium text-slate-700">
-                    Share my history with a new doctor
-                  </span>
-                  <span className="block text-xs text-slate-500">
-                    Your messages, medication and notes go with you, so you don&apos;t start over.
-                    Turn this off and a new doctor sees only what happens from the day they take over.
-                  </span>
-                </span>
-              </label>
-            </div>
 
             {redemptions.length > 0 && (
               <div className="rounded-2xl border border-slate-100 bg-white p-4 shadow-sm">

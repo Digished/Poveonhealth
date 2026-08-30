@@ -81,6 +81,9 @@ const PatchSchema = z.object({
   ),
   sex: z.enum(["male", "female", "other"]).optional(),
   address: z.string().max(500).optional(),
+  // Nullable so a member can clear a wrong state rather than only overwrite it.
+  state: z.string().max(80).nullable().optional(),
+  city: z.string().max(80).nullable().optional(),
 });
 
 // PATCH /api/patient/profile — update own profile (authenticated)

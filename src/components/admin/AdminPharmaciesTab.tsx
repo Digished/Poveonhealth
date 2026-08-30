@@ -2,7 +2,26 @@
 
 import { useCallback, useEffect, useRef, useState } from "react";
 import { toast } from "react-hot-toast";
-import { BadgeCheck, Download, FileText, ImagePlus, Loader2, Mail, MapPin, Pill, Plus, Power, QrCode, RefreshCw, Save, TicketPercent, Trash2, Users, X } from "lucide-react";
+import {
+  BadgeCheck,
+  Download,
+  FileText,
+  ImagePlus,
+  Loader2,
+  Mail,
+  MapPin,
+  Pencil,
+  Pill,
+  Plus,
+  Power,
+  QrCode,
+  RefreshCw,
+  Save,
+  TicketPercent,
+  Trash2,
+  Users,
+  X,
+} from "lucide-react";
 import { Modal } from "@/components/ui/Overlay";
 import { STATE_NAMES, lgasForState } from "@/lib/nigeria-locations";
 import { FuzzyCombo } from "@/components/ui/FuzzyCombo";
@@ -24,6 +43,7 @@ function formatDate(iso: string | null) {
 export function AdminPharmaciesTab() {
   const [pharmacies, setPharmacies] = useState<Pharmacy[]>([]);
   const [qrFor, setQrFor] = useState<Pharmacy | null>(null);
+  const [editing, setEditing] = useState<Pharmacy | null>(null);
   const [loading, setLoading] = useState(true);
   const [adding, setAdding] = useState(false);
   const [busyId, setBusyId] = useState<string | null>(null);
@@ -118,6 +138,14 @@ export function AdminPharmaciesTab() {
       </div>
 
       {adding && <AddPharmacyForm onClose={() => setAdding(false)} onAdded={() => { setAdding(false); load(); }} />}
+
+      {editing && (
+        <EditPharmacyForm
+          pharmacy={editing}
+          onClose={() => setEditing(null)}
+          onSaved={() => { setEditing(null); load(); }}
+        />
+      )}
 
       <Modal
         open={!!qrFor}
@@ -221,6 +249,12 @@ export function AdminPharmaciesTab() {
                   </td>
                   <td className="px-4 py-3">
                     <div className="flex items-center justify-end gap-1.5">
+                      <IconAction
+                        title="Edit details"
+                        busy={false}
+                        onClick={() => setEditing(p)}
+                        icon={<Pencil className="h-3.5 w-3.5" />}
+                      />
                       <IconAction
                         title="Sign-up QR code — scanning it makes this their pharmacy"
                         busy={false}
@@ -440,6 +474,195 @@ function AddPharmacyForm({ onClose, onAdded }: { onClose: () => void; onAdded: (
       {!form.state && (
         <p className="mt-2 text-xs text-amber-400">Pick a state — members filter the directory by it.</p>
       )}
+    </div>
+  );
+}
+
+
+/**
+ * Everything about a partner, changeable.
+ *
+ * Until now the only thing an admin could do to a pharmacy after creating it
+ * was deactivate or delete it — so a typo in the name, a move, a new discount
+ * or a missing logo meant removing the partner and starting again, which loses
+ * their code and their customer book. The create form even says "add it from
+ * the list" about the logo, and there was no list to add it from.
+ */
+function EditPharmacyForm({
+  pharmacy, onClose, onSaved,
+}: {
+  pharmacy: Pharmacy;
+  onClose: () => void;
+  onSaved: () => void;
+}) {
+  const [form, setForm] = useState({
+    name: pharmacy.name,
+    email: pharmacy.email,
+    phone: pharmacy.phone ?? "",
+    address: pharmacy.address ?? "",
+    state: pharmacy.state ?? "",
+    city: pharmacy.city ?? "",
+    discount_percent: String(pharmacy.discount_percent ?? ""),
+  });
+  const [logo, setLogo] = useState<File | null>(null);
+  const [logoPreview, setLogoPreview] = useState<string | null>(pharmacy.logo_url);
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState("");
+  const logoRef = useRef<HTMLInputElement | null>(null);
+
+  async function save() {
+    if (saving || form.name.trim().length < 2 || !form.email.includes("@")) return;
+    setSaving(true);
+    setError("");
+    try {
+      const res = await fetch(`/api/admin/pharmacies/${pharmacy.id}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          name: form.name.trim(),
+          email: form.email.trim().toLowerCase(),
+          phone: form.phone.trim() || null,
+          address: form.address.trim() || null,
+          state: form.state || null,
+          city: form.city || null,
+          ...(form.discount_percent !== "" ? { discount_percent: Number(form.discount_percent) } : {}),
+        }),
+      });
+      const d = await res.json().catch(() => null);
+      if (!res.ok || !d?.success) {
+        setError(d?.error ?? "Could not save those changes.");
+        return;
+      }
+
+      if (logo) {
+        const fd = new FormData();
+        fd.append("logo", logo);
+        const up = await fetch(`/api/admin/pharmacies/${pharmacy.id}/logo`, { method: "POST", body: fd });
+        if (!up.ok) {
+          toast.error("Details saved, but the logo didn't upload.");
+          onSaved();
+          return;
+        }
+      }
+
+      toast.success("Pharmacy updated");
+      onSaved();
+    } catch {
+      setError("Network error. Please try again.");
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  const input =
+    "w-full rounded-lg border border-white/10 bg-white/5 px-3 py-2.5 text-sm text-white placeholder-slate-500 focus:border-medical-400 focus:outline-none";
+
+  return (
+    <Modal open onClose={onClose} title="Edit pharmacy" subtitle={pharmacy.code} size="md">
+      <div className="space-y-3">
+        <div className="flex items-center gap-3">
+          {logoPreview ? (
+            // eslint-disable-next-line @next/next/no-img-element
+            <img src={logoPreview} alt="" className="h-14 w-14 shrink-0 rounded-xl object-cover ring-1 ring-slate-200" />
+          ) : (
+            <div className="flex h-14 w-14 shrink-0 items-center justify-center rounded-xl bg-slate-100 text-lg font-bold text-slate-400">
+              {pharmacy.name.slice(0, 1).toUpperCase()}
+            </div>
+          )}
+          <div>
+            <input
+              ref={logoRef}
+              type="file"
+              accept="image/png,image/jpeg,image/webp"
+              hidden
+              onChange={(e) => {
+                const f = e.target.files?.[0] ?? null;
+                setLogo(f);
+                setLogoPreview(f ? URL.createObjectURL(f) : pharmacy.logo_url);
+              }}
+            />
+            <button
+              onClick={() => logoRef.current?.click()}
+              className="rounded-lg bg-slate-100 px-3 py-2 text-xs font-bold text-slate-700 transition hover:bg-slate-200"
+            >
+              {pharmacy.logo_url ? "Replace logo" : "Add a logo"}
+            </button>
+            <p className="mt-1 text-[11px] text-slate-400">Shown to members and on their flyer.</p>
+          </div>
+        </div>
+
+        <Field label="Name">
+          <input value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} className={input} />
+        </Field>
+        <Field label="Sign-in email">
+          <input value={form.email} onChange={(e) => setForm({ ...form, email: e.target.value })} className={input} />
+        </Field>
+        <div className="grid gap-3 sm:grid-cols-2">
+          <Field label="Phone">
+            <input value={form.phone} onChange={(e) => setForm({ ...form, phone: e.target.value })} className={input} />
+          </Field>
+          <Field label="Discount %">
+            <input
+              inputMode="numeric"
+              value={form.discount_percent}
+              onChange={(e) => setForm({ ...form, discount_percent: e.target.value.replace(/\D/g, "") })}
+              className={input}
+            />
+          </Field>
+        </div>
+        <div className="grid gap-3 sm:grid-cols-2">
+          <Field label="State">
+            <div className="admin-combo">
+              <FuzzyCombo
+                value={form.state}
+                onChange={(v) => setForm({ ...form, state: v, city: "" })}
+                options={STATE_NAMES}
+                placeholder="State"
+              />
+            </div>
+          </Field>
+          <Field label="Local government">
+            <div className="admin-combo">
+              <FuzzyCombo
+                value={form.city}
+                onChange={(v) => setForm({ ...form, city: v })}
+                options={lgasForState(form.state)}
+                placeholder={form.state ? "Local government" : "Pick a state first"}
+                disabled={!form.state}
+                allowCustom
+              />
+            </div>
+          </Field>
+        </div>
+        <Field label="Street address">
+          <input value={form.address} onChange={(e) => setForm({ ...form, address: e.target.value })} className={input} />
+        </Field>
+
+        {error && <p className="text-xs font-medium text-red-600">{error}</p>}
+      </div>
+
+      <div className="mt-4 flex gap-2">
+        <button
+          onClick={save}
+          disabled={saving || form.name.trim().length < 2 || !form.email.includes("@")}
+          className="flex flex-1 items-center justify-center gap-2 rounded-xl bg-medical-600 py-2.5 text-sm font-bold text-white transition hover:bg-medical-700 disabled:opacity-50"
+        >
+          {saving ? <Loader2 className="h-4 w-4 animate-spin" /> : <Save className="h-4 w-4" />}
+          Save changes
+        </button>
+        <button onClick={onClose} className="rounded-xl px-4 py-2.5 text-xs font-semibold text-slate-500 hover:text-slate-700">
+          Cancel
+        </button>
+      </div>
+    </Modal>
+  );
+}
+
+function Field({ label, children }: { label: string; children: React.ReactNode }) {
+  return (
+    <div>
+      <label className="mb-1 block text-xs font-semibold text-slate-500">{label}</label>
+      {children}
     </div>
   );
 }
