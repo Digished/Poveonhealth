@@ -5,6 +5,7 @@ import { resend, FROM_ADDRESS } from "@/lib/email/resend";
 import { carePlanWelcomeEmail, carePlanDoctorNewMemberEmail } from "@/lib/email/templates";
 import {
   activateMembership,
+  creditTopup,
   appUrl,
   activeMemberWhere,
   CONDITION_LABELS,
@@ -35,6 +36,41 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: "That payment has not gone through." }, { status: 402 });
     }
 
+    // A top-up shares this callback with a new subscription — the reference
+    // itself says which. Checked before the membership branch, because a
+    // top-up's reference belongs to a member who is already active.
+    const topupRow = await prisma.consultTopup
+      .findUnique({ where: { paystack_ref: reference }, select: { id: true } })
+      .catch(() => null);
+    if (payment.purpose === "care_plan_topup" || payment.topupId || topupRow) {
+      const credited = await creditTopup({
+        reference,
+        topupId: payment.topupId ?? topupRow?.id,
+        amountNaira: payment.amountNaira,
+      });
+      if (!credited.ok) {
+        return NextResponse.json({ error: "We could not match that payment." }, { status: 404 });
+      }
+      const member = credited.patientId
+        ? await prisma.consultPatient.findUnique({
+            where: { id: credited.patientId },
+            select: { full_name: true, code: true, messages_used: true, message_allowance: true },
+          })
+        : null;
+      return NextResponse.json({
+        success: true,
+        kind: "topup",
+        topup: {
+          messages: credited.messages,
+          full_name: member?.full_name ?? "",
+          code: member?.code ?? "",
+          messages_left: member
+            ? Math.max(0, member.message_allowance - member.messages_used)
+            : credited.messages,
+        },
+      });
+    }
+
     const patientId =
       payment.patientId ??
       (await prisma.consultPatient.findFirst({ where: { paystack_ref: reference }, select: { id: true } }))?.id;
@@ -61,6 +97,7 @@ export async function POST(req: NextRequest) {
 
     return NextResponse.json({
       success: true,
+      kind: "membership",
       member: {
         code: patient.code,
         full_name: patient.full_name,

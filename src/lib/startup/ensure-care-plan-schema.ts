@@ -50,6 +50,8 @@ const SENTINEL_TABLES = [
   "consult_fulfilments",
   "consult_plan_logs",
   "push_subscriptions",
+  "consult_topups",
+  "consult_screenings",
 ];
 
 /** "table.column", so one text array can check them all. */
@@ -71,6 +73,9 @@ const SENTINEL_COLUMNS = [
   "consult_treatment_items.measure",
   "consult_patients.risk_level",
   "consult_patients.risk_manual",
+  "consult_settings.topup_price_naira",
+  "consult_treatment_plans.source",
+  "consult_prescriptions.source",
   "patient_profiles.state",
   "doctor_profiles.consult_approved",
 ];
@@ -503,6 +508,44 @@ async function runEnsure(): Promise<void> {
       ADD COLUMN IF NOT EXISTS measure_label TEXT;`);
     await exec(`ALTER TABLE consult_test_orders ADD COLUMN IF NOT EXISTS code TEXT;`);
     await exec(`ALTER TABLE consult_test_orders ADD COLUMN IF NOT EXISTS request_id TEXT;`);
+    await exec(`
+    CREATE TABLE IF NOT EXISTS consult_topups (
+      id TEXT PRIMARY KEY,
+      patient_id TEXT NOT NULL,
+      messages INTEGER NOT NULL,
+      amount_naira DECIMAL(12,2) NOT NULL,
+      paystack_ref TEXT,
+      status TEXT NOT NULL DEFAULT 'pending',
+      created_at TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+      paid_at TIMESTAMP(3)
+    );
+    `);
+    await exec(`CREATE UNIQUE INDEX IF NOT EXISTS consult_topups_ref_key ON consult_topups(paystack_ref);`);
+    await exec(`CREATE INDEX IF NOT EXISTS consult_topups_patient_idx ON consult_topups(patient_id, created_at);`);
+    await exec(`ALTER TABLE consult_settings
+      ADD COLUMN IF NOT EXISTS topup_price_naira DECIMAL(12,2) NOT NULL DEFAULT 10000,
+      ADD COLUMN IF NOT EXISTS topup_messages INTEGER NOT NULL DEFAULT 40;`);
+    await exec(`ALTER TABLE consult_treatment_plans
+      ADD COLUMN IF NOT EXISTS source TEXT NOT NULL DEFAULT 'doctor',
+      ADD COLUMN IF NOT EXISTS reviewed_at TIMESTAMP(3),
+      ADD COLUMN IF NOT EXISTS reviewed_by TEXT;`);
+    await exec(`ALTER TABLE consult_prescriptions ADD COLUMN IF NOT EXISTS source TEXT NOT NULL DEFAULT 'doctor';`);
+    await exec(`
+    CREATE TABLE IF NOT EXISTS consult_screenings (
+      id TEXT PRIMARY KEY,
+      patient_id TEXT NOT NULL,
+      source TEXT NOT NULL DEFAULT 'routine',
+      answers JSONB NOT NULL DEFAULT '{}',
+      severity TEXT NOT NULL DEFAULT 'none',
+      flagged TEXT[] NOT NULL DEFAULT '{}',
+      due_on DATE NOT NULL,
+      seen_at TIMESTAMP(3),
+      seen_by TEXT,
+      created_at TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP
+    );
+    `);
+    await exec(`CREATE INDEX IF NOT EXISTS consult_screenings_patient_idx ON consult_screenings(patient_id, created_at);`);
+    await exec(`CREATE INDEX IF NOT EXISTS consult_screenings_due_idx ON consult_screenings(severity, due_on);`);
     await exec(`
     CREATE TABLE IF NOT EXISTS push_subscriptions (
       id TEXT PRIMARY KEY,

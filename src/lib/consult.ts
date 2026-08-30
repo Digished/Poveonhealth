@@ -17,6 +17,8 @@
 
 import type { NextRequest } from "next/server";
 import { prisma } from "@/lib/prisma";
+import { draftMedications, draftPlanItems, draftPlanNote } from "@/lib/care-draft";
+import { MED_SUGGESTED_STATUS } from "@/lib/medication-status";
 
 export const CONSULT_CONDITIONS = ["hypertension", "diabetes"] as const;
 export type ConsultCondition = (typeof CONSULT_CONDITIONS)[number];
@@ -45,6 +47,8 @@ export type ConsultSettingsPayload = {
   default_doctor_cap: number;
   lab_discount_percent: number;
   pharmacy_discount_percent: number;
+  topup_price_naira: number;
+  topup_messages: number;
 };
 
 export const CONSULT_DEFAULTS: ConsultSettingsPayload = {
@@ -55,6 +59,8 @@ export const CONSULT_DEFAULTS: ConsultSettingsPayload = {
   default_doctor_cap: 200,
   lab_discount_percent: 15,
   pharmacy_discount_percent: 10,
+  topup_price_naira: 10_000,
+  topup_messages: 40,
 };
 
 // Settings are read on nearly every care-plan request but change a few times a
@@ -87,6 +93,9 @@ export async function getConsultSettings(): Promise<ConsultSettingsPayload> {
       default_doctor_cap: row.default_doctor_cap,
       lab_discount_percent: row.lab_discount_percent,
       pharmacy_discount_percent: row.pharmacy_discount_percent,
+      // Older rows predate the top-up columns; fall back rather than send NaN.
+      topup_price_naira: Number(row.topup_price_naira ?? CONSULT_DEFAULTS.topup_price_naira),
+      topup_messages: row.topup_messages ?? CONSULT_DEFAULTS.topup_messages,
     };
     settingsCache = { at: Date.now(), value };
     return value;
@@ -390,6 +399,13 @@ export async function initConsultPayment(params: {
   code: string;
   email: string;
   amountNaira: number;
+  /**
+   * What is being paid for. The return page reads this back off the reference
+   * so a top-up and a subscription can share one callback URL.
+   */
+  purpose?: "care_plan" | "care_plan_topup";
+  /** The ConsultTopup this reference belongs to, when it is a top-up. */
+  topupId?: string;
 }): Promise<{ authorizationUrl: string; reference: string } | null> {
   const secret = process.env.PAYSTACK_SECRET_KEY;
   if (!secret) {
@@ -405,7 +421,12 @@ export async function initConsultPayment(params: {
         amount: Math.round(params.amountNaira * 100), // kobo
         currency: "NGN",
         callback_url: `${appUrl()}/consults/paid`,
-        metadata: { purpose: "care_plan", patient_id: params.patientId, code: params.code },
+        metadata: {
+          purpose: params.purpose ?? "care_plan",
+          patient_id: params.patientId,
+          code: params.code,
+          ...(params.topupId ? { topup_id: params.topupId } : {}),
+        },
       }),
     });
     const data = await res.json();
@@ -425,6 +446,8 @@ export async function verifyConsultPayment(reference: string): Promise<{
   success: boolean;
   amountNaira: number;
   patientId?: string;
+  purpose?: string;
+  topupId?: string;
 }> {
   const secret = process.env.PAYSTACK_SECRET_KEY;
   if (!secret) return { success: false, amountNaira: 0 };
@@ -438,6 +461,8 @@ export async function verifyConsultPayment(reference: string): Promise<{
       success: true,
       amountNaira: Number(data.data.amount ?? 0) / 100,
       patientId: data.data.metadata?.patient_id,
+      purpose: data.data.metadata?.purpose,
+      topupId: data.data.metadata?.topup_id,
     };
   } catch (e) {
     console.error("[consults] paystack verify error:", e);
@@ -528,7 +553,147 @@ export async function activateMembership(params: {
     }
   }
 
+  if (doctorEmail) {
+    // Give the doctor something to react to rather than a blank page. Awaited
+    // rather than fired and forgotten — a serverless function can be frozen the
+    // moment it responds — but never allowed to cost the member the activation
+    // they have already paid for.
+    await draftCarePlanFor(patient.id, doctorEmail).catch((e) =>
+      console.error("[consults] draft care plan:", e)
+    );
+  }
+
   return { ok: true, alreadyActive: false, doctorEmail };
+}
+
+/**
+ * Draft this member's opening plan and medication list, for the doctor to
+ * review.
+ *
+ * Idempotent, and deliberately conservative: it does nothing at all if the
+ * member already has a plan or any medication on file, so it can be called
+ * again — at activation, when a doctor is assigned later, when a member is
+ * moved — without ever overwriting real clinical work.
+ *
+ * Everything it writes is marked as a suggestion (see care-draft.ts): the plan
+ * carries `source: "suggested"` and no `reviewed_at`, and the medications sit at
+ * status "suggested", outside MED_LIVE_STATUSES, so the member never sees them
+ * and no pharmacy can dispense against them until a doctor confirms.
+ */
+export async function draftCarePlanFor(
+  patientId: string,
+  doctorEmail: string
+): Promise<{ plan: boolean; medications: number }> {
+  const patient = await prisma.consultPatient.findUnique({
+    where: { id: patientId },
+    select: { id: true, conditions: true, baseline_medications: true },
+  });
+  if (!patient) return { plan: false, medications: 0 };
+
+  const [existingPlan, existingMeds] = await Promise.all([
+    prisma.consultTreatmentPlan.findFirst({
+      where: { patient_id: patient.id, status: "active" },
+      select: { id: true },
+    }),
+    prisma.consultPrescription.count({ where: { patient_id: patient.id } }),
+  ]);
+
+  let planWritten = false;
+  if (!existingPlan) {
+    const items = draftPlanItems(patient.conditions);
+    await prisma.consultTreatmentPlan.create({
+      data: {
+        patient_id: patient.id,
+        doctor_email: doctorEmail,
+        title: "Starting plan",
+        note: draftPlanNote(patient.conditions),
+        source: "suggested",
+        items: {
+          create: items.map((item, i) => ({
+            label: item.label,
+            detail: item.detail,
+            cadence: item.cadence,
+            measure: item.measure,
+            measure_label: item.measure_label,
+            remind: item.remind,
+            position: i,
+          })),
+        },
+      },
+    });
+    planWritten = true;
+  }
+
+  let medsWritten = 0;
+  if (existingMeds === 0) {
+    const drafts = draftMedications(patient.baseline_medications);
+    if (drafts.length) {
+      await prisma.consultPrescription.createMany({
+        data: drafts.map((d) => ({
+          patient_id: patient.id,
+          doctor_email: doctorEmail,
+          medication: d.medication,
+          form: d.form,
+          dosage: d.dosage,
+          frequency: d.frequency,
+          duration_days: d.duration_days,
+          instructions: d.instructions,
+          raw_text: d.raw_text,
+          status: MED_SUGGESTED_STATUS,
+          source: "suggested",
+        })),
+      });
+      medsWritten = drafts.length;
+    }
+  }
+
+  return { plan: planWritten, medications: medsWritten };
+}
+
+// ── Message top-ups ──────────────────────────────────────────────────────────
+
+/**
+ * Credit a paid top-up onto the member's allowance.
+ *
+ * Idempotent by construction: the pending→paid flip is a compare-and-set on the
+ * top-up row, and only the caller that wins it adds the messages. Paystack will
+ * happily deliver the same callback twice and the member may refresh the return
+ * page — neither can buy the same bundle twice.
+ */
+export async function creditTopup(params: {
+  reference: string;
+  topupId?: string;
+  amountNaira: number;
+}): Promise<{
+  ok: boolean;
+  alreadyCredited: boolean;
+  messages: number;
+  patientId: string | null;
+}> {
+  const topup = params.topupId
+    ? await prisma.consultTopup.findUnique({ where: { id: params.topupId } })
+    : await prisma.consultTopup.findUnique({ where: { paystack_ref: params.reference } });
+  if (!topup) return { ok: false, alreadyCredited: false, messages: 0, patientId: null };
+
+  const claimed = await prisma.consultTopup.updateMany({
+    where: { id: topup.id, status: { not: "paid" } },
+    data: {
+      status: "paid",
+      paid_at: new Date(),
+      paystack_ref: params.reference,
+      amount_naira: params.amountNaira || topup.amount_naira,
+    },
+  });
+  if (claimed.count === 0) {
+    return { ok: true, alreadyCredited: true, messages: topup.messages, patientId: topup.patient_id };
+  }
+
+  await prisma.consultPatient.update({
+    where: { id: topup.patient_id },
+    data: { message_allowance: { increment: topup.messages } },
+  });
+
+  return { ok: true, alreadyCredited: false, messages: topup.messages, patientId: topup.patient_id };
 }
 
 // ── Auth helpers ─────────────────────────────────────────────────────────────

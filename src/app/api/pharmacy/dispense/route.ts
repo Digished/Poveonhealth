@@ -3,6 +3,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { z } from "zod";
 import { prisma } from "@/lib/prisma";
 import { getConsultSettings, getPharmacyFromRequest } from "@/lib/consult";
+import { medLiveWhere } from "@/lib/medication-status";
 import { ensureCarePlanSchema } from "@/lib/startup/ensure-care-plan-schema";
 
 /** What happened to each line the doctor scheduled. */
@@ -53,7 +54,9 @@ export async function POST(req: NextRequest) {
     // Only lines that belong to this member, so a stray id can't be attached
     // to someone else's record.
     const owned = await prisma.consultPrescription.findMany({
-      where: { patient_id: member.id, id: { in: d.items.map((i) => i.prescription_id) } },
+      // Live lines only. A suggestion the doctor has not confirmed is not
+      // dispensable, whatever id arrives here.
+      where: { patient_id: member.id, id: { in: d.items.map((i) => i.prescription_id) }, ...medLiveWhere },
       select: { id: true },
     });
     const ownedIds = new Set(owned.map((o) => o.id));

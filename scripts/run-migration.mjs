@@ -2461,6 +2461,76 @@ const migrations = [
     continueOnError: true,
   },
   {
+    desc: "consult_topups table (extra messages bought mid-year)",
+    sql: `    CREATE TABLE IF NOT EXISTS consult_topups (
+      id TEXT PRIMARY KEY,
+      patient_id TEXT NOT NULL,
+      messages INTEGER NOT NULL,
+      amount_naira DECIMAL(12,2) NOT NULL,
+      paystack_ref TEXT,
+      status TEXT NOT NULL DEFAULT 'pending',
+      created_at TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+      paid_at TIMESTAMP(3)
+    )`,
+    continueOnError: true,
+  },
+  {
+    desc: "consult_topups unique paystack ref (a repeated callback must not grant twice)",
+    sql: `CREATE UNIQUE INDEX IF NOT EXISTS consult_topups_ref_key ON consult_topups (paystack_ref)`,
+    continueOnError: true,
+  },
+  {
+    desc: "consult_topups patient index",
+    sql: `CREATE INDEX IF NOT EXISTS consult_topups_patient_idx ON consult_topups (patient_id, created_at)`,
+    continueOnError: true,
+  },
+  {
+    desc: "consult_settings top-up price and size",
+    sql: `ALTER TABLE consult_settings
+      ADD COLUMN IF NOT EXISTS topup_price_naira DECIMAL(12,2) NOT NULL DEFAULT 10000,
+      ADD COLUMN IF NOT EXISTS topup_messages INTEGER NOT NULL DEFAULT 40`,
+    continueOnError: true,
+  },
+  {
+    desc: "consult_treatment_plans review columns (a drafted plan waits on the doctor)",
+    sql: `ALTER TABLE consult_treatment_plans
+      ADD COLUMN IF NOT EXISTS source TEXT NOT NULL DEFAULT 'doctor',
+      ADD COLUMN IF NOT EXISTS reviewed_at TIMESTAMP(3),
+      ADD COLUMN IF NOT EXISTS reviewed_by TEXT`,
+    continueOnError: true,
+  },
+  {
+    desc: "consult_prescriptions.source (doctor's own, or a suggestion to confirm)",
+    sql: `ALTER TABLE consult_prescriptions ADD COLUMN IF NOT EXISTS source TEXT NOT NULL DEFAULT 'doctor'`,
+    continueOnError: true,
+  },
+  {
+    desc: "consult_screenings table (symptom rounds)",
+    sql: `    CREATE TABLE IF NOT EXISTS consult_screenings (
+      id TEXT PRIMARY KEY,
+      patient_id TEXT NOT NULL,
+      source TEXT NOT NULL DEFAULT 'routine',
+      answers JSONB NOT NULL DEFAULT '{}',
+      severity TEXT NOT NULL DEFAULT 'none',
+      flagged TEXT[] NOT NULL DEFAULT '{}',
+      due_on DATE NOT NULL,
+      seen_at TIMESTAMP(3),
+      seen_by TEXT,
+      created_at TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP
+    )`,
+    continueOnError: true,
+  },
+  {
+    desc: "consult_screenings patient index",
+    sql: `CREATE INDEX IF NOT EXISTS consult_screenings_patient_idx ON consult_screenings (patient_id, created_at)`,
+    continueOnError: true,
+  },
+  {
+    desc: "consult_screenings due index (who is overdue, worst first)",
+    sql: `CREATE INDEX IF NOT EXISTS consult_screenings_due_idx ON consult_screenings (severity, due_on)`,
+    continueOnError: true,
+  },
+  {
     desc: "push_subscriptions table (PWA notifications)",
     sql: `    CREATE TABLE IF NOT EXISTS push_subscriptions (
       id TEXT PRIMARY KEY,

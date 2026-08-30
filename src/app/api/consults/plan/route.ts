@@ -49,10 +49,12 @@ export async function POST(req: NextRequest) {
       where: { id: d.item_id },
       select: {
         id: true, cadence: true, done_count: true, measure: true, label: true,
-        plan: { select: { patient_id: true } },
+        plan: { select: { patient_id: true, source: true } },
       },
     });
-    if (!item || item.plan.patient_id !== member.id) {
+    // A plan the doctor has not confirmed is not on the member's plan yet, so
+    // an item id from a stale page cannot be ticked against it.
+    if (!item || item.plan.patient_id !== member.id || item.plan.source === "suggested") {
       return NextResponse.json({ error: "That isn't on your plan." }, { status: 404 });
     }
 

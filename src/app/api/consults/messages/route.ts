@@ -4,7 +4,7 @@ import { z } from "zod";
 import { prisma } from "@/lib/prisma";
 import { resend, FROM_ADDRESS } from "@/lib/email/resend";
 import { carePlanDoctorMessageEmail } from "@/lib/email/templates";
-import { appUrl, getMemberFromRequest } from "@/lib/consult";
+import { appUrl, getConsultSettings, getMemberFromRequest } from "@/lib/consult";
 import { CHAT_BUCKET, readChatPayload, uploadCareImage } from "@/lib/care-uploads";
 import { preview, pushTo } from "@/lib/push";
 import { ensureCarePlanSchema } from "@/lib/startup/ensure-care-plan-schema";
@@ -23,7 +23,7 @@ export async function GET(req: NextRequest) {
     const member = await getMemberFromRequest(req);
     if (!member) return NextResponse.json({ error: "Not authenticated." }, { status: 401 });
 
-    const [messages, doctor] = await Promise.all([
+    const [messages, doctor, settings] = await Promise.all([
       prisma.consultMessage.findMany({
         where: { patient_id: member.id },
         orderBy: { created_at: "asc" },
@@ -35,6 +35,7 @@ export async function GET(req: NextRequest) {
             select: { full_name: true, prefix: true, specialty: true, avatar_url: true },
           })
         : Promise.resolve(null),
+      getConsultSettings(),
     ]);
 
     void prisma.consultMessage
@@ -51,6 +52,9 @@ export async function GET(req: NextRequest) {
       status: member.status,
       unread,
       messages_left: Math.max(0, member.message_allowance - member.messages_used),
+      // What another bundle costs, so a spent allowance can offer the purchase
+      // right where the member notices it.
+      topup: { messages: settings.topup_messages, price_naira: settings.topup_price_naira },
       doctor: doctor
         ? {
             name: `${doctor.prefix ? `${doctor.prefix} ` : ""}${doctor.full_name ?? ""}`.trim(),

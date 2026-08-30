@@ -90,7 +90,16 @@ export async function PUT(req: NextRequest, { params }: { params: { id: string }
       ? await prisma.$transaction(async (tx) => {
           await tx.consultTreatmentPlan.update({
             where: { id: existing.id },
-            data: { title: d.title, note: d.note || null, doctor_email: email },
+            data: {
+              title: d.title,
+              note: d.note || null,
+              doctor_email: email,
+              // Saving a drafted plan is confirming it. From here it is the
+              // doctor's plan, and the member is shown it as one.
+              source: "doctor",
+              reviewed_at: new Date(),
+              reviewed_by: email,
+            },
           });
           // Drop what the doctor removed, then rewrite the rest in order.
           await tx.consultTreatmentItem.deleteMany({
@@ -138,6 +147,9 @@ export async function PUT(req: NextRequest, { params }: { params: { id: string }
             doctor_email: email,
             title: d.title,
             note: d.note || null,
+            source: "doctor",
+            reviewed_at: new Date(),
+            reviewed_by: email,
             items: {
               create: d.items.map((item, position) => ({
                 label: item.label,
@@ -164,6 +176,8 @@ type PlanRow = {
   id: string;
   title: string;
   note: string | null;
+  source?: string;
+  reviewed_at?: Date | null;
   notified_at: Date | null;
   updated_at: Date;
   items: {
@@ -185,6 +199,8 @@ function serialisePlan(plan: PlanRow) {
     id: plan.id,
     title: plan.title,
     note: plan.note,
+    source: plan.source ?? "doctor",
+    reviewed_at: plan.reviewed_at ?? null,
     notified_at: plan.notified_at,
     updated_at: plan.updated_at,
     items: plan.items.map((i) => ({

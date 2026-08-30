@@ -22,6 +22,7 @@ const ProviderPicker = dynamic(
   { ssr: false }
 );
 import type { CarePlanBenefits, CarePlanPrefill } from "@/components/consults/CarePlanEnrollModal";
+import { TopUpButton } from "@/components/consults/TopUpButton";
 
 /**
  * The enrolment form and everything it needs — the state/LGA data, the fuzzy
@@ -110,6 +111,8 @@ export function CarePlanPanel({
     message_allowance: 40,
     lab_discount_percent: 15,
     pharmacy_discount_percent: 10,
+    topup_price_naira: 10_000,
+    topup_messages: 40,
   });
   const [prefill, setPrefill] = useState<CarePlanPrefill>({});
   const [loading, setLoading] = useState(true);
@@ -265,6 +268,7 @@ export function CarePlanPanel({
           doctor={doctor}
           member={member}
           messages={messages}
+          benefits={benefits}
           onSent={(m, left) => {
             setMessages((prev) => [...prev, m]);
             setMember((prev) =>
@@ -618,11 +622,12 @@ function BenefitRow({ icon, label, hint }: { icon: React.ReactNode; label: strin
 }
 
 function MessageThread({
-  doctor, member, messages, onSent,
+  doctor, member, messages, benefits, onSent,
 }: {
   doctor: Doctor | null;
   member: Member;
   messages: Message[];
+  benefits: CarePlanBenefits;
   onSent: (m: Message, messagesLeft: number) => void;
 }) {
   const [body, setBody] = useState("");
@@ -746,10 +751,17 @@ function MessageThread({
 
       <div className="border-t border-slate-100 p-3">
         {outOfMessages ? (
-          <p className="rounded-xl bg-slate-50 px-4 py-3 text-center text-xs text-slate-500">
-            You&apos;ve used all {member.message_allowance} messages for this year. Your plan renews on{" "}
-            {formatDate(member.expires_at)}.
-          </p>
+          <div className="rounded-xl bg-slate-50 px-4 py-3">
+            <p className="text-center text-xs text-slate-500">
+              You&apos;ve used all {member.message_allowance} messages for this year. Your plan renews
+              on {formatDate(member.expires_at)} — or top up now and carry on.
+            </p>
+            <TopUpButton
+              className="mt-3"
+              messages={benefits.topup_messages ?? 40}
+              priceNaira={benefits.topup_price_naira ?? 10_000}
+            />
+          </div>
         ) : (
           <>
             {file && (

@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useRef, useState } from "react";
 import Image from "next/image";
+import { TopUpButton } from "@/components/consults/TopUpButton";
 import {
   ArrowLeft, ImagePlus, Loader2, MessageSquareText, Send, UserRound, X,
 } from "lucide-react";
@@ -70,6 +71,7 @@ export function CarePlanChatFab({
   const [activeName, setActiveName] = useState("");
   const [messages, setMessages] = useState<Message[]>([]);
   const [messagesLeft, setMessagesLeft] = useState<number | null>(null);
+  const [topup, setTopup] = useState<{ messages: number; price_naira: number } | null>(null);
   const [loading, setLoading] = useState(false);
   const [sending, setSending] = useState(false);
   const [error, setError] = useState("");
@@ -124,6 +126,7 @@ export function CarePlanChatFab({
         setMessages(d.messages ?? []);
         if (role === "patient") {
           setMessagesLeft(d.messages_left ?? null);
+          if (d.topup) setTopup(d.topup);
           setActiveName(d.doctor?.name || "Your doctor");
           // The GET marks the doctor's replies read, so the badge clears too.
           setUnread(0);
@@ -387,6 +390,18 @@ export function CarePlanChatFab({
 
               <div className="border-t border-slate-100 bg-white p-3">
                 {error && <p className="mb-2 text-xs font-medium text-red-600">{error}</p>}
+                {role === "patient" && messagesLeft === 0 && (
+                  <div className="mb-3 rounded-xl bg-slate-50 px-3 py-3">
+                    <p className="text-center text-[11px] leading-relaxed text-slate-500">
+                      You&apos;ve used this year&apos;s messages. Top up and keep going.
+                    </p>
+                    <TopUpButton
+                      className="mt-2"
+                      messages={topup?.messages ?? 40}
+                      priceNaira={topup?.price_naira ?? 10_000}
+                    />
+                  </div>
+                )}
                 {file && (
                   <div className="mb-2 flex items-center justify-between gap-2 rounded-lg bg-slate-50 px-2.5 py-1.5">
                     <span className="truncate text-xs text-slate-600">{file.name}</span>

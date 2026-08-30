@@ -245,6 +245,9 @@ export async function PATCH(req: NextRequest, { params }: { params: { id: string
         where: { id: d.id },
         data: {
           status: d.status,
+          // Acting on a suggestion makes it the doctor's own. Until then it is
+          // outside MED_LIVE_STATUSES, so the member has never seen it.
+          ...(existing.status === "suggested" ? { source: "doctor" } : {}),
           cancel_reason: d.status === "cancelled" ? d.reason ?? null : null,
           stopped_note: d.note || null,
         },

@@ -3,7 +3,7 @@
 import { Suspense, useCallback, useEffect, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import Link from "next/link";
-import { Check, Copy, Loader2, ShieldAlert, ArrowRight } from "lucide-react";
+import { Check, Copy, Loader2, ShieldAlert, ArrowRight, MessageCircle } from "lucide-react";
 import { PoveonLogo } from "@/components/PoveonLogo";
 
 /** Paystack returns here with ?reference=… — we confirm it and show the card. */
@@ -15,6 +15,7 @@ function PaidInner() {
   const [state, setState] = useState<"checking" | "done" | "failed">("checking");
   const [error, setError] = useState("");
   const [member, setMember] = useState<{ code: string; full_name: string; doctor_assigned: boolean } | null>(null);
+  const [topup, setTopup] = useState<{ messages: number; full_name: string; messages_left: number } | null>(null);
   const [copied, setCopied] = useState(false);
 
   const confirm = useCallback(async () => {
@@ -36,7 +37,8 @@ function PaidInner() {
         setError(data.error ?? "We couldn't confirm that payment.");
         return;
       }
-      setMember(data.member);
+      if (data.kind === "topup") setTopup(data.topup);
+      else setMember(data.member);
       setState("done");
     } catch {
       setState("failed");
@@ -95,6 +97,38 @@ function PaidInner() {
               If money left your account, email support@poveon.com with this reference:{" "}
               <span className="font-mono">{reference || "—"}</span>
             </p>
+          </div>
+        )}
+
+        {state === "done" && topup && (
+          <div className="animate-scale-in overflow-hidden rounded-3xl border border-white/70 bg-white shadow-xl">
+            <div className="bg-gradient-to-br from-medical-500 to-medical-700 px-6 py-8 text-center text-white">
+              <div className="mx-auto flex h-14 w-14 items-center justify-center rounded-2xl bg-white/20">
+                <MessageCircle className="h-7 w-7" />
+              </div>
+              <h1 className="mt-3 text-xl font-bold">
+                {topup.messages} more messages added
+              </h1>
+              <p className="mt-1 text-sm text-white/80">
+                {topup.full_name ? `Thanks, ${topup.full_name.split(" ")[0]}. ` : ""}
+                You can keep talking to your doctor.
+              </p>
+            </div>
+            <div className="space-y-4 p-6">
+              <div className="rounded-2xl border border-medical-100 bg-medical-50 p-5 text-center">
+                <p className="text-[11px] font-bold uppercase tracking-widest text-medical-600">
+                  Messages left
+                </p>
+                <p className="mt-1 text-3xl font-extrabold text-medical-800">{topup.messages_left}</p>
+              </div>
+              <button
+                onClick={() => router.push("/dashboard?tab=care")}
+                className="flex w-full items-center justify-center gap-2 rounded-xl bg-medical-600 py-3.5 text-sm font-bold text-white shadow-lg shadow-medical-600/25 transition hover:bg-medical-700"
+              >
+                Back to my care plan
+                <ArrowRight className="h-4 w-4" />
+              </button>
+            </div>
           </div>
         )}
 

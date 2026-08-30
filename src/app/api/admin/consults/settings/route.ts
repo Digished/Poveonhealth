@@ -30,6 +30,9 @@ const BodySchema = z.object({
   default_doctor_cap: z.coerce.number().int().min(1).max(5000),
   lab_discount_percent: z.coerce.number().int().min(0).max(90),
   pharmacy_discount_percent: z.coerce.number().int().min(0).max(90),
+  // What another bundle of messages costs a member who runs out mid-year.
+  topup_price_naira: z.coerce.number().min(0).max(10_000_000).optional(),
+  topup_messages: z.coerce.number().int().min(1).max(365).optional(),
 });
 
 /** PATCH /api/admin/consults/settings — set the price and the doctor's share. */

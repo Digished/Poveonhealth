@@ -3,6 +3,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { getConsultSettings, getMemberByEmail, getPatientEmailFromRequest } from "@/lib/consult";
 import { itemState } from "@/lib/treatment-plan";
+import { medLiveWhere } from "@/lib/medication-status";
 import { ensureCarePlanSchema } from "@/lib/startup/ensure-care-plan-schema";
 
 /**
@@ -34,6 +35,8 @@ export async function GET(req: NextRequest) {
       message_allowance: settings.message_allowance,
       lab_discount_percent: settings.lab_discount_percent,
       pharmacy_discount_percent: settings.pharmacy_discount_percent,
+      topup_price_naira: settings.topup_price_naira,
+      topup_messages: settings.topup_messages,
     };
 
     if (!member) {
@@ -80,7 +83,9 @@ export async function GET(req: NextRequest) {
         include: { pharmacy: { select: { name: true } } },
       }),
       prisma.consultPrescription.findMany({
-        where: { patient_id: member.id },
+        // Never a suggestion: a draft the doctor has not confirmed is not
+        // something the member should be reading as their medication.
+        where: { patient_id: member.id, ...medLiveWhere },
         orderBy: [{ status: "asc" }, { created_at: "desc" }],
         take: 60,
       }),
@@ -102,7 +107,9 @@ export async function GET(req: NextRequest) {
           })
         : Promise.resolve(null),
       prisma.consultTreatmentPlan.findFirst({
-        where: { patient_id: member.id, status: "active" },
+        // A drafted plan is a suggestion to the doctor, not an instruction to
+        // the member — it appears here only once they have confirmed it.
+        where: { patient_id: member.id, status: "active", source: { not: "suggested" } },
         orderBy: { created_at: "desc" },
         include: { items: { orderBy: { position: "asc" } } },
       }),

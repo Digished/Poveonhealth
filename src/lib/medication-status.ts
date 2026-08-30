@@ -12,6 +12,16 @@
  */
 export const MED_LIVE_STATUSES = ["scheduled", "active"] as const;
 
+/**
+ * A draft the doctor has not confirmed yet.
+ *
+ * Suggestions are written from the member's own baseline the moment they join,
+ * so the doctor edits rather than starts from nothing. Deliberately outside
+ * MED_LIVE_STATUSES: nothing suggested is shown to the member or honoured at a
+ * pharmacy until a doctor has confirmed it.
+ */
+export const MED_SUGGESTED_STATUS = "suggested";
+
 /** For a Prisma `where` clause. */
 export const medLiveWhere = { status: { in: [...MED_LIVE_STATUSES] } };
 
@@ -21,6 +31,7 @@ export function isMedicationLive(status: string): boolean {
 
 /** How a medication's state reads to a member, who never saw the word "scheduled". */
 export const MED_STATUS_LABEL: Record<string, string> = {
+  suggested: "Awaiting your doctor",
   scheduled: "Just added",
   active: "Ongoing",
   completed: "Course finished",

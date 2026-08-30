@@ -16,6 +16,8 @@ type Settings = {
   default_doctor_cap: number;
   lab_discount_percent: number;
   pharmacy_discount_percent: number;
+  topup_price_naira: number;
+  topup_messages: number;
 };
 
 type Member = {
@@ -1087,6 +1089,28 @@ function PricingPanel() {
             value={form.pharmacy_discount_percent}
             onChange={(v) => setForm({ ...form, pharmacy_discount_percent: v })}
           />
+        </div>
+
+        <div className="mt-5 rounded-lg border border-white/10 bg-white/5 p-4">
+          <h4 className="text-xs font-bold uppercase tracking-wider text-slate-300">
+            Extra messages
+          </h4>
+          <p className="mt-1 text-xs text-slate-400">
+            What a member pays when their yearly allowance runs out before the year does. Bought as
+            one bundle, added to the allowance immediately.
+          </p>
+          <div className="mt-4 grid gap-4 sm:grid-cols-2">
+            <NumberField
+              label="Bundle size (messages)"
+              value={form.topup_messages ?? 40}
+              onChange={(v) => setForm({ ...form, topup_messages: v })}
+            />
+            <NumberField
+              label="Bundle price (₦)"
+              value={form.topup_price_naira ?? 10000}
+              onChange={(v) => setForm({ ...form, topup_price_naira: v })}
+            />
+          </div>
         </div>
 
         <div className="mt-5 grid gap-3 sm:grid-cols-3">

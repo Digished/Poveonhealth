@@ -26,6 +26,9 @@ export type CarePlanBenefits = {
   message_allowance: number;
   lab_discount_percent: number;
   pharmacy_discount_percent: number;
+  /** What another bundle of messages costs, once the year's allowance is spent. */
+  topup_price_naira?: number;
+  topup_messages?: number;
 };
 
 export type CarePlanPrefill = {

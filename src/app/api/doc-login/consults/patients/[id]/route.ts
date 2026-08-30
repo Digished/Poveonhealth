@@ -1,7 +1,7 @@
 export const dynamic = "force-dynamic";
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
-import { getDoctorEmailFromConsultRequest } from "@/lib/consult";
+import { draftCarePlanFor, getDoctorEmailFromConsultRequest } from "@/lib/consult";
 import { itemState } from "@/lib/treatment-plan";
 import { ensureCarePlanSchema } from "@/lib/startup/ensure-care-plan-schema";
 
@@ -38,7 +38,8 @@ export async function GET(req: NextRequest, { params }: { params: { id: string }
         ? patient.assigned_at
         : null;
 
-    const [messages, earning, redemptions, prescriptions, testOrders, plan, planLogs] = await Promise.all([
+    // eslint-disable-next-line prefer-const
+    let [messages, earning, redemptions, prescriptions, testOrders, plan, planLogs] = await Promise.all([
       prisma.consultMessage.findMany({
         where: {
           patient_id: patient.id,
@@ -99,6 +100,34 @@ export async function GET(req: NextRequest, { params }: { params: { id: string }
         include: { item: { select: { label: true, measure: true, measure_label: true } } },
       }),
     ]);
+
+    // A member activated before a doctor was assigned has no draft yet. Done
+    // here rather than up front so the common case — a plan already exists —
+    // costs nothing: the query that would have checked is the one we just ran.
+    if (!plan && patient.status === "active") {
+      const drafted = await draftCarePlanFor(patient.id, email).catch(() => null);
+      if (drafted?.plan) {
+        [plan, prescriptions] = await Promise.all([
+          prisma.consultTreatmentPlan.findFirst({
+            where: { patient_id: patient.id, status: "active" },
+            orderBy: { created_at: "desc" },
+            include: { items: { orderBy: { position: "asc" } } },
+          }),
+          prisma.consultPrescription.findMany({
+            where: { patient_id: patient.id },
+            orderBy: [{ status: "asc" }, { created_at: "desc" }],
+            take: 60,
+            include: {
+              fulfilments: {
+                orderBy: { created_at: "desc" },
+                take: 1,
+                select: { status: true, created_at: true, recorded_by: true, note: true },
+              },
+            },
+          }),
+        ]);
+      }
+    }
 
     // Opening the member clears their unread flag for the doctor.
     void prisma.consultMessage
@@ -178,6 +207,9 @@ export async function GET(req: NextRequest, { params }: { params: { id: string }
             id: plan.id,
             title: plan.title,
             note: plan.note,
+            // A drafted plan is a suggestion until the doctor confirms it.
+            source: plan.source,
+            reviewed_at: plan.reviewed_at,
             notified_at: plan.notified_at,
             updated_at: plan.updated_at,
             items: plan.items.map((i) => ({

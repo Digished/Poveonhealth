@@ -1873,6 +1873,10 @@ model ConsultSettings {
   default_doctor_cap Int      @default(200) // patients per doctor per year, until they set their own
   lab_discount_percent      Int @default(15)
   pharmacy_discount_percent Int @default(10)
+  // A member who runs out mid-year buys another bundle rather than waiting for
+  // renewal. Same size and price as the year's allowance by default.
+  topup_price_naira  Decimal @default(10000) @db.Decimal(12, 2)
+  topup_messages     Int     @default(40)
   updated_at DateTime @updatedAt
   updated_by String?
 
@@ -1967,6 +1971,8 @@ model ConsultPatient {
   treatment_plans    ConsultTreatmentPlan[]
   fulfilments        ConsultFulfilment[]
   plan_logs          ConsultPlanLog[]
+  topups             ConsultTopup[]
+  screenings         ConsultScreening[]
 
   @@index([doctor_email, status])
   @@index([status, expires_at])
@@ -2178,8 +2184,10 @@ model ConsultPrescription {
   start_date    DateTime? @db.Date
   end_date      DateTime? @db.Date // derived from duration when not given
   status        String    @default("scheduled") // scheduled | active | completed | cancelled
-  // Why it was stopped: not_effective | side_effects | cost | not_convenient |
-  // condition_resolved | switched | other
+  // A suggestion drawn from the member's own baseline, waiting on the doctor.
+  // Nothing suggested is ever shown to the member or a pharmacy until it is
+  // confirmed — see status "suggested".
+  source        String    @default("doctor") // doctor | suggested
   cancel_reason String?
   stopped_note  String?
   created_at    DateTime  @default(now())
@@ -2237,6 +2245,11 @@ model ConsultTreatmentPlan {
   title        String   @default("Treatment plan")
   note         String? // anything that does not belong on a single item
   status       String   @default("active") // active | archived
+  // Drafted from the member's conditions at sign-up so the doctor edits rather
+  // than starts from nothing. Until they confirm it, it is a suggestion.
+  source       String    @default("doctor") // doctor | suggested
+  reviewed_at  DateTime?
+  reviewed_by  String?
   notified_at  DateTime? // last time the member was told about it
   created_at   DateTime @default(now())
   updated_at   DateTime @updatedAt
@@ -2311,6 +2324,57 @@ model ConsultFulfilment {
   @@index([pharmacy_id, created_at])
   @@index([lab_id, created_at])
   @@map("consult_fulfilments")
+}
+
+// A bundle of extra messages a member bought after using the year's allowance.
+//
+// Kept as its own row rather than only bumping the allowance, so the year's
+// spend is auditable and a duplicate Paystack callback cannot grant twice.
+model ConsultTopup {
+  id           String   @id @default(uuid())
+  patient_id   String
+  messages     Int
+  amount_naira Decimal  @db.Decimal(12, 2)
+  paystack_ref String?  @unique
+  status       String   @default("pending") // pending | paid
+  created_at   DateTime @default(now())
+  paid_at      DateTime?
+
+  patient ConsultPatient @relation(fields: [patient_id], references: [id], onDelete: Cascade)
+
+  @@index([patient_id, created_at])
+  @@map("consult_topups")
+}
+
+// One completed round of symptom screening.
+//
+// The question set lives in components/consults/screening.ts and grows over
+// time, so the answers are kept as JSON and read back through that module. The
+// two derived columns — the worst severity in the round and the keys that were
+// not "none" — are written alongside so a doctor's list can be filtered without
+// parsing every round's answers.
+model ConsultScreening {
+  id         String   @id @default(uuid())
+  patient_id String
+  // onboarding | routine. The first round is taken with the baseline; the rest
+  // are asked on a cadence that tightens when something is flagged.
+  source     String   @default("routine")
+  answers    Json     @default("{}")
+  severity   String   @default("none") // none | mild | concerning | urgent
+  flagged    String[] @default([])
+  // When the next round falls due, set from this round's severity so a member
+  // who reports nothing is not asked as often as one who does.
+  due_on     DateTime @db.Date
+  // Stamped once the doctor has looked at a flagged round.
+  seen_at    DateTime?
+  seen_by    String?
+  created_at DateTime @default(now())
+
+  patient ConsultPatient @relation(fields: [patient_id], references: [id], onDelete: Cascade)
+
+  @@index([patient_id, created_at])
+  @@index([severity, due_on])
+  @@map("consult_screenings")
 }
 
 // A device that has agreed to receive push notifications.
