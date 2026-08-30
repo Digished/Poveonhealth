@@ -13,6 +13,7 @@ import { BankAccountInput } from "@/components/BankAccountInput";
 import { PhoneInput } from "@/components/PhoneInput";
 import { HospitalTagInput } from "@/components/ui/HospitalTagInput";
 import { Button } from "@/components/ui/Button";
+import { AdminOverlay } from "@/components/admin/AdminOverlay";
 
 // ── Types ──────────────────────────────────────────────────────────────────────
 
@@ -122,8 +123,8 @@ function CreateProfessionalModal({ onClose, onCreated }: { onClose: () => void; 
   const foundName      = emailResult?.data ? `${emailResult.data.prefix ?? ""} ${emailResult.data.full_name ?? ""}`.trim() : "";
 
   return (
-    <div className="fixed inset-0 z-50 bg-black/60 backdrop-blur-sm flex items-end sm:items-center justify-center p-0 sm:p-4">
-      <div className="bg-slate-900 border border-white/12 w-full sm:max-w-md rounded-t-3xl sm:rounded-3xl shadow-2xl overflow-hidden flex flex-col max-h-[92dvh]">
+    <AdminOverlay onClose={onClose}>
+      <div className="bg-slate-900 border border-white/12 w-full sm:max-w-md rounded-t-3xl sm:rounded-3xl shadow-2xl overflow-hidden flex flex-col max-h-modal">
 
         {/* Header */}
         <div className="flex items-center justify-between px-5 py-4 border-b border-white/10 shrink-0">
@@ -374,7 +375,7 @@ function CreateProfessionalModal({ onClose, onCreated }: { onClose: () => void; 
           </form>
         )}
       </div>
-    </div>
+    </AdminOverlay>
   );
 }
 
@@ -442,9 +443,9 @@ function EditProfessionalModal({
   const labelCls = "block text-xs font-medium text-slate-300 mb-1.5";
 
   return (
-    <div className="fixed inset-0 z-50 bg-black/60 backdrop-blur-sm flex items-end sm:items-center justify-center p-0 sm:p-4" onClick={onClose}>
+    <AdminOverlay onClose={() => onClose()}>
       <div
-        className="bg-slate-900 border border-white/12 w-full sm:max-w-md rounded-t-3xl sm:rounded-3xl shadow-2xl overflow-hidden flex flex-col max-h-[92dvh]"
+        className="bg-slate-900 border border-white/12 w-full sm:max-w-md rounded-t-3xl sm:rounded-3xl shadow-2xl overflow-hidden flex flex-col max-h-modal"
         onClick={(e) => e.stopPropagation()}
       >
         {/* Header */}
@@ -551,7 +552,7 @@ function EditProfessionalModal({
           </form>
         )}
       </div>
-    </div>
+    </AdminOverlay>
   );
 }
 
@@ -702,9 +703,9 @@ function CsvImportModal({ onClose, onImported }: { onClose: () => void; onImport
   const invalidRows = rows?.filter((r) => !r._valid) ?? [];
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/70 backdrop-blur-sm" onClick={onClose}>
+    <AdminOverlay onClose={() => onClose()} align="center">
       <div
-        className="bg-slate-900 border border-white/10 rounded-2xl shadow-2xl w-full max-w-3xl max-h-[90vh] flex flex-col"
+        className="bg-slate-900 border border-white/10 rounded-2xl shadow-2xl w-full max-w-3xl max-h-modal flex flex-col"
         onClick={(e) => e.stopPropagation()}
       >
         {/* Header */}
@@ -915,7 +916,7 @@ function CsvImportModal({ onClose, onImported }: { onClose: () => void; onImport
           </div>
         )}
       </div>
-    </div>
+    </AdminOverlay>
   );
 }
 
@@ -1375,7 +1376,7 @@ export function AdminProfessionalsTab() {
 
       {/* Delete confirm */}
       {confirmDelete && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm p-4">
+        <AdminOverlay onClose={() => setConfirmDelete(null)} align="center">
           <div className="bg-slate-900 border border-white/15 rounded-2xl w-full max-w-sm shadow-2xl p-6 space-y-4">
             <div className="text-center">
               <div className="w-12 h-12 bg-red-500/15 rounded-full flex items-center justify-center mx-auto mb-3">
@@ -1400,7 +1401,7 @@ export function AdminProfessionalsTab() {
               </Button>
             </div>
           </div>
-        </div>
+        </AdminOverlay>
       )}
     </div>
   );

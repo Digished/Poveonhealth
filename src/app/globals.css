@@ -289,7 +289,12 @@
    these tokens instead, so light and dark are one value swap rather than a
    list someone has to remember to extend.
 
-   Scope: `.dash` on the shell root. Light mode redefines only the values. */
+   Scope: `:root` as well as `.dash`, because dialogs and the mobile nav sheet
+   are portalled into <body> — outside the dashboard wrapper — and a token that
+   resolves to nothing there renders a panel with no background at all. The
+   dark values are therefore the document default; `.dash-light`, which
+   useDashTheme mirrors onto <body>, is what swaps them. */
+:root,
 .dash {
   --dash-bg:          #0b1220;
   --dash-bg-2:        #101a2e;
@@ -329,6 +334,11 @@
   --dash-shadow:      0 6px 20px rgba(15, 23, 42, 0.10);
   --dash-ring:        rgba(3, 105, 161, 0.35);
 }
+
+/* Panels inside AdminOverlay: as tall as the visible viewport allows, which
+   with a keyboard up is much less than 90vh. Falls back to dvh if a panel is
+   ever rendered outside the wrapper. */
+.max-h-modal { max-height: var(--admin-modal-max-h, 92dvh); }
 
 /* Token-backed utilities. Deliberately few: a surface, a border, three text
    weights and one accent is the whole vocabulary the chrome needs. */

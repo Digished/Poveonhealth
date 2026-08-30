@@ -7,6 +7,7 @@ import {
   Activity, BadgeCheck, Banknote, Check, ExternalLink, FileText, HeartPulse, Loader2, Play,
   RefreshCw, Save, Search, Settings2, ShieldCheck, TrendingUp, Users, UserCog, X,
 } from "lucide-react";
+import { AdminOverlay } from "@/components/admin/AdminOverlay";
 
 type Settings = {
   price_naira: number;
@@ -401,13 +402,8 @@ function AssignDoctorDialog({
   }, [load, q]);
 
   return (
-    <div
-      className="fixed inset-0 z-[300] flex items-end justify-center bg-slate-900/60 p-0 backdrop-blur-sm sm:items-center sm:p-4"
-      onClick={(e) => { if (e.target === e.currentTarget) onClose(); }}
-      role="dialog"
-      aria-modal="true"
-    >
-      <div className="flex max-h-[90dvh] w-full flex-col overflow-hidden rounded-t-2xl border border-white/10 bg-slate-900 shadow-2xl sm:max-w-lg sm:rounded-2xl">
+    <AdminOverlay onClose={() => onClose()}>
+      <div className="flex max-h-modal w-full flex-col overflow-hidden rounded-t-2xl border border-white/10 bg-slate-900 shadow-2xl sm:max-w-lg sm:rounded-2xl">
         <div className="flex items-start justify-between gap-3 border-b border-white/10 p-5">
           <div className="min-w-0">
             <h3 className="text-sm font-bold text-white">Assign a doctor</h3>
@@ -508,7 +504,7 @@ function AssignDoctorDialog({
           </div>
         )}
       </div>
-    </div>
+    </AdminOverlay>
   );
 }
 

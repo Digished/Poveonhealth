@@ -35,6 +35,7 @@ import {
 import { useRouter,
 } from "next/navigation";
 import { labUrl, labHost, LAB_SUBDOMAINS_ENABLED } from "@/lib/lab-urls";
+import { AdminOverlay } from "@/components/admin/AdminOverlay";
 
 /**
  * The admin sections.
@@ -583,7 +584,7 @@ export function AdminDashboard() {
         </div>
       </header>
 
-      <div className="mx-auto flex max-w-[1600px] gap-5 px-3 py-4 sm:px-5 sm:py-6">
+      <div className="mx-auto max-w-[1600px] gap-5 px-3 py-4 sm:px-5 sm:py-6 lg:flex">
         <AdminNav
           groups={ADMIN_NAV}
           activeKey={activeTab}
@@ -1333,10 +1334,7 @@ export function AdminDashboard() {
 
       {/* Set Temporary Password Modal */}
       {tempPasswordLab && (
-        <div
-          className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm"
-          onClick={() => setTempPasswordLab(null)}
-        >
+        <AdminOverlay onClose={() => setTempPasswordLab(null)} align="center">
           <div
             className="bg-slate-900 border border-white/15 rounded-2xl shadow-2xl w-full max-w-md overflow-hidden"
             onClick={(e) => e.stopPropagation()}
@@ -1388,18 +1386,14 @@ export function AdminDashboard() {
               </button>
             </div>
           </div>
-        </div>
+        </AdminOverlay>
       )}
 
       {/* Per-lab analytics modal */}
       {labAnalyticsLabId && (
-        <div
-          className="fixed inset-0 z-50 flex items-end sm:items-center justify-center p-4"
-          style={{ backgroundColor: "rgba(2,6,23,0.85)", backdropFilter: "blur(6px)" }}
-          onClick={() => setLabAnalyticsLabId(null)}
-        >
+        <AdminOverlay onClose={() => setLabAnalyticsLabId(null)}>
           <div
-            className="w-full max-w-2xl bg-slate-900 border border-white/10 rounded-3xl shadow-2xl overflow-hidden max-h-[92vh] flex flex-col"
+            className="w-full max-w-2xl bg-slate-900 border border-white/10 rounded-3xl shadow-2xl overflow-hidden max-h-modal flex flex-col"
             onClick={(e) => e.stopPropagation()}
           >
             {/* Header */}
@@ -1618,7 +1612,7 @@ export function AdminDashboard() {
               ) : null}
             </div>
           </div>
-        </div>
+        </AdminOverlay>
       )}
     </div>
   );
@@ -1736,8 +1730,8 @@ function LabBranchModal({ lab, onClose, allLabs }: { lab: Lab; onClose: () => vo
   }
 
   return (
-    <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center p-4 bg-black/70 backdrop-blur-sm" onClick={(e) => { if (e.target === e.currentTarget) onClose(); }}>
-      <div className="bg-slate-900 border border-white/10 rounded-2xl w-full max-w-lg max-h-[90vh] overflow-y-auto shadow-2xl animate-slide-up">
+    <AdminOverlay onClose={() => onClose()}>
+      <div className="bg-slate-900 border border-white/10 rounded-2xl w-full max-w-lg max-h-modal overflow-y-auto shadow-2xl animate-slide-up">
         {/* Header */}
         <div className="sticky top-0 bg-slate-900 border-b border-white/10 px-5 py-4 flex items-center justify-between rounded-t-2xl">
           <div>
@@ -1846,7 +1840,7 @@ function LabBranchModal({ lab, onClose, allLabs }: { lab: Lab; onClose: () => vo
           )}
         </div>
       </div>
-    </div>
+    </AdminOverlay>
   );
 }
 
@@ -1858,8 +1852,8 @@ function LabIntegrationModal({ lab, onClose }: { lab: Lab; onClose: () => void }
   const [activeTab, setActiveTab] = useState<IntegrationTab>("developer");
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm p-4">
-      <div className="bg-slate-900 border border-white/15 rounded-2xl w-full max-w-lg shadow-2xl animate-slide-up max-h-[90vh] flex flex-col">
+    <AdminOverlay onClose={onClose} align="center">
+      <div className="bg-slate-900 border border-white/15 rounded-2xl w-full max-w-lg shadow-2xl animate-slide-up max-h-modal flex flex-col">
         {/* Header */}
         <div className="flex items-center justify-between px-5 py-4 border-b border-white/10 shrink-0">
           <div className="flex items-center gap-2">
@@ -1898,7 +1892,7 @@ function LabIntegrationModal({ lab, onClose }: { lab: Lab; onClose: () => void }
           {activeTab === "team" && <LabTeamTab lab={lab} />}
         </div>
       </div>
-    </div>
+    </AdminOverlay>
   );
 }
 
@@ -4133,13 +4127,9 @@ function SendAgreementModal({
   }
 
   return (
-    <div
-      className="fixed inset-0 z-50 flex items-end sm:items-center justify-center p-4"
-      style={{ backgroundColor: "rgba(2,6,23,0.85)", backdropFilter: "blur(6px)" }}
-      onClick={onClose}
-    >
+    <AdminOverlay onClose={() => onClose()}>
       <div
-        className="w-full max-w-2xl bg-slate-900 border border-white/10 rounded-3xl shadow-2xl overflow-hidden flex flex-col max-h-[90vh]"
+        className="w-full max-w-2xl bg-slate-900 border border-white/10 rounded-3xl shadow-2xl overflow-hidden flex flex-col max-h-modal"
         onClick={(e) => e.stopPropagation()}
       >
         {/* Header */}
@@ -4206,7 +4196,7 @@ function SendAgreementModal({
           </button>
         </div>
       </div>
-    </div>
+    </AdminOverlay>
   );
 }
 
@@ -4250,13 +4240,9 @@ function LabSlaModal({ onClose }: { onClose: () => void }) {
   const labelCls = "block text-xs font-medium text-slate-400 mb-1";
 
   return (
-    <div
-      className="fixed inset-0 z-50 flex items-end sm:items-center justify-center p-4"
-      style={{ backgroundColor: "rgba(2,6,23,0.85)", backdropFilter: "blur(6px)" }}
-      onClick={onClose}
-    >
+    <AdminOverlay onClose={() => onClose()}>
       <div
-        className="w-full max-w-5xl bg-slate-900 border border-white/10 rounded-3xl shadow-2xl overflow-hidden flex flex-col max-h-[92vh]"
+        className="w-full max-w-5xl bg-slate-900 border border-white/10 rounded-3xl shadow-2xl overflow-hidden flex flex-col max-h-modal"
         onClick={(e) => e.stopPropagation()}
       >
         {/* Header */}
@@ -4403,7 +4389,7 @@ function LabSlaModal({ onClose }: { onClose: () => void }) {
           </button>
         </div>
       </div>
-    </div>
+    </AdminOverlay>
   );
 }
 
@@ -4447,11 +4433,7 @@ function TransferEmailModal({
   }
 
   return (
-    <div
-      className="fixed inset-0 z-50 flex items-end sm:items-center justify-center p-4"
-      style={{ backgroundColor: "rgba(2,6,23,0.85)", backdropFilter: "blur(6px)" }}
-      onClick={onClose}
-    >
+    <AdminOverlay onClose={() => onClose()}>
       <div
         className="w-full max-w-md bg-slate-900 border border-white/10 rounded-3xl shadow-2xl overflow-hidden"
         onClick={(e) => e.stopPropagation()}
@@ -4524,7 +4506,7 @@ function TransferEmailModal({
           </button>
         </div>
       </div>
-    </div>
+    </AdminOverlay>
   );
 }
 
@@ -4943,11 +4925,7 @@ function AdminLabCatalogModal({ lab, onClose }: { lab: Lab; onClose: () => void 
   }
 
   return (
-    <div
-      className="fixed inset-0 z-50 flex items-center justify-center p-2 sm:p-4"
-      style={{ backgroundColor: "rgba(2,6,23,0.85)", backdropFilter: "blur(6px)" }}
-      onClick={onClose}
-    >
+    <AdminOverlay onClose={() => onClose()} align="center">
       <div
         className="bg-slate-900 border border-white/10 rounded-2xl sm:rounded-3xl shadow-2xl overflow-hidden flex flex-col transition-all duration-300 w-full h-full max-h-screen"
         onClick={(e) => e.stopPropagation()}
@@ -5356,7 +5334,7 @@ function AdminLabCatalogModal({ lab, onClose }: { lab: Lab; onClose: () => void 
           />
         )}
       </div>
-    </div>
+    </AdminOverlay>
   );
 }
 
@@ -5439,11 +5417,7 @@ function KbMappingModal({
   };
 
   return (
-    <div
-      className="fixed inset-0 z-50 flex items-center justify-center p-4"
-      style={{ backgroundColor: "rgba(2,6,23,0.85)", backdropFilter: "blur(6px)" }}
-      onClick={onClose}
-    >
+    <AdminOverlay onClose={() => onClose()} align="center">
       <div
         className="w-full max-w-lg bg-slate-900 border border-white/10 rounded-2xl shadow-2xl overflow-hidden flex flex-col max-h-[80vh]"
         onClick={(e) => e.stopPropagation()}
@@ -5549,7 +5523,7 @@ function KbMappingModal({
           </button>
         </div>
       </div>
-    </div>
+    </AdminOverlay>
   );
 }
 
@@ -5570,11 +5544,7 @@ function DeleteConfirmModal({
   const match = typed.trim() === name.trim();
 
   return (
-    <div
-      className="fixed inset-0 z-50 flex items-end sm:items-center justify-center p-4"
-      style={{ backgroundColor: "rgba(2,6,23,0.85)", backdropFilter: "blur(6px)" }}
-      onClick={onClose}
-    >
+    <AdminOverlay onClose={() => onClose()}>
       <div
         className="w-full max-w-md bg-slate-900 border border-white/10 rounded-3xl shadow-2xl overflow-hidden"
         onClick={(e) => e.stopPropagation()}
@@ -5625,6 +5595,6 @@ function DeleteConfirmModal({
           </button>
         </div>
       </div>
-    </div>
+    </AdminOverlay>
   );
 }

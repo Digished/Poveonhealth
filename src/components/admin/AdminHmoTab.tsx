@@ -7,6 +7,7 @@ import {
   Trash2, RefreshCw, Flag,
 } from "lucide-react";
 import { toast } from "react-hot-toast";
+import { AdminOverlay } from "@/components/admin/AdminOverlay";
 
 // ── Types ──────────────────────────────────────────────────────────────────────
 
@@ -143,7 +144,7 @@ function CreateHmoModal({ onClose, onCreated }: { onClose: () => void; onCreated
   }
 
   return (
-    <div className="fixed inset-0 z-50 bg-black/60 backdrop-blur-sm flex items-center justify-center p-4" onClick={onClose}>
+    <AdminOverlay onClose={() => onClose()} align="center">
       <div className="bg-slate-900 border border-white/10 rounded-2xl w-full max-w-md shadow-2xl" onClick={(e) => e.stopPropagation()}>
         <div className="px-5 py-4 border-b border-white/10 flex items-center justify-between">
           <h3 className="text-white font-semibold flex items-center gap-2"><Building2 className="w-4 h-4 text-emerald-400" /> New HMO Partner</h3>
@@ -176,7 +177,7 @@ function CreateHmoModal({ onClose, onCreated }: { onClose: () => void; onCreated
           </button>
         </form>
       </div>
-    </div>
+    </AdminOverlay>
   );
 }
 
@@ -230,8 +231,8 @@ function RosterImportModal({ hmo, onClose, onImported }: { hmo: HmoRow; onClose:
   }
 
   return (
-    <div className="fixed inset-0 z-50 bg-black/60 backdrop-blur-sm flex items-center justify-center p-4" onClick={onClose}>
-      <div className="bg-slate-900 border border-white/10 rounded-2xl w-full max-w-3xl max-h-[90dvh] flex flex-col shadow-2xl" onClick={(e) => e.stopPropagation()}>
+    <AdminOverlay onClose={() => onClose()} align="center">
+      <div className="bg-slate-900 border border-white/10 rounded-2xl w-full max-w-3xl max-h-modal flex flex-col shadow-2xl" onClick={(e) => e.stopPropagation()}>
         <div className="px-5 py-4 border-b border-white/10 flex items-center justify-between shrink-0">
           <h3 className="text-white font-semibold flex items-center gap-2">
             <FileSpreadsheet className="w-4 h-4 text-emerald-400" /> Upload Roster — {hmo.name}
@@ -364,7 +365,7 @@ function RosterImportModal({ hmo, onClose, onImported }: { hmo: HmoRow; onClose:
           </div>
         )}
       </div>
-    </div>
+    </AdminOverlay>
   );
 }
 
@@ -402,7 +403,7 @@ function CreateDoctorModal({ onClose, onCreated }: { onClose: () => void; onCrea
   }
 
   return (
-    <div className="fixed inset-0 z-50 bg-black/60 backdrop-blur-sm flex items-center justify-center p-4" onClick={onClose}>
+    <AdminOverlay onClose={() => onClose()} align="center">
       <div className="bg-slate-900 border border-white/10 rounded-2xl w-full max-w-md shadow-2xl" onClick={(e) => e.stopPropagation()}>
         <div className="px-5 py-4 border-b border-white/10 flex items-center justify-between">
           <h3 className="text-white font-semibold flex items-center gap-2"><Stethoscope className="w-4 h-4 text-emerald-400" /> New Monitoring Doctor</h3>
@@ -435,7 +436,7 @@ function CreateDoctorModal({ onClose, onCreated }: { onClose: () => void; onCrea
           </button>
         </form>
       </div>
-    </div>
+    </AdminOverlay>
   );
 }
 

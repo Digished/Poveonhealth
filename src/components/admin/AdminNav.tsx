@@ -19,8 +19,8 @@
  * light mode is a value swap and cannot leak.
  */
 
-import { useEffect, useMemo, useRef, useState } from "react";
-import { ChevronDown, Search, X, type LucideIcon } from "lucide-react";
+import { useEffect, useRef, useState } from "react";
+import { Search, X, type LucideIcon } from "lucide-react";
 import { Portal, useViewport } from "@/components/ui/Overlay";
 
 export type AdminNavItem = {
@@ -49,16 +49,12 @@ export function AdminNav({
   open: boolean;
   onOpenChange: (open: boolean) => void;
 }) {
-  const all = useMemo(() => groups.flatMap((g) => g.items), [groups]);
-  const current = all.find((i) => i.key === activeKey) ?? all[0];
-
   return (
     <>
       <DesktopSidebar groups={groups} activeKey={activeKey} onSelect={onSelect} />
       <MobileSheet
         groups={groups}
         activeKey={activeKey}
-        current={current}
         open={open}
         onOpenChange={onOpenChange}
         onSelect={(k) => {
@@ -214,14 +210,12 @@ function NavRow({
 function MobileSheet({
   groups,
   activeKey,
-  current,
   open,
   onOpenChange,
   onSelect,
 }: {
   groups: AdminNavGroup[];
   activeKey: string;
-  current: AdminNavItem | undefined;
   open: boolean;
   onOpenChange: (open: boolean) => void;
   onSelect: (key: string) => void;
@@ -251,23 +245,6 @@ function MobileSheet({
 
   return (
     <>
-      <div className="lg:hidden mb-4">
-        <button
-          type="button"
-          onClick={() => onOpenChange(true)}
-          aria-expanded={open}
-          aria-haspopup="dialog"
-          className="dash-panel dash-ring flex w-full items-center gap-2.5 rounded-xl px-3.5 py-3 text-sm font-semibold"
-          style={{ color: "var(--dash-text)" }}
-        >
-          {current && (
-            <current.icon className="h-4 w-4 shrink-0" style={{ color: "var(--dash-accent)" }} />
-          )}
-          <span className="min-w-0 flex-1 truncate text-left">{current?.label ?? "Sections"}</span>
-          <ChevronDown className="h-4 w-4 shrink-0" style={{ color: "var(--dash-muted)" }} />
-        </button>
-      </div>
-
       {open && (
         <Portal>
           <div

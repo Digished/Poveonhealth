@@ -4,6 +4,7 @@ import { useCallback, useEffect, useState } from "react";
 import { toast } from "react-hot-toast";
 import { Plus, RefreshCw, Stethoscope, Trash2, X } from "lucide-react";
 import { format } from "date-fns";
+import { AdminOverlay } from "@/components/admin/AdminOverlay";
 
 // =============================================================================
 // HospitalDoctorsPanel — admin view of the doctors registered under a hospital
@@ -112,11 +113,8 @@ export function HospitalDoctorsPanel({
     "w-full px-3 py-2 rounded-xl border border-white/10 bg-white/5 text-white placeholder-slate-500 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500/50 transition";
 
   return (
-    <div
-      className="fixed inset-0 z-50 flex items-end sm:items-center justify-center p-4 bg-black/60 backdrop-blur-sm"
-      onClick={(e) => { if (e.target === e.currentTarget) onClose(); }}
-    >
-      <div className="bg-slate-900 border border-white/15 rounded-2xl w-full max-w-lg shadow-2xl animate-slide-up max-h-[90vh] flex flex-col">
+    <AdminOverlay onClose={() => onClose()}>
+      <div className="bg-slate-900 border border-white/15 rounded-2xl w-full max-w-lg shadow-2xl animate-slide-up max-h-modal flex flex-col">
         {/* Header */}
         <div className="flex items-start justify-between px-5 py-4 border-b border-white/10 shrink-0">
           <div className="min-w-0">
@@ -219,6 +217,6 @@ export function HospitalDoctorsPanel({
           </p>
         </div>
       </div>
-    </div>
+    </AdminOverlay>
   );
 }
