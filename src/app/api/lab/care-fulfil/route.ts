@@ -3,6 +3,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { z } from "zod";
 import { prisma } from "@/lib/prisma";
 import { generateTestOrderCode, getConsultSettings } from "@/lib/consult";
+import { generateUniqueCode } from "@/lib/code-generator";
 import { getLabAuth } from "@/lib/lab-auth";
 import { ensureCarePlanSchema } from "@/lib/startup/ensure-care-plan-schema";
 
@@ -60,7 +61,56 @@ export async function POST(req: NextRequest) {
     const discount = gross ? Math.round((gross * settings.lab_discount_percent) / 100) : 0;
     const done = items.filter((i) => i.status === "done");
 
-    const lab = await prisma.lab.findUnique({ where: { id: auth.lab_id }, select: { name: true } });
+    const lab = await prisma.lab.findUnique({
+      where: { id: auth.lab_id },
+      select: { name: true, prefix: true },
+    });
+
+    // Each test that was actually run becomes a request on this lab's board.
+    // The codes are minted outside the transaction: the generator does its own
+    // uniqueness reads, and holding a transaction open for them is wasteful.
+    const requestIds = new Map<string, string>();
+    if (lab?.prefix) {
+      for (const i of done) {
+        const order = byId.get(i.test_order_id)!;
+        try {
+          const code = await generateUniqueCode(lab.prefix, async (candidate) => {
+            const clash = await prisma.request.findUnique({
+              where: { code: candidate },
+              select: { id: true },
+            });
+            return !!clash;
+          });
+          const created = await prisma.request.create({
+            data: {
+              code,
+              lab_id: auth.lab_id,
+              patient_name: member.full_name,
+              patient_email: member.email,
+              patient_phone: member.phone,
+              sex: member.sex,
+              // dob is legacy on Request; new rows carry the age.
+              patient_age: ageFrom(member.date_of_birth),
+              tests: order.tests,
+              diagnosis: order.reason,
+              // The programme is the referrer, not the doctor — Poveon sent them.
+              doctor_name: "Poveon Care Plan",
+              source: "poveon",
+              referral_type: "self",
+              status: "done",
+              completed_at: new Date(),
+              is_paid: true,
+              tests_confirmed: true,
+            },
+            select: { id: true },
+          });
+          requestIds.set(i.test_order_id, created.id);
+        } catch (e) {
+          // A failure here must not lose the fulfilment record itself.
+          console.error("[lab/care-fulfil] could not open a request:", e);
+        }
+      }
+    }
 
     await prisma.$transaction(async (tx) => {
       await tx.consultFulfilment.createMany({
@@ -76,6 +126,21 @@ export async function POST(req: NextRequest) {
       });
 
       for (const i of done) {
+        const order = byId.get(i.test_order_id)!;
+
+        // Running a care-plan test makes it real work for this lab, so it
+        // enters the same pipeline as any other request: it gets the lab's own
+        // code, appears on their worklist, and — the point — the result comes
+        // back to the member through the channel that already exists. Before
+        // this the test was simply marked done and the result had nowhere to go.
+        const requestId = requestIds.get(i.test_order_id);
+        if (requestId) {
+          await tx.consultTestOrder.update({
+            where: { id: i.test_order_id },
+            data: { request_id: requestId },
+          });
+        }
+
         await tx.consultTestOrder.update({
           where: { id: i.test_order_id },
           data: { status: "done", completed_at: new Date(), result_note: i.note || null },
@@ -83,7 +148,6 @@ export async function POST(req: NextRequest) {
 
         // A repeating order books the next one, the same as when a doctor
         // marks it done from their own dashboard.
-        const order = byId.get(i.test_order_id)!;
         const CADENCE: Record<string, number> = { monthly: 1, quarterly: 3, biannual: 6, annual: 12 };
         const months = CADENCE[order.recurrence] ?? 0;
         if (months > 0) {
@@ -129,4 +193,17 @@ export async function POST(req: NextRequest) {
     console.error("[lab/care-fulfil]", err);
     return NextResponse.json({ error: "Could not record that." }, { status: 500 });
   }
+}
+
+
+/** Whole years since a date of birth, or null when we were never told. */
+function ageFrom(dob: Date | null): number | null {
+  if (!dob) return null;
+  const now = new Date();
+  let age = now.getFullYear() - dob.getFullYear();
+  const beforeBirthday =
+    now.getMonth() < dob.getMonth() ||
+    (now.getMonth() === dob.getMonth() && now.getDate() < dob.getDate());
+  if (beforeBirthday) age -= 1;
+  return age >= 0 && age < 130 ? age : null;
 }

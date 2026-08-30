@@ -12,6 +12,7 @@ import { SectionLoader } from "@/components/PageLoader";
 import { toast } from "react-hot-toast";
 import { Download } from "lucide-react";
 import { Modal } from "@/components/ui/Overlay";
+import { MonthFilter } from "@/components/ui/MonthFilter";
 import { conditionLabel } from "@/lib/consult-conditions";
 
 type Pharmacy = {
@@ -721,31 +722,12 @@ function CareMembersPanel() {
           <p className="mb-1.5 text-[11px] font-bold uppercase tracking-wide text-slate-400">
             Refills due
           </p>
-          <div className="flex flex-wrap gap-1.5">
-            <button
-              onClick={() => setMonth("")}
-              className={`rounded-full px-3 py-1.5 text-xs font-semibold transition ${
-                month === ""
-                  ? "bg-emerald-600 text-white"
-                  : "bg-white text-slate-600 ring-1 ring-slate-200 hover:ring-slate-300"
-              }`}
-            >
-              All ({summary?.pending_prescriptions ?? 0})
-            </button>
-            {months.map((m) => (
-              <button
-                key={m.month}
-                onClick={() => setMonth(month === m.month ? "" : m.month)}
-                className={`rounded-full px-3 py-1.5 text-xs font-semibold transition ${
-                  month === m.month
-                    ? "bg-emerald-600 text-white"
-                    : "bg-white text-slate-600 ring-1 ring-slate-200 hover:ring-slate-300"
-                }`}
-              >
-                {monthLabel(m.month)} ({m.count})
-              </button>
-            ))}
-          </div>
+          <MonthFilter
+            months={months}
+            value={month}
+            onChange={setMonth}
+            allCount={summary?.pending_prescriptions ?? 0}
+          />
         </div>
       )}
 
@@ -935,14 +917,3 @@ function PharmacyQrCard() {
   );
 }
 
-
-/** "2026-03" → "March", or "March 2027" when it is not this year. */
-function monthLabel(key: string): string {
-  const [y, m] = key.split("-").map(Number);
-  if (!y || !m) return key;
-  const d = new Date(y, m - 1, 1);
-  return d.toLocaleDateString("en-GB", {
-    month: "long",
-    ...(y === new Date().getFullYear() ? {} : { year: "numeric" }),
-  });
-}

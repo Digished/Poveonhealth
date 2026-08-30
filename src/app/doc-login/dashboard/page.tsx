@@ -74,6 +74,9 @@ const CarePlanChatFab = dynamic(
 const SupportFabLazy = dynamic(() => import("@/components/SupportFab").then((m) => m.SupportFab), {
   ssr: false,
 });
+const PushToggle = dynamic(() => import("@/components/pwa/PushToggle").then((m) => m.PushToggle), {
+  ssr: false,
+});
 import { SectionLoader } from "@/components/PageLoader";
 import { PoveonLogo } from "@/components/PoveonLogo";
 import { parsePhones } from "@/lib/phones";
@@ -899,6 +902,7 @@ function DocDashboardInner() {
           {view === "security" && (
             <div className="xl:max-w-3xl space-y-4">
               {doctorEmail ? <DocSecuritySection email={doctorEmail} /> : <SectionLoader />}
+              <PushToggle />
               {/* The corner of the screen belongs to care-plan chat now. */}
               <SupportFabLazy variant="inline" />
             </div>

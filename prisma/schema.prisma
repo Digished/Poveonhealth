@@ -2197,6 +2197,9 @@ model ConsultPrescription {
 // the plan more than a discount card.
 model ConsultTestOrder {
   id           String    @id @default(uuid())
+  // The lab request this became when a lab actually ran it. Until then null:
+  // a scheduled test is an instruction, not yet work in anyone's pipeline.
+  request_id   String?
   // The reference a member shows at any Poveon lab, e.g. "PVT-8H3K2". The
   // member's care code identifies the person; this identifies the order, so a
   // lab can pull up exactly what was asked for without reading a whole record.
@@ -2308,6 +2311,33 @@ model ConsultFulfilment {
   @@index([pharmacy_id, created_at])
   @@index([lab_id, created_at])
   @@map("consult_fulfilments")
+}
+
+// A device that has agreed to receive push notifications.
+//
+// Keyed by the browser's endpoint, which is what identifies a subscription to
+// the push service. One person can have several — a phone and a laptop — and a
+// subscription can die at any time (cleared site data, a reinstall), which the
+// push service reports as 404/410 and we delete on.
+model PushSubscription {
+  id       String @id @default(uuid())
+  endpoint String @unique
+  p256dh   String
+  auth     String
+
+  // Who it belongs to. Exactly one of these is set.
+  role  String // patient | doctor | pharmacy
+  email String
+
+  user_agent String?
+  created_at DateTime  @default(now())
+  last_used  DateTime?
+  // Set when the push service says the subscription is gone, so a broken one
+  // stops being tried without losing the record of it having existed.
+  failed_at  DateTime?
+
+  @@index([role, email])
+  @@map("push_subscriptions")
 }
 
 // One entry in a member's daily log.

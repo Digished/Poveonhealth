@@ -6,6 +6,7 @@ import { resend, FROM_ADDRESS } from "@/lib/email/resend";
 import { carePlanDoctorMessageEmail } from "@/lib/email/templates";
 import { appUrl, getMemberFromRequest } from "@/lib/consult";
 import { CHAT_BUCKET, readChatPayload, uploadCareImage } from "@/lib/care-uploads";
+import { preview, pushTo } from "@/lib/push";
 import { ensureCarePlanSchema } from "@/lib/startup/ensure-care-plan-schema";
 
 const BodySchema = z.object({ body: z.string().trim().max(4000) });
@@ -139,6 +140,15 @@ export async function POST(req: NextRequest) {
     ]);
 
     const messagesLeft = Math.max(0, member.message_allowance - member.messages_used - 1);
+    // Push and email both go out: the push is what reaches a doctor who has
+    // the app closed, the email is the durable copy. Neither blocks the send.
+    void pushTo("doctor", member.doctor_email, {
+      title: `${member.full_name} sent you a message`,
+      body: preview(parsed.data.body || "Sent a photo"),
+      url: "/doc-login/dashboard?tab=consults",
+      tag: `member-${member.id}`,
+    }).catch(() => {});
+
     void notifyDoctor(
       member.doctor_email,
       member.full_name,

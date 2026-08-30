@@ -35,6 +35,7 @@ import { CarePlanTreatment, type TreatmentPlan } from "@/components/doctor/CareP
 import { ADHERENCE_LABEL, bpBand, durationLabel } from "@/components/consults/baseline";
 import { CONDITIONS as CONDITION_OPTIONS, CONDITION_LABEL } from "@/lib/consult-conditions";
 import { Modal } from "@/components/ui/Overlay";
+import { MonthFilter, monthKey, monthsFrom } from "@/components/ui/MonthFilter";
 import { describeLog } from "@/lib/treatment-plan";
 import { RISK_LABEL, effectiveRisk } from "@/lib/care-risk";
 
@@ -922,6 +923,10 @@ function MemberDetail({
  * this week look like", not a stream of individual entries.
  */
 function DailyLog({ logs }: { logs: PlanLog[] }) {
+  const [month, setMonth] = useState("");
+  const months = monthsFrom(logs.map((l) => l.logged_for));
+  const shown = month ? logs.filter((l) => monthKey(l.logged_for) === month) : logs;
+
   if (logs.length === 0) {
     return (
       <div className="rounded-2xl border border-dashed border-slate-200 bg-white p-4">
@@ -935,7 +940,7 @@ function DailyLog({ logs }: { logs: PlanLog[] }) {
   }
 
   const byDay = new Map<string, PlanLog[]>();
-  for (const l of logs) {
+  for (const l of shown) {
     const key = new Date(l.logged_for).toDateString();
     if (!byDay.has(key)) byDay.set(key, []);
     byDay.get(key)!.push(l);
@@ -945,8 +950,17 @@ function DailyLog({ logs }: { logs: PlanLog[] }) {
     <div className="rounded-2xl border border-slate-100 bg-white p-4 shadow-sm">
       <div className="flex items-baseline justify-between gap-2">
         <h3 className="text-xs font-bold uppercase tracking-wider text-slate-400">Daily log</h3>
-        <span className="text-[11px] text-slate-400">{logs.length} entries</span>
+        <span className="text-[11px] text-slate-400">{shown.length} entries</span>
       </div>
+
+      <MonthFilter
+        months={months}
+        value={month}
+        onChange={setMonth}
+        allLabel="All"
+        allCount={logs.length}
+        className="mt-2"
+      />
 
       <div className="mt-3 max-h-80 space-y-3 overflow-y-auto pr-1">
         {Array.from(byDay.entries()).slice(0, 30).map(([day, entries]) => (
@@ -1171,6 +1185,8 @@ function CareHistory({
   plan: TreatmentPlan | null;
   planLogs: PlanLog[];
 }) {
+  const [month, setMonth] = useState("");
+
   const entries: HistoryEntry[] = [
     ...testOrders.map((t) => ({
       when: t.completed_at ?? t.due_date ?? null,
@@ -1235,17 +1251,31 @@ function CareHistory({
       : []),
   ]
     .filter((e) => e.when)
-    .sort((a, b) => new Date(b.when!).getTime() - new Date(a.when!).getTime())
-    .slice(0, 40);
+    .sort((a, b) => new Date(b.when!).getTime() - new Date(a.when!).getTime());
+
+  const months = monthsFrom(entries.map((e) => e.when));
+  const shown = (month ? entries.filter((e) => monthKey(e.when) === month) : entries).slice(0, 60);
 
   return (
     <div className="rounded-2xl border border-slate-100 bg-white p-4 shadow-sm">
       <h3 className="text-xs font-bold uppercase tracking-wider text-slate-400">History of care</h3>
-      {entries.length === 0 ? (
-        <p className="py-4 text-center text-xs text-slate-400">Nothing has happened yet.</p>
+
+      <MonthFilter
+        months={months}
+        value={month}
+        onChange={setMonth}
+        allLabel="All"
+        allCount={entries.length}
+        className="mt-2"
+      />
+
+      {shown.length === 0 ? (
+        <p className="py-4 text-center text-xs text-slate-400">
+          {month ? "Nothing that month." : "Nothing has happened yet."}
+        </p>
       ) : (
         <ul className="mt-3 space-y-2.5">
-          {entries.map((e, i) => (
+          {shown.map((e, i) => (
             <li key={`${e.title}-${i}`} className="flex gap-3">
               <span className={`mt-1.5 h-1.5 w-1.5 shrink-0 rounded-full ${HISTORY_DOT[e.tone]}`} />
               <div className="min-w-0 flex-1">

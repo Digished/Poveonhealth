@@ -28,6 +28,10 @@ const LabDirectory = dynamic(
 const SupportFab = dynamic(() => import("@/components/SupportFab").then((m) => m.SupportFab), {
   ssr: false,
 });
+const PushToggle = dynamic(
+  () => import("@/components/pwa/PushToggle").then((m) => m.PushToggle),
+  { ssr: false }
+);
 const LocationPicker = dynamic(
   () => import("@/components/consults/LocationPicker").then((m) => m.LocationPicker),
   { ssr: false, loading: () => <div className="h-20 animate-pulse rounded-xl bg-slate-100" /> }
@@ -1475,6 +1479,7 @@ function DashboardInner() {
           {!loading && patientEmail && view === "security" && (
             <div className="xl:max-w-3xl space-y-4">
               <PatientSecuritySection email={patientEmail} />
+              <PushToggle />
               <SupportFab variant="inline" />
             </div>
           )}

@@ -6,6 +6,7 @@ import { Activity, ClipboardList, FlaskConical, Pill, TicketPercent, TrendingUp 
 import { SectionLoader } from "@/components/PageLoader";
 import { describeLog } from "@/lib/treatment-plan";
 import { bpBand } from "@/components/consults/baseline";
+import { MonthFilter, monthKey, monthsFrom } from "@/components/ui/MonthFilter";
 
 type Log = {
   id: string;
@@ -66,6 +67,7 @@ export function CareHistoryPanel({
   onShareChange: (share: boolean) => void;
 }) {
   const [logs, setLogs] = useState<Log[] | null>(null);
+  const [month, setMonth] = useState("");
   const [error, setError] = useState("");
 
   const load = useCallback(async () => {
@@ -81,7 +83,16 @@ export function CareHistoryPanel({
 
   useEffect(() => { void load(); }, [load]);
 
+  // The trend always reads the whole series — narrowing it to one month would
+  // hide exactly the movement it exists to show. Only the lists filter.
   const series = useMemo(() => buildSeries(logs ?? []), [logs]);
+
+  const months = useMemo(
+    () => monthsFrom([...events.map((e) => e.when), ...(logs ?? []).map((l) => l.logged_for)]),
+    [events, logs]
+  );
+  const shownEvents = month ? events.filter((e) => monthKey(e.when) === month) : events;
+  const shownLogs = (logs ?? []).filter((l) => !month || monthKey(l.logged_for) === month);
 
   return (
     <div className="space-y-4">
@@ -89,6 +100,14 @@ export function CareHistoryPanel({
         <SectionLoader label="Loading your history…" />
       ) : (
         <>
+          <MonthFilter
+            months={months}
+            value={month}
+            onChange={setMonth}
+            allLabel="Everything"
+            allCount={events.length}
+          />
+
           {series.length > 0 && (
             <div className="space-y-4">
               {series.map((s) => (
@@ -112,11 +131,13 @@ export function CareHistoryPanel({
             <h3 className="text-xs font-bold uppercase tracking-wider text-slate-400">
               Everything so far
             </h3>
-            {events.length === 0 ? (
-              <p className="py-4 text-center text-xs text-slate-400">Nothing has happened yet.</p>
+            {shownEvents.length === 0 ? (
+              <p className="py-4 text-center text-xs text-slate-400">
+                {month ? "Nothing that month." : "Nothing has happened yet."}
+              </p>
             ) : (
               <ul className="mt-3 space-y-3">
-                {events.map((e, i) => {
+                {shownEvents.map((e, i) => {
                   const Icon = KIND_ICON[e.kind];
                   return (
                     <li key={`${e.title}-${i}`} className="flex gap-3">
@@ -136,11 +157,11 @@ export function CareHistoryPanel({
             )}
           </div>
 
-          {logs && logs.length > 0 && (
+          {shownLogs.length > 0 && (
             <div className="rounded-2xl border border-slate-100 bg-white p-4 shadow-sm">
               <h3 className="text-xs font-bold uppercase tracking-wider text-slate-400">Your log</h3>
               <ul className="mt-3 space-y-2">
-                {logs.slice(0, 40).map((l) => (
+                {shownLogs.slice(0, 40).map((l) => (
                   <li key={l.id} className="rounded-xl bg-slate-50 px-3 py-2">
                     <div className="flex items-baseline justify-between gap-2">
                       <p className="truncate text-xs font-semibold text-slate-700">{l.item_label}</p>

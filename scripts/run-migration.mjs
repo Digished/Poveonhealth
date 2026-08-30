@@ -2461,6 +2461,42 @@ const migrations = [
     continueOnError: true,
   },
   {
+    desc: "push_subscriptions table (PWA notifications)",
+    sql: `    CREATE TABLE IF NOT EXISTS push_subscriptions (
+      id TEXT PRIMARY KEY,
+      endpoint TEXT NOT NULL,
+      p256dh TEXT NOT NULL,
+      auth TEXT NOT NULL,
+      role TEXT NOT NULL,
+      email TEXT NOT NULL,
+      user_agent TEXT,
+      created_at TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+      last_used TIMESTAMP(3),
+      failed_at TIMESTAMP(3)
+    )`,
+    continueOnError: true,
+  },
+  {
+    desc: "push_subscriptions unique endpoint",
+    sql: `CREATE UNIQUE INDEX IF NOT EXISTS push_subscriptions_endpoint_key ON push_subscriptions (endpoint)`,
+    continueOnError: true,
+  },
+  {
+    desc: "push_subscriptions owner index",
+    sql: `CREATE INDEX IF NOT EXISTS push_subscriptions_owner_idx ON push_subscriptions (role, email)`,
+    continueOnError: true,
+  },
+  {
+    desc: "consult_test_orders.request_id (links a scheduled test to the lab request it became)",
+    sql: `ALTER TABLE consult_test_orders ADD COLUMN IF NOT EXISTS request_id TEXT`,
+    continueOnError: true,
+  },
+  {
+    desc: "consult_test_orders request index",
+    sql: `CREATE INDEX IF NOT EXISTS consult_test_orders_request_idx ON consult_test_orders (request_id)`,
+    continueOnError: true,
+  },
+  {
     desc: "patient_profiles location columns (nearest partners)",
     sql: `ALTER TABLE patient_profiles
       ADD COLUMN IF NOT EXISTS state TEXT,

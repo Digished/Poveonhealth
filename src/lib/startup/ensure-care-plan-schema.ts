@@ -49,6 +49,7 @@ const SENTINEL_TABLES = [
   "consult_templates",
   "consult_fulfilments",
   "consult_plan_logs",
+  "push_subscriptions",
 ];
 
 /** "table.column", so one text array can check them all. */
@@ -66,6 +67,7 @@ const SENTINEL_COLUMNS = [
   "consult_prescriptions.raw_text",
   "consult_prescriptions.cancel_reason",
   "consult_test_orders.code",
+  "consult_test_orders.request_id",
   "consult_treatment_items.measure",
   "consult_patients.risk_level",
   "consult_patients.risk_manual",
@@ -500,6 +502,24 @@ async function runEnsure(): Promise<void> {
       ADD COLUMN IF NOT EXISTS measure TEXT NOT NULL DEFAULT 'none',
       ADD COLUMN IF NOT EXISTS measure_label TEXT;`);
     await exec(`ALTER TABLE consult_test_orders ADD COLUMN IF NOT EXISTS code TEXT;`);
+    await exec(`ALTER TABLE consult_test_orders ADD COLUMN IF NOT EXISTS request_id TEXT;`);
+    await exec(`
+    CREATE TABLE IF NOT EXISTS push_subscriptions (
+      id TEXT PRIMARY KEY,
+      endpoint TEXT NOT NULL,
+      p256dh TEXT NOT NULL,
+      auth TEXT NOT NULL,
+      role TEXT NOT NULL,
+      email TEXT NOT NULL,
+      user_agent TEXT,
+      created_at TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+      last_used TIMESTAMP(3),
+      failed_at TIMESTAMP(3)
+    );
+    `);
+    await exec(`CREATE UNIQUE INDEX IF NOT EXISTS push_subscriptions_endpoint_key ON push_subscriptions(endpoint);`);
+    await exec(`CREATE INDEX IF NOT EXISTS push_subscriptions_owner_idx ON push_subscriptions(role, email);`);
+    await exec(`CREATE INDEX IF NOT EXISTS consult_test_orders_request_idx ON consult_test_orders(request_id);`);
     await exec(`CREATE UNIQUE INDEX IF NOT EXISTS consult_test_orders_code_key ON consult_test_orders(code);`);
     await exec(`ALTER TABLE consult_patients
       ADD COLUMN IF NOT EXISTS risk_level TEXT NOT NULL DEFAULT 'none',

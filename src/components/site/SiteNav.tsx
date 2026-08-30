@@ -48,12 +48,12 @@ const PORTALS = [
   { href: "/doc-login", icon: Stethoscope, title: "Medical professional", blurb: "Track referrals & earnings", tone: "text-medical-600 bg-medical-50 border-medical-100" },
   { href: "/login", icon: User, title: "Patient", blurb: "View your test results", tone: "text-emerald-600 bg-emerald-50 border-emerald-100" },
   { href: "/hospital-login", icon: Building2, title: "Hospital", blurb: "Referrals, wards & EMR", tone: "text-violet-600 bg-violet-50 border-violet-100" },
+  { href: "/pharmacy-login", icon: Pill, title: "Pharmacy", blurb: "Serve care-plan members", tone: "text-amber-600 bg-amber-50 border-amber-100" },
 ];
 
 const MORE_PORTALS = [
   { href: "/consults", icon: HeartPulse, label: "Care plan" },
   { href: "/pharmacies", icon: Pill, label: "Find a pharmacy" },
-  { href: "/pharmacy-login", icon: Pill, label: "Pharmacy" },
   { href: "/scale", icon: TrendingUp, label: "Marketer" },
   { href: "/logistics", icon: Truck, label: "Logistics" },
   { href: "/rider", icon: Truck, label: "Rider" },

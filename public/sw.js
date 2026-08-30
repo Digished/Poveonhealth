@@ -68,3 +68,52 @@ self.addEventListener("fetch", (event) => {
     )
   );
 });
+
+/*
+ * Push notifications.
+ *
+ * The payload is written by lib/push.ts. A malformed or empty one still shows
+ * something rather than nothing — a silent failure here looks to the user like
+ * the app simply not working.
+ */
+self.addEventListener("push", (event) => {
+  let data = {};
+  try {
+    data = event.data ? event.data.json() : {};
+  } catch {
+    data = { body: event.data && event.data.text ? event.data.text() : "" };
+  }
+
+  const title = data.title || "Poveon";
+  const options = {
+    body: data.body || "You have a new message.",
+    icon: "/icon-192.png",
+    badge: "/icon-192.png",
+    // Same tag replaces rather than stacks, so ten messages from one member do
+    // not become ten notifications.
+    tag: data.tag || "poveon",
+    renotify: true,
+    data: { url: data.url || "/" },
+  };
+
+  event.waitUntil(self.registration.showNotification(title, options));
+});
+
+self.addEventListener("notificationclick", (event) => {
+  event.notification.close();
+  const target = (event.notification.data && event.notification.data.url) || "/";
+
+  // Focus an open tab if there is one rather than opening a second copy of the
+  // app — tapping a notification should feel like returning to it.
+  event.waitUntil(
+    self.clients.matchAll({ type: "window", includeUncontrolled: true }).then((clients) => {
+      for (const client of clients) {
+        if ("focus" in client) {
+          client.navigate(target).catch(() => {});
+          return client.focus();
+        }
+      }
+      return self.clients.openWindow(target);
+    })
+  );
+});

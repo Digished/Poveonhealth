@@ -6,6 +6,7 @@ import { resend, FROM_ADDRESS } from "@/lib/email/resend";
 import { carePlanReplyEmail } from "@/lib/email/templates";
 import { appUrl, getDoctorEmailFromConsultRequest } from "@/lib/consult";
 import { CHAT_BUCKET, readChatPayload, uploadCareImage } from "@/lib/care-uploads";
+import { preview, pushTo } from "@/lib/push";
 import { ensureCarePlanSchema } from "@/lib/startup/ensure-care-plan-schema";
 
 const BodySchema = z.object({ body: z.string().trim().max(6000) });
@@ -127,6 +128,13 @@ export async function POST(req: NextRequest, { params }: { params: { id: string 
         data: { read_at: new Date() },
       })
       .catch(() => {});
+
+    void pushTo("patient", patient.email, {
+      title: "Your doctor replied",
+      body: preview(parsed.data.body || "Sent a photo"),
+      url: "/dashboard?tab=care-messages",
+      tag: "doctor-reply",
+    }).catch(() => {});
 
     void notifyMember(patient.email, patient.full_name, email, parsed.data.body || "(sent a photo)").catch((e) =>
       console.error("[doc-login/consults] member email:", e)
