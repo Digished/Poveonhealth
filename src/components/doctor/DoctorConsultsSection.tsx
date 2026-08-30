@@ -32,6 +32,7 @@ import {
   type TestOrder,
 } from "@/components/doctor/CarePlanOrders";
 import { CarePlanTreatment, type TreatmentPlan } from "@/components/doctor/CarePlanTreatment";
+import { ScreeningHistory, type ScreeningRound } from "@/components/doctor/ScreeningHistory";
 import { ADHERENCE_LABEL, bpBand, durationLabel } from "@/components/consults/baseline";
 import { CONDITIONS as CONDITION_OPTIONS, CONDITION_LABEL } from "@/lib/consult-conditions";
 import { Modal } from "@/components/ui/Overlay";
@@ -122,6 +123,7 @@ type MemberDetailData = {
   redemptions: Redemption[];
   plan: TreatmentPlan | null;
   plan_logs: PlanLog[];
+  screenings: ScreeningRound[];
   history_withheld: boolean;
 };
 
@@ -843,6 +845,7 @@ function MemberDetail({
         <div className="grid gap-4 xl:grid-cols-2">
           <div className="space-y-4">
             <BaselineCard baseline={data.baseline} conditions={p.conditions} />
+            <ScreeningHistory rounds={data.screenings ?? []} />
             <DailyLog logs={data.plan_logs ?? []} />
             <CarePlanTreatment
               patientId={p.id}

@@ -27,6 +27,9 @@ export type TreatmentPlan = {
   id: string;
   title: string;
   note: string | null;
+  /** "suggested" until the doctor has confirmed it — see lib/care-draft.ts. */
+  source?: string;
+  reviewed_at?: string | null;
   notified_at: string | null;
   updated_at: string;
   items: PlanItem[];
@@ -63,6 +66,42 @@ export function CarePlanTreatment({
   onChanged: () => void;
 }) {
   const [editing, setEditing] = useState(false);
+  const [confirming, setConfirming] = useState(false);
+  const suggested = plan?.source === "suggested";
+
+  /**
+   * Take the draft as it stands.
+   *
+   * Saving is what confirms a plan, so this posts the drafted items back
+   * unchanged rather than needing a separate endpoint — a doctor who is happy
+   * with the draft should not have to open the editor to say so.
+   */
+  async function confirmDraft() {
+    if (!plan || confirming) return;
+    setConfirming(true);
+    try {
+      const res = await fetch(`/api/doc-login/consults/patients/${patientId}/plan`, {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          title: plan.title,
+          note: plan.note,
+          items: plan.items.map((i) => ({
+            id: i.id,
+            label: i.label,
+            detail: i.detail,
+            cadence: i.cadence,
+            remind: i.remind ?? true,
+            measure: i.measure ?? "none",
+            measure_label: i.measure_label ?? null,
+          })),
+        }),
+      });
+      if (res.ok) onChanged();
+    } finally {
+      setConfirming(false);
+    }
+  }
 
   if (editing) {
     return (
@@ -96,6 +135,35 @@ export function CarePlanTreatment({
           </button>
         )}
       </div>
+
+      {suggested && (
+        <div className="mt-3 rounded-xl border border-amber-200 bg-amber-50 p-3">
+          <p className="flex items-center gap-1.5 text-xs font-bold text-amber-800">
+            <Sparkles className="h-3.5 w-3.5" /> Drafted for you — not live yet
+          </p>
+          <p className="mt-1 text-[11px] leading-relaxed text-amber-700">
+            Written from this member&apos;s conditions at sign-up. They cannot see it until you
+            confirm it. Edit anything that does not fit them.
+          </p>
+          {canEdit && (
+            <div className="mt-2.5 flex gap-2">
+              <button
+                onClick={confirmDraft}
+                disabled={confirming}
+                className="flex-1 rounded-lg bg-amber-600 py-2 text-xs font-bold text-white transition hover:bg-amber-700 disabled:opacity-60"
+              >
+                {confirming ? "Confirming…" : "Confirm as it is"}
+              </button>
+              <button
+                onClick={() => setEditing(true)}
+                className="flex-1 rounded-lg border border-amber-300 py-2 text-xs font-bold text-amber-800 transition hover:bg-amber-100"
+              >
+                Edit first
+              </button>
+            </div>
+          )}
+        </div>
+      )}
 
       {!plan || plan.items.length === 0 ? (
         <p className="py-4 text-center text-xs text-slate-400">

@@ -77,6 +77,11 @@ const SupportFabLazy = dynamic(() => import("@/components/SupportFab").then((m) 
 const PushToggle = dynamic(() => import("@/components/pwa/PushToggle").then((m) => m.PushToggle), {
   ssr: false,
 });
+// Renders nothing at all unless the browser has something to install.
+const InstallButton = dynamic(
+  () => import("@/components/pwa/InstallButton").then((m) => m.InstallButton),
+  { ssr: false }
+);
 import { SectionLoader } from "@/components/PageLoader";
 import { PoveonLogo } from "@/components/PoveonLogo";
 import { parsePhones } from "@/lib/phones";
@@ -780,6 +785,7 @@ function DocDashboardInner() {
 
           {/* Desktop actions */}
           <div className="hidden items-center gap-2 sm:flex">
+            <InstallButton />
             <button
               type="button"
               onClick={() => router.push("/")}
@@ -800,6 +806,9 @@ function DocDashboardInner() {
           </div>
 
           {/* Mobile actions */}
+          <div className="flex items-center gap-1 sm:hidden">
+            <InstallButton />
+          </div>
           <div className="relative sm:hidden">
             <button
               type="button"

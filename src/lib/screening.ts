@@ -2,6 +2,9 @@
  * The screening questions a member answers when they join, and again on a
  * schedule afterwards.
  *
+ * Pure data and pure functions — read by the member's check-in, by the route
+ * that records a round, and by the doctor's view of what was flagged.
+ *
  * These follow the routine reviews that hypertension and diabetes care already
  * runs on — the things a clinic asks at every visit, because they are how
  * complications announce themselves early: numbness or burning in the feet,

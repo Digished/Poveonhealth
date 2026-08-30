@@ -833,8 +833,50 @@
   box-shadow: none;
 }
 
+/* ── Symptom check-in ──────────────────────────────────────────────────────
+   One question at a time, so each card should arrive rather than appear. The
+   direction matters: going back should feel like going back. */
+@keyframes screen-q-next {
+  from { opacity: 0; transform: translateX(28px) scale(0.98); }
+  to   { opacity: 1; transform: translateX(0) scale(1); }
+}
+@keyframes screen-q-back {
+  from { opacity: 0; transform: translateX(-28px) scale(0.98); }
+  to   { opacity: 1; transform: translateX(0) scale(1); }
+}
+.animate-screen-next { animation: screen-q-next 0.34s cubic-bezier(0.22, 1, 0.36, 1) both; }
+.animate-screen-back { animation: screen-q-back 0.34s cubic-bezier(0.22, 1, 0.36, 1) both; }
+
+/* Options land one after another, so the eye is led down the list. */
+@keyframes screen-opt-in {
+  from { opacity: 0; transform: translateY(10px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+.animate-screen-opt { animation: screen-opt-in 0.3s cubic-bezier(0.22, 1, 0.36, 1) both; }
+
+/* The tick that confirms an answer before the next question slides in. */
+@keyframes screen-pick {
+  0%   { transform: scale(0.6); opacity: 0; }
+  60%  { transform: scale(1.12); opacity: 1; }
+  100% { transform: scale(1); opacity: 1; }
+}
+.animate-screen-pick { animation: screen-pick 0.32s cubic-bezier(0.34, 1.56, 0.64, 1) both; }
+
+/* Finishing is worth a small moment. */
+@keyframes screen-done {
+  0%   { transform: scale(0.7) rotate(-8deg); opacity: 0; }
+  55%  { transform: scale(1.1) rotate(3deg); opacity: 1; }
+  100% { transform: scale(1) rotate(0); opacity: 1; }
+}
+.animate-screen-done { animation: screen-done 0.5s cubic-bezier(0.34, 1.56, 0.64, 1) both; }
+
 @media (prefers-reduced-motion: reduce) {
   .reveal { opacity: 1; transform: none; transition: none; }
+  .animate-screen-next,
+  .animate-screen-back,
+  .animate-screen-opt,
+  .animate-screen-pick,
+  .animate-screen-done { animation: none; }
   .marquee-track,
   .animate-aurora,
   .animate-slip-write,

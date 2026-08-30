@@ -2,11 +2,14 @@
 
 import { useEffect, useState } from "react";
 import { Download, Share, Plus, X } from "lucide-react";
-
-type InstallEvent = Event & {
-  prompt: () => Promise<void>;
-  userChoice: Promise<{ outcome: "accepted" | "dismissed" }>;
-};
+import {
+  getInstallEvent,
+  isIosSafari,
+  isStandalone,
+  onInstallEvent,
+  runInstall,
+  type InstallEvent,
+} from "@/lib/install-prompt";
 
 const DISMISS_KEY = "poveon_install_dismissed";
 
@@ -31,28 +34,19 @@ export function InstallPrompt() {
       });
     }
 
-    const standalone =
-      window.matchMedia("(display-mode: standalone)").matches ||
-      (window.navigator as { standalone?: boolean }).standalone === true;
-    if (standalone) return;
+    if (isStandalone()) return;
 
     let dismissed = false;
     try { dismissed = localStorage.getItem(DISMISS_KEY) === "1"; } catch { /* private mode */ }
     if (dismissed) return;
 
-    const onPrompt = (e: Event) => {
-      e.preventDefault();
-      setDeferred(e as InstallEvent);
-    };
-    window.addEventListener("beforeinstallprompt", onPrompt);
-
+    // The event may already have fired before this mounted — lib/install-prompt
+    // has been listening since it was imported, so ask it rather than the window.
+    setDeferred(getInstallEvent());
     // iOS never fires that event, so detect it and explain the manual steps.
-    const ua = window.navigator.userAgent;
-    if (/iPhone|iPad|iPod/.test(ua) && /Safari/.test(ua) && !/CriOS|FxiOS/.test(ua)) {
-      setShowIosHint(true);
-    }
+    if (isIosSafari()) setShowIosHint(true);
 
-    return () => window.removeEventListener("beforeinstallprompt", onPrompt);
+    return onInstallEvent(setDeferred);
   }, []);
 
   function dismiss() {
@@ -65,8 +59,7 @@ export function InstallPrompt() {
     if (!deferred || installing) return;
     setInstalling(true);
     try {
-      await deferred.prompt();
-      await deferred.userChoice;
+      await runInstall();
     } finally {
       setInstalling(false);
       dismiss();

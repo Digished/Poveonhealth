@@ -7,7 +7,7 @@ import {
   Sparkles, Trash2, X,
 } from "lucide-react";
 import { DateInput } from "@/components/ui/DateInput";
-import { isMedicationLive } from "@/lib/medication-status";
+import { MED_SUGGESTED_STATUS, isMedicationLive } from "@/lib/medication-status";
 import { ConfirmDialog, Modal } from "@/components/ui/Overlay";
 import {
   describePrescription,
@@ -146,8 +146,13 @@ export function CarePlanOrders({
   const [busyId, setBusyId] = useState<string | null>(null);
   const [cancelling, setCancelling] = useState<{ kind: "prescription" | "test"; id: string; name: string } | null>(null);
 
+  // Drafted from the member's own baseline at sign-up, waiting on the doctor.
+  // Outside both lists: not live, and not history either.
+  const suggestedMeds = prescriptions.filter((p) => p.status === MED_SUGGESTED_STATUS);
   const activeMeds = prescriptions.filter((p) => isMedicationLive(p.status));
-  const pastMeds = prescriptions.filter((p) => !isMedicationLive(p.status));
+  const pastMeds = prescriptions.filter(
+    (p) => !isMedicationLive(p.status) && p.status !== MED_SUGGESTED_STATUS
+  );
   const dueTests = testOrders.filter((t) => t.status === "scheduled");
   const doneTests = testOrders.filter((t) => t.status !== "scheduled");
 
@@ -172,6 +177,22 @@ export function CarePlanOrders({
       });
       const d = await res.json().catch(() => null);
       if (!res.ok || !d?.success) { toast.error(d?.error ?? "Could not update that."); return; }
+      onChanged();
+    } finally {
+      setBusyId(null);
+    }
+  }
+
+  /** Throw away a suggestion the doctor does not want. Nothing has seen it. */
+  async function remove(kind: "prescription" | "test", id: string) {
+    setBusyId(id);
+    try {
+      const res = await fetch(
+        `/api/doc-login/consults/patients/${patientId}/orders?kind=${kind}&id=${id}`,
+        { method: "DELETE" }
+      );
+      const d = await res.json().catch(() => null);
+      if (!res.ok || !d?.success) { toast.error(d?.error ?? "Could not remove that."); return; }
       onChanged();
     } finally {
       setBusyId(null);
@@ -316,8 +337,57 @@ export function CarePlanOrders({
           />
         )}
 
+        {suggestedMeds.length > 0 && (
+          <div className="mt-3 rounded-xl border border-amber-200 bg-amber-50 p-3">
+            <p className="flex items-center gap-1.5 text-xs font-bold text-amber-800">
+              <Sparkles className="h-3.5 w-3.5" />
+              What they told us they take
+            </p>
+            <p className="mt-1 text-[11px] leading-relaxed text-amber-700">
+              Read from this member&apos;s own answer at sign-up. Nothing here is live — the member
+              cannot see it and no pharmacy can dispense it until you schedule it.
+            </p>
+            <div className="mt-2.5 space-y-2">
+              {suggestedMeds.map((m) => (
+                <div key={m.id} className="rounded-lg border border-amber-200 bg-white px-3 py-2.5">
+                  <p className="text-sm font-semibold text-slate-800">
+                    {m.form ? `${m.form.charAt(0).toUpperCase()}${m.form.slice(1)} · ` : ""}
+                    {m.medication}
+                  </p>
+                  <p className="mt-0.5 text-xs text-slate-500">
+                    {[m.dosage, m.frequency].filter(Boolean).join(" · ") || "No dose given"}
+                  </p>
+                  {m.raw_text && (
+                    <p className="mt-1 font-mono text-[10px] text-slate-400">
+                      &ldquo;{m.raw_text}&rdquo;
+                    </p>
+                  )}
+                  {canPrescribe && (
+                    <div className="mt-2 flex gap-2">
+                      <button
+                        onClick={() => update("prescription", m.id, "scheduled")}
+                        disabled={busyId === m.id}
+                        className="flex-1 rounded-lg bg-emerald-600 py-1.5 text-[11px] font-bold text-white transition hover:bg-emerald-700 disabled:opacity-60"
+                      >
+                        {busyId === m.id ? "Working…" : "Schedule it"}
+                      </button>
+                      <button
+                        onClick={() => remove("prescription", m.id)}
+                        disabled={busyId === m.id}
+                        className="rounded-lg border border-amber-300 px-3 py-1.5 text-[11px] font-bold text-amber-800 transition hover:bg-amber-100 disabled:opacity-60"
+                      >
+                        Discard
+                      </button>
+                    </div>
+                  )}
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
+
         <div className="mt-3 space-y-2">
-          {activeMeds.length === 0 && !adding && (
+          {activeMeds.length === 0 && !adding && suggestedMeds.length === 0 && (
             <p className="py-3 text-center text-xs text-slate-400">Nothing scheduled.</p>
           )}
           {activeMeds.map((m) => (

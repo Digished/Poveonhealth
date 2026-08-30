@@ -3,7 +3,18 @@ import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { draftCarePlanFor, getDoctorEmailFromConsultRequest } from "@/lib/consult";
 import { itemState } from "@/lib/treatment-plan";
+import { SCREENING_QUESTIONS } from "@/lib/screening";
 import { ensureCarePlanSchema } from "@/lib/startup/ensure-care-plan-schema";
+
+/** A screening round's stored answers, when the column holds what we wrote. */
+function asAnswerMap(value: unknown): Record<string, string> {
+  if (!value || typeof value !== "object" || Array.isArray(value)) return {};
+  const out: Record<string, string> = {};
+  for (const [k, v] of Object.entries(value as Record<string, unknown>)) {
+    if (typeof v === "string") out[k] = v;
+  }
+  return out;
+}
 
 /** Whole years since a date of birth, or null when we were never told. */
 function ageFrom(dob: Date | null): number | null {
@@ -39,7 +50,8 @@ export async function GET(req: NextRequest, { params }: { params: { id: string }
         : null;
 
     // eslint-disable-next-line prefer-const
-    let [messages, earning, redemptions, prescriptions, testOrders, plan, planLogs] = await Promise.all([
+    let [messages, earning, redemptions, prescriptions, testOrders, plan, planLogs, screenings] =
+      await Promise.all([
       prisma.consultMessage.findMany({
         where: {
           patient_id: patient.id,
@@ -98,6 +110,13 @@ export async function GET(req: NextRequest, { params }: { params: { id: string }
         orderBy: [{ logged_for: "desc" }, { created_at: "desc" }],
         take: 120,
         include: { item: { select: { label: true, measure: true, measure_label: true } } },
+      }),
+      // The symptom rounds, newest first. Twelve is a year of monthly answers,
+      // which is as far back as a trend is worth reading on this page.
+      prisma.consultScreening.findMany({
+        where: { patient_id: patient.id },
+        orderBy: { created_at: "desc" },
+        take: 12,
       }),
     ]);
 
@@ -240,6 +259,34 @@ export async function GET(req: NextRequest, { params }: { params: { id: string }
         value_text: l.value_text,
         logged_for: l.logged_for,
         created_at: l.created_at,
+      })),
+      // Answers resolved to the question they answered, so the doctor reads
+      // "Chest tightness — only when I climb stairs", not "chest_tightness: on_exertion".
+      screenings: screenings.map((r) => ({
+        id: r.id,
+        source: r.source,
+        severity: r.severity,
+        due_on: r.due_on,
+        seen_at: r.seen_at,
+        created_at: r.created_at,
+        // `answers` is a Json column, so it is a JsonValue on the build machine
+        // and could be anything at runtime. Read it only when it really is an
+        // object, rather than casting and hoping.
+        answers: Object.entries(asAnswerMap(r.answers))
+          .map(([key, value]) => {
+            const q = SCREENING_QUESTIONS.find((x) => x.key === key);
+            const option = q?.options.find((o) => o.value === value);
+            if (!q || !option) return null;
+            return {
+              key,
+              prompt: q.prompt,
+              tracks: q.tracks,
+              group: q.group,
+              answer: option.label,
+              severity: option.severity,
+            };
+          })
+          .filter((a): a is NonNullable<typeof a> => !!a),
       })),
       redemptions: redemptions.map((r) => ({
         id: r.id,

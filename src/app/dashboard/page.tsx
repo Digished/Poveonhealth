@@ -32,6 +32,12 @@ const PushToggle = dynamic(
   () => import("@/components/pwa/PushToggle").then((m) => m.PushToggle),
   { ssr: false }
 );
+// Renders nothing at all unless the browser has something to install, so it
+// costs a header slot only where it is useful.
+const InstallButton = dynamic(
+  () => import("@/components/pwa/InstallButton").then((m) => m.InstallButton),
+  { ssr: false }
+);
 const LocationPicker = dynamic(
   () => import("@/components/consults/LocationPicker").then((m) => m.LocationPicker),
   { ssr: false, loading: () => <div className="h-20 animate-pulse rounded-xl bg-slate-100" /> }
@@ -1314,6 +1320,7 @@ function DashboardInner() {
 
           {/* Desktop actions */}
           <div className="hidden items-center gap-2 sm:flex">
+            <InstallButton />
             <button
               type="button"
               onClick={handleLogout}
@@ -1326,6 +1333,9 @@ function DashboardInner() {
           </div>
 
           {/* Mobile actions */}
+          <div className="flex items-center gap-1 sm:hidden">
+            <InstallButton />
+          </div>
           <div className="relative sm:hidden">
             <button
               type="button"

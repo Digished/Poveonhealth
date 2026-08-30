@@ -17,6 +17,13 @@ import { Modal } from "@/components/ui/Overlay";
 import { ProviderRow } from "@/components/consults/ProviderRow";
 import type { Provider } from "@/components/consults/ProviderPicker";
 
+// Only loaded once the member has a plan — an unenrolled dashboard has no
+// check-in to prompt.
+const ScreeningCard = dynamic(
+  () => import("@/components/consults/ScreeningCard").then((m) => m.ScreeningCard),
+  { ssr: false, loading: () => <div className="h-28 rounded-2xl border border-slate-100 bg-slate-50" /> }
+);
+
 const ProviderPicker = dynamic(
   () => import("@/components/consults/ProviderPicker").then((m) => m.ProviderPicker),
   { ssr: false }
@@ -379,6 +386,7 @@ export function CarePlanPanel({
           </div>
 
           <div className="space-y-4">
+            <ScreeningCard />
             <CarePlanChecklist plan={plan} onTicked={setPlan} />
             <CareSchedule prescriptions={prescriptions} testOrders={testOrders} />
           </div>
