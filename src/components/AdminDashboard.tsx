@@ -165,9 +165,6 @@ function IconAction({
 export function AdminDashboard() {
   const router = useRouter();
   const { isLight, toggle, themeClass } = useDashTheme("admin_dash_theme");
-  // The header names the section you are in, which is what the old horizontal
-  // strip used to do by highlighting a pill you often could not see.
-  const currentSection = ADMIN_NAV.flatMap((g) => g.items).find((i) => i.key === activeTab);
   /**
    * The open section, mirrored into `?tab=` so a refresh, a bookmark or a link
    * to "the pharmacies page" all land where they should. Read once on mount
@@ -197,6 +194,17 @@ export function AdminDashboard() {
     window.addEventListener("popstate", onPop);
     return () => window.removeEventListener("popstate", onPop);
   }, []);
+
+  // The header names the section you are in, which is what the old horizontal
+  // strip used to do by highlighting a pill you often could not see.
+  //
+  // Must sit below `activeTab`: `.find()` runs its callback synchronously, so
+  // reading the binding from above its own declaration is a live temporal dead
+  // zone, not a deferred closure. tsc does not flag it — a reference inside an
+  // arrow function looks deferrable to it — and it only surfaced as
+  // "Cannot access 'c' before initialization" from the minified production
+  // build.
+  const currentSection = ADMIN_NAV.flatMap((g) => g.items).find((i) => i.key === activeTab);
   const [mobileTabOpen, setMobileTabOpen] = useState(false);
   const [labs, setLabs] = useState<Lab[]>([]);
   const [requests, setRequests] = useState<LabRequest[]>([]);
