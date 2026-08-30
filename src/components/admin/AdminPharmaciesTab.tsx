@@ -189,7 +189,7 @@ export function AdminPharmaciesTab() {
 
       <div className="overflow-hidden rounded-xl border border-white/10 bg-white/5">
         <div className="overflow-x-auto">
-          <table className="w-full min-w-[900px] text-sm">
+          <table className="w-full text-sm table-cards">
             <thead>
               <tr className="border-b border-white/10 text-left text-xs text-slate-400">
                 <th className="px-4 py-2.5 font-semibold">Pharmacy</th>
@@ -211,7 +211,7 @@ export function AdminPharmaciesTab() {
               )}
               {pharmacies.map((p) => (
                 <tr key={p.id} className={`transition hover:bg-white/5 ${p.active ? "" : "opacity-50"}`}>
-                  <td className="px-4 py-3">
+                  <td className="px-4 py-3" data-label="Pharmacy">
                     <div className="flex items-center gap-2.5">
                       {p.logo_url ? (
                         // eslint-disable-next-line @next/next/no-img-element
@@ -230,8 +230,8 @@ export function AdminPharmaciesTab() {
                       </div>
                     </div>
                   </td>
-                  <td className="px-4 py-3 font-mono text-xs text-slate-300">{p.code}</td>
-                  <td className="px-4 py-3">
+                  <td className="px-4 py-3 font-mono text-xs text-slate-300" data-label="Code">{p.code}</td>
+                  <td className="px-4 py-3" data-label="Discount">
                     <input
                       defaultValue={String(p.discount_percent)}
                       onBlur={(e) => {
@@ -242,12 +242,12 @@ export function AdminPharmaciesTab() {
                     />
                     <span className="ml-1 text-xs text-slate-500">%</span>
                   </td>
-                  <td className="px-4 py-3 text-xs text-slate-300">{p.customers}</td>
-                  <td className="px-4 py-3 text-xs text-emerald-300">{naira(p.discount_given)}</td>
-                  <td className="px-4 py-3 text-xs text-slate-400">
+                  <td className="px-4 py-3 text-xs text-slate-300" data-label="Customers">{p.customers}</td>
+                  <td className="px-4 py-3 text-xs text-emerald-300" data-label="Discount given">{naira(p.discount_given)}</td>
+                  <td className="px-4 py-3 text-xs text-slate-400" data-label="Signed in">
                     {p.onboarded_at ? formatDate(p.onboarded_at) : <span className="text-amber-400">Not yet</span>}
                   </td>
-                  <td className="px-4 py-3">
+                  <td className="px-4 py-3" data-label="" data-card-actions>
                     <div className="flex items-center justify-end gap-1.5">
                       <IconAction
                         title="Edit details"

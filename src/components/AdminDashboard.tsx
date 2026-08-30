@@ -553,11 +553,18 @@ export function AdminDashboard() {
             <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-medical-600 shadow-lg shadow-medical-600/25">
               <FlaskConical className="h-[18px] w-[18px] text-white" />
             </div>
+            {/*
+              Below lg the sidebar is hidden, so the header is the only thing
+              that says where you are. From lg up the sidebar says it and the
+              page says it again in its own heading, so the header steps back
+              to the brand rather than making it three times.
+            */}
             <div className="min-w-0">
               <p className="truncate text-sm font-bold leading-tight" style={{ color: "var(--dash-text)" }}>
-                {currentSection?.label ?? "Poveon"}
+                <span className="lg:hidden">{currentSection?.label ?? "Poveon"}</span>
+                <span className="hidden lg:inline">Poveon</span>
               </p>
-              <p className="dash-muted truncate text-[11px] leading-tight">Poveon admin</p>
+              <p className="dash-muted truncate text-[11px] leading-tight">Admin dashboard</p>
             </div>
           </div>
 

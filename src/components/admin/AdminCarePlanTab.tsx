@@ -287,7 +287,7 @@ function MembersPanel() {
 
       <div className="overflow-hidden rounded-xl border border-white/10 bg-white/5">
         <div className="overflow-x-auto">
-          <table className="w-full min-w-[900px] text-sm">
+          <table className="w-full text-sm table-cards">
             <thead>
               <tr className="border-b border-white/10 text-left text-xs text-slate-400">
                 <th className="px-4 py-2.5 font-semibold">Member</th>
@@ -308,26 +308,26 @@ function MembersPanel() {
               )}
               {members.map((m) => (
                 <tr key={m.id} className="transition hover:bg-white/5">
-                  <td className="px-4 py-3">
+                  <td className="px-4 py-3" data-label="Member">
                     <p className="font-semibold text-white">{m.full_name}</p>
                     <p className="text-xs text-slate-400">{m.email}</p>
                     <p className="font-mono text-[11px] text-slate-500">{m.code}</p>
                   </td>
-                  <td className="px-4 py-3 text-xs capitalize text-slate-300">{m.conditions.join(", ") || "—"}</td>
-                  <td className="px-4 py-3 text-xs text-slate-300">
+                  <td className="px-4 py-3 text-xs capitalize text-slate-300" data-label="Conditions">{m.conditions.join(", ") || "—"}</td>
+                  <td className="px-4 py-3 text-xs text-slate-300" data-label="Doctor">
                     {m.doctor_email ?? <span className="text-amber-400">Unassigned</span>}
                   </td>
-                  <td className="px-4 py-3 text-xs text-slate-400">
+                  <td className="px-4 py-3 text-xs text-slate-400" data-label="Messages">
                     {m.messages_used}/{m.message_allowance}
                   </td>
-                  <td className="px-4 py-3 text-xs text-slate-300">{m.amount_paid ? naira(m.amount_paid) : "—"}</td>
-                  <td className="px-4 py-3 text-xs text-slate-400">{formatDate(m.expires_at)}</td>
-                  <td className="px-4 py-3">
+                  <td className="px-4 py-3 text-xs text-slate-300" data-label="Paid">{m.amount_paid ? naira(m.amount_paid) : "—"}</td>
+                  <td className="px-4 py-3 text-xs text-slate-400" data-label="Renews">{formatDate(m.expires_at)}</td>
+                  <td className="px-4 py-3" data-label="Status">
                     <span className={`rounded-full px-2 py-0.5 text-[11px] font-semibold ${STATUS_STYLES[m.status] ?? "bg-slate-100 text-slate-600"}`}>
                       {m.status.replace("_", " ")}
                     </span>
                   </td>
-                  <td className="px-4 py-3 text-right">
+                  <td className="px-4 py-3 text-right" data-label="" data-card-actions>
                     <button
                       onClick={() => setReassigning(m)}
                       disabled={assigning === m.id}

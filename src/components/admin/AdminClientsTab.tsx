@@ -192,7 +192,7 @@ export function AdminClientsTab() {
           ) : (
             <div className="overflow-hidden rounded-2xl border border-white/10">
               <div className="slim-scroll overflow-x-auto">
-                <table className="w-full min-w-[860px] border-collapse text-left text-sm">
+                <table className="w-full border-collapse text-left text-sm table-cards">
                   <thead>
                     <tr className="bg-white/5 text-[11px] uppercase tracking-wider text-slate-400">
                       <th className="px-4 py-3 font-semibold">Lab</th>
@@ -209,15 +209,15 @@ export function AdminClientsTab() {
                   <tbody className="divide-y divide-white/5">
                     {shown.map((l) => (
                       <tr key={l.lab_id} className="bg-white/3 transition-colors hover:bg-white/8">
-                        <td className="px-4 py-3"><p className="max-w-[220px] truncate font-medium text-white">{l.lab_name}</p></td>
-                        <td className="px-3 py-3 text-right font-semibold text-white">{l.total}</td>
-                        <td className="px-3 py-3 text-right text-emerald-300">{l.arrived} <span className="text-[10px] text-slate-500">{pct(l.arrived, l.total)}</span></td>
-                        <td className="px-3 py-3 text-right text-violet-300">{l.attended}</td>
-                        <td className="px-3 py-3 text-right text-sky-300">{l.paid}</td>
-                        <td className="px-3 py-3 text-right text-amber-300">{l.in_queue}</td>
-                        <td className="px-3 py-3 text-right text-slate-300">{l.poveon}</td>
-                        <td className="px-3 py-3 text-right text-slate-300">{l.qr}</td>
-                        <td className="px-3 py-3 text-right text-slate-300">{l.walk_in}</td>
+                        <td className="px-4 py-3" data-label="Lab"><p className="max-w-[220px] truncate font-medium text-white">{l.lab_name}</p></td>
+                        <td className="px-3 py-3 text-right font-semibold text-white" data-label="Clients">{l.total}</td>
+                        <td className="px-3 py-3 text-right text-emerald-300" data-label="Arrived">{l.arrived} <span className="text-[10px] text-slate-500">{pct(l.arrived, l.total)}</span></td>
+                        <td className="px-3 py-3 text-right text-violet-300" data-label="Attended">{l.attended}</td>
+                        <td className="px-3 py-3 text-right text-sky-300" data-label="Paid">{l.paid}</td>
+                        <td className="px-3 py-3 text-right text-amber-300" data-label="In queue">{l.in_queue}</td>
+                        <td className="px-3 py-3 text-right text-slate-300" data-label="App">{l.poveon}</td>
+                        <td className="px-3 py-3 text-right text-slate-300" data-label="QR">{l.qr}</td>
+                        <td className="px-3 py-3 text-right text-slate-300" data-label="Walk-in">{l.walk_in}</td>
                       </tr>
                     ))}
                   </tbody>

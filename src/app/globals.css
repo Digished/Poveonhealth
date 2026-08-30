@@ -335,6 +335,75 @@
   --dash-ring:        rgba(3, 105, 161, 0.35);
 }
 
+/* ── Tables that become cards on a phone ───────────────────────────────────
+   An admin table is six or seven columns wide, so on a 390px screen it is a
+   900px scroller: you drag sideways to read one row. Adding `table-cards` makes
+   each row a card below `md`, with the column heading printed beside its value
+   from `data-label`, and leaves the table exactly as it is from `md` up — the
+   layout a desk actually wants. No duplicated markup, and one cell attribute
+   per column is the whole cost.
+
+   Cells that only make sense in a grid (a row's action buttons, an avatar
+   already shown in the first cell) carry `data-label=""` and render without a
+   heading; add `data-card-hide` to drop a cell from the card entirely. */
+@media (max-width: 767px) {
+  .table-cards,
+  .table-cards tbody,
+  .table-cards tr,
+  .table-cards td { display: block; width: auto; }
+
+  .table-cards { min-width: 0 !important; }
+  .table-cards thead { display: none; }
+
+  .table-cards tr {
+    border: 1px solid var(--dash-border);
+    border-radius: 0.75rem;
+    padding: 0.25rem 0;
+    margin-bottom: 0.625rem;
+    background: var(--dash-surface-2);
+  }
+  .table-cards tr:last-child { margin-bottom: 0; }
+
+  .table-cards td {
+    display: flex;
+    align-items: baseline;
+    justify-content: space-between;
+    gap: 1rem;
+    padding: 0.4rem 0.85rem;
+    text-align: right;
+  }
+  .table-cards td[data-label]:not([data-label=""])::before {
+    content: attr(data-label);
+    flex: 0 0 auto;
+    text-align: left;
+    font-size: 11px;
+    font-weight: 600;
+    letter-spacing: 0.02em;
+    color: var(--dash-faint);
+    white-space: nowrap;
+  }
+  /* The first cell is the row's identity — full width, and its own heading is
+     redundant because the value says what it is. */
+  .table-cards td:first-child {
+    display: block;
+    text-align: left;
+    padding: 0.7rem 0.85rem 0.5rem;
+    border-bottom: 1px solid var(--dash-border);
+    margin-bottom: 0.2rem;
+  }
+  .table-cards td:first-child[data-label]:not([data-label="x"])::before { content: none; }
+  .table-cards td[data-card-hide] { display: none; }
+  /* Action clusters sit on their own line, left-aligned, easy to hit. */
+  .table-cards td[data-card-actions] {
+    justify-content: flex-start;
+    padding-top: 0.55rem;
+    padding-bottom: 0.7rem;
+  }
+  .table-cards td[data-card-actions] > * { justify-content: flex-start !important; }
+  /* An empty-state row is a message, not a card. */
+  .table-cards td[colspan] { display: block; text-align: center; }
+}
+
 /* Panels inside AdminOverlay: as tall as the visible viewport allows, which
    with a keyboard up is much less than 90vh. Falls back to dvh if a panel is
    ever rendered outside the wrapper. */

@@ -389,7 +389,7 @@ export function AdminMetricsTab() {
           <p className="py-6 text-center text-sm text-slate-500">No requests in this period.</p>
         ) : (
           <div className="overflow-x-auto">
-            <table className="w-full min-w-[560px] text-sm">
+            <table className="w-full text-sm table-cards">
               <thead>
                 <tr className="border-b border-white/10 text-[10px] uppercase tracking-wider text-slate-500">
                   <th className="px-2 py-2 text-left font-semibold">Lab</th>
@@ -403,12 +403,12 @@ export function AdminMetricsTab() {
               <tbody>
                 {top_labs.map((lab) => (
                   <tr key={lab.lab_id} className="border-b border-white/5 last:border-0">
-                    <td className="max-w-[220px] truncate px-2 py-2.5 text-white">{lab.lab_name}</td>
-                    <td className="px-2 py-2.5 text-right font-mono text-slate-200">{lab.total}</td>
-                    <td className="px-2 py-2.5 text-right font-mono text-sky-400">{lab.self_service}</td>
-                    <td className="px-2 py-2.5 text-right font-mono text-violet-400">{lab.referrals}</td>
-                    <td className="px-2 py-2.5 text-right font-mono text-emerald-400">{lab.done}</td>
-                    <td className="px-2 py-2.5 text-right font-mono text-emerald-300">₦{lab.commission.toLocaleString()}</td>
+                    <td className="max-w-[220px] truncate px-2 py-2.5 text-white" data-label="Lab">{lab.lab_name}</td>
+                    <td className="px-2 py-2.5 text-right font-mono text-slate-200" data-label="Requests">{lab.total}</td>
+                    <td className="px-2 py-2.5 text-right font-mono text-sky-400" data-label="Self-service">{lab.self_service}</td>
+                    <td className="px-2 py-2.5 text-right font-mono text-violet-400" data-label="Referrals">{lab.referrals}</td>
+                    <td className="px-2 py-2.5 text-right font-mono text-emerald-400" data-label="Completed">{lab.done}</td>
+                    <td className="px-2 py-2.5 text-right font-mono text-emerald-300" data-label="Commission">₦{lab.commission.toLocaleString()}</td>
                   </tr>
                 ))}
               </tbody>
