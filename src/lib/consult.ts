@@ -49,6 +49,10 @@ export type ConsultSettingsPayload = {
   pharmacy_discount_percent: number;
   topup_price_naira: number;
   topup_messages: number;
+  /** Paid to the assigned doctor for each month a member stays active. */
+  doctor_monthly_naira: number;
+  /** Share of Poveon's monthly revenue set aside for the doctor bonus pool. */
+  bonus_pool_percent: number;
 };
 
 export const CONSULT_DEFAULTS: ConsultSettingsPayload = {
@@ -61,6 +65,8 @@ export const CONSULT_DEFAULTS: ConsultSettingsPayload = {
   pharmacy_discount_percent: 10,
   topup_price_naira: 10_000,
   topup_messages: 40,
+  doctor_monthly_naira: 500,
+  bonus_pool_percent: 10,
 };
 
 // Settings are read on nearly every care-plan request but change a few times a
@@ -96,6 +102,9 @@ export async function getConsultSettings(): Promise<ConsultSettingsPayload> {
       // Older rows predate the top-up columns; fall back rather than send NaN.
       topup_price_naira: Number(row.topup_price_naira ?? CONSULT_DEFAULTS.topup_price_naira),
       topup_messages: row.topup_messages ?? CONSULT_DEFAULTS.topup_messages,
+      // Older rows predate the new commercial terms; fall back rather than NaN.
+      doctor_monthly_naira: Number(row.doctor_monthly_naira ?? CONSULT_DEFAULTS.doctor_monthly_naira),
+      bonus_pool_percent: Number(row.bonus_pool_percent ?? CONSULT_DEFAULTS.bonus_pool_percent),
     };
     settingsCache = { at: Date.now(), value };
     return value;

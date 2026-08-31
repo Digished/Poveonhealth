@@ -2240,6 +2240,70 @@ model MedicationOrderItem {
   @@map("medication_order_items")
 }
 
+// One month's doctor bonus pool.
+//
+// A share of Poveon's revenue for the month, split between doctors by how much
+// of the month's messaging they carried. The premise is that a member who
+// writes often is a member who needs more, and the doctor holding them is doing
+// the harder work — so the split is by patient-sent messages, not by headcount
+// and not by the doctor's own replies, which a doctor could pad.
+//
+// The whole distribution is stored, not just the totals: what each doctor was
+// paid has to be answerable a year later, and "we recomputed it and got a
+// different number" is not an answer.
+model DoctorBonusPool {
+  id     String @id @default(uuid())
+  period String @unique // "2026-08"
+
+  /// Poveon's revenue for the month and the slice set aside from it, both
+  /// frozen at computation. Changing the percentage later must not silently
+  /// restate a month already paid.
+  revenue_naira Decimal @db.Decimal(14, 2)
+  pool_percent  Decimal @db.Decimal(5, 2)
+  pool_naira    Decimal @db.Decimal(14, 2)
+
+  /// Where the revenue came from, so the figure can be explained rather than
+  /// just asserted.
+  revenue_medication Decimal @default(0) @db.Decimal(14, 2)
+  revenue_onboarding Decimal @default(0) @db.Decimal(14, 2)
+  revenue_topups     Decimal @default(0) @db.Decimal(14, 2)
+
+  /// The denominator of every share.
+  total_weight Int @default(0)
+
+  status      String    @default("draft") // draft | paid
+  computed_at DateTime  @default(now())
+  paid_at     DateTime?
+  paid_by     String?
+
+  shares DoctorBonusShare[]
+
+  @@index([status, period])
+  @@map("doctor_bonus_pools")
+}
+
+// What one doctor was owed from one month's pool, and why.
+model DoctorBonusShare {
+  id           String @id @default(uuid())
+  pool_id      String
+  doctor_email String
+
+  /// Members of theirs who wrote at all this month, and how many messages
+  /// those members sent. `weight` is what the split actually used.
+  patients Int @default(0)
+  messages Int @default(0)
+  weight   Int @default(0)
+
+  share_percent Decimal @db.Decimal(6, 3)
+  amount_naira  Decimal @db.Decimal(12, 2)
+
+  pool DoctorBonusPool @relation(fields: [pool_id], references: [id], onDelete: Cascade)
+
+  @@unique([pool_id, doctor_email])
+  @@index([doctor_email])
+  @@map("doctor_bonus_shares")
+}
+
 model PharmacyOtp {
   id         String   @id @default(uuid())
   email      String

@@ -5,10 +5,11 @@ import { toast } from "react-hot-toast";
 import { ADHERENCE_OPTIONS, DURATION_OPTIONS } from "@/components/consults/baseline";
 import {
   Activity, BadgeCheck, Banknote, Check, ExternalLink, FileText, HeartPulse, Loader2, Play,
-  RefreshCw, Save, Search, Settings2, ShieldCheck, TrendingUp, Users, UserCog, X,
+  RefreshCw, Save, Search, Settings2, ShieldCheck, TrendingUp, Trophy, Users, UserCog, X,
 } from "lucide-react";
 import { AdminOverlay } from "@/components/admin/AdminOverlay";
 import { SubTabs } from "@/components/admin/SubTabs";
+import { BonusPoolPanel } from "@/components/admin/BonusPoolPanel";
 
 type Settings = {
   price_naira: number;
@@ -54,7 +55,7 @@ const STATUS_STYLES: Record<string, string> = {
   cancelled: "bg-red-100 text-red-600",
 };
 
-type SubTab = "members" | "doctors" | "baseline" | "pricing" | "payouts";
+type SubTab = "members" | "doctors" | "baseline" | "pricing" | "payouts" | "bonus";
 
 export function AdminCarePlanTab() {
   const [subTab, setSubTab] = useState<SubTab>("members");
@@ -81,6 +82,7 @@ export function AdminCarePlanTab() {
           { key: "baseline", label: "Health statistics", icon: Activity },
           { key: "pricing", label: "Pricing", icon: Settings2 },
           { key: "payouts", label: "Doctor payouts", icon: Banknote },
+          { key: "bonus", label: "Bonus pool", icon: Trophy },
         ] as const}
       />
 
@@ -89,6 +91,7 @@ export function AdminCarePlanTab() {
       {subTab === "baseline" && <BaselineStatsPanel />}
       {subTab === "pricing" && <PricingPanel />}
       {subTab === "payouts" && <PayoutsPanel />}
+      {subTab === "bonus" && <BonusPoolPanel />}
     </div>
   );
 }

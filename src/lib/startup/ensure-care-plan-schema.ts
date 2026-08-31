@@ -56,6 +56,8 @@ const SENTINEL_TABLES = [
   "pharmacy_price_batches",
   "medication_orders",
   "medication_order_items",
+  "doctor_bonus_pools",
+  "doctor_bonus_shares",
 ];
 
 /** "table.column", so one text array can check them all. */
@@ -646,6 +648,39 @@ async function runEnsure(): Promise<void> {
     await exec(`ALTER TABLE consult_settings
       ADD COLUMN IF NOT EXISTS doctor_monthly_naira DECIMAL(12,2) NOT NULL DEFAULT 500,
       ADD COLUMN IF NOT EXISTS bonus_pool_percent DECIMAL(5,2) NOT NULL DEFAULT 10;`);
+    await exec(`
+    CREATE TABLE IF NOT EXISTS doctor_bonus_pools (
+      id TEXT PRIMARY KEY,
+      period TEXT NOT NULL,
+      revenue_naira DECIMAL(14,2) NOT NULL,
+      pool_percent DECIMAL(5,2) NOT NULL,
+      pool_naira DECIMAL(14,2) NOT NULL,
+      revenue_medication DECIMAL(14,2) NOT NULL DEFAULT 0,
+      revenue_onboarding DECIMAL(14,2) NOT NULL DEFAULT 0,
+      revenue_topups DECIMAL(14,2) NOT NULL DEFAULT 0,
+      total_weight INTEGER NOT NULL DEFAULT 0,
+      status TEXT NOT NULL DEFAULT 'draft',
+      computed_at TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+      paid_at TIMESTAMP(3),
+      paid_by TEXT
+    );
+    `);
+    await exec(`CREATE UNIQUE INDEX IF NOT EXISTS doctor_bonus_pools_period_key ON doctor_bonus_pools(period);`);
+    await exec(`CREATE INDEX IF NOT EXISTS doctor_bonus_pools_status_idx ON doctor_bonus_pools(status, period);`);
+    await exec(`
+    CREATE TABLE IF NOT EXISTS doctor_bonus_shares (
+      id TEXT PRIMARY KEY,
+      pool_id TEXT NOT NULL,
+      doctor_email TEXT NOT NULL,
+      patients INTEGER NOT NULL DEFAULT 0,
+      messages INTEGER NOT NULL DEFAULT 0,
+      weight INTEGER NOT NULL DEFAULT 0,
+      share_percent DECIMAL(6,3) NOT NULL,
+      amount_naira DECIMAL(12,2) NOT NULL
+    );
+    `);
+    await exec(`CREATE UNIQUE INDEX IF NOT EXISTS doctor_bonus_shares_key ON doctor_bonus_shares(pool_id, doctor_email);`);
+    await exec(`CREATE INDEX IF NOT EXISTS doctor_bonus_shares_doctor_idx ON doctor_bonus_shares(doctor_email);`);
     await exec(`
     CREATE TABLE IF NOT EXISTS push_subscriptions (
       id TEXT PRIMARY KEY,

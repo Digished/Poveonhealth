@@ -33,6 +33,10 @@ const BodySchema = z.object({
   // What another bundle of messages costs a member who runs out mid-year.
   topup_price_naira: z.coerce.number().min(0).max(10_000_000).optional(),
   topup_messages: z.coerce.number().int().min(1).max(365).optional(),
+  // The new commercial terms: a monthly per-member fee to the assigned doctor,
+  // and the slice of revenue that funds the stress bonus pool.
+  doctor_monthly_naira: z.coerce.number().min(0).max(1_000_000).optional(),
+  bonus_pool_percent: z.coerce.number().min(0).max(100).optional(),
 });
 
 /** PATCH /api/admin/consults/settings — set the price and the doctor's share. */

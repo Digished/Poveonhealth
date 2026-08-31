@@ -2684,6 +2684,59 @@ const migrations = [
     continueOnError: true,
   },
   {
+    desc: "doctor_bonus_pools table (one month's pool)",
+    sql: `    CREATE TABLE IF NOT EXISTS doctor_bonus_pools (
+      id TEXT PRIMARY KEY,
+      period TEXT NOT NULL,
+      revenue_naira DECIMAL(14,2) NOT NULL,
+      pool_percent DECIMAL(5,2) NOT NULL,
+      pool_naira DECIMAL(14,2) NOT NULL,
+      revenue_medication DECIMAL(14,2) NOT NULL DEFAULT 0,
+      revenue_onboarding DECIMAL(14,2) NOT NULL DEFAULT 0,
+      revenue_topups DECIMAL(14,2) NOT NULL DEFAULT 0,
+      total_weight INTEGER NOT NULL DEFAULT 0,
+      status TEXT NOT NULL DEFAULT 'draft',
+      computed_at TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+      paid_at TIMESTAMP(3),
+      paid_by TEXT
+    )`,
+    continueOnError: true,
+  },
+  {
+    desc: "doctor_bonus_pools one row per month (recomputing must replace, never duplicate)",
+    sql: `CREATE UNIQUE INDEX IF NOT EXISTS doctor_bonus_pools_period_key ON doctor_bonus_pools (period)`,
+    continueOnError: true,
+  },
+  {
+    desc: "doctor_bonus_pools status index",
+    sql: `CREATE INDEX IF NOT EXISTS doctor_bonus_pools_status_idx ON doctor_bonus_pools (status, period)`,
+    continueOnError: true,
+  },
+  {
+    desc: "doctor_bonus_shares table (what each doctor was owed, and why)",
+    sql: `    CREATE TABLE IF NOT EXISTS doctor_bonus_shares (
+      id TEXT PRIMARY KEY,
+      pool_id TEXT NOT NULL,
+      doctor_email TEXT NOT NULL,
+      patients INTEGER NOT NULL DEFAULT 0,
+      messages INTEGER NOT NULL DEFAULT 0,
+      weight INTEGER NOT NULL DEFAULT 0,
+      share_percent DECIMAL(6,3) NOT NULL,
+      amount_naira DECIMAL(12,2) NOT NULL
+    )`,
+    continueOnError: true,
+  },
+  {
+    desc: "doctor_bonus_shares one row per doctor per pool",
+    sql: `CREATE UNIQUE INDEX IF NOT EXISTS doctor_bonus_shares_key ON doctor_bonus_shares (pool_id, doctor_email)`,
+    continueOnError: true,
+  },
+  {
+    desc: "doctor_bonus_shares doctor index (a doctor's own history)",
+    sql: `CREATE INDEX IF NOT EXISTS doctor_bonus_shares_doctor_idx ON doctor_bonus_shares (doctor_email)`,
+    continueOnError: true,
+  },
+  {
     desc: "push_subscriptions table (PWA notifications)",
     sql: `    CREATE TABLE IF NOT EXISTS push_subscriptions (
       id TEXT PRIMARY KEY,

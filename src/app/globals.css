@@ -409,6 +409,13 @@
    ever rendered outside the wrapper. */
 .max-h-modal { max-height: var(--admin-modal-max-h, 92dvh); }
 
+/* The bonus-pool bar. One hue, because bar length already carries the
+   magnitude — shading by rank would encode the same thing twice. Both steps
+   pass the palette validator's lightness, chroma and 3:1 contrast checks
+   against the admin surface they sit on. */
+:root, .dash { --bonus-bar: #3987e5; }
+.dash-light { --bonus-bar: #2a78d6; }
+
 /* Token-backed utilities. Deliberately few: a surface, a border, three text
    weights and one accent is the whole vocabulary the chrome needs. */
 .dash-panel     { background: var(--dash-surface);   border: 1px solid var(--dash-border); }

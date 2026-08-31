@@ -33,6 +33,7 @@ import {
 } from "@/components/doctor/CarePlanOrders";
 import { CarePlanTreatment, type TreatmentPlan } from "@/components/doctor/CarePlanTreatment";
 import { ScreeningHistory, type ScreeningRound } from "@/components/doctor/ScreeningHistory";
+import { BonusHistory } from "@/components/doctor/BonusHistory";
 import { ADHERENCE_LABEL, bpBand, durationLabel } from "@/components/consults/baseline";
 import { CONDITIONS as CONDITION_OPTIONS, CONDITION_LABEL } from "@/lib/consult-conditions";
 import { Modal } from "@/components/ui/Overlay";
@@ -1511,6 +1512,9 @@ function EarningsPanel({ overview, loading }: { overview: Overview | null; loadi
         {w?.active_patients === 1 ? "" : "s"}, at {naira(w?.per_patient ?? 6000)} each. Instalments follow
         your bank&apos;s settlement schedule once released.
       </p>
+
+      {/* Paid separately from the per-member fee, and on a different basis. */}
+      <BonusHistory />
     </div>
   );
 }
