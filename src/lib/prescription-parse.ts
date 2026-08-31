@@ -127,6 +127,19 @@ function parseWrittenDuration(tokens: string[], i: number): { days: number; labe
 function doseAt(tokens: string[], i: number): { text: string; used: number } | null {
   const t = tokens[i];
   if (!t) return null;
+  // A concentration is one dose written as two — "100iu/ml", "80mg/5ml".
+  // Read before the plain form, or the "/ml" half is left behind as a stray
+  // and the strength never reaches the price list.
+  const conc = new RegExp(
+    `^(\\d+(?:\\.\\d+)?)(${DOSE_UNITS.join("|")})\\/(\\d+(?:\\.\\d+)?)?(${DOSE_UNITS.join("|")})$`,
+    "i"
+  ).exec(t);
+  if (conc) {
+    return {
+      text: `${conc[1]}${conc[2].toLowerCase()}/${conc[3] ?? ""}${conc[4].toLowerCase()}`,
+      used: 1,
+    };
+  }
   const glued = new RegExp(`^(\\d+(?:[./]\\d+)?)(${DOSE_UNITS.join("|")})$`, "i").exec(t);
   if (glued) return { text: `${glued[1]}${glued[2].toLowerCase()}`, used: 1 };
   if (/^\d+(?:[./]\d+)?$/.test(t)) {

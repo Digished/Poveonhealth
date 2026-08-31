@@ -35,15 +35,23 @@ type Med = {
   form: string | null;
   dosage: string | null;
   frequency: string | null;
+  instructions: string | null;
+  end_date: string | null;
   status: string;
   priced: boolean;
+  /** Why it could not be priced, when it could not be. */
+  reason?: string | null;
   medication_id?: string;
   pack?: string | null;
+  strength?: string | null;
   in_stock?: boolean;
   list_price?: number;
   you_pay?: number;
   you_save?: number;
   saving_percent?: number;
+  /** Already bought: the month it covers, and where that order has got to. */
+  covered_for?: string | null;
+  covered_status?: string | null;
 };
 
 type Order = {
@@ -64,13 +72,15 @@ type Payload = {
   medications: Med[];
   total: {
     items: number; you_pay: number; you_save: number; list: number;
-    unpriced: number; out_of_stock: number;
+    unpriced: number; out_of_stock: number; covered: number;
   };
   orders: Order[];
 };
 
 const MONTH = (iso: string) =>
   new Date(iso).toLocaleDateString("en-GB", { month: "long", year: "numeric", timeZone: "UTC" });
+const DAY = (iso: string) =>
+  new Date(iso).toLocaleDateString("en-GB", { day: "numeric", month: "short", year: "numeric" });
 
 export function MedicationPay({ onPickPharmacy }: { onPickPharmacy?: () => void }) {
   const [data, setData] = useState<Payload | null>(null);
@@ -88,7 +98,7 @@ export function MedicationPay({ onPickPharmacy }: { onPickPharmacy?: () => void 
       // Everything buyable starts ticked: the common case is "all of it".
       const start: Record<string, boolean> = {};
       for (const m of d.medications as Med[]) {
-        if (m.priced && m.in_stock) start[m.medication_id!] = true;
+        if (m.priced && m.in_stock && !m.covered_for) start[m.medication_id!] = true;
       }
       setChosen(start);
     } finally {
@@ -100,7 +110,9 @@ export function MedicationPay({ onPickPharmacy }: { onPickPharmacy?: () => void 
 
   const selected = useMemo(() => {
     if (!data) return { items: [] as Med[], pay: 0, save: 0 };
-    const items = data.medications.filter((m) => m.priced && m.in_stock && chosen[m.medication_id!]);
+    const items = data.medications.filter(
+      (m) => m.priced && m.in_stock && !m.covered_for && chosen[m.medication_id!]
+    );
     return {
       items,
       pay: items.reduce((s, m) => s + (m.you_pay ?? 0), 0),
@@ -144,33 +156,38 @@ export function MedicationPay({ onPickPharmacy }: { onPickPharmacy?: () => void 
     );
   }
 
-  // No pharmacy chosen: nothing can be priced, so say that rather than showing
-  // an empty list that looks like "you have no medication".
-  if (!data.pharmacy) {
-    return (
-      <section className="rounded-2xl border border-slate-100 bg-white p-6 text-center shadow-sm">
-        <Store className="mx-auto h-7 w-7 text-slate-300" />
-        <h3 className="mt-3 text-sm font-bold text-slate-800">Choose a pharmacy to see prices</h3>
-        <p className="mx-auto mt-1.5 max-w-sm text-xs leading-relaxed text-slate-500">
-          Prices come from the pharmacy you pick, so we need to know where you collect before we can
-          tell you what your medication costs.
-        </p>
-        {onPickPharmacy && (
-          <button
-            onClick={onPickPharmacy}
-            className="mt-4 inline-flex items-center gap-2 rounded-xl bg-medical-600 px-5 py-2.5 text-sm font-bold text-white transition hover:bg-medical-700"
-          >
-            Pick a pharmacy <ArrowRight className="h-4 w-4" />
-          </button>
-        )}
-      </section>
-    );
-  }
+  // No pharmacy chosen: nothing can be priced. The medication is still listed —
+  // this is the only place a member sees it — with the one thing standing
+  // between them and a price offered above it.
+  const noPharmacy = !data.pharmacy;
 
   const live = data.orders.filter((o) => o.status === "paid" || o.status === "ready");
 
   return (
     <div className="space-y-4">
+      {noPharmacy && (
+        <section className="rounded-2xl border border-medical-100 bg-medical-50/60 p-4">
+          <div className="flex items-start gap-3">
+            <Store className="mt-0.5 h-5 w-5 shrink-0 text-medical-600" />
+            <div className="min-w-0 flex-1">
+              <p className="text-sm font-bold text-slate-800">Choose a pharmacy to see prices</p>
+              <p className="mt-0.5 text-xs leading-relaxed text-slate-600">
+                Prices come from the pharmacy you collect at, so we need to know where before we can
+                tell you what your medication costs — or let you pay for it here.
+              </p>
+              {onPickPharmacy && (
+                <button
+                  onClick={onPickPharmacy}
+                  className="mt-3 inline-flex items-center gap-2 rounded-xl bg-medical-600 px-4 py-2 text-xs font-bold text-white transition hover:bg-medical-700"
+                >
+                  Pick a pharmacy <ArrowRight className="h-3.5 w-3.5" />
+                </button>
+              )}
+            </div>
+          </div>
+        </section>
+      )}
+
       {/* Anything already paid for and waiting. */}
       {live.map((o) => (
         <div key={o.id} className="rounded-2xl border border-emerald-100 bg-emerald-50/70 p-4">
@@ -198,11 +215,12 @@ export function MedicationPay({ onPickPharmacy }: { onPickPharmacy?: () => void 
               Your medication
             </h3>
             <p className="mt-0.5 text-xs text-slate-500">
-              Priced at {data.pharmacy.name}
-              {data.pharmacy.city ? `, ${data.pharmacy.city}` : ""}
+              {data.pharmacy
+                ? `Priced at ${data.pharmacy.name}${data.pharmacy.city ? `, ${data.pharmacy.city}` : ""}`
+                : "Prices appear once you choose a pharmacy"}
             </p>
           </div>
-          {onPickPharmacy && (
+          {onPickPharmacy && !noPharmacy && (
             <button onClick={onPickPharmacy} className="shrink-0 text-xs font-semibold text-medical-600 hover:underline">
               Change pharmacy
             </button>
@@ -216,53 +234,13 @@ export function MedicationPay({ onPickPharmacy }: { onPickPharmacy?: () => void 
         ) : (
           <ul className="divide-y divide-slate-100">
             {data.medications.map((m) => (
-              <li key={m.id} className="p-4">
-                {m.priced && m.in_stock ? (
-                  <label className="flex cursor-pointer items-start gap-3">
-                    <input
-                      type="checkbox"
-                      checked={!!chosen[m.medication_id!]}
-                      onChange={(e) =>
-                        setChosen((c) => ({ ...c, [m.medication_id!]: e.target.checked }))
-                      }
-                      className="mt-1 h-4 w-4 shrink-0 rounded border-slate-300 text-medical-600"
-                    />
-                    <span className="min-w-0 flex-1">
-                      <span className="flex flex-wrap items-baseline justify-between gap-x-3 gap-y-0.5">
-                        <span className="text-sm font-semibold text-slate-800">{m.medication}</span>
-                        <span className="text-sm font-bold text-slate-900">{naira(m.you_pay!)}</span>
-                      </span>
-                      <span className="mt-0.5 flex flex-wrap items-baseline justify-between gap-x-3">
-                        <span className="text-xs text-slate-500">
-                          {[m.dosage, m.frequency, m.pack].filter(Boolean).join(" · ") || "As directed"}
-                        </span>
-                        {(m.you_save ?? 0) > 0 ? (
-                          <span className="text-xs font-semibold text-emerald-600">
-                            You save {naira(m.you_save!)}
-                            <span className="ml-1 font-normal text-slate-400 line-through">
-                              {naira(m.list_price!)}
-                            </span>
-                          </span>
-                        ) : (
-                          <span className="text-xs text-slate-400">Shop price</span>
-                        )}
-                      </span>
-                    </span>
-                  </label>
-                ) : (
-                  <div className="flex items-start gap-3 opacity-70">
-                    <AlertCircle className="mt-0.5 h-4 w-4 shrink-0 text-amber-500" />
-                    <div className="min-w-0">
-                      <p className="text-sm font-semibold text-slate-700">{m.medication}</p>
-                      <p className="text-xs text-slate-500">
-                        {m.priced
-                          ? `Out of stock at ${data.pharmacy!.name} right now — ask them, or change pharmacy.`
-                          : `${data.pharmacy!.name} has not listed a price for this. You can still collect it and pay them directly.`}
-                      </p>
-                    </div>
-                  </div>
-                )}
-              </li>
+              <MedRow
+                key={m.id}
+                med={m}
+                pharmacyName={data.pharmacy?.name ?? null}
+                checked={!!chosen[m.medication_id ?? ""]}
+                onCheck={(v) => setChosen((c) => ({ ...c, [m.medication_id!]: v }))}
+              />
             ))}
           </ul>
         )}
@@ -321,31 +299,134 @@ export function MedicationPay({ onPickPharmacy }: { onPickPharmacy?: () => void 
             </button>
 
             <p className="text-center text-[11px] leading-relaxed text-slate-400">
-              {data.pharmacy.name} is paid straight away and will have it ready.
+              {data.pharmacy?.name} is paid straight away and will have it ready.
               {selected.save > 0 && ` You are ${naira(selected.save)} better off than the shop price.`}
             </p>
           </div>
         </section>
       )}
 
-      {(data.total.unpriced > 0 || data.total.out_of_stock > 0) && (
+      {!noPharmacy && (data.total.unpriced > 0 || data.total.out_of_stock > 0) && (
         <p className="rounded-xl bg-slate-50 px-4 py-3 text-[11px] leading-relaxed text-slate-500">
-          {data.total.unpriced > 0 && (
-            <>
-              {data.total.unpriced} medication{data.total.unpriced === 1 ? "" : "s"} on your list
-              {data.total.unpriced === 1 ? " is" : " are"} not priced by {data.pharmacy.name}.{" "}
-            </>
-          )}
-          {data.total.out_of_stock > 0 && (
-            <>
-              {data.total.out_of_stock} {data.total.out_of_stock === 1 ? "is" : "are"} out of stock
-              there.{" "}
-            </>
-          )}
-          Another partner pharmacy may have them — changing pharmacy re-prices everything.
+          Another partner pharmacy may have what {data.pharmacy?.name} cannot price or stock —
+          changing pharmacy re-prices everything.
         </p>
-      )}
+            )}
     </div>
+  );
+}
+
+/**
+ * One medication, said once.
+ *
+ * This row carries both halves of what a member needs — what the doctor wrote
+ * (dose, how often, for how long, any instruction) and what it costs at their
+ * pharmacy — because the alternative, two lists showing the same medication,
+ * is what this replaced. A row is a purchase only when it can be one: priced,
+ * in stock, and not already paid for.
+ */
+function MedRow({
+  med, pharmacyName, checked, onCheck,
+}: {
+  med: Med;
+  /** Null until the member has chosen one, which is when prices appear. */
+  pharmacyName: string | null;
+  checked: boolean;
+  onCheck: (checked: boolean) => void;
+}) {
+  const directions =
+    [med.dosage, med.frequency].filter(Boolean).join(" · ") || "As directed";
+  const until = med.end_date ? `Until ${DAY(med.end_date)}` : "Ongoing";
+  const buyable = med.priced && med.in_stock && !med.covered_for;
+
+  const detail = (
+    <>
+      <p className="mt-0.5 text-xs text-slate-500">
+        {directions}
+        {med.pack ? <span className="text-slate-400"> · {med.pack}</span> : null}
+      </p>
+      {med.instructions && <p className="mt-1 text-xs text-slate-500">{med.instructions}</p>}
+      <p className="mt-1 text-[11px] text-slate-400">
+        {med.status === "scheduled" ? "Just added by your doctor" : until}
+      </p>
+    </>
+  );
+
+  const title = (
+    <span className="text-sm font-semibold text-slate-800">
+      {med.form ? `${med.form.charAt(0).toUpperCase()}${med.form.slice(1)} · ` : ""}
+      {med.medication}
+    </span>
+  );
+
+  // Already bought. Shown as settled rather than offered a second time.
+  if (med.covered_for) {
+    return (
+      <li className="flex items-start gap-3 p-4">
+        <PackageCheck className="mt-0.5 h-4 w-4 shrink-0 text-emerald-600" />
+        <div className="min-w-0 flex-1">
+          <div className="flex flex-wrap items-baseline justify-between gap-x-3">
+            {title}
+            <span className="text-xs font-bold text-emerald-700">
+              {med.covered_status === "ready" ? "Ready to collect" : "Paid for"}
+            </span>
+          </div>
+          {detail}
+          <p className="mt-1 text-[11px] font-semibold text-emerald-700">
+            Covered for {MONTH(med.covered_for)}.
+          </p>
+        </div>
+      </li>
+    );
+  }
+
+  if (!buyable) {
+    return (
+      <li className="flex items-start gap-3 p-4">
+        {pharmacyName ? (
+          <AlertCircle className="mt-0.5 h-4 w-4 shrink-0 text-amber-500" />
+        ) : (
+          <Pill className="mt-0.5 h-4 w-4 shrink-0 text-slate-300" />
+        )}
+        <div className="min-w-0 flex-1">
+          {title}
+          {detail}
+          {pharmacyName && (
+            <p className="mt-1 text-[11px] leading-relaxed text-amber-700">
+              {med.priced
+                ? `Out of stock at ${pharmacyName} right now — ask them, or change pharmacy.`
+                : med.reason ?? `${pharmacyName} has not listed a price for this.`}
+            </p>
+          )}
+        </div>
+      </li>
+    );
+  }
+
+  return (
+    <li>
+      <label className="flex cursor-pointer items-start gap-3 p-4">
+        <input
+          type="checkbox"
+          checked={checked}
+          onChange={(e) => onCheck(e.target.checked)}
+          className="mt-1 h-4 w-4 shrink-0 rounded border-slate-300 text-medical-600"
+        />
+        <span className="min-w-0 flex-1">
+          <span className="flex flex-wrap items-baseline justify-between gap-x-3 gap-y-0.5">
+            {title}
+            <span className="text-sm font-bold text-slate-900">{naira(med.you_pay!)}</span>
+          </span>
+          {detail}
+          {(med.you_save ?? 0) > 0 && (
+            <span className="mt-1 flex flex-wrap items-baseline gap-x-2 text-xs">
+              <span className="font-semibold text-emerald-600">You save {naira(med.you_save!)}</span>
+              <span className="text-slate-400 line-through">{naira(med.list_price!)}</span>
+            </span>
+          )}
+        </span>
+      </label>
+    </li>
   );
 }
 

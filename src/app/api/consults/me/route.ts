@@ -4,6 +4,7 @@ import { prisma } from "@/lib/prisma";
 import { getConsultSettings, getMemberByEmail, getPatientEmailFromRequest } from "@/lib/consult";
 import { itemState } from "@/lib/treatment-plan";
 import { medLiveWhere } from "@/lib/medication-status";
+import { dedupeByDrug } from "@/lib/med-match";
 import { ensureCarePlanSchema } from "@/lib/startup/ensure-care-plan-schema";
 
 /**
@@ -188,7 +189,9 @@ export async function GET(req: NextRequest) {
         discount_naira: Number(r.discount_naira),
         created_at: r.created_at,
       })),
-      prescriptions,
+      // One row per drug: the same medication listed twice is a duplicate,
+      // never two medications.
+      prescriptions: dedupeByDrug(prescriptions),
       test_orders: testOrders,
       preferred_pharmacy: preferredPharmacy,
       preferred_lab: preferredLab,

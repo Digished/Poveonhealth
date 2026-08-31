@@ -15,6 +15,7 @@
  */
 
 import * as xlsx from "xlsx";
+import { identify } from "@/lib/med-match";
 
 export type ParsedMedRow = {
   /** 1-based row in the sheet, so a problem can be pointed at. */
@@ -76,10 +77,36 @@ export function parseMoney(raw: unknown): number | null {
     const n = Number(k[1].replace(/,/g, ""));
     return Number.isFinite(n) ? n * 1000 : null;
   }
-  const cleaned = text.replace(/[₦,\s]/g, "").replace(/^n(?=[\d.])/i, "");
+  // Everything that is not part of the number goes: the naira sign, thousands
+  // separators, a trailing "per pack", and — the one that actually cost us — a
+  // naira sign that survived a trip through the wrong text encoding and came
+  // out as mojibake. A price column holds a price; refusing to read one because
+  // of the character in front of it rejects a pharmacy's whole price list.
+  const cleaned = text.replace(/[^\d.-]/g, "");
   if (!/^-?\d*\.?\d+$/.test(cleaned)) return null;
   const n = Number(cleaned);
   return Number.isFinite(n) ? n : null;
+}
+
+/**
+ * Hand the spreadsheet reader something it will decode correctly.
+ *
+ * A workbook is binary and goes through as a buffer. A CSV is text, and left as
+ * a buffer the reader assumes a Windows codepage — so "₦2,000" from any modern
+ * export (Excel's "CSV UTF-8", Google Sheets, a Mac) arrives as mojibake and
+ * every price in the file is rejected as "not a number". Text is therefore
+ * decoded here, as UTF-8, before it is read.
+ */
+function forReader(buffer: Buffer): { data: Buffer | string; type: "buffer" | "string" } {
+  // PK.. is a zip, so xlsx/ods; D0CF11E0 is the old OLE container, so xls.
+  const zip = buffer[0] === 0x50 && buffer[1] === 0x4b;
+  const ole =
+    buffer[0] === 0xd0 && buffer[1] === 0xcf && buffer[2] === 0x11 && buffer[3] === 0xe0;
+  if (zip || ole) return { data: buffer, type: "buffer" };
+  // Strip a UTF-8 byte-order mark, which Excel writes and which would otherwise
+  // become part of the first header's name.
+  const text = buffer.toString("utf8").replace(/^\uFEFF/, "");
+  return { data: text, type: "string" };
 }
 
 /** "yes" / "y" / "true" / "in stock" / 1 → true. Blank means in stock. */
@@ -100,17 +127,24 @@ function splitStrength(name: string): { name: string; strength: string | null } 
   return { name: m[1].trim(), strength: m[2].replace(/\s+/g, "").toLowerCase() };
 }
 
-/** The identity a re-upload matches on. */
+/**
+ * The identity a re-upload matches on.
+ *
+ * Derived through lib/med-match, so the two ways a pharmacist writes the same
+ * medication — "Amlodipine 10mg" in one cell, or "Amlodipine" with "10mg" in a
+ * Strength column — produce one key and update one row, instead of leaving the
+ * shop with two rows for one drug and a member with an ambiguous price.
+ */
 export function medKey(name: string, strength: string | null, form: string | null): string {
-  return [name, strength ?? "", form ?? ""]
-    .map((p) => String(p).toLowerCase().replace(/[^a-z0-9]/g, ""))
-    .join("|");
+  const id = identify({ name, strength, form });
+  return [id.name, id.strength ?? "", id.form ?? ""].join("|");
 }
 
 /** Read a CSV or XLSX buffer into rows plus the problems worth showing. */
 export function parseMedSheet(buffer: Buffer, opts: { maxRows?: number } = {}): ParsedSheet {
   const maxRows = opts.maxRows ?? 5000;
-  const book = xlsx.read(buffer, { type: "buffer", cellDates: false });
+  const source = forReader(buffer);
+  const book = xlsx.read(source.data, { type: source.type, cellDates: false });
   const sheetName = book.SheetNames[0];
   if (!sheetName) return { rows: [], problems: [{ row: 0, reason: "The file has no sheets in it." }], mapping: {}, seen: 0 };
 

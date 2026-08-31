@@ -3,20 +3,22 @@ import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { getMemberFromRequest } from "@/lib/consult";
 import { medLiveWhere } from "@/lib/medication-status";
-import { medKey } from "@/lib/med-sheet";
+import { buildMedIndex, dedupeByDrug, identify, matchMedication, unmatchedReason } from "@/lib/med-match";
 import { priceMedication } from "@/lib/med-pricing";
 import { ensureCarePlanSchema } from "@/lib/startup/ensure-care-plan-schema";
 
 /**
- * GET /api/consults/medications — what the member's medication costs.
+ * GET /api/consults/medications — the member's medication, once, with prices.
  *
- * Every live prescription, matched against their chosen pharmacy's price list
- * and priced. A member should never have to ask what their refill will cost, or
- * find out at the counter.
+ * This is the *only* list of a member's medication the dashboard draws, so it
+ * carries everything a member needs about each one: what the doctor wrote, what
+ * it costs at their pharmacy, what they save, and whether this month is already
+ * paid for. Two lists of the same medication is how a dashboard starts
+ * contradicting itself.
  *
- * A prescription with no matching row in the pharmacy's list is still returned,
- * marked unpriced — telling someone "we don't know" is honest; leaving the
- * medication out of the list entirely would look like it had been cancelled.
+ * A prescription the pharmacy has not priced is still returned, with the reason
+ * it could not be priced. "We don't know" is honest; leaving the medication out
+ * would read as though the doctor had stopped it.
  */
 export async function GET(req: NextRequest) {
   await ensureCarePlanSchema().catch(() => {});
@@ -41,67 +43,88 @@ export async function GET(req: NextRequest) {
       }),
     ]);
 
-    // The pharmacy's list, keyed the same way the importer keys it, so
-    // "Amlodipine 10mg" from a doctor finds "Amlodipine" + "10mg" in the shop.
     const catalogue = pharmacy
       ? await prisma.pharmacyMedication.findMany({
           where: { pharmacy_id: pharmacy.id, active: true },
         })
       : [];
-    const byKey = new Map(catalogue.map((m) => [m.key, m]));
+    // Matched on identity rather than on a single stored key: the strength a
+    // doctor puts in the dosage column and a pharmacist puts in the name are
+    // the same strength, and the member should not pay for that difference.
+    const index = buildMedIndex(catalogue);
     const defaultMargin = Number(pharmacy?.margin_percent ?? 5);
 
-    const priced = prescriptions.map((p) => {
-      // A doctor writes "Amlodipine 10mg"; the strength may be in the name or
-      // in its own field, and the parser already normalised both to one key.
-      const strength = extractStrength(p.medication) ?? null;
-      const bareName = strength ? stripStrength(p.medication) : p.medication;
-      const match =
-        byKey.get(medKey(bareName, strength, p.form ?? null)) ??
-        byKey.get(medKey(bareName, strength, null)) ??
-        byKey.get(medKey(p.medication, null, p.form ?? null)) ??
-        null;
-
-      if (!match) {
-        return {
-          id: p.id,
-          medication: p.medication,
-          form: p.form,
-          dosage: p.dosage,
-          frequency: p.frequency,
-          status: p.status,
-          priced: false as const,
-        };
+    // Which catalogue rows are already bought and waiting, so nobody is invited
+    // to pay twice for the same month's tablets.
+    const coveredBy = new Map<string, { for_month: Date; status: string }>();
+    for (const o of orders) {
+      if (o.status !== "paid" && o.status !== "ready") continue;
+      for (const i of o.items) {
+        if (i.medication_id) coveredBy.set(i.medication_id, { for_month: o.for_month, status: o.status });
       }
+    }
 
-      const price = priceMedication({
-        listNaira: Number(match.list_price),
-        concessionNaira: Number(match.concession),
-        marginPercent: Number(match.margin_percent ?? defaultMargin),
-      });
+    // Data written before medication rows were merged on write can still hold
+    // the same drug twice, and the member asked not to be shown their
+    // medication several times.
+    const distinct = dedupeByDrug(prescriptions);
 
-      return {
+    const priced = distinct.map((p: (typeof prescriptions)[number]) => {
+      const base = {
         id: p.id,
         medication: p.medication,
         form: p.form,
         dosage: p.dosage,
         frequency: p.frequency,
+        instructions: p.instructions,
+        end_date: p.end_date,
         status: p.status,
+      };
+
+      const want = identify({ name: p.medication, dosage: p.dosage, form: p.form });
+      const found = pharmacy ? matchMedication(index, want) : null;
+
+      if (!found || !found.row) {
+        return {
+          ...base,
+          priced: false as const,
+          reason: pharmacy && found
+            ? unmatchedReason(found.how, pharmacy.name, found.alternatives)
+            : null,
+        };
+      }
+
+      const match = found.row;
+      const price = priceMedication({
+        listNaira: Number(match.list_price),
+        concessionNaira: Number(match.concession),
+        marginPercent: Number(match.margin_percent ?? defaultMargin),
+      });
+      const covered = coveredBy.get(match.id);
+
+      return {
+        ...base,
         priced: true as const,
         medication_id: match.id,
         pack: match.pack,
+        strength: match.strength,
         in_stock: match.in_stock,
         list_price: Number(match.list_price),
         you_pay: price.memberNaira,
         you_save: price.savingNaira,
         saving_percent: price.savingPercent,
+        // Paid for already — shown as settled rather than offered again.
+        covered_for: covered ? covered.for_month : null,
+        covered_status: covered ? covered.status : null,
       };
     });
 
-    // What the member could pay for right now. Summed from the priced lines
-    // rather than re-derived, so the total can never disagree with the rows
-    // above it.
-    const payable = priced.filter((p) => p.priced && p.in_stock);
+    type PricedRow = Extract<(typeof priced)[number], { priced: true }>;
+    const withPrice = priced.filter((p): p is PricedRow => p.priced);
+    // What the member could pay for right now: priced, in stock, not already
+    // bought. Summed from the rows above rather than re-derived, so the total
+    // can never disagree with the lines.
+    const payable = withPrice.filter((p) => p.in_stock && !p.covered_for);
 
     return NextResponse.json({
       success: true,
@@ -109,15 +132,14 @@ export async function GET(req: NextRequest) {
         ? { id: pharmacy.id, name: pharmacy.name, address: pharmacy.address, city: pharmacy.city }
         : null,
       medications: priced,
-      // The basket a member would pay for right now, summed from the priced
-      // rows rather than re-derived, so the total always matches the lines.
       total: {
         items: payable.length,
-        you_pay: payable.reduce((s, p) => s + (p.you_pay ?? 0), 0),
-        you_save: payable.reduce((s, p) => s + (p.you_save ?? 0), 0),
-        list: payable.reduce((s, p) => s + (p.list_price ?? 0), 0),
-        unpriced: priced.filter((p) => !p.priced).length,
-        out_of_stock: priced.filter((p) => p.priced && !p.in_stock).length,
+        you_pay: payable.reduce((s: number, p: PricedRow) => s + p.you_pay, 0),
+        you_save: payable.reduce((s: number, p: PricedRow) => s + p.you_save, 0),
+        list: payable.reduce((s: number, p: PricedRow) => s + p.list_price, 0),
+        unpriced: priced.length - withPrice.length,
+        out_of_stock: withPrice.filter((p) => !p.in_stock).length,
+        covered: withPrice.filter((p) => p.covered_for).length,
       },
       orders: orders.map((o) => ({
         id: o.id,
@@ -141,14 +163,4 @@ export async function GET(req: NextRequest) {
     console.error("[consults/medications]", err);
     return NextResponse.json({ error: "Could not price your medication." }, { status: 500 });
   }
-}
-
-/** "Amlodipine 10mg" -> "10mg". Mirrors the importer, so keys line up. */
-function extractStrength(name: string): string | null {
-  const m = /(\d+(?:\.\d+)?\s*(?:mg|mcg|g|ml|iu|%))\s*$/i.exec(name.trim());
-  return m ? m[1].replace(/\s+/g, "").toLowerCase() : null;
-}
-
-function stripStrength(name: string): string {
-  return name.replace(/[\s,-]*\d+(?:\.\d+)?\s*(?:mg|mcg|g|ml|iu|%)\s*$/i, "").trim();
 }

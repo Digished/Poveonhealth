@@ -6,7 +6,7 @@ import { z } from "zod";
 import { randomUUID } from "crypto";
 import { prisma } from "@/lib/prisma";
 import { getPharmacyFromRequest } from "@/lib/consult";
-import { parseMedSheet } from "@/lib/med-sheet";
+import { medKey, parseMedSheet } from "@/lib/med-sheet";
 import { priceMedication } from "@/lib/med-pricing";
 import { ensureCarePlanSchema } from "@/lib/startup/ensure-care-plan-schema";
 
@@ -119,14 +119,19 @@ export async function POST(req: NextRequest) {
     // Nothing is written. The pharmacy sees the first rows priced out, every
     // problem with its row number, and how many rows would be new against how
     // many would be updated.
-    const keys = priced.map((r) => r.key);
-    const existing = keys.length
-      ? await prisma.pharmacyMedication.findMany({
-          where: { pharmacy_id: pharmacy.id, key: { in: keys } },
-          select: { key: true },
-        })
-      : [];
-    const known = new Set(existing.map((e) => e.key));
+    // Matched on identity, not on the stored key: a row saved under an older
+    // key scheme is still the same medication, and previewing it as "new" would
+    // tell the pharmacy their list was about to double.
+    const onFile = await prisma.pharmacyMedication.findMany({
+      where: { pharmacy_id: pharmacy.id },
+      select: { name: true, strength: true, form: true },
+      take: 5000,
+    });
+    const known = new Set(
+      (onFile as { name: string; strength: string | null; form: string | null }[]).map((e) =>
+        medKey(e.name, e.strength, e.form)
+      )
+    );
 
     return NextResponse.json({
       success: true,
@@ -166,43 +171,70 @@ export async function POST(req: NextRequest) {
 
   const batchId = randomUUID();
 
-  // Upserted one at a time rather than in a single transaction: a price list is
-  // hundreds of rows, and a transaction that large will time out on a serverless
-  // connection. A part-applied upload is recoverable — the batch records what
-  // landed, and re-uploading the same file is idempotent because the key is
-  // stable.
+  // Rows already in the shop, indexed by what they *are* rather than by the
+  // key they happen to carry. A price list uploaded before keys were derived
+  // from identity — or uploaded twice with the strength in a different column —
+  // left the same drug on file under two keys, which makes its price ambiguous
+  // and unpriceable. Matching on identity converges those onto one row.
+  const existing = await prisma.pharmacyMedication.findMany({
+    where: { pharmacy_id: pharmacy.id },
+    select: { id: true, key: true, name: true, strength: true, form: true, active: true },
+    orderBy: { created_at: "asc" },
+  });
+  const byIdentity = new Map<string, string>();
+  const strays: string[] = [];
+  for (const e of existing as { id: string; name: string; strength: string | null; form: string | null }[]) {
+    const k = medKey(e.name, e.strength, e.form);
+    const first = byIdentity.get(k);
+    if (first) strays.push(e.id);
+    else byIdentity.set(k, e.id);
+  }
+  // Older copies of a drug this shop now has one row for. Retired rather than
+  // deleted, so an order that referenced one still resolves — and their key is
+  // stamped out as they go, because the surviving row is about to claim it and
+  // (pharmacy, key) is unique.
+  for (const id of strays) {
+    await prisma.pharmacyMedication
+      .update({ where: { id }, data: { active: false, key: `retired:${id}` } })
+      .catch(() => {});
+  }
+
+  // Written one row at a time rather than in a single transaction: a price list
+  // is hundreds of rows, and a transaction that large will time out on a
+  // serverless connection. A part-applied upload is recoverable — the batch
+  // records what landed, and re-uploading the same file is idempotent because
+  // the key is derived from the medication itself.
   let written = 0;
   const failures: { row: number; reason: string }[] = [];
   for (const r of priced) {
+    const fields = {
+      name: r.name,
+      strength: r.strength,
+      form: r.form,
+      pack: r.pack,
+      list_price: r.listPrice,
+      concession: r.concession,
+      in_stock: r.inStock,
+      notes: r.notes,
+      active: true,
+      batch_id: batchId,
+    };
     try {
-      await prisma.pharmacyMedication.upsert({
-        where: { pharmacy_id_key: { pharmacy_id: pharmacy.id, key: r.key } },
-        create: {
-          pharmacy_id: pharmacy.id,
-          name: r.name,
-          strength: r.strength,
-          form: r.form,
-          pack: r.pack,
-          key: r.key,
-          list_price: r.listPrice,
-          concession: r.concession,
-          in_stock: r.inStock,
-          notes: r.notes,
-          batch_id: batchId,
-        },
-        update: {
-          name: r.name,
-          strength: r.strength,
-          form: r.form,
-          pack: r.pack,
-          list_price: r.listPrice,
-          concession: r.concession,
-          in_stock: r.inStock,
-          notes: r.notes,
-          active: true,
-          batch_id: batchId,
-        },
-      });
+      const existingId = byIdentity.get(r.key);
+      if (existingId) {
+        await prisma.pharmacyMedication.update({
+          where: { id: existingId },
+          // The key is rewritten too, so a row stored under an older scheme
+          // ends up on the current one.
+          data: { ...fields, key: r.key },
+        });
+      } else {
+        await prisma.pharmacyMedication.upsert({
+          where: { pharmacy_id_key: { pharmacy_id: pharmacy.id, key: r.key } },
+          create: { pharmacy_id: pharmacy.id, key: r.key, ...fields },
+          update: fields,
+        });
+      }
       written += 1;
     } catch {
       failures.push({ row: r.row, reason: "Could not be saved" });

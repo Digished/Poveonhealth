@@ -4,6 +4,8 @@ import { z } from "zod";
 import { prisma } from "@/lib/prisma";
 import { generateTestOrderCode, getDoctorEmailFromConsultRequest } from "@/lib/consult";
 import { parsePrescriptionBlock } from "@/lib/prescription-parse";
+import { identify } from "@/lib/med-match";
+import { MED_LIVE_STATUSES, MED_SUGGESTED_STATUS } from "@/lib/medication-status";
 import { ensureCarePlanSchema } from "@/lib/startup/ensure-care-plan-schema";
 
 const RECURRENCES = ["once", "monthly", "quarterly", "biannual", "annual"] as const;
@@ -134,28 +136,75 @@ export async function POST(req: NextRequest, { params }: { params: { id: string 
         );
       }
 
+      // A doctor renewing a medication writes it out again, and confirming a
+      // suggestion often means typing it rather than tapping it. Either way the
+      // member must not end up with the same drug listed twice, so a row for
+      // the same drug at the same strength — already on file, or repeated
+      // within this very submission — is updated in place rather than added.
+      const onFile = await prisma.consultPrescription.findMany({
+        where: {
+          patient_id: patient.id,
+          status: { in: [...MED_LIVE_STATUSES, MED_SUGGESTED_STATUS] },
+        },
+        orderBy: { created_at: "desc" },
+      });
+      // A name that normalises to nothing cannot be judged the same as
+      // anything, so it gets a key of its own and merges with nothing.
+      const key = (
+        m: { medication: string; dosage?: string | null; form?: string | null },
+        unique: string
+      ) => {
+        const id = identify({ name: m.medication, dosage: m.dosage, form: m.form });
+        return id.name ? `${id.name}|${id.strength ?? ""}` : `?${unique}`;
+      };
+      const existingByKey = new Map<string, string>();
+      for (const e of onFile as { id: string; medication: string; dosage: string | null; form: string | null }[]) {
+        const k = key(e, e.id);
+        if (!existingByKey.has(k)) existingByKey.set(k, e.id);
+      }
+
+      // One write per drug. A line repeated in the same block is the same
+      // instruction typed twice, and the later one is the one they meant.
+      const writes = new Map<string, (typeof rows)[number]>();
+      rows.forEach((r, i) => writes.set(key(r, `new${i}`), r));
+
       const created = await prisma.$transaction(
-        rows.map((r) =>
-          prisma.consultPrescription.create({
-            data: {
-              patient_id: patient.id,
-              doctor_email: email,
-              medication: r.medication,
-              form: r.form,
-              dosage: r.dosage,
-              frequency: r.frequency,
-              duration_days: r.duration_days,
-              instructions: r.instructions,
-              raw_text: r.raw_text,
-              start_date: start,
-              // Only a course with a stated length has an end — an open-ended
-              // maintenance drug runs until the doctor stops it.
-              end_date: r.duration_days
-                ? new Date(start.getTime() + r.duration_days * 24 * 60 * 60 * 1000)
-                : null,
-            },
-          })
-        )
+        Array.from(writes.entries()).map(([k, r]) => {
+          const data = {
+            medication: r.medication,
+            form: r.form,
+            dosage: r.dosage,
+            frequency: r.frequency,
+            duration_days: r.duration_days,
+            instructions: r.instructions,
+            raw_text: r.raw_text,
+            start_date: start,
+            // Only a course with a stated length has an end — an open-ended
+            // maintenance drug runs until the doctor stops it.
+            end_date: r.duration_days
+              ? new Date(start.getTime() + r.duration_days * 24 * 60 * 60 * 1000)
+              : null,
+          };
+          const existingId = existingByKey.get(k);
+          if (existingId) {
+            return prisma.consultPrescription.update({
+              where: { id: existingId },
+              data: {
+                ...data,
+                doctor_email: email,
+                // Writing it out is confirming it, so a suggestion becomes the
+                // doctor's own and the member can finally see it.
+                status: "scheduled",
+                source: "doctor",
+                cancel_reason: null,
+                stopped_note: null,
+              },
+            });
+          }
+          return prisma.consultPrescription.create({
+            data: { patient_id: patient.id, doctor_email: email, ...data },
+          });
+        })
       );
 
       return NextResponse.json({ success: true, count: created.length, ids: created.map((c) => c.id) });

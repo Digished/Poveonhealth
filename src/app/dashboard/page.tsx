@@ -1135,7 +1135,7 @@ const SUB_MENUS: Partial<Record<View, { key: View; label: string }[]>> = {
   // each deserve the whole panel rather than a third of it.
   care: [
     { key: "care", label: "My plan" },
-    { key: "care-schedule", label: "Care" },
+    { key: "care-schedule", label: "Medication & tests" },
     { key: "care-history", label: "My history" },
     { key: "care-messages", label: "Messages" },
   ],
@@ -1391,7 +1391,7 @@ function DashboardInner() {
 
           {/* Where the profile card used to sit: the standing invitation, on
               every tab, until the patient is on a live plan. */}
-          {!loading && !careLoading && !care.active && view !== "care" && (
+          {!loading && !careLoading && !care.active && parent !== "care" && (
             <CarePlanPromptCard
               benefits={care.benefits}
               lapsed={care.lapsed}

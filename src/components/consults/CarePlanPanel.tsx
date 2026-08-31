@@ -12,7 +12,6 @@ import { SectionLoader } from "@/components/PageLoader";
 import { getJson, invalidateJson } from "@/lib/client-cache";
 import { CADENCE_LABEL } from "@/lib/treatment-plan";
 import { CareHistoryPanel } from "@/components/consults/CareHistoryPanel";
-import { isMedicationLive, MED_STATUS_LABEL } from "@/lib/medication-status";
 import { Modal } from "@/components/ui/Overlay";
 import { ProviderRow } from "@/components/consults/ProviderRow";
 import type { Provider } from "@/components/consults/ProviderPicker";
@@ -226,11 +225,11 @@ export function CarePlanPanel({
 
       {active && member && section === "schedule" && (
         <>
-          {/* Prices and payment lead: what a member wants from this tab is
-              usually "what does my refill cost and can I sort it now". */}
+          {/* The one place a member's medication is listed. It carries the
+              doctor's directions and the price together, so there is nothing
+              left for a second list to add. */}
           <MedicationPay onPickPharmacy={() => setPicking("pharmacy")} />
-          <CareSchedule prescriptions={prescriptions} testOrders={testOrders} />
-          <CarePlanChecklist plan={plan} onTicked={setPlan} />
+          <TestSchedule testOrders={testOrders} />
         </>
       )}
 
@@ -290,109 +289,71 @@ export function CarePlanPanel({
       )}
 
       {active && member && section === "plan" && (
-        <div className="grid gap-4 lg:grid-cols-[minmax(0,320px)_1fr]">
-          <div className="space-y-4">
-            {/* Care card */}
-            <div className="overflow-hidden rounded-3xl bg-gradient-to-br from-medical-600 to-medical-800 p-5 text-white shadow-lg shadow-medical-600/20">
-              <div className="flex items-start justify-between">
-                <div>
-                  <p className="text-[11px] font-bold uppercase tracking-widest text-white/60">Poveon Care Plan</p>
-                  <p className="mt-0.5 text-lg font-bold">{member.full_name}</p>
-                </div>
-                <HeartPulse className="h-6 w-6 opacity-60" />
-              </div>
-              <p className="mt-5 font-mono text-2xl font-extrabold tracking-widest">{member.code}</p>
-              <div className="mt-4 flex items-center justify-between gap-3">
-                <span className="text-xs text-white/70">Valid to {formatDate(member.expires_at)}</span>
-                <button
-                  onClick={copyCode}
-                  className="inline-flex items-center gap-1.5 rounded-lg bg-white/20 px-2.5 py-1.5 text-xs font-semibold transition hover:bg-white/30"
-                >
-                  {copied ? <Check className="h-3.5 w-3.5" /> : <Copy className="h-3.5 w-3.5" />}
-                  {copied ? "Copied" : "Copy"}
-                </button>
-              </div>
-              <div className="mt-3 flex flex-wrap gap-1.5">
-                {member.conditions.map((c) => (
-                  <span key={c} className="rounded-full bg-white/15 px-2 py-0.5 text-[11px] font-semibold">
-                    {CONDITION_LABEL[c] ?? c}
-                  </span>
-                ))}
-              </div>
+        <div className="space-y-4">
+          <PlanHero
+            member={member}
+            doctor={doctor}
+            plan={plan}
+            savedNaira={redemptions.reduce((sum, r) => sum + r.discount_naira, 0)}
+            copied={copied}
+            onCopy={copyCode}
+          />
+
+          <div className="grid gap-4 lg:grid-cols-[1fr_minmax(0,360px)]">
+            <div className="space-y-4">
+              <ScreeningCard />
+              <CarePlanChecklist plan={plan} onTicked={setPlan} />
             </div>
 
-            <div className="rounded-2xl border border-slate-100 bg-white p-4 shadow-sm">
-              <h3 className="text-xs font-bold uppercase tracking-wider text-slate-400">What your code gets you</h3>
-              <div className="mt-3 space-y-2.5">
-                <BenefitRow
-                  icon={<FlaskConical className="h-4 w-4" />}
-                  label={`Up to ${benefits.lab_discount_percent}% off lab tests`}
-                  hint="Show your code at any partner lab"
-                />
-                <BenefitRow
-                  icon={<Pill className="h-4 w-4" />}
-                  label={`Up to ${benefits.pharmacy_discount_percent}% off medication`}
-                  hint="BP and diabetes prescriptions at partner pharmacies"
-                />
-                <BenefitRow
-                  icon={<MessageSquareText className="h-4 w-4" />}
-                  label={`${member.messages_left} of ${member.message_allowance} messages left`}
-                  hint="Your doctor's replies are unlimited"
-                />
-              </div>
-            </div>
-
-            {/* Where they'd rather be sent — switchable whenever they like. */}
-            <div className="rounded-2xl border border-slate-100 bg-white p-4 shadow-sm">
-              <h3 className="text-xs font-bold uppercase tracking-wider text-slate-400">
-                Where you like to go
-              </h3>
-              <div className="mt-3 space-y-2">
-                <ProviderRow
-                  kind="pharmacy"
-                  provider={pharmacy}
-                  onOpen={() => setPicking("pharmacy")}
-                  onClear={() => savePreference("pharmacy", null)}
-                />
-                <ProviderRow
-                  kind="lab"
-                  provider={lab}
-                  onOpen={() => setPicking("lab")}
-                  onClear={() => savePreference("lab", null)}
-                />
-              </div>
-              <p className="mt-2.5 text-[11px] text-slate-400">
-                Change these any time — your care code works at every partner either way. Whoever
-                you pick can see what your doctor has scheduled, so they can have it ready.
-              </p>
-            </div>
-
-
-            {redemptions.length > 0 && (
+            <div className="space-y-4">
+              {/* Where they'd rather be sent — switchable whenever they like. */}
               <div className="rounded-2xl border border-slate-100 bg-white p-4 shadow-sm">
-                <h3 className="text-xs font-bold uppercase tracking-wider text-slate-400">Savings so far</h3>
-                <p className="mt-2 text-2xl font-extrabold text-emerald-600">
-                  {naira(redemptions.reduce((sum, r) => sum + r.discount_naira, 0))}
+                <h3 className="text-xs font-bold uppercase tracking-wider text-slate-400">
+                  Where you like to go
+                </h3>
+                <div className="mt-3 space-y-2">
+                  <ProviderRow
+                    kind="pharmacy"
+                    provider={pharmacy}
+                    onOpen={() => setPicking("pharmacy")}
+                    onClear={() => savePreference("pharmacy", null)}
+                  />
+                  <ProviderRow
+                    kind="lab"
+                    provider={lab}
+                    onOpen={() => setPicking("lab")}
+                    onClear={() => savePreference("lab", null)}
+                  />
+                </div>
+                <p className="mt-2.5 text-[11px] leading-relaxed text-slate-400">
+                  Your pharmacy sets the prices you see under Medication. Change these any time —
+                  your care code works at every partner either way.
                 </p>
-                <ul className="mt-3 space-y-2">
-                  {redemptions.slice(0, 5).map((r) => (
-                    <li key={r.id} className="flex items-start justify-between gap-2 text-xs">
-                      <span className="min-w-0 flex-1 text-slate-600">
-                        {r.description || (r.kind === "pharmacy" ? "Prescription" : "Lab test")}
-                        {r.pharmacy_name && <span className="text-slate-400"> · {r.pharmacy_name}</span>}
-                      </span>
-                      <span className="shrink-0 font-semibold text-emerald-600">−{naira(r.discount_naira)}</span>
-                    </li>
-                  ))}
-                </ul>
               </div>
-            )}
-          </div>
 
-          <div className="space-y-4">
-            <ScreeningCard />
-            <CarePlanChecklist plan={plan} onTicked={setPlan} />
-            <CareSchedule prescriptions={prescriptions} testOrders={testOrders} />
+              <div className="rounded-2xl border border-slate-100 bg-white p-4 shadow-sm">
+                <h3 className="text-xs font-bold uppercase tracking-wider text-slate-400">
+                  What your plan gets you
+                </h3>
+                <div className="mt-3 space-y-2.5">
+                  <BenefitRow
+                    icon={<FlaskConical className="h-4 w-4" />}
+                    label={`Up to ${benefits.lab_discount_percent}% off lab tests`}
+                    hint="Show your code at any partner lab"
+                  />
+                  <BenefitRow
+                    icon={<Pill className="h-4 w-4" />}
+                    label={`Up to ${benefits.pharmacy_discount_percent}% off medication`}
+                    hint="Priced and paid for in the app"
+                  />
+                  <BenefitRow
+                    icon={<MessageSquareText className="h-4 w-4" />}
+                    label={`${member.messages_left} of ${member.message_allowance} messages left`}
+                    hint="Your doctor's replies are unlimited"
+                  />
+                </div>
+              </div>
+            </div>
           </div>
         </div>
       )}
@@ -493,6 +454,89 @@ function Benefit({ icon, value, label }: { icon: React.ReactNode; value: string;
   );
 }
 
+/**
+ * The plan, not the code.
+ *
+ * The card used to lead with PVC-8X4K29 set in the largest type on the page,
+ * which told a member the one thing they already knew and nothing about their
+ * care. What leads now is what the plan is *for* and where it has got to: the
+ * conditions it covers, the doctor holding it, what is outstanding today and
+ * what it has saved them. The code is still here — it is what a partner
+ * pharmacy or lab asks for — as a strip along the bottom, findable in a second
+ * and no longer the point.
+ */
+function PlanHero({
+  member, doctor, plan, savedNaira, copied, onCopy,
+}: {
+  member: Member;
+  doctor: Doctor | null;
+  plan: MemberPlan | null;
+  savedNaira: number;
+  copied: boolean;
+  onCopy: () => void;
+}) {
+  const conditions = member.conditions.map((c) => CONDITION_LABEL[c] ?? c);
+  const due = plan?.items.filter((i) => i.due).length ?? 0;
+
+  return (
+    <section className="overflow-hidden rounded-3xl bg-gradient-to-br from-medical-600 via-medical-700 to-medical-800 text-white shadow-lg shadow-medical-600/20">
+      <div className="p-5 sm:p-6">
+        <div className="flex items-start justify-between gap-3">
+          <div className="min-w-0">
+            <p className="text-[11px] font-bold uppercase tracking-[0.16em] text-white/60">
+              Poveon Care Plan
+            </p>
+            <h2 className="mt-1 text-xl font-black leading-tight sm:text-2xl">
+              {conditions.length ? `${conditions.join(" & ")} care` : "Your care plan"}
+            </h2>
+            <p className="mt-1 text-sm text-white/75">
+              {doctor?.name ? `With ${doctor.name}` : "Matching you with a doctor…"}
+              <span className="text-white/50"> · to {formatDate(member.expires_at)}</span>
+            </p>
+          </div>
+          <HeartPulse className="h-7 w-7 shrink-0 animate-pulse opacity-50" />
+        </div>
+
+        {/* Where the plan has got to, in the three numbers a member acts on. */}
+        <div className="mt-5 grid grid-cols-3 gap-2 sm:gap-3">
+          <PlanStat
+            value={due === 0 ? "None" : String(due)}
+            label={due === 0 ? "Nothing due today" : due === 1 ? "Thing to do today" : "Things to do today"}
+          />
+          <PlanStat value={naira(savedNaira)} label="Saved so far" />
+          <PlanStat value={String(member.messages_left)} label="Messages left" />
+        </div>
+      </div>
+
+      {/* The code, kept where a pharmacy counter can find it. */}
+      <div className="flex flex-wrap items-center justify-between gap-2 border-t border-white/15 bg-black/10 px-5 py-3 sm:px-6">
+        <div className="min-w-0">
+          <p className="text-[10px] font-bold uppercase tracking-[0.16em] text-white/50">
+            Your care code
+          </p>
+          <p className="font-mono text-sm font-bold tracking-[0.18em]">{member.code}</p>
+        </div>
+        <button
+          onClick={onCopy}
+          className="inline-flex shrink-0 items-center gap-1.5 rounded-lg bg-white/15 px-3 py-1.5 text-xs font-semibold transition hover:bg-white/25 active:scale-95"
+        >
+          {copied ? <Check className="h-3.5 w-3.5" /> : <Copy className="h-3.5 w-3.5" />}
+          {copied ? "Copied" : "Copy"}
+        </button>
+      </div>
+    </section>
+  );
+}
+
+function PlanStat({ value, label }: { value: string; label: string }) {
+  return (
+    <div className="rounded-2xl bg-white/10 px-3 py-2.5 ring-1 ring-inset ring-white/10">
+      <p className="truncate text-lg font-black leading-none sm:text-xl">{value}</p>
+      <p className="mt-1 text-[10px] leading-tight text-white/65 sm:text-[11px]">{label}</p>
+    </div>
+  );
+}
+
 const RECURRENCE_LABEL: Record<string, string> = {
   once: "One-off",
   monthly: "Every month",
@@ -512,111 +556,72 @@ function daysUntil(iso: string | null): number | null {
   return Math.round((due.getTime() - today.getTime()) / 86_400_000);
 }
 
-/** What the member's doctor has put them on, and what they owe the lab. */
-function CareSchedule({
-  prescriptions, testOrders,
-}: {
-  prescriptions: Prescription[]; testOrders: TestOrder[];
-}) {
-  const meds = prescriptions.filter((p) => isMedicationLive(p.status));
+/**
+ * The tests the member's doctor has booked.
+ *
+ * Medication is deliberately not here. It lives in one place — the priced list
+ * a member can pay from — because the same drug written out twice, once with a
+ * price and once without, is worse than either on its own.
+ */
+function TestSchedule({ testOrders }: { testOrders: TestOrder[] }) {
   const due = testOrders.filter((t) => t.status === "scheduled");
-  if (meds.length === 0 && due.length === 0) {
+  if (due.length === 0) {
     return (
       <div className="rounded-2xl border border-dashed border-slate-200 bg-white p-5 text-center">
-        <Pill className="mx-auto mb-2 h-7 w-7 text-slate-200" />
-        <p className="text-sm font-semibold text-slate-600">Nothing scheduled yet</p>
+        <FlaskConical className="mx-auto mb-2 h-7 w-7 text-slate-200" />
+        <p className="text-sm font-semibold text-slate-600">No tests booked</p>
         <p className="mt-1 text-xs text-slate-400">
-          When your doctor adds medication or books a test, it appears here and you can take your
-          care code to a partner pharmacy or lab.
+          When your doctor books one, it appears here — take your care code to any partner lab for
+          money off.
         </p>
       </div>
     );
   }
 
   return (
-    <div className="space-y-4">
-      {due.length > 0 && (
-        <div className="rounded-2xl border border-slate-100 bg-white p-4 shadow-sm">
-          <h3 className="flex items-center gap-1.5 text-xs font-bold uppercase tracking-wider text-slate-400">
-            <FlaskConical className="h-3.5 w-3.5" />
-            Tests your doctor wants
-          </h3>
-          <ul className="mt-3 space-y-2">
-            {due.map((t) => {
-              const days = daysUntil(t.due_date);
-              const overdue = days != null && days < 0;
-              return (
-                <li
-                  key={t.id}
-                  className={`rounded-xl border px-3 py-2.5 ${
-                    overdue ? "border-amber-200 bg-amber-50" : "border-slate-100 bg-slate-50/70"
-                  }`}
-                >
-                  <p className="text-sm font-semibold text-slate-800">{t.tests}</p>
-                  {t.reason && <p className="mt-0.5 text-xs text-slate-500">{t.reason}</p>}
-                  <p className="mt-1 flex flex-wrap items-center gap-x-2 text-[11px]">
-                    <span className={overdue ? "font-bold text-amber-700" : "text-slate-500"}>
-                      <CalendarClock className="mr-1 inline h-3 w-3" />
-                      {t.due_date
-                        ? overdue
-                          ? "Overdue"
-                          : days === 0
-                          ? "Due today"
-                          : `Due ${formatDate(t.due_date)}`
-                        : "No date set"}
-                    </span>
-                    {t.recurrence !== "once" && (
-                      <span className="inline-flex items-center gap-0.5 text-slate-400">
-                        <RotateCw className="h-3 w-3" />
-                        {RECURRENCE_LABEL[t.recurrence] ?? t.recurrence}
-                      </span>
-                    )}
-                  </p>
-                </li>
-              );
-            })}
-          </ul>
-          <p className="mt-2.5 text-[11px] text-slate-400">
-            Your care code takes money off these at any partner lab.
-          </p>
-        </div>
-      )}
-
-      {meds.length > 0 && (
-        <div className="rounded-2xl border border-slate-100 bg-white p-4 shadow-sm">
-          <h3 className="flex items-center gap-1.5 text-xs font-bold uppercase tracking-wider text-slate-400">
-            <Pill className="h-3.5 w-3.5" />
-            Your medication
-          </h3>
-          <ul className="mt-3 space-y-2">
-            {meds.map((m) => (
-              <li key={m.id} className="rounded-xl border border-slate-100 bg-slate-50/70 px-3 py-2.5">
-                <div className="flex items-start justify-between gap-2">
-                  <p className="text-sm font-semibold text-slate-800">
-                    {m.form ? `${m.form.charAt(0).toUpperCase()}${m.form.slice(1)} · ` : ""}
-                    {m.medication}
-                  </p>
-                  {m.status === "scheduled" && (
-                    <span className="shrink-0 rounded-full bg-medical-50 px-2 py-0.5 text-[10px] font-bold text-medical-700">
-                      {MED_STATUS_LABEL.scheduled}
-                    </span>
-                  )}
-                </div>
-                <p className="mt-0.5 text-xs text-slate-500">
-                  {[m.dosage, m.frequency].filter(Boolean).join(" · ") || "As directed"}
-                </p>
-                {m.instructions && <p className="mt-1 text-xs text-slate-500">{m.instructions}</p>}
-                <p className="mt-1 text-[11px] text-slate-400">
-                  {m.end_date ? `Until ${formatDate(m.end_date)}` : "Ongoing"}
-                </p>
-              </li>
-            ))}
-          </ul>
-          <p className="mt-2.5 text-[11px] text-slate-400">
-            Show your care code at a partner pharmacy for money off these.
-          </p>
-        </div>
-      )}
+    <div className="rounded-2xl border border-slate-100 bg-white p-4 shadow-sm">
+      <h3 className="flex items-center gap-1.5 text-xs font-bold uppercase tracking-wider text-slate-400">
+        <FlaskConical className="h-3.5 w-3.5" />
+        Tests your doctor wants
+      </h3>
+      <ul className="mt-3 space-y-2">
+        {due.map((t) => {
+          const days = daysUntil(t.due_date);
+          const overdue = days != null && days < 0;
+          return (
+            <li
+              key={t.id}
+              className={`rounded-xl border px-3 py-2.5 ${
+                overdue ? "border-amber-200 bg-amber-50" : "border-slate-100 bg-slate-50/70"
+              }`}
+            >
+              <p className="text-sm font-semibold text-slate-800">{t.tests}</p>
+              {t.reason && <p className="mt-0.5 text-xs text-slate-500">{t.reason}</p>}
+              <p className="mt-1 flex flex-wrap items-center gap-x-2 text-[11px]">
+                <span className={overdue ? "font-bold text-amber-700" : "text-slate-500"}>
+                  <CalendarClock className="mr-1 inline h-3 w-3" />
+                  {t.due_date
+                    ? overdue
+                      ? "Overdue"
+                      : days === 0
+                      ? "Due today"
+                      : `Due ${formatDate(t.due_date)}`
+                    : "No date set"}
+                </span>
+                {t.recurrence !== "once" && (
+                  <span className="inline-flex items-center gap-0.5 text-slate-400">
+                    <RotateCw className="h-3 w-3" />
+                    {RECURRENCE_LABEL[t.recurrence] ?? t.recurrence}
+                  </span>
+                )}
+              </p>
+            </li>
+          );
+        })}
+      </ul>
+      <p className="mt-2.5 text-[11px] text-slate-400">
+        Your care code takes money off these at any partner lab.
+      </p>
     </div>
   );
 }
