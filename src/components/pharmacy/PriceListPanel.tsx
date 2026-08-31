@@ -3,16 +3,17 @@
 /**
  * A pharmacy's price list: upload it, see what it does, then commit it.
  *
- * The upload is two steps on purpose. A price list is the pharmacy's own
- * money — what a member is charged and what they themselves receive — and a
- * spreadsheet is easy to get wrong in ways that are invisible until someone is
- * standing at the counter. So a file is parsed and priced first, shown back
- * with every row the parser could not use and the row number to fix, and only
- * written when they say go.
+ * The concession is a trade discount **to Poveon**, not a discount the pharmacy
+ * hands a member directly. The pharmacy agrees a price with us; we decide what
+ * the member is charged out of it. Same arithmetic either way, but the wording
+ * matters to a pharmacist reading the screen — they are quoting us, not running
+ * a promotion.
  *
- * The three numbers that matter are always shown together: what the member
- * pays, what the pharmacy receives, and what the member saves. Nobody should
- * have to do that sum in their head.
+ * The upload is two steps on purpose. A price list is the pharmacy's own money,
+ * and a spreadsheet is easy to get wrong in ways that are invisible until
+ * someone is standing at the counter. So a file is parsed and priced first,
+ * shown back with every row the parser could not use and the row number to fix,
+ * and only written when they say go.
  */
 
 import { useCallback, useEffect, useRef, useState } from "react";
@@ -149,15 +150,17 @@ export function PriceListPanel() {
             <FileSpreadsheet className="h-5 w-5" /> Your price list
           </h2>
           <p className="mt-0.5 max-w-xl text-xs text-slate-500">
-            Tell us what each medication costs and what you will take off for a Poveon member. We
-            add our margin on top of what you receive — you are always paid the price you set.
+            Tell us your shop price for each medication and what you will take off for Poveon. You
+            are always paid your price less that discount — we set what the member is charged out of
+            it, and never charge them more than your shop price.
           </p>
         </div>
         <a
           href="/api/pharmacy/catalogue/template"
-          className="inline-flex shrink-0 items-center gap-1.5 rounded-lg bg-slate-100 px-3 py-2 text-xs font-semibold text-slate-700 transition hover:bg-slate-200"
+          download="poveon-price-list.xlsx"
+          className="inline-flex shrink-0 items-center gap-2 rounded-xl border border-emerald-200 bg-emerald-50 px-4 py-2.5 text-sm font-bold text-emerald-800 transition hover:bg-emerald-100"
         >
-          <Download className="h-3.5 w-3.5" /> Template
+          <Download className="h-4 w-4" /> Download template
         </a>
       </div>
 
@@ -216,10 +219,11 @@ export function PriceListPanel() {
 
             {preview.clamped > 0 && (
               <Note tone="amber">
-                {preview.clamped} medication{preview.clamped === 1 ? "" : "s"} would give the member
-                no saving, because the discount you offered is smaller than our {preview.margin_percent}%
-                margin. We never charge a member more than your shop price, so on those rows we take
-                less instead. Increase the discount to give members a real saving.
+                {preview.clamped} medication{preview.clamped === 1 ? "" : "s"} would leave the member
+                no saving, because the discount you gave Poveon is smaller than our{" "}
+                {preview.margin_percent}% margin. We never charge a member more than your shop price,
+                so on those rows we take less instead. A bigger discount to us is what creates the
+                member&apos;s saving.
               </Note>
             )}
 
@@ -243,13 +247,13 @@ export function PriceListPanel() {
 
             {preview.rows.length > 0 && (
               <div className="overflow-hidden rounded-xl border border-white/10">
-                <div className="overflow-x-auto">
-                  <table className="w-full text-sm table-cards">
+                <div className="slim-scroll overflow-x-auto">
+                  <table className="w-full min-w-[720px] text-sm">
                     <thead>
                       <tr className="border-b border-slate-200 text-left text-[11px] text-slate-500">
                         <th className="px-3 py-2 font-semibold">Medication</th>
                         <th className="px-3 py-2 font-semibold">Your price</th>
-                        <th className="px-3 py-2 font-semibold">You take off</th>
+                        <th className="px-3 py-2 font-semibold">Off for Poveon</th>
                         <th className="px-3 py-2 font-semibold">Member pays</th>
                         <th className="px-3 py-2 font-semibold">You receive</th>
                         <th className="px-3 py-2 font-semibold">They save</th>
@@ -267,7 +271,7 @@ export function PriceListPanel() {
                             </p>
                           </td>
                           <td className="px-3 py-2 text-xs text-slate-600" data-label="Your price">{naira(r.list_price)}</td>
-                          <td className="px-3 py-2 text-xs text-slate-600" data-label="You take off">
+                          <td className="px-3 py-2 text-xs text-slate-600" data-label="Off for Poveon">
                             {naira(r.concession)}
                             {r.from_percent && <span className="ml-1 text-[10px] text-slate-500">(from %)</span>}
                           </td>
@@ -323,9 +327,9 @@ export function PriceListPanel() {
 
       {clampedCount > 0 && (
         <Note tone="amber">
-          {clampedCount} medication{clampedCount === 1 ? " gives" : "s give"} members no saving —
-          the discount is smaller than our margin. Members still pay no more than your shop price,
-          but there is nothing in it for them.
+          {clampedCount} medication{clampedCount === 1 ? " leaves" : "s leave"} members no saving —
+          your discount to Poveon is smaller than our margin. Members still pay no more than your
+          shop price, but there is nothing in it for them.
         </Note>
       )}
 
@@ -337,13 +341,13 @@ export function PriceListPanel() {
         </p>
       ) : (
         <div className="overflow-hidden rounded-2xl border border-slate-200 bg-white">
-          <div className="overflow-x-auto">
-            <table className="w-full text-sm table-cards">
+          <div className="slim-scroll overflow-x-auto">
+            <table className="w-full min-w-[720px] text-sm">
               <thead>
                 <tr className="border-b border-slate-200 text-left text-[11px] text-slate-500">
                   <th className="px-3 py-2.5 font-semibold">Medication</th>
                   <th className="px-3 py-2.5 font-semibold">Your price</th>
-                  <th className="px-3 py-2.5 font-semibold">You take off</th>
+                  <th className="px-3 py-2.5 font-semibold">Off for Poveon</th>
                   <th className="px-3 py-2.5 font-semibold">Member pays</th>
                   <th className="px-3 py-2.5 font-semibold">You receive</th>
                   <th className="px-3 py-2.5 font-semibold">Stock</th>
@@ -362,7 +366,7 @@ export function PriceListPanel() {
                       </p>
                     </td>
                     <td className="px-3 py-3 text-xs text-slate-600" data-label="Your price">{naira(m.list_price)}</td>
-                    <td className="px-3 py-3 text-xs text-slate-600" data-label="You take off">{naira(m.concession)}</td>
+                    <td className="px-3 py-3 text-xs text-slate-600" data-label="Off for Poveon">{naira(m.concession)}</td>
                     <td className="px-3 py-3 text-xs font-bold text-slate-900" data-label="Member pays">
                       {naira(m.member_pays)}
                       <span className={`ml-1.5 text-[10px] ${m.clamped ? "text-amber-600" : "text-emerald-600"}`}>
@@ -465,7 +469,7 @@ function EditRow({ med, onClose, onSaved }: { med: Med; onClose: () => void; onS
 
         <div className="space-y-4 overflow-y-auto p-5">
           <Field label="Your shop price" value={price} onChange={setPrice} />
-          <Field label="What you take off for a member" value={off} onChange={setOff} />
+          <Field label="What you take off for Poveon" value={off} onChange={setOff} />
 
           <label className="flex items-center gap-2.5">
             <input
@@ -489,9 +493,9 @@ function EditRow({ med, onClose, onSaved }: { med: Med; onClose: () => void; onS
             </dl>
             {marginTaken < wanted && (
               <p className="mt-2.5 text-[11px] leading-relaxed text-amber-700">
-                Your discount is smaller than our {med.margin_percent}% margin, so we take less
-                rather than charge a member more than your shop price. Raise the discount to give
-                them a real saving.
+                Your discount to Poveon is smaller than our {med.margin_percent}% margin, so we
+                take less rather than charge a member more than your shop price. A bigger discount
+                is what creates their saving.
               </p>
             )}
           </div>

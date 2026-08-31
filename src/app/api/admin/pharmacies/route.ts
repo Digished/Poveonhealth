@@ -63,6 +63,13 @@ export async function GET() {
       city: p.city,
       state: p.state,
       discount_percent: p.discount_percent,
+      margin_percent: Number(p.margin_percent ?? 5),
+      // Enough to show whether payouts are set up, without putting a full
+      // account number in a list that is on screen all day.
+      bank_code: p.bank_code,
+      account_name: p.account_name,
+      account_last4: p.account_number ? String(p.account_number).slice(-4) : null,
+      payouts_ready: !!(p.bank_code && p.account_number),
       active: p.active,
       onboarded_at: p.onboarded_at,
       created_at: p.created_at,

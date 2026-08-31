@@ -21,6 +21,8 @@ type Settings = {
   pharmacy_discount_percent: number;
   topup_price_naira: number;
   topup_messages: number;
+  doctor_monthly_naira: number;
+  bonus_pool_percent: number;
 };
 
 type Member = {
@@ -1031,7 +1033,12 @@ function PricingPanel() {
     return <div className="h-64 animate-pulse rounded-xl border border-white/10 bg-white/5" />;
   }
 
-  const poveonShare = form.price_naira - form.doctor_share_naira;
+  // Under the current terms the onboarding fee is one-off and the doctor is
+  // paid monthly, so the two are not a single split any more: month one keeps
+  // the fee less one month's pay, and every month after that costs Poveon the
+  // doctor's fee out of medication margin.
+  const firstMonth = form.price_naira - (form.doctor_monthly_naira ?? 500);
+  const yearOfDoctorPay = (form.doctor_monthly_naira ?? 500) * 12;
   const dirty = JSON.stringify(form) !== JSON.stringify(settings);
 
   return (
@@ -1039,47 +1046,90 @@ function PricingPanel() {
       <div className="rounded-xl border border-white/10 bg-white/5 p-5">
         <h3 className="text-sm font-bold text-white">Commercial terms</h3>
         <p className="mt-1 text-xs text-slate-400">
-          New members are sold on these terms. Entitlements already open keep the terms they were created
+          New members are sold on these terms. Anything already open keeps the terms it was created
           on, so nobody&apos;s agreed pay changes retroactively.
         </p>
 
-        <div className="mt-5 grid gap-4 sm:grid-cols-2">
-          <NumberField
-            label="Subscription price (₦ / year)"
-            value={form.price_naira}
-            onChange={(v) => setForm({ ...form, price_naira: v })}
-          />
-          <NumberField
-            label="Doctor's share (₦ / member / year)"
-            value={form.doctor_share_naira}
-            onChange={(v) => setForm({ ...form, doctor_share_naira: v })}
-          />
-          <NumberField
-            label="Messages included per year"
-            value={form.message_allowance}
-            onChange={(v) => setForm({ ...form, message_allowance: v })}
-          />
-          <NumberField
-            label="Release the doctor's share over (months)"
-            value={form.release_months}
-            onChange={(v) => setForm({ ...form, release_months: v })}
-          />
-          <NumberField
-            label="Default members per doctor per year"
-            value={form.default_doctor_cap}
-            onChange={(v) => setForm({ ...form, default_doctor_cap: v })}
-          />
-          <div />
-          <NumberField
-            label="Lab discount (%)"
-            value={form.lab_discount_percent}
-            onChange={(v) => setForm({ ...form, lab_discount_percent: v })}
-          />
-          <NumberField
-            label="Pharmacy discount (%)"
-            value={form.pharmacy_discount_percent}
-            onChange={(v) => setForm({ ...form, pharmacy_discount_percent: v })}
-          />
+        <div className="mt-5 rounded-lg border border-white/10 bg-white/5 p-4">
+          <h4 className="text-xs font-bold uppercase tracking-wider text-slate-300">
+            What a member pays
+          </h4>
+          <p className="mt-1 text-xs text-slate-400">
+            A one-time onboarding fee, not a subscription. It buys twelve months; a member whose year
+            runs out pays it again to carry on.
+          </p>
+          <div className="mt-4 grid gap-4 sm:grid-cols-2">
+            <NumberField
+              label="Onboarding fee (₦, one-time)"
+              value={form.price_naira}
+              onChange={(v) => setForm({ ...form, price_naira: v })}
+            />
+            <NumberField
+              label="Messages included"
+              value={form.message_allowance}
+              onChange={(v) => setForm({ ...form, message_allowance: v })}
+            />
+          </div>
+        </div>
+
+        <div className="mt-4 rounded-lg border border-white/10 bg-white/5 p-4">
+          <h4 className="text-xs font-bold uppercase tracking-wider text-slate-300">
+            What a doctor earns
+          </h4>
+          <p className="mt-1 text-xs text-slate-400">
+            Paid for each month a member is still with them, so a member who leaves after three
+            months costs three months — not a year committed up front. The bonus pool is on top,
+            split by how much of the month&apos;s messaging each doctor carried.
+          </p>
+          <div className="mt-4 grid gap-4 sm:grid-cols-2">
+            <NumberField
+              label="Per member, per month (₦)"
+              value={form.doctor_monthly_naira ?? 500}
+              onChange={(v) => setForm({ ...form, doctor_monthly_naira: v })}
+            />
+            <NumberField
+              label="Bonus pool (% of monthly revenue)"
+              value={form.bonus_pool_percent ?? 10}
+              onChange={(v) => setForm({ ...form, bonus_pool_percent: v })}
+            />
+            <NumberField
+              label="Default members per doctor"
+              value={form.default_doctor_cap}
+              onChange={(v) => setForm({ ...form, default_doctor_cap: v })}
+            />
+            <NumberField
+              label="Release older entitlements over (months)"
+              value={form.release_months}
+              onChange={(v) => setForm({ ...form, release_months: v })}
+            />
+          </div>
+          <p className="mt-3 text-[11px] leading-relaxed text-slate-500">
+            &ldquo;Release older entitlements&rdquo; only affects members who joined under the old
+            yearly terms, where the doctor&apos;s whole year was committed at activation. New members
+            accrue month by month instead.
+          </p>
+        </div>
+
+        <div className="mt-4 rounded-lg border border-white/10 bg-white/5 p-4">
+          <h4 className="text-xs font-bold uppercase tracking-wider text-slate-300">
+            Headline discounts
+          </h4>
+          <p className="mt-1 text-xs text-slate-400">
+            Quoted in marketing as &ldquo;up to&rdquo;. What a member actually saves on medication
+            comes from the pharmacy&apos;s own price list and our margin, not from these.
+          </p>
+          <div className="mt-4 grid gap-4 sm:grid-cols-2">
+            <NumberField
+              label="Lab discount (%)"
+              value={form.lab_discount_percent}
+              onChange={(v) => setForm({ ...form, lab_discount_percent: v })}
+            />
+            <NumberField
+              label="Pharmacy discount (%)"
+              value={form.pharmacy_discount_percent}
+              onChange={(v) => setForm({ ...form, pharmacy_discount_percent: v })}
+            />
+          </div>
         </div>
 
         <div className="mt-5 rounded-lg border border-white/10 bg-white/5 p-4">
@@ -1087,8 +1137,8 @@ function PricingPanel() {
             Extra messages
           </h4>
           <p className="mt-1 text-xs text-slate-400">
-            What a member pays when their yearly allowance runs out before the year does. Bought as
-            one bundle, added to the allowance immediately.
+            What a member pays when their included messages run out. Bought as one bundle, added to
+            their allowance immediately.
           </p>
           <div className="mt-4 grid gap-4 sm:grid-cols-2">
             <NumberField
@@ -1105,31 +1155,38 @@ function PricingPanel() {
         </div>
 
         <div className="mt-5 grid gap-3 sm:grid-cols-3">
-          <SplitCard label="Member pays" value={naira(form.price_naira)} tone="slate" />
-          <SplitCard label="Doctor earns" value={naira(form.doctor_share_naira)} tone="emerald" />
+          <SplitCard label="Member pays once" value={naira(form.price_naira)} tone="slate" />
           <SplitCard
-            label="Poveon keeps"
-            value={naira(poveonShare)}
-            tone={poveonShare < 0 ? "red" : "medical"}
+            label="Doctor, per month"
+            value={naira(form.doctor_monthly_naira ?? 500)}
+            tone="emerald"
+          />
+          <SplitCard
+            label="Poveon keeps, month one"
+            value={naira(firstMonth)}
+            tone={firstMonth < 0 ? "red" : "medical"}
           />
         </div>
-        {poveonShare < 0 && (
-          <p className="mt-2 text-xs font-semibold text-red-400">
-            The doctor&apos;s share is more than the price — that can&apos;t be saved.
+        {firstMonth < 0 && (
+          <p className="mt-2 text-xs font-semibold text-amber-400">
+            A member&apos;s first month costs more in doctor pay than the onboarding fee brings in.
+            That is allowed — medication margin is what funds the months after — but it is worth
+            knowing.
           </p>
         )}
 
         <p className="mt-4 rounded-lg bg-white/5 px-4 py-3 text-xs leading-relaxed text-slate-400">
-          Each doctor&apos;s pool releases at{" "}
-          <strong className="text-slate-200">
-            {naira(Math.round(form.doctor_share_naira / Math.max(1, form.release_months)))}
-          </strong>{" "}
-          per member per month over {form.release_months} months.
+          A member who stays a full year earns their doctor{" "}
+          <strong className="text-slate-200">{naira(yearOfDoctorPay)}</strong> in monthly fees,
+          against <strong className="text-slate-200">{naira(form.price_naira)}</strong> of onboarding
+          — so from month{" "}
+          {Math.max(1, Math.ceil(form.price_naira / Math.max(1, form.doctor_monthly_naira ?? 500)))} on,
+          that member is funded by medication margin rather than by their own fee.
         </p>
 
         <button
           onClick={save}
-          disabled={saving || !dirty || poveonShare < 0}
+          disabled={saving || !dirty}
           className="mt-4 flex items-center gap-2 rounded-lg bg-medical-600 px-4 py-2.5 text-sm font-bold text-white transition hover:bg-medical-700 disabled:opacity-50"
         >
           {saving ? <Loader2 className="h-4 w-4 animate-spin" /> : <Save className="h-4 w-4" />}

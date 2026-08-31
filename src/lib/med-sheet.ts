@@ -24,7 +24,8 @@ export type ParsedMedRow = {
   form: string | null;
   pack: string | null;
   listPrice: number;
-  /** Always naira by the time it leaves here, whatever the sheet said. */
+  /** What the pharmacy takes off for Poveon. Always naira by the time it leaves
+   *  here, whatever the sheet said. */
   concession: number;
   /** True when the sheet gave a percentage and we converted it. */
   concessionWasPercent: boolean;
@@ -53,7 +54,7 @@ export type ParsedSheet = {
  */
 const COLUMNS: { field: string; match: string[] }[] = [
   { field: "concession_pct", match: ["discountpercent", "discountpct", "discount%", "percentoff", "discountpercentage", "%discount", "%off"] },
-  { field: "concession", match: ["discount", "discountnaira", "discountamount", "amountoff", "concession", "rebate", "poveondiscount", "memberdiscount"] },
+  { field: "concession", match: ["discount", "discountnaira", "discountamount", "amountoff", "concession", "rebate", "poveondiscount", "memberdiscount", "offforpoveon", "poveonprice", "tradediscount"] },
   { field: "list_price", match: ["price", "listprice", "unitprice", "sellingprice", "retailprice", "cost", "amount", "shopprice", "currentprice"] },
   { field: "name", match: ["name", "medication", "medicine", "drug", "product", "item", "description", "brand", "genericname", "drugname"] },
   { field: "strength", match: ["strength", "dose", "dosage", "mg", "concentration"] },
@@ -230,7 +231,7 @@ export function parseMedSheet(buffer: Buffer, opts: { maxRows?: number } = {}): 
 
 /** The template a pharmacy downloads, so most uploads need no guessing at all. */
 export const MED_SHEET_TEMPLATE: (string | number)[][] = [
-  ["Medication", "Strength", "Form", "Pack size", "Price", "Discount", "In stock", "Notes"],
+  ["Medication", "Strength", "Form", "Pack size", "Price", "Off for Poveon", "In stock", "Notes"],
   ["Amlodipine", "10mg", "tablet", "30 tablets", 2000, 300, "yes", ""],
   ["Metformin", "500mg", "tablet", "60 tablets", 1500, 250, "yes", ""],
   ["Lisinopril", "5mg", "tablet", "30 tablets", 1800, 200, "yes", ""],

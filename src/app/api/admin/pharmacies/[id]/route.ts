@@ -24,6 +24,16 @@ const PatchSchema = z.object({
   city: z.string().trim().max(80).optional().nullable(),
   state: z.string().trim().max(80).optional().nullable(),
   discount_percent: z.coerce.number().int().min(0).max(90).optional(),
+  /** Poveon's cut on this pharmacy's medications, as a percent of list price. */
+  margin_percent: z.coerce.number().min(0).max(100).optional(),
+  /**
+   * Where the pharmacy's share of a member's payment is settled. Held here so
+   * an admin can set it up on the phone with the pharmacist rather than making
+   * them find the screen themselves.
+   */
+  bank_code: z.string().trim().max(10).optional().nullable(),
+  account_number: z.string().trim().regex(/^\d{10}$/, "An account number is 10 digits").optional().nullable(),
+  account_name: z.string().trim().max(160).optional().nullable(),
   active: z.boolean().optional(),
   resend_invite: z.boolean().optional(),
 });
@@ -54,6 +64,17 @@ export async function PATCH(req: NextRequest, { params }: { params: { id: string
         { status: 409 }
       );
     }
+  }
+
+  // A bank code with no account number (or the other way round) is a half-set
+  // payout that will fail silently at settlement time. Take both or neither.
+  const bank = d.bank_code ?? existing.bank_code;
+  const acct = d.account_number ?? existing.account_number;
+  if ((d.bank_code !== undefined || d.account_number !== undefined) && Boolean(bank) !== Boolean(acct)) {
+    return NextResponse.json(
+      { error: "Set the bank and the account number together, or clear both." },
+      { status: 400 }
+    );
   }
 
   if (d.resend_invite) {

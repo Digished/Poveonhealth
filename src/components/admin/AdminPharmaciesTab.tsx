@@ -15,6 +15,7 @@ import {
   Plus,
   Power,
   QrCode,
+  Landmark,
   RefreshCw,
   Save,
   TicketPercent,
@@ -25,11 +26,15 @@ import {
 import { Modal } from "@/components/ui/Overlay";
 import { STATE_NAMES, lgasForState } from "@/lib/nigeria-locations";
 import { FuzzyCombo } from "@/components/ui/FuzzyCombo";
+import { NIGERIAN_BANKS } from "@/lib/nigerian-banks";
 
 type Pharmacy = {
   id: string; name: string; slug: string; code: string; email: string; logo_url: string | null;
   phone: string | null; address: string | null; city: string | null; state: string | null;
-  discount_percent: number; active: boolean; onboarded_at: string | null; created_at: string;
+  discount_percent: number; margin_percent: number; active: boolean;
+  onboarded_at: string | null; created_at: string;
+  bank_code: string | null; account_name: string | null; account_last4: string | null;
+  payouts_ready: boolean;
   customers: number; redemptions: number; discount_given: number;
 };
 
@@ -230,7 +235,17 @@ export function AdminPharmaciesTab() {
                       </div>
                     </div>
                   </td>
-                  <td className="px-4 py-3 font-mono text-xs text-slate-300" data-label="Code">{p.code}</td>
+                  <td className="px-4 py-3 font-mono text-xs text-slate-300" data-label="Code">
+                    {p.code}
+                    {!p.payouts_ready && (
+                      <span
+                        title="No payout account — their share of a member's payment cannot be settled"
+                        className="ml-1.5 inline-flex items-center gap-1 rounded-full bg-amber-500/15 px-1.5 py-0.5 text-[10px] font-bold text-amber-400"
+                      >
+                        <Landmark className="h-2.5 w-2.5" /> no payout
+                      </span>
+                    )}
+                  </td>
                   <td className="px-4 py-3" data-label="Discount">
                     <input
                       defaultValue={String(p.discount_percent)}
@@ -503,6 +518,10 @@ function EditPharmacyForm({
     state: pharmacy.state ?? "",
     city: pharmacy.city ?? "",
     discount_percent: String(pharmacy.discount_percent ?? ""),
+    margin_percent: String(pharmacy.margin_percent ?? 5),
+    bank_code: pharmacy.bank_code ?? "",
+    account_number: "",
+    account_name: pharmacy.account_name ?? "",
   });
   const [logo, setLogo] = useState<File | null>(null);
   const [logoPreview, setLogoPreview] = useState<string | null>(pharmacy.logo_url);
@@ -526,6 +545,13 @@ function EditPharmacyForm({
           state: form.state || null,
           city: form.city || null,
           ...(form.discount_percent !== "" ? { discount_percent: Number(form.discount_percent) } : {}),
+          ...(form.margin_percent !== "" ? { margin_percent: Number(form.margin_percent) } : {}),
+          // The account number is only sent when it was actually typed — the
+          // field starts blank so an edit of the address cannot wipe a payout
+          // account that is already set.
+          ...(form.bank_code ? { bank_code: form.bank_code } : {}),
+          ...(form.account_number ? { account_number: form.account_number } : {}),
+          ...(form.account_name.trim() ? { account_name: form.account_name.trim() } : {}),
         }),
       });
       const d = await res.json().catch(() => null);
@@ -597,11 +623,11 @@ function EditPharmacyForm({
         <Field label="Sign-in email">
           <input value={form.email} onChange={(e) => setForm({ ...form, email: e.target.value })} className={input} />
         </Field>
-        <div className="grid gap-3 sm:grid-cols-2">
+        <div className="grid gap-3 sm:grid-cols-3">
           <Field label="Phone">
             <input value={form.phone} onChange={(e) => setForm({ ...form, phone: e.target.value })} className={input} />
           </Field>
-          <Field label="Discount %">
+          <Field label="Headline discount %">
             <input
               inputMode="numeric"
               value={form.discount_percent}
@@ -609,6 +635,65 @@ function EditPharmacyForm({
               className={input}
             />
           </Field>
+          <Field label="Poveon margin %">
+            <input
+              inputMode="decimal"
+              value={form.margin_percent}
+              onChange={(e) => setForm({ ...form, margin_percent: e.target.value.replace(/[^\d.]/g, "") })}
+              className={input}
+            />
+          </Field>
+        </div>
+        <p className="-mt-1 text-[11px] leading-relaxed text-slate-500">
+          The headline discount is the &ldquo;up to N% off&rdquo; we quote in marketing. The margin
+          is our real cut — a percentage of each medication&apos;s list price, taken out of the
+          discount this pharmacy gives us. A margin bigger than their discount on an item leaves the
+          member no saving, so we take less on that row instead.
+        </p>
+
+        {/* ── Payouts ──────────────────────────────────────────────────── */}
+        <div className="rounded-xl border border-white/10 bg-white/5 p-3.5">
+          <p className="flex items-center gap-1.5 text-[11px] font-bold uppercase tracking-wider text-slate-300">
+            <Landmark className="h-3.5 w-3.5" /> Where they are paid
+          </p>
+          <p className="mt-1 text-[11px] leading-relaxed text-slate-500">
+            {pharmacy.payouts_ready
+              ? `Currently ${pharmacy.account_name ?? "set"} · ••••${pharmacy.account_last4}. Leave the account number blank to keep it.`
+              : "Not set up yet. Their share of a member's payment cannot be settled until it is."}
+          </p>
+          <div className="mt-3 space-y-3">
+            <Field label="Bank">
+              <select
+                value={form.bank_code}
+                onChange={(e) => setForm({ ...form, bank_code: e.target.value })}
+                className={input}
+              >
+                <option value="">Select a bank</option>
+                {NIGERIAN_BANKS.map((b) => (
+                  <option key={b.code} value={b.code}>{b.name}</option>
+                ))}
+              </select>
+            </Field>
+            <div className="grid gap-3 sm:grid-cols-2">
+              <Field label="Account number">
+                <input
+                  inputMode="numeric"
+                  maxLength={10}
+                  placeholder={pharmacy.payouts_ready ? "Leave blank to keep" : "10 digits"}
+                  value={form.account_number}
+                  onChange={(e) => setForm({ ...form, account_number: e.target.value.replace(/\D/g, "") })}
+                  className={input}
+                />
+              </Field>
+              <Field label="Account name">
+                <input
+                  value={form.account_name}
+                  onChange={(e) => setForm({ ...form, account_name: e.target.value })}
+                  className={input}
+                />
+              </Field>
+            </div>
+          </div>
         </div>
         <div className="grid gap-3 sm:grid-cols-2">
           <Field label="State">
