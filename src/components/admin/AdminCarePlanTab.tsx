@@ -8,6 +8,7 @@ import {
   RefreshCw, Save, Search, Settings2, ShieldCheck, TrendingUp, Users, UserCog, X,
 } from "lucide-react";
 import { AdminOverlay } from "@/components/admin/AdminOverlay";
+import { SubTabs } from "@/components/admin/SubTabs";
 
 type Settings = {
   price_naira: number;
@@ -71,26 +72,17 @@ export function AdminCarePlanTab() {
         </div>
       </div>
 
-      <div className="flex gap-1 rounded-xl bg-white/5 p-1">
-        {([
-          ["members", "Members", Users],
-          ["doctors", "Doctor approvals", ShieldCheck],
-          ["baseline", "Health statistics", Activity],
-          ["pricing", "Pricing", Settings2],
-          ["payouts", "Doctor payouts", Banknote],
-        ] as const).map(([key, label, Icon]) => (
-          <button
-            key={key}
-            onClick={() => setSubTab(key)}
-            className={`flex items-center gap-1.5 rounded-lg px-3.5 py-2 text-sm font-medium transition ${
-              subTab === key ? "bg-white/15 text-white" : "text-slate-400 hover:text-white"
-            }`}
-          >
-            <Icon className="h-4 w-4" />
-            {label}
-          </button>
-        ))}
-      </div>
+      <SubTabs
+        value={subTab}
+        onChange={setSubTab}
+        items={[
+          { key: "members", label: "Members", icon: Users },
+          { key: "doctors", label: "Doctor approvals", icon: ShieldCheck },
+          { key: "baseline", label: "Health statistics", icon: Activity },
+          { key: "pricing", label: "Pricing", icon: Settings2 },
+          { key: "payouts", label: "Doctor payouts", icon: Banknote },
+        ] as const}
+      />
 
       {subTab === "members" && <MembersPanel />}
       {subTab === "doctors" && <DoctorApprovalsPanel />}
