@@ -1059,6 +1059,59 @@
   .reveal { opacity: 1; transform: none; }
 }
 
+/* ── Care-plan hero ────────────────────────────────────────────────────────
+   The card is the product: a code you show at a counter. So it breathes, the
+   light moves across it the way it would on a real card, and the two things it
+   buys you drift beside it. Every one of these is transform/opacity only, so it
+   composites on the GPU and costs nothing on a mid-range phone, and every one
+   stops dead under prefers-reduced-motion. */
+@keyframes care-float {
+  0%, 100% { transform: translateY(0) rotate(-1.2deg); }
+  50%      { transform: translateY(-10px) rotate(-0.4deg); }
+}
+.animate-care-float { animation: care-float 7s cubic-bezier(0.45, 0, 0.55, 1) infinite; }
+
+/* The sheen that travels across the card face. */
+@keyframes care-sheen {
+  0%        { transform: translateX(-120%) skewX(-18deg); opacity: 0; }
+  12%       { opacity: 0.55; }
+  38%, 100% { transform: translateX(240%) skewX(-18deg); opacity: 0; }
+}
+.animate-care-sheen { animation: care-sheen 5.5s ease-in-out infinite; }
+
+/* Chips that settle in beside the card, each on its own beat. */
+@keyframes care-chip {
+  0%   { opacity: 0; transform: translateY(14px) scale(0.94); }
+  14%  { opacity: 1; transform: translateY(0) scale(1); }
+  86%  { opacity: 1; transform: translateY(0) scale(1); }
+  100% { opacity: 1; transform: translateY(0) scale(1); }
+}
+.animate-care-chip { animation: care-chip 6s cubic-bezier(0.22, 1, 0.36, 1) infinite; }
+
+/* A soft pulse behind the card, so it reads as lit rather than pasted on. */
+@keyframes care-glow {
+  0%, 100% { opacity: 0.45; transform: scale(1); }
+  50%      { opacity: 0.75; transform: scale(1.06); }
+}
+.animate-care-glow { animation: care-glow 7s ease-in-out infinite; }
+
+/* The dot that says the plan is live. */
+@keyframes care-ping {
+  0%   { transform: scale(1); opacity: 0.7; }
+  75%, 100% { transform: scale(2.4); opacity: 0; }
+}
+.animate-care-ping { animation: care-ping 2.4s cubic-bezier(0, 0, 0.2, 1) infinite; }
+
+@media (prefers-reduced-motion: reduce) {
+  .animate-care-float,
+  .animate-care-sheen,
+  .animate-care-chip,
+  .animate-care-glow,
+  .animate-care-ping { animation: none; }
+  /* The chips animate in from invisible, so they need putting back. */
+  .animate-care-chip { opacity: 1; transform: none; }
+}
+
 /* Route change — the page body fades/lifts in on every navigation. */
 @keyframes page-enter {
   from { opacity: 0; transform: translateY(8px); }

@@ -10,13 +10,13 @@ import { prisma } from "@/lib/prisma";
 export const dynamic = "force-dynamic";
 
 export const metadata: Metadata = {
-  title: "Poveon — send a lab request in a minute flat",
+  title: "Poveon — manage hypertension and diabetes for one payment a year",
   description:
-    "Choose a partner laboratory and its request form opens right here. Clinicians and patients can send lab test requests with no account — the lab is notified instantly.",
+    "One yearly payment gets a care code that takes money off tests at partner labs and medication at partner pharmacies, plus a doctor assigned to you for the year. Clinicians can still send a lab request here with no account.",
   openGraph: {
-    title: "Poveon — send a lab request in a minute flat",
+    title: "Poveon — manage hypertension and diabetes for one payment a year",
     description:
-      "Choose a partner laboratory and its request form opens right here. No account, no fax, no chasing results.",
+      "A care code that takes money off your tests and your medication, and a doctor who answers in writing. No appointment, no waiting room.",
     type: "website",
   },
 };
