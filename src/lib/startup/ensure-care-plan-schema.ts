@@ -52,6 +52,10 @@ const SENTINEL_TABLES = [
   "push_subscriptions",
   "consult_topups",
   "consult_screenings",
+  "pharmacy_medications",
+  "pharmacy_price_batches",
+  "medication_orders",
+  "medication_order_items",
 ];
 
 /** "table.column", so one text array can check them all. */
@@ -74,6 +78,8 @@ const SENTINEL_COLUMNS = [
   "consult_patients.risk_level",
   "consult_patients.risk_manual",
   "consult_patients.reminded_at",
+  "pharmacies.margin_percent",
+  "consult_settings.doctor_monthly_naira",
   "consult_settings.topup_price_naira",
   "consult_treatment_plans.source",
   "consult_prescriptions.source",
@@ -548,6 +554,98 @@ async function runEnsure(): Promise<void> {
     await exec(`CREATE INDEX IF NOT EXISTS consult_screenings_patient_idx ON consult_screenings(patient_id, created_at);`);
     await exec(`CREATE INDEX IF NOT EXISTS consult_screenings_due_idx ON consult_screenings(severity, due_on);`);
     await exec(`ALTER TABLE consult_patients ADD COLUMN IF NOT EXISTS reminded_at TIMESTAMP(3);`);
+    await exec(`ALTER TABLE pharmacies
+      ADD COLUMN IF NOT EXISTS margin_percent DECIMAL(5,2) NOT NULL DEFAULT 5,
+      ADD COLUMN IF NOT EXISTS paystack_subaccount_code TEXT,
+      ADD COLUMN IF NOT EXISTS bank_code TEXT,
+      ADD COLUMN IF NOT EXISTS account_number TEXT,
+      ADD COLUMN IF NOT EXISTS account_name TEXT;`);
+    await exec(`
+    CREATE TABLE IF NOT EXISTS pharmacy_medications (
+      id TEXT PRIMARY KEY,
+      pharmacy_id TEXT NOT NULL,
+      name TEXT NOT NULL,
+      form TEXT,
+      strength TEXT,
+      pack TEXT,
+      key TEXT NOT NULL,
+      list_price DECIMAL(12,2) NOT NULL,
+      concession DECIMAL(12,2) NOT NULL DEFAULT 0,
+      margin_percent DECIMAL(5,2),
+      in_stock BOOLEAN NOT NULL DEFAULT true,
+      active BOOLEAN NOT NULL DEFAULT true,
+      notes TEXT,
+      batch_id TEXT,
+      created_at TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+      updated_at TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP
+    );
+    `);
+    await exec(`CREATE UNIQUE INDEX IF NOT EXISTS pharmacy_medications_key ON pharmacy_medications(pharmacy_id, key);`);
+    await exec(`CREATE INDEX IF NOT EXISTS pharmacy_medications_active_idx ON pharmacy_medications(pharmacy_id, active);`);
+    await exec(`CREATE INDEX IF NOT EXISTS pharmacy_medications_name_idx ON pharmacy_medications(name);`);
+    await exec(`
+    CREATE TABLE IF NOT EXISTS pharmacy_price_batches (
+      id TEXT PRIMARY KEY,
+      pharmacy_id TEXT NOT NULL,
+      filename TEXT,
+      rows_seen INTEGER NOT NULL DEFAULT 0,
+      rows_written INTEGER NOT NULL DEFAULT 0,
+      rows_skipped INTEGER NOT NULL DEFAULT 0,
+      problems JSONB NOT NULL DEFAULT '[]',
+      uploaded_by TEXT,
+      created_at TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP
+    );
+    `);
+    await exec(`CREATE INDEX IF NOT EXISTS pharmacy_price_batches_idx ON pharmacy_price_batches(pharmacy_id, created_at);`);
+    await exec(`
+    CREATE TABLE IF NOT EXISTS medication_orders (
+      id TEXT PRIMARY KEY,
+      patient_id TEXT NOT NULL,
+      pharmacy_id TEXT NOT NULL,
+      for_month DATE NOT NULL,
+      total_naira DECIMAL(12,2) NOT NULL,
+      pharmacy_naira DECIMAL(12,2) NOT NULL,
+      poveon_naira DECIMAL(12,2) NOT NULL,
+      saving_naira DECIMAL(12,2) NOT NULL,
+      status TEXT NOT NULL DEFAULT 'pending',
+      paystack_ref TEXT,
+      paid_at TIMESTAMP(3),
+      ready_at TIMESTAMP(3),
+      collected_at TIMESTAMP(3),
+      collected_by TEXT,
+      cancel_reason TEXT,
+      reminded_at TIMESTAMP(3),
+      created_at TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+      updated_at TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP
+    );
+    `);
+    await exec(`CREATE UNIQUE INDEX IF NOT EXISTS medication_orders_ref_key ON medication_orders(paystack_ref);`);
+    await exec(`CREATE INDEX IF NOT EXISTS medication_orders_patient_idx ON medication_orders(patient_id, created_at);`);
+    await exec(`CREATE INDEX IF NOT EXISTS medication_orders_pharmacy_idx ON medication_orders(pharmacy_id, status);`);
+    await exec(`CREATE INDEX IF NOT EXISTS medication_orders_month_idx ON medication_orders(status, for_month);`);
+    await exec(`
+    CREATE TABLE IF NOT EXISTS medication_order_items (
+      id TEXT PRIMARY KEY,
+      order_id TEXT NOT NULL,
+      medication_id TEXT,
+      prescription_id TEXT,
+      name TEXT NOT NULL,
+      strength TEXT,
+      form TEXT,
+      quantity INTEGER NOT NULL DEFAULT 1,
+      list_price DECIMAL(12,2) NOT NULL,
+      concession DECIMAL(12,2) NOT NULL,
+      margin_percent DECIMAL(5,2) NOT NULL,
+      member_naira DECIMAL(12,2) NOT NULL,
+      pharmacy_naira DECIMAL(12,2) NOT NULL,
+      poveon_naira DECIMAL(12,2) NOT NULL
+    );
+    `);
+    await exec(`CREATE INDEX IF NOT EXISTS medication_order_items_order_idx ON medication_order_items(order_id);`);
+    await exec(`CREATE INDEX IF NOT EXISTS medication_order_items_med_idx ON medication_order_items(medication_id);`);
+    await exec(`ALTER TABLE consult_settings
+      ADD COLUMN IF NOT EXISTS doctor_monthly_naira DECIMAL(12,2) NOT NULL DEFAULT 500,
+      ADD COLUMN IF NOT EXISTS bonus_pool_percent DECIMAL(5,2) NOT NULL DEFAULT 10;`);
     await exec(`
     CREATE TABLE IF NOT EXISTS push_subscriptions (
       id TEXT PRIMARY KEY,

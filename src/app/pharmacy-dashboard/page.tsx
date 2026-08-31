@@ -14,6 +14,7 @@ import { Download } from "lucide-react";
 import { Modal } from "@/components/ui/Overlay";
 import { MonthFilter } from "@/components/ui/MonthFilter";
 import { conditionLabel } from "@/lib/consult-conditions";
+import { PriceListPanel } from "@/components/pharmacy/PriceListPanel";
 
 type Pharmacy = {
   id: string; name: string; code: string; email: string; phone: string | null;
@@ -41,7 +42,7 @@ export default function PharmacyDashboard() {
   const [pharmacy, setPharmacy] = useState<Pharmacy | null>(null);
   const [stats, setStats] = useState<Stats | null>(null);
   const [loading, setLoading] = useState(true);
-  const [tab, setTab] = useState<"serve" | "customers" | "care">("serve");
+  const [tab, setTab] = useState<"serve" | "customers" | "care" | "prices">("serve");
 
   const load = useCallback(async () => {
     try {
@@ -98,16 +99,17 @@ export default function PharmacyDashboard() {
               <Stat icon={<Wallet className="h-4 w-4" />} label="Sales this month" value={naira(stats?.gross_this_month ?? 0)} accent="emerald" />
             </div>
 
-            <div className="flex gap-1 border-b border-slate-200 pb-2">
+            <div className="no-scrollbar flex gap-1 overflow-x-auto border-b border-slate-200 pb-2">
               {([
                 ["serve", "Serve a member"],
                 ["care", "Coming to you"],
+                ["prices", "Price list"],
                 ["customers", "My customers"],
               ] as const).map(([key, label]) => (
                 <button
                   key={key}
                   onClick={() => setTab(key)}
-                  className={`rounded-lg px-3.5 py-2 text-sm font-semibold transition ${
+                  className={`shrink-0 whitespace-nowrap rounded-lg px-3.5 py-2 text-sm font-semibold transition ${
                     tab === key
                       ? "bg-emerald-50 text-emerald-800 ring-1 ring-inset ring-emerald-200"
                       : "text-slate-500 hover:bg-white hover:text-slate-800"
@@ -120,6 +122,7 @@ export default function PharmacyDashboard() {
 
             {tab === "serve" && <ServePanel onRecorded={load} />}
             {tab === "care" && <CareMembersPanel />}
+            {tab === "prices" && <PriceListPanel />}
             {tab === "customers" && <CustomersPanel onChanged={load} />}
           </>
         )}

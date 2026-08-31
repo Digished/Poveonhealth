@@ -1866,8 +1866,20 @@ model RiderSession {
 // Platform-wide programme settings. Single row, id = "default", edited by admin.
 model ConsultSettings {
   id                 String   @id @default("default")
-  price_naira        Decimal  @default(10000) @db.Decimal(12, 2) // member pays this per year
-  doctor_share_naira Decimal  @default(6000) @db.Decimal(12, 2) // doctor's entitlement per member-year
+  /// What a member pays to join, once, for a twelve-month membership. It is an
+  /// onboarding fee rather than a subscription: nothing recurs, and a member
+  /// whose year runs out pays it again to carry on.
+  price_naira        Decimal  @default(2500) @db.Decimal(12, 2)
+  /// Retired. The doctor's pay is `doctor_monthly_naira` accrued month by month
+  /// for as long as the member stays, not a lump sum opened at activation.
+  /// Kept so historic ConsultEarning rows still read against the terms they
+  /// were created on.
+  doctor_share_naira Decimal  @default(6000) @db.Decimal(12, 2)
+  /// Paid to the assigned doctor for each month a member is still active.
+  doctor_monthly_naira Decimal @default(500) @db.Decimal(12, 2)
+  /// Share of Poveon's medication margin set aside for the doctor bonus pool,
+  /// split by how much of the month's messaging each doctor carried.
+  bonus_pool_percent Decimal @default(10) @db.Decimal(5, 2)
   message_allowance  Int      @default(40) // messages a member may send per year
   release_months     Int      @default(12) // the pool is released over this many months
   default_doctor_cap Int      @default(200) // patients per doctor per year, until they set their own
@@ -1978,6 +1990,7 @@ model ConsultPatient {
   plan_logs          ConsultPlanLog[]
   topups             ConsultTopup[]
   screenings         ConsultScreening[]
+  med_orders         MedicationOrder[]
 
   @@index([doctor_email, status])
   @@index([status, expires_at])
@@ -2058,7 +2071,18 @@ model Pharmacy {
   city             String?
   state            String?
   logo_url         String?
+  // The headline "up to N% off" quoted in marketing. Real pricing comes from
+  // the catalogue below, per medication.
   discount_percent Int      @default(10)
+  // Poveon's cut on this pharmacy's medications, as a percentage of the list
+  // price. A medication row may override it. See lib/med-pricing.ts.
+  margin_percent   Decimal  @default(5) @db.Decimal(5, 2)
+  // Paystack subaccount, so the pharmacy's share of a member's payment is
+  // split to them at the moment of the charge rather than owed to them.
+  paystack_subaccount_code String?
+  bank_code                String?
+  account_number           String?
+  account_name             String?
   active           Boolean  @default(true)
   // SHA-256 of a 4-digit PIN. Set on first sign-in; after that a code is only
   // needed to reset it.
@@ -2071,8 +2095,149 @@ model Pharmacy {
   sessions     PharmacySession[]
   redemptions  ConsultRedemption[]
   fulfilments  ConsultFulfilment[]
+  medications  PharmacyMedication[]
+  orders       MedicationOrder[]
 
   @@map("pharmacies")
+}
+
+// One medication a pharmacy sells, at the price it sells it.
+//
+// Uploaded as a spreadsheet: the pharmacy states the shop price and the naira
+// it will take off for a Poveon member. Poveon's margin is a percentage of the
+// shop price, taken out of that concession — the arithmetic and its guards live
+// in lib/med-pricing.ts, not here, because three parties splitting naira is
+// exactly the sum that should exist in one place.
+model PharmacyMedication {
+  id          String @id @default(uuid())
+  pharmacy_id String
+
+  name     String // "Amlodipine"
+  form     String? // tablet | capsule | syrup | injection | ...
+  strength String? // "10mg"
+  pack     String? // "30 tablets" — what one unit of list_price buys
+
+  /// Normalised name+strength+form, so a re-upload updates a row rather than
+  /// duplicating it. Postgres treats NULLs as distinct in a unique index, which
+  /// a (name, strength, form) key would hit the moment a strength is blank.
+  key String
+
+  list_price      Decimal @db.Decimal(12, 2) // what anyone off the street pays
+  concession      Decimal @default(0) @db.Decimal(12, 2) // taken off for members
+  /// Overrides the pharmacy's default margin for this one item.
+  margin_percent  Decimal? @db.Decimal(5, 2)
+
+  in_stock Boolean @default(true)
+  active   Boolean @default(true)
+  notes    String?
+
+  /// Which upload wrote this row, so a bad import can be traced or undone.
+  batch_id   String?
+  created_at DateTime @default(now())
+  updated_at DateTime @updatedAt
+
+  pharmacy Pharmacy                @relation(fields: [pharmacy_id], references: [id], onDelete: Cascade)
+  items    MedicationOrderItem[]
+
+  @@unique([pharmacy_id, key])
+  @@index([pharmacy_id, active])
+  @@index([name])
+  @@map("pharmacy_medications")
+}
+
+// One upload of a pharmacy's price list, kept so a bad import can be seen and
+// rolled back rather than argued about.
+model PharmacyPriceBatch {
+  id          String   @id @default(uuid())
+  pharmacy_id String
+  filename    String?
+  rows_seen   Int      @default(0)
+  rows_written Int     @default(0)
+  rows_skipped Int     @default(0)
+  /// Rows the parser could not use, with the reason, for the uploader to fix.
+  problems    Json     @default("[]")
+  uploaded_by String? // pharmacy email, or an admin acting for them
+  created_at  DateTime @default(now())
+
+  @@index([pharmacy_id, created_at])
+  @@map("pharmacy_price_batches")
+}
+
+// A member paying for medication through the app.
+//
+// Created when a member decides to buy — either against a prescription their
+// doctor wrote or straight from a pharmacy's catalogue — and settled by
+// Paystack. The pharmacy's share is split to their subaccount at the moment of
+// the charge, so nothing is owed afterwards.
+model MedicationOrder {
+  id          String @id @default(uuid())
+  patient_id  String
+  pharmacy_id String
+
+  /// The month the member is buying for, as the first of that month. A refill
+  /// reserved in advance is what makes "pay now, collect next month" work.
+  for_month DateTime @db.Date
+
+  /// Naira, all three shares, frozen at the moment of the order — a later price
+  /// change must never rewrite what someone already paid.
+  total_naira    Decimal @db.Decimal(12, 2)
+  pharmacy_naira Decimal @db.Decimal(12, 2)
+  poveon_naira   Decimal @db.Decimal(12, 2)
+  saving_naira   Decimal @db.Decimal(12, 2)
+
+  status       String    @default("pending") // pending | paid | ready | collected | cancelled | refunded
+  paystack_ref String?   @unique
+  paid_at      DateTime?
+  /// Stamped when the pharmacy has the order made up and waiting.
+  ready_at     DateTime?
+  collected_at DateTime?
+  collected_by String?
+  cancel_reason String?
+
+  /// Last time the member was reminded this is due for collection or refill.
+  reminded_at DateTime?
+
+  created_at DateTime @default(now())
+  updated_at DateTime @updatedAt
+
+  patient  ConsultPatient        @relation(fields: [patient_id], references: [id], onDelete: Cascade)
+  pharmacy Pharmacy              @relation(fields: [pharmacy_id], references: [id], onDelete: Restrict)
+  items    MedicationOrderItem[]
+
+  @@index([patient_id, created_at])
+  @@index([pharmacy_id, status])
+  @@index([status, for_month])
+  @@map("medication_orders")
+}
+
+// One line of an order, with every figure copied rather than referenced.
+model MedicationOrderItem {
+  id       String @id @default(uuid())
+  order_id String
+  /// The catalogue row it came from, kept for reporting. Null once a pharmacy
+  /// deletes the medication — the order still stands on its copied figures.
+  medication_id String?
+  /// The prescription this fills, when the doctor wrote one.
+  prescription_id String?
+
+  name     String
+  strength String?
+  form     String?
+  quantity Int    @default(1)
+
+  list_price     Decimal @db.Decimal(12, 2)
+  concession     Decimal @db.Decimal(12, 2)
+  margin_percent Decimal @db.Decimal(5, 2)
+  member_naira   Decimal @db.Decimal(12, 2)
+  pharmacy_naira Decimal @db.Decimal(12, 2)
+  poveon_naira   Decimal @db.Decimal(12, 2)
+
+  order      MedicationOrder     @relation(fields: [order_id], references: [id], onDelete: Cascade)
+  medication PharmacyMedication? @relation(fields: [medication_id], references: [id], onDelete: SetNull)
+
+  @@index([order_id])
+  @@index([medication_id])
+  @@map("medication_order_items")
 }
 
 model PharmacyOtp {
