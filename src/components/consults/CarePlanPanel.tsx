@@ -30,6 +30,7 @@ const ProviderPicker = dynamic(
 );
 import type { CarePlanBenefits, CarePlanPrefill } from "@/components/consults/CarePlanEnrollModal";
 import { TopUpButton } from "@/components/consults/TopUpButton";
+import { MedicationPay } from "@/components/consults/MedicationPay";
 
 /**
  * The enrolment form and everything it needs — the state/LGA data, the fuzzy
@@ -225,6 +226,9 @@ export function CarePlanPanel({
 
       {active && member && section === "schedule" && (
         <>
+          {/* Prices and payment lead: what a member wants from this tab is
+              usually "what does my refill cost and can I sort it now". */}
+          <MedicationPay onPickPharmacy={() => setPicking("pharmacy")} />
           <CareSchedule prescriptions={prescriptions} testOrders={testOrders} />
           <CarePlanChecklist plan={plan} onTicked={setPlan} />
         </>

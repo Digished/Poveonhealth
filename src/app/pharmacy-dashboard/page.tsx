@@ -650,6 +650,12 @@ type CareMember = {
   name_revealed: boolean;
   conditions: string[];
   expires_at: string | null;
+  /** Orders this member has already paid for. Money in, not a forecast. */
+  paid_orders?: {
+    id: string; status: string; for_month: string; paid_at: string | null;
+    you_receive: number;
+    items: { name: string; strength: string | null; quantity: number }[];
+  }[];
   prescriptions: {
     id: string; medication: string; form: string | null; dosage: string | null;
     frequency: string | null; duration_days: number | null;
@@ -671,6 +677,7 @@ type CareMember = {
 function CareMembersPanel() {
   const [members, setMembers] = useState<CareMember[]>([]);
   const [summary, setSummary] = useState<{ members: number; pending_prescriptions: number } | null>(null);
+  const [paid, setPaid] = useState<{ orders: number; items: number; value: number; ready: number } | null>(null);
   const [months, setMonths] = useState<{ month: string; count: number }[]>([]);
   const [month, setMonth] = useState<string>("");
   const [loading, setLoading] = useState(true);
@@ -684,7 +691,7 @@ function CareMembersPanel() {
         const d = await res.json();
         if (cancelled) return;
         if (!res.ok || !d.success) setError(d.error ?? "Could not load your members.");
-        else { setMembers(d.members); setSummary(d.summary); setMonths(d.months ?? []); }
+        else { setMembers(d.members); setSummary(d.summary); setMonths(d.months ?? []); setPaid(d.paid ?? null); }
       } catch {
         if (!cancelled) setError("Network error.");
       } finally {
@@ -718,6 +725,30 @@ function CareMembersPanel() {
 
   return (
     <div className="space-y-3">
+      {paid && paid.orders > 0 && (
+        <div className="rounded-2xl border border-emerald-200 bg-emerald-50 p-4">
+          <div className="flex flex-wrap items-center justify-between gap-3">
+            <div className="flex items-start gap-2.5">
+              <BadgeCheck className="mt-0.5 h-5 w-5 shrink-0 text-emerald-600" />
+              <div>
+                <p className="text-sm font-bold text-emerald-900">
+                  {paid.orders} paid order{paid.orders === 1 ? "" : "s"} waiting
+                </p>
+                <p className="mt-0.5 text-xs text-emerald-800">
+                  {paid.items} item{paid.items === 1 ? "" : "s"} already paid for.
+                  {paid.ready > 0 && ` ${paid.ready} marked ready.`} Make them up and hand them over
+                  when the member arrives — there is nothing to collect at the counter.
+                </p>
+              </div>
+            </div>
+            <div className="shrink-0 text-right">
+              <p className="text-[11px] font-bold uppercase tracking-wide text-emerald-700">Your share</p>
+              <p className="text-xl font-extrabold text-emerald-700">{naira(paid.value)}</p>
+            </div>
+          </div>
+        </div>
+      )}
+
       <PharmacyQrCard />
 
       {months.length > 0 && (
@@ -757,6 +788,13 @@ function CareMembersPanel() {
                     {conditionLabel(c)}
                   </span>
                 ))}
+                {/* Paid is the difference between work waiting and a forecast. */}
+                {(m.paid_orders?.length ?? 0) > 0 && (
+                  <span className="inline-flex items-center gap-1 rounded-full bg-emerald-600 px-2 py-0.5 text-[11px] font-bold text-white">
+                    <BadgeCheck className="h-3 w-3" />
+                    Paid · {naira(m.paid_orders!.reduce((t, o) => t + o.you_receive, 0))}
+                  </span>
+                )}
               </p>
             </div>
             {m.expires_at && (
@@ -765,6 +803,30 @@ function CareMembersPanel() {
               </span>
             )}
           </div>
+
+          {(m.paid_orders?.length ?? 0) > 0 && (
+            <div className="mt-3 rounded-xl border border-emerald-200 bg-emerald-50/70 p-3">
+              {m.paid_orders!.map((o) => (
+                <div key={o.id} className="not-first:mt-2.5">
+                  <p className="text-[11px] font-bold uppercase tracking-wide text-emerald-700">
+                    {o.status === "ready" ? "Ready to hand over" : "Paid — make this up"} ·{" "}
+                    {new Date(o.for_month).toLocaleDateString("en-GB", { month: "long", year: "numeric", timeZone: "UTC" })}
+                  </p>
+                  <ul className="mt-1 space-y-0.5">
+                    {o.items.map((it, i) => (
+                      <li key={i} className="text-xs text-emerald-900">
+                        {it.quantity > 1 && <span className="font-bold">{it.quantity} × </span>}
+                        {it.name}{it.strength ? ` ${it.strength}` : ""}
+                      </li>
+                    ))}
+                  </ul>
+                </div>
+              ))}
+              <p className="mt-2 text-[11px] text-emerald-700">
+                Already paid for in the app — nothing to collect at the counter.
+              </p>
+            </div>
+          )}
 
           {visibleRx(m).length === 0 ? (
             <p className="mt-3 text-xs text-slate-400">Nothing scheduled right now.</p>
