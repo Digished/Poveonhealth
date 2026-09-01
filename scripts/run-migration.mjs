@@ -83,7 +83,69 @@ function isPreparedStmtArtifact(err) {
   const msg = String(err?.message ?? "");
   return msg.includes("prepared statement") && msg.includes("does not exist");
 }
-async function execWithRetry(sql, attempts = 4) {
+/**
+ * Split a step into the individual statements Postgres will accept.
+ *
+ * `$executeRawUnsafe` goes through the extended query protocol, which takes
+ * exactly one command. Hand it two and it refuses the lot with "cannot insert
+ * multiple commands into a prepared statement" — so a step written as a CREATE
+ * TABLE followed by its indexes did not create the table, did not create the
+ * indexes, and, because such steps carry `continueOnError`, printed a tick.
+ * That is how `lab_departments` came to be missing in production while the
+ * build log said it had been applied.
+ *
+ * Dollar-quoted bodies are left alone: a `DO $$ ... $$` block is one statement
+ * however many semicolons it contains inside.
+ */
+function splitStatements(sql) {
+  const out = [];
+  let buf = "";
+  let i = 0;
+  let quote = null; // "'" | '"' | a $tag$ string
+
+  while (i < sql.length) {
+    const rest = sql.slice(i);
+
+    if (quote) {
+      if (quote.length > 1) {
+        // Dollar quoting: runs to the matching tag.
+        if (rest.startsWith(quote)) { buf += quote; i += quote.length; quote = null; continue; }
+      } else if (rest[0] === quote) {
+        // '' and "" are escapes, not terminators.
+        if (rest[1] === quote) { buf += rest.slice(0, 2); i += 2; continue; }
+        buf += rest[0]; i += 1; quote = null; continue;
+      }
+      buf += rest[0]; i += 1;
+      continue;
+    }
+
+    const dollar = /^\$[A-Za-z_]*\$/.exec(rest);
+    if (dollar) { quote = dollar[0]; buf += dollar[0]; i += dollar[0].length; continue; }
+    if (rest[0] === "'" || rest[0] === '"') { quote = rest[0]; buf += rest[0]; i += 1; continue; }
+    if (rest.startsWith("--")) {
+      const nl = rest.indexOf("\n");
+      const line = nl === -1 ? rest : rest.slice(0, nl);
+      buf += line; i += line.length;
+      continue;
+    }
+    if (rest.startsWith("/*")) {
+      const close = rest.indexOf("*/");
+      const block = close === -1 ? rest : rest.slice(0, close + 2);
+      buf += block; i += block.length;
+      continue;
+    }
+    if (rest[0] === ";") { out.push(buf); buf = ""; i += 1; continue; }
+
+    buf += rest[0];
+    i += 1;
+  }
+  out.push(buf);
+
+  // A statement that is only whitespace and comments is not a statement.
+  return out.filter((stmt) => stmt.replace(/--[^\n]*/g, "").replace(/\/\*[\s\S]*?\*\//g, "").trim().length > 0);
+}
+
+async function execOne(sql, attempts = 4) {
   let lastErr;
   for (let i = 0; i < attempts; i++) {
     try {
@@ -96,6 +158,29 @@ async function execWithRetry(sql, attempts = 4) {
     }
   }
   throw lastErr;
+}
+
+/**
+ * Run a step, one statement at a time.
+ *
+ * Reports how many statements a step actually contained, so a step that half
+ * applies is visible rather than a tick. The first failure stops the step: the
+ * statements after a failed CREATE TABLE are its indexes, and running them
+ * would only produce a second, more confusing error.
+ */
+async function execWithRetry(sql) {
+  const statements = splitStatements(sql);
+  for (let n = 0; n < statements.length; n++) {
+    try {
+      await execOne(statements[n]);
+    } catch (err) {
+      if (statements.length > 1) {
+        err.message = `statement ${n + 1} of ${statements.length}: ${err.message}`;
+      }
+      throw err;
+    }
+  }
+  return statements.length;
 }
 
 const migrations = [
@@ -1748,23 +1833,1118 @@ const migrations = [
     `,
     continueOnError: true,
   },
+  {
+    // The doctor portal reads a doctor's requests newest-first; the plain
+    // doctor_email index still left Postgres sorting the whole slice.
+    desc: "requests index (doctor_email, created_at) — doctor portal list",
+    sql: `CREATE INDEX IF NOT EXISTS requests_doctor_email_created_idx ON requests (doctor_email, created_at)`,
+    continueOnError: true,
+  },
+  {
+    // The patient portal reads a patient's requests newest-first and had no
+    // index at all — every sign-in was a sequential scan of the whole table.
+    desc: "requests index (patient_email, created_at) — patient portal list",
+    sql: `CREATE INDEX IF NOT EXISTS requests_patient_email_created_idx ON requests (patient_email, created_at)`,
+    continueOnError: true,
+  },
+
+  // ── Care plan (/consults) ───────────────────────────────────────────────
+  {
+    desc: "doctor_profiles care-plan columns (accepting, yearly cap)",
+    sql: `ALTER TABLE doctor_profiles
+      ADD COLUMN IF NOT EXISTS consult_accepting BOOLEAN NOT NULL DEFAULT true,
+      ADD COLUMN IF NOT EXISTS consult_patient_cap INTEGER`,
+    continueOnError: true,
+  },
+  {
+    desc: "consult_settings table (admin-controlled price & doctor share)",
+    sql: `CREATE TABLE IF NOT EXISTS consult_settings (
+      id TEXT PRIMARY KEY DEFAULT 'default',
+      price_naira DECIMAL(12,2) NOT NULL DEFAULT 10000,
+      doctor_share_naira DECIMAL(12,2) NOT NULL DEFAULT 6000,
+      message_allowance INTEGER NOT NULL DEFAULT 40,
+      release_months INTEGER NOT NULL DEFAULT 12,
+      default_doctor_cap INTEGER NOT NULL DEFAULT 200,
+      lab_discount_percent INTEGER NOT NULL DEFAULT 15,
+      pharmacy_discount_percent INTEGER NOT NULL DEFAULT 10,
+      updated_at TIMESTAMP(3) NOT NULL DEFAULT now(),
+      updated_by TEXT
+    )`,
+    continueOnError: true,
+  },
+  {
+    desc: "consult_patients table (care-plan members)",
+    sql: `CREATE TABLE IF NOT EXISTS consult_patients (
+      id TEXT PRIMARY KEY,
+      code TEXT,
+      full_name TEXT NOT NULL,
+      email TEXT NOT NULL,
+      phone TEXT,
+      sex TEXT,
+      date_of_birth DATE,
+      state TEXT,
+      city TEXT,
+      conditions TEXT[] NOT NULL DEFAULT '{}',
+      consent_at TIMESTAMP(3),
+      doctor_email TEXT,
+      assigned_at TIMESTAMP(3),
+      status TEXT NOT NULL DEFAULT 'pending_payment',
+      subscribed_at TIMESTAMP(3),
+      expires_at TIMESTAMP(3),
+      amount_paid DECIMAL(12,2),
+      paystack_ref TEXT,
+      messages_used INTEGER NOT NULL DEFAULT 0,
+      message_allowance INTEGER NOT NULL DEFAULT 40,
+      created_at TIMESTAMP(3) NOT NULL DEFAULT now(),
+      updated_at TIMESTAMP(3) NOT NULL DEFAULT now()
+    )`,
+    continueOnError: true,
+  },
+  {
+    desc: "consult_patients unique code index",
+    sql: `CREATE UNIQUE INDEX IF NOT EXISTS consult_patients_code_key ON consult_patients (code)`,
+    continueOnError: true,
+  },
+  {
+    desc: "consult_patients unique email index",
+    sql: `CREATE UNIQUE INDEX IF NOT EXISTS consult_patients_email_key ON consult_patients (email)`,
+    continueOnError: true,
+  },
+  {
+    desc: "consult_patients doctor/status index",
+    sql: `CREATE INDEX IF NOT EXISTS consult_patients_doctor_status_idx ON consult_patients (doctor_email, status)`,
+    continueOnError: true,
+  },
+  {
+    desc: "consult_patients status/expiry index",
+    sql: `CREATE INDEX IF NOT EXISTS consult_patients_status_expires_idx ON consult_patients (status, expires_at)`,
+    continueOnError: true,
+  },
+  {
+    desc: "consult_patients email index",
+    sql: `CREATE INDEX IF NOT EXISTS consult_patients_email_idx ON consult_patients (email)`,
+    continueOnError: true,
+  },
+  {
+    desc: "consult_messages table (async doctor/member thread)",
+    sql: `CREATE TABLE IF NOT EXISTS consult_messages (
+      id TEXT PRIMARY KEY,
+      patient_id TEXT NOT NULL,
+      sender TEXT NOT NULL,
+      body TEXT NOT NULL,
+      read_at TIMESTAMP(3),
+      counted BOOLEAN NOT NULL DEFAULT false,
+      created_at TIMESTAMP(3) NOT NULL DEFAULT now()
+    )`,
+    continueOnError: true,
+  },
+  {
+    desc: "consult_messages index",
+    sql: `CREATE INDEX IF NOT EXISTS consult_messages_patient_created_idx ON consult_messages (patient_id, created_at)`,
+    continueOnError: true,
+  },
+  {
+    desc: "consult_earnings table (doctor entitlement per member-year)",
+    sql: `CREATE TABLE IF NOT EXISTS consult_earnings (
+      id TEXT PRIMARY KEY,
+      doctor_email TEXT NOT NULL,
+      patient_id TEXT NOT NULL,
+      total_naira DECIMAL(12,2) NOT NULL,
+      released_naira DECIMAL(12,2) NOT NULL DEFAULT 0,
+      status TEXT NOT NULL DEFAULT 'pending',
+      created_at TIMESTAMP(3) NOT NULL DEFAULT now(),
+      updated_at TIMESTAMP(3) NOT NULL DEFAULT now()
+    )`,
+    continueOnError: true,
+  },
+  {
+    desc: "consult_earnings doctor/status index",
+    sql: `CREATE INDEX IF NOT EXISTS consult_earnings_doctor_status_idx ON consult_earnings (doctor_email, status)`,
+    continueOnError: true,
+  },
+  {
+    desc: "consult_earnings patient/created index",
+    sql: `CREATE INDEX IF NOT EXISTS consult_earnings_patient_created_idx ON consult_earnings (patient_id, created_at)`,
+    continueOnError: true,
+  },
+  {
+    desc: "consult_earnings: drop the old one-per-member unique key",
+    sql: `DROP INDEX IF EXISTS consult_earnings_patient_id_key`,
+    continueOnError: true,
+  },
+  {
+    desc: "consult_earning_releases table (monthly instalments)",
+    sql: `CREATE TABLE IF NOT EXISTS consult_earning_releases (
+      id TEXT PRIMARY KEY,
+      doctor_email TEXT NOT NULL,
+      earning_id TEXT NOT NULL,
+      amount_naira DECIMAL(12,2) NOT NULL,
+      period TEXT NOT NULL,
+      note TEXT,
+      created_at TIMESTAMP(3) NOT NULL DEFAULT now()
+    )`,
+    continueOnError: true,
+  },
+  {
+    desc: "consult_earning_releases unique (earning, period) — makes the release idempotent",
+    sql: `CREATE UNIQUE INDEX IF NOT EXISTS consult_earning_releases_earning_period_key ON consult_earning_releases (earning_id, period)`,
+    continueOnError: true,
+  },
+  {
+    desc: "consult_earning_releases doctor/period index",
+    sql: `CREATE INDEX IF NOT EXISTS consult_earning_releases_doctor_period_idx ON consult_earning_releases (doctor_email, period)`,
+    continueOnError: true,
+  },
+  {
+    desc: "pharmacies table (partner pharmacies)",
+    sql: `CREATE TABLE IF NOT EXISTS pharmacies (
+      id TEXT PRIMARY KEY,
+      name TEXT NOT NULL,
+      slug TEXT NOT NULL,
+      code TEXT NOT NULL,
+      email TEXT NOT NULL,
+      phone TEXT,
+      address TEXT,
+      city TEXT,
+      state TEXT,
+      logo_url TEXT,
+      discount_percent INTEGER NOT NULL DEFAULT 10,
+      active BOOLEAN NOT NULL DEFAULT true,
+      pin_hash TEXT,
+      onboarded_at TIMESTAMP(3),
+      created_at TIMESTAMP(3) NOT NULL DEFAULT now(),
+      updated_at TIMESTAMP(3) NOT NULL DEFAULT now()
+    )`,
+    continueOnError: true,
+  },
+  {
+    desc: "pharmacies unique slug",
+    sql: `CREATE UNIQUE INDEX IF NOT EXISTS pharmacies_slug_key ON pharmacies (slug)`,
+    continueOnError: true,
+  },
+  {
+    desc: "pharmacies unique code",
+    sql: `CREATE UNIQUE INDEX IF NOT EXISTS pharmacies_code_key ON pharmacies (code)`,
+    continueOnError: true,
+  },
+  {
+    desc: "pharmacies unique email",
+    sql: `CREATE UNIQUE INDEX IF NOT EXISTS pharmacies_email_key ON pharmacies (email)`,
+    continueOnError: true,
+  },
+  {
+    desc: "pharmacy_otps table",
+    sql: `CREATE TABLE IF NOT EXISTS pharmacy_otps (
+      id TEXT PRIMARY KEY,
+      email TEXT NOT NULL,
+      code_hash TEXT NOT NULL,
+      expires_at TIMESTAMP(3) NOT NULL,
+      used BOOLEAN NOT NULL DEFAULT false,
+      created_at TIMESTAMP(3) NOT NULL DEFAULT now()
+    )`,
+    continueOnError: true,
+  },
+  {
+    desc: "pharmacy_otps index",
+    sql: `CREATE INDEX IF NOT EXISTS pharmacy_otps_email_idx ON pharmacy_otps (email)`,
+    continueOnError: true,
+  },
+  {
+    desc: "pharmacy_sessions table",
+    sql: `CREATE TABLE IF NOT EXISTS pharmacy_sessions (
+      id TEXT PRIMARY KEY,
+      pharmacy_id TEXT NOT NULL,
+      expires_at TIMESTAMP(3) NOT NULL,
+      created_at TIMESTAMP(3) NOT NULL DEFAULT now()
+    )`,
+    continueOnError: true,
+  },
+  {
+    desc: "pharmacy_sessions index",
+    sql: `CREATE INDEX IF NOT EXISTS pharmacy_sessions_pharmacy_idx ON pharmacy_sessions (pharmacy_id)`,
+    continueOnError: true,
+  },
+  {
+    desc: "pharmacy_customers table (a pharmacy's regulars)",
+    sql: `CREATE TABLE IF NOT EXISTS pharmacy_customers (
+      id TEXT PRIMARY KEY,
+      pharmacy_id TEXT NOT NULL,
+      patient_id TEXT,
+      full_name TEXT NOT NULL,
+      phone TEXT,
+      code TEXT,
+      visits INTEGER NOT NULL DEFAULT 0,
+      total_spend DECIMAL(12,2) NOT NULL DEFAULT 0,
+      last_visit_at TIMESTAMP(3),
+      notes TEXT,
+      created_at TIMESTAMP(3) NOT NULL DEFAULT now(),
+      updated_at TIMESTAMP(3) NOT NULL DEFAULT now()
+    )`,
+    continueOnError: true,
+  },
+  {
+    desc: "pharmacy_customers unique (pharmacy, patient)",
+    sql: `CREATE UNIQUE INDEX IF NOT EXISTS pharmacy_customers_pharmacy_patient_key ON pharmacy_customers (pharmacy_id, patient_id)`,
+    continueOnError: true,
+  },
+  {
+    desc: "pharmacy_customers pharmacy/visit index",
+    sql: `CREATE INDEX IF NOT EXISTS pharmacy_customers_pharmacy_visit_idx ON pharmacy_customers (pharmacy_id, last_visit_at)`,
+    continueOnError: true,
+  },
+  {
+    desc: "consult_redemptions table (discounts given against a member code)",
+    sql: `CREATE TABLE IF NOT EXISTS consult_redemptions (
+      id TEXT PRIMARY KEY,
+      patient_id TEXT NOT NULL,
+      pharmacy_id TEXT,
+      kind TEXT NOT NULL,
+      description TEXT,
+      gross_naira DECIMAL(12,2) NOT NULL,
+      discount_naira DECIMAL(12,2) NOT NULL,
+      created_at TIMESTAMP(3) NOT NULL DEFAULT now()
+    )`,
+    continueOnError: true,
+  },
+  {
+    desc: "consult_redemptions patient/created index",
+    sql: `CREATE INDEX IF NOT EXISTS consult_redemptions_patient_created_idx ON consult_redemptions (patient_id, created_at)`,
+    continueOnError: true,
+  },
+  {
+    desc: "consult_redemptions pharmacy/created index",
+    sql: `CREATE INDEX IF NOT EXISTS consult_redemptions_pharmacy_created_idx ON consult_redemptions (pharmacy_id, created_at)`,
+    continueOnError: true,
+  },
+  // The care plan moved onto the patient portal's own identity: enrolment is
+  // keyed on the patient's email, the code is only issued once they pay, and
+  // the goal question was dropped.
+  {
+    desc: "consult_patients.code becomes nullable (issued only on payment)",
+    sql: `ALTER TABLE consult_patients ALTER COLUMN code DROP NOT NULL`,
+    continueOnError: true,
+  },
+  {
+    desc: "consult_patients.consent_at column",
+    sql: `ALTER TABLE consult_patients ADD COLUMN IF NOT EXISTS consent_at TIMESTAMP(3)`,
+    continueOnError: true,
+  },
+  {
+    desc: "consult_patients: drop the goal columns",
+    sql: `ALTER TABLE consult_patients DROP COLUMN IF EXISTS goal, DROP COLUMN IF EXISTS goal_metric`,
+    continueOnError: true,
+  },
+  {
+    desc: "consult_patients: 40 messages a year by default",
+    sql: `ALTER TABLE consult_patients ALTER COLUMN message_allowance SET DEFAULT 40`,
+    continueOnError: true,
+  },
+  {
+    // Members sign in through the patient portal now, so the care plan has no
+    // session table of its own.
+    desc: "drop consult_patient_sessions (patient portal session is used)",
+    sql: `DROP TABLE IF EXISTS consult_patient_sessions`,
+    continueOnError: true,
+  },
+  {
+    desc: "consult_settings: 40 messages a year by default",
+    sql: `ALTER TABLE consult_settings ALTER COLUMN message_allowance SET DEFAULT 40`,
+    continueOnError: true,
+  },
+  {
+    desc: "consult_settings default row",
+    sql: `INSERT INTO consult_settings (id) VALUES ('default') ON CONFLICT (id) DO NOTHING`,
+    continueOnError: true,
+  },
+  {
+    // Changing the column default only affects new rows — the live settings row
+    // and every member enrolled under it were created at 10.
+    //
+    // One-shot by construction: the CTE only returns a row while settings is
+    // still 10, so a later deliberate choice of 10 by an admin is not undone
+    // by the next deploy.
+    desc: "care plan: lift the 10-message allowance to 40 (settings + members)",
+    sql: `
+      WITH bumped AS (
+        UPDATE consult_settings SET message_allowance = 40
+        WHERE id = 'default' AND message_allowance = 10
+        RETURNING 1
+      )
+      UPDATE consult_patients SET message_allowance = 40
+      WHERE message_allowance = 10 AND EXISTS (SELECT 1 FROM bumped)`,
+    continueOnError: true,
+  },
+  {
+    desc: "pharmacies.logo_url column",
+    sql: `ALTER TABLE pharmacies ADD COLUMN IF NOT EXISTS logo_url TEXT`,
+    continueOnError: true,
+  },
+  {
+    desc: "pharmacies.pin_hash column (sign in with a PIN, not a code each time)",
+    sql: `ALTER TABLE pharmacies ADD COLUMN IF NOT EXISTS pin_hash TEXT`,
+    continueOnError: true,
+  },
+  {
+    desc: "labs.state column (structured location for patient filtering)",
+    sql: `ALTER TABLE labs ADD COLUMN IF NOT EXISTS state TEXT`,
+    continueOnError: true,
+  },
+  {
+    desc: "labs.city column (local government area)",
+    sql: `ALTER TABLE labs ADD COLUMN IF NOT EXISTS city TEXT`,
+    continueOnError: true,
+  },
+  {
+    desc: "pharmacies location index (patient directory filter)",
+    sql: `CREATE INDEX IF NOT EXISTS pharmacies_state_active_idx ON pharmacies (state, active)`,
+    continueOnError: true,
+  },
+
+  // ── Care-plan credentialling & orders ───────────────────────────────────
+  {
+    desc: "doctor_profiles.consult_approved (admin clears a doctor for the care plan)",
+    sql: `ALTER TABLE doctor_profiles ADD COLUMN IF NOT EXISTS consult_approved BOOLEAN NOT NULL DEFAULT false`,
+    continueOnError: true,
+  },
+  {
+    desc: "doctor_credentials table (licence, MDCN number, review status)",
+    sql: `CREATE TABLE IF NOT EXISTS doctor_credentials (
+      email TEXT PRIMARY KEY,
+      mdcn_number TEXT,
+      license_expires_at DATE,
+      license_doc_url TEXT,
+      id_doc_url TEXT,
+      cv_url TEXT,
+      qualifications TEXT,
+      specialty TEXT,
+      years_experience INTEGER,
+      note TEXT,
+      status TEXT NOT NULL DEFAULT 'unsubmitted',
+      submitted_at TIMESTAMP(3),
+      reviewed_at TIMESTAMP(3),
+      reviewed_by TEXT,
+      review_note TEXT,
+      created_at TIMESTAMP(3) NOT NULL DEFAULT now(),
+      updated_at TIMESTAMP(3) NOT NULL DEFAULT now()
+    )`,
+    continueOnError: true,
+  },
+  {
+    desc: "doctor_credentials review-queue index",
+    sql: `CREATE INDEX IF NOT EXISTS doctor_credentials_status_idx ON doctor_credentials (status, submitted_at)`,
+    continueOnError: true,
+  },
+  {
+    desc: "consult_prescriptions table (medication plan)",
+    sql: `CREATE TABLE IF NOT EXISTS consult_prescriptions (
+      id TEXT PRIMARY KEY,
+      patient_id TEXT NOT NULL,
+      doctor_email TEXT NOT NULL,
+      medication TEXT NOT NULL,
+      dosage TEXT,
+      frequency TEXT,
+      duration_days INTEGER,
+      instructions TEXT,
+      start_date DATE,
+      end_date DATE,
+      status TEXT NOT NULL DEFAULT 'active',
+      stopped_note TEXT,
+      created_at TIMESTAMP(3) NOT NULL DEFAULT now(),
+      updated_at TIMESTAMP(3) NOT NULL DEFAULT now()
+    )`,
+    continueOnError: true,
+  },
+  {
+    desc: "consult_prescriptions patient index",
+    sql: `CREATE INDEX IF NOT EXISTS consult_prescriptions_patient_created_idx ON consult_prescriptions (patient_id, created_at)`,
+    continueOnError: true,
+  },
+  {
+    desc: "consult_prescriptions doctor index",
+    sql: `CREATE INDEX IF NOT EXISTS consult_prescriptions_doctor_status_idx ON consult_prescriptions (doctor_email, status)`,
+    continueOnError: true,
+  },
+  {
+    desc: "consult_test_orders table (monitoring schedule)",
+    sql: `CREATE TABLE IF NOT EXISTS consult_test_orders (
+      id TEXT PRIMARY KEY,
+      patient_id TEXT NOT NULL,
+      doctor_email TEXT NOT NULL,
+      tests TEXT NOT NULL,
+      reason TEXT,
+      due_date DATE,
+      recurrence TEXT NOT NULL DEFAULT 'once',
+      status TEXT NOT NULL DEFAULT 'scheduled',
+      completed_at TIMESTAMP(3),
+      result_note TEXT,
+      created_at TIMESTAMP(3) NOT NULL DEFAULT now(),
+      updated_at TIMESTAMP(3) NOT NULL DEFAULT now()
+    )`,
+    continueOnError: true,
+  },
+  {
+    desc: "consult_test_orders patient index",
+    sql: `CREATE INDEX IF NOT EXISTS consult_test_orders_patient_created_idx ON consult_test_orders (patient_id, created_at)`,
+    continueOnError: true,
+  },
+  {
+    desc: "consult_test_orders doctor index",
+    sql: `CREATE INDEX IF NOT EXISTS consult_test_orders_doctor_status_idx ON consult_test_orders (doctor_email, status)`,
+    continueOnError: true,
+  },
+  {
+    desc: "consult_test_orders due-date index (what's overdue)",
+    sql: `CREATE INDEX IF NOT EXISTS consult_test_orders_status_due_idx ON consult_test_orders (status, due_date)`,
+    continueOnError: true,
+  },
+  {
+    // The patient portal reads its own retainerships by email; the composite
+    // unique starts with doctor_email so it couldn't serve that lookup.
+    desc: "doctor_patients index (patient_email) — patient portal",
+    sql: `CREATE INDEX IF NOT EXISTS doctor_patients_patient_email_idx ON doctor_patients (patient_email)`,
+    continueOnError: true,
+  },
+  {
+    desc: "consult_patients preferred pharmacy & lab",
+    sql: `ALTER TABLE consult_patients
+      ADD COLUMN IF NOT EXISTS preferred_pharmacy_id TEXT,
+      ADD COLUMN IF NOT EXISTS preferred_lab_id TEXT`,
+    continueOnError: true,
+  },
+  {
+    // Taken before payment, so the assigned doctor has something to work from
+    // the moment a member lands in their pool.
+    desc: "consult_patients baseline health answers",
+    sql: `ALTER TABLE consult_patients
+      ADD COLUMN IF NOT EXISTS baseline_medications TEXT,
+      ADD COLUMN IF NOT EXISTS medication_adherence TEXT,
+      ADD COLUMN IF NOT EXISTS hypertension_years INTEGER,
+      ADD COLUMN IF NOT EXISTS diabetes_years INTEGER,
+      ADD COLUMN IF NOT EXISTS baseline_bp_systolic INTEGER,
+      ADD COLUMN IF NOT EXISTS baseline_bp_diastolic INTEGER,
+      ADD COLUMN IF NOT EXISTS baseline_bp_taken_on DATE,
+      ADD COLUMN IF NOT EXISTS baseline_glucose_mg_dl DECIMAL(6,1),
+      ADD COLUMN IF NOT EXISTS baseline_glucose_context TEXT,
+      ADD COLUMN IF NOT EXISTS baseline_glucose_taken_on DATE,
+      ADD COLUMN IF NOT EXISTS baseline_notes TEXT,
+      ADD COLUMN IF NOT EXISTS baseline_captured_at TIMESTAMP(3)`,
+    continueOnError: true,
+  },
+  {
+    desc: "consult_patients adherence index (programme statistics)",
+    sql: `CREATE INDEX IF NOT EXISTS consult_patients_adherence_idx ON consult_patients (medication_adherence)`,
+    continueOnError: true,
+  },
+  {
+    desc: "consult_patients screening answers",
+    sql: `ALTER TABLE consult_patients
+      ADD COLUMN IF NOT EXISTS baseline_last_visit TEXT,
+      ADD COLUMN IF NOT EXISTS baseline_self_care TEXT`,
+    continueOnError: true,
+  },
+  {
+    // A member who moves doctors takes their thread and notes with them,
+    // unless they opt out.
+    desc: "consult_patients history handover",
+    sql: `ALTER TABLE consult_patients
+      ADD COLUMN IF NOT EXISTS share_history BOOLEAN NOT NULL DEFAULT true,
+      ADD COLUMN IF NOT EXISTS previous_doctors TEXT[] NOT NULL DEFAULT ARRAY[]::TEXT[]`,
+    continueOnError: true,
+  },
+  {
+    desc: "consult_messages image attachments",
+    sql: `ALTER TABLE consult_messages ADD COLUMN IF NOT EXISTS image_url TEXT`,
+    continueOnError: true,
+  },
+  {
+    // Written in natural language, parsed into fields; the raw line is kept so
+    // the parse can always be checked against what the doctor actually typed.
+    desc: "consult_prescriptions natural-language entry",
+    sql: `ALTER TABLE consult_prescriptions
+      ADD COLUMN IF NOT EXISTS form TEXT,
+      ADD COLUMN IF NOT EXISTS raw_text TEXT,
+      ADD COLUMN IF NOT EXISTS cancel_reason TEXT`,
+    continueOnError: true,
+  },
+  {
+    desc: "consult_treatment_plans table",
+    sql: `CREATE TABLE IF NOT EXISTS consult_treatment_plans (
+      id TEXT PRIMARY KEY,
+      patient_id TEXT NOT NULL,
+      doctor_email TEXT NOT NULL,
+      title TEXT NOT NULL DEFAULT 'Treatment plan',
+      note TEXT,
+      status TEXT NOT NULL DEFAULT 'active',
+      notified_at TIMESTAMP(3),
+      created_at TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+      updated_at TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP
+    )`,
+    continueOnError: true,
+  },
+  {
+    desc: "consult_treatment_plans patient index",
+    sql: `CREATE INDEX IF NOT EXISTS consult_treatment_plans_patient_idx ON consult_treatment_plans (patient_id, status)`,
+    continueOnError: true,
+  },
+  {
+    desc: "consult_treatment_plans doctor index",
+    sql: `CREATE INDEX IF NOT EXISTS consult_treatment_plans_doctor_idx ON consult_treatment_plans (doctor_email, status)`,
+    continueOnError: true,
+  },
+  {
+    desc: "consult_treatment_items table",
+    sql: `CREATE TABLE IF NOT EXISTS consult_treatment_items (
+      id TEXT PRIMARY KEY,
+      plan_id TEXT NOT NULL,
+      label TEXT NOT NULL,
+      detail TEXT,
+      cadence TEXT NOT NULL DEFAULT 'weekly',
+      remind BOOLEAN NOT NULL DEFAULT true,
+      position INTEGER NOT NULL DEFAULT 0,
+      last_done_at TIMESTAMP(3),
+      done_count INTEGER NOT NULL DEFAULT 0,
+      created_at TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+      updated_at TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP
+    )`,
+    continueOnError: true,
+  },
+  {
+    desc: "consult_treatment_items plan index",
+    sql: `CREATE INDEX IF NOT EXISTS consult_treatment_items_plan_idx ON consult_treatment_items (plan_id, position)`,
+    continueOnError: true,
+  },
+  {
+    desc: "consult_templates table",
+    sql: `CREATE TABLE IF NOT EXISTS consult_templates (
+      id TEXT PRIMARY KEY,
+      doctor_email TEXT NOT NULL,
+      kind TEXT NOT NULL,
+      name TEXT NOT NULL,
+      payload JSONB NOT NULL,
+      uses INTEGER NOT NULL DEFAULT 0,
+      created_at TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+      updated_at TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP
+    )`,
+    continueOnError: true,
+  },
+  {
+    desc: "consult_templates doctor index",
+    sql: `CREATE INDEX IF NOT EXISTS consult_templates_doctor_kind_idx ON consult_templates (doctor_email, kind)`,
+    continueOnError: true,
+  },
+  {
+    desc: "consult_fulfilments table (what a partner actually dispensed or ran)",
+    sql: `    CREATE TABLE IF NOT EXISTS consult_fulfilments (
+      id TEXT PRIMARY KEY,
+      patient_id TEXT NOT NULL,
+      kind TEXT NOT NULL,
+      prescription_id TEXT,
+      test_order_id TEXT,
+      pharmacy_id TEXT,
+      lab_id TEXT,
+      status TEXT NOT NULL,
+      quantity INTEGER,
+      note TEXT,
+      gross_naira DECIMAL(12,2),
+      discount_naira DECIMAL(12,2),
+      recorded_by TEXT,
+      created_at TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP
+    )`,
+    continueOnError: true,
+  },
+  {
+    desc: "consult_fulfilments patient index",
+    sql: `CREATE INDEX IF NOT EXISTS consult_fulfilments_patient_idx ON consult_fulfilments (patient_id, created_at)`,
+    continueOnError: true,
+  },
+  {
+    desc: "consult_fulfilments prescription index",
+    sql: `CREATE INDEX IF NOT EXISTS consult_fulfilments_prescription_idx ON consult_fulfilments (prescription_id)`,
+    continueOnError: true,
+  },
+  {
+    desc: "consult_fulfilments test order index",
+    sql: `CREATE INDEX IF NOT EXISTS consult_fulfilments_test_order_idx ON consult_fulfilments (test_order_id)`,
+    continueOnError: true,
+  },
+  {
+    desc: "consult_fulfilments pharmacy index",
+    sql: `CREATE INDEX IF NOT EXISTS consult_fulfilments_pharmacy_idx ON consult_fulfilments (pharmacy_id, created_at)`,
+    continueOnError: true,
+  },
+  {
+    desc: "consult_fulfilments lab index",
+    sql: `CREATE INDEX IF NOT EXISTS consult_fulfilments_lab_idx ON consult_fulfilments (lab_id, created_at)`,
+    continueOnError: true,
+  },
+  {
+    desc: "consult_plan_logs table (a member's daily log against their plan)",
+    sql: `    CREATE TABLE IF NOT EXISTS consult_plan_logs (
+      id TEXT PRIMARY KEY,
+      item_id TEXT NOT NULL,
+      patient_id TEXT NOT NULL,
+      note TEXT,
+      systolic INTEGER,
+      diastolic INTEGER,
+      glucose_mg_dl DECIMAL(6,1),
+      weight_kg DECIMAL(5,1),
+      value_number DECIMAL(10,2),
+      value_text TEXT,
+      logged_for DATE NOT NULL,
+      created_at TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP
+    )`,
+    continueOnError: true,
+  },
+  {
+    desc: "consult_plan_logs patient index",
+    sql: `CREATE INDEX IF NOT EXISTS consult_plan_logs_patient_idx ON consult_plan_logs (patient_id, created_at)`,
+    continueOnError: true,
+  },
+  {
+    desc: "consult_plan_logs item index",
+    sql: `CREATE INDEX IF NOT EXISTS consult_plan_logs_item_idx ON consult_plan_logs (item_id, logged_for)`,
+    continueOnError: true,
+  },
+  {
+    desc: "consult_treatment_items measure columns",
+    sql: `ALTER TABLE consult_treatment_items
+      ADD COLUMN IF NOT EXISTS measure TEXT NOT NULL DEFAULT 'none',
+      ADD COLUMN IF NOT EXISTS measure_label TEXT`,
+    continueOnError: true,
+  },
+  {
+    desc: "consult_test_orders.code (a reference any Poveon lab can look up)",
+    sql: `ALTER TABLE consult_test_orders ADD COLUMN IF NOT EXISTS code TEXT`,
+    continueOnError: true,
+  },
+  {
+    desc: "consult_test_orders unique code",
+    sql: `CREATE UNIQUE INDEX IF NOT EXISTS consult_test_orders_code_key ON consult_test_orders (code)`,
+    continueOnError: true,
+  },
+  {
+    desc: "consult_patients risk columns (triage for the doctor's list)",
+    sql: `ALTER TABLE consult_patients
+      ADD COLUMN IF NOT EXISTS risk_level TEXT NOT NULL DEFAULT 'none',
+      ADD COLUMN IF NOT EXISTS risk_reason TEXT,
+      ADD COLUMN IF NOT EXISTS risk_rated_at TIMESTAMP(3)`,
+    continueOnError: true,
+  },
+  {
+    desc: "consult_patients risk index",
+    sql: `CREATE INDEX IF NOT EXISTS consult_patients_risk_idx ON consult_patients (doctor_email, risk_level)`,
+    continueOnError: true,
+  },
+  {
+    desc: "consult_patients preferred pharmacy index (partner roster)",
+    sql: `CREATE INDEX IF NOT EXISTS consult_patients_pref_pharmacy_idx ON consult_patients (preferred_pharmacy_id)`,
+    continueOnError: true,
+  },
+  {
+    desc: "consult_patients preferred lab index (partner roster)",
+    sql: `CREATE INDEX IF NOT EXISTS consult_patients_pref_lab_idx ON consult_patients (preferred_lab_id)`,
+    continueOnError: true,
+  },
+  {
+    desc: "consult_topups table (extra messages bought mid-year)",
+    sql: `    CREATE TABLE IF NOT EXISTS consult_topups (
+      id TEXT PRIMARY KEY,
+      patient_id TEXT NOT NULL,
+      messages INTEGER NOT NULL,
+      amount_naira DECIMAL(12,2) NOT NULL,
+      paystack_ref TEXT,
+      status TEXT NOT NULL DEFAULT 'pending',
+      created_at TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+      paid_at TIMESTAMP(3)
+    )`,
+    continueOnError: true,
+  },
+  {
+    desc: "consult_topups unique paystack ref (a repeated callback must not grant twice)",
+    sql: `CREATE UNIQUE INDEX IF NOT EXISTS consult_topups_ref_key ON consult_topups (paystack_ref)`,
+    continueOnError: true,
+  },
+  {
+    desc: "consult_topups patient index",
+    sql: `CREATE INDEX IF NOT EXISTS consult_topups_patient_idx ON consult_topups (patient_id, created_at)`,
+    continueOnError: true,
+  },
+  {
+    desc: "consult_settings top-up price and size",
+    sql: `ALTER TABLE consult_settings
+      ADD COLUMN IF NOT EXISTS topup_price_naira DECIMAL(12,2) NOT NULL DEFAULT 10000,
+      ADD COLUMN IF NOT EXISTS topup_messages INTEGER NOT NULL DEFAULT 40`,
+    continueOnError: true,
+  },
+  {
+    desc: "consult_treatment_plans review columns (a drafted plan waits on the doctor)",
+    sql: `ALTER TABLE consult_treatment_plans
+      ADD COLUMN IF NOT EXISTS source TEXT NOT NULL DEFAULT 'doctor',
+      ADD COLUMN IF NOT EXISTS reviewed_at TIMESTAMP(3),
+      ADD COLUMN IF NOT EXISTS reviewed_by TEXT`,
+    continueOnError: true,
+  },
+  {
+    desc: "consult_prescriptions.source (doctor's own, or a suggestion to confirm)",
+    sql: `ALTER TABLE consult_prescriptions ADD COLUMN IF NOT EXISTS source TEXT NOT NULL DEFAULT 'doctor'`,
+    continueOnError: true,
+  },
+  {
+    desc: "consult_screenings table (symptom rounds)",
+    sql: `    CREATE TABLE IF NOT EXISTS consult_screenings (
+      id TEXT PRIMARY KEY,
+      patient_id TEXT NOT NULL,
+      source TEXT NOT NULL DEFAULT 'routine',
+      answers JSONB NOT NULL DEFAULT '{}',
+      severity TEXT NOT NULL DEFAULT 'none',
+      flagged TEXT[] NOT NULL DEFAULT '{}',
+      due_on DATE NOT NULL,
+      seen_at TIMESTAMP(3),
+      seen_by TEXT,
+      created_at TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP
+    )`,
+    continueOnError: true,
+  },
+  {
+    desc: "consult_screenings patient index",
+    sql: `CREATE INDEX IF NOT EXISTS consult_screenings_patient_idx ON consult_screenings (patient_id, created_at)`,
+    continueOnError: true,
+  },
+  {
+    desc: "consult_screenings due index (who is overdue, worst first)",
+    sql: `CREATE INDEX IF NOT EXISTS consult_screenings_due_idx ON consult_screenings (severity, due_on)`,
+    continueOnError: true,
+  },
+  {
+    desc: "consult_patients.reminded_at (the daily nudge job's high-water mark)",
+    sql: `ALTER TABLE consult_patients ADD COLUMN IF NOT EXISTS reminded_at TIMESTAMP(3)`,
+    continueOnError: true,
+  },
+  {
+    desc: "pharmacies pricing + payout columns",
+    sql: `ALTER TABLE pharmacies
+      ADD COLUMN IF NOT EXISTS margin_percent DECIMAL(5,2) NOT NULL DEFAULT 5,
+      ADD COLUMN IF NOT EXISTS paystack_subaccount_code TEXT,
+      ADD COLUMN IF NOT EXISTS bank_code TEXT,
+      ADD COLUMN IF NOT EXISTS account_number TEXT,
+      ADD COLUMN IF NOT EXISTS account_name TEXT`,
+    continueOnError: true,
+  },
+  {
+    desc: "pharmacy_medications table (a pharmacy's price list)",
+    sql: `    CREATE TABLE IF NOT EXISTS pharmacy_medications (
+      id TEXT PRIMARY KEY,
+      pharmacy_id TEXT NOT NULL,
+      name TEXT NOT NULL,
+      form TEXT,
+      strength TEXT,
+      pack TEXT,
+      key TEXT NOT NULL,
+      list_price DECIMAL(12,2) NOT NULL,
+      concession DECIMAL(12,2) NOT NULL DEFAULT 0,
+      margin_percent DECIMAL(5,2),
+      in_stock BOOLEAN NOT NULL DEFAULT true,
+      active BOOLEAN NOT NULL DEFAULT true,
+      notes TEXT,
+      batch_id TEXT,
+      created_at TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+      updated_at TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP
+    )`,
+    continueOnError: true,
+  },
+  {
+    desc: "pharmacy_medications unique key (a re-upload updates, never duplicates)",
+    sql: `CREATE UNIQUE INDEX IF NOT EXISTS pharmacy_medications_key ON pharmacy_medications (pharmacy_id, key)`,
+    continueOnError: true,
+  },
+  {
+    desc: "pharmacy_medications lookup indexes",
+    sql: `CREATE INDEX IF NOT EXISTS pharmacy_medications_active_idx ON pharmacy_medications (pharmacy_id, active)`,
+    continueOnError: true,
+  },
+  {
+    desc: "pharmacy_medications name index (search across the network)",
+    sql: `CREATE INDEX IF NOT EXISTS pharmacy_medications_name_idx ON pharmacy_medications (name)`,
+    continueOnError: true,
+  },
+  {
+    desc: "pharmacy_price_batches table (upload history)",
+    sql: `    CREATE TABLE IF NOT EXISTS pharmacy_price_batches (
+      id TEXT PRIMARY KEY,
+      pharmacy_id TEXT NOT NULL,
+      filename TEXT,
+      rows_seen INTEGER NOT NULL DEFAULT 0,
+      rows_written INTEGER NOT NULL DEFAULT 0,
+      rows_skipped INTEGER NOT NULL DEFAULT 0,
+      problems JSONB NOT NULL DEFAULT '[]',
+      uploaded_by TEXT,
+      created_at TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP
+    )`,
+    continueOnError: true,
+  },
+  {
+    desc: "pharmacy_price_batches index",
+    sql: `CREATE INDEX IF NOT EXISTS pharmacy_price_batches_idx ON pharmacy_price_batches (pharmacy_id, created_at)`,
+    continueOnError: true,
+  },
+  {
+    desc: "medication_orders table (a member paying for medicine in the app)",
+    sql: `    CREATE TABLE IF NOT EXISTS medication_orders (
+      id TEXT PRIMARY KEY,
+      patient_id TEXT NOT NULL,
+      pharmacy_id TEXT NOT NULL,
+      for_month DATE NOT NULL,
+      total_naira DECIMAL(12,2) NOT NULL,
+      pharmacy_naira DECIMAL(12,2) NOT NULL,
+      poveon_naira DECIMAL(12,2) NOT NULL,
+      saving_naira DECIMAL(12,2) NOT NULL,
+      status TEXT NOT NULL DEFAULT 'pending',
+      paystack_ref TEXT,
+      paid_at TIMESTAMP(3),
+      ready_at TIMESTAMP(3),
+      collected_at TIMESTAMP(3),
+      collected_by TEXT,
+      cancel_reason TEXT,
+      reminded_at TIMESTAMP(3),
+      created_at TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+      updated_at TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP
+    )`,
+    continueOnError: true,
+  },
+  {
+    desc: "medication_orders unique paystack ref (a repeated callback must not pay twice)",
+    sql: `CREATE UNIQUE INDEX IF NOT EXISTS medication_orders_ref_key ON medication_orders (paystack_ref)`,
+    continueOnError: true,
+  },
+  {
+    desc: "medication_orders patient index",
+    sql: `CREATE INDEX IF NOT EXISTS medication_orders_patient_idx ON medication_orders (patient_id, created_at)`,
+    continueOnError: true,
+  },
+  {
+    desc: "medication_orders pharmacy index (their incoming queue)",
+    sql: `CREATE INDEX IF NOT EXISTS medication_orders_pharmacy_idx ON medication_orders (pharmacy_id, status)`,
+    continueOnError: true,
+  },
+  {
+    desc: "medication_orders month index (what is due to be collected)",
+    sql: `CREATE INDEX IF NOT EXISTS medication_orders_month_idx ON medication_orders (status, for_month)`,
+    continueOnError: true,
+  },
+  {
+    desc: "medication_order_items table",
+    sql: `    CREATE TABLE IF NOT EXISTS medication_order_items (
+      id TEXT PRIMARY KEY,
+      order_id TEXT NOT NULL,
+      medication_id TEXT,
+      prescription_id TEXT,
+      name TEXT NOT NULL,
+      strength TEXT,
+      form TEXT,
+      quantity INTEGER NOT NULL DEFAULT 1,
+      list_price DECIMAL(12,2) NOT NULL,
+      concession DECIMAL(12,2) NOT NULL,
+      margin_percent DECIMAL(5,2) NOT NULL,
+      member_naira DECIMAL(12,2) NOT NULL,
+      pharmacy_naira DECIMAL(12,2) NOT NULL,
+      poveon_naira DECIMAL(12,2) NOT NULL
+    )`,
+    continueOnError: true,
+  },
+  {
+    desc: "medication_order_items indexes",
+    sql: `CREATE INDEX IF NOT EXISTS medication_order_items_order_idx ON medication_order_items (order_id)`,
+    continueOnError: true,
+  },
+  {
+    desc: "medication_order_items medication index",
+    sql: `CREATE INDEX IF NOT EXISTS medication_order_items_med_idx ON medication_order_items (medication_id)`,
+    continueOnError: true,
+  },
+  {
+    desc: "consult_settings new commercial terms (onboarding fee, monthly doctor pay, bonus pool)",
+    sql: `ALTER TABLE consult_settings
+      ADD COLUMN IF NOT EXISTS doctor_monthly_naira DECIMAL(12,2) NOT NULL DEFAULT 500,
+      ADD COLUMN IF NOT EXISTS bonus_pool_percent DECIMAL(5,2) NOT NULL DEFAULT 10`,
+    continueOnError: true,
+  },
+  {
+    desc: "doctor_bonus_pools table (one month's pool)",
+    sql: `    CREATE TABLE IF NOT EXISTS doctor_bonus_pools (
+      id TEXT PRIMARY KEY,
+      period TEXT NOT NULL,
+      revenue_naira DECIMAL(14,2) NOT NULL,
+      pool_percent DECIMAL(5,2) NOT NULL,
+      pool_naira DECIMAL(14,2) NOT NULL,
+      revenue_medication DECIMAL(14,2) NOT NULL DEFAULT 0,
+      revenue_onboarding DECIMAL(14,2) NOT NULL DEFAULT 0,
+      revenue_topups DECIMAL(14,2) NOT NULL DEFAULT 0,
+      total_weight INTEGER NOT NULL DEFAULT 0,
+      status TEXT NOT NULL DEFAULT 'draft',
+      computed_at TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+      paid_at TIMESTAMP(3),
+      paid_by TEXT
+    )`,
+    continueOnError: true,
+  },
+  {
+    desc: "doctor_bonus_pools one row per month (recomputing must replace, never duplicate)",
+    sql: `CREATE UNIQUE INDEX IF NOT EXISTS doctor_bonus_pools_period_key ON doctor_bonus_pools (period)`,
+    continueOnError: true,
+  },
+  {
+    desc: "doctor_bonus_pools status index",
+    sql: `CREATE INDEX IF NOT EXISTS doctor_bonus_pools_status_idx ON doctor_bonus_pools (status, period)`,
+    continueOnError: true,
+  },
+  {
+    desc: "doctor_bonus_shares table (what each doctor was owed, and why)",
+    sql: `    CREATE TABLE IF NOT EXISTS doctor_bonus_shares (
+      id TEXT PRIMARY KEY,
+      pool_id TEXT NOT NULL,
+      doctor_email TEXT NOT NULL,
+      patients INTEGER NOT NULL DEFAULT 0,
+      messages INTEGER NOT NULL DEFAULT 0,
+      weight INTEGER NOT NULL DEFAULT 0,
+      share_percent DECIMAL(6,3) NOT NULL,
+      amount_naira DECIMAL(12,2) NOT NULL
+    )`,
+    continueOnError: true,
+  },
+  {
+    desc: "doctor_bonus_shares one row per doctor per pool",
+    sql: `CREATE UNIQUE INDEX IF NOT EXISTS doctor_bonus_shares_key ON doctor_bonus_shares (pool_id, doctor_email)`,
+    continueOnError: true,
+  },
+  {
+    desc: "doctor_bonus_shares doctor index (a doctor's own history)",
+    sql: `CREATE INDEX IF NOT EXISTS doctor_bonus_shares_doctor_idx ON doctor_bonus_shares (doctor_email)`,
+    continueOnError: true,
+  },
+  {
+    desc: "push_subscriptions table (PWA notifications)",
+    sql: `    CREATE TABLE IF NOT EXISTS push_subscriptions (
+      id TEXT PRIMARY KEY,
+      endpoint TEXT NOT NULL,
+      p256dh TEXT NOT NULL,
+      auth TEXT NOT NULL,
+      role TEXT NOT NULL,
+      email TEXT NOT NULL,
+      user_agent TEXT,
+      created_at TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+      last_used TIMESTAMP(3),
+      failed_at TIMESTAMP(3)
+    )`,
+    continueOnError: true,
+  },
+  {
+    desc: "push_subscriptions unique endpoint",
+    sql: `CREATE UNIQUE INDEX IF NOT EXISTS push_subscriptions_endpoint_key ON push_subscriptions (endpoint)`,
+    continueOnError: true,
+  },
+  {
+    desc: "push_subscriptions owner index",
+    sql: `CREATE INDEX IF NOT EXISTS push_subscriptions_owner_idx ON push_subscriptions (role, email)`,
+    continueOnError: true,
+  },
+  {
+    desc: "consult_test_orders.request_id (links a scheduled test to the lab request it became)",
+    sql: `ALTER TABLE consult_test_orders ADD COLUMN IF NOT EXISTS request_id TEXT`,
+    continueOnError: true,
+  },
+  {
+    desc: "consult_test_orders request index",
+    sql: `CREATE INDEX IF NOT EXISTS consult_test_orders_request_idx ON consult_test_orders (request_id)`,
+    continueOnError: true,
+  },
+  {
+    desc: "patient_profiles location columns (nearest partners)",
+    sql: `ALTER TABLE patient_profiles
+      ADD COLUMN IF NOT EXISTS state TEXT,
+      ADD COLUMN IF NOT EXISTS city TEXT`,
+    continueOnError: true,
+  },
+  {
+    desc: "consult_patients manual risk columns (a doctor's own judgement)",
+    sql: `ALTER TABLE consult_patients
+      ADD COLUMN IF NOT EXISTS risk_manual TEXT,
+      ADD COLUMN IF NOT EXISTS risk_note TEXT,
+      ADD COLUMN IF NOT EXISTS risk_set_by TEXT`,
+    continueOnError: true,
+  },
+  {
+    desc: "consult_patients pharmacy choice: when it was made, and the first one",
+    sql: `ALTER TABLE consult_patients
+      ADD COLUMN IF NOT EXISTS preferred_pharmacy_set_at TIMESTAMP(3),
+      ADD COLUMN IF NOT EXISTS first_pharmacy_id TEXT,
+      ADD COLUMN IF NOT EXISTS first_pharmacy_at TIMESTAMP(3)`,
+    continueOnError: true,
+  },
+  {
+    // Members who chose a pharmacy before the column existed are backfilled
+    // from their sign-up date, so a pharmacy's attribution does not start empty.
+    desc: "backfill first_pharmacy for members who already chose one",
+    sql: `UPDATE consult_patients
+      SET first_pharmacy_id = preferred_pharmacy_id,
+          first_pharmacy_at = COALESCE(subscribed_at, created_at),
+          preferred_pharmacy_set_at = COALESCE(preferred_pharmacy_set_at, subscribed_at, created_at)
+      WHERE preferred_pharmacy_id IS NOT NULL AND first_pharmacy_id IS NULL`,
+    continueOnError: true,
+  },
+  {
+    desc: "consult_patients first-choice pharmacy index (the monthly sign-up count)",
+    sql: `CREATE INDEX IF NOT EXISTS consult_patients_first_pharmacy_idx
+      ON consult_patients (first_pharmacy_id, first_pharmacy_at)`,
+    continueOnError: true,
+  },
+  {
+    desc: "consult_earnings monthly rate (doctor paid per month, not a lump sum)",
+    sql: `ALTER TABLE consult_earnings ADD COLUMN IF NOT EXISTS monthly_naira DECIMAL(12,2)`,
+    continueOnError: true,
+  },
+  {
+    desc: "consult_patients AI summary columns",
+    sql: `ALTER TABLE consult_patients
+      ADD COLUMN IF NOT EXISTS summary_text TEXT,
+      ADD COLUMN IF NOT EXISTS summary_at TIMESTAMP(3),
+      ADD COLUMN IF NOT EXISTS summary_checked_at TIMESTAMP(3),
+      ADD COLUMN IF NOT EXISTS summary_fingerprint TEXT`,
+    continueOnError: true,
+  },
 ];
 
 let failed = false;
 
+const skipped = [];
+
 for (const { desc, sql, continueOnError } of migrations) {
   try {
-    await execWithRetry(sql);
-    console.log(`  ✓ ${desc}`);
+    const count = await execWithRetry(sql);
+    console.log(`  ✓ ${desc}${count > 1 ? ` (${count} statements)` : ""}`);
   } catch (err) {
     if (continueOnError) {
-      // Expected failures (e.g., column already nullable) are ignored
+      // Most of these are genuinely expected — a column that is already
+      // nullable, an index that already exists. But the reason is recorded and
+      // summarised at the end, because a step silently doing nothing is how a
+      // table went missing in production while the build reported success.
       console.log(`  ✓ ${desc} (already applied or not needed)`);
+      skipped.push({ desc, reason: shortError(err) });
     } else {
       console.error(`  ✗ ${desc}: ${err.message}`);
       failed = true;
     }
   }
+}
+
+// Anything that did not apply for a reason other than "it is already there".
+const suspicious = skipped.filter(
+  ({ reason }) =>
+    !/already exists|does not exist|duplicate|cannot be cast|is not a/i.test(reason) ||
+    /multiple commands|syntax error/i.test(reason)
+);
+if (suspicious.length) {
+  console.warn(`\n  ! ${suspicious.length} step(s) were skipped for an unexpected reason:`);
+  for (const { desc, reason } of suspicious) console.warn(`    - ${desc}: ${reason}`);
 }
 
 await prisma.$disconnect();

@@ -12,6 +12,9 @@ const CreateLabSchema = z.object({
   name: z.string().min(2).max(200),
   email: z.string().email(),
   address: z.string().min(3).max(500),
+  // Picked from the Nigeria list so patients can filter partners by location.
+  state: z.string().trim().max(80).optional().nullable(),
+  city: z.string().trim().max(80).optional().nullable(),
   description: z.string().max(1000).optional(),
   phones: z.array(z.object({ number: z.string().min(1), label: z.string() })).optional(),
   notification_email: z.string().email().optional(),
@@ -50,7 +53,7 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    const { name, email, address, description, phones, notification_email } = parsed.data;
+    const { name, email, address, state, city, description, phones, notification_email } = parsed.data;
     const tempPassword = parsed.data.tempPassword ?? generateTempPassword();
 
     // Derive a unique prefix
@@ -71,7 +74,7 @@ export async function POST(request: NextRequest) {
     let newLab: { id: string; name: string; prefix: string; email: string };
     try {
       newLab = await prisma.lab.create({
-        data: { name, prefix, address, email, ...(description ? { description } : {}), ...(phones ? { phones } : {}), ...(notification_email ? { notification_email } : {}) },
+        data: { name, prefix, address, email, ...(state ? { state } : {}), ...(city ? { city } : {}), ...(description ? { description } : {}), ...(phones ? { phones } : {}), ...(notification_email ? { notification_email } : {}) },
         select: { id: true, name: true, prefix: true, email: true },
       });
     } catch (err: unknown) {

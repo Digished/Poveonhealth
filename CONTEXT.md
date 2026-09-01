@@ -35,8 +35,86 @@
   - Request form pre-filled with lab ID
   - Health assistant works per-lab catalog
 
+### 3b. Care Plan (`/consults`)
+An annual subscription for people living with **hypertension** or **diabetes**.
+It runs on the **patient portal's own identity** — enrolment is keyed on the
+patient's email, so anyone we already hold an email for (a lab request, a
+referral) enrols from their dashboard without a second account.
+
+- `/consults` is a landing page whose one form creates (or signs into) a Poveon
+  account with an email and a 4-digit PIN — after that, no emailed codes
+- Enrolment itself is a **popup in `/dashboard`** (Care Plan tab), pre-filled
+  from the patient's profile or their most recent lab request, with consent on
+  the final step
+- One yearly payment (price set by admin, default ₦10,000) via Paystack
+- The **care code is only issued when the payment clears**, and the plan goes
+  inactive the moment its year runs out and isn't renewed
+- Members get discounts at partner labs and pharmacies plus an allowance of
+  asynchronous messages to a doctor (default 40 per year)
+- The platform assigns each new member to the accepting doctor carrying the
+  fewest live members and still under their own yearly cap
+- The doctor's share (default ₦6,000 per member-year) is held as a pending
+  entitlement and released into their wallet in monthly instalments
+  (pool ÷ release months); a member who leaves stops accruing
+- Admin controls price, doctor share, allowance, caps and discounts, and runs
+  the monthly release
+- Partner **pharmacies** are created by an admin, sign in with an emailed code
+  at `/pharmacy-login`, verify care codes and track their own regulars
+
+Routes: `/consults` (account creation), `/dashboard?tab=care` (the plan itself),
+`/consults/paid` (payment return), `/pharmacy-login`, `/pharmacy-dashboard`.
+Doctor side lives in the Care Plan tab of `/doc-login/dashboard`; admin side in
+the Care Plan and Pharmacies tabs.
+
+**Doctor credentialling:** a doctor cannot be assigned care-plan members until
+an admin approves them. They file MDCN number, annual practising licence (with
+a scan), qualifications and optional ID/CV under Care Plan → Credentials; an
+admin reviews it in Care Plan → Doctor approvals and approves, rejects with a
+reason, or revokes. `pickDoctorForMember` only ever considers
+`consult_approved` doctors. Credential documents live in a **private** Supabase
+bucket and are opened through short-lived signed URLs.
+
+**Manual activation:** admins can switch a member on by hand (Care Plan →
+Members → Activate a member) for anyone who paid outside Paystack. It runs the
+same `activateMembership` as a card payment, so the member gets a real care
+code, a doctor is assigned by the usual fair rotation, and that doctor's
+entitlement opens identically.
+
+**Preferred providers:** members pick a preferred pharmacy and laboratory during
+enrolment and can change either at any time from their care plan. It's a
+preference, not a restriction — the care code works at every partner.
+
+**Test & medication plans:** an approved doctor schedules tests
+(`consult_test_orders`, with a recurrence that re-schedules itself when marked
+done) and records medication (`consult_prescriptions`) per member. Both show on
+the member's own dashboard alongside the reminder that their care code
+discounts them.
+
+**Currently hidden:** the doctor portal's Earn (per-encounter charging) and
+Monitoring entries, and the patient portal's Doctor Visits, are hidden from
+navigation while the care plan is the focus. All three panels and their APIs are
+untouched and still reachable by deep link (`?tab=charging`, `?tab=monitoring`,
+`?tab=visits`); restoring each nav entry is a one-line change.
+
+**Installable (PWA):** `public/manifest.webmanifest` + `public/sw.js`, registered
+by `components/pwa/InstallPrompt.tsx`, which also offers "add to home screen"
+(the real prompt on Android, manual instructions on iOS). The app opens on
+`/signin`, which forwards a returning user to whichever portal they last used
+(patient or medical professional) and otherwise offers the choice; both login
+pages carry a `PortalSwitch` to cross over. The service worker
+caches build assets and an `/offline` fallback only — never `/api`, and never
+page HTML, so nothing personal is replayable from a shared phone.
+
+**Schema safety net:** `scripts/run-migration.mjs` runs at build time and every
+step is `continueOnError`, so a failed statement is logged as "already applied"
+and the table silently never appears (this is how `pharmacy_otps` went missing
+in production). The care-plan routes therefore call
+`ensureCarePlanSchema()` defensively, the same way the doctor-charging routes
+call `ensureEncounterSchema()`. Keep care-plan migration steps to **one
+statement each** — a combined block fails as a unit.
+
 ### 4. Public Pages
-- `/home` - Beautiful landing page
+- `/` - Landing page (the old `/home` route now redirects here)
 - `/about` - Company mission and values
 - `/contact` - Contact form and info
 - `/security` - Security and privacy info
@@ -198,7 +276,7 @@
 
 Key files:
 - `/src/app/page.tsx` - Index page (form creation)
-- `/src/app/home/page.tsx` - Landing page
+- `/src/components/home/LandingPage.tsx` - Landing page
 - `/src/app/[labSlug]/page.tsx` - Dynamic lab pages
 - `/src/components/PatientRequestForm.tsx` - Main form component
 - `/src/components/RequestFormToggle.tsx` - Mode switcher

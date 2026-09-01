@@ -6,6 +6,7 @@ import {
   X, Loader2, Upload, Download, HeartHandshake, Phone, Mail, MapPin, Trash2, AlertCircle,
 } from "lucide-react";
 import type { Lab } from "@/lib/types";
+import { AdminOverlay } from "@/components/admin/AdminOverlay";
 
 interface Partner {
   id: string;
@@ -124,9 +125,9 @@ export function AdminLabPartnersModal({ lab, onClose }: { lab: Lab; onClose: () 
   }), [partners]);
 
   return (
-    <div className="fixed inset-0 z-[10000] flex items-end justify-center bg-black/70 backdrop-blur-sm sm:items-center" onClick={onClose}>
+    <AdminOverlay onClose={() => onClose()}>
       <div
-        className="flex max-h-[92vh] w-full max-w-3xl flex-col rounded-t-3xl border border-white/10 bg-slate-900 sm:rounded-3xl"
+        className="flex max-h-modal w-full max-w-3xl flex-col rounded-t-3xl border border-white/10 bg-slate-900 sm:rounded-3xl"
         onClick={(e) => e.stopPropagation()}
       >
         {/* Header */}
@@ -268,6 +269,6 @@ export function AdminLabPartnersModal({ lab, onClose }: { lab: Lab; onClose: () 
           )}
         </div>
       </div>
-    </div>
+    </AdminOverlay>
   );
 }

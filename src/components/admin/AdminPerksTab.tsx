@@ -6,6 +6,7 @@ import {
   Gift, Truck, Plus, Trash2, RefreshCw, Check, X, MapPin,
   Building2, Users, Package, DollarSign, ToggleLeft, ToggleRight,
 } from "lucide-react";
+import { SubTabs } from "@/components/admin/SubTabs";
 
 interface LabLite { id: string; name: string }
 interface Perk {
@@ -80,14 +81,15 @@ export function AdminPerksTab() {
         </button>
       </div>
 
-      <div className="flex gap-2 flex-wrap">
-        {([["perks", "Doctor Perks", Gift], ["partners", "Logistics Partners", Truck], ["rides", "Rides", Package]] as const).map(([key, label, Icon]) => (
-          <button key={key} onClick={() => setSubTab(key)}
-            className={`flex items-center gap-1.5 px-3.5 py-2 rounded-lg text-sm font-semibold transition ${subTab === key ? "bg-medical-600 text-white" : "bg-white/10 text-slate-300 hover:bg-white/15"}`}>
-            <Icon className="w-4 h-4" /> {label}
-          </button>
-        ))}
-      </div>
+      <SubTabs
+        value={subTab}
+        onChange={setSubTab}
+        items={[
+          { key: "perks", label: "Doctor Perks", icon: Gift },
+          { key: "partners", label: "Logistics Partners", icon: Truck },
+          { key: "rides", label: "Rides", icon: Package },
+        ] as const}
+      />
 
       {subTab === "perks" && <PerksSection labs={labs} perks={perks} reload={loadAll} />}
       {subTab === "partners" && <PartnersSection labs={labs} partners={partners} reload={loadAll} />}

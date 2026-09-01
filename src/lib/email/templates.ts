@@ -65,6 +65,47 @@ const codeBox = (code: string) => `
 
 const divider = `<hr style="border:none;border-top:1px solid #e0effe;margin:24px 0;">`;
 
+/**
+ * Where a member is meant to go, in an email that tells them to go somewhere.
+ *
+ * "Book these tests" and "collect this medication" are instructions a member
+ * cannot act on without an address. They chose a lab and a pharmacy when they
+ * joined; the email is where that choice is worth repeating, with enough to
+ * ring ahead or put into a maps app. Fields that are missing are simply left
+ * out rather than shown as blanks.
+ */
+export type EmailPartner = {
+  name: string;
+  address?: string | null;
+  city?: string | null;
+  state?: string | null;
+  phone?: string | null;
+};
+
+const partnerBlock = (heading: string, partner: EmailPartner | null | undefined) => {
+  if (!partner?.name) return "";
+  const where = [partner.address, partner.city, partner.state].filter(Boolean).join(", ");
+  return `
+    <table width="100%" cellpadding="0" cellspacing="0" style="margin:0 0 20px;">
+      <tr>
+        <td style="background:#f8fafc;border:1px solid #e2e8f0;border-radius:8px;padding:14px 16px;">
+          <p style="margin:0 0 4px;color:#6b7280;font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:0.6px;">${escapeHtml(heading)}</p>
+          <p style="margin:0;color:#1e3a5f;font-size:15px;font-weight:700;">${escapeHtml(partner.name)}</p>
+          ${where ? `<p style="margin:4px 0 0;color:#4b5563;font-size:13px;line-height:1.5;">${escapeHtml(where)}</p>` : ""}
+          ${
+            partner.phone
+              ? `<p style="margin:4px 0 0;color:#4b5563;font-size:13px;">
+                   <a href="tel:${escapeHtml(String(partner.phone).replace(/[^\d+]/g, ""))}" style="color:#0270c3;text-decoration:none;">${escapeHtml(partner.phone)}</a>
+                 </p>`
+              : ""
+          }
+        </td>
+      </tr>
+    </table>`;
+};
+
+
+
 const label = (text: string) =>
   `<span style="color:#6b7280;font-size:12px;font-weight:600;text-transform:uppercase;letter-spacing:0.5px;">${text}</span>`;
 
@@ -2234,6 +2275,442 @@ export function logisticsInviteEmail({
       <a href="${loginUrl}" style="display:inline-block;background:linear-gradient(135deg,#0259a0,#0270c3);color:#ffffff;text-decoration:none;padding:14px 32px;border-radius:10px;font-weight:700;font-size:15px;">
         Open Dashboard
       </a>
+    </div>
+  `);
+}
+
+// =============================================================================
+// TEMPLATE: Care plan — member welcome (code + what they get)
+// =============================================================================
+export function carePlanWelcomeEmail({
+  memberName,
+  code,
+  doctorName,
+  messageAllowance,
+  expiresOn,
+  labDiscount,
+  pharmacyDiscount,
+  pharmacy,
+  lab,
+  dashboardUrl,
+}: {
+  memberName: string;
+  code: string;
+  doctorName: string | null;
+  messageAllowance: number;
+  expiresOn: string;
+  labDiscount: number;
+  pharmacyDiscount: number;
+  /** The partners this member picked when they joined. */
+  pharmacy?: EmailPartner | null;
+  lab?: EmailPartner | null;
+  dashboardUrl: string;
+}) {
+  return base(`
+    <h2 style="margin:0 0 8px;color:#0259a0;font-size:20px;font-weight:700;">You're on the Poveon Care Plan</h2>
+    <p style="margin:0 0 20px;color:#4b5563;font-size:15px;">
+      Welcome, ${escapeHtml(memberName)}. Your plan is active until <strong>${escapeHtml(expiresOn)}</strong>.
+    </p>
+
+    <div style="background:#f0f7ff;border:2px dashed #0270c3;border-radius:8px;padding:20px;text-align:center;margin:24px 0;">
+      <p style="margin:0 0 4px;color:#0259a0;font-size:12px;font-weight:600;text-transform:uppercase;letter-spacing:1px;">Your Care Code</p>
+      <p style="margin:0;color:#0259a0;font-size:32px;font-weight:800;letter-spacing:4px;font-family:monospace;">${escapeHtml(code)}</p>
+      <p style="margin:8px 0 0;color:#4b5563;font-size:12px;">Show this at any partner lab or pharmacy.</p>
+    </div>
+
+    ${divider}
+
+    <p style="margin:0 0 10px;color:#1e3a5f;font-size:15px;font-weight:600;">What your plan covers</p>
+    <ul style="margin:0 0 20px;padding-left:20px;color:#4b5563;font-size:14px;line-height:1.9;">
+      <li><strong>${labDiscount}% off</strong> laboratory tests at partner labs</li>
+      <li><strong>${pharmacyDiscount}% off</strong> prescriptions at partner pharmacies</li>
+      <li><strong>${messageAllowance} messages</strong> to your doctor over the year</li>
+    </ul>
+
+    ${partnerBlock("Your pharmacy", pharmacy)}
+    ${partnerBlock("Your laboratory", lab)}
+
+    ${
+      doctorName
+        ? `<p style="margin:0 0 20px;color:#4b5563;font-size:14px;">Your assigned doctor is <strong style="color:#1e3a5f;">${escapeHtml(doctorName)}</strong>. They will review your goal and send you a first assessment.</p>`
+        : `<p style="margin:0 0 20px;color:#4b5563;font-size:14px;">We're matching you with a doctor now — you'll hear from them shortly.</p>`
+    }
+
+    <div style="text-align:center;margin:28px 0 0;">
+      <a href="${dashboardUrl}" style="display:inline-block;background:#0270c3;color:#ffffff;text-decoration:none;font-size:15px;font-weight:600;padding:14px 28px;border-radius:8px;">Open my care plan</a>
+    </div>
+  `);
+}
+
+// =============================================================================
+// TEMPLATE: Care plan — a new member landed in the doctor's pool
+// =============================================================================
+export function carePlanDoctorNewMemberEmail({
+  doctorName,
+  memberName,
+  conditions,
+  poolSize,
+  earningPerMember,
+  dashboardUrl,
+}: {
+  doctorName: string;
+  memberName: string;
+  conditions: string[];
+  poolSize: number;
+  earningPerMember: string;
+  dashboardUrl: string;
+}) {
+  return base(`
+    <h2 style="margin:0 0 8px;color:#0259a0;font-size:20px;font-weight:700;">New care-plan member assigned to you</h2>
+    <p style="margin:0 0 20px;color:#4b5563;font-size:15px;">
+      Hello ${escapeHtml(doctorName)}, ${escapeHtml(memberName)} has joined the Poveon Care Plan and been assigned to you.
+      Please make an initial assessment when you can.
+    </p>
+
+    ${label("Living with")}
+    ${value(conditions.length ? escapeHtml(conditions.join(", ")) : "—")}
+
+    ${divider}
+
+    <table width="100%" cellpadding="0" cellspacing="0" style="margin:0 0 20px;">
+      <tr>
+        <td style="background:#f0f7ff;border:1px solid #e0effe;border-radius:8px;padding:16px;text-align:center;" width="50%">
+          <p style="margin:0;color:#6b7280;font-size:12px;">Members in your pool</p>
+          <p style="margin:4px 0 0;color:#0259a0;font-size:22px;font-weight:800;">${poolSize}</p>
+        </td>
+        <td width="12"></td>
+        <td style="background:#ecfdf5;border:1px solid #a7f3d0;border-radius:8px;padding:16px;text-align:center;" width="50%">
+          <p style="margin:0;color:#6b7280;font-size:12px;">Per month, while they stay</p>
+          <p style="margin:4px 0 0;color:#047857;font-size:22px;font-weight:800;">${escapeHtml(earningPerMember)}</p>
+        </td>
+      </tr>
+    </table>
+
+    <div style="text-align:center;margin:28px 0 0;">
+      <a href="${dashboardUrl}" style="display:inline-block;background:#0270c3;color:#ffffff;text-decoration:none;font-size:15px;font-weight:600;padding:14px 28px;border-radius:8px;">Review this member</a>
+    </div>
+  `);
+}
+
+// =============================================================================
+// TEMPLATE: Care plan — doctor replied to a member
+// =============================================================================
+export function carePlanReplyEmail({
+  memberName,
+  doctorName,
+  preview,
+  dashboardUrl,
+}: {
+  memberName: string;
+  doctorName: string;
+  preview: string;
+  dashboardUrl: string;
+}) {
+  return base(`
+    <h2 style="margin:0 0 8px;color:#0259a0;font-size:20px;font-weight:700;">${escapeHtml(doctorName)} replied</h2>
+    <p style="margin:0 0 20px;color:#4b5563;font-size:15px;">
+      Hello ${escapeHtml(memberName)}, there's a new message on your care plan.
+    </p>
+
+    <div style="background:#f0f7ff;border-left:4px solid #0270c3;border-radius:6px;padding:16px 18px;margin:0 0 24px;">
+      <p style="margin:0;color:#1e3a5f;font-size:14px;line-height:1.7;white-space:pre-wrap;">${escapeHtml(preview)}</p>
+    </div>
+
+    <div style="text-align:center;margin:28px 0 0;">
+      <a href="${dashboardUrl}" style="display:inline-block;background:#0270c3;color:#ffffff;text-decoration:none;font-size:15px;font-weight:600;padding:14px 28px;border-radius:8px;">Read and reply</a>
+    </div>
+  `);
+}
+
+// =============================================================================
+// TEMPLATE: Care plan — a member sent their doctor a message
+// =============================================================================
+export function carePlanDoctorMessageEmail({
+  doctorName,
+  memberName,
+  preview,
+  messagesLeft,
+  dashboardUrl,
+}: {
+  doctorName: string;
+  memberName: string;
+  preview: string;
+  messagesLeft: number;
+  dashboardUrl: string;
+}) {
+  return base(`
+    <h2 style="margin:0 0 8px;color:#0259a0;font-size:20px;font-weight:700;">${escapeHtml(memberName)} sent you a message</h2>
+    <p style="margin:0 0 20px;color:#4b5563;font-size:15px;">
+      Hello ${escapeHtml(doctorName)}, one of your care-plan members is waiting on a reply.
+      They have <strong>${messagesLeft}</strong> message${messagesLeft === 1 ? "" : "s"} left this year.
+    </p>
+
+    <div style="background:#f0f7ff;border-left:4px solid #0270c3;border-radius:6px;padding:16px 18px;margin:0 0 24px;">
+      <p style="margin:0;color:#1e3a5f;font-size:14px;line-height:1.7;white-space:pre-wrap;">${escapeHtml(preview)}</p>
+    </div>
+
+    <div style="text-align:center;margin:28px 0 0;">
+      <a href="${dashboardUrl}" style="display:inline-block;background:#0270c3;color:#ffffff;text-decoration:none;font-size:15px;font-weight:600;padding:14px 28px;border-radius:8px;">Reply now</a>
+    </div>
+  `);
+}
+
+// =============================================================================
+// TEMPLATE: Care plan / pharmacy — one-time sign-in code
+// =============================================================================
+export function carePlanOtpEmail({ email, otp, audience }: { email: string; otp: string; audience: "member" | "pharmacy" }) {
+  const what = audience === "pharmacy" ? "Poveon pharmacy portal" : "Poveon care plan";
+  return base(`
+    <h2 style="margin:0 0 8px;color:#0259a0;font-size:20px;font-weight:700;">Your Login Code</h2>
+    <p style="margin:0 0 24px;color:#4b5563;font-size:15px;">
+      Use the code below to sign in to your ${what}. It expires in <strong>10 minutes</strong>.
+    </p>
+
+    <div style="background:#f0f7ff;border:2px dashed #0270c3;border-radius:8px;padding:24px;text-align:center;margin:24px 0;">
+      <p style="margin:0 0 6px;color:#0259a0;font-size:12px;font-weight:600;text-transform:uppercase;letter-spacing:1px;">One-Time Passcode</p>
+      <p style="margin:0;color:#0259a0;font-size:40px;font-weight:800;letter-spacing:10px;font-family:monospace;">${otp}</p>
+    </div>
+
+    ${divider}
+
+    <p style="margin:0 0 8px;color:#6b7280;font-size:13px;">Signing in as: <strong style="color:#1e3a5f;">${escapeHtml(email)}</strong></p>
+    <p style="margin:12px 0 0;color:#dc2626;font-size:13px;font-weight:500;">
+      If you did not request this code, you can safely ignore this email.
+    </p>
+  `);
+}
+
+// =============================================================================
+// TEMPLATE: Pharmacy — account created by an admin
+// =============================================================================
+export function pharmacyAccountCreatedEmail({
+  pharmacyName,
+  code,
+  discountPercent,
+  loginUrl,
+}: {
+  pharmacyName: string;
+  code: string;
+  discountPercent: number;
+  loginUrl: string;
+}) {
+  return base(`
+    <h2 style="margin:0 0 8px;color:#0259a0;font-size:20px;font-weight:700;">${escapeHtml(pharmacyName)} is now a Poveon partner</h2>
+    <p style="margin:0 0 20px;color:#4b5563;font-size:15px;">
+      Your pharmacy has been added to the Poveon Care Plan network. Sign in with this email address —
+      we'll send you a one-time code, no password to remember.
+    </p>
+
+    <div style="background:#f0f7ff;border:2px dashed #0270c3;border-radius:8px;padding:20px;text-align:center;margin:24px 0;">
+      <p style="margin:0 0 4px;color:#0259a0;font-size:12px;font-weight:600;text-transform:uppercase;letter-spacing:1px;">Your Pharmacy Code</p>
+      <p style="margin:0;color:#0259a0;font-size:30px;font-weight:800;letter-spacing:4px;font-family:monospace;">${escapeHtml(code)}</p>
+    </div>
+
+    <p style="margin:0 0 20px;color:#4b5563;font-size:14px;">
+      Care-plan members get <strong>${discountPercent}% off</strong> their prescriptions with you. Enter their care code
+      in your portal to confirm they're covered and to build your book of regulars.
+    </p>
+
+    <div style="text-align:center;margin:28px 0 0;">
+      <a href="${loginUrl}" style="display:inline-block;background:#0270c3;color:#ffffff;text-decoration:none;font-size:15px;font-weight:600;padding:14px 28px;border-radius:8px;">Sign in to the pharmacy portal</a>
+    </div>
+  `);
+}
+
+// =============================================================================
+// TEMPLATE: Care plan — a doctor filed credentials for review
+// =============================================================================
+export function doctorCredentialsSubmittedEmail({
+  doctorName,
+  doctorEmail,
+  mdcnNumber,
+  reviewUrl,
+}: {
+  doctorName: string;
+  doctorEmail: string;
+  mdcnNumber: string;
+  reviewUrl: string;
+}) {
+  return base(`
+    <h2 style="margin:0 0 8px;color:#0259a0;font-size:20px;font-weight:700;">Care-plan credentials to review</h2>
+    <p style="margin:0 0 20px;color:#4b5563;font-size:15px;">
+      ${escapeHtml(doctorName)} has filed their practising credentials to manage care-plan members.
+      Nobody is assigned to them until you approve.
+    </p>
+
+    ${label("Doctor")}
+    ${value(escapeHtml(doctorName))}
+
+    ${label("Email")}
+    ${value(escapeHtml(doctorEmail))}
+
+    ${label("MDCN number")}
+    ${value(escapeHtml(mdcnNumber))}
+
+    <div style="text-align:center;margin:28px 0 0;">
+      <a href="${reviewUrl}" style="display:inline-block;background:#0270c3;color:#ffffff;text-decoration:none;font-size:15px;font-weight:600;padding:14px 28px;border-radius:8px;">Review credentials</a>
+    </div>
+  `);
+}
+
+// =============================================================================
+// TEMPLATE: Care plan — the admin's decision on a doctor's credentials
+// =============================================================================
+export function doctorCredentialsDecisionEmail({
+  doctorName,
+  approved,
+  note,
+  dashboardUrl,
+}: {
+  doctorName: string;
+  approved: boolean;
+  note: string | null;
+  dashboardUrl: string;
+}) {
+  return base(`
+    <h2 style="margin:0 0 8px;color:${approved ? "#047857" : "#b45309"};font-size:20px;font-weight:700;">
+      ${approved ? "You're cleared for the care plan" : "We need more from your application"}
+    </h2>
+    <p style="margin:0 0 20px;color:#4b5563;font-size:15px;">
+      ${
+        approved
+          ? `Hello ${escapeHtml(doctorName)} — your credentials have been approved. Care-plan members will start being assigned to you, and you can set how many you'll take a year in your dashboard.`
+          : `Hello ${escapeHtml(doctorName)} — we couldn't approve your care-plan application as it stands.`
+      }
+    </p>
+
+    ${
+      note
+        ? `<div style="background:#fffbeb;border-left:4px solid #f59e0b;border-radius:6px;padding:16px 18px;margin:0 0 24px;">
+             <p style="margin:0 0 4px;color:#92400e;font-size:12px;font-weight:700;text-transform:uppercase;letter-spacing:0.5px;">From the reviewer</p>
+             <p style="margin:0;color:#78350f;font-size:14px;line-height:1.7;white-space:pre-wrap;">${escapeHtml(note)}</p>
+           </div>`
+        : ""
+    }
+
+    <div style="text-align:center;margin:28px 0 0;">
+      <a href="${dashboardUrl}" style="display:inline-block;background:#0270c3;color:#ffffff;text-decoration:none;font-size:15px;font-weight:600;padding:14px 28px;border-radius:8px;">
+        ${approved ? "Open your dashboard" : "Update your application"}
+      </a>
+    </div>
+  `);
+}
+
+// =============================================================================
+// TEMPLATE: Care plan — the doctor scheduled tests or medication
+// =============================================================================
+export function carePlanOrderEmail({
+  memberName,
+  doctorName,
+  kind,
+  summary,
+  dueLine,
+  dashboardUrl,
+}: {
+  memberName: string;
+  doctorName: string;
+  kind: "tests" | "medication";
+  summary: string;
+  dueLine: string | null;
+  dashboardUrl: string;
+}) {
+  const heading = kind === "tests" ? "Your doctor scheduled a test" : "Your doctor updated your medication";
+  return base(`
+    <h2 style="margin:0 0 8px;color:#0259a0;font-size:20px;font-weight:700;">${heading}</h2>
+    <p style="margin:0 0 20px;color:#4b5563;font-size:15px;">
+      Hello ${escapeHtml(memberName)}, ${escapeHtml(doctorName)} has added this to your care plan.
+    </p>
+
+    <div style="background:#f0f7ff;border-left:4px solid #0270c3;border-radius:6px;padding:16px 18px;margin:0 0 20px;">
+      <p style="margin:0;color:#1e3a5f;font-size:15px;font-weight:600;line-height:1.6;white-space:pre-wrap;">${escapeHtml(summary)}</p>
+      ${dueLine ? `<p style="margin:8px 0 0;color:#4b5563;font-size:13px;">${escapeHtml(dueLine)}</p>` : ""}
+    </div>
+
+    <p style="margin:0 0 20px;color:#4b5563;font-size:14px;">
+      Remember your care code gets you money off at partner labs and pharmacies.
+    </p>
+
+    <div style="text-align:center;margin:28px 0 0;">
+      <a href="${dashboardUrl}" style="display:inline-block;background:#0270c3;color:#ffffff;text-decoration:none;font-size:15px;font-weight:600;padding:14px 28px;border-radius:8px;">Open my care plan</a>
+    </div>
+  `);
+}
+
+/**
+ * One message covering everything a doctor set up in a sitting — the tests, the
+ * medication and the plan — instead of an email per item as they type.
+ */
+export function carePlanScheduleEmail({
+  memberName,
+  doctorName,
+  tests,
+  medications,
+  planItems,
+  planNote,
+  message,
+  pharmacy,
+  lab,
+  dashboardUrl,
+}: {
+  memberName: string;
+  doctorName: string;
+  tests: { summary: string; due: string | null }[];
+  medications: string[];
+  planItems: string[];
+  planNote: string | null;
+  message: string | null;
+  /** Where this member collects medication, when they have chosen somewhere. */
+  pharmacy?: EmailPartner | null;
+  /** Where this member has their tests done. */
+  lab?: EmailPartner | null;
+  dashboardUrl: string;
+}) {
+  const section = (title: string, rows: string[]) =>
+    rows.length
+      ? `
+    <p style="margin:0 0 8px;color:#1e3a5f;font-size:14px;font-weight:700;">${escapeHtml(title)}</p>
+    <ul style="margin:0 0 20px;padding-left:20px;color:#4b5563;font-size:14px;line-height:1.7;">
+      ${rows.map((r) => `<li>${r}</li>`).join("")}
+    </ul>`
+      : "";
+
+  return base(`
+    <h2 style="margin:0 0 8px;color:#0259a0;font-size:20px;font-weight:700;">Your doctor updated your care plan</h2>
+    <p style="margin:0 0 20px;color:#4b5563;font-size:15px;">
+      Hello ${escapeHtml(memberName)}, ${escapeHtml(doctorName)} has set out what happens next.
+    </p>
+
+    ${
+      message
+        ? `<div style="background:#f0f7ff;border-left:4px solid #0270c3;border-radius:6px;padding:16px 18px;margin:0 0 20px;">
+             <p style="margin:0;color:#1e3a5f;font-size:15px;line-height:1.6;white-space:pre-wrap;">${escapeHtml(message)}</p>
+           </div>`
+        : ""
+    }
+
+    ${section(
+      "Tests to book",
+      tests.map(
+        (t) => `${escapeHtml(t.summary)}${t.due ? ` <span style="color:#6b7280;">— ${escapeHtml(t.due)}</span>` : ""}`
+      )
+    )}
+    ${tests.length ? partnerBlock("Have them done at", lab) : ""}
+    ${section("Medication", medications.map(escapeHtml))}
+    ${medications.length ? partnerBlock("Collect from", pharmacy) : ""}
+    ${section("Your plan", planItems.map(escapeHtml))}
+
+    ${
+      planNote
+        ? `<p style="margin:0 0 20px;color:#4b5563;font-size:14px;line-height:1.6;white-space:pre-wrap;">${escapeHtml(planNote)}</p>`
+        : ""
+    }
+
+    <p style="margin:0 0 20px;color:#4b5563;font-size:14px;">
+      Your care code gets you money off at partner labs and pharmacies — show it when you go.
+    </p>
+
+    <div style="text-align:center;margin:28px 0 0;">
+      <a href="${dashboardUrl}" style="display:inline-block;background:#0270c3;color:#ffffff;text-decoration:none;font-size:15px;font-weight:600;padding:14px 28px;border-radius:8px;">Open my care plan</a>
     </div>
   `);
 }

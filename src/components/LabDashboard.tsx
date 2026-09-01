@@ -48,6 +48,7 @@ import { format, differenceInYears } from "date-fns";
 import { createClient } from "@/lib/supabase/client";
 import { useRouter, useSearchParams } from "next/navigation";
 import { labUrl } from "@/lib/lab-urls";
+import { conditionLabel } from "@/lib/consult-conditions";
 
 interface LabDashboardProps {
   lab: {
@@ -118,8 +119,8 @@ export function LabDashboard({ lab, isOwner = false, roleName = "Lab Owner", can
   const router = useRouter();
   const searchParams = useSearchParams();
   const { isLight, toggle, themeClass } = useDashTheme("lab_dash_theme");
-  type MainView = "workspace" | "requests" | "journey" | "onboarding" | "queue" | "departments" | "results" | "past" | "templates" | "sops" | "network" | "referrals" | "professionals" | "clients" | "customers" | "analytics" | "activity" | "feedback" | "poveon" | "price-list" | "marketers" | "team" | "partners" | "rides";
-  const VALID_TABS: MainView[] = ["onboarding", "queue", "workspace", "requests", "journey", "departments", "results", "past", "templates", "sops", "network", "referrals", "professionals", "clients", "customers", "analytics", "activity", "feedback", "poveon", "price-list", "marketers", "team", "partners", "rides"];
+  type MainView = "workspace" | "requests" | "journey" | "onboarding" | "queue" | "departments" | "results" | "past" | "templates" | "sops" | "network" | "referrals" | "professionals" | "clients" | "customers" | "care-plan" | "analytics" | "activity" | "feedback" | "poveon" | "price-list" | "marketers" | "team" | "partners" | "rides";
+  const VALID_TABS: MainView[] = ["onboarding", "queue", "workspace", "requests", "journey", "departments", "results", "past", "templates", "sops", "network", "referrals", "professionals", "clients", "customers", "care-plan", "analytics", "activity", "feedback", "poveon", "price-list", "marketers", "team", "partners", "rides"];
   // Legacy tabs now fold into the unified Workspace.
   const LEGACY_TO_WORKSPACE = new Set(["requests", "journey"]);
   // Which permission gates each tab (used by the sidebar and the initial landing).
@@ -139,6 +140,8 @@ export function LabDashboard({ lab, isOwner = false, roleName = "Lab Owner", can
     referrals: isOwner || canViewReferrals,
     professionals: isOwner || canManageProfessionals,
     clients: isOwner || canViewClients,
+    // Care-plan members who picked this lab — the same audience as Clients.
+    "care-plan": isOwner || canViewClients,
     analytics: isOwner || canViewAnalytics,
     activity: isOwner || canViewActivity,
     feedback: isOwner || canViewFeedback,
@@ -167,10 +170,10 @@ export function LabDashboard({ lab, isOwner = false, roleName = "Lab Owner", can
     try { localStorage.setItem(`lab_dash_mode_${lab.id}`, m); } catch { /* ignore */ }
   }, [lab.id]);
   // Micro: the smallest footprint — front desk + referrals + pricing only.
-  const MICRO_SIDEBAR = new Set<MainView>(["onboarding", "customers", "network", "price-list"]);
-  const MICRO_ALLOWED = new Set<MainView>(["onboarding", "customers", "clients", "network", "referrals", "professionals", "price-list"]);
-  const LITE_SIDEBAR = new Set<MainView>(["onboarding", "queue", "rides", "customers", "analytics", "feedback", "network", "partners", "team", "price-list"]);
-  const LITE_ALLOWED = new Set<MainView>(["onboarding", "queue", "rides", "customers", "analytics", "feedback", "network", "referrals", "professionals", "partners", "team", "price-list"]);
+  const MICRO_SIDEBAR = new Set<MainView>(["onboarding", "customers", "care-plan", "network", "price-list"]);
+  const MICRO_ALLOWED = new Set<MainView>(["onboarding", "customers", "clients", "care-plan", "network", "referrals", "professionals", "price-list"]);
+  const LITE_SIDEBAR = new Set<MainView>(["onboarding", "queue", "rides", "customers", "care-plan", "analytics", "feedback", "network", "partners", "team", "price-list"]);
+  const LITE_ALLOWED = new Set<MainView>(["onboarding", "queue", "rides", "customers", "care-plan", "analytics", "feedback", "network", "referrals", "professionals", "partners", "team", "price-list"]);
   const modeSidebar = labMode === "micro" ? MICRO_SIDEBAR : labMode === "lite" ? LITE_SIDEBAR : null;
   const tabVisibleEff: Record<MainView, boolean> = modeSidebar
     ? (Object.fromEntries((Object.keys(tabVisible) as MainView[]).map((k) => [k, tabVisible[k] && modeSidebar.has(k)])) as Record<MainView, boolean>)
@@ -208,6 +211,7 @@ export function LabDashboard({ lab, isOwner = false, roleName = "Lab Owner", can
     { key: "customers", children: [
       { key: "customers", label: "Customers" },
       { key: "clients", label: "Clients" },
+      { key: "care-plan", label: "Care plan" },
     ] },
     { key: "departments", children: [
       { key: "departments", label: "Departments" },
@@ -939,6 +943,14 @@ export function LabDashboard({ lab, isOwner = false, roleName = "Lab Owner", can
         {/* Unified Referrals page (merges referrals + professionals) */}
         {(mainView === "network" || mainView === "referrals" || mainView === "professionals") && (
           <ReferralsView canManage={isOwner || canManageProfessionals} />
+        )}
+
+        {/* Care-plan members who chose this lab */}
+        {mainView === "care-plan" && (
+          <div className="space-y-5">
+            <LabCareCode />
+            <LabCareMembers />
+          </div>
         )}
 
         {/* Clients view */}
@@ -3442,3 +3454,356 @@ function ChangePasswordModal({ onClose }: { onClose: () => void }) {
   );
 }
 
+
+
+// ── Care-plan members who chose this lab ────────────────────────────────────
+
+type LabCareMember = {
+  id: string;
+  code: string | null;
+  name: string;
+  name_revealed: boolean;
+  conditions: string[];
+  expires_at: string | null;
+  test_orders: {
+    id: string; tests: string; reason: string | null; due_date: string | null; recurrence: string;
+  }[];
+};
+
+/**
+ * The care-plan members who named this lab, and the tests their doctors have
+ * scheduled — so the bench can be planned rather than reacted to.
+ *
+ * Names are shortened until the lab has actually run something for them:
+ * naming a preferred lab is a heads-up, not an introduction. The care code is
+ * what identifies them at the desk, so that is shown in full.
+ */
+function LabCareMembers() {
+  const [members, setMembers] = useState<LabCareMember[]>([]);
+  const [summary, setSummary] = useState<{ members: number; pending_tests: number } | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState("");
+
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      try {
+        const res = await fetch("/api/lab/care-members", { cache: "no-store" });
+        const d = await res.json();
+        if (cancelled) return;
+        if (!res.ok || !d.success) setError(d.error ?? "Could not load care-plan members.");
+        else { setMembers(d.members); setSummary(d.summary); }
+      } catch {
+        if (!cancelled) setError("Network error.");
+      } finally {
+        if (!cancelled) setLoading(false);
+      }
+    })();
+    return () => { cancelled = true; };
+  }, []);
+
+  if (loading) {
+    return (
+      <div className="flex items-center justify-center py-20">
+        <RefreshCw className="w-6 h-6 text-slate-400 animate-spin" />
+      </div>
+    );
+  }
+  if (error) {
+    return <p className="rounded-2xl border border-red-500/20 bg-red-500/10 p-6 text-sm text-red-300">{error}</p>;
+  }
+  if (members.length === 0) {
+    return (
+      <div className="text-center py-16">
+        <div className="w-16 h-16 rounded-2xl bg-white/5 flex items-center justify-center mx-auto mb-4">
+          <UserCircle className="w-8 h-8 text-slate-500" />
+        </div>
+        <p className="text-slate-300 font-semibold">Nobody has picked you yet</p>
+        <p className="text-slate-500 text-sm mt-1">
+          Care-plan members choose a lab when they join. When they pick you, the tests their doctor
+          schedules appear here.
+        </p>
+      </div>
+    );
+  }
+
+  return (
+    <div className="space-y-3">
+      <p className="text-xs text-slate-400">
+        {summary?.members} member{summary?.members === 1 ? "" : "s"} chose you ·{" "}
+        {summary?.pending_tests} test{summary?.pending_tests === 1 ? "" : "s"} scheduled. Names are
+        shortened until you have run something for them.
+      </p>
+
+      {members.map((m) => (
+        <div key={m.id} className="rounded-2xl border border-white/10 bg-white/5 p-4">
+          <div className="flex flex-wrap items-start justify-between gap-2">
+            <div className="min-w-0">
+              <p className="text-sm font-bold text-white">
+                {m.name}
+                {!m.name_revealed && (
+                  <span className="ml-1.5 text-[11px] font-normal text-slate-500">(new to you)</span>
+                )}
+              </p>
+              <p className="mt-1 flex flex-wrap items-center gap-1.5">
+                <span className="rounded-full bg-white/15 px-2 py-0.5 font-mono text-[11px] font-bold text-white">
+                  {m.code ?? "—"}
+                </span>
+                {m.conditions.map((c) => (
+                  <span key={c} className="rounded-full bg-sky-500/20 px-2 py-0.5 text-[11px] font-semibold text-sky-300">
+                    {conditionLabel(c)}
+                  </span>
+                ))}
+              </p>
+            </div>
+            {m.expires_at && (
+              <span className="text-[11px] text-slate-500">
+                Plan to {new Date(m.expires_at).toLocaleDateString("en-GB", { day: "numeric", month: "short", year: "numeric" })}
+              </span>
+            )}
+          </div>
+
+          {m.test_orders.length === 0 ? (
+            <p className="mt-3 text-xs text-slate-500">Nothing scheduled right now.</p>
+          ) : (
+            <ul className="mt-3 space-y-1.5">
+              {m.test_orders.map((t) => (
+                <li key={t.id} className="rounded-xl bg-white/5 px-3 py-2">
+                  <p className="text-sm font-semibold text-slate-200">{t.tests}</p>
+                  <p className="text-[11px] text-slate-500">
+                    {t.due_date
+                      ? `Due ${new Date(t.due_date).toLocaleDateString("en-GB", { day: "numeric", month: "short", year: "numeric" })}`
+                      : "No date set"}
+                    {t.recurrence !== "once" ? ` · repeats ${t.recurrence}` : ""}
+                    {t.reason ? ` · ${t.reason}` : ""}
+                  </p>
+                </li>
+              ))}
+            </ul>
+          )}
+        </div>
+      ))}
+    </div>
+  );
+}
+
+
+// ── A care code at the front desk ───────────────────────────────────────────
+
+type CareLookup = {
+  member: {
+    id: string; name: string; name_revealed: boolean; phone: string | null;
+    sex: string | null; conditions: string[]; expires_at: string | null;
+    prefers_this_lab: boolean;
+  };
+  discount_percent: number;
+  referral: { source: string; label: string };
+  test_orders: {
+    id: string; tests: string; reason: string | null; due_date: string | null;
+    recurrence: string; last_fulfilment: { status: string; at: string; here: boolean } | null;
+  }[];
+};
+
+/**
+ * The care code, run at the desk.
+ *
+ * The code works at every lab in the Poveon network, not only the one the
+ * member named — a preference decides who sees the schedule coming, never who
+ * is allowed to serve them. The referral on the resulting work is Poveon, not
+ * the doctor: the programme is what sent them.
+ */
+function LabCareCode() {
+  const [code, setCode] = useState("");
+  const [checking, setChecking] = useState(false);
+  const [result, setResult] = useState<CareLookup | null>(null);
+  const [problem, setProblem] = useState("");
+  const [picked, setPicked] = useState<Record<string, boolean>>({});
+  const [gross, setGross] = useState("");
+  const [saving, setSaving] = useState(false);
+  const [receipt, setReceipt] = useState<{ done: number; discount: number; payable: number } | null>(null);
+
+  async function check() {
+    if (checking || code.trim().length < 4) return;
+    setChecking(true);
+    setProblem("");
+    setResult(null);
+    setReceipt(null);
+    try {
+      const res = await fetch("/api/lab/care-lookup", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ code: code.trim() }),
+      });
+      const d = await res.json();
+      if (!res.ok || !d.success) { setProblem(d.error ?? "Could not check that code."); return; }
+      if (!d.found || !d.valid) { setProblem(d.reason ?? "That code is not valid."); return; }
+      setResult(d);
+      // Everything the doctor scheduled is presumed to be why they came.
+      setPicked(Object.fromEntries((d.test_orders ?? []).map((t: { id: string }) => [t.id, true])));
+    } catch {
+      setProblem("Network error. Please try again.");
+    } finally {
+      setChecking(false);
+    }
+  }
+
+  async function record() {
+    if (saving || !result) return;
+    const items = result.test_orders
+      .filter((t) => picked[t.id])
+      .map((t) => ({ test_order_id: t.id, status: "done" as const }));
+    if (items.length === 0) { toast.error("Tick what you ran."); return; }
+
+    setSaving(true);
+    try {
+      const res = await fetch("/api/lab/care-fulfil", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ code: code.trim(), items, gross_naira: gross ? Number(gross) : 0 }),
+      });
+      const d = await res.json();
+      if (!res.ok || !d.success) { toast.error(d.error ?? "Could not record that."); return; }
+      setReceipt({ done: d.done, discount: d.discount_naira, payable: d.payable_naira });
+      toast.success(`${d.done} test${d.done === 1 ? "" : "s"} recorded — the doctor has been updated`);
+      setResult(null);
+      setCode("");
+      setGross("");
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  const discount = result && gross ? Math.round((Number(gross) * result.discount_percent) / 100) : 0;
+
+  return (
+    <div className="rounded-2xl border border-white/10 bg-white/5 p-5">
+      <h3 className="text-sm font-bold text-white">Care code</h3>
+      <p className="mt-1 text-xs text-slate-400">
+        Works for any Poveon care-plan member, whichever lab they named. Enter it to see what their
+        doctor scheduled and apply their discount.
+      </p>
+
+      <div className="mt-4 flex gap-2">
+        <input
+          value={code}
+          onChange={(e) => { setCode(e.target.value.toUpperCase()); setResult(null); setProblem(""); }}
+          onKeyDown={(e) => { if (e.key === "Enter") check(); }}
+          placeholder="PVC-XXXXXXX"
+          className="flex-1 rounded-xl border border-white/10 bg-white/5 px-4 py-2.5 font-mono text-sm font-bold uppercase tracking-wider text-white placeholder-slate-500 focus:border-sky-400 focus:outline-none"
+        />
+        <button
+          onClick={check}
+          disabled={checking || code.trim().length < 4}
+          className="inline-flex items-center gap-1.5 rounded-xl bg-sky-600 px-4 py-2.5 text-sm font-bold text-white transition hover:bg-sky-500 disabled:opacity-50"
+        >
+          {checking ? <RefreshCw className="h-4 w-4 animate-spin" /> : <Search className="h-4 w-4" />}
+          Check
+        </button>
+      </div>
+
+      {problem && (
+        <p className="mt-3 rounded-xl border border-amber-500/20 bg-amber-500/10 px-4 py-3 text-sm text-amber-300">
+          {problem}
+        </p>
+      )}
+
+      {receipt && (
+        <div className="mt-3 rounded-xl border border-emerald-500/20 bg-emerald-500/10 px-4 py-3 text-sm text-emerald-300">
+          {receipt.done} test{receipt.done === 1 ? "" : "s"} recorded.
+          {receipt.discount > 0 && (
+            <> Discount ₦{receipt.discount.toLocaleString("en-NG")} · they pay ₦{receipt.payable.toLocaleString("en-NG")}.</>
+          )}
+        </div>
+      )}
+
+      {result && (
+        <div className="mt-4 space-y-3 rounded-xl border border-sky-500/20 bg-sky-500/10 p-4">
+          <div>
+            <p className="text-sm font-bold text-white">
+              {result.member.name} is covered
+              {!result.member.name_revealed && (
+                <span className="ml-1.5 text-[11px] font-normal text-slate-400">(new to you)</span>
+              )}
+            </p>
+            <p className="mt-0.5 flex flex-wrap items-center gap-1.5 text-[11px]">
+              <span className="rounded-full bg-white/15 px-2 py-0.5 font-semibold text-white">
+                Referred by {result.referral.label}
+              </span>
+              <span className="rounded-full bg-emerald-500/20 px-2 py-0.5 font-semibold text-emerald-300">
+                Up to {result.discount_percent}% off
+              </span>
+              {result.member.conditions.map((c) => (
+                <span key={c} className="rounded-full bg-white/10 px-2 py-0.5 font-semibold text-slate-300">
+                  {conditionLabel(c)}
+                </span>
+              ))}
+            </p>
+          </div>
+
+          {result.test_orders.length === 0 ? (
+            <p className="text-xs text-slate-400">
+              Their doctor has nothing scheduled right now. The discount still applies to whatever
+              they came for — record it in the usual way.
+            </p>
+          ) : (
+            <>
+              <p className="text-[11px] font-bold uppercase tracking-wide text-sky-300">
+                Scheduled by their doctor
+              </p>
+              <ul className="space-y-1.5">
+                {result.test_orders.map((t) => (
+                  <li key={t.id}>
+                    <label className="flex cursor-pointer items-start gap-2.5 rounded-lg bg-white/5 p-2.5">
+                      <input
+                        type="checkbox"
+                        checked={!!picked[t.id]}
+                        onChange={(e) => setPicked((prev) => ({ ...prev, [t.id]: e.target.checked }))}
+                        className="mt-0.5 h-4 w-4 shrink-0 rounded border-white/20 bg-transparent text-sky-500"
+                      />
+                      <span className="min-w-0">
+                        <span className="block text-sm font-semibold text-slate-100">{t.tests}</span>
+                        <span className="block text-[11px] text-slate-400">
+                          {t.due_date
+                            ? `Due ${new Date(t.due_date).toLocaleDateString("en-GB", { day: "numeric", month: "short", year: "numeric" })}`
+                            : "No date set"}
+                          {t.reason ? ` · ${t.reason}` : ""}
+                        </span>
+                      </span>
+                    </label>
+                  </li>
+                ))}
+              </ul>
+
+              <input
+                inputMode="numeric"
+                value={gross}
+                onChange={(e) => setGross(e.target.value.replace(/[^\d]/g, ""))}
+                placeholder="Total before discount (₦)"
+                className="w-full rounded-xl border border-white/10 bg-white/5 px-3.5 py-2.5 text-sm text-white placeholder-slate-500 focus:border-sky-400 focus:outline-none"
+              />
+              {gross && (
+                <p className="text-xs text-emerald-300">
+                  They pay <strong>₦{(Number(gross) - discount).toLocaleString("en-NG")}</strong>{" "}
+                  (saving ₦{discount.toLocaleString("en-NG")})
+                </p>
+              )}
+
+              <button
+                onClick={record}
+                disabled={saving}
+                className="flex w-full items-center justify-center gap-2 rounded-xl bg-sky-600 py-2.5 text-sm font-bold text-white transition hover:bg-sky-500 disabled:opacity-50"
+              >
+                {saving ? <RefreshCw className="h-4 w-4 animate-spin" /> : <Check className="h-4 w-4" />}
+                Record what you ran
+              </button>
+              <p className="text-[11px] text-slate-400">
+                Recording a test marks their doctor&apos;s order done, and books the next one if it
+                repeats.
+              </p>
+            </>
+          )}
+        </div>
+      )}
+    </div>
+  );
+}

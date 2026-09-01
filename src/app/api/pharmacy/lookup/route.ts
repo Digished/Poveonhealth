@@ -1,0 +1,99 @@
+export const dynamic = "force-dynamic";
+import { NextRequest, NextResponse } from "next/server";
+import { z } from "zod";
+import { prisma } from "@/lib/prisma";
+import { getConsultSettings, getPharmacyFromRequest } from "@/lib/consult";
+import { medLiveWhere } from "@/lib/medication-status";
+import { ensureCarePlanSchema } from "@/lib/startup/ensure-care-plan-schema";
+
+const BodySchema = z.object({ code: z.string().trim().min(4).max(32) });
+
+/**
+ * POST /api/pharmacy/lookup — is this care code good for a discount?
+ *
+ * Returns only what the counter needs to serve the person: their first name,
+ * whether the plan is live, and the discount to apply. No clinical detail.
+ */
+export async function POST(req: NextRequest) {
+  // The build-time migration is best-effort; make sure the tables are there.
+  await ensureCarePlanSchema().catch(() => {});
+  try {
+    const pharmacy = await getPharmacyFromRequest(req);
+    if (!pharmacy) return NextResponse.json({ error: "Not authenticated." }, { status: 401 });
+
+    const parsed = BodySchema.safeParse(await req.json());
+    if (!parsed.success) return NextResponse.json({ error: "Enter a care code." }, { status: 400 });
+
+    const code = parsed.data.code.toUpperCase().replace(/\s+/g, "");
+    const member = await prisma.consultPatient.findUnique({
+      where: { code },
+      select: { id: true, full_name: true, status: true, expires_at: true },
+    });
+
+    if (!member) {
+      return NextResponse.json({ success: true, found: false, reason: "That code is not recognised." });
+    }
+    if (member.status !== "active" || (member.expires_at && member.expires_at < new Date())) {
+      return NextResponse.json({
+        success: true,
+        found: true,
+        valid: false,
+        reason: "That care plan is not active.",
+        member: { full_name: member.full_name },
+      });
+    }
+
+    const settings = await getConsultSettings();
+
+    // What their doctor has them on, and what this pharmacy has already handed
+    // over — so the counter works from the schedule rather than from memory.
+    const prescriptions = await prisma.consultPrescription.findMany({
+      where: { patient_id: member.id, ...medLiveWhere },
+      orderBy: [{ start_date: "desc" }],
+      take: 30,
+      select: {
+        id: true, medication: true, form: true, dosage: true, frequency: true,
+        duration_days: true, instructions: true, start_date: true, end_date: true,
+        fulfilments: {
+          where: { kind: "medication" },
+          orderBy: { created_at: "desc" },
+          take: 1,
+          select: { status: true, created_at: true, pharmacy_id: true },
+        },
+      },
+    });
+
+    return NextResponse.json({
+      success: true,
+      found: true,
+      valid: true,
+      discount_percent: pharmacy.discount_percent || settings.pharmacy_discount_percent,
+      member: {
+        id: member.id,
+        full_name: member.full_name,
+        expires_at: member.expires_at,
+      },
+      prescriptions: prescriptions.map((p) => ({
+        id: p.id,
+        medication: p.medication,
+        form: p.form,
+        dosage: p.dosage,
+        frequency: p.frequency,
+        duration_days: p.duration_days,
+        instructions: p.instructions,
+        start_date: p.start_date,
+        end_date: p.end_date,
+        last_fulfilment: p.fulfilments[0]
+          ? {
+              status: p.fulfilments[0].status,
+              at: p.fulfilments[0].created_at,
+              here: p.fulfilments[0].pharmacy_id === pharmacy.id,
+            }
+          : null,
+      })),
+    });
+  } catch (err) {
+    console.error("[pharmacy/lookup]", err);
+    return NextResponse.json({ error: "Could not check that code." }, { status: 500 });
+  }
+}

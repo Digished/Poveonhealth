@@ -1,0 +1,884 @@
+"use client";
+
+import { useCallback, useEffect, useRef, useState } from "react";
+import { toast } from "react-hot-toast";
+import {
+  BadgeCheck,
+  Download,
+  FileText,
+  ImagePlus,
+  Loader2,
+  Mail,
+  MapPin,
+  Pencil,
+  Pill,
+  Plus,
+  Power,
+  QrCode,
+  Landmark,
+  UserPlus,
+  RefreshCw,
+  Save,
+  TicketPercent,
+  Trash2,
+  Users,
+  X,
+} from "lucide-react";
+import { Modal } from "@/components/ui/Overlay";
+import { STATE_NAMES, lgasForState } from "@/lib/nigeria-locations";
+import { FuzzyCombo } from "@/components/ui/FuzzyCombo";
+import { NIGERIAN_BANKS } from "@/lib/nigerian-banks";
+import { MonthFilter, monthLabel, type MonthOption } from "@/components/ui/MonthFilter";
+
+type Pharmacy = {
+  id: string; name: string; slug: string; code: string; email: string; logo_url: string | null;
+  phone: string | null; address: string | null; city: string | null; state: string | null;
+  discount_percent: number; margin_percent: number; active: boolean;
+  onboarded_at: string | null; created_at: string;
+  bank_code: string | null; account_name: string | null; account_last4: string | null;
+  payouts_ready: boolean;
+  customers: number; redemptions: number; discount_given: number;
+  /** Members who joined and named this pharmacy first, in the chosen month. */
+  signups: number;
+};
+
+const naira = (n: number) => `₦${Math.round(n).toLocaleString("en-NG")}`;
+
+function formatDate(iso: string | null) {
+  if (!iso) return "—";
+  return new Date(iso).toLocaleDateString("en-GB", { day: "numeric", month: "short", year: "numeric" });
+}
+
+export function AdminPharmaciesTab() {
+  const [pharmacies, setPharmacies] = useState<Pharmacy[]>([]);
+  const [qrFor, setQrFor] = useState<Pharmacy | null>(null);
+  const [editing, setEditing] = useState<Pharmacy | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [adding, setAdding] = useState(false);
+  const [busyId, setBusyId] = useState<string | null>(null);
+  // Which month's sign-ups are being counted. Empty is every month.
+  const [month, setMonth] = useState("");
+  const [signupMonths, setSignupMonths] = useState<MonthOption[]>([]);
+  const [signupsTotal, setSignupsTotal] = useState(0);
+
+  const load = useCallback(async () => {
+    setLoading(true);
+    try {
+      const res = await fetch(`/api/admin/pharmacies${month ? `?month=${month}` : ""}`, {
+        cache: "no-store",
+      });
+      const d = await res.json();
+      if (d.success) {
+        setPharmacies(d.pharmacies);
+        // The months on offer come from every sign-up, not the filtered set,
+        // or picking one month would hide all the others.
+        if (d.signup_months) setSignupMonths(d.signup_months);
+        setSignupsTotal(d.signups_total ?? 0);
+      }
+    } catch {
+      toast.error("Failed to load pharmacies.");
+    } finally {
+      setLoading(false);
+    }
+  }, [month]);
+
+  useEffect(() => { load(); }, [load]);
+
+  async function patch(id: string, body: Record<string, unknown>, okMessage: string) {
+    setBusyId(id);
+    try {
+      const res = await fetch(`/api/admin/pharmacies/${id}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(body),
+      });
+      const d = await res.json();
+      if (!res.ok || !d.success) { toast.error(d.error ?? "That didn't work."); return; }
+      toast.success(okMessage);
+      load();
+    } finally {
+      setBusyId(null);
+    }
+  }
+
+  async function remove(p: Pharmacy) {
+    if (!window.confirm(`Remove ${p.name}? Pharmacies that have traded are deactivated, not deleted.`)) return;
+    setBusyId(p.id);
+    try {
+      const res = await fetch(`/api/admin/pharmacies/${p.id}`, { method: "DELETE" });
+      const d = await res.json();
+      if (!res.ok || !d.success) { toast.error(d.error ?? "Could not remove."); return; }
+      toast.success(d.deactivated ? "Pharmacy deactivated" : "Pharmacy removed");
+      load();
+    } finally {
+      setBusyId(null);
+    }
+  }
+
+  const totals = pharmacies.reduce(
+    (acc, p) => ({
+      customers: acc.customers + p.customers,
+      redemptions: acc.redemptions + p.redemptions,
+      discount: acc.discount + p.discount_given,
+    }),
+    { customers: 0, redemptions: 0, discount: 0 }
+  );
+
+  return (
+    <div className="space-y-4">
+      <div className="flex flex-wrap items-center justify-between gap-3">
+        <div>
+          <h2 className="flex items-center gap-2 text-lg font-bold text-white">
+            <Pill className="h-5 w-5" /> Pharmacies
+          </h2>
+          <p className="mt-0.5 text-xs text-slate-400">
+            Partner pharmacies honour care-plan codes and track their own regulars.
+          </p>
+        </div>
+        <div className="flex items-center gap-2">
+          <button
+            onClick={load}
+            className="flex items-center gap-1.5 rounded-lg bg-white/10 px-3 py-2 text-xs text-slate-300 hover:text-white"
+          >
+            <RefreshCw className={`h-4 w-4 ${loading ? "animate-spin" : ""}`} /> Refresh
+          </button>
+          <button
+            onClick={() => setAdding(true)}
+            className="flex items-center gap-1.5 rounded-lg bg-medical-600 px-3.5 py-2 text-xs font-bold text-white hover:bg-medical-700"
+          >
+            <Plus className="h-4 w-4" /> Add pharmacy
+          </button>
+        </div>
+      </div>
+
+      <div className="grid grid-cols-2 gap-3 lg:grid-cols-5">
+        <SmallStat label="Pharmacies" value={String(pharmacies.length)} icon={<Pill className="h-4 w-4" />} />
+        <SmallStat label="Active" value={String(pharmacies.filter((p) => p.active).length)} icon={<BadgeCheck className="h-4 w-4" />} />
+        <SmallStat
+          label={month ? `Sign-ups in ${monthLabel(month)}` : "Sign-ups, all time"}
+          value={String(signupsTotal)}
+          icon={<UserPlus className="h-4 w-4" />}
+        />
+        <SmallStat label="Customers tracked" value={String(totals.customers)} icon={<Users className="h-4 w-4" />} />
+        <SmallStat label="Discount given" value={naira(totals.discount)} icon={<TicketPercent className="h-4 w-4" />} />
+      </div>
+
+      {signupMonths.length > 0 && (
+        <div>
+          <p className="mb-1.5 text-[11px] font-bold uppercase tracking-wide text-slate-400">
+            Members who chose each pharmacy first
+          </p>
+          <MonthFilter
+            months={signupMonths}
+            value={month}
+            onChange={setMonth}
+            allLabel="All time"
+            allCount={signupMonths.reduce((sum, m) => sum + m.count, 0)}
+          />
+          <p className="mt-1.5 text-[11px] leading-relaxed text-slate-500">
+            Counted on the pharmacy a member picked when they joined, so a member moving later
+            never changes a past month. This is what a pharmacy is compensated on.
+          </p>
+        </div>
+      )}
+
+      {adding && <AddPharmacyForm onClose={() => setAdding(false)} onAdded={() => { setAdding(false); load(); }} />}
+
+      {editing && (
+        <EditPharmacyForm
+          pharmacy={editing}
+          onClose={() => setEditing(null)}
+          onSaved={() => { setEditing(null); load(); }}
+        />
+      )}
+
+      <Modal
+        open={!!qrFor}
+        onClose={() => setQrFor(null)}
+        title="Sign-up QR code"
+        subtitle={qrFor?.name}
+      >
+        {qrFor && (
+          <div className="flex flex-col items-center gap-3">
+            {/* eslint-disable-next-line @next/next/no-img-element */}
+            <img
+              src={`/api/admin/partner-qr?kind=pharmacy&id=${qrFor.id}`}
+              alt={`Sign-up QR code for ${qrFor.name}`}
+              className="h-56 w-56 rounded-xl ring-1 ring-slate-100"
+            />
+            <p className="text-center text-xs text-slate-500">
+              Anyone who scans this starts their care plan with {qrFor.name} already set as their
+              pharmacy. Print it for their counter.
+            </p>
+            <div className="flex flex-wrap justify-center gap-2">
+              <a
+                href={`/api/admin/partner-qr?kind=pharmacy&id=${qrFor.id}`}
+                className="inline-flex items-center gap-1.5 rounded-xl bg-white px-4 py-2.5 text-xs font-bold text-medical-700 ring-1 ring-medical-200 transition hover:ring-medical-300"
+              >
+                <Download className="h-3.5 w-3.5" /> Just the QR code
+              </a>
+              <a
+                href={`/api/admin/partner-promo?kind=pharmacy&id=${qrFor.id}`}
+                className="inline-flex items-center gap-1.5 rounded-xl bg-medical-600 px-4 py-2.5 text-xs font-bold text-white transition hover:bg-medical-700"
+              >
+                <FileText className="h-3.5 w-3.5" /> Printable flyer (PDF)
+              </a>
+            </div>
+            <p className="text-center text-[11px] text-slate-400">
+              The flyer carries today&apos;s price and discounts — change them under Care Plan →
+              Pricing and every flyer printed afterwards follows.
+            </p>
+          </div>
+        )}
+      </Modal>
+
+      <div className="overflow-hidden rounded-xl border border-white/10 bg-white/5">
+        <div className="overflow-x-auto">
+          <table className="w-full text-sm table-cards">
+            <thead>
+              <tr className="border-b border-white/10 text-left text-xs text-slate-400">
+                <th className="px-4 py-2.5 font-semibold">Pharmacy</th>
+                <th className="px-4 py-2.5 font-semibold">Code</th>
+                <th className="px-4 py-2.5 font-semibold">Discount</th>
+                <th className="px-4 py-2.5 font-semibold">Sign-ups</th>
+                <th className="px-4 py-2.5 font-semibold">Customers</th>
+                <th className="px-4 py-2.5 font-semibold">Discount given</th>
+                <th className="px-4 py-2.5 font-semibold">Signed in</th>
+                <th className="px-4 py-2.5" />
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-white/5">
+              {pharmacies.length === 0 && !loading && (
+                <tr>
+                  <td colSpan={8} className="px-4 py-10 text-center text-slate-500">
+                    No partner pharmacies yet. Add one to start the network.
+                  </td>
+                </tr>
+              )}
+              {pharmacies.map((p) => (
+                <tr key={p.id} className={`transition hover:bg-white/5 ${p.active ? "" : "opacity-50"}`}>
+                  <td className="px-4 py-3" data-label="Pharmacy">
+                    <div className="flex items-center gap-2.5">
+                      {p.logo_url ? (
+                        // eslint-disable-next-line @next/next/no-img-element
+                        <img src={p.logo_url} alt={p.name} className="h-9 w-9 shrink-0 rounded-lg object-cover ring-1 ring-white/10" />
+                      ) : (
+                        <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-white/10">
+                          <Pill className="h-4 w-4 text-slate-400" />
+                        </div>
+                      )}
+                      <div className="min-w-0">
+                        <p className="font-semibold text-white">{p.name}</p>
+                        <p className="text-xs text-slate-400">{p.email}</p>
+                        <p className="text-xs text-slate-500">
+                          {[p.city, p.state].filter(Boolean).join(", ") || "No location set"}
+                        </p>
+                      </div>
+                    </div>
+                  </td>
+                  <td className="px-4 py-3 font-mono text-xs text-slate-300" data-label="Code">
+                    {p.code}
+                    {!p.payouts_ready && (
+                      <span
+                        title="No payout account — their share of a member's payment cannot be settled"
+                        className="ml-1.5 inline-flex items-center gap-1 rounded-full bg-amber-500/15 px-1.5 py-0.5 text-[10px] font-bold text-amber-400"
+                      >
+                        <Landmark className="h-2.5 w-2.5" /> no payout
+                      </span>
+                    )}
+                  </td>
+                  <td className="px-4 py-3" data-label="Discount">
+                    <input
+                      defaultValue={String(p.discount_percent)}
+                      onBlur={(e) => {
+                        const v = Number(e.target.value.replace(/[^\d]/g, ""));
+                        if (v !== p.discount_percent) patch(p.id, { discount_percent: v }, "Discount updated");
+                      }}
+                      className="w-16 rounded border border-white/10 bg-white/5 px-2 py-1 text-xs text-white focus:border-medical-500 focus:outline-none"
+                    />
+                    <span className="ml-1 text-xs text-slate-500">%</span>
+                  </td>
+                  <td className="px-4 py-3" data-label="Sign-ups">
+                    <span className={`text-xs font-bold ${p.signups ? "text-medical-300" : "text-slate-500"}`}>
+                      {p.signups}
+                    </span>
+                  </td>
+                  <td className="px-4 py-3 text-xs text-slate-300" data-label="Customers">{p.customers}</td>
+                  <td className="px-4 py-3 text-xs text-emerald-300" data-label="Discount given">{naira(p.discount_given)}</td>
+                  <td className="px-4 py-3 text-xs text-slate-400" data-label="Signed in">
+                    {p.onboarded_at ? formatDate(p.onboarded_at) : <span className="text-amber-400">Not yet</span>}
+                  </td>
+                  <td className="px-4 py-3" data-label="" data-card-actions>
+                    <div className="flex items-center justify-end gap-1.5">
+                      <IconAction
+                        title="Edit details"
+                        busy={false}
+                        onClick={() => setEditing(p)}
+                        icon={<Pencil className="h-3.5 w-3.5" />}
+                      />
+                      <IconAction
+                        title="Sign-up QR code — scanning it makes this their pharmacy"
+                        busy={false}
+                        onClick={() => setQrFor(p)}
+                        icon={<QrCode className="h-3.5 w-3.5" />}
+                      />
+                      <IconAction
+                        title="Re-send the invite email"
+                        busy={busyId === p.id}
+                        onClick={() => patch(p.id, { resend_invite: true }, "Invite sent")}
+                        icon={<Mail className="h-3.5 w-3.5" />}
+                      />
+                      <IconAction
+                        title={p.active ? "Deactivate" : "Reactivate"}
+                        busy={busyId === p.id}
+                        onClick={() => patch(p.id, { active: !p.active }, p.active ? "Deactivated" : "Reactivated")}
+                        icon={<Power className="h-3.5 w-3.5" />}
+                      />
+                      <IconAction
+                        title="Remove"
+                        danger
+                        busy={busyId === p.id}
+                        onClick={() => remove(p)}
+                        icon={<Trash2 className="h-3.5 w-3.5" />}
+                      />
+                    </div>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function SmallStat({ label, value, icon }: { label: string; value: string; icon: React.ReactNode }) {
+  return (
+    <div className="rounded-xl border border-white/10 bg-white/5 p-4">
+      <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-white/10 text-slate-300">{icon}</div>
+      <p className="mt-2.5 truncate text-xl font-extrabold text-white">{value}</p>
+      <p className="text-xs text-slate-400">{label}</p>
+    </div>
+  );
+}
+
+function IconAction({
+  title, icon, onClick, busy, danger,
+}: {
+  title: string; icon: React.ReactNode; onClick: () => void; busy?: boolean; danger?: boolean;
+}) {
+  return (
+    <button
+      title={title}
+      aria-label={title}
+      onClick={onClick}
+      disabled={busy}
+      className={`rounded-lg p-2 transition disabled:opacity-40 ${
+        danger ? "text-red-400 hover:bg-red-500/15" : "text-slate-400 hover:bg-white/10 hover:text-white"
+      }`}
+    >
+      {icon}
+    </button>
+  );
+}
+
+function AddPharmacyForm({ onClose, onAdded }: { onClose: () => void; onAdded: () => void }) {
+  const [form, setForm] = useState({
+    name: "", email: "", phone: "", address: "", city: "", state: "", discount_percent: "",
+  });
+  const [logo, setLogo] = useState<File | null>(null);
+  const [logoPreview, setLogoPreview] = useState<string | null>(null);
+  const [saving, setSaving] = useState(false);
+  const fileRef = useRef<HTMLInputElement>(null);
+
+  function pickLogo(file: File) {
+    setLogo(file);
+    setLogoPreview(URL.createObjectURL(file));
+  }
+
+  async function save() {
+    // State is required — the patient directory filters on it.
+    if (saving || form.name.trim().length < 2 || !form.email.includes("@") || !form.state) return;
+    setSaving(true);
+    try {
+      const res = await fetch("/api/admin/pharmacies", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          ...form,
+          discount_percent: form.discount_percent ? Number(form.discount_percent) : undefined,
+        }),
+      });
+      const d = await res.json();
+      if (!res.ok || !d.success) { toast.error(d.error ?? "Could not add that pharmacy."); return; }
+
+      // The logo needs the new pharmacy's id, so it goes up straight after.
+      if (logo) {
+        const fd = new FormData();
+        fd.append("logo", logo);
+        const up = await fetch(`/api/admin/pharmacies/${d.pharmacy.id}/logo`, { method: "POST", body: fd });
+        if (!up.ok) toast.error("Pharmacy added, but the logo didn't upload — add it from the list.");
+      }
+
+      toast.success(`Added — code ${d.pharmacy.code}. Invite emailed.`);
+      onAdded();
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  const field = (key: keyof typeof form, placeholder: string, type = "text") => (
+    <input
+      type={type}
+      value={form[key]}
+      onChange={(e) => setForm({ ...form, [key]: e.target.value })}
+      placeholder={placeholder}
+      className="rounded-lg border border-white/10 bg-white/5 px-3.5 py-2.5 text-sm text-white placeholder-slate-500 focus:border-medical-500 focus:outline-none"
+    />
+  );
+
+  return (
+    <div className="rounded-xl border border-white/10 bg-white/5 p-5">
+      <div className="flex items-center justify-between">
+        <h3 className="text-sm font-bold text-white">Add a partner pharmacy</h3>
+        <button onClick={onClose} className="rounded-lg p-1 text-slate-400 hover:bg-white/10" aria-label="Close">
+          <X className="h-4 w-4" />
+        </button>
+      </div>
+      <p className="mt-1 text-xs text-slate-400">
+        They&apos;ll get an email with their pharmacy code and a link to sign in. Their logo and location
+        are what members see in the pharmacy directory.
+      </p>
+
+      {/* Logo */}
+      <div className="mt-4 flex items-center gap-4">
+        <input
+          ref={fileRef}
+          type="file"
+          accept="image/jpeg,image/png,image/webp,image/gif"
+          className="hidden"
+          onChange={(e) => { const f = e.target.files?.[0]; if (f) pickLogo(f); }}
+        />
+        <button
+          type="button"
+          onClick={() => fileRef.current?.click()}
+          className="flex h-16 w-16 shrink-0 items-center justify-center overflow-hidden rounded-2xl border border-white/10 bg-white/5 transition hover:border-medical-500"
+        >
+          {logoPreview ? (
+            // eslint-disable-next-line @next/next/no-img-element
+            <img src={logoPreview} alt="Logo preview" className="h-full w-full object-cover" />
+          ) : (
+            <ImagePlus className="h-6 w-6 text-slate-500" />
+          )}
+        </button>
+        <div className="min-w-0">
+          <p className="text-sm font-semibold text-slate-200">Pharmacy logo</p>
+          <p className="text-xs text-slate-400">JPEG, PNG, WebP or GIF, under 5MB. Optional.</p>
+          {logo && (
+            <button
+              onClick={() => { setLogo(null); setLogoPreview(null); }}
+              className="mt-1 text-xs font-semibold text-slate-400 hover:text-white"
+            >
+              Remove
+            </button>
+          )}
+        </div>
+      </div>
+
+      <div className="mt-4 grid gap-2 sm:grid-cols-2 lg:grid-cols-3">
+        {field("name", "Pharmacy name")}
+        {field("email", "Email address", "email")}
+        {field("phone", "Phone (optional)")}
+      </div>
+
+      {/* Location — picked from the list, so the patient filter can rely on it */}
+      <div className="mt-3">
+        <p className="mb-1.5 flex items-center gap-1.5 text-xs font-medium text-slate-300">
+          <MapPin className="h-3.5 w-3.5 text-slate-500" /> Location *
+        </p>
+        <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-3">
+          <div className="admin-combo">
+            <FuzzyCombo
+              value={form.state}
+              onChange={(v) => setForm({ ...form, state: v, city: "" })}
+              options={STATE_NAMES}
+              placeholder="State *"
+            />
+          </div>
+          <div className="admin-combo">
+            <FuzzyCombo
+              value={form.city}
+              onChange={(v) => setForm({ ...form, city: v })}
+              options={lgasForState(form.state)}
+              placeholder={form.state ? "Local government" : "Pick a state first"}
+              disabled={!form.state}
+              allowCustom
+            />
+          </div>
+          {field("address", "Street address (optional)")}
+        </div>
+      </div>
+
+      <div className="mt-3 grid gap-2 sm:grid-cols-3">
+        {field("discount_percent", "Discount % (default applies)")}
+      </div>
+
+      <button
+        onClick={save}
+        disabled={saving || form.name.trim().length < 2 || !form.email.includes("@") || !form.state}
+        className="mt-4 flex items-center gap-2 rounded-lg bg-medical-600 px-4 py-2.5 text-sm font-bold text-white transition hover:bg-medical-700 disabled:opacity-50"
+      >
+        {saving ? <Loader2 className="h-4 w-4 animate-spin" /> : <Save className="h-4 w-4" />}
+        {saving ? "Adding…" : "Add & invite"}
+      </button>
+      {!form.state && (
+        <p className="mt-2 text-xs text-amber-400">Pick a state — members filter the directory by it.</p>
+      )}
+    </div>
+  );
+}
+
+
+/**
+ * Everything about a partner, changeable.
+ *
+ * Until now the only thing an admin could do to a pharmacy after creating it
+ * was deactivate or delete it — so a typo in the name, a move, a new discount
+ * or a missing logo meant removing the partner and starting again, which loses
+ * their code and their customer book. The create form even says "add it from
+ * the list" about the logo, and there was no list to add it from.
+ */
+function EditPharmacyForm({
+  pharmacy, onClose, onSaved,
+}: {
+  pharmacy: Pharmacy;
+  onClose: () => void;
+  onSaved: () => void;
+}) {
+  const [form, setForm] = useState({
+    name: pharmacy.name,
+    email: pharmacy.email,
+    phone: pharmacy.phone ?? "",
+    address: pharmacy.address ?? "",
+    state: pharmacy.state ?? "",
+    city: pharmacy.city ?? "",
+    discount_percent: String(pharmacy.discount_percent ?? ""),
+    margin_percent: String(pharmacy.margin_percent ?? 5),
+    bank_code: pharmacy.bank_code ?? "",
+    account_number: "",
+    account_name: pharmacy.account_name ?? "",
+  });
+  const [logo, setLogo] = useState<File | null>(null);
+  const [logoPreview, setLogoPreview] = useState<string | null>(pharmacy.logo_url);
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState("");
+  const logoRef = useRef<HTMLInputElement | null>(null);
+  const resolved = useResolvedAccount(form.bank_code, form.account_number);
+
+  async function save() {
+    if (saving || form.name.trim().length < 2 || !form.email.includes("@")) return;
+    setSaving(true);
+    setError("");
+    try {
+      const res = await fetch(`/api/admin/pharmacies/${pharmacy.id}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          name: form.name.trim(),
+          email: form.email.trim().toLowerCase(),
+          phone: form.phone.trim() || null,
+          address: form.address.trim() || null,
+          state: form.state || null,
+          city: form.city || null,
+          ...(form.discount_percent !== "" ? { discount_percent: Number(form.discount_percent) } : {}),
+          ...(form.margin_percent !== "" ? { margin_percent: Number(form.margin_percent) } : {}),
+          // The account number is only sent when it was actually typed — the
+          // field starts blank so an edit of the address cannot wipe a payout
+          // account that is already set.
+          ...(form.bank_code ? { bank_code: form.bank_code } : {}),
+          ...(form.account_number ? { account_number: form.account_number } : {}),
+        }),
+      });
+      const d = await res.json().catch(() => null);
+      if (!res.ok || !d?.success) {
+        setError(d?.error ?? "Could not save those changes.");
+        return;
+      }
+      // Saved, but something about the payout account needs saying — the bank
+      // was unreachable, or the split account could not be created.
+      if (d.warning) toast(d.warning, { icon: "⚠️", duration: 7000 });
+
+      if (logo) {
+        const fd = new FormData();
+        fd.append("logo", logo);
+        const up = await fetch(`/api/admin/pharmacies/${pharmacy.id}/logo`, { method: "POST", body: fd });
+        if (!up.ok) {
+          toast.error("Details saved, but the logo didn't upload.");
+          onSaved();
+          return;
+        }
+      }
+
+      toast.success("Pharmacy updated");
+      onSaved();
+    } catch {
+      setError("Network error. Please try again.");
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  const input =
+    "w-full rounded-lg border border-white/10 bg-white/5 px-3 py-2.5 text-sm text-white placeholder-slate-500 focus:border-medical-400 focus:outline-none";
+
+  return (
+    <Modal open onClose={onClose} title="Edit pharmacy" subtitle={pharmacy.code} size="md">
+      <div className="space-y-3">
+        <div className="flex items-center gap-3">
+          {logoPreview ? (
+            // eslint-disable-next-line @next/next/no-img-element
+            <img src={logoPreview} alt="" className="h-14 w-14 shrink-0 rounded-xl object-cover ring-1 ring-slate-200" />
+          ) : (
+            <div className="flex h-14 w-14 shrink-0 items-center justify-center rounded-xl bg-slate-100 text-lg font-bold text-slate-400">
+              {pharmacy.name.slice(0, 1).toUpperCase()}
+            </div>
+          )}
+          <div>
+            <input
+              ref={logoRef}
+              type="file"
+              accept="image/png,image/jpeg,image/webp"
+              hidden
+              onChange={(e) => {
+                const f = e.target.files?.[0] ?? null;
+                setLogo(f);
+                setLogoPreview(f ? URL.createObjectURL(f) : pharmacy.logo_url);
+              }}
+            />
+            <button
+              onClick={() => logoRef.current?.click()}
+              className="rounded-lg bg-slate-100 px-3 py-2 text-xs font-bold text-slate-700 transition hover:bg-slate-200"
+            >
+              {pharmacy.logo_url ? "Replace logo" : "Add a logo"}
+            </button>
+            <p className="mt-1 text-[11px] text-slate-400">Shown to members and on their flyer.</p>
+          </div>
+        </div>
+
+        <Field label="Name">
+          <input value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} className={input} />
+        </Field>
+        <Field label="Sign-in email">
+          <input value={form.email} onChange={(e) => setForm({ ...form, email: e.target.value })} className={input} />
+        </Field>
+        <div className="grid gap-3 sm:grid-cols-3">
+          <Field label="Phone">
+            <input value={form.phone} onChange={(e) => setForm({ ...form, phone: e.target.value })} className={input} />
+          </Field>
+          <Field label="Headline discount %">
+            <input
+              inputMode="numeric"
+              value={form.discount_percent}
+              onChange={(e) => setForm({ ...form, discount_percent: e.target.value.replace(/\D/g, "") })}
+              className={input}
+            />
+          </Field>
+          <Field label="Poveon margin %">
+            <input
+              inputMode="decimal"
+              value={form.margin_percent}
+              onChange={(e) => setForm({ ...form, margin_percent: e.target.value.replace(/[^\d.]/g, "") })}
+              className={input}
+            />
+          </Field>
+        </div>
+        <p className="-mt-1 text-[11px] leading-relaxed text-slate-500">
+          The headline discount is the &ldquo;up to N% off&rdquo; we quote in marketing. The margin
+          is our real cut — a percentage of each medication&apos;s list price, taken out of the
+          discount this pharmacy gives us. A margin bigger than their discount on an item leaves the
+          member no saving, so we take less on that row instead.
+        </p>
+
+        {/* ── Payouts ──────────────────────────────────────────────────── */}
+        <div className="rounded-xl border border-white/10 bg-white/5 p-3.5">
+          <p className="flex items-center gap-1.5 text-[11px] font-bold uppercase tracking-wider text-slate-300">
+            <Landmark className="h-3.5 w-3.5" /> Where they are paid
+          </p>
+          <p className="mt-1 text-[11px] leading-relaxed text-slate-500">
+            {pharmacy.payouts_ready
+              ? `Currently ${pharmacy.account_name ?? "set"} · ••••${pharmacy.account_last4}. Leave the account number blank to keep it.`
+              : "Not set up yet. Their share of a member's payment cannot be settled until it is."}
+          </p>
+          <div className="mt-3 space-y-3">
+            <Field label="Bank">
+              <select
+                value={form.bank_code}
+                onChange={(e) => setForm({ ...form, bank_code: e.target.value })}
+                className={input}
+              >
+                <option value="">Select a bank</option>
+                {NIGERIAN_BANKS.map((b) => (
+                  <option key={b.code} value={b.code}>{b.name}</option>
+                ))}
+              </select>
+            </Field>
+            <div className="grid gap-3 sm:grid-cols-2">
+              <Field label="Account number">
+                <input
+                  inputMode="numeric"
+                  maxLength={10}
+                  placeholder={pharmacy.payouts_ready ? "Leave blank to keep" : "10 digits"}
+                  value={form.account_number}
+                  onChange={(e) => setForm({ ...form, account_number: e.target.value.replace(/\D/g, "") })}
+                  className={input}
+                />
+              </Field>
+              <Field label="Account name">
+                <div
+                  className={`${input} flex min-h-[2.6rem] items-center gap-2 ${
+                    resolved.status === "ok" ? "text-emerald-300" : "text-slate-400"
+                  }`}
+                >
+                  {resolved.status === "checking" && (
+                    <>
+                      <Loader2 className="h-3.5 w-3.5 shrink-0 animate-spin" />
+                      <span className="text-xs">Asking the bank…</span>
+                    </>
+                  )}
+                  {resolved.status === "ok" && (
+                    <>
+                      <BadgeCheck className="h-4 w-4 shrink-0" />
+                      <span className="truncate text-sm font-semibold">{resolved.name}</span>
+                    </>
+                  )}
+                  {(resolved.status === "not_found" || resolved.status === "unavailable") && (
+                    <span className="text-xs leading-tight text-amber-300">{resolved.message}</span>
+                  )}
+                  {resolved.status === "idle" && (
+                    <span className="truncate text-xs">
+                      {form.account_name || "Pick a bank and type 10 digits"}
+                    </span>
+                  )}
+                </div>
+              </Field>
+            </div>
+            <p className="text-[11px] leading-relaxed text-slate-500">
+              The name comes from the bank, not from us — it is checked again when you save, and a
+              number that resolves to nothing is refused rather than stored.
+            </p>
+          </div>
+        </div>
+        <div className="grid gap-3 sm:grid-cols-2">
+          <Field label="State">
+            <div className="admin-combo">
+              <FuzzyCombo
+                value={form.state}
+                onChange={(v) => setForm({ ...form, state: v, city: "" })}
+                options={STATE_NAMES}
+                placeholder="State"
+              />
+            </div>
+          </Field>
+          <Field label="Local government">
+            <div className="admin-combo">
+              <FuzzyCombo
+                value={form.city}
+                onChange={(v) => setForm({ ...form, city: v })}
+                options={lgasForState(form.state)}
+                placeholder={form.state ? "Local government" : "Pick a state first"}
+                disabled={!form.state}
+                allowCustom
+              />
+            </div>
+          </Field>
+        </div>
+        <Field label="Street address">
+          <input value={form.address} onChange={(e) => setForm({ ...form, address: e.target.value })} className={input} />
+        </Field>
+
+        {error && <p className="text-xs font-medium text-red-600">{error}</p>}
+      </div>
+
+      <div className="mt-4 flex gap-2">
+        <button
+          onClick={save}
+          disabled={saving || form.name.trim().length < 2 || !form.email.includes("@")}
+          className="flex flex-1 items-center justify-center gap-2 rounded-xl bg-medical-600 py-2.5 text-sm font-bold text-white transition hover:bg-medical-700 disabled:opacity-50"
+        >
+          {saving ? <Loader2 className="h-4 w-4 animate-spin" /> : <Save className="h-4 w-4" />}
+          Save changes
+        </button>
+        <button onClick={onClose} className="rounded-xl px-4 py-2.5 text-xs font-semibold text-slate-500 hover:text-slate-700">
+          Cancel
+        </button>
+      </div>
+    </Modal>
+  );
+}
+
+
+/**
+ * Ask the bank whose account this is, as the admin types.
+ *
+ * The account name is never typed here — it is what the bank returns, or
+ * nothing. An admin who can edit the name can talk themselves into believing a
+ * wrong account number is right, and the pharmacy finds out at settlement.
+ *
+ * Fires only on a complete pair, debounced, and every result is labelled so a
+ * bank that is merely unreachable never reads as an account that does not
+ * exist.
+ */
+function useResolvedAccount(bankCode: string, accountNumber: string) {
+  const [state, setState] = useState<{
+    status: "idle" | "checking" | "ok" | "not_found" | "unavailable";
+    name: string;
+    message: string;
+  }>({ status: "idle", name: "", message: "" });
+
+  useEffect(() => {
+    if (!bankCode || accountNumber.length !== 10) {
+      setState({ status: "idle", name: "", message: "" });
+      return;
+    }
+    let live = true;
+    const controller = new AbortController();
+    const timer = setTimeout(async () => {
+      setState((s) => ({ ...s, status: "checking" }));
+      try {
+        const res = await fetch("/api/admin/pharmacies/resolve-account", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ bank_code: bankCode, account_number: accountNumber }),
+          signal: controller.signal,
+        });
+        const d = await res.json().catch(() => null);
+        if (!live) return;
+        if (res.ok && d?.success) {
+          setState({ status: "ok", name: d.account_name, message: "" });
+        } else {
+          setState({
+            status: res.status === 422 ? "not_found" : "unavailable",
+            name: "",
+            message: d?.error ?? "Could not check that account.",
+          });
+        }
+      } catch {
+        if (live) setState({ status: "unavailable", name: "", message: "Could not reach the bank." });
+      }
+    }, 450);
+
+    return () => { live = false; controller.abort(); clearTimeout(timer); };
+  }, [bankCode, accountNumber]);
+
+  return state;
+}
+
+function Field({ label, children }: { label: string; children: React.ReactNode }) {
+  return (
+    <div>
+      <label className="mb-1 block text-xs font-semibold text-slate-500">{label}</label>
+      {children}
+    </div>
+  );
+}

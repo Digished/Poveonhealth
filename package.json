@@ -10,7 +10,8 @@
     "postinstall": "prisma generate",
     "db:push": "prisma db push",
     "db:studio": "prisma studio",
-    "db:seed-tests": "ts-node --project tsconfig.seed.json prisma/seed-tests.ts"
+    "db:seed-tests": "ts-node --project tsconfig.seed.json prisma/seed-tests.ts",
+    "check": "node scripts/typecheck.mjs && node scripts/check-migrations.mjs && node scripts/check-tdz.mjs && node scripts/check-json-columns.mjs && node scripts/gen-dash-fills.mjs --check && node scripts/check-med-match.mjs && node scripts/check-pharmacy-lock.mjs && node scripts/check-bonus-math.mjs && node scripts/check-doctor-pay.mjs && node scripts/check-summary-cadence.mjs && node scripts/check-emails.mjs && node scripts/check-promo-flyer.mjs && node scripts/check-client-render.mjs"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.80.0",
@@ -30,6 +31,7 @@
     "react-dom": "^18",
     "react-hot-toast": "^2.4.1",
     "resend": "^3.5.0",
+    "web-push": "^3.6.7",
     "xlsx": "^0.18.5",
     "zod": "^3.23.8"
   },
@@ -37,9 +39,12 @@
     "@types/node": "^20",
     "@types/react": "^18",
     "@types/react-dom": "^18",
+    "@types/web-push": "^3.6.4",
     "autoprefixer": "^10.0.1",
+    "esbuild": "^0.28.2",
     "eslint": "^8",
     "eslint-config-next": "14.2.5",
+    "playwright-core": "^1.62.1",
     "postcss": "^8",
     "prisma": "^5.17.0",
     "tailwindcss": "^3.4.1",

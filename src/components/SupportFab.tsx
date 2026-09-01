@@ -7,10 +7,14 @@ import { MessageCircle, X, Send, Loader2, Check } from "lucide-react";
 type Category = "question" | "feedback" | "issue";
 
 /**
- * Floating help button for the doctor & patient dashboards. Messages are routed
- * to the configurable support email (admin Settings → support_email).
+ * Support messages, routed to the configurable support email (admin Settings →
+ * support_email).
+ *
+ * `variant="fab"` is the old floating button. `variant="inline"` is a settings
+ * row — the care-plan chat now owns the corner of the screen, so support moved
+ * to where you go looking for it rather than where it interrupts.
  */
-export function SupportFab() {
+export function SupportFab({ variant = "fab" }: { variant?: "fab" | "inline" } = {}) {
   const [open, setOpen] = useState(false);
   const [category, setCategory] = useState<Category>("question");
   const [message, setMessage] = useState("");
@@ -90,12 +94,26 @@ export function SupportFab() {
         </div>
       )}
 
-      {/* Floating button */}
-      <button onClick={() => setOpen((o) => !o)}
-        className="fixed bottom-5 right-4 sm:right-6 z-[160] w-14 h-14 rounded-2xl bg-gradient-to-br from-medical-600 to-medical-800 text-white shadow-xl shadow-medical-600/30 flex items-center justify-center hover:scale-105 active:scale-95 transition-transform"
-        aria-label="Help and feedback">
-        {open ? <X className="w-6 h-6" /> : <MessageCircle className="w-6 h-6" />}
-      </button>
+      {variant === "inline" ? (
+        <button
+          onClick={() => setOpen((o) => !o)}
+          className="flex w-full items-center gap-3 rounded-2xl border border-slate-100 bg-white p-4 text-left shadow-sm transition hover:border-medical-200"
+        >
+          <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-medical-50 text-medical-600">
+            <MessageCircle className="h-4 w-4" />
+          </span>
+          <span className="min-w-0 flex-1">
+            <span className="block text-sm font-semibold text-slate-800">Contact support</span>
+            <span className="block text-xs text-slate-500">Ask a question or report a problem</span>
+          </span>
+        </button>
+      ) : (
+        <button onClick={() => setOpen((o) => !o)}
+          className="fixed bottom-5 right-4 sm:right-6 z-[160] w-14 h-14 rounded-2xl bg-gradient-to-br from-medical-600 to-medical-800 text-white shadow-xl shadow-medical-600/30 flex items-center justify-center hover:scale-105 active:scale-95 transition-transform"
+          aria-label="Help and feedback">
+          {open ? <X className="w-6 h-6" /> : <MessageCircle className="w-6 h-6" />}
+        </button>
+      )}
     </>
   );
 }

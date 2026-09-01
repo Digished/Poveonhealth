@@ -22,6 +22,7 @@ import {
 import { parsePhones } from "@/lib/phones";
 import { SERVICE_CATEGORIES, LAB_CERTIFICATIONS } from "@/lib/constants";
 import type { Lab, PhoneEntry } from "@/lib/types";
+import { AdminOverlay } from "@/components/admin/AdminOverlay";
 
 // ── Shared constants ──────────────────────────────────────────────────────────
 
@@ -604,7 +605,7 @@ export function EditLabForm({
 
   // ── Render ────────────────────────────────────────────────────────────────
   return (
-    <div className="fixed inset-0 z-50 bg-slate-950 flex flex-col overflow-hidden">
+    <AdminOverlay onClose={onClose} align="fullscreen">
 
       {/* ── Top bar ── */}
       <div className="shrink-0 flex items-center justify-between px-5 py-4 border-b border-white/10 bg-slate-900/80 backdrop-blur-sm">
@@ -1035,6 +1036,6 @@ export function EditLabForm({
           )}
         </div>
       </div>
-    </div>
+    </AdminOverlay>
   );
 }

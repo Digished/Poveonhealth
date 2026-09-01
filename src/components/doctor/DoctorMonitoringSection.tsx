@@ -5,6 +5,20 @@ import {
   Activity, AlertTriangle, Bell, Check, ChevronLeft, Droplets, Flag,
   HeartPulse, Loader2, RefreshCw, Search,
 } from "lucide-react";
+
+/** A date of birth is a fact to store; an age is what a doctor reads. */
+function ageFrom(iso: string | null): number | null {
+  if (!iso) return null;
+  const dob = new Date(iso);
+  if (Number.isNaN(dob.getTime())) return null;
+  const now = new Date();
+  let age = now.getFullYear() - dob.getFullYear();
+  const before =
+    now.getMonth() < dob.getMonth() ||
+    (now.getMonth() === dob.getMonth() && now.getDate() < dob.getDate());
+  if (before) age -= 1;
+  return age >= 0 && age < 130 ? age : null;
+}
 import toast from "react-hot-toast";
 import { TrendChart } from "@/components/hmo/TrendChart";
 import { Reading, bpSeries, sugarSeries, formatReading } from "@/components/hmo/VitalsHistory";
@@ -134,7 +148,7 @@ function PatientDetail({ memberId, onBack, onChanged }: { memberId: string; onBa
             </p>
             <p className="text-xs text-slate-400 mt-0.5">
               {patient.hmo_name} · {patient.policy_number} · {patient.email}
-              {patient.date_of_birth ? ` · DOB ${patient.date_of_birth}` : ""}
+              {ageFrom(patient.date_of_birth) != null ? ` · ${ageFrom(patient.date_of_birth)} years` : ""}
               {patient.sex ? ` · ${patient.sex}` : ""}
             </p>
             {patient.flagged && patient.flag_note && (
