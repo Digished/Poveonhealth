@@ -11,6 +11,7 @@ import { PhoneInput } from "@/components/PhoneInput";
 import { DobInput } from "@/components/DobInput";
 import { ProviderPicker } from "@/components/consults/ProviderPicker";
 import { ProviderRow } from "@/components/consults/ProviderRow";
+import { PHARMACY_LOCK_DAYS } from "@/lib/pharmacy-lock";
 import type { Provider } from "@/components/consults/ProviderPicker";
 import {
   ADHERENCE_OPTIONS,
@@ -362,6 +363,12 @@ export function CarePlanEnrollModal({
                   onOpen={() => setPicking("pharmacy")}
                   onClear={() => setPharmacy(null)}
                 />
+                {pharmacy && (
+                  <p className="mt-1.5 text-[11px] leading-relaxed text-slate-500">
+                    They will price your medication and hold your refills, so this stays put for{" "}
+                    {PHARMACY_LOCK_DAYS} days. Your care code still works at every partner.
+                  </p>
+                )}
               </Field>
 
               <Field label="Preferred laboratory" optional>

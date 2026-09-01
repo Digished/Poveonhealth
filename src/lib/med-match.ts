@@ -326,3 +326,80 @@ export function dedupeByDrug<T extends { medication: string; dosage?: string | n
     return true;
   });
 }
+
+// ── Near misses ─────────────────────────────────────────────────────────────
+
+/**
+ * Edit distance, capped so a long name cannot cost more than it is worth.
+ *
+ * Two rows of the matrix rather than the whole thing: catalogues run to
+ * thousands of rows and this is called against every one of them on each
+ * keystroke a doctor types.
+ */
+function editDistance(a: string, b: string): number {
+  if (a === b) return 0;
+  if (!a.length) return b.length;
+  if (!b.length) return a.length;
+
+  let prev = Array.from({ length: b.length + 1 }, (_, i) => i);
+  let curr = new Array<number>(b.length + 1);
+
+  for (let i = 1; i <= a.length; i++) {
+    curr[0] = i;
+    for (let j = 1; j <= b.length; j++) {
+      const cost = a.charCodeAt(i - 1) === b.charCodeAt(j - 1) ? 0 : 1;
+      curr[j] = Math.min(curr[j - 1] + 1, prev[j] + 1, prev[j - 1] + cost);
+    }
+    [prev, curr] = [curr, prev];
+  }
+  return prev[b.length];
+}
+
+/** 1 when identical, 0 when nothing in common. */
+export function similarity(a: string, b: string): number {
+  const longest = Math.max(a.length, b.length);
+  if (longest === 0) return 1;
+  return 1 - editDistance(a, b) / longest;
+}
+
+export type Suggestion<T> = { row: T; score: number };
+
+/**
+ * The rows a mistyped name most likely meant.
+ *
+ * "Amlodipin", "Amlodipne", "Amlodpine" are all one slip from a real drug on
+ * the shelf, and a doctor who cannot see that will write a prescription their
+ * patient cannot fill. Scored on the normalised name only — strength and form
+ * are shown alongside so the doctor picks, rather than being guessed at.
+ *
+ * The floor is deliberately high. A wrong suggestion for a medicine is worse
+ * than no suggestion: it invites a doctor to accept a drug they did not mean.
+ */
+export function suggestMedications<T extends MatchRow>(
+  index: MedIndex<T>,
+  want: MedIdentity,
+  limit = 3,
+  floor = 0.62
+): Suggestion<T>[] {
+  if (!want.name) return [];
+  const best = new Map<string, Suggestion<T>>();
+
+  for (const entry of index.all) {
+    if (!entry.id.name) continue;
+    let score = similarity(want.name, entry.id.name);
+    // A name that contains the other in full is a strong signal an edit
+    // distance underrates — "amlodipine" inside "amlodipinebesylate".
+    if (entry.id.name.includes(want.name) || want.name.includes(entry.id.name)) {
+      score = Math.max(score, 0.85);
+    }
+    if (score < floor) continue;
+    // One suggestion per drug, at its best-scoring row, so three strengths of
+    // the same medicine do not fill the list.
+    const prior = best.get(entry.id.name);
+    if (!prior || score > prior.score) best.set(entry.id.name, { row: entry.row, score });
+  }
+
+  return Array.from(best.values())
+    .sort((a, b) => b.score - a.score)
+    .slice(0, limit);
+}

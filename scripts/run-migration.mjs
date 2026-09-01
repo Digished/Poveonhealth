@@ -2787,6 +2787,39 @@ const migrations = [
       ADD COLUMN IF NOT EXISTS risk_set_by TEXT`,
     continueOnError: true,
   },
+  {
+    desc: "consult_patients pharmacy choice: when it was made, and the first one",
+    sql: `ALTER TABLE consult_patients
+      ADD COLUMN IF NOT EXISTS preferred_pharmacy_set_at TIMESTAMP(3),
+      ADD COLUMN IF NOT EXISTS first_pharmacy_id TEXT,
+      ADD COLUMN IF NOT EXISTS first_pharmacy_at TIMESTAMP(3)`,
+    continueOnError: true,
+  },
+  {
+    // Members who chose a pharmacy before the column existed are backfilled
+    // from their sign-up date, so a pharmacy's attribution does not start empty.
+    desc: "backfill first_pharmacy for members who already chose one",
+    sql: `UPDATE consult_patients
+      SET first_pharmacy_id = preferred_pharmacy_id,
+          first_pharmacy_at = COALESCE(subscribed_at, created_at),
+          preferred_pharmacy_set_at = COALESCE(preferred_pharmacy_set_at, subscribed_at, created_at)
+      WHERE preferred_pharmacy_id IS NOT NULL AND first_pharmacy_id IS NULL`,
+    continueOnError: true,
+  },
+  {
+    desc: "consult_patients first-choice pharmacy index (the monthly sign-up count)",
+    sql: `CREATE INDEX IF NOT EXISTS consult_patients_first_pharmacy_idx
+      ON consult_patients (first_pharmacy_id, first_pharmacy_at)`,
+    continueOnError: true,
+  },
+  {
+    desc: "consult_patients AI summary columns",
+    sql: `ALTER TABLE consult_patients
+      ADD COLUMN IF NOT EXISTS summary_text TEXT,
+      ADD COLUMN IF NOT EXISTS summary_at TIMESTAMP(3),
+      ADD COLUMN IF NOT EXISTS summary_fingerprint TEXT`,
+    continueOnError: true,
+  },
 ];
 
 let failed = false;

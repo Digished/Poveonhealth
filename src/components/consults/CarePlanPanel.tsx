@@ -12,7 +12,8 @@ import { SectionLoader } from "@/components/PageLoader";
 import { getJson, invalidateJson } from "@/lib/client-cache";
 import { CADENCE_LABEL } from "@/lib/treatment-plan";
 import { CareHistoryPanel } from "@/components/consults/CareHistoryPanel";
-import { Modal } from "@/components/ui/Overlay";
+import { ConfirmDialog, Modal } from "@/components/ui/Overlay";
+import { lockMessage, lockWarning, PHARMACY_LOCK_DAYS, type PharmacyLock } from "@/lib/pharmacy-lock";
 import { ProviderRow } from "@/components/consults/ProviderRow";
 import type { Provider } from "@/components/consults/ProviderPicker";
 
@@ -108,6 +109,10 @@ export function CarePlanPanel({
   const [prescriptions, setPrescriptions] = useState<Prescription[]>([]);
   const [testOrders, setTestOrders] = useState<TestOrder[]>([]);
   const [pharmacy, setPharmacy] = useState<Provider | null>(null);
+  const [pharmacyLock, setPharmacyLock] = useState<PharmacyLock | null>(null);
+  // A pharmacy choice is a 30-day commitment, so it is confirmed before it is
+  // made rather than explained after.
+  const [confirming, setConfirming] = useState<Provider | null>(null);
   const [lab, setLab] = useState<Provider | null>(null);
   const [plan, setPlan] = useState<MemberPlan | null>(null);
   const [picking, setPicking] = useState<"pharmacy" | "lab" | null>(null);
@@ -142,6 +147,7 @@ export function CarePlanPanel({
       setPrescriptions(data.prescriptions ?? []);
       setTestOrders(data.test_orders ?? []);
       setPharmacy(data.preferred_pharmacy ?? null);
+      setPharmacyLock(data.pharmacy_lock ?? null);
       setLab(data.preferred_lab ?? null);
       setPlan(data.plan ?? null);
       if (data.benefits) setBenefits(data.benefits);
@@ -163,12 +169,19 @@ export function CarePlanPanel({
     }
   }, [autoOpenEnroll, loading, member]);
 
-  /** Persist a provider choice; the row updates as soon as it saves. */
+  /**
+   * Persist a provider choice; the row updates as soon as it saves.
+   *
+   * The pharmacy is settled for 30 days, and the server is the one enforcing
+   * that — so a refusal is put back on screen and the old choice restored,
+   * rather than the row quietly showing something that was never saved.
+   */
   const savePreference = useCallback(async (kind: "pharmacy" | "lab", provider: Provider | null) => {
+    const previous = kind === "pharmacy" ? pharmacy : lab;
     if (kind === "pharmacy") setPharmacy(provider);
     else setLab(provider);
     try {
-      await fetch("/api/consults/preferences", {
+      const res = await fetch("/api/consults/preferences", {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(
@@ -177,11 +190,25 @@ export function CarePlanPanel({
             : { preferred_lab_id: provider?.id ?? null }
         ),
       });
+      const d = await res.json().catch(() => null);
+      if (!res.ok || !d?.success) {
+        toast.error(d?.error ?? "Could not save that.");
+        if (kind === "pharmacy") setPharmacy(previous);
+        else setLab(previous);
+        return;
+      }
+      if (kind === "pharmacy") {
+        setPharmacyLock({
+          locked: !!d.pharmacy_days_left,
+          unlocksOn: d.pharmacy_locked_until ? new Date(d.pharmacy_locked_until) : null,
+          daysLeft: d.pharmacy_days_left ?? 0,
+        });
+      }
       invalidateJson("/api/consults/me");
     } catch {
       /* the next load reconciles it */
     }
-  }, []);
+  }, [pharmacy, lab]);
 
   /** Whether a new doctor inherits the thread and the notes. */
   const saveHistorySharing = useCallback(async (share: boolean) => {
@@ -315,6 +342,7 @@ export function CarePlanPanel({
                   <ProviderRow
                     kind="pharmacy"
                     provider={pharmacy}
+                    locked={pharmacyLock?.locked ? lockMessage(pharmacyLock, pharmacy?.name) : null}
                     onOpen={() => setPicking("pharmacy")}
                     onClear={() => savePreference("pharmacy", null)}
                   />
@@ -326,8 +354,9 @@ export function CarePlanPanel({
                   />
                 </div>
                 <p className="mt-2.5 text-[11px] leading-relaxed text-slate-400">
-                  Your pharmacy sets the prices you see under Medication. Change these any time —
-                  your care code works at every partner either way.
+                  Your pharmacy sets the prices you see under Medication and holds your refills, so
+                  it stays put for {PHARMACY_LOCK_DAYS} days once you pick it. Your lab you can
+                  change any time — and your care code works at every partner either way.
                 </p>
               </div>
 
@@ -362,10 +391,24 @@ export function CarePlanPanel({
         <ProviderPicker
           kind={picking}
           value={(picking === "pharmacy" ? pharmacy : lab)?.id ?? null}
-          onChange={(p) => savePreference(picking, p)}
+          onChange={(p) => {
+            // Picking a pharmacy asks first; the lab, and clearing either, do not.
+            if (picking === "pharmacy" && p) setConfirming(p);
+            else savePreference(picking, p);
+          }}
           onClose={() => setPicking(null)}
         />
       )}
+
+      <ConfirmDialog
+        open={!!confirming}
+        title={`Make ${confirming?.name ?? "this pharmacy"} your pharmacy?`}
+        tone="primary"
+        confirmLabel={`Yes, for ${PHARMACY_LOCK_DAYS} days`}
+        body={<p className="leading-relaxed">{lockWarning(confirming?.name ?? "This pharmacy")}</p>}
+        onConfirm={() => { if (confirming) void savePreference("pharmacy", confirming); }}
+        onClose={() => setConfirming(null)}
+      />
 
       {enrolling && (
         <CarePlanEnrollModal

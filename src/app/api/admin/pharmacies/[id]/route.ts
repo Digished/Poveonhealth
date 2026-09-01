@@ -7,6 +7,7 @@ import { resend, FROM_ADDRESS } from "@/lib/email/resend";
 import { pharmacyAccountCreatedEmail } from "@/lib/email/templates";
 import { appUrl } from "@/lib/consult";
 import { ensureCarePlanSchema } from "@/lib/startup/ensure-care-plan-schema";
+import { resolveAccountName, upsertPharmacySubaccount } from "@/lib/paystack-bank";
 
 async function requireAdmin() {
   const authClient = await createServerClient();
@@ -33,6 +34,11 @@ const PatchSchema = z.object({
    */
   bank_code: z.string().trim().max(10).optional().nullable(),
   account_number: z.string().trim().regex(/^\d{10}$/, "An account number is 10 digits").optional().nullable(),
+  /**
+   * Ignored on the way in. The name is whatever the bank says it is — see
+   * below — because a name typed by hand confirms nothing about the account
+   * the money will actually land in.
+   */
   account_name: z.string().trim().max(160).optional().nullable(),
   active: z.boolean().optional(),
   resend_invite: z.boolean().optional(),
@@ -96,6 +102,59 @@ export async function PATCH(req: NextRequest, { params }: { params: { id: string
     return NextResponse.json({ success: true, invited: true });
   }
 
+  // ── Payout account ──────────────────────────────────────────────────────
+  // Confirmed with the bank before it is stored, and the bank's answer is what
+  // gets stored. A pharmacy is paid automatically out of members' payments; an
+  // account number typed one digit wrong is somebody else's money.
+  let bankFields: Record<string, unknown> = {};
+  let accountWarning: string | null = null;
+
+  const settingAccount =
+    d.bank_code !== undefined || d.account_number !== undefined;
+
+  if (settingAccount && bank && acct) {
+    const changed = bank !== existing.bank_code || acct !== existing.account_number;
+    if (changed) {
+      const resolved = await resolveAccountName(bank, acct);
+      if (!resolved.ok && resolved.reason === "not_found") {
+        // A wrong number is the one case worth refusing outright: there is
+        // nothing to save that would not be wrong.
+        return NextResponse.json({ error: resolved.message }, { status: 422 });
+      }
+
+      bankFields = {
+        bank_code: bank,
+        account_number: acct,
+        account_name: resolved.ok ? resolved.name : d.account_name || existing.account_name || null,
+      };
+      if (!resolved.ok) accountWarning = resolved.message;
+
+      // Provision the split account so their share of a payment reaches them
+      // directly. Best-effort: a pharmacy with no subaccount can still be
+      // ordered from, the money just settles through Poveon.
+      const subaccount = await upsertPharmacySubaccount({
+        existingCode: existing.paystack_subaccount_code,
+        businessName: d.name ?? existing.name,
+        bankCode: bank,
+        accountNumber: acct,
+      });
+      bankFields.paystack_subaccount_code = subaccount;
+      if (!subaccount) {
+        accountWarning =
+          accountWarning ??
+          "Saved, but the split payout account could not be created. Their share will settle through Poveon until it is.";
+      }
+    }
+  } else if (settingAccount && !bank && !acct) {
+    // Both cleared: drop the payout route rather than leaving half of one.
+    bankFields = {
+      bank_code: null,
+      account_number: null,
+      account_name: null,
+      paystack_subaccount_code: null,
+    };
+  }
+
   const updated = await prisma.pharmacy.update({
     where: { id: params.id },
     data: {
@@ -106,15 +165,28 @@ export async function PATCH(req: NextRequest, { params }: { params: { id: string
       ...(d.city !== undefined ? { city: d.city || null } : {}),
       ...(d.state !== undefined ? { state: d.state || null } : {}),
       ...(d.discount_percent !== undefined ? { discount_percent: d.discount_percent } : {}),
+      ...(d.margin_percent !== undefined ? { margin_percent: d.margin_percent } : {}),
       ...(d.active !== undefined ? { active: d.active } : {}),
+      ...bankFields,
     },
     select: {
       id: true, name: true, email: true, phone: true, address: true,
-      city: true, state: true, discount_percent: true, active: true, logo_url: true,
+      city: true, state: true, discount_percent: true, margin_percent: true,
+      active: true, logo_url: true, bank_code: true, account_name: true, account_number: true,
     },
   });
 
-  return NextResponse.json({ success: true, pharmacy: updated });
+  return NextResponse.json({
+    success: true,
+    warning: accountWarning,
+    pharmacy: {
+      ...updated,
+      margin_percent: Number(updated.margin_percent ?? 5),
+      account_last4: updated.account_number ? updated.account_number.slice(-4) : null,
+      payouts_ready: !!(updated.bank_code && updated.account_number),
+      account_number: undefined,
+    },
+  });
 }
 
 /**

@@ -13,11 +13,16 @@ Font.registerHyphenationCallback((word) => [word]);
  * message allowance — so changing the price in the admin dashboard changes
  * every poster printed from that moment on. Nothing is baked in.
  *
- * Two constraints shape the design:
+ * Three constraints shape the design:
  *
- *  - **It must be one page.** A flyer that spills onto a second sheet is not a
- *    flyer. The vertical budget below is deliberate and adds up to less than
- *    A4's 842pt; if you add a block, take the space from somewhere.
+ *  - **One page, and most of it empty.** This is read standing at a counter in
+ *    a few seconds, by someone who did not come in for it. It carries four
+ *    things: what it is for, what it costs, what you get, and the code to
+ *    scan. Everything else that used to be here — a strip of reasons, a
+ *    three-step how-to, a second discount card — competed with the code and
+ *    made a poster nobody finishes. If you add a block, take out a block.
+ *  - **The QR is the call to action.** No numbered steps explaining how to
+ *    point a camera at it. The one instruction is under the code.
  *  - **Helvetica only.** The built-in font needs no download, but it has no em
  *    dash and no fancy glyphs — react-pdf drops missing ones silently, leaving
  *    a gap mid-sentence. Hyphens only.
@@ -69,19 +74,8 @@ const s = StyleSheet.create({
   eyebrowRule: { flex: 1, height: 1, backgroundColor: "#ffffff", opacity: 0.18, marginLeft: 12, marginRight: 12 },
   eyebrow: { fontSize: 8, color: "#8fc4ec", letterSpacing: 2 },
 
-  headRow: { flexDirection: "row", marginTop: 22 },
+  headRow: { flexDirection: "row", marginTop: 22, alignItems: "flex-start" },
   headLeft: { flex: 1, paddingRight: 18 },
-  chips: { width: 132 },
-  chip: {
-    borderWidth: 1,
-    borderColor: "#2f5d85",
-    borderRadius: 6,
-    paddingVertical: 9,
-    paddingHorizontal: 11,
-    marginBottom: 8,
-  },
-  chipTitle: { fontSize: 10, fontFamily: "Helvetica-Bold", color: "#ffffff" },
-  chipBody: { fontSize: 7.5, color: "#8fc4ec", marginTop: 2, lineHeight: 1.4 },
 
   headline: { fontSize: 25, fontFamily: "Helvetica-Bold", color: "#ffffff", lineHeight: 1.12 },
 
@@ -102,7 +96,7 @@ const s = StyleSheet.create({
     maxLines: 2,
     textOverflow: "ellipsis",
   },
-  partnerBadgeKind: { fontSize: 7, color: MUTED, letterSpacing: 1.1, marginTop: 3, textAlign: "center" },
+  partnerBadgeKind: { fontSize: 7, color: MUTED, letterSpacing: 1.1, marginTop: 4, textAlign: "center" },
   partnerBadgeMark: {
     width: 44,
     height: 44,
@@ -124,62 +118,30 @@ const s = StyleSheet.create({
     borderWidth: 1,
     borderColor: HAIR,
     borderRadius: 10,
-    padding: 14,
+    padding: 18,
     alignItems: "center",
   },
   offerLeft: { flex: 1, paddingRight: 14 },
-  perMonth: {
-    alignSelf: "flex-start",
-    marginTop: 9,
-    backgroundColor: BRAND_TINT,
-    borderRadius: 5,
-    paddingVertical: 5,
-    paddingHorizontal: 9,
-  },
-  perMonthText: { fontSize: 9, fontFamily: "Helvetica-Bold", color: BRAND },
   kicker: { fontSize: 7.5, color: MUTED, letterSpacing: 1.6 },
-  price: { fontSize: 34, fontFamily: "Helvetica-Bold", color: NAVY, marginTop: 3, letterSpacing: -0.5 },
+  price: { fontSize: 40, fontFamily: "Helvetica-Bold", color: NAVY, marginTop: 3, letterSpacing: -0.5 },
   priceFoot: { fontSize: 9.5, color: MUTED, marginTop: 3 },
   offerDivider: { width: 1, alignSelf: "stretch", backgroundColor: HAIR, marginRight: 14 },
-  qrBox: { alignItems: "center", width: 100 },
-  qr: { width: 88, height: 88 },
-  qrCaption: { fontSize: 7.5, fontFamily: "Helvetica-Bold", color: NAVY, marginTop: 5, letterSpacing: 0.4 },
+  qrBox: { alignItems: "center", width: 116 },
+  qr: { width: 104, height: 104 },
+  qrCaption: { fontSize: 8.5, fontFamily: "Helvetica-Bold", color: NAVY, marginTop: 6, letterSpacing: 0.6 },
+  qrHint: { fontSize: 7, color: MUTED, marginTop: 2, textAlign: "center" },
 
   // ── Body ──────────────────────────────────────────────────────────────────
   // Grows to fill whatever is left, which is what pins the footer to the foot.
   body: { flexGrow: 1, paddingHorizontal: PAGE_X, paddingTop: 18 },
-  sectionRow: { flexDirection: "row", alignItems: "center", marginBottom: 10 },
-  sectionTitle: { fontSize: 12.5, fontFamily: "Helvetica-Bold", color: INK },
-  sectionRule: { flex: 1, height: 1, backgroundColor: HAIR, marginLeft: 12 },
+  grid: { flexDirection: "row", marginHorizontal: -5 },
+  cell: { width: "33.333%", paddingHorizontal: 5 },
+  card: { backgroundColor: BRAND_TINT, borderRadius: 8, padding: 14, height: 96 },
+  cardBig: { fontSize: 18, fontFamily: "Helvetica-Bold", color: BRAND, letterSpacing: -0.3, maxLines: 2 },
+  cardTitle: { fontSize: 10, fontFamily: "Helvetica-Bold", color: INK, marginTop: 4 },
+  cardBody: { fontSize: 8.5, color: MUTED, marginTop: 4, lineHeight: 1.45, maxLines: 3 },
 
-  grid: { flexDirection: "row", flexWrap: "wrap", marginHorizontal: -5 },
-  cell: { width: "50%", paddingHorizontal: 5, marginBottom: 8 },
-  card: { backgroundColor: BRAND_TINT, borderRadius: 8, padding: 11, height: 72 },
-  cardBig: { fontSize: 19, fontFamily: "Helvetica-Bold", color: BRAND, letterSpacing: -0.3 },
-  cardTitle: { fontSize: 10, fontFamily: "Helvetica-Bold", color: INK, marginTop: 3 },
-  cardBody: { fontSize: 8.5, color: MUTED, marginTop: 3, lineHeight: 1.45, maxLines: 3 },
-
-  savingsBand: {
-    flexDirection: "row",
-    backgroundColor: NAVY,
-    borderRadius: 8,
-    paddingVertical: 10,
-    paddingHorizontal: 6,
-    marginTop: 2,
-  },
-  savingCell: { flex: 1, paddingHorizontal: 10 },
-  savingDivider: { borderRightWidth: 1, borderRightColor: "#1d4468" },
-  savingTitle: { fontSize: 9.5, fontFamily: "Helvetica-Bold", color: "#ffffff" },
-  savingBody: { fontSize: 7.5, color: "#a9cbe6", marginTop: 3, lineHeight: 1.45 },
-
-  // ── Steps ────────────────────────────────────────────────────────────────
-  steps: { flexDirection: "row", marginHorizontal: -6 },
-  stepCell: { flex: 1, paddingHorizontal: 6 },
-  stepBar: { height: 3, borderRadius: 2, backgroundColor: ACCENT, width: 22, marginBottom: 7 },
-  stepN: { fontSize: 7.5, fontFamily: "Helvetica-Bold", color: ACCENT, letterSpacing: 1.2 },
-  stepText: { fontSize: 9, color: "#334155", lineHeight: 1.5, marginTop: 3 },
-
-  smallPrint: { fontSize: 7, color: "#94a3b8", lineHeight: 1.45, marginTop: 8 },
+  smallPrint: { fontSize: 7, color: "#94a3b8", lineHeight: 1.45, marginTop: "auto", paddingTop: 16 },
 
   // ── Footer band ──────────────────────────────────────────────────────────
   footer: {
@@ -189,8 +151,7 @@ const s = StyleSheet.create({
     flexDirection: "row",
     alignItems: "center",
   },
-  footerLabel: { fontSize: 7.5, color: "#7fb4dd", letterSpacing: 1.6 },
-  footerName: { fontSize: 14, fontFamily: "Helvetica-Bold", color: "#ffffff", marginTop: 3, maxLines: 2 },
+  footerName: { fontSize: 14, fontFamily: "Helvetica-Bold", color: "#ffffff", maxLines: 2 },
   footerMeta: { fontSize: 9, color: "#a9cbe6", marginTop: 2, maxLines: 1, textOverflow: "ellipsis" },
   footerRight: { alignItems: "flex-end", maxWidth: 210 },
   footerUrl: { fontSize: 8, color: "#7fb4dd" },
@@ -203,40 +164,23 @@ export function CarePromoDocument(d: PromoData) {
   const ownPct = isLab ? d.labDiscountPercent : d.pharmacyDiscountPercent;
   const otherPct = isLab ? d.pharmacyDiscountPercent : d.labDiscountPercent;
 
+  // Three, because a fourth is the one nobody reads.
   const benefits = [
     {
       big: `${ownPct}% off`,
-      title: isLab ? "Your lab tests" : "Your medication",
-      body: "Here at this counter, and at every other Poveon partner in the network.",
+      title: isLab ? "Lab tests" : "Medication",
+      body: "Here, and at every Poveon partner.",
     },
     {
       big: `${otherPct}% off`,
-      title: isLab ? "Your medication" : "Your lab tests",
-      body: "The same care code works across the whole network.",
+      title: isLab ? "Medication" : "Lab tests",
+      body: "The same code works across the network.",
     },
     {
-      big: `${d.messageAllowance} messages`,
-      title: "A doctor in your pocket",
-      body: "Ask from home instead of taking a day off to sit in a waiting room. Their replies are unlimited.",
+      big: "Your own doctor",
+      title: `${d.messageAllowance} messages`,
+      body: "Ask from home. Their replies are unlimited.",
     },
-    {
-      big: "No wasted trips",
-      title: "Everything on your phone",
-      body: "Your plan, your readings and your prescriptions live in one place you can open anywhere.",
-    },
-  ];
-
-  // Why it is cheaper than the way most people manage these conditions now.
-  const savings = [
-    { t: "Fewer trips", b: "No transport and no lost day's pay for a routine check-in." },
-    { t: "Less spent at the counter", b: `Up to ${Math.max(ownPct, otherPct)}% off across the network, all year.` },
-    { t: "Caught earlier", b: "Small problems handled in a message, before they become a hospital bill." },
-  ];
-
-  const steps = [
-    { n: "STEP 1", t: "Scan the code above with your phone camera." },
-    { n: "STEP 2", t: "Add your email and set a PIN." },
-    { n: "STEP 3", t: "Pay once. Your care code arrives straight away." },
   ];
 
   return (
@@ -247,6 +191,7 @@ export function CarePromoDocument(d: PromoData) {
     >
       <Page size="A4" style={s.page}>
         <View style={s.topRule} />
+
         <View style={s.header}>
           <View style={s.eyebrowRow}>
             <Text style={s.wordmark}>Poveon</Text>
@@ -258,71 +203,53 @@ export function CarePromoDocument(d: PromoData) {
             <View style={s.headLeft}>
               <Text style={s.headline}>
                 High blood pressure{"\n"}or diabetes?{" "}
-                <Text style={s.headlineAccent}>Get it{"\n"}properly looked after.</Text>
+                <Text style={s.headlineAccent}>Get it properly{"\n"}looked after.</Text>
               </Text>
               <Text style={s.subhead}>
-                One payment a year. Your own doctor, money off your tests and medication, and
-                someone watching your readings between visits.
+                Your own doctor, money off your tests and medication, and someone watching your
+                readings between visits.
               </Text>
             </View>
 
-            <View style={s.chips}>
-              {/* The partner's own badge leads: someone picks this up at their
-                  counter, and it should look like it came from them. */}
-              <View style={s.partnerBadge}>
-                {d.logoDataUri ? (
-                  // eslint-disable-next-line jsx-a11y/alt-text
-                  <Image src={d.logoDataUri} style={s.partnerLogo} />
-                ) : (
-                  <View style={s.partnerBadgeMark}>
-                    <Text style={s.partnerBadgeInitial}>
-                      {(d.partnerName || "P").trim().charAt(0).toUpperCase()}
-                    </Text>
-                  </View>
-                )}
-                <Text style={s.partnerBadgeName}>{d.partnerName}</Text>
-                <Text style={s.partnerBadgeKind}>
-                  YOUR POVEON {isLab ? "LAB" : "PHARMACY"}
-                </Text>
-              </View>
-
-              <View style={[s.chip, { marginTop: 8 }]}>
-                <Text style={s.chipTitle}>All on your phone</Text>
-                <Text style={s.chipBody}>No queue, no appointment, no travelling to be told to come back</Text>
-              </View>
+            {/* The partner's badge: someone picks this up at their counter, and
+                it should look like it came from them. */}
+            <View style={s.partnerBadge}>
+              {d.logoDataUri ? (
+                // eslint-disable-next-line jsx-a11y/alt-text
+                <Image src={d.logoDataUri} style={s.partnerLogo} />
+              ) : (
+                <View style={s.partnerBadgeMark}>
+                  <Text style={s.partnerBadgeInitial}>
+                    {(d.partnerName || "P").trim().charAt(0).toUpperCase()}
+                  </Text>
+                </View>
+              )}
+              <Text style={s.partnerBadgeName}>{d.partnerName}</Text>
+              <Text style={s.partnerBadgeKind}>YOUR POVEON {isLab ? "LAB" : "PHARMACY"}</Text>
             </View>
           </View>
         </View>
 
+        {/* The price and the code, together, over the header edge. This is the
+            whole poster; everything else supports it. */}
         <View style={s.offerWrap}>
           <View style={s.offer}>
             <View style={s.offerLeft}>
               <Text style={s.kicker}>A FULL YEAR OF COVER</Text>
               <Text style={s.price}>{naira(d.priceNaira)}</Text>
-              <Text style={s.priceFoot}>No monthly bills. No renewal until next year.</Text>
-              {/* The yearly figure is the one people flinch at; the monthly one
-                  is how they actually judge it. Derived, so it never drifts. */}
-              <View style={s.perMonth}>
-                <Text style={s.perMonthText}>
-                  Works out at about {naira(Math.round(d.priceNaira / 12))} a month
-                </Text>
-              </View>
+              <Text style={s.priceFoot}>Paid once. No monthly bills.</Text>
             </View>
             <View style={s.offerDivider} />
             <View style={s.qrBox}>
               {/* eslint-disable-next-line jsx-a11y/alt-text */}
               <Image src={d.qrDataUri} style={s.qr} />
               <Text style={s.qrCaption}>SCAN TO JOIN</Text>
+              <Text style={s.qrHint}>Point your camera at it</Text>
             </View>
           </View>
         </View>
 
         <View style={s.body}>
-          <View style={s.sectionRow}>
-            <Text style={s.sectionTitle}>What your care code gets you</Text>
-            <View style={s.sectionRule} />
-          </View>
-
           <View style={s.grid}>
             {benefits.map((b) => (
               <View key={b.title} style={s.cell}>
@@ -331,30 +258,6 @@ export function CarePromoDocument(d: PromoData) {
                   <Text style={s.cardTitle}>{b.title}</Text>
                   <Text style={s.cardBody}>{b.body}</Text>
                 </View>
-              </View>
-            ))}
-          </View>
-
-          <View style={s.savingsBand}>
-            {savings.map((x, i) => (
-              <View key={x.t} style={[s.savingCell, i < savings.length - 1 ? s.savingDivider : {}]}>
-                <Text style={s.savingTitle}>{x.t}</Text>
-                <Text style={s.savingBody}>{x.b}</Text>
-              </View>
-            ))}
-          </View>
-
-          <View style={[s.sectionRow, { marginTop: 12 }]}>
-            <Text style={s.sectionTitle}>Joining takes three minutes</Text>
-            <View style={s.sectionRule} />
-          </View>
-
-          <View style={s.steps}>
-            {steps.map((st) => (
-              <View key={st.n} style={s.stepCell}>
-                <View style={s.stepBar} />
-                <Text style={s.stepN}>{st.n}</Text>
-                <Text style={s.stepText}>{st.t}</Text>
               </View>
             ))}
           </View>
@@ -368,7 +271,6 @@ export function CarePromoDocument(d: PromoData) {
 
         <View style={s.footer}>
           <View style={{ flex: 1 }}>
-            <Text style={s.footerLabel}>YOUR POVEON PARTNER {isLab ? "LAB" : "PHARMACY"}</Text>
             <Text style={[s.footerName, d.partnerName.length > 34 ? { fontSize: 12 } : {}]}>
               {d.partnerName}
             </Text>

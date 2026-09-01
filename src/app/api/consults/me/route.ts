@@ -5,6 +5,7 @@ import { getConsultSettings, getMemberByEmail, getPatientEmailFromRequest } from
 import { itemState } from "@/lib/treatment-plan";
 import { medLiveWhere } from "@/lib/medication-status";
 import { dedupeByDrug } from "@/lib/med-match";
+import { pharmacyLock } from "@/lib/pharmacy-lock";
 import { ensureCarePlanSchema } from "@/lib/startup/ensure-care-plan-schema";
 
 /**
@@ -194,6 +195,10 @@ export async function GET(req: NextRequest) {
       prescriptions: dedupeByDrug(prescriptions),
       test_orders: testOrders,
       preferred_pharmacy: preferredPharmacy,
+      // How long this choice is settled for — the member is told before they
+      // make it and reminded after, so a locked "Change" button is never a
+      // surprise.
+      pharmacy_lock: pharmacyLock(member.preferred_pharmacy_set_at),
       preferred_lab: preferredLab,
     });
   } catch (err) {

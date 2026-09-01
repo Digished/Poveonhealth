@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
 import {
@@ -12,7 +12,7 @@ import { SectionLoader } from "@/components/PageLoader";
 import { toast } from "react-hot-toast";
 import { Download } from "lucide-react";
 import { Modal } from "@/components/ui/Overlay";
-import { MonthFilter } from "@/components/ui/MonthFilter";
+import { MonthFilter, monthKey, monthLabel, monthsFrom } from "@/components/ui/MonthFilter";
 import { conditionLabel } from "@/lib/consult-conditions";
 import { PriceListPanel } from "@/components/pharmacy/PriceListPanel";
 
@@ -42,7 +42,7 @@ export default function PharmacyDashboard() {
   const [pharmacy, setPharmacy] = useState<Pharmacy | null>(null);
   const [stats, setStats] = useState<Stats | null>(null);
   const [loading, setLoading] = useState(true);
-  const [tab, setTab] = useState<"serve" | "customers" | "care" | "prices">("serve");
+  const [tab, setTab] = useState<"serve" | "customers" | "care" | "prices" | "signups">("serve");
 
   const load = useCallback(async () => {
     try {
@@ -104,6 +104,7 @@ export default function PharmacyDashboard() {
                 ["serve", "Serve a member"],
                 ["care", "Coming to you"],
                 ["prices", "Price list"],
+                ["signups", "Sign-ups"],
                 ["customers", "My customers"],
               ] as const).map(([key, label]) => (
                 <button
@@ -123,6 +124,7 @@ export default function PharmacyDashboard() {
             {tab === "serve" && <ServePanel onRecorded={load} />}
             {tab === "care" && <CareMembersPanel />}
             {tab === "prices" && <PriceListPanel />}
+            {tab === "signups" && <SignupsPanel />}
             {tab === "customers" && <CustomersPanel onChanged={load} />}
           </>
         )}
@@ -134,6 +136,136 @@ export default function PharmacyDashboard() {
           About the Poveon Care Plan
         </Link>
       </footer>
+    </div>
+  );
+}
+
+
+// ── Who you brought in ──────────────────────────────────────────────────────
+
+type Signup = {
+  id: string;
+  full_name: string;
+  code: string | null;
+  conditions: string[];
+  joined_at: string | null;
+  still_with_you: boolean;
+  active: boolean;
+};
+
+/**
+ * Members who joined Poveon and picked this pharmacy first, month by month.
+ *
+ * Counted on the choice made at sign-up rather than on who is with them today,
+ * because that is what a pharmacy is credited for. Someone who later moves is
+ * still shown — greyed, and marked as moved on — so the month's number never
+ * changes retrospectively and can be reconciled against a payment.
+ */
+function SignupsPanel() {
+  const [signups, setSignups] = useState<Signup[] | null>(null);
+  const [month, setMonth] = useState("");
+
+  useEffect(() => {
+    let live = true;
+    (async () => {
+      try {
+        const res = await fetch("/api/pharmacy/signups", { cache: "no-store" });
+        const d = await res.json().catch(() => null);
+        if (live && res.ok && d?.success) setSignups(d.signups);
+        else if (live) setSignups([]);
+      } catch {
+        if (live) setSignups([]);
+      }
+    })();
+    return () => { live = false; };
+  }, []);
+
+  const months = useMemo(() => monthsFrom((signups ?? []).map((s) => s.joined_at)), [signups]);
+  const shown = useMemo(
+    () => (signups ?? []).filter((s) => !month || monthKey(s.joined_at) === month),
+    [signups, month]
+  );
+
+  if (!signups) return <SectionLoader label="Counting your sign-ups…" />;
+
+  const staying = shown.filter((s) => s.still_with_you).length;
+
+  return (
+    <div className="space-y-4">
+      <div className="rounded-2xl border border-emerald-100 bg-emerald-50/60 p-4">
+        <p className="text-[11px] font-bold uppercase tracking-wider text-emerald-700">
+          {month ? monthLabel(month) : "Since you joined"}
+        </p>
+        <div className="mt-1 flex flex-wrap items-baseline gap-x-4 gap-y-1">
+          <p className="text-3xl font-black leading-none text-emerald-800">{shown.length}</p>
+          <p className="text-sm font-semibold text-emerald-900">
+            member{shown.length === 1 ? "" : "s"} joined Poveon and chose you first
+          </p>
+        </div>
+        <p className="mt-2 text-xs leading-relaxed text-emerald-800/80">
+          {staying === shown.length
+            ? "All of them are still with you."
+            : `${staying} of them are still with you.`}{" "}
+          This is the count you are compensated on — it is fixed at sign-up, so a member moving
+          later never takes a month&apos;s number back down.
+        </p>
+      </div>
+
+      {months.length > 0 && (
+        <div>
+          <p className="mb-1.5 text-[11px] font-bold uppercase tracking-wide text-slate-400">
+            Sign-ups by month
+          </p>
+          <MonthFilter months={months} value={month} onChange={setMonth} allCount={signups.length} />
+        </div>
+      )}
+
+      {shown.length === 0 ? (
+        <div className="rounded-2xl border border-dashed border-slate-200 bg-white p-6 text-center">
+          <Users className="mx-auto h-7 w-7 text-slate-200" />
+          <p className="mt-2 text-sm font-semibold text-slate-600">No sign-ups yet</p>
+          <p className="mx-auto mt-1 max-w-sm text-xs leading-relaxed text-slate-400">
+            Members who scan your QR poster, or pick you when they join, are counted here from the
+            moment they pay.
+          </p>
+        </div>
+      ) : (
+        <ul className="space-y-2">
+          {shown.map((s) => (
+            <li
+              key={s.id}
+              className={`flex flex-wrap items-center justify-between gap-x-3 gap-y-1.5 rounded-xl border px-3.5 py-3 ${
+                s.still_with_you ? "border-slate-100 bg-white" : "border-slate-100 bg-slate-50"
+              }`}
+            >
+              <div className="min-w-0">
+                <p className="text-sm font-semibold text-slate-800">{s.full_name}</p>
+                <p className="mt-0.5 flex flex-wrap items-center gap-1.5">
+                  <span className="rounded-full bg-slate-900 px-2 py-0.5 font-mono text-[11px] font-bold text-white">
+                    {s.code ?? "—"}
+                  </span>
+                  {s.conditions.map((c) => (
+                    <span key={c} className="rounded-full bg-emerald-50 px-2 py-0.5 text-[11px] font-semibold text-emerald-700">
+                      {conditionLabel(c)}
+                    </span>
+                  ))}
+                </p>
+              </div>
+              <div className="shrink-0 text-right">
+                <p className="text-xs font-semibold text-slate-500">{formatDate(s.joined_at)}</p>
+                <p className="text-[11px] font-semibold">
+                  {s.still_with_you ? (
+                    <span className="text-emerald-700">Still with you</span>
+                  ) : (
+                    <span className="text-slate-400">Moved on</span>
+                  )}
+                  {!s.active && <span className="text-slate-400"> · plan ended</span>}
+                </p>
+              </div>
+            </li>
+          ))}
+        </ul>
+      )}
     </div>
   );
 }

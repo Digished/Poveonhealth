@@ -14,7 +14,7 @@ import { execFileSync } from "node:child_process";
 
 const script = `
 import { parsePrescriptionLine } from "./src/lib/prescription-parse";
-import { buildMedIndex, identify, matchMedication, normaliseStrength, normaliseForm } from "./src/lib/med-match";
+import { buildMedIndex, identify, matchMedication, normaliseStrength, normaliseForm, suggestMedications } from "./src/lib/med-match";
 import { medKey, parseMedSheet, MED_SHEET_TEMPLATE } from "./src/lib/med-sheet";
 import * as xlsx from "xlsx";
 
@@ -114,6 +114,36 @@ for (const [raw, want] of [["TABS","tablet"],["Tablets","tablet"],["caps","capsu
   const got = normaliseForm(raw);
   const ok = got === want;
   if (!ok) { failures++; console.log("FAIL form " + raw + " -> " + got); }
+}
+
+console.log("\\n── near misses a doctor should be shown ──");
+// A typo in a drug name is a prescription the patient cannot fill. Each of
+// these is one slip from something on the shelf and must be suggested; the
+// last two are different drugs and must NOT be.
+const typos = [
+  ["Amlodipin",   "a10", "a letter short"],
+  ["Amlodipne",   "a10", "a letter dropped"],
+  ["Amlodpine",   "a10", "letters swapped"],
+  ["Metfromin",   "met", "a transposition"],
+  ["Lisinopril",  "lis", "spelt correctly"],
+  ["Atorvastatn", "atv", "a letter short"],
+];
+for (const [typed, want, why] of typos) {
+  const s = suggestMedications(index, identify({ name: typed }), 3);
+  const top = s[0];
+  const ok = !!top && top.row.id === want;
+  if (!ok) failures++;
+  console.log(
+    (ok ? "ok   " : "FAIL ") + typed.padEnd(14) + " -> " +
+    (s.length ? s.map((x) => x.row.id + "(" + x.score.toFixed(2) + ")").join(", ") : "nothing").padEnd(34) +
+    why
+  );
+}
+for (const nonsense of ["Zzzqqrt", "Paracetamol"]) {
+  const s = suggestMedications(index, identify({ name: nonsense }), 3);
+  const ok = s.length === 0;
+  if (!ok) failures++;
+  console.log((ok ? "ok   " : "FAIL ") + nonsense.padEnd(14) + " -> " + (s.length ? s.map((x) => x.row.id).join(", ") : "nothing suggested") + "   nothing like it on the shelf");
 }
 
 console.log("\\n── end to end: a real sheet, a real prescription ──");

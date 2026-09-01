@@ -1916,10 +1916,21 @@ model ConsultPatient {
   // captured on the last step of the form.
   consent_at DateTime?
 
-  // Where the member prefers to be sent. Both are switchable at any time and
-  // are a preference, not a restriction — the code works anywhere.
+  // Where the member prefers to be sent. The lab is switchable at any time; the
+  // pharmacy settles for 30 days once chosen (see lib/pharmacy-lock.ts), because
+  // a pharmacy that stocks ahead for a member needs to know they will come.
+  // Neither is a restriction on the care code, which works anywhere.
   preferred_pharmacy_id String?
   preferred_lab_id      String?
+  /// When the current pharmacy was chosen. Null means never chosen, which is
+  /// the one state that is always free to change.
+  preferred_pharmacy_set_at DateTime?
+
+  /// The first pharmacy this member ever chose, and when — never overwritten.
+  /// Pharmacies are compensated per member who joins and picks them first, so
+  /// this has to survive every later switch.
+  first_pharmacy_id String?
+  first_pharmacy_at DateTime?
 
   // ── Baseline, taken before payment ───────────────────────────────────────
   // What the assigned doctor sees the moment a member lands in their pool, and
@@ -1941,6 +1952,18 @@ model ConsultPatient {
   baseline_last_visit   String?
   baseline_self_care    String? // what they already do for themselves
   baseline_captured_at  DateTime?
+
+  // ── The doctor's summary of this member ──────────────────────────────────
+  // Written from everything on file — conditions, baseline, medication, tests,
+  // screening answers and the conversation — and rewritten when any of that
+  // changes. See lib/patient-summary.ts. Cached rather than generated per view:
+  // a doctor opening the same patient twice should not pay for it twice, and
+  // should not read two different summaries.
+  summary_text       String?
+  summary_at         DateTime?
+  /// Fingerprint of the inputs the current summary was written from. When it
+  /// stops matching, the summary is stale and is rewritten.
+  summary_fingerprint String?
 
   // When a member moves to another doctor their thread and notes move with
   // them, unless they ask us not to share.

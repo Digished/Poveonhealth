@@ -528,6 +528,7 @@ function EditPharmacyForm({
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState("");
   const logoRef = useRef<HTMLInputElement | null>(null);
+  const resolved = useResolvedAccount(form.bank_code, form.account_number);
 
   async function save() {
     if (saving || form.name.trim().length < 2 || !form.email.includes("@")) return;
@@ -551,7 +552,6 @@ function EditPharmacyForm({
           // account that is already set.
           ...(form.bank_code ? { bank_code: form.bank_code } : {}),
           ...(form.account_number ? { account_number: form.account_number } : {}),
-          ...(form.account_name.trim() ? { account_name: form.account_name.trim() } : {}),
         }),
       });
       const d = await res.json().catch(() => null);
@@ -559,6 +559,9 @@ function EditPharmacyForm({
         setError(d?.error ?? "Could not save those changes.");
         return;
       }
+      // Saved, but something about the payout account needs saying — the bank
+      // was unreachable, or the split account could not be created.
+      if (d.warning) toast(d.warning, { icon: "⚠️", duration: 7000 });
 
       if (logo) {
         const fd = new FormData();
@@ -686,13 +689,38 @@ function EditPharmacyForm({
                 />
               </Field>
               <Field label="Account name">
-                <input
-                  value={form.account_name}
-                  onChange={(e) => setForm({ ...form, account_name: e.target.value })}
-                  className={input}
-                />
+                <div
+                  className={`${input} flex min-h-[2.6rem] items-center gap-2 ${
+                    resolved.status === "ok" ? "text-emerald-300" : "text-slate-400"
+                  }`}
+                >
+                  {resolved.status === "checking" && (
+                    <>
+                      <Loader2 className="h-3.5 w-3.5 shrink-0 animate-spin" />
+                      <span className="text-xs">Asking the bank…</span>
+                    </>
+                  )}
+                  {resolved.status === "ok" && (
+                    <>
+                      <BadgeCheck className="h-4 w-4 shrink-0" />
+                      <span className="truncate text-sm font-semibold">{resolved.name}</span>
+                    </>
+                  )}
+                  {(resolved.status === "not_found" || resolved.status === "unavailable") && (
+                    <span className="text-xs leading-tight text-amber-300">{resolved.message}</span>
+                  )}
+                  {resolved.status === "idle" && (
+                    <span className="truncate text-xs">
+                      {form.account_name || "Pick a bank and type 10 digits"}
+                    </span>
+                  )}
+                </div>
               </Field>
             </div>
+            <p className="text-[11px] leading-relaxed text-slate-500">
+              The name comes from the bank, not from us — it is checked again when you save, and a
+              number that resolves to nothing is refused rather than stored.
+            </p>
           </div>
         </div>
         <div className="grid gap-3 sm:grid-cols-2">
@@ -741,6 +769,63 @@ function EditPharmacyForm({
       </div>
     </Modal>
   );
+}
+
+
+/**
+ * Ask the bank whose account this is, as the admin types.
+ *
+ * The account name is never typed here — it is what the bank returns, or
+ * nothing. An admin who can edit the name can talk themselves into believing a
+ * wrong account number is right, and the pharmacy finds out at settlement.
+ *
+ * Fires only on a complete pair, debounced, and every result is labelled so a
+ * bank that is merely unreachable never reads as an account that does not
+ * exist.
+ */
+function useResolvedAccount(bankCode: string, accountNumber: string) {
+  const [state, setState] = useState<{
+    status: "idle" | "checking" | "ok" | "not_found" | "unavailable";
+    name: string;
+    message: string;
+  }>({ status: "idle", name: "", message: "" });
+
+  useEffect(() => {
+    if (!bankCode || accountNumber.length !== 10) {
+      setState({ status: "idle", name: "", message: "" });
+      return;
+    }
+    let live = true;
+    const controller = new AbortController();
+    const timer = setTimeout(async () => {
+      setState((s) => ({ ...s, status: "checking" }));
+      try {
+        const res = await fetch("/api/admin/pharmacies/resolve-account", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ bank_code: bankCode, account_number: accountNumber }),
+          signal: controller.signal,
+        });
+        const d = await res.json().catch(() => null);
+        if (!live) return;
+        if (res.ok && d?.success) {
+          setState({ status: "ok", name: d.account_name, message: "" });
+        } else {
+          setState({
+            status: res.status === 422 ? "not_found" : "unavailable",
+            name: "",
+            message: d?.error ?? "Could not check that account.",
+          });
+        }
+      } catch {
+        if (live) setState({ status: "unavailable", name: "", message: "Could not reach the bank." });
+      }
+    }, 450);
+
+    return () => { live = false; controller.abort(); clearTimeout(timer); };
+  }, [bankCode, accountNumber]);
+
+  return state;
 }
 
 function Field({ label, children }: { label: string; children: React.ReactNode }) {

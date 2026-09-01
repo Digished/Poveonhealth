@@ -3,12 +3,13 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { toast } from "react-hot-toast";
 import {
-  BookmarkPlus, CalendarClock, Check, FlaskConical, Loader2, Pill, Plus, RotateCw,
-  Sparkles, Trash2, X,
+  AlertTriangle, BookmarkPlus, CalendarClock, Check, CircleAlert, FlaskConical,
+  Loader2, Pill, Plus, RotateCw, Sparkles, Store, Trash2, X,
 } from "lucide-react";
 import { DateInput } from "@/components/ui/DateInput";
 import { MED_SUGGESTED_STATUS, isMedicationLive } from "@/lib/medication-status";
 import { ConfirmDialog, Modal } from "@/components/ui/Overlay";
+import { CollapsibleSection } from "@/components/ui/CollapsibleSection";
 import {
   describePrescription,
   estimateQuantity,
@@ -202,32 +203,28 @@ export function CarePlanOrders({
   return (
     <div className="space-y-4">
       {/* ── Monitoring schedule ─────────────────────────────────────────── */}
-      <section className="rounded-2xl border border-slate-100 bg-white p-4 shadow-sm">
-        <div className="flex items-center justify-between gap-2">
-          <h3 className="flex items-center gap-1.5 text-sm font-bold text-slate-800">
-            <FlaskConical className="h-4 w-4 text-medical-500" />
-            Tests due
-            {dueTests.length > 0 && (
-              <span className="rounded-full bg-slate-100 px-2 py-0.5 text-[11px] font-bold text-slate-500">
-                {dueTests.length}
-              </span>
-            )}
-          </h3>
-          {canPrescribe && (
+      <CollapsibleSection
+        id="care-tests"
+        title="Tests due"
+        icon={<FlaskConical className="h-4 w-4 shrink-0 text-medical-500" />}
+        count={dueTests.length}
+        forceOpen={adding === "test"}
+        action={
+          canPrescribe ? (
             <button
               onClick={() => setAdding(adding === "test" ? null : "test")}
-              className="inline-flex items-center gap-1 rounded-lg bg-medical-50 px-2.5 py-1.5 text-xs font-bold text-medical-700 transition hover:bg-medical-100"
+              className="inline-flex shrink-0 items-center gap-1 rounded-lg bg-medical-50 px-2.5 py-1.5 text-xs font-bold text-medical-700 transition hover:bg-medical-100"
             >
               <Plus className="h-3.5 w-3.5" /> Schedule
             </button>
-          )}
-        </div>
-
+          ) : null
+        }
+      >
         {adding === "test" && (
           <TestForm patientId={patientId} onClose={() => setAdding(null)} onSaved={() => { setAdding(null); onChanged(); }} />
         )}
 
-        <div className="mt-3 space-y-2">
+        <div className="space-y-2">
           {dueTests.length === 0 && !adding && (
             <p className="py-3 text-center text-xs text-slate-400">Nothing scheduled.</p>
           )}
@@ -289,7 +286,7 @@ export function CarePlanOrders({
         </div>
 
         {doneTests.length > 0 && (
-          <details className="mt-3">
+          <details className="mt-3" data-past="tests">
             <summary className="cursor-pointer text-xs font-semibold text-slate-400 hover:text-slate-600">
               {doneTests.length} past test{doneTests.length === 1 ? "" : "s"}
             </summary>
@@ -305,30 +302,29 @@ export function CarePlanOrders({
             </ul>
           </details>
         )}
-      </section>
+      </CollapsibleSection>
 
       {/* ── Medication ──────────────────────────────────────────────────── */}
-      <section className="rounded-2xl border border-slate-100 bg-white p-4 shadow-sm">
-        <div className="flex items-center justify-between gap-2">
-          <h3 className="flex items-center gap-1.5 text-sm font-bold text-slate-800">
-            <Pill className="h-4 w-4 text-emerald-500" />
-            Medication
-            {activeMeds.length > 0 && (
-              <span className="rounded-full bg-slate-100 px-2 py-0.5 text-[11px] font-bold text-slate-500">
-                {activeMeds.length}
-              </span>
-            )}
-          </h3>
-          {canPrescribe && (
+      <CollapsibleSection
+        id="care-medication"
+        title="Medication"
+        icon={<Pill className="h-4 w-4 shrink-0 text-emerald-500" />}
+        count={activeMeds.length}
+        forceOpen={adding === "prescription"}
+        // Drafts wait on the doctor, but forcing the section open for as long
+        // as one exists is a section that can never be folded. A dot says it.
+        alert={suggestedMeds.length > 0}
+        action={
+          canPrescribe ? (
             <button
               onClick={() => setAdding(adding === "prescription" ? null : "prescription")}
-              className="inline-flex items-center gap-1 rounded-lg bg-emerald-50 px-2.5 py-1.5 text-xs font-bold text-emerald-700 transition hover:bg-emerald-100"
+              className="inline-flex shrink-0 items-center gap-1 rounded-lg bg-emerald-50 px-2.5 py-1.5 text-xs font-bold text-emerald-700 transition hover:bg-emerald-100"
             >
               <Plus className="h-3.5 w-3.5" /> Schedule
             </button>
-          )}
-        </div>
-
+          ) : null
+        }
+      >
         {adding === "prescription" && (
           <PrescriptionForm
             patientId={patientId}
@@ -338,7 +334,7 @@ export function CarePlanOrders({
         )}
 
         {suggestedMeds.length > 0 && (
-          <div className="mt-3 rounded-xl border border-amber-200 bg-amber-50 p-3">
+          <div className="rounded-xl border border-amber-200 bg-amber-50 p-3">
             <p className="flex items-center gap-1.5 text-xs font-bold text-amber-800">
               <Sparkles className="h-3.5 w-3.5" />
               What they told us they take
@@ -386,7 +382,7 @@ export function CarePlanOrders({
           </div>
         )}
 
-        <div className="mt-3 space-y-2">
+        <div className="mt-3 space-y-2 first:mt-0">
           {activeMeds.length === 0 && !adding && suggestedMeds.length === 0 && (
             <p className="py-3 text-center text-xs text-slate-400">Nothing scheduled.</p>
           )}
@@ -456,7 +452,7 @@ export function CarePlanOrders({
             </ul>
           </details>
         )}
-      </section>
+      </CollapsibleSection>
 
       {cancelling && (
         <CancelDialog
@@ -822,6 +818,130 @@ function TestForm({
  * saved, so nothing is stored on a guess the doctor hasn't seen. The server
  * parses the same text again rather than trusting what the browser read.
  */
+
+// ── Is it actually on the shelf? ────────────────────────────────────────────
+
+/** One line of a prescription, checked against the member's own pharmacy. */
+type MedCheckLine = {
+  medication: string;
+  strength: string | null;
+  form: string | null;
+  status: "listed" | "out_of_stock" | "strength_differs" | "ambiguous" | "not_listed" | "no_pharmacy";
+  listed_as?: string;
+  member_naira?: number;
+  list_naira?: number;
+  saving_naira?: number;
+  available_strengths?: string[];
+  suggestions?: { name: string; strengths: string[]; score: number }[];
+};
+
+type MedCheck = {
+  pharmacy: { id: string; name: string; city: string | null } | null;
+  lines: MedCheckLine[];
+};
+
+/**
+ * Check what the doctor is typing against the member's pharmacy, half a second
+ * after they stop.
+ *
+ * Debounced rather than run per keystroke because a half-typed drug name is
+ * always "not listed", and a panel that shouts at every letter is a panel
+ * doctors learn to ignore. The check is advisory: while it is in flight, or if
+ * it fails outright, the form behaves exactly as it did before.
+ */
+function useMedicationCheck(patientId: string, text: string) {
+  const [check, setCheck] = useState<MedCheck | null>(null);
+  const [checking, setChecking] = useState(false);
+
+  useEffect(() => {
+    const trimmed = text.trim();
+    if (trimmed.length < 4) { setCheck(null); return; }
+
+    let live = true;
+    const controller = new AbortController();
+    const timer = setTimeout(async () => {
+      setChecking(true);
+      try {
+        const res = await fetch(`/api/doc-login/consults/patients/${patientId}/medication-check`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ text: trimmed }),
+          signal: controller.signal,
+        });
+        const d = await res.json().catch(() => null);
+        if (live && res.ok && d?.success) setCheck({ pharmacy: d.pharmacy, lines: d.lines });
+      } catch {
+        /* advisory only — a failed check leaves the form as it was */
+      } finally {
+        if (live) setChecking(false);
+      }
+    }, 500);
+
+    return () => { live = false; controller.abort(); clearTimeout(timer); };
+  }, [patientId, text]);
+
+  return { check, checking };
+}
+
+const naira = (n: number) => `₦${Math.round(n).toLocaleString("en-NG")}`;
+
+/** The verdict on one line, said in the fewest words that still act on it. */
+function MedCheckNote({ line, pharmacyName }: { line: MedCheckLine; pharmacyName: string }) {
+  if (line.status === "listed") {
+    return (
+      <p className="mt-0.5 flex flex-wrap items-center gap-x-1.5 text-[11px] font-semibold text-emerald-700">
+        <Check className="h-3 w-3" />
+        At {pharmacyName} for {naira(line.member_naira ?? 0)}
+        {(line.saving_naira ?? 0) > 0 && (
+          <span className="font-normal text-slate-400">
+            (saves {naira(line.saving_naira ?? 0)})
+          </span>
+        )}
+      </p>
+    );
+  }
+
+  const tone =
+    line.status === "not_listed" ? "text-red-600" : "text-amber-700";
+
+  return (
+    <p className={`mt-0.5 flex flex-wrap items-start gap-x-1.5 text-[11px] font-semibold ${tone}`}>
+      {line.status === "not_listed" ? (
+        <CircleAlert className="mt-px h-3 w-3 shrink-0" />
+      ) : (
+        <AlertTriangle className="mt-px h-3 w-3 shrink-0" />
+      )}
+      <span className="min-w-0">
+        {line.status === "out_of_stock" && `Out of stock at ${pharmacyName} right now.`}
+        {line.status === "strength_differs" &&
+          `${pharmacyName} lists ${(line.available_strengths ?? []).join(", ") || "other strengths"} — not ${line.strength}.`}
+        {line.status === "ambiguous" &&
+          `${pharmacyName} lists ${(line.available_strengths ?? []).join(", ")}. Say which strength.`}
+        {line.status === "not_listed" && (
+          <>
+            Not on {pharmacyName}&apos;s list.
+            {(line.suggestions?.length ?? 0) > 0 && (
+              <span className="font-normal">
+                {" "}Did you mean{" "}
+                {line.suggestions!.map((sug, i) => (
+                  <span key={sug.name}>
+                    {i > 0 ? ", " : ""}
+                    <strong className="text-slate-700">{sug.name}</strong>
+                    {sug.strengths.length > 0 && (
+                      <span className="text-slate-400"> ({sug.strengths.join(", ")})</span>
+                    )}
+                  </span>
+                ))}
+                ?
+              </span>
+            )}
+          </>
+        )}
+      </span>
+    </p>
+  );
+}
+
 function PrescriptionForm({
   patientId, onClose, onSaved,
 }: {
@@ -834,6 +954,10 @@ function PrescriptionForm({
 
   const parsed: ParsedPrescription[] = useMemo(() => parsePrescriptionBlock(text), [text]);
   const shaky = parsed.filter((p) => p.confidence < 0.6 || p.unparsed.length > 0);
+  // The server re-parses the same text, so its verdicts line up with `parsed`
+  // index for index.
+  const { check, checking } = useMedicationCheck(patientId, text);
+  const aligned = check && check.lines.length === parsed.length ? check.lines : null;
 
   async function save() {
     if (saving || parsed.length === 0) return;
@@ -880,7 +1004,14 @@ function PrescriptionForm({
       </p>
 
       {parsed.length > 0 && (
-        <div className="space-y-1.5 rounded-xl border border-emerald-200 bg-white p-2.5">
+        <div className="space-y-2 rounded-xl border border-emerald-200 bg-white p-2.5">
+          {check?.pharmacy && (
+            <p className="flex items-center gap-1.5 border-b border-slate-100 pb-1.5 text-[10px] font-bold uppercase tracking-wider text-slate-400">
+              <Store className="h-3 w-3" />
+              Checked against {check.pharmacy.name}
+              {checking && <Loader2 className="h-3 w-3 animate-spin" />}
+            </p>
+          )}
           {parsed.map((p, i) => {
             const qty = estimateQuantity(p);
             return (
@@ -891,9 +1022,17 @@ function PrescriptionForm({
                   {p.instructions ? ` · ${p.instructions}` : ""}
                   {p.unparsed.length > 0 ? ` · couldn't read: ${p.unparsed.join(" ")}` : ""}
                 </p>
+                {aligned && check?.pharmacy && (
+                  <MedCheckNote line={aligned[i]} pharmacyName={check.pharmacy.name} />
+                )}
               </div>
             );
           })}
+          {aligned && !check?.pharmacy && (
+            <p className="border-t border-slate-100 pt-1.5 text-[11px] text-slate-400">
+              This member has not chosen a pharmacy, so there is nothing to price these against yet.
+            </p>
+          )}
         </div>
       )}
 

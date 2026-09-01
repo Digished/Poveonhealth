@@ -1,20 +1,27 @@
 "use client";
 
-import { Check, FlaskConical, MapPin, Pill, X } from "lucide-react";
+import { FlaskConical, Lock, Pill, X } from "lucide-react";
 import type { Provider } from "@/components/consults/ProviderPicker";
 
 /** The compact row that opens the picker and shows what's chosen. */
 export function ProviderRow({
-  kind, provider, onOpen, onClear,
+  kind, provider, onOpen, onClear, locked = null,
 }: {
   kind: "pharmacy" | "lab";
   provider: Provider | null;
   onOpen: () => void;
   onClear?: () => void;
+  /**
+   * Why this choice cannot be changed yet, or null when it can. A pharmacy
+   * settles for 30 days once chosen; saying so here is cheaper for everyone
+   * than letting someone tap Change and be refused.
+   */
+  locked?: string | null;
 }) {
   const Icon = kind === "pharmacy" ? Pill : FlaskConical;
   return (
-    <div className="flex items-center gap-3 rounded-xl border border-slate-200 bg-white p-3">
+    <div className="rounded-xl border border-slate-200 bg-white">
+    <div className="flex items-center gap-3 p-3">
       {provider?.logo_url ? (
         // eslint-disable-next-line @next/next/no-img-element
         <img src={provider.logo_url} alt={provider.name} className="h-10 w-10 shrink-0 rounded-lg object-cover ring-1 ring-slate-100" />
@@ -37,11 +44,12 @@ export function ProviderRow({
         <button
           type="button"
           onClick={onOpen}
-          className="rounded-lg border border-slate-200 px-3 py-1.5 text-xs font-semibold text-slate-600 transition hover:border-medical-300"
+          disabled={!!locked}
+          className="rounded-lg border border-slate-200 px-3 py-1.5 text-xs font-semibold text-slate-600 transition hover:border-medical-300 disabled:cursor-not-allowed disabled:opacity-40 disabled:hover:border-slate-200"
         >
           {provider ? "Change" : "Choose"}
         </button>
-        {provider && onClear && (
+        {provider && onClear && !locked && (
           <button
             type="button"
             onClick={onClear}
@@ -52,6 +60,14 @@ export function ProviderRow({
           </button>
         )}
       </div>
+    </div>
+
+    {locked && (
+      <p className="flex items-start gap-1.5 border-t border-slate-100 px-3 py-2 text-[11px] leading-relaxed text-slate-500">
+        <Lock className="mt-px h-3 w-3 shrink-0 text-slate-400" />
+        {locked}
+      </p>
+    )}
     </div>
   );
 }

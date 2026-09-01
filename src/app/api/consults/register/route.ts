@@ -85,6 +85,19 @@ export async function POST(req: NextRequest) {
       conditions: d.conditions,
       preferred_pharmacy_id: d.preferred_pharmacy_id || null,
       preferred_lab_id: d.preferred_lab_id || null,
+      // Choosing a pharmacy at sign-up starts the same 30-day settling period
+      // as choosing one later, and credits that pharmacy with the sign-up —
+      // once. A member re-enrolling after a lapse keeps whoever was credited
+      // the first time; the shop that brought them in does not lose them to a
+      // later change of mind.
+      ...(d.preferred_pharmacy_id
+        ? {
+            preferred_pharmacy_set_at: new Date(),
+            ...(existing?.first_pharmacy_id
+              ? {}
+              : { first_pharmacy_id: d.preferred_pharmacy_id, first_pharmacy_at: new Date() }),
+          }
+        : {}),
 
       medication_adherence: d.medication_adherence,
       baseline_medications: d.baseline_medications || null,
