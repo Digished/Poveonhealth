@@ -65,31 +65,31 @@ const s = StyleSheet.create({
     display: "flex",
     flexDirection: "column",
   },
-  topRule: { height: 5, backgroundColor: ACCENT },
+  topRule: { height: 7, backgroundColor: ACCENT },
 
   // ── Header ────────────────────────────────────────────────────────────────
-  header: { backgroundColor: NAVY, paddingTop: 24, paddingBottom: 56, paddingHorizontal: PAGE_X },
+  header: { backgroundColor: NAVY, paddingTop: 34, paddingBottom: 74, paddingHorizontal: PAGE_X },
   eyebrowRow: { flexDirection: "row", alignItems: "center" },
-  wordmark: { fontSize: 17, fontFamily: "Helvetica-Bold", color: "#ffffff", letterSpacing: 0.3 },
+  wordmark: { fontSize: 19, fontFamily: "Helvetica-Bold", color: "#ffffff", letterSpacing: 0.3 },
   eyebrowRule: { flex: 1, height: 1, backgroundColor: "#ffffff", opacity: 0.18, marginLeft: 12, marginRight: 12 },
   eyebrow: { fontSize: 8, color: "#8fc4ec", letterSpacing: 2 },
 
-  headRow: { flexDirection: "row", marginTop: 22, alignItems: "flex-start" },
+  headRow: { flexDirection: "row", marginTop: 30, alignItems: "flex-start" },
   headLeft: { flex: 1, paddingRight: 18 },
 
-  headline: { fontSize: 25, fontFamily: "Helvetica-Bold", color: "#ffffff", lineHeight: 1.12 },
+  headline: { fontSize: 31, fontFamily: "Helvetica-Bold", color: "#ffffff", lineHeight: 1.14 },
 
   // The partner's own badge, top right — this is their flyer as much as ours.
   partnerBadge: {
     backgroundColor: "#ffffff",
-    borderRadius: 8,
-    padding: 10,
+    borderRadius: 10,
+    padding: 14,
     alignItems: "center",
-    width: 132,
+    width: 150,
   },
-  partnerLogo: { width: 74, height: 44, objectFit: "contain", marginBottom: 6 },
+  partnerLogo: { width: 86, height: 50, objectFit: "contain", marginBottom: 8 },
   partnerBadgeName: {
-    fontSize: 10,
+    fontSize: 11,
     fontFamily: "Helvetica-Bold",
     color: NAVY,
     textAlign: "center",
@@ -98,63 +98,71 @@ const s = StyleSheet.create({
   },
   partnerBadgeKind: { fontSize: 7, color: MUTED, letterSpacing: 1.1, marginTop: 4, textAlign: "center" },
   partnerBadgeMark: {
-    width: 44,
-    height: 44,
-    borderRadius: 22,
+    width: 52,
+    height: 52,
+    borderRadius: 26,
     backgroundColor: BRAND_TINT,
     marginBottom: 6,
     alignItems: "center",
     justifyContent: "center",
   },
-  partnerBadgeInitial: { fontSize: 19, fontFamily: "Helvetica-Bold", color: BRAND },
+  partnerBadgeInitial: { fontSize: 22, fontFamily: "Helvetica-Bold", color: BRAND },
   headlineAccent: { color: "#5cc8ff" },
-  subhead: { fontSize: 10.5, color: "#c2dcf1", marginTop: 8, lineHeight: 1.5 },
+  subhead: { fontSize: 12, color: "#c2dcf1", marginTop: 12, lineHeight: 1.55, maxWidth: 330 },
 
   // ── The offer card, lifted over the header edge ──────────────────────────
-  offerWrap: { marginTop: -44, paddingHorizontal: PAGE_X },
+  offerWrap: { marginTop: -56, paddingHorizontal: PAGE_X },
   offer: {
     flexDirection: "row",
     backgroundColor: "#ffffff",
     borderWidth: 1,
     borderColor: HAIR,
-    borderRadius: 10,
-    padding: 18,
+    borderRadius: 12,
+    padding: 26,
     alignItems: "center",
   },
-  offerLeft: { flex: 1, paddingRight: 14 },
-  kicker: { fontSize: 7.5, color: MUTED, letterSpacing: 1.6 },
-  price: { fontSize: 40, fontFamily: "Helvetica-Bold", color: NAVY, marginTop: 3, letterSpacing: -0.5 },
-  priceFoot: { fontSize: 9.5, color: MUTED, marginTop: 3 },
-  offerDivider: { width: 1, alignSelf: "stretch", backgroundColor: HAIR, marginRight: 14 },
-  qrBox: { alignItems: "center", width: 116 },
-  qr: { width: 104, height: 104 },
-  qrCaption: { fontSize: 8.5, fontFamily: "Helvetica-Bold", color: NAVY, marginTop: 6, letterSpacing: 0.6 },
-  qrHint: { fontSize: 7, color: MUTED, marginTop: 2, textAlign: "center" },
+  offerLeft: { flex: 1, paddingRight: 20 },
+  kicker: { fontSize: 8.5, color: MUTED, letterSpacing: 1.8 },
+  price: { fontSize: 48, fontFamily: "Helvetica-Bold", color: NAVY, marginTop: 6, letterSpacing: -0.8 },
+  priceFoot: { fontSize: 11, color: MUTED, marginTop: 6 },
+  offerDivider: { width: 1, alignSelf: "stretch", backgroundColor: HAIR, marginRight: 20 },
+  qrBox: { alignItems: "center", width: 140 },
+  qr: { width: 130, height: 130 },
+  qrCaption: { fontSize: 9.5, fontFamily: "Helvetica-Bold", color: NAVY, marginTop: 9, letterSpacing: 0.7 },
+  qrHint: { fontSize: 8, color: MUTED, marginTop: 3, textAlign: "center" },
 
   // ── Body ──────────────────────────────────────────────────────────────────
   // Grows to fill whatever is left, which is what pins the footer to the foot.
-  body: { flexGrow: 1, paddingHorizontal: PAGE_X, paddingTop: 18 },
-  grid: { flexDirection: "row", marginHorizontal: -5 },
-  cell: { width: "33.333%", paddingHorizontal: 5 },
-  card: { backgroundColor: BRAND_TINT, borderRadius: 8, padding: 14, height: 96 },
-  cardBig: { fontSize: 18, fontFamily: "Helvetica-Bold", color: BRAND, letterSpacing: -0.3, maxLines: 2 },
-  cardTitle: { fontSize: 10, fontFamily: "Helvetica-Bold", color: INK, marginTop: 4 },
-  cardBody: { fontSize: 8.5, color: MUTED, marginTop: 4, lineHeight: 1.45, maxLines: 3 },
+  // `justifyContent: center` is what stops the page from being top-heavy: the
+  // cards sit in the middle of the space below the offer, so the room left
+  // over is shared above and below them instead of pooling into one dead band.
+  body: {
+    flexGrow: 1,
+    paddingHorizontal: PAGE_X,
+    paddingTop: 34,
+    justifyContent: "center",
+  },
+  grid: { flexDirection: "row", marginHorizontal: -7 },
+  cell: { width: "33.333%", paddingHorizontal: 7 },
+  card: { backgroundColor: BRAND_TINT, borderRadius: 10, padding: 20, height: 148 },
+  cardBig: { fontSize: 22, fontFamily: "Helvetica-Bold", color: BRAND, letterSpacing: -0.4, maxLines: 2 },
+  cardTitle: { fontSize: 11.5, fontFamily: "Helvetica-Bold", color: INK, marginTop: 8 },
+  cardBody: { fontSize: 9.5, color: MUTED, marginTop: 6, lineHeight: 1.5, maxLines: 4 },
 
-  smallPrint: { fontSize: 7, color: "#94a3b8", lineHeight: 1.45, marginTop: "auto", paddingTop: 16 },
+  smallPrint: { fontSize: 7.5, color: "#94a3b8", lineHeight: 1.5, marginTop: 34 },
 
   // ── Footer band ──────────────────────────────────────────────────────────
   footer: {
     backgroundColor: NAVY,
-    paddingVertical: 14,
+    paddingVertical: 20,
     paddingHorizontal: PAGE_X,
     flexDirection: "row",
     alignItems: "center",
   },
-  footerName: { fontSize: 14, fontFamily: "Helvetica-Bold", color: "#ffffff", maxLines: 2 },
-  footerMeta: { fontSize: 9, color: "#a9cbe6", marginTop: 2, maxLines: 1, textOverflow: "ellipsis" },
+  footerName: { fontSize: 16, fontFamily: "Helvetica-Bold", color: "#ffffff", maxLines: 2 },
+  footerMeta: { fontSize: 9.5, color: "#a9cbe6", marginTop: 4, maxLines: 1, textOverflow: "ellipsis" },
   footerRight: { alignItems: "flex-end", maxWidth: 210 },
-  footerUrl: { fontSize: 8, color: "#7fb4dd" },
+  footerUrl: { fontSize: 9, color: "#7fb4dd" },
 });
 
 export function CarePromoDocument(d: PromoData) {
