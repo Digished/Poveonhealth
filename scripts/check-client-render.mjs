@@ -147,6 +147,47 @@ const scenarios = [
     mustSay: ["Choose a pharmacy to see prices", "Amlodipine"],
   },
   {
+    // The reported bug: the price could not be changed at all, because the form
+    // sent back a retired ₦6,000 lump sum and the server refused any doctor
+    // share above the ₦2,500 joining fee.
+    name: "admin pricing saves a lower joining fee",
+    entry: `
+      import { PricingPanel } from "@/components/admin/AdminCarePlanTab";
+      export const Panel = () => <div className="dash"><PricingPanel /></div>;`,
+    routes: {
+      "/api/admin/consults/settings": {
+        success: true,
+        settings: {
+          price_naira: 2500, doctor_share_naira: 6000, message_allowance: 40,
+          release_months: 12, default_doctor_cap: 200, lab_discount_percent: 15,
+          pharmacy_discount_percent: 10, topup_price_naira: 10000, topup_messages: 40,
+          doctor_monthly_naira: 500, bonus_pool_percent: 10,
+        },
+      },
+    },
+    mustSay: ["Commercial terms", "Per member, per month"],
+    // Change the fee, save, and inspect what the form actually sent.
+    act: `
+      const fields = Array.from(document.querySelectorAll("input"));
+      const fee = fields[0];
+      const setter = Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, "value").set;
+      setter.call(fee, "3000");
+      fee.dispatchEvent(new Event("input", { bubbles: true }));
+      await new Promise((r) => setTimeout(r, 120));
+      const save = Array.from(document.querySelectorAll("button"))
+        .find((b) => /Save changes/.test(b.textContent));
+      if (!save) return { error: "no enabled Save button — the form did not register a change" };
+      save.click();
+      await new Promise((r) => setTimeout(r, 250));
+      const sent = window.__SENT__.find((r) => r.url.includes("/settings") && r.body);
+      if (!sent) return { error: "the form sent nothing" };
+      const body = JSON.parse(sent.body);
+      if ("doctor_share_naira" in body) return { error: "the retired lump sum was sent back" };
+      if (body.price_naira !== 3000) return { error: "the new fee was not sent: " + body.price_naira };
+      return { ok: "sent " + JSON.stringify(body.price_naira) + " with no retired field" };
+    `,
+  },
+  {
     name: "doctor care sections, a draft waiting",
     entry: `
       import { CarePlanOrders } from "@/components/doctor/CarePlanOrders";
@@ -259,7 +300,9 @@ for (const sc of scenarios) {
     <script>
       window.__F__ = ${JSON.stringify(JSON.parse(JSON.stringify(sc.globals ?? {})))};
       const ROUTES = ${JSON.stringify(JSON.parse(JSON.stringify(sc.routes ?? {})))};
-      window.fetch = (url) => {
+      window.__SENT__ = [];
+      window.fetch = (url, init) => {
+        window.__SENT__.push({ url: String(url), body: init && init.body });
         const path = String(url).split("?")[0];
         const hit = Object.keys(ROUTES).find((k) => path === k || path.endsWith(k));
         return Promise.resolve({
@@ -282,6 +325,13 @@ for (const sc of scenarios) {
     await page.waitForTimeout(900);
 
     const text = await page.evaluate(() => document.getElementById("root")?.innerText ?? "");
+
+    // Some panels are only interesting once something has been done to them.
+    let acted = null;
+    if (sc.act) {
+      acted = await page.evaluate(`(async () => { ${sc.act} })()`);
+      if (acted?.error) errors.push(`action: ${acted.error}`);
+    }
     const wide = await page.evaluate(() => {
       const doc = document.documentElement;
       if (doc.scrollWidth <= doc.clientWidth + 1) return null;
@@ -309,7 +359,8 @@ for (const sc of scenarios) {
       (ok ? "ok   " : "FAIL ") + `${sc.name} @${w}` +
       (text.trim() ? "" : "  rendered nothing") +
       (wide ? `  scrolls sideways ${wide.scrollW}/${wide.clientW}` : "") +
-      (missing.length ? `  missing: ${missing.map((m) => JSON.stringify(m)).join(", ")}` : "")
+      (missing.length ? `  missing: ${missing.map((m) => JSON.stringify(m)).join(", ")}` : "") +
+      (acted?.ok ? `  ${acted.ok}` : "")
     );
     if (wide?.worst) {
       console.log(`       widest: <${wide.worst.tag} class="${wide.worst.cls}"> right=${wide.worst.right} w=${wide.worst.width}  "${wide.worst.text}"`);

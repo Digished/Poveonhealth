@@ -13,7 +13,6 @@ import { BonusPoolPanel } from "@/components/admin/BonusPoolPanel";
 
 type Settings = {
   price_naira: number;
-  doctor_share_naira: number;
   message_allowance: number;
   release_months: number;
   default_doctor_cap: number;
@@ -992,7 +991,7 @@ function StatBar({
 
 // ── Pricing ─────────────────────────────────────────────────────────────────
 
-function PricingPanel() {
+export function PricingPanel() {
   const [settings, setSettings] = useState<Settings | null>(null);
   const [form, setForm] = useState<Settings | null>(null);
   const [loading, setLoading] = useState(true);
@@ -1018,7 +1017,22 @@ function PricingPanel() {
       const res = await fetch("/api/admin/consults/settings", {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(form),
+        // Only the fields this form owns. The settings row still carries the
+        // retired lump-sum share so historic entitlements read correctly, and
+        // sending it back is how every save came to fail against a rule that
+        // compared it with the joining fee.
+        body: JSON.stringify({
+          price_naira: form.price_naira,
+          message_allowance: form.message_allowance,
+          release_months: form.release_months,
+          default_doctor_cap: form.default_doctor_cap,
+          lab_discount_percent: form.lab_discount_percent,
+          pharmacy_discount_percent: form.pharmacy_discount_percent,
+          topup_price_naira: form.topup_price_naira,
+          topup_messages: form.topup_messages,
+          doctor_monthly_naira: form.doctor_monthly_naira,
+          bonus_pool_percent: form.bonus_pool_percent,
+        }),
       });
       const d = await res.json();
       if (!res.ok || !d.success) { toast.error(d.error ?? "Could not save."); return; }
@@ -1039,7 +1053,11 @@ function PricingPanel() {
   // doctor's fee out of medication margin.
   const firstMonth = form.price_naira - (form.doctor_monthly_naira ?? 500);
   const yearOfDoctorPay = (form.doctor_monthly_naira ?? 500) * 12;
-  const dirty = JSON.stringify(form) !== JSON.stringify(settings);
+  // Compared field by field: the settings row carries keys this form does not
+  // own, and a whole-object compare would show "unsaved changes" for ever.
+  const dirty =
+    !!settings &&
+    (Object.keys(form) as (keyof Settings)[]).some((k) => form[k] !== settings[k]);
 
   return (
     <div className="max-w-3xl space-y-4">

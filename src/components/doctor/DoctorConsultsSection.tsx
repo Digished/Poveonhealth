@@ -362,16 +362,22 @@ function OverviewPanel({
           <ChevronDown className="ml-auto h-4 w-4 shrink-0 text-slate-400 transition-transform group-open:rotate-180" />
         </summary>
         <dl className="space-y-3 border-t border-slate-100 px-4 pb-4 pt-3">
-          <PayNote term="Per member">
-            Each member assigned to you adds{" "}
-            <strong className="text-slate-800">{naira(w?.per_patient ?? 6000)}</strong> to your pool.
+          <PayNote term="Per member, per month">
+            <strong className="text-slate-800">{naira(w?.per_patient ?? 500)}</strong> for every
+            month a member is still with you — not a year committed up front.
           </PayNote>
-          <PayNote term="Paid monthly">
-            A {w?.release_months ?? 12}th of the pool is released each month — the &ldquo;next
-            month&rdquo; figure above.
+          <PayNote term="Next month">
+            {w?.active_patients ?? 0} member{(w?.active_patients ?? 0) === 1 ? "" : "s"} ×{" "}
+            {naira(w?.per_patient ?? 500)} ={" "}
+            <strong className="text-slate-800">{naira(w?.monthly_estimate ?? 0)}</strong>, if nobody
+            leaves.
           </PayNote>
           <PayNote term="If someone leaves">
-            Their unreleased share leaves with them and your monthly figure adjusts.
+            You keep every month they were with you, and nothing after. Your monthly figure falls by
+            their fee.
+          </PayNote>
+          <PayNote term="On top of that">
+            The bonus pool, split each month by how much of the messaging you carried.
           </PayNote>
         </dl>
       </details>

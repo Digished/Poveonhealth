@@ -1870,12 +1870,18 @@ model ConsultSettings {
   /// onboarding fee rather than a subscription: nothing recurs, and a member
   /// whose year runs out pays it again to carry on.
   price_naira        Decimal  @default(2500) @db.Decimal(12, 2)
-  /// Retired. The doctor's pay is `doctor_monthly_naira` accrued month by month
-  /// for as long as the member stays, not a lump sum opened at activation.
-  /// Kept so historic ConsultEarning rows still read against the terms they
-  /// were created on.
+  /// Retired, and no longer editable. The doctor's pay is
+  /// `doctor_monthly_naira` accrued month by month for as long as the member
+  /// stays. Kept so historic ConsultEarning rows still read against the terms
+  /// they were created on.
   doctor_share_naira Decimal  @default(6000) @db.Decimal(12, 2)
   /// Paid to the assigned doctor for each month a member is still active.
+  ///
+  /// Deliberately not a slice of `price_naira`. The onboarding fee is what a
+  /// member pays to join; the doctor is paid out of what the programme earns
+  /// overall — the margin on refills, dispensing and tests — so this may be
+  /// more than the joining fee over a year, and that is the model working
+  /// rather than a mistake.
   doctor_monthly_naira Decimal @default(500) @db.Decimal(12, 2)
   /// Share of Poveon's medication margin set aside for the doctor bonus pool,
   /// split by how much of the month's messaging each doctor carried.
@@ -2051,6 +2057,12 @@ model ConsultEarning {
   // Not unique: a member who renews opens a fresh entitlement for the new year.
   patient_id     String
   total_naira    Decimal  @db.Decimal(12, 2)
+  /// What this entitlement pays for each month the member stays, fixed when it
+  /// was opened. Held on the row rather than read from settings at release
+  /// time, so changing the rate never rewrites what a doctor was already
+  /// promised. Null on entitlements opened under the old lump-sum terms, where
+  /// the instalment is total_naira spread over release_months.
+  monthly_naira  Decimal? @db.Decimal(12, 2)
   released_naira Decimal  @default(0) @db.Decimal(12, 2)
   status         String   @default("pending") // pending | complete | cancelled
   created_at     DateTime @default(now())

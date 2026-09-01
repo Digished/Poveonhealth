@@ -11,7 +11,7 @@
     "db:push": "prisma db push",
     "db:studio": "prisma studio",
     "db:seed-tests": "ts-node --project tsconfig.seed.json prisma/seed-tests.ts",
-    "check": "node scripts/typecheck.mjs && node scripts/check-tdz.mjs && node scripts/check-json-columns.mjs && node scripts/gen-dash-fills.mjs --check && node scripts/check-med-match.mjs && node scripts/check-pharmacy-lock.mjs && node scripts/check-bonus-math.mjs && node scripts/check-promo-flyer.mjs && node scripts/check-client-render.mjs"
+    "check": "node scripts/typecheck.mjs && node scripts/check-tdz.mjs && node scripts/check-json-columns.mjs && node scripts/gen-dash-fills.mjs --check && node scripts/check-med-match.mjs && node scripts/check-pharmacy-lock.mjs && node scripts/check-bonus-math.mjs && node scripts/check-doctor-pay.mjs && node scripts/check-promo-flyer.mjs && node scripts/check-client-render.mjs"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.80.0",

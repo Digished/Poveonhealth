@@ -162,7 +162,9 @@ async function sendActivationEmails(patientId: string) {
       memberName: patient.full_name,
       conditions: patient.conditions.map((c) => CONDITION_LABELS[c] ?? c),
       poolSize,
-      earningPerMember: naira(settings.doctor_share_naira),
+      // What this member is worth to their doctor each month they stay, not a
+      // lump sum for the year.
+      earningPerMember: naira(settings.doctor_monthly_naira),
       dashboardUrl: `${appUrl()}/doc-login/dashboard?tab=consults`,
     }),
   });

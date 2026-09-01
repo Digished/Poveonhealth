@@ -24,7 +24,6 @@ export async function GET() {
 
 const BodySchema = z.object({
   price_naira: z.coerce.number().min(0).max(10_000_000),
-  doctor_share_naira: z.coerce.number().min(0).max(10_000_000),
   message_allowance: z.coerce.number().int().min(1).max(365),
   release_months: z.coerce.number().int().min(1).max(60),
   default_doctor_cap: z.coerce.number().int().min(1).max(5000),
@@ -33,13 +32,21 @@ const BodySchema = z.object({
   // What another bundle of messages costs a member who runs out mid-year.
   topup_price_naira: z.coerce.number().min(0).max(10_000_000).optional(),
   topup_messages: z.coerce.number().int().min(1).max(365).optional(),
-  // The new commercial terms: a monthly per-member fee to the assigned doctor,
-  // and the slice of revenue that funds the stress bonus pool.
+  /**
+   * What the assigned doctor is paid for each month a member stays.
+   *
+   * Not bounded by `price_naira`, and it used to be: a rule that the doctor's
+   * share could not exceed the joining fee made every save fail once the fee
+   * became a one-off ₦2,500 against a retired ₦6,000 lump sum. It was the
+   * wrong rule anyway — the doctor is paid out of what the programme earns
+   * from refills, dispensing and tests, not out of what a member paid to join,
+   * so a year of it exceeding the joining fee is the model working.
+   */
   doctor_monthly_naira: z.coerce.number().min(0).max(1_000_000).optional(),
   bonus_pool_percent: z.coerce.number().min(0).max(100).optional(),
 });
 
-/** PATCH /api/admin/consults/settings — set the price and the doctor's share. */
+/** PATCH /api/admin/consults/settings — the care-plan commercial terms. */
 export async function PATCH(req: NextRequest) {
   // The build-time migration is best-effort; make sure the tables are there.
   await ensureCarePlanSchema().catch(() => {});
@@ -52,15 +59,9 @@ export async function PATCH(req: NextRequest) {
   }
   const d = parsed.data;
 
-  if (d.doctor_share_naira > d.price_naira) {
-    return NextResponse.json(
-      { error: "The doctor's share cannot be more than the subscription price." },
-      { status: 400 }
-    );
-  }
-
   // Changes apply to new members; existing entitlements keep the terms they
-  // were opened on, so nobody's agreed pay changes underneath them.
+  // were opened on — each carries its own monthly rate — so nobody's agreed
+  // pay changes underneath them.
   await prisma.consultSettings.upsert({
     where: { id: "default" },
     create: { id: "default", ...d, updated_by: admin.email ?? null },

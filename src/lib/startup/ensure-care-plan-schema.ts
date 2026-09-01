@@ -82,6 +82,7 @@ const SENTINEL_COLUMNS = [
   "consult_patients.reminded_at",
   "pharmacies.margin_percent",
   "consult_settings.doctor_monthly_naira",
+  "consult_earnings.monthly_naira",
   "consult_settings.topup_price_naira",
   "consult_treatment_plans.source",
   "consult_prescriptions.source",
@@ -232,6 +233,9 @@ async function runEnsure(): Promise<void> {
         updated_at TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP
       );
     `);
+    // The rate an entitlement pays each month, fixed when it was opened. Null
+    // on rows from the lump-sum terms, which spread total_naira instead.
+    await exec(`ALTER TABLE consult_earnings ADD COLUMN IF NOT EXISTS monthly_naira DECIMAL(12,2);`);
     // The first version had one entitlement per member; renewals need one per year.
     await exec(`DROP INDEX IF EXISTS consult_earnings_patient_id_key;`);
     await exec(`CREATE INDEX IF NOT EXISTS consult_earnings_doctor_status_idx ON consult_earnings(doctor_email, status);`);

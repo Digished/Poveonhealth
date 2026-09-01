@@ -2314,7 +2314,7 @@ export function carePlanDoctorNewMemberEmail({
   return base(`
     <h2 style="margin:0 0 8px;color:#0259a0;font-size:20px;font-weight:700;">New care-plan member assigned to you</h2>
     <p style="margin:0 0 20px;color:#4b5563;font-size:15px;">
-      Hello ${escapeHtml(doctorName)}, ${escapeHtml(memberName)} has joined the Poveon Care Plan and been added to your pool.
+      Hello ${escapeHtml(doctorName)}, ${escapeHtml(memberName)} has joined the Poveon Care Plan and been assigned to you.
       Please make an initial assessment when you can.
     </p>
 
@@ -2331,7 +2331,7 @@ export function carePlanDoctorNewMemberEmail({
         </td>
         <td width="12"></td>
         <td style="background:#ecfdf5;border:1px solid #a7f3d0;border-radius:8px;padding:16px;text-align:center;" width="50%">
-          <p style="margin:0;color:#6b7280;font-size:12px;">Added to your pool</p>
+          <p style="margin:0;color:#6b7280;font-size:12px;">Per month, while they stay</p>
           <p style="margin:4px 0 0;color:#047857;font-size:22px;font-weight:800;">${escapeHtml(earningPerMember)}</p>
         </td>
       </tr>

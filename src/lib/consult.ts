@@ -19,6 +19,7 @@ import type { NextRequest } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { draftMedications, draftPlanItems, draftPlanNote } from "@/lib/care-draft";
 import { MED_SUGGESTED_STATUS } from "@/lib/medication-status";
+import { monthlyEstimate, monthlyInstalment, yearlyCommitment } from "@/lib/doctor-pay";
 
 export const CONSULT_CONDITIONS = ["hypertension", "diabetes"] as const;
 export type ConsultCondition = (typeof CONSULT_CONDITIONS)[number];
@@ -274,17 +275,13 @@ export async function getDoctorConsultWallet(doctorEmail: string): Promise<Consu
   let released = 0; // already in the wallet — cancelled entitlements included,
   //                   because money already released is not clawed back
   let pending = 0; // still to come, from entitlements that are still accruing
-  let livePool = 0; // drives the monthly figure
   for (const e of earnings) {
     const total = Number(e.total_naira);
     const rel = Number(e.released_naira);
     released += rel;
     if (e.status === "cancelled") continue;
     poolTotal += total;
-    if (e.status === "pending") {
-      livePool += total;
-      pending += Math.max(0, total - rel);
-    }
+    if (e.status === "pending") pending += Math.max(0, total - rel);
   }
 
   const activePatients = await prisma.consultPatient.count({
@@ -297,9 +294,12 @@ export async function getDoctorConsultWallet(doctorEmail: string): Promise<Consu
     pool_total: Math.round(poolTotal),
     released: Math.round(released),
     pending: Math.round(pending),
-    monthly_estimate: Math.round(livePool / months),
+    // What next month looks like if nobody leaves: the monthly rate for every
+    // member still with them. Derived from the members rather than from the
+    // pool, so it is the same arithmetic the doctor does in their head.
+    monthly_estimate: monthlyEstimate(activePatients, settings.doctor_monthly_naira),
     release_months: months,
-    per_patient: settings.doctor_share_naira,
+    per_patient: settings.doctor_monthly_naira,
   };
 }
 
@@ -357,7 +357,18 @@ export async function runMonthlyRelease(period = periodKey()): Promise<{
       continue;
     }
 
-    const instalment = Math.min(Math.round(total / months), Math.round(total - already));
+    // On the terms this entitlement was opened on — the rate stored on the
+    // row, or, for the lump sums that predate it, the total spread over the
+    // release period. Reading the rate from settings instead would quietly
+    // restate what a doctor was promised every time an admin changed a number.
+    const instalment = monthlyInstalment(
+      {
+        monthlyNaira: earning.monthly_naira != null ? Number(earning.monthly_naira) : null,
+        totalNaira: total,
+        releasedNaira: already,
+      },
+      months
+    );
     if (instalment <= 0) {
       await prisma.consultEarning.update({ where: { id: earning.id }, data: { status: "complete" } });
       continue;
@@ -540,8 +551,21 @@ export async function activateMembership(params: {
   }
 
   if (doctorEmail) {
-    // One entitlement per subscription year. A member renewing gets a new one;
-    // a retry of this activation finds the open row and only re-points it.
+    // One entitlement per membership year. A member renewing gets a new one; a
+    // retry of this activation finds the open row and only re-points it.
+    //
+    // The doctor is paid `doctor_monthly_naira` for each month the member is
+    // still with them, so the entitlement carries that rate and a ceiling of a
+    // full year of it. A member who leaves in month four is closed at month
+    // four and the rest is never paid — that is the point of accruing rather
+    // than paying a lump sum up front.
+    //
+    // None of this comes out of the joining fee. The doctor's pay is funded by
+    // what the programme earns from refills, dispensing and tests, which is why
+    // a year of it can exceed what the member paid to join.
+    const monthly = settings.doctor_monthly_naira;
+    const months = Math.max(1, settings.release_months);
+
     const open = await prisma.consultEarning.findFirst({
       where: { patient_id: patient.id, status: "pending" },
       select: { id: true },
@@ -556,7 +580,8 @@ export async function activateMembership(params: {
         data: {
           doctor_email: doctorEmail,
           patient_id: patient.id,
-          total_naira: settings.doctor_share_naira,
+          monthly_naira: monthly,
+          total_naira: yearlyCommitment(monthly, months),
         },
       });
     }

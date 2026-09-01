@@ -5,6 +5,7 @@ import { z } from "zod";
 import { createServerClient } from "@/lib/supabase/server";
 import { prisma } from "@/lib/prisma";
 import { activeMemberWhere, getConsultSettings } from "@/lib/consult";
+import { yearlyCommitment } from "@/lib/doctor-pay";
 import { ensureCarePlanSchema } from "@/lib/startup/ensure-care-plan-schema";
 
 const PAGE_SIZE = 25;
@@ -59,7 +60,10 @@ export async function GET(req: NextRequest) {
   ]);
 
   const settings = await getConsultSettings();
-  const committed = activeCount * settings.doctor_share_naira;
+  // A year of doctor pay for every member currently active. The retired lump
+  // sum used to stand in for this; it is now derived from the monthly rate, so
+  // the number moves when the rate does.
+  const committed = activeCount * yearlyCommitment(settings.doctor_monthly_naira, settings.release_months);
 
   return NextResponse.json({
     success: true,
@@ -146,8 +150,16 @@ export async function PATCH(req: NextRequest) {
     if (open) {
       await prisma.consultEarning.update({ where: { id: open.id }, data: { doctor_email } });
     } else {
+      // Same terms as an entitlement opened at activation: a fixed monthly
+      // rate, with a year of it as the ceiling. Assigning a doctor by hand
+      // must not put that member on different terms from everyone else.
       await prisma.consultEarning.create({
-        data: { doctor_email, patient_id, total_naira: settings.doctor_share_naira },
+        data: {
+          doctor_email,
+          patient_id,
+          monthly_naira: settings.doctor_monthly_naira,
+          total_naira: yearlyCommitment(settings.doctor_monthly_naira, settings.release_months),
+        },
       });
     }
   }

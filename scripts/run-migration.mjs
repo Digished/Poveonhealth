@@ -2813,6 +2813,11 @@ const migrations = [
     continueOnError: true,
   },
   {
+    desc: "consult_earnings monthly rate (doctor paid per month, not a lump sum)",
+    sql: `ALTER TABLE consult_earnings ADD COLUMN IF NOT EXISTS monthly_naira DECIMAL(12,2)`,
+    continueOnError: true,
+  },
+  {
     desc: "consult_patients AI summary columns",
     sql: `ALTER TABLE consult_patients
       ADD COLUMN IF NOT EXISTS summary_text TEXT,
