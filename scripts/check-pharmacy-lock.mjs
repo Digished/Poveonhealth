@@ -51,6 +51,33 @@ const okFuture = future.locked && future.daysLeft === 35;
 if (!okFuture) failures++;
 console.log((okFuture ? "ok   " : "FAIL ") + "chosen in the future".padEnd(34) + "daysLeft=" + future.daysLeft);
 
+console.log("\\n── across the wire ──");
+// The lock is built on the server and read in the browser, so it goes through
+// JSON on the way. That turns unlocksOn from a Date into a string, and calling
+// a Date method on it threw and blanked the whole care plan page. Anything the
+// client does with a lock has to survive this round trip.
+{
+  const live = pharmacyLock(ago(12), now);
+  const overTheWire = JSON.parse(JSON.stringify(live));
+  const same = lockMessage(live, "HealthPlus Ikeja") === lockMessage(overTheWire, "HealthPlus Ikeja");
+  const nonEmpty = lockMessage(overTheWire, "HealthPlus Ikeja").length > 20;
+  const ok = same && nonEmpty;
+  if (!ok) failures++;
+  console.log((ok ? "ok   " : "FAIL ") + "a JSON round trip reads the same");
+  console.log("       server: " + lockMessage(live, "HealthPlus Ikeja"));
+  console.log("       browser: " + lockMessage(overTheWire, "HealthPlus Ikeja"));
+  // And junk in the field must not throw either.
+  for (const junk of [{ locked: true, unlocksOn: "not a date", daysLeft: 3 }, { locked: true, unlocksOn: null, daysLeft: 3 }]) {
+    try {
+      lockMessage(junk, "X");
+      console.log("ok   junk unlocksOn does not throw: " + JSON.stringify(junk.unlocksOn));
+    } catch (e) {
+      failures++;
+      console.log("FAIL junk unlocksOn threw: " + e.message);
+    }
+  }
+}
+
 console.log("\\n── what the member reads ──");
 const msg = lockMessage(pharmacyLock(ago(28), now), "HealthPlus Ikeja");
 const okMsg = msg.includes("HealthPlus Ikeja") && msg.includes("in 2 days") && msg.includes("September 2026");

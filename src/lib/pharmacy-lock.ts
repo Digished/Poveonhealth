@@ -21,8 +21,15 @@ const DAY = 24 * 60 * 60 * 1000;
 export type PharmacyLock = {
   /** True when the member may not switch yet. */
   locked: boolean;
-  /** When they will be able to, or null when nothing is locked. */
-  unlocksOn: Date | null;
+  /**
+   * When they will be able to, or null when nothing is locked.
+   *
+   * Typed as a string too because this crosses the wire: the server builds a
+   * Date, JSON.stringify turns it into an ISO string, and the browser gets the
+   * string. Saying `Date` here and meaning it only on one side is what made
+   * the care plan page throw — the type compiled, the runtime did not.
+   */
+  unlocksOn: Date | string | null;
   /** Whole days remaining, 0 once it is free. */
   daysLeft: number;
 };
@@ -45,10 +52,13 @@ export function pharmacyLock(setAt: Date | string | null | undefined, now = new 
   return { locked: true, unlocksOn, daysLeft: Math.ceil(remaining / DAY) };
 }
 
-/** How the wait reads to the member. */
+/** How the wait reads to the member. Safe on either side of the wire. */
 export function lockMessage(lock: PharmacyLock, pharmacyName?: string | null): string {
   if (!lock.locked || !lock.unlocksOn) return "";
-  const when = lock.unlocksOn.toLocaleDateString("en-GB", {
+  const unlocksOn =
+    lock.unlocksOn instanceof Date ? lock.unlocksOn : new Date(lock.unlocksOn);
+  if (Number.isNaN(unlocksOn.getTime())) return "";
+  const when = unlocksOn.toLocaleDateString("en-GB", {
     day: "numeric",
     month: "long",
     year: "numeric",

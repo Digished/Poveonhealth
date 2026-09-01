@@ -327,12 +327,17 @@ export function CarePlanPanel({
           />
 
           <div className="grid gap-4 lg:grid-cols-[1fr_minmax(0,360px)]">
-            <div className="space-y-4">
+            {/* min-w-0 on both columns: a grid child's automatic minimum is its
+                min-content width, and the provider rows contain `truncate`
+                (white-space: nowrap), whose min-content is the whole
+                untruncated string. Without this the column is sized to that
+                string and the page scrolls sideways on a phone. */}
+            <div className="min-w-0 space-y-4">
               <ScreeningCard />
               <CarePlanChecklist plan={plan} onTicked={setPlan} />
             </div>
 
-            <div className="space-y-4">
+            <div className="min-w-0 space-y-4">
               {/* Where they'd rather be sent — switchable whenever they like. */}
               <div className="rounded-2xl border border-slate-100 bg-white p-4 shadow-sm">
                 <h3 className="text-xs font-bold uppercase tracking-wider text-slate-400">
