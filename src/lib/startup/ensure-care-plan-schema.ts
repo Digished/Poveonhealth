@@ -83,6 +83,8 @@ const SENTINEL_COLUMNS = [
   "pharmacies.margin_percent",
   "consult_settings.doctor_monthly_naira",
   "consult_earnings.monthly_naira",
+  "consult_patients.summary_checked_at",
+  "consult_patients.first_pharmacy_id",
   "consult_settings.topup_price_naira",
   "consult_treatment_plans.source",
   "consult_prescriptions.source",
@@ -202,6 +204,20 @@ async function runEnsure(): Promise<void> {
     await exec(`ALTER TABLE consult_patients
       ADD COLUMN IF NOT EXISTS share_history BOOLEAN NOT NULL DEFAULT true,
       ADD COLUMN IF NOT EXISTS previous_doctors TEXT[] NOT NULL DEFAULT ARRAY[]::TEXT[];`);
+    // Which pharmacy, when it was chosen (the 30-day settling period), and the
+    // first one ever chosen (what that pharmacy is credited with).
+    await exec(`ALTER TABLE consult_patients
+      ADD COLUMN IF NOT EXISTS preferred_pharmacy_set_at TIMESTAMP(3),
+      ADD COLUMN IF NOT EXISTS first_pharmacy_id TEXT,
+      ADD COLUMN IF NOT EXISTS first_pharmacy_at TIMESTAMP(3);`);
+    await exec(`CREATE INDEX IF NOT EXISTS consult_patients_first_pharmacy_idx ON consult_patients(first_pharmacy_id, first_pharmacy_at);`);
+    // The written summary, when it was written, when it was last checked, and
+    // the fingerprint of the record it was written from.
+    await exec(`ALTER TABLE consult_patients
+      ADD COLUMN IF NOT EXISTS summary_text TEXT,
+      ADD COLUMN IF NOT EXISTS summary_at TIMESTAMP(3),
+      ADD COLUMN IF NOT EXISTS summary_checked_at TIMESTAMP(3),
+      ADD COLUMN IF NOT EXISTS summary_fingerprint TEXT;`);
     await exec(`CREATE INDEX IF NOT EXISTS consult_patients_adherence_idx ON consult_patients(medication_adherence);`);
     await exec(`CREATE INDEX IF NOT EXISTS doctor_patients_patient_email_idx ON doctor_patients(patient_email);`);
 

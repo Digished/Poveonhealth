@@ -20,7 +20,7 @@
 import { execFileSync } from "node:child_process";
 
 const script = `
-import { monthlyInstalment, isSettled, monthlyEstimate, yearlyCommitment } from "./src/lib/doctor-pay";
+import { monthlyInstalment, isSettled, monthlyEstimate, yearlyCommitment, memberEconomics, monthsActive } from "./src/lib/doctor-pay";
 
 let failures = 0;
 const naira = (n) => "₦" + Math.round(n).toLocaleString("en-NG");
@@ -119,6 +119,70 @@ check(
   "a year of pay may exceed the joining fee",
   naira(yearOfPay) + " of pay against " + naira(joiningFee) + " joined"
 );
+
+console.log("\\n── does a member cover their own doctor? ──");
+// The admin panel flags a member whose margin on drugs and tests has not
+// reached the ₦500 a month their doctor is paid. The arithmetic has to be
+// right at the edges: a member who joined this week must not read as a
+// catastrophe, and one exactly at the line must not read as under it.
+const DAY = 24 * 60 * 60 * 1000;
+const asOf = new Date("2026-09-01T12:00:00Z");
+const joined = (days) => new Date(asOf.getTime() - days * DAY);
+/**
+ * A join date that puts the member in exactly month m.
+ *
+ * "Months active" counts months *started*, because that is how many times the
+ * doctor has been paid for them: someone who signed up this morning is in month
+ * one and has already cost a fee.
+ */
+// Half a day inside the month, so floating-point division cannot land the
+// boundary on the month before.
+const inMonth = (m) => joined((m - 1) * 30.44 + 0.5);
+
+function econ(medication, test, month) {
+  return memberEconomics({
+    medicationNaira: medication,
+    testNaira: test,
+    subscribedAt: inMonth(month),
+    doctorMonthlyNaira: 500,
+    now: asOf,
+  });
+}
+
+const cases = [
+  ["month 1, nothing bought",                econ(0, 0, 1),        0,    true],
+  ["month 1, one ₦600 refill",               econ(600, 0, 1),      600,  false],
+  ["month 6, ₦3,000 of margin",              econ(3000, 0, 6),     500,  false],
+  ["month 6, ₦2,400 of margin",              econ(2400, 0, 6),     400,  true],
+  ["month 6, ₦1,800 drugs + ₦1,200 tests",   econ(1800, 1200, 6),  500,  false],
+  ["month 12, ₦12,000 of margin",            econ(12000, 0, 12),   1000, false],
+  ["month 12, nothing at all",               econ(0, 0, 12),       0,    true],
+];
+for (const [name, e, wantPerMonth, wantFlagged] of cases) {
+  const ok = e.marginPerMonth === wantPerMonth && e.belowDoctorFee === wantFlagged;
+  if (!ok) failures++;
+  console.log(
+    (ok ? "ok   " : "FAIL ") + name.padEnd(40) +
+    naira(e.marginPerMonth).padStart(8) + "/mo over " + String(e.monthsActive).padStart(2) + " months  " +
+    (e.belowDoctorFee ? "flagged" : "covers it") +
+    (ok ? "" : "   (wanted " + naira(wantPerMonth) + ", " + (wantFlagged ? "flagged" : "covers it") + ")")
+  );
+}
+
+// Exactly at the line is covered, not flagged — a member who earns precisely
+// their doctor's fee is not being carried by anyone.
+const exact = econ(500, 0, 1);
+check(!exact.belowDoctorFee, "exactly ₦500 a month is not flagged", naira(exact.marginPerMonth));
+check(econ(499, 0, 1).belowDoctorFee, "₦499 a month is flagged");
+// A brand-new member is in month one, never month zero — dividing by zero
+// months would make every sign-up look infinitely unprofitable.
+check(monthsActive(joined(0), asOf) === 1, "a member who joined today is in month 1");
+check(monthsActive(joined(31), asOf) === 2, "31 days in is month 2");
+check(monthsActive(null, asOf) === 1, "no join date is treated as month 1");
+check(monthsActive(new Date(asOf.getTime() + 5 * DAY), asOf) === 1, "a future join date is month 1");
+// Nothing is ever negative, whatever the data says.
+const junk = memberEconomics({ medicationNaira: -900, testNaira: -100, subscribedAt: inMonth(3), doctorMonthlyNaira: 500, now: asOf });
+check(junk.marginNaira === 0 && junk.marginPerMonth === 0, "negative margin clamps to zero");
 
 if (failures) { console.error("\\n" + failures + " failure(s)."); process.exit(1); }
 console.log("\\nEvery month a member stays is paid once, and no month more.");

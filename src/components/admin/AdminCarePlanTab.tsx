@@ -4,7 +4,8 @@ import { useCallback, useEffect, useState } from "react";
 import { toast } from "react-hot-toast";
 import { ADHERENCE_OPTIONS, DURATION_OPTIONS } from "@/components/consults/baseline";
 import {
-  Activity, BadgeCheck, Banknote, Check, ExternalLink, FileText, HeartPulse, Loader2, Play,
+  Activity, AlertTriangle, BadgeCheck, Banknote, Check, ExternalLink, FileText, HeartPulse,
+  Loader2, Play,
   RefreshCw, Save, Search, Settings2, ShieldCheck, TrendingUp, Trophy, Users, UserCog, X,
 } from "lucide-react";
 import { AdminOverlay } from "@/components/admin/AdminOverlay";
@@ -29,9 +30,24 @@ type Member = {
   conditions: string[]; status: string; doctor_email: string | null;
   subscribed_at: string | null; expires_at: string | null; amount_paid: number | null;
   messages_used: number; message_allowance: number;
+  /** What this member has earned Poveon against what their doctor costs. */
+  economics?: {
+    medication_naira?: number;
+    marginNaira: number;
+    medicationNaira: number;
+    testNaira: number;
+    monthsActive: number;
+    marginPerMonth: number;
+    doctorMonthlyNaira: number;
+    netPerMonth: number;
+    belowDoctorFee: boolean;
+  };
 };
 
 type Summary = {
+  /** Active members whose margin has not reached their doctor's monthly fee. */
+  below_doctor_fee?: number;
+  doctor_monthly_naira?: number;
   active_members: number; unassigned: number; gross_revenue: number; committed_to_doctors: number;
 };
 
@@ -167,7 +183,7 @@ function ActivateForm({ onClose, onDone }: { onClose: () => void; onDone: () => 
   );
 }
 
-function MembersPanel() {
+export function MembersPanel() {
   const [members, setMembers] = useState<Member[]>([]);
   const [summary, setSummary] = useState<Summary | null>(null);
   const [total, setTotal] = useState(0);
@@ -226,12 +242,29 @@ function MembersPanel() {
 
   return (
     <div className="space-y-4">
-      <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
+      <div className="grid grid-cols-2 gap-3 lg:grid-cols-5">
         <AdminStat label="Active members" value={String(summary?.active_members ?? 0)} icon={<Users className="h-4 w-4" />} />
         <AdminStat label="Unassigned" value={String(summary?.unassigned ?? 0)} icon={<UserCog className="h-4 w-4" />} tone={summary?.unassigned ? "amber" : "slate"} />
         <AdminStat label="Gross revenue" value={naira(summary?.gross_revenue ?? 0)} icon={<TrendingUp className="h-4 w-4" />} tone="emerald" />
         <AdminStat label="Committed to doctors" value={naira(summary?.committed_to_doctors ?? 0)} icon={<Banknote className="h-4 w-4" />} />
+        <AdminStat
+          label={`Under ${naira(summary?.doctor_monthly_naira ?? 500)} margin`}
+          value={String(summary?.below_doctor_fee ?? 0)}
+          icon={<AlertTriangle className="h-4 w-4" />}
+          tone={summary?.below_doctor_fee ? "amber" : "slate"}
+        />
       </div>
+
+      {!!summary?.below_doctor_fee && (
+        <p className="rounded-xl border border-amber-500/20 bg-amber-500/10 px-4 py-3 text-xs leading-relaxed text-amber-200">
+          <strong>{summary.below_doctor_fee}</strong> active member
+          {summary.below_doctor_fee === 1 ? " is" : "s are"} earning less margin on drugs and tests
+          than the {naira(summary.doctor_monthly_naira ?? 500)} a month their doctor is paid — so
+          they are being carried by the rest of the programme. Expected for someone in their first
+          month or two, and for members who are simply well; worth a look when it is a whole
+          doctor&apos;s list, or a plan nobody is dispensing.
+        </p>
+      )}
 
       <div className="flex flex-wrap items-center gap-2">
         <div className="relative min-w-[220px] flex-1">
@@ -291,6 +324,7 @@ function MembersPanel() {
                 <th className="px-4 py-2.5 font-semibold">Doctor</th>
                 <th className="px-4 py-2.5 font-semibold">Messages</th>
                 <th className="px-4 py-2.5 font-semibold">Paid</th>
+                <th className="px-4 py-2.5 font-semibold">Margin / month</th>
                 <th className="px-4 py-2.5 font-semibold">Renews</th>
                 <th className="px-4 py-2.5 font-semibold">Status</th>
                 <th className="px-4 py-2.5" />
@@ -299,7 +333,7 @@ function MembersPanel() {
             <tbody className="divide-y divide-white/5">
               {members.length === 0 && !loading && (
                 <tr>
-                  <td colSpan={8} className="px-4 py-10 text-center text-slate-500">No members yet.</td>
+                  <td colSpan={9} className="px-4 py-10 text-center text-slate-500">No members yet.</td>
                 </tr>
               )}
               {members.map((m) => (
@@ -317,6 +351,9 @@ function MembersPanel() {
                     {m.messages_used}/{m.message_allowance}
                   </td>
                   <td className="px-4 py-3 text-xs text-slate-300" data-label="Paid">{m.amount_paid ? naira(m.amount_paid) : "—"}</td>
+                  <td className="px-4 py-3" data-label="Margin / month">
+                    <MarginCell economics={m.economics} active={m.status === "active"} />
+                  </td>
                   <td className="px-4 py-3 text-xs text-slate-400" data-label="Renews">{formatDate(m.expires_at)}</td>
                   <td className="px-4 py-3" data-label="Status">
                     <span className={`rounded-full px-2 py-0.5 text-[11px] font-semibold ${STATUS_STYLES[m.status] ?? "bg-slate-100 text-slate-600"}`}>
@@ -501,6 +538,50 @@ function AssignDoctorDialog({
         )}
       </div>
     </AdminOverlay>
+  );
+}
+
+/**
+ * What one member earns Poveon each month, against what their doctor costs.
+ *
+ * The programme's premise is that the ₦2,500 joining fee does not pay the
+ * doctor — the margin on refills, dispensing and tests does. Per member that
+ * is a claim with a number attached, so the number is here, and it is marked
+ * when it has not reached the doctor's monthly fee.
+ *
+ * A flag, not a verdict. A member in their first month has barely had time to
+ * fill a prescription, and a member who is simply well may never generate much
+ * margin and is exactly who this programme is for. What it is good for is the
+ * pattern: a plan nobody is dispensing, or a whole list that never orders.
+ */
+function MarginCell({
+  economics, active,
+}: {
+  economics: Member["economics"];
+  active: boolean;
+}) {
+  if (!economics) return <span className="text-xs text-slate-500">—</span>;
+
+  const { marginPerMonth, doctorMonthlyNaira, belowDoctorFee, monthsActive, marginNaira } = economics;
+  // Only a live member is being carried; a lapsed one has stopped costing.
+  const flag = active && belowDoctorFee;
+
+  return (
+    <div className="min-w-0">
+      <p className={`text-xs font-bold ${flag ? "text-amber-300" : "text-emerald-300"}`}>
+        {naira(marginPerMonth)}
+        <span className="ml-1 font-normal text-slate-500">/ mo</span>
+      </p>
+      {flag ? (
+        <p className="mt-0.5 text-[11px] font-semibold text-amber-400">
+          Under {naira(doctorMonthlyNaira)} doctor fee
+        </p>
+      ) : (
+        <p className="mt-0.5 text-[11px] text-slate-500">
+          {naira(marginNaira)} over {monthsActive} month{monthsActive === 1 ? "" : "s"}
+        </p>
+      )}
+    </div>
   );
 }
 

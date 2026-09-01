@@ -2822,6 +2822,7 @@ const migrations = [
     sql: `ALTER TABLE consult_patients
       ADD COLUMN IF NOT EXISTS summary_text TEXT,
       ADD COLUMN IF NOT EXISTS summary_at TIMESTAMP(3),
+      ADD COLUMN IF NOT EXISTS summary_checked_at TIMESTAMP(3),
       ADD COLUMN IF NOT EXISTS summary_fingerprint TEXT`,
     continueOnError: true,
   },

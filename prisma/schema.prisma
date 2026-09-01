@@ -1966,7 +1966,13 @@ model ConsultPatient {
   // a doctor opening the same patient twice should not pay for it twice, and
   // should not read two different summaries.
   summary_text       String?
+  /// When these words were written. Shown to the doctor, so it must mean what
+  /// it says and never move for a summary that was only re-checked.
   summary_at         DateTime?
+  /// When the record was last read to see whether the summary still held. Moves
+  /// on a check that found nothing changed, which buys another fortnight of
+  /// not reading it again.
+  summary_checked_at DateTime?
   /// Fingerprint of the inputs the current summary was written from. When it
   /// stops matching, the summary is stale and is rewritten.
   summary_fingerprint String?

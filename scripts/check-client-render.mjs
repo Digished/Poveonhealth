@@ -23,7 +23,7 @@
  *
  *   node scripts/check-client-render.mjs
  */
-import { mkdtempSync, writeFileSync, existsSync, readdirSync } from "node:fs";
+import { mkdtempSync, writeFileSync, appendFileSync, readFileSync, existsSync, readdirSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { createRequire } from "node:module";
@@ -151,6 +151,7 @@ const scenarios = [
     // sent back a retired ₦6,000 lump sum and the server refused any doctor
     // share above the ₦2,500 joining fee.
     name: "admin pricing saves a lower joining fee",
+    dark: true,
     entry: `
       import { PricingPanel } from "@/components/admin/AdminCarePlanTab";
       export const Panel = () => <div className="dash"><PricingPanel /></div>;`,
@@ -185,6 +186,59 @@ const scenarios = [
       if ("doctor_share_naira" in body) return { error: "the retired lump sum was sent back" };
       if (body.price_naira !== 3000) return { error: "the new fee was not sent: " + body.price_naira };
       return { ok: "sent " + JSON.stringify(body.price_naira) + " with no retired field" };
+    `,
+  },
+  {
+    // The margin column: a member being carried must be visible as such, and
+    // the table has to stay readable on a phone.
+    name: "admin members, one carried member",
+    dark: true,
+    entry: `
+      import { MembersPanel } from "@/components/admin/AdminCarePlanTab";
+      export const Panel = () => <div className="dash"><MembersPanel /></div>;`,
+    routes: {
+      "/api/admin/consults/members": {
+        success: true, total: 2, page: 1, has_more: false,
+        summary: {
+          active_members: 2, unassigned: 0, gross_revenue: 5000,
+          committed_to_doctors: 12000, below_doctor_fee: 1, doctor_monthly_naira: 500,
+        },
+        members: [
+          {
+            id: "a", code: "PVC-1", full_name: "Adaeze Okonkwo", email: "a@example.com",
+            phone: null, conditions: ["hypertension"], status: "active",
+            doctor_email: "dr@example.com", subscribed_at: "2026-03-01T00:00:00.000Z",
+            expires_at: "2027-03-01T00:00:00.000Z", amount_paid: 2500,
+            messages_used: 5, message_allowance: 40,
+            economics: {
+              medicationNaira: 4200, testNaira: 1200, marginNaira: 5400, monthsActive: 7,
+              marginPerMonth: 771, doctorMonthlyNaira: 500, netPerMonth: 271,
+              belowDoctorFee: false,
+            },
+          },
+          {
+            id: "b", code: "PVC-2", full_name: "Ibrahim Bello", email: "b@example.com",
+            phone: null, conditions: ["diabetes"], status: "active",
+            doctor_email: "dr@example.com", subscribed_at: "2026-03-01T00:00:00.000Z",
+            expires_at: "2027-03-01T00:00:00.000Z", amount_paid: 2500,
+            messages_used: 30, message_allowance: 40,
+            economics: {
+              medicationNaira: 700, testNaira: 0, marginNaira: 700, monthsActive: 7,
+              marginPerMonth: 100, doctorMonthlyNaira: 500, netPerMonth: -400,
+              belowDoctorFee: true,
+            },
+          },
+        ],
+      },
+    },
+    // Below md the table becomes cards and the headers are drawn with CSS
+    // generated content, which innerText cannot see — so the header is checked
+    // in the DOM and the values in the text.
+    mustSay: ["Under ₦500 doctor fee", "earning less margin on drugs and tests", "₦771"],
+    act: `
+      const labelled = document.querySelector('[data-label="Margin / month"]');
+      if (!labelled) return { error: "no margin cell" };
+      return { ok: "margin column present" };
     `,
   },
   {
@@ -253,6 +307,11 @@ try {
     const c = base.default ?? base;
     module.exports = { ...c, content: [${JSON.stringify(join(root, "src/**/*.{ts,tsx}"))}] };`);
   execFileSync("npx", ["tailwindcss", "-c", cfg, "-i", cssIn, "-o", cssOut], { stdio: "pipe", cwd: root });
+  // The project's own stylesheet on top of Tailwind: the dashboard tokens, the
+  // modal sizing, and `table-cards`, which is what turns an admin table into
+  // cards on a phone. Without it these panels render as something the app
+  // never shows.
+  appendFileSync(cssOut, "\n" + readFileSync(join(root, "src/app/globals.css"), "utf8"));
   css = `<link rel="stylesheet" href="file://${cssOut}">`;
 } catch {
   // Styles are a nice-to-have here; a crash is a crash without them.
@@ -270,7 +329,9 @@ for (const sc of scenarios) {
      import { createRoot } from "react-dom/client";
      ${sc.entry}
      createRoot(document.getElementById("root")).render(
-       <div className="min-h-dvh bg-slate-50"><div className="mx-auto max-w-3xl p-4"><Panel /></div></div>
+       <div className="min-h-dvh ${sc.dark ? "" : "bg-slate-50"}">
+         <div className="mx-auto max-w-5xl p-4"><Panel /></div>
+       </div>
      );`
   );
 
@@ -296,7 +357,8 @@ for (const sc of scenarios) {
   // trip through JSON, exactly as the browser would receive it.
   const html = `<!doctype html><html><head><meta charset="utf-8">
     <meta name="viewport" content="width=device-width,initial-scale=1">${css}</head>
-    <body><div id="root"></div>
+    <body class="${sc.dark ? "dash" : ""}" style="${sc.dark ? "background:#0b1220" : ""}">
+    <div id="root"></div>
     <script>
       window.__F__ = ${JSON.stringify(JSON.parse(JSON.stringify(sc.globals ?? {})))};
       const ROUTES = ${JSON.stringify(JSON.parse(JSON.stringify(sc.routes ?? {})))};
@@ -366,6 +428,12 @@ for (const sc of scenarios) {
       console.log(`       widest: <${wide.worst.tag} class="${wide.worst.cls}"> right=${wide.worst.right} w=${wide.worst.width}  "${wide.worst.text}"`);
     }
     for (const e of errors.slice(0, 2)) console.log(`       ${e}`);
+    if (process.env.SHOT_DIR) {
+      await page.screenshot({
+        path: join(process.env.SHOT_DIR, `${sc.name.replace(/[^a-z0-9]+/gi, "-")}-${w}.png`),
+        fullPage: true,
+      });
+    }
     await page.close();
   }
 }

@@ -751,8 +751,9 @@ function PatientSummaryCard({ patientId, patientName }: { patientId: string; pat
             ))}
           </div>
           <p className="mt-3 border-t border-medical-100 pt-2 text-[11px] leading-relaxed text-slate-400">
-            Written from this member&apos;s record{state.at ? ` on ${formatDate(state.at)}` : ""} and
-            rewritten whenever it changes. A description of what is on file — not a clinical opinion.
+            Written from this member&apos;s record{state.at ? ` on ${formatDate(state.at)}` : ""}.
+            Refreshed about once a fortnight, or now if you press re-read. A description of what is
+            on file — not a clinical opinion.
           </p>
         </>
       ) : (

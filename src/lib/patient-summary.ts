@@ -19,9 +19,14 @@
  *    treatment, and does not tell a doctor what to do — a doctor reading a
  *    machine's clinical opinion at the top of a patient page is a worse
  *    outcome than no summary at all.
- *  - **It is regenerated on change, not on view.** The fingerprint below is
- *    what decides. Two doctors opening the same unchanged patient read the
- *    same words, and nobody pays for the same summary twice.
+ *  - **It is written once, then left alone for a fortnight.** A summary that
+ *    rewrote itself every time the record moved meant a doctor opening the
+ *    same patient twice in a morning paid for two of them and read two
+ *    different accounts of the same person. So: written the first time a
+ *    patient is opened, rewritten no sooner than two weeks later, and
+ *    rewritten on demand when a doctor asks for it. The fingerprint still has
+ *    a job — after a fortnight, a record that has not actually moved does not
+ *    need new words written about it.
  *  - **It never blocks the page.** No key, no network, a refusal — the doctor
  *    gets the record as before and a line saying the summary is unavailable.
  */
@@ -32,6 +37,9 @@ import { prisma } from "@/lib/prisma";
 import { MED_LIVE_STATUSES, MED_SUGGESTED_STATUS } from "@/lib/medication-status";
 import { ADHERENCE_LABEL, durationLabel } from "@/components/consults/baseline";
 import { SCREENING_QUESTIONS } from "@/lib/screening";
+import { summaryIsStale } from "@/lib/summary-cadence";
+
+export { SUMMARY_MAX_AGE_DAYS, summaryIsStale } from "@/lib/summary-cadence";
 
 const MODEL = "gpt-4o-mini";
 
@@ -311,11 +319,19 @@ export type PatientSummary = {
 };
 
 /**
- * The current summary for this patient, written now if the record has moved on.
+ * The current summary for this patient.
  *
- * The compare-and-set on the fingerprint is what stops two doctors opening the
- * same patient at the same moment from both paying for a summary: the second
- * write matches nothing and is simply skipped.
+ * Written the first time anyone opens them, then left alone: a stored summary
+ * less than a fortnight old is returned as it stands, without reading the
+ * record at all. That early return is the point — gathering the input is seven
+ * queries, and doing them on every patient page to conclude "nothing to do"
+ * is the expensive half of a summary nobody asked to be rewritten.
+ *
+ * Past a fortnight the record is read once. If nothing material has changed,
+ * the existing words are kept and only their date is refreshed, which buys
+ * another fortnight of quiet; if something has, new words are written.
+ *
+ * `force` is a doctor pressing re-read, and skips all of it.
  */
 export async function ensurePatientSummary(
   patientId: string,
@@ -323,16 +339,37 @@ export async function ensurePatientSummary(
 ): Promise<PatientSummary> {
   const patient = await prisma.consultPatient.findUnique({
     where: { id: patientId },
-    select: { summary_text: true, summary_at: true, summary_fingerprint: true },
+    select: {
+      summary_text: true,
+      summary_at: true,
+      summary_checked_at: true,
+      summary_fingerprint: true,
+    },
   });
   if (!patient) return { text: null, at: null, fresh: false, unavailable: "No such member." };
+
+  const current = patient.summary_text;
+
+  // Checked recently enough to stand. Nothing is read, nothing is written,
+  // nothing is spent — this is the path almost every patient page takes.
+  const lastLooked = patient.summary_checked_at ?? patient.summary_at;
+  if (!opts.force && current && !summaryIsStale(lastLooked)) {
+    return { text: current, at: patient.summary_at, fresh: false, unavailable: null };
+  }
 
   const input = await gatherSummaryInput(patientId);
   if (!input) return { text: null, at: null, fresh: false, unavailable: "No such member." };
 
   const print = fingerprintInput(input);
-  const current = patient.summary_text;
+
+  // A fortnight has passed but the record has not moved. Keep the words, and
+  // reset only the clock — `summary_at` still says when they were written,
+  // because that is what the doctor is told and it has to stay true.
   if (!opts.force && current && patient.summary_fingerprint === print) {
+    await prisma.consultPatient.update({
+      where: { id: patientId },
+      data: { summary_checked_at: new Date() },
+    });
     return { text: current, at: patient.summary_at, fresh: false, unavailable: null };
   }
 
@@ -353,7 +390,7 @@ export async function ensurePatientSummary(
   const at = new Date();
   await prisma.consultPatient.update({
     where: { id: patientId },
-    data: { summary_text: text, summary_at: at, summary_fingerprint: print },
+    data: { summary_text: text, summary_at: at, summary_checked_at: at, summary_fingerprint: print },
   });
 
   return { text, at, fresh: true, unavailable: null };

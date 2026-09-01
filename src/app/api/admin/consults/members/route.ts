@@ -5,7 +5,7 @@ import { z } from "zod";
 import { createServerClient } from "@/lib/supabase/server";
 import { prisma } from "@/lib/prisma";
 import { activeMemberWhere, getConsultSettings } from "@/lib/consult";
-import { yearlyCommitment } from "@/lib/doctor-pay";
+import { memberEconomics, yearlyCommitment } from "@/lib/doctor-pay";
 import { ensureCarePlanSchema } from "@/lib/startup/ensure-care-plan-schema";
 
 const PAGE_SIZE = 25;
@@ -16,6 +16,66 @@ async function requireAdmin() {
   if (!user) return null;
   const adminRecord = await prisma.adminUser.findUnique({ where: { user_id: user.id } });
   return adminRecord ? user : null;
+}
+
+
+/**
+ * Poveon's margin per member, for a set of members.
+ *
+ * Two sources, both real money already received: the medication margin frozen
+ * onto each paid order, and the lab commission on the request a test order
+ * became. Gathered in grouped queries rather than one per member, because this
+ * runs for a whole page of the admin list and again for every active member.
+ */
+async function marginFor(patientIds: string[]): Promise<Map<string, { medication: number; test: number }>> {
+  const out = new Map<string, { medication: number; test: number }>();
+  if (patientIds.length === 0) return out;
+
+  const [medMargin, testOrders] = await Promise.all([
+    prisma.medicationOrder.groupBy({
+      by: ["patient_id"],
+      // Only money that actually arrived. A pending order is a hope.
+      where: { patient_id: { in: patientIds }, status: { in: ["paid", "ready", "collected"] } },
+      _sum: { poveon_naira: true },
+    }),
+    // Lab commission lives on the request a test order became, so the two have
+    // to be joined through it.
+    prisma.consultTestOrder.findMany({
+      where: { patient_id: { in: patientIds }, request_id: { not: null } },
+      select: { patient_id: true, request_id: true },
+    }),
+  ]);
+
+  const requestIds = Array.from(
+    new Set(
+      (testOrders as { request_id: string | null }[])
+        .map((t) => t.request_id)
+        .filter((r): r is string => !!r)
+    )
+  );
+  const requests = requestIds.length
+    ? await prisma.request.findMany({
+        where: { id: { in: requestIds } },
+        select: { id: true, poveon_amount: true },
+      })
+    : [];
+  const poveonByRequest = new Map(
+    (requests as { id: string; poveon_amount: unknown }[]).map((r) => [r.id, Number(r.poveon_amount ?? 0)])
+  );
+
+  const get = (id: string) => {
+    let row = out.get(id);
+    if (!row) { row = { medication: 0, test: 0 }; out.set(id, row); }
+    return row;
+  };
+  for (const g of medMargin as { patient_id: string; _sum: { poveon_naira: unknown } }[]) {
+    get(g.patient_id).medication = Number(g._sum.poveon_naira ?? 0);
+  }
+  for (const t of testOrders as { patient_id: string; request_id: string | null }[]) {
+    if (!t.request_id) continue;
+    get(t.patient_id).test += poveonByRequest.get(t.request_id) ?? 0;
+  }
+  return out;
 }
 
 /** GET /api/admin/consults/members — every care-plan member, with revenue. */
@@ -63,7 +123,33 @@ export async function GET(req: NextRequest) {
   // A year of doctor pay for every member currently active. The retired lump
   // sum used to stand in for this; it is now derived from the monthly rate, so
   // the number moves when the rate does.
-  const committed = activeCount * yearlyCommitment(settings.doctor_monthly_naira, settings.release_months);
+  const committed =
+    activeCount * yearlyCommitment(settings.doctor_monthly_naira, settings.release_months);
+
+  // ── What each member has earned Poveon, against what they cost ──────────
+  // The programme's premise is that the joining fee does not pay the doctor —
+  // the margin on refills, dispensing and tests does. That is checkable per
+  // member, so it is checked: on this page's rows, and once across every
+  // active member for the count at the top.
+  const [pageMargin, carried] = await Promise.all([
+    marginFor(members.map((m: { id: string }) => m.id)),
+    (async () => {
+      const live = await prisma.consultPatient.findMany({
+        where: activeMemberWhere(),
+        select: { id: true, subscribed_at: true },
+      });
+      const margin = await marginFor(live.map((m: { id: string }) => m.id));
+      return live.filter((m: { id: string; subscribed_at: Date | null }) => {
+        const row = margin.get(m.id);
+        return memberEconomics({
+          medicationNaira: row?.medication ?? 0,
+          testNaira: row?.test ?? 0,
+          subscribedAt: m.subscribed_at,
+          doctorMonthlyNaira: settings.doctor_monthly_naira,
+        }).belowDoctorFee;
+      }).length;
+    })(),
+  ]);
 
   return NextResponse.json({
     success: true,
@@ -75,8 +161,21 @@ export async function GET(req: NextRequest) {
       unassigned: unassigned,
       gross_revenue: Math.round(Number(revenue._sum.amount_paid ?? 0)),
       committed_to_doctors: committed,
+      // Active members whose margin has not yet reached their doctor's fee.
+      below_doctor_fee: carried,
+      doctor_monthly_naira: settings.doctor_monthly_naira,
     },
-    members: members.map((m) => ({ ...m, amount_paid: m.amount_paid ? Number(m.amount_paid) : null })),
+    doctor_monthly_naira: settings.doctor_monthly_naira,
+    members: members.map((m: (typeof members)[number]) => ({
+      ...m,
+      amount_paid: m.amount_paid ? Number(m.amount_paid) : null,
+      economics: memberEconomics({
+        medicationNaira: pageMargin.get(m.id)?.medication ?? 0,
+        testNaira: pageMargin.get(m.id)?.test ?? 0,
+        subscribedAt: m.subscribed_at,
+        doctorMonthlyNaira: settings.doctor_monthly_naira,
+      }),
+    })),
   });
 }
 
