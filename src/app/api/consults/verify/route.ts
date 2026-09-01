@@ -1,6 +1,7 @@
 export const dynamic = "force-dynamic";
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
+import { parsePhones } from "@/lib/phones";
 import { resend, FROM_ADDRESS } from "@/lib/email/resend";
 import { carePlanWelcomeEmail, carePlanDoctorNewMemberEmail } from "@/lib/email/templates";
 import {
@@ -131,6 +132,24 @@ async function sendActivationEmails(patientId: string) {
     ? patient.expires_at.toLocaleDateString("en-GB", { day: "numeric", month: "long", year: "numeric" })
     : "";
 
+// Where they chose to go, so the welcome names it with an address rather
+  // than "a partner pharmacy".
+  const [pharmacy, lab] = await Promise.all([
+    patient.preferred_pharmacy_id
+      ? prisma.pharmacy.findUnique({
+          where: { id: patient.preferred_pharmacy_id },
+          select: { name: true, address: true, city: true, state: true, phone: true },
+        })
+      : null,
+    patient.preferred_lab_id
+      ? prisma.lab.findUnique({
+          where: { id: patient.preferred_lab_id },
+          // A lab keeps a list of numbers, not one — see lib/phones.
+          select: { name: true, address: true, city: true, state: true, phones: true },
+        })
+      : null,
+  ]);
+
   await resend.emails.send({
     from: FROM_ADDRESS,
     to: patient.email,
@@ -143,6 +162,8 @@ async function sendActivationEmails(patientId: string) {
       expiresOn,
       labDiscount: settings.lab_discount_percent,
       pharmacyDiscount: settings.pharmacy_discount_percent,
+      pharmacy,
+      lab: lab && { ...lab, phone: parsePhones(lab.phones)[0]?.number ?? null },
       dashboardUrl: `${appUrl()}/dashboard?tab=care`,
     }),
   });

@@ -83,7 +83,69 @@ function isPreparedStmtArtifact(err) {
   const msg = String(err?.message ?? "");
   return msg.includes("prepared statement") && msg.includes("does not exist");
 }
-async function execWithRetry(sql, attempts = 4) {
+/**
+ * Split a step into the individual statements Postgres will accept.
+ *
+ * `$executeRawUnsafe` goes through the extended query protocol, which takes
+ * exactly one command. Hand it two and it refuses the lot with "cannot insert
+ * multiple commands into a prepared statement" — so a step written as a CREATE
+ * TABLE followed by its indexes did not create the table, did not create the
+ * indexes, and, because such steps carry `continueOnError`, printed a tick.
+ * That is how `lab_departments` came to be missing in production while the
+ * build log said it had been applied.
+ *
+ * Dollar-quoted bodies are left alone: a `DO $$ ... $$` block is one statement
+ * however many semicolons it contains inside.
+ */
+function splitStatements(sql) {
+  const out = [];
+  let buf = "";
+  let i = 0;
+  let quote = null; // "'" | '"' | a $tag$ string
+
+  while (i < sql.length) {
+    const rest = sql.slice(i);
+
+    if (quote) {
+      if (quote.length > 1) {
+        // Dollar quoting: runs to the matching tag.
+        if (rest.startsWith(quote)) { buf += quote; i += quote.length; quote = null; continue; }
+      } else if (rest[0] === quote) {
+        // '' and "" are escapes, not terminators.
+        if (rest[1] === quote) { buf += rest.slice(0, 2); i += 2; continue; }
+        buf += rest[0]; i += 1; quote = null; continue;
+      }
+      buf += rest[0]; i += 1;
+      continue;
+    }
+
+    const dollar = /^\$[A-Za-z_]*\$/.exec(rest);
+    if (dollar) { quote = dollar[0]; buf += dollar[0]; i += dollar[0].length; continue; }
+    if (rest[0] === "'" || rest[0] === '"') { quote = rest[0]; buf += rest[0]; i += 1; continue; }
+    if (rest.startsWith("--")) {
+      const nl = rest.indexOf("\n");
+      const line = nl === -1 ? rest : rest.slice(0, nl);
+      buf += line; i += line.length;
+      continue;
+    }
+    if (rest.startsWith("/*")) {
+      const close = rest.indexOf("*/");
+      const block = close === -1 ? rest : rest.slice(0, close + 2);
+      buf += block; i += block.length;
+      continue;
+    }
+    if (rest[0] === ";") { out.push(buf); buf = ""; i += 1; continue; }
+
+    buf += rest[0];
+    i += 1;
+  }
+  out.push(buf);
+
+  // A statement that is only whitespace and comments is not a statement.
+  return out.filter((stmt) => stmt.replace(/--[^\n]*/g, "").replace(/\/\*[\s\S]*?\*\//g, "").trim().length > 0);
+}
+
+async function execOne(sql, attempts = 4) {
   let lastErr;
   for (let i = 0; i < attempts; i++) {
     try {
@@ -96,6 +158,29 @@ async function execWithRetry(sql, attempts = 4) {
     }
   }
   throw lastErr;
+}
+
+/**
+ * Run a step, one statement at a time.
+ *
+ * Reports how many statements a step actually contained, so a step that half
+ * applies is visible rather than a tick. The first failure stops the step: the
+ * statements after a failed CREATE TABLE are its indexes, and running them
+ * would only produce a second, more confusing error.
+ */
+async function execWithRetry(sql) {
+  const statements = splitStatements(sql);
+  for (let n = 0; n < statements.length; n++) {
+    try {
+      await execOne(statements[n]);
+    } catch (err) {
+      if (statements.length > 1) {
+        err.message = `statement ${n + 1} of ${statements.length}: ${err.message}`;
+      }
+      throw err;
+    }
+  }
+  return statements.length;
 }
 
 const migrations = [
@@ -2830,19 +2915,36 @@ const migrations = [
 
 let failed = false;
 
+const skipped = [];
+
 for (const { desc, sql, continueOnError } of migrations) {
   try {
-    await execWithRetry(sql);
-    console.log(`  ✓ ${desc}`);
+    const count = await execWithRetry(sql);
+    console.log(`  ✓ ${desc}${count > 1 ? ` (${count} statements)` : ""}`);
   } catch (err) {
     if (continueOnError) {
-      // Expected failures (e.g., column already nullable) are ignored
+      // Most of these are genuinely expected — a column that is already
+      // nullable, an index that already exists. But the reason is recorded and
+      // summarised at the end, because a step silently doing nothing is how a
+      // table went missing in production while the build reported success.
       console.log(`  ✓ ${desc} (already applied or not needed)`);
+      skipped.push({ desc, reason: shortError(err) });
     } else {
       console.error(`  ✗ ${desc}: ${err.message}`);
       failed = true;
     }
   }
+}
+
+// Anything that did not apply for a reason other than "it is already there".
+const suspicious = skipped.filter(
+  ({ reason }) =>
+    !/already exists|does not exist|duplicate|cannot be cast|is not a/i.test(reason) ||
+    /multiple commands|syntax error/i.test(reason)
+);
+if (suspicious.length) {
+  console.warn(`\n  ! ${suspicious.length} step(s) were skipped for an unexpected reason:`);
+  for (const { desc, reason } of suspicious) console.warn(`    - ${desc}: ${reason}`);
 }
 
 await prisma.$disconnect();

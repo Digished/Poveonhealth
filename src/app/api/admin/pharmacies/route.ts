@@ -16,20 +16,37 @@ async function requireAdmin() {
   return adminRecord ? user : null;
 }
 
-/** GET /api/admin/pharmacies — the partner network with its activity counts. */
-export async function GET() {
+/**
+ * GET /api/admin/pharmacies — the partner network with its activity counts.
+ *
+ * `?month=2026-09` narrows the sign-up count to members who joined in that
+ * month. Everything else on the row is a running total: a pharmacy's customer
+ * book and the discounts they have given do not belong to a month.
+ */
+export async function GET(req: NextRequest) {
   // The build-time migration is best-effort; make sure the tables are there.
   await ensureCarePlanSchema().catch(() => {});
   if (!(await requireAdmin())) return NextResponse.json({ error: "Forbidden" }, { status: 403 });
+
+  const monthKey = req.nextUrl.searchParams.get("month") ?? "";
+  const month = /^\d{4}-\d{2}$/.test(monthKey) ? monthKey : null;
+  const monthRange = month
+    ? (() => {
+        const [y, m] = month.split("-").map(Number);
+        return { gte: new Date(Date.UTC(y, m - 1, 1)), lt: new Date(Date.UTC(y, m, 1)) };
+      })()
+    : null;
 
   const pharmacies = await prisma.pharmacy.findMany({ orderBy: { created_at: "desc" } });
   const ids = pharmacies.map((p) => p.id);
 
   const customersBy = new Map<string, number>();
   const redemptionsBy = new Map<string, { count: number; discount: number }>();
+  const signupsBy = new Map<string, number>();
+  const signupMonths = new Map<string, number>();
 
   if (ids.length) {
-    const [customerCounts, redemptionSums] = await Promise.all([
+    const [customerCounts, redemptionSums, signupCounts, months] = await Promise.all([
       prisma.pharmacyCustomer.groupBy({
         by: ["pharmacy_id"],
         where: { pharmacy_id: { in: ids } },
@@ -41,16 +58,56 @@ export async function GET() {
         _sum: { discount_naira: true },
         _count: { id: true },
       }),
+      // Members who joined Poveon and named this pharmacy first. Counted on
+      // the choice made at sign-up rather than on who they are with today, so
+      // a member moving later never takes a past month's number back down —
+      // this is what a pharmacy is compensated on.
+      prisma.consultPatient.groupBy({
+        by: ["first_pharmacy_id"],
+        where: {
+          first_pharmacy_id: { in: ids },
+          // Only members who actually paid. An abandoned form is not a sign-up.
+          status: { in: ["active", "expired", "cancelled"] },
+          ...(monthRange ? { first_pharmacy_at: monthRange } : {}),
+        },
+        _count: { id: true },
+      }),
+      // Which months have any sign-ups at all, so the filter offers only those.
+      prisma.consultPatient.findMany({
+        where: {
+          first_pharmacy_id: { in: ids },
+          status: { in: ["active", "expired", "cancelled"] },
+          first_pharmacy_at: { not: null },
+        },
+        select: { first_pharmacy_at: true },
+        orderBy: { first_pharmacy_at: "desc" },
+        take: 5000,
+      }),
     ]);
     for (const c of customerCounts) customersBy.set(c.pharmacy_id, c._count.id);
     for (const r of redemptionSums) {
       if (!r.pharmacy_id) continue;
       redemptionsBy.set(r.pharmacy_id, { count: r._count.id, discount: Number(r._sum.discount_naira ?? 0) });
     }
+    for (const g of signupCounts as { first_pharmacy_id: string | null; _count: { id: number } }[]) {
+      if (g.first_pharmacy_id) signupsBy.set(g.first_pharmacy_id, g._count.id);
+    }
+    for (const m of months as { first_pharmacy_at: Date | null }[]) {
+      if (!m.first_pharmacy_at) continue;
+      const d = new Date(m.first_pharmacy_at);
+      const key = `${d.getUTCFullYear()}-${String(d.getUTCMonth() + 1).padStart(2, "0")}`;
+      signupMonths.set(key, (signupMonths.get(key) ?? 0) + 1);
+    }
   }
 
   return NextResponse.json({
     success: true,
+    month,
+    // Newest first, and only months that actually have sign-ups in them.
+    signup_months: Array.from(signupMonths.entries())
+      .sort(([a], [b]) => b.localeCompare(a))
+      .map(([m, count]) => ({ month: m, count })),
+    signups_total: Array.from(signupsBy.values()).reduce((a, b) => a + b, 0),
     pharmacies: pharmacies.map((p) => ({
       id: p.id,
       name: p.name,
@@ -76,6 +133,8 @@ export async function GET() {
       customers: customersBy.get(p.id) ?? 0,
       redemptions: redemptionsBy.get(p.id)?.count ?? 0,
       discount_given: Math.round(redemptionsBy.get(p.id)?.discount ?? 0),
+      /** Members who joined and named this pharmacy first, in the chosen month. */
+      signups: signupsBy.get(p.id) ?? 0,
     })),
   });
 }

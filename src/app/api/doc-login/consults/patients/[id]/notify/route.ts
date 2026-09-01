@@ -7,6 +7,7 @@ import { carePlanScheduleEmail } from "@/lib/email/templates";
 import { appUrl, getDoctorEmailFromConsultRequest } from "@/lib/consult";
 import { describePrescription } from "@/lib/prescription-parse";
 import { medLiveWhere } from "@/lib/medication-status";
+import { parsePhones } from "@/lib/phones";
 import { CADENCE_LABEL } from "@/lib/treatment-plan";
 import { ensureCarePlanSchema } from "@/lib/startup/ensure-care-plan-schema";
 
@@ -37,7 +38,7 @@ export async function POST(req: NextRequest, { params }: { params: { id: string 
     const parsed = BodySchema.safeParse(await req.json().catch(() => ({})));
     if (!parsed.success) return NextResponse.json({ error: "Invalid note." }, { status: 400 });
 
-    const [profile, testOrders, prescriptions, plan] = await Promise.all([
+    const [profile, testOrders, prescriptions, plan, pharmacy, lab] = await Promise.all([
       prisma.doctorProfile.findUnique({
         where: { email },
         select: { full_name: true, prefix: true },
@@ -57,6 +58,21 @@ export async function POST(req: NextRequest, { params }: { params: { id: string 
         orderBy: { created_at: "desc" },
         include: { items: { orderBy: { position: "asc" } } },
       }),
+      // Where to go. "Collect this medication" and "book these tests" are not
+      // instructions anyone can act on without an address.
+      patient.preferred_pharmacy_id
+        ? prisma.pharmacy.findUnique({
+            where: { id: patient.preferred_pharmacy_id },
+            select: { name: true, address: true, city: true, state: true, phone: true },
+          })
+        : Promise.resolve(null),
+      patient.preferred_lab_id
+        ? prisma.lab.findUnique({
+            where: { id: patient.preferred_lab_id },
+            // A lab keeps a list of numbers, not one — see lib/phones.
+            select: { name: true, address: true, city: true, state: true, phones: true },
+          })
+        : Promise.resolve(null),
     ]);
 
     const note = parsed.data.message?.trim() || null;
@@ -101,6 +117,8 @@ export async function POST(req: NextRequest, { params }: { params: { id: string 
           plan?.items.map((i) => `${i.label} — ${CADENCE_LABEL[i.cadence] ?? i.cadence}`) ?? [],
         planNote: plan?.note ?? null,
         message: note,
+        pharmacy,
+        lab: lab && { ...lab, phone: parsePhones(lab.phones)[0]?.number ?? null },
         dashboardUrl: `${appUrl()}/dashboard?tab=care`,
       }),
     });

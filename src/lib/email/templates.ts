@@ -65,6 +65,47 @@ const codeBox = (code: string) => `
 
 const divider = `<hr style="border:none;border-top:1px solid #e0effe;margin:24px 0;">`;
 
+/**
+ * Where a member is meant to go, in an email that tells them to go somewhere.
+ *
+ * "Book these tests" and "collect this medication" are instructions a member
+ * cannot act on without an address. They chose a lab and a pharmacy when they
+ * joined; the email is where that choice is worth repeating, with enough to
+ * ring ahead or put into a maps app. Fields that are missing are simply left
+ * out rather than shown as blanks.
+ */
+export type EmailPartner = {
+  name: string;
+  address?: string | null;
+  city?: string | null;
+  state?: string | null;
+  phone?: string | null;
+};
+
+const partnerBlock = (heading: string, partner: EmailPartner | null | undefined) => {
+  if (!partner?.name) return "";
+  const where = [partner.address, partner.city, partner.state].filter(Boolean).join(", ");
+  return `
+    <table width="100%" cellpadding="0" cellspacing="0" style="margin:0 0 20px;">
+      <tr>
+        <td style="background:#f8fafc;border:1px solid #e2e8f0;border-radius:8px;padding:14px 16px;">
+          <p style="margin:0 0 4px;color:#6b7280;font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:0.6px;">${escapeHtml(heading)}</p>
+          <p style="margin:0;color:#1e3a5f;font-size:15px;font-weight:700;">${escapeHtml(partner.name)}</p>
+          ${where ? `<p style="margin:4px 0 0;color:#4b5563;font-size:13px;line-height:1.5;">${escapeHtml(where)}</p>` : ""}
+          ${
+            partner.phone
+              ? `<p style="margin:4px 0 0;color:#4b5563;font-size:13px;">
+                   <a href="tel:${escapeHtml(String(partner.phone).replace(/[^\d+]/g, ""))}" style="color:#0270c3;text-decoration:none;">${escapeHtml(partner.phone)}</a>
+                 </p>`
+              : ""
+          }
+        </td>
+      </tr>
+    </table>`;
+};
+
+
+
 const label = (text: string) =>
   `<span style="color:#6b7280;font-size:12px;font-weight:600;text-transform:uppercase;letter-spacing:0.5px;">${text}</span>`;
 
@@ -2249,6 +2290,8 @@ export function carePlanWelcomeEmail({
   expiresOn,
   labDiscount,
   pharmacyDiscount,
+  pharmacy,
+  lab,
   dashboardUrl,
 }: {
   memberName: string;
@@ -2258,6 +2301,9 @@ export function carePlanWelcomeEmail({
   expiresOn: string;
   labDiscount: number;
   pharmacyDiscount: number;
+  /** The partners this member picked when they joined. */
+  pharmacy?: EmailPartner | null;
+  lab?: EmailPartner | null;
   dashboardUrl: string;
 }) {
   return base(`
@@ -2280,6 +2326,9 @@ export function carePlanWelcomeEmail({
       <li><strong>${pharmacyDiscount}% off</strong> prescriptions at partner pharmacies</li>
       <li><strong>${messageAllowance} messages</strong> to your doctor over the year</li>
     </ul>
+
+    ${partnerBlock("Your pharmacy", pharmacy)}
+    ${partnerBlock("Your laboratory", lab)}
 
     ${
       doctorName
@@ -2599,6 +2648,8 @@ export function carePlanScheduleEmail({
   planItems,
   planNote,
   message,
+  pharmacy,
+  lab,
   dashboardUrl,
 }: {
   memberName: string;
@@ -2608,6 +2659,10 @@ export function carePlanScheduleEmail({
   planItems: string[];
   planNote: string | null;
   message: string | null;
+  /** Where this member collects medication, when they have chosen somewhere. */
+  pharmacy?: EmailPartner | null;
+  /** Where this member has their tests done. */
+  lab?: EmailPartner | null;
   dashboardUrl: string;
 }) {
   const section = (title: string, rows: string[]) =>
@@ -2639,7 +2694,9 @@ export function carePlanScheduleEmail({
         (t) => `${escapeHtml(t.summary)}${t.due ? ` <span style="color:#6b7280;">— ${escapeHtml(t.due)}</span>` : ""}`
       )
     )}
+    ${tests.length ? partnerBlock("Have them done at", lab) : ""}
     ${section("Medication", medications.map(escapeHtml))}
+    ${medications.length ? partnerBlock("Collect from", pharmacy) : ""}
     ${section("Your plan", planItems.map(escapeHtml))}
 
     ${

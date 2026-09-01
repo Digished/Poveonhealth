@@ -305,13 +305,6 @@ export function MedicationPay({ onPickPharmacy }: { onPickPharmacy?: () => void 
           </div>
         </section>
       )}
-
-      {!noPharmacy && (data.total.unpriced > 0 || data.total.out_of_stock > 0) && (
-        <p className="rounded-xl bg-slate-50 px-4 py-3 text-[11px] leading-relaxed text-slate-500">
-          Another partner pharmacy may have what {data.pharmacy?.name} cannot price or stock —
-          changing pharmacy re-prices everything.
-        </p>
-            )}
     </div>
   );
 }

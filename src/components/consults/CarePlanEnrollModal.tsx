@@ -12,6 +12,7 @@ import { DobInput } from "@/components/DobInput";
 import { ProviderPicker } from "@/components/consults/ProviderPicker";
 import { ProviderRow } from "@/components/consults/ProviderRow";
 import { PHARMACY_LOCK_DAYS } from "@/lib/pharmacy-lock";
+import { PayStep } from "@/components/consults/PayStep";
 import type { Provider } from "@/components/consults/ProviderPicker";
 import {
   ADHERENCE_OPTIONS,
@@ -50,7 +51,7 @@ type Form = {
   consent: boolean;
 };
 
-const STEPS = ["Your details", "Your health", "Your baseline", "Confirm"] as const;
+const STEPS = ["Your details", "Your health", "Your baseline", "Confirm", "Pay"] as const;
 
 const naira = (n: number) => `₦${Math.round(n).toLocaleString("en-NG")}`;
 
@@ -98,6 +99,10 @@ export function CarePlanEnrollModal({
   });
   const [error, setError] = useState("");
   const [submitting, setSubmitting] = useState(false);
+  // Paystack's hosted checkout, kept for the card route once registration has
+  // created the charge.
+  const [authorizationUrl, setAuthorizationUrl] = useState<string | null>(null);
+  const [paidCode, setPaidCode] = useState<string | null>(null);
   const [pharmacy, setPharmacy] = useState<Provider | null>(null);
   const [lab, setLab] = useState<Provider | null>(null);
   const [picking, setPicking] = useState<"pharmacy" | "lab" | null>(null);
@@ -209,9 +214,14 @@ export function CarePlanEnrollModal({
         setError(data.error ?? "Something went wrong. Please try again.");
         return;
       }
-      window.location.href = data.authorization_url;
+      // Registration used to end at Paystack's checkout. It now ends on a step
+      // that offers a transfer here or a card there — the same reference either
+      // way, so activation has one path however the money arrives.
+      setAuthorizationUrl(data.authorization_url ?? null);
+      setStep(STEPS.length - 1);
     } catch {
       setError("Network error. Please check your connection and try again.");
+    } finally {
       setSubmitting(false);
     }
   }
@@ -579,6 +589,40 @@ export function CarePlanEnrollModal({
             </Section>
           )}
 
+          {step === 4 && (
+            paidCode !== null ? (
+              <Section
+                icon={<ShieldCheck className="h-5 w-5" />}
+                title="You're on the care plan"
+                blurb="Your care code is live. A doctor is being assigned to you now."
+              >
+                <div className="rounded-2xl bg-medical-50 px-5 py-6 text-center">
+                  <p className="text-[11px] font-bold uppercase tracking-widest text-medical-700">
+                    Your care code
+                  </p>
+                  <p className="mt-1 font-mono text-3xl font-black tracking-widest text-medical-800">
+                    {paidCode}
+                  </p>
+                </div>
+                <p className="mt-3 text-center text-xs leading-relaxed text-slate-500">
+                  We have emailed it to you as well. Show it at any partner pharmacy or lab.
+                </p>
+              </Section>
+            ) : (
+              <Section
+                icon={<ShieldCheck className="h-5 w-5" />}
+                title="How would you like to pay?"
+                blurb="Transfer without leaving this page, or pay by card."
+              >
+                <PayStep
+                  priceNaira={benefits.price_naira}
+                  authorizationUrl={authorizationUrl}
+                  onPaid={({ code }) => setPaidCode(code ?? "")}
+                />
+              </Section>
+            )
+          )}
+
           {step === 3 && (
             <Section
               icon={<ShieldCheck className="h-5 w-5" />}
@@ -659,7 +703,7 @@ export function CarePlanEnrollModal({
           className="flex shrink-0 items-center gap-3 border-t border-slate-100 bg-white p-4 sm:px-6"
           style={{ paddingBottom: "max(1rem, env(safe-area-inset-bottom, 0px))" }}
         >
-          {step > 0 && (
+          {step > 0 && step < 4 && (
             <button
               type="button"
               onClick={() => { setError(""); setStep((s) => Math.max(0, s - 1)); }}
@@ -670,7 +714,15 @@ export function CarePlanEnrollModal({
               Back
             </button>
           )}
-          {step < STEPS.length - 1 ? (
+          {step === 4 ? (
+            <button
+              type="button"
+              onClick={onClose}
+              className="flex flex-1 items-center justify-center gap-2 rounded-xl bg-medical-600 px-5 py-3 text-sm font-bold text-white transition hover:bg-medical-700"
+            >
+              {paidCode !== null ? "Open my care plan" : "I'll finish this later"}
+            </button>
+          ) : step < STEPS.length - 2 ? (
             <button
               type="button"
               onClick={next}
@@ -688,7 +740,7 @@ export function CarePlanEnrollModal({
               className="flex flex-1 items-center justify-center gap-2 rounded-xl bg-emerald-600 px-5 py-3 text-sm font-bold text-white shadow-lg shadow-emerald-600/25 transition hover:bg-emerald-700 disabled:opacity-50"
             >
               {submitting ? <Loader2 className="h-4 w-4 animate-spin" /> : <ShieldCheck className="h-4 w-4" />}
-              {submitting ? "Opening checkout…" : `Pay ${naira(benefits.price_naira)}`}
+              {submitting ? "Just a moment…" : `Continue to pay ${naira(benefits.price_naira)}`}
             </button>
           )}
         </div>

@@ -246,7 +246,7 @@ const CANCEL_REASONS = [
 /** A field left blank in a form arrives as "", which is a no-answer, not a value. */
 const emptyToNull = (v: unknown) => (typeof v === "string" && v.trim() === "" ? null : v);
 
-const PatchSchema = z.object({
+const StatusPatchSchema = z.object({
   kind: z.enum(["prescription", "test"]),
   id: z.string().min(1),
   status: z.enum(["scheduled", "active", "completed", "cancelled", "done"]),
@@ -257,7 +257,33 @@ const PatchSchema = z.object({
 });
 
 /**
- * PATCH — start or finish a medication, mark a test done, cancel either.
+ * Correcting a medication already on file.
+ *
+ * A doctor could stop a medication or mark it finished, but not fix it — so a
+ * dose typed wrong, or a frequency that needs changing, meant stopping the old
+ * one and writing a new one, which left the member's list showing a cancelled
+ * drug beside its replacement. This edits it in place.
+ */
+const EditPatchSchema = z.object({
+  kind: z.literal("prescription_edit"),
+  id: z.string().min(1),
+  medication: z.string().trim().min(2).max(160),
+  form: z.preprocess(emptyToNull, z.string().trim().max(40).nullish()),
+  dosage: z.preprocess(emptyToNull, z.string().trim().max(80).nullish()),
+  frequency: z.preprocess(emptyToNull, z.string().trim().max(80).nullish()),
+  duration_days: z.preprocess(
+    (v) => (v === "" || v === null || v === undefined ? null : v),
+    z.coerce.number().int().min(1).max(3650).nullish()
+  ),
+  instructions: z.preprocess(emptyToNull, z.string().trim().max(600).nullish()),
+  start_date: z.preprocess(emptyToNull, z.string().trim().nullish()),
+});
+
+const PatchSchema = z.union([EditPatchSchema, StatusPatchSchema]);
+
+/**
+ * PATCH — start or finish a medication, correct one, mark a test done, cancel
+ * either.
  *
  * Completing a recurring test order schedules the next one, so a monitoring
  * schedule keeps running without the doctor re-entering it.
@@ -278,6 +304,53 @@ export async function PATCH(req: NextRequest, { params }: { params: { id: string
       );
     }
     const d = parsed.data;
+
+    // ── Correcting a medication in place ──────────────────────────────────
+    if (d.kind === "prescription_edit") {
+      if (!ctx.approved) {
+        return NextResponse.json(
+          { error: "Your care-plan credentials haven't been approved yet." },
+          { status: 403 }
+        );
+      }
+      const existing = await prisma.consultPrescription.findUnique({ where: { id: d.id } });
+      if (!existing || existing.patient_id !== patient.id) {
+        return NextResponse.json({ error: "Medication not found." }, { status: 404 });
+      }
+      if (existing.status === "cancelled" || existing.status === "completed") {
+        return NextResponse.json(
+          { error: "That course has ended. Schedule a new one instead of editing it." },
+          { status: 409 }
+        );
+      }
+
+      const start = parseDate(d.start_date) ?? existing.start_date ?? new Date();
+      await prisma.consultPrescription.update({
+        where: { id: d.id },
+        data: {
+          medication: d.medication,
+          form: d.form ?? null,
+          dosage: d.dosage ?? null,
+          frequency: d.frequency ?? null,
+          duration_days: d.duration_days ?? null,
+          instructions: d.instructions ?? null,
+          start_date: start,
+          end_date: d.duration_days
+            ? new Date(start.getTime() + d.duration_days * 24 * 60 * 60 * 1000)
+            : null,
+          // An edited suggestion is the doctor's own, the same as one they
+          // typed out — and the member can finally see it.
+          ...(existing.status === MED_SUGGESTED_STATUS
+            ? { status: "scheduled", source: "doctor" }
+            : {}),
+          doctor_email: email,
+          // The parser's reading of the original line no longer describes what
+          // this is, so it stops being shown as if it did.
+          raw_text: null,
+        },
+      });
+      return NextResponse.json({ success: true });
+    }
 
     if (d.kind === "prescription") {
       const existing = await prisma.consultPrescription.findUnique({ where: { id: d.id } });

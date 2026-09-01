@@ -4,7 +4,7 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import { toast } from "react-hot-toast";
 import {
   AlertTriangle, BookmarkPlus, CalendarClock, Check, CircleAlert, FlaskConical,
-  Loader2, Pill, Plus, RotateCw, Sparkles, Store, Trash2, X,
+  Loader2, Pencil, Pill, Plus, RotateCw, Sparkles, Store, Trash2, X,
 } from "lucide-react";
 import { DateInput } from "@/components/ui/DateInput";
 import { MED_SUGGESTED_STATUS, isMedicationLive } from "@/lib/medication-status";
@@ -146,6 +146,7 @@ export function CarePlanOrders({
   const [adding, setAdding] = useState<"test" | "prescription" | null>(null);
   const [busyId, setBusyId] = useState<string | null>(null);
   const [cancelling, setCancelling] = useState<{ kind: "prescription" | "test"; id: string; name: string } | null>(null);
+  const [editing, setEditing] = useState<string | null>(null);
 
   // Drafted from the member's own baseline at sign-up, waiting on the doctor.
   // Outside both lists: not live, and not history either.
@@ -346,6 +347,15 @@ export function CarePlanOrders({
             <div className="mt-2.5 space-y-2">
               {suggestedMeds.map((m) => (
                 <div key={m.id} className="rounded-lg border border-amber-200 bg-white px-3 py-2.5">
+                  {editing === m.id ? (
+                    <EditMedicationForm
+                      patientId={patientId}
+                      med={m}
+                      onClose={() => setEditing(null)}
+                      onSaved={() => { setEditing(null); onChanged(); }}
+                    />
+                  ) : (
+                  <>
                   <p className="text-sm font-semibold text-slate-800">
                     {m.form ? `${m.form.charAt(0).toUpperCase()}${m.form.slice(1)} · ` : ""}
                     {m.medication}
@@ -368,6 +378,13 @@ export function CarePlanOrders({
                         {busyId === m.id ? "Working…" : "Schedule it"}
                       </button>
                       <button
+                        onClick={() => setEditing(m.id)}
+                        disabled={busyId === m.id}
+                        className="rounded-lg border border-amber-300 px-3 py-1.5 text-[11px] font-bold text-amber-800 transition hover:bg-amber-100 disabled:opacity-60"
+                      >
+                        Edit
+                      </button>
+                      <button
                         onClick={() => remove("prescription", m.id)}
                         disabled={busyId === m.id}
                         className="rounded-lg border border-amber-300 px-3 py-1.5 text-[11px] font-bold text-amber-800 transition hover:bg-amber-100 disabled:opacity-60"
@@ -375,6 +392,8 @@ export function CarePlanOrders({
                         Discard
                       </button>
                     </div>
+                  )}
+                  </>
                   )}
                 </div>
               ))}
@@ -388,6 +407,14 @@ export function CarePlanOrders({
           )}
           {activeMeds.map((m) => (
             <div key={m.id} className="rounded-xl border border-slate-200 px-3.5 py-3">
+              {editing === m.id ? (
+                <EditMedicationForm
+                  patientId={patientId}
+                  med={m}
+                  onClose={() => setEditing(null)}
+                  onSaved={() => { setEditing(null); onChanged(); }}
+                />
+              ) : (
               <div className="flex items-start gap-2">
                 <div className="min-w-0 flex-1">
                   <p className="text-sm font-semibold text-slate-800">
@@ -410,6 +437,12 @@ export function CarePlanOrders({
                 {canPrescribe && (
                   <div className="flex shrink-0 gap-1">
                     <IconBtn
+                      title="Correct this medication"
+                      busy={busyId === m.id}
+                      onClick={() => setEditing(m.id)}
+                      icon={<Pencil className="h-3.5 w-3.5" />}
+                    />
+                    <IconBtn
                       title="Mark the course completed"
                       busy={busyId === m.id}
                       onClick={() => update("prescription", m.id, "completed")}
@@ -425,6 +458,7 @@ export function CarePlanOrders({
                   </div>
                 )}
               </div>
+              )}
             </div>
           ))}
         </div>
@@ -939,6 +973,172 @@ function MedCheckNote({ line, pharmacyName }: { line: MedCheckLine; pharmacyName
         )}
       </span>
     </p>
+  );
+}
+
+/**
+ * Correcting a medication that is already on the member's list.
+ *
+ * A doctor could stop one or mark it finished, but not fix it — so a dose
+ * typed wrong meant cancelling and rewriting, which left the member looking at
+ * a stopped drug beside its replacement. The fields are the ones the parser
+ * fills in, so what a doctor corrects here is exactly what they would have
+ * typed.
+ */
+function EditMedicationForm({
+  patientId, med, onClose, onSaved,
+}: {
+  patientId: string;
+  med: Prescription;
+  onClose: () => void;
+  onSaved: () => void;
+}) {
+  const [form, setForm] = useState({
+    medication: med.medication,
+    form: med.form ?? "",
+    dosage: med.dosage ?? "",
+    frequency: med.frequency ?? "",
+    duration_days: med.duration_days != null ? String(med.duration_days) : "",
+    instructions: med.instructions ?? "",
+  });
+  const [startDate, setStartDate] = useState(
+    med.start_date ? new Date(med.start_date).toISOString().slice(0, 10) : ""
+  );
+  const [saving, setSaving] = useState(false);
+  const { check, checking } = useMedicationCheck(
+    patientId,
+    // Checked against the pharmacy as the correction is made, the same as when
+    // it is first written.
+    [form.form, form.medication, form.dosage, form.frequency].filter(Boolean).join(" ")
+  );
+  const verdict = check?.lines?.[0] ?? null;
+
+  async function save() {
+    if (saving || form.medication.trim().length < 2) return;
+    setSaving(true);
+    try {
+      const res = await fetch(`/api/doc-login/consults/patients/${patientId}/orders`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          kind: "prescription_edit",
+          id: med.id,
+          medication: form.medication.trim(),
+          form: form.form.trim() || null,
+          dosage: form.dosage.trim() || null,
+          frequency: form.frequency.trim() || null,
+          duration_days: form.duration_days ? Number(form.duration_days) : null,
+          instructions: form.instructions.trim() || null,
+          start_date: startDate || null,
+        }),
+      });
+      const d = await res.json().catch(() => null);
+      if (!res.ok || !d?.success) { toast.error(d?.error ?? "Could not save that."); return; }
+      toast.success("Medication updated");
+      onSaved();
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  return (
+    <div className="mt-3 space-y-2.5 rounded-xl border border-medical-200 bg-medical-50/50 p-3.5">
+      <p className="text-[11px] font-bold uppercase tracking-wider text-medical-700">
+        Correcting this medication
+      </p>
+
+      <EditField label="Medication">
+        <input
+          autoFocus
+          value={form.medication}
+          onChange={(e) => setForm({ ...form, medication: e.target.value })}
+          className={inputClass}
+        />
+      </EditField>
+
+      <div className="grid gap-2.5 sm:grid-cols-2">
+        <EditField label="Form">
+          <input
+            value={form.form}
+            onChange={(e) => setForm({ ...form, form: e.target.value })}
+            placeholder="tablet"
+            className={inputClass}
+          />
+        </EditField>
+        <EditField label="Dose">
+          <input
+            value={form.dosage}
+            onChange={(e) => setForm({ ...form, dosage: e.target.value })}
+            placeholder="10mg"
+            className={inputClass}
+          />
+        </EditField>
+        <EditField label="How often">
+          <input
+            value={form.frequency}
+            onChange={(e) => setForm({ ...form, frequency: e.target.value })}
+            placeholder="Once daily"
+            className={inputClass}
+          />
+        </EditField>
+        <EditField label="For how many days">
+          <input
+            inputMode="numeric"
+            value={form.duration_days}
+            onChange={(e) => setForm({ ...form, duration_days: e.target.value.replace(/\D/g, "") })}
+            placeholder="Leave blank for ongoing"
+            className={inputClass}
+          />
+        </EditField>
+      </div>
+
+      <EditField label="Instructions">
+        <input
+          value={form.instructions}
+          onChange={(e) => setForm({ ...form, instructions: e.target.value })}
+          placeholder="Take in the morning"
+          className={inputClass}
+        />
+      </EditField>
+
+      <EditField label="Start date">
+        <DateInput value={startDate} onChange={setStartDate} placeholder="DD / MM / YYYY" />
+      </EditField>
+
+      {check?.pharmacy && verdict && (
+        <div className="rounded-lg border border-slate-200 bg-white px-3 py-2">
+          <p className="flex items-center gap-1.5 text-[10px] font-bold uppercase tracking-wider text-slate-400">
+            <Store className="h-3 w-3" />
+            {check.pharmacy.name}
+            {checking && <Loader2 className="h-3 w-3 animate-spin" />}
+          </p>
+          <MedCheckNote line={verdict} pharmacyName={check.pharmacy.name} />
+        </div>
+      )}
+
+      <div className="flex flex-wrap items-center gap-2">
+        <button
+          onClick={save}
+          disabled={saving || form.medication.trim().length < 2}
+          className="flex flex-1 items-center justify-center gap-1.5 rounded-xl bg-medical-600 py-2.5 text-xs font-bold text-white transition hover:bg-medical-700 disabled:opacity-50"
+        >
+          {saving ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Check className="h-3.5 w-3.5" />}
+          Save changes
+        </button>
+        <button onClick={onClose} className="rounded-xl px-4 py-2.5 text-xs font-semibold text-slate-500 hover:text-slate-700">
+          Cancel
+        </button>
+      </div>
+    </div>
+  );
+}
+
+function EditField({ label, children }: { label: string; children: React.ReactNode }) {
+  return (
+    <div>
+      <label className="mb-1 block text-[11px] font-semibold text-slate-500">{label}</label>
+      {children}
+    </div>
   );
 }
 

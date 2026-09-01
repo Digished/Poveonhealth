@@ -17,7 +17,7 @@
 
 import type { NextRequest } from "next/server";
 import { prisma } from "@/lib/prisma";
-import { draftMedications, draftPlanItems, draftPlanNote } from "@/lib/care-draft";
+import { draftMedications, draftPlanItems } from "@/lib/care-draft";
 import { MED_SUGGESTED_STATUS } from "@/lib/medication-status";
 import { monthlyEstimate, monthlyInstalment, yearlyCommitment } from "@/lib/doctor-pay";
 
@@ -462,6 +462,92 @@ export async function initConsultPayment(params: {
 }
 
 /** Confirm a Paystack reference actually succeeded. */
+/**
+ * Start a bank transfer for a membership, and hand back the account to pay into.
+ *
+ * Most people in Nigeria pay by transfer, and sending them out to a hosted
+ * checkout to be told to make one is a step where sign-ups are lost. Paystack
+ * will mint a one-off account number for a charge, which is what this asks for:
+ * the member sees the account inside the app, transfers from whichever bank app
+ * they already have open, and the same reference verifies through exactly the
+ * path a card payment does. Nothing downstream knows the difference.
+ *
+ * The account is temporary and belongs to this one charge. Returns null when
+ * the Paystack account has not been enabled for transfers, so the caller can
+ * offer the card route rather than showing a dead end — that is a
+ * configuration state, not an error.
+ */
+export async function initConsultTransfer(params: {
+  patientId: string;
+  code: string;
+  email: string;
+  amountNaira: number;
+  purpose?: "care_plan" | "care_plan_topup";
+  topupId?: string;
+  /** How long the account stays open. Paystack's own default is an hour. */
+  minutes?: number;
+}): Promise<{
+  reference: string;
+  bankName: string;
+  accountNumber: string;
+  accountName: string | null;
+  expiresAt: string | null;
+  amountNaira: number;
+} | null> {
+  const secret = process.env.PAYSTACK_SECRET_KEY;
+  if (!secret) {
+    console.error("[consults] PAYSTACK_SECRET_KEY not set — cannot take a transfer");
+    return null;
+  }
+
+  const expiresAt = new Date(Date.now() + (params.minutes ?? 60) * 60 * 1000).toISOString();
+
+  try {
+    const res = await fetch("https://api.paystack.co/charge", {
+      method: "POST",
+      headers: { Authorization: `Bearer ${secret}`, "Content-Type": "application/json" },
+      body: JSON.stringify({
+        email: params.email,
+        amount: Math.round(params.amountNaira * 100), // kobo
+        currency: "NGN",
+        bank_transfer: { account_expires_at: expiresAt },
+        // The same metadata a card charge carries, so /consults/verify reads
+        // this reference exactly as it reads that one.
+        metadata: {
+          purpose: params.purpose ?? "care_plan",
+          patient_id: params.patientId,
+          code: params.code,
+          ...(params.topupId ? { topup_id: params.topupId } : {}),
+        },
+      }),
+    });
+    const data = await res.json();
+
+    const d = data?.data ?? {};
+    // Paystack has moved these fields between the charge body and a nested
+    // account object across versions, so both are read rather than assumed.
+    const account = d.account_number ?? d.account?.account_number ?? null;
+    const bank = d.bank?.name ?? d.bank_name ?? d.account?.bank_name ?? null;
+
+    if (!data?.status || !account || !bank) {
+      console.error("[consults] paystack transfer charge failed:", JSON.stringify(data));
+      return null;
+    }
+
+    return {
+      reference: String(d.reference),
+      bankName: String(bank),
+      accountNumber: String(account),
+      accountName: d.account_name ?? d.account?.account_name ?? null,
+      expiresAt: d.account_expires_at ?? expiresAt,
+      amountNaira: params.amountNaira,
+    };
+  } catch (e) {
+    console.error("[consults] paystack transfer error:", e);
+    return null;
+  }
+}
+
 export async function verifyConsultPayment(reference: string): Promise<{
   success: boolean;
   amountNaira: number;
@@ -640,7 +726,6 @@ export async function draftCarePlanFor(
         patient_id: patient.id,
         doctor_email: doctorEmail,
         title: "Starting plan",
-        note: draftPlanNote(patient.conditions),
         source: "suggested",
         items: {
           create: items.map((item, i) => ({

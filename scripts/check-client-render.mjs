@@ -242,6 +242,112 @@ const scenarios = [
     `,
   },
   {
+    // Paying by transfer without leaving the site: the account has to appear,
+    // be copyable, and the page has to notice when the money lands.
+    name: "paying by bank transfer",
+    entry: `
+      import { PayStep } from "@/components/consults/PayStep";
+      export const Panel = () => (
+        <PayStep
+          priceNaira={2500}
+          authorizationUrl="https://checkout.paystack.com/abc123"
+          onPaid={({ code }) => {
+            const el = document.createElement("p");
+            el.id = "paid";
+            el.textContent = "PAID " + code;
+            document.getElementById("root").appendChild(el);
+          }}
+        />
+      );`,
+    routes: {
+      "/api/consults/pay/transfer": {
+        success: true,
+        transfer: {
+          reference: "ref_123",
+          bankName: "Wema Bank",
+          accountNumber: "9930001234",
+          accountName: "Poveon Health / Adaeze Okonkwo",
+          expiresAt: "2026-09-01T13:00:00.000Z",
+          amountNaira: 2500,
+        },
+      },
+      "/api/consults/verify": { success: true, kind: "membership", member: { code: "PVC-8X4K29" } },
+    },
+    mustSay: ["Pay by bank transfer", "Pay by card", "\u20a62,500"],
+    act: `
+      const transferBtn = Array.from(document.querySelectorAll("button"))
+        .find((b) => /Pay by bank transfer/.test(b.textContent));
+      if (!transferBtn) return { error: "no transfer option" };
+      transferBtn.click();
+      await new Promise((r) => setTimeout(r, 400));
+      const text = document.getElementById("root").innerText;
+      if (!text.includes("9930001234")) return { error: "the account number is not shown" };
+      if (!text.includes("Wema Bank")) return { error: "the bank is not named" };
+      // innerText reflects text-transform, so an uppercased heading comes back
+      // uppercased.
+      if (!/transfer exactly/i.test(text)) return { error: "the amount is not called out" };
+      const card = Array.from(document.querySelectorAll("a")).find((a) => /card instead/.test(a.textContent));
+      if (!card) return { error: "no way back to the card route" };
+      const check = Array.from(document.querySelectorAll("button")).find((b) => /check now/.test(b.textContent));
+      if (!check) return { error: "no manual check" };
+      check.click();
+      await new Promise((r) => setTimeout(r, 300));
+      if (!document.getElementById("paid")) return { error: "a successful verify did not report the payment" };
+      return { ok: "account shown, payment detected" };
+    `,
+  },
+  {
+    // A doctor could stop a medication but not correct one. The form has to
+    // open on the row and send the fields it shows.
+    name: "doctor corrects a medication",
+    entry: `
+      import { CarePlanOrders } from "@/components/doctor/CarePlanOrders";
+      export const Panel = () => (
+        <CarePlanOrders
+          patientId="p1"
+          prescriptions={window.__F__.prescriptions}
+          testOrders={[]}
+          canPrescribe
+          onChanged={() => {}}
+        />
+      );`,
+    globals: {
+      prescriptions: [
+        { id: "m1", medication: "Amlodipine", form: "tablet", dosage: "10mg",
+          frequency: "Once daily", duration_days: null, instructions: "In the morning",
+          raw_text: "tabs amlodipine 10mg daily", start_date: "2026-07-01", end_date: null,
+          status: "active", cancel_reason: null, stopped_note: null },
+      ],
+    },
+    routes: { "/api/doc-login/consults/templates": { success: true, templates: [] } },
+    mustSay: ["Medication", "Amlodipine"],
+    act: `
+      const edit = Array.from(document.querySelectorAll("button"))
+        .find((b) => b.getAttribute("title") === "Correct this medication");
+      if (!edit) return { error: "no edit control on the medication" };
+      edit.click();
+      await new Promise((r) => setTimeout(r, 200));
+      const inputs = Array.from(document.querySelectorAll("input"));
+      const dose = inputs.find((i) => i.value === "10mg");
+      if (!dose) return { error: "the form did not open with the current dose" };
+      const setter = Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, "value").set;
+      setter.call(dose, "5mg");
+      dose.dispatchEvent(new Event("input", { bubbles: true }));
+      await new Promise((r) => setTimeout(r, 150));
+      const save = Array.from(document.querySelectorAll("button"))
+        .find((b) => /Save changes/.test(b.textContent));
+      if (!save) return { error: "no save button" };
+      save.click();
+      await new Promise((r) => setTimeout(r, 250));
+      const sent = window.__SENT__.filter((r) => r.body).map((r) => JSON.parse(r.body))
+        .find((b) => b.kind === "prescription_edit");
+      if (!sent) return { error: "nothing was sent as an edit" };
+      if (sent.dosage !== "5mg") return { error: "the new dose was not sent: " + sent.dosage };
+      if (sent.id !== "m1") return { error: "the wrong medication was edited" };
+      return { ok: "edited m1 to 5mg" };
+    `,
+  },
+  {
     name: "doctor care sections, a draft waiting",
     entry: `
       import { CarePlanOrders } from "@/components/doctor/CarePlanOrders";

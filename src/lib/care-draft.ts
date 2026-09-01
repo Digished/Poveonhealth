@@ -124,20 +124,6 @@ export function draftPlanItems(conditions: string[]): DraftItem[] {
     .map(({ item }) => item);
 }
 
-/** The note at the top of a drafted plan, so the doctor knows what they are looking at. */
-export function draftPlanNote(conditions: string[]): string {
-  const which = conditions.includes("hypertension") && conditions.includes("diabetes")
-    ? "hypertension and diabetes"
-    : conditions.includes("diabetes")
-      ? "diabetes"
-      : "hypertension";
-  return (
-    `Drafted automatically from this member's ${which} at sign-up, so there is ` +
-    "something running from day one. Edit anything that does not fit them and confirm it — " +
-    "until you do, it is marked as a suggestion."
-  );
-}
-
 export type DraftMedication = ParsedPrescription & {
   /** Why this row exists, shown to the doctor beside it. */
   from_baseline: true;

@@ -16,6 +16,7 @@ import {
   Power,
   QrCode,
   Landmark,
+  UserPlus,
   RefreshCw,
   Save,
   TicketPercent,
@@ -27,6 +28,7 @@ import { Modal } from "@/components/ui/Overlay";
 import { STATE_NAMES, lgasForState } from "@/lib/nigeria-locations";
 import { FuzzyCombo } from "@/components/ui/FuzzyCombo";
 import { NIGERIAN_BANKS } from "@/lib/nigerian-banks";
+import { MonthFilter, monthLabel, type MonthOption } from "@/components/ui/MonthFilter";
 
 type Pharmacy = {
   id: string; name: string; slug: string; code: string; email: string; logo_url: string | null;
@@ -36,6 +38,8 @@ type Pharmacy = {
   bank_code: string | null; account_name: string | null; account_last4: string | null;
   payouts_ready: boolean;
   customers: number; redemptions: number; discount_given: number;
+  /** Members who joined and named this pharmacy first, in the chosen month. */
+  signups: number;
 };
 
 const naira = (n: number) => `₦${Math.round(n).toLocaleString("en-NG")}`;
@@ -52,19 +56,31 @@ export function AdminPharmaciesTab() {
   const [loading, setLoading] = useState(true);
   const [adding, setAdding] = useState(false);
   const [busyId, setBusyId] = useState<string | null>(null);
+  // Which month's sign-ups are being counted. Empty is every month.
+  const [month, setMonth] = useState("");
+  const [signupMonths, setSignupMonths] = useState<MonthOption[]>([]);
+  const [signupsTotal, setSignupsTotal] = useState(0);
 
   const load = useCallback(async () => {
     setLoading(true);
     try {
-      const res = await fetch("/api/admin/pharmacies", { cache: "no-store" });
+      const res = await fetch(`/api/admin/pharmacies${month ? `?month=${month}` : ""}`, {
+        cache: "no-store",
+      });
       const d = await res.json();
-      if (d.success) setPharmacies(d.pharmacies);
+      if (d.success) {
+        setPharmacies(d.pharmacies);
+        // The months on offer come from every sign-up, not the filtered set,
+        // or picking one month would hide all the others.
+        if (d.signup_months) setSignupMonths(d.signup_months);
+        setSignupsTotal(d.signups_total ?? 0);
+      }
     } catch {
       toast.error("Failed to load pharmacies.");
     } finally {
       setLoading(false);
     }
-  }, []);
+  }, [month]);
 
   useEffect(() => { load(); }, [load]);
 
@@ -135,12 +151,36 @@ export function AdminPharmaciesTab() {
         </div>
       </div>
 
-      <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
+      <div className="grid grid-cols-2 gap-3 lg:grid-cols-5">
         <SmallStat label="Pharmacies" value={String(pharmacies.length)} icon={<Pill className="h-4 w-4" />} />
         <SmallStat label="Active" value={String(pharmacies.filter((p) => p.active).length)} icon={<BadgeCheck className="h-4 w-4" />} />
+        <SmallStat
+          label={month ? `Sign-ups in ${monthLabel(month)}` : "Sign-ups, all time"}
+          value={String(signupsTotal)}
+          icon={<UserPlus className="h-4 w-4" />}
+        />
         <SmallStat label="Customers tracked" value={String(totals.customers)} icon={<Users className="h-4 w-4" />} />
         <SmallStat label="Discount given" value={naira(totals.discount)} icon={<TicketPercent className="h-4 w-4" />} />
       </div>
+
+      {signupMonths.length > 0 && (
+        <div>
+          <p className="mb-1.5 text-[11px] font-bold uppercase tracking-wide text-slate-400">
+            Members who chose each pharmacy first
+          </p>
+          <MonthFilter
+            months={signupMonths}
+            value={month}
+            onChange={setMonth}
+            allLabel="All time"
+            allCount={signupMonths.reduce((sum, m) => sum + m.count, 0)}
+          />
+          <p className="mt-1.5 text-[11px] leading-relaxed text-slate-500">
+            Counted on the pharmacy a member picked when they joined, so a member moving later
+            never changes a past month. This is what a pharmacy is compensated on.
+          </p>
+        </div>
+      )}
 
       {adding && <AddPharmacyForm onClose={() => setAdding(false)} onAdded={() => { setAdding(false); load(); }} />}
 
@@ -200,6 +240,7 @@ export function AdminPharmaciesTab() {
                 <th className="px-4 py-2.5 font-semibold">Pharmacy</th>
                 <th className="px-4 py-2.5 font-semibold">Code</th>
                 <th className="px-4 py-2.5 font-semibold">Discount</th>
+                <th className="px-4 py-2.5 font-semibold">Sign-ups</th>
                 <th className="px-4 py-2.5 font-semibold">Customers</th>
                 <th className="px-4 py-2.5 font-semibold">Discount given</th>
                 <th className="px-4 py-2.5 font-semibold">Signed in</th>
@@ -209,7 +250,7 @@ export function AdminPharmaciesTab() {
             <tbody className="divide-y divide-white/5">
               {pharmacies.length === 0 && !loading && (
                 <tr>
-                  <td colSpan={7} className="px-4 py-10 text-center text-slate-500">
+                  <td colSpan={8} className="px-4 py-10 text-center text-slate-500">
                     No partner pharmacies yet. Add one to start the network.
                   </td>
                 </tr>
@@ -256,6 +297,11 @@ export function AdminPharmaciesTab() {
                       className="w-16 rounded border border-white/10 bg-white/5 px-2 py-1 text-xs text-white focus:border-medical-500 focus:outline-none"
                     />
                     <span className="ml-1 text-xs text-slate-500">%</span>
+                  </td>
+                  <td className="px-4 py-3" data-label="Sign-ups">
+                    <span className={`text-xs font-bold ${p.signups ? "text-medical-300" : "text-slate-500"}`}>
+                      {p.signups}
+                    </span>
                   </td>
                   <td className="px-4 py-3 text-xs text-slate-300" data-label="Customers">{p.customers}</td>
                   <td className="px-4 py-3 text-xs text-emerald-300" data-label="Discount given">{naira(p.discount_given)}</td>
